@@ -47,7 +47,7 @@ Uses the generic projection, checkpoint, budget, and private-evidence foundation
 
 ## Next Path
 
-Continue with subtask 7 after subtasks 2 through 5 are also complete.
+Continue with subtask 8 after subtasks 2 through 5 and 7 are also complete.
 
 ## Spec Path
 

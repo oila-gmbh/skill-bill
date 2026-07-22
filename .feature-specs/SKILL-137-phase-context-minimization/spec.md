@@ -6,7 +6,7 @@ decomposed
 
 ## Intended Outcome
 
-Every Skill Bill feature-task and feature-verification phase receives only the bounded, typed facts it needs. Complete upstream phase responses, raw agent output, telemetry payloads, prompts, logs, and unrelated run invariants remain durable private evidence and are not inherited by downstream model context. Repository state at an exact checkpoint remains authoritative for code, diff, and validation evidence.
+Every Skill Bill feature-task, feature-verification, and delegated code-review agent receives only the bounded, typed facts it needs. Complete upstream phase responses, raw agent output, complete diffs, telemetry payloads, prompts, logs, and unrelated run invariants remain durable private evidence and are not inherited by downstream model context. Repository state at an exact checkpoint remains authoritative for code, diff, and validation evidence.
 
 ## Overview
 
@@ -14,7 +14,9 @@ The runtime feature-task pipeline currently declares dependencies by producer ph
 
 Replace phase-level inheritance with manifest-like, consumer-specific handoff declarations. Each declaration identifies a source, a named versioned projection contract, visibility, size limits, and repository-checkpoint policy. The runtime validates the source artifact, projects only allowlisted fields, rejects missing, malformed, oversized, or stale inputs with typed errors, and persists the exact projected briefing delivered to the phase. Full phase outputs may remain in private diagnostic storage but are never prompt-visible by default.
 
-The target contracts include a pre-planning digest, executable plan, plan commitment, implementation receipt, audit clearance and repair request, review repair request, validation receipt, change receipt, commit request/receipt, and PR request. Fresh launches and resumed launches must assemble the same projection. Runtime, prose, and feature-verification surfaces must share the same semantic boundaries even when their execution mechanisms differ.
+Delegated code review has the same defect in its own shape. It fans one authoritative diff out to many specialist lanes, but `GovernedReviewLaunch.toLaunchEnvelope()` projects `assigned_hunks` as content-free hunk ids while only the parent packet carries `changed_hunks` with `content`. A specialist receives the identity of the change it must review without the change itself, so each delivery path improvises: the native broker inlines complete file bodies for every assigned path, and the prompt-driven path leaves acquisition undefined so every lane reads the same complete diff. Observed Kotlin specialist runs open near 21 KTok and close between 78 and 105 KTok, with the same diff admitted by five lanes and re-read with overlapping offsets inside single lanes. Each lane must receive its assigned hunk content and nothing else.
+
+The target contracts include a pre-planning digest, executable plan, plan commitment, implementation receipt, audit clearance and repair request, review repair request, validation receipt, change receipt, commit request/receipt, PR request, and delegated-review lane launch. Fresh launches and resumed launches must assemble the same projection. Runtime, prose, feature-verification, and delegated-review surfaces must share the same semantic boundaries even when their execution mechanisms differ.
 
 ## Acceptance Criteria
 
@@ -44,7 +46,11 @@ The target contracts include a pre-planning digest, executable plan, plan commit
 24. Telemetry measures projected input bytes and estimated tokens by phase, projection-contract failures, stale-checkpoint rejections, and private-versus-delivered byte counts without recording prompt text, diff bodies, source, or receipt contents.
 25. Acceptance and rejection tests prove both presence and absence: every phase receives all required projected fields and none of the forbidden upstream envelopes, invariant fields, telemetry, raw outputs, or unrelated artifacts.
 26. Runtime and prose documentation, architecture notes, governed `content.md`, schemas, constants, validators, persistence mappings, MCP/CLI continuation surfaces, fixtures, and golden files agree on the new boundaries. Generated wrappers and installed staging artifacts remain uncommitted.
-27. Focused contract, domain, application, persistence, runtime, prose continuation, verification, goal-child, standalone, retry, resume, and end-to-end tests pass, followed by:
+27. A delegated review specialist receives its own assigned hunk content in the governed launch and never acquires a diff itself. Reading a diff file, diff artifact, scratch diff path, or complete-diff body is a forbidden rediscovery with a typed outcome, and no lane launch carries hunks outside its own assignment.
+28. Brokered specialist evidence is hunk-window scoped. Complete file bodies reach a lane only through an authorized expansion carrying a nonblank reachability reason, and an already-admitted evidence target is not re-read through offsets, limits, or pagination.
+29. Every provider delivery path — Claude Code prompt route, Codex native subagent route, and CLI route — produces the same lane projection. None passes a shared whole-diff path or artifact that resolves to the complete diff, and per-provider golden launch envelopes prove it.
+30. A specialist does not read its rubric, specialist contract, or consumer contract from disk; the launch supplies them. The forbidden-rediscovery list, evidence-surface rules, and report structure have one authoritative copy, with any remaining restatement proven byte-identical by parity test.
+31. Focused contract, domain, application, persistence, runtime, prose continuation, verification, delegated review, goal-child, standalone, retry, resume, and end-to-end tests pass, followed by:
 
     ```bash
     skill-bill validate
@@ -60,6 +66,7 @@ The target contracts include a pre-planning digest, executable plan, plan commit
 - Handoff projections are closed-world. Open maps are allowed only at explicitly annotated serialization boundaries and must be produced by typed domain models rather than arbitrary agent fields.
 - The runtime owns dependency selection, checkpoint validation, and projection. A phase agent cannot request extra prior artifacts or expand its prompt-visible scope.
 - Compact references must be repository-relative paths, stable artifact ids, workflow ids, iteration ids, or content digests. They must not conceal raw prose or unbounded content.
+- Delegated-review lane content is derived from the already-parsed authoritative `ReviewDiffEvidence`. No lane, provider path, or projection step recomputes a diff, resolves a replacement baseline, or widens the review revision.
 - Existing audit non-progress, stable repair ids, review two-pass cap, goal-child isolation, immutable review base, feature decomposition, platform-pack routing, and add-on verification behavior remain intact.
 - Add-on content is delivered only to manifest-declared receiving phase/agent assignments. Add-on identities may remain run-level state, but hydrated content is not unconditional prompt context.
 - Agent-specific runtime behavior stays behind injectable strategies; no agent identity branching is added to the process runner.
@@ -74,6 +81,8 @@ The target contracts include a pre-planning digest, executable plan, plan commit
 - Embedding full diffs in durable workflow state; checkpoints and regenerated deterministic scopes are preferred.
 - Adding a generic agent-controlled context retrieval API.
 - Changing review severity taxonomy, audit test-exclusion policy, remediation pass caps, feature decomposition semantics, or platform-pack selection.
+- Reducing review lane count, dropping required baseline lanes, or thinning specialist rubric substance to save context.
+- Host-harness context that Skill Bill does not own, such as provider system prompts, tool schemas, project instruction files, and user memory injected into every subagent.
 - Migrating arbitrary historical terminal workflows in place. Loud failure with an actionable restart or out-of-band migration path is acceptable where contract versions change.
 
 ## Validation Strategy
@@ -85,8 +94,9 @@ The target contracts include a pre-planning digest, executable plan, plan commit
 - Add prompt snapshots and byte-budget tests proving no full upstream envelope survives projection and no required structured value is truncated.
 - Add prose fresh-launch/resume parity tests and stale-order rejection coverage.
 - Add feature-verification evaluator independence and consolidated-receipt tests.
+- Add delegated-review lane projection tests: assigned hunk content presence, cross-lane hunk absence, hunk-window evidence admission, complete-diff and unexpanded whole-file rejection, repeat-read rejection, and per-provider golden launch envelopes.
 - Add telemetry privacy tests and golden-file updates.
-- Run focused Gradle tests per subtask, then the complete repository gates in acceptance criterion 27.
+- Run focused Gradle tests per subtask, then the complete repository gates in acceptance criterion 31.
 
 ## Next Path
 

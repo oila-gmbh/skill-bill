@@ -51,7 +51,7 @@ This is the shared foundation required by every later subtask.
 
 ## Next Path
 
-Continue with subtasks 2 and 6 after this subtask commits.
+Continue with subtasks 2, 6, and 7 after this subtask commits.
 
 ## Spec Path
 

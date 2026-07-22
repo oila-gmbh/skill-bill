@@ -114,8 +114,24 @@ subtasks:
     optional: false
     skipped: false
 - id: 7
+  name: "Delegated review launch projections"
+  spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_7_delegated-review-launch-projections.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
+- id: 8
   name: "Compatibility telemetry and end-to-end hardening"
-  spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_7_compatibility-telemetry-and-end-to-end-hardening.md"
+  spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_8_compatibility-telemetry-and-end-to-end-hardening.md"
   status: "pending"
   branch: null
   commit_sha: null
@@ -142,5 +158,8 @@ subtasks:
     optional: false
     skipped: false
   - subtask_id: 6
+    optional: false
+    skipped: false
+  - subtask_id: 7
     optional: false
     skipped: false

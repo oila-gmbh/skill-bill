@@ -51,7 +51,7 @@ The prose flow adopts the complete forward/backward and finalization projection 
 
 ## Next Path
 
-Continue with subtask 7 after subtask 6 is also complete.
+Continue with subtask 8 after subtasks 6 and 7 are also complete.
 
 ## Spec Path
 
