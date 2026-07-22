@@ -8,6 +8,7 @@ object ParallelReviewFindingParser {
     "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
       "(?<severity>Blocker|Critical|Major|Minor|Nit)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
+      "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
       "(?<location>[^|]+?)\\s+\\|\\s+" +
       "(?<description>.+)$",
     RegexOption.MULTILINE,
@@ -21,6 +22,7 @@ object ParallelReviewFindingParser {
       confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
       location = match.groups["location"]?.value.orEmpty().trim(),
       description = match.groups["description"]?.value.orEmpty().trim(),
+      specialistSkillName = match.groups["specialistSkillName"]?.value,
     )
   }.toList()
 

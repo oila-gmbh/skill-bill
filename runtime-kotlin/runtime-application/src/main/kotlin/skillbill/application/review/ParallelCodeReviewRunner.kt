@@ -26,6 +26,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
@@ -241,19 +242,26 @@ class ParallelCodeReviewRunner(
       .groupBy { it.skillName }
       .values
       .mapIndexed { index, matches ->
-        val lane = matches.first().copy(orderIndex = index)
+        val first = matches.first()
+        val lane = first.copy(
+          orderIndex = index,
+          ownedPaths = matches.flatMap { it.ownedPaths }.distinct().sorted(),
+          changedHunkIds = matches.flatMap { it.changedHunkIds }.distinct(),
+        )
         require(matches.all { it.packSlug == lane.packSlug && it.area == lane.area }) {
           "Conflicting ownership for specialist '${lane.skillName}'."
         }
         val owner = manifests.single { it.slug == lane.packSlug }
-        val ownedDiff = evidence.ownedDiff(lane.ownedPaths.toSet())
-        val resolvedOwner = reviewRubricResolver.resolve(owner, ownedDiff, lane.skillName)
+        val ownedEvidence = evidence.ownedFiles(lane.ownedPaths.toSet()).map {
+          ReviewOwnedFileEvidence(it.path, it.changedContent.lowercase())
+        }
+        val resolvedOwner = reviewRubricResolver.resolve(owner, ownedEvidence, lane.skillName)
         val resolved = resolvedOwner
           .specialists.singleOrNull { it.area == lane.area }
           ?: resolvedOwner
         PlannedReviewRubric(
           descriptor = lane.copy(addOns = resolved.selectedAddOns),
-          rubric = ReviewRubricProjection(resolved.rubricId, resolved.body, resolved.area),
+          rubric = ReviewRubricProjection(lane.skillName, resolved.body, resolved.area ?: lane.area),
           originLayerChains = matches.map { it.originLayerChain }.distinct(),
         )
       }
@@ -329,7 +337,7 @@ class ParallelCodeReviewRunner(
     }
     if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList())
 
-    val changedFiles = evidence.files
+    val changedFiles = evidence.files.filterNot { RoutingSignalPathMatcher.isIgnored(it.path) }
 
     val signalOwners = manifests.flatMap { manifest ->
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
@@ -525,7 +533,10 @@ class ParallelCodeReviewRunner(
       }
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
       appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
-      appendLine("Return only F-XXX risk-register lines.")
+      appendLine(
+        "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
+          "repository/path:line | description' lines.",
+      )
       appendLine()
       append(launchRequests.first().packet.changedHunks.joinToString("\n") { it.content })
     }
@@ -551,7 +562,7 @@ class ParallelCodeReviewRunner(
       is AgentRunLaunchFacts -> {
         val reason = laneFailureReason(outcome)
         val findings = if (reason == null) {
-          ParallelReviewFindingParser.parse(outcome.stdout).flatMap { finding ->
+          ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
             val findingPath = normalizedFindingPath(finding.location)
             val owners = selected.filter { launch ->
               launch.assignment.assignedPaths.any { path -> normalizeRepositoryPath(path) == findingPath }
@@ -559,12 +570,24 @@ class ParallelCodeReviewRunner(
             require(owners.isNotEmpty()) {
               "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
             }
-            owners.distinctBy { it.assignment.laneDecision.specialistSkillName }.map { owner ->
-              finding.copy(
-                specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
-                originLayerChains = owner.assignment.laneDecision.originLayerChains,
+            val distinctOwners = owners.distinctBy { it.assignment.laneDecision.specialistSkillName }
+            val declaredSpecialist = finding.specialistSkillName
+            require(declaredSpecialist != null || distinctOwners.size == 1) {
+              "Inline finding location '${finding.location}' has overlapping ownership and must name its specialist."
+            }
+            val owner = if (declaredSpecialist == null) {
+              distinctOwners.single()
+            } else {
+              distinctOwners.singleOrNull {
+                it.assignment.laneDecision.specialistSkillName == declaredSpecialist
+              } ?: error(
+                "Inline finding specialist '$declaredSpecialist' does not own '${finding.location}'.",
               )
             }
+            finding.copy(
+              specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
+              originLayerChains = owner.assignment.laneDecision.originLayerChains,
+            )
           }
         } else {
           emptyList()

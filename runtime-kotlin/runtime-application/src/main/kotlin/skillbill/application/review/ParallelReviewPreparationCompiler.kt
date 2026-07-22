@@ -142,10 +142,18 @@ internal object ParallelReviewPreparationCompiler {
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
-    val routesByLane = routes.associateBy(SpecialistRoute::lane)
+    val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
+      require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
+    }
     return preparation.assignments.map { assignment ->
       val route = requireNotNull(routesByLane[assignment.lane]) {
         "Prepared assignment '${assignment.lane}' has no selected specialist route."
+      }
+      require(assignment.laneDecision.specialistSkillName == route.rubric.rubricId) {
+        "Prepared assignment '${assignment.lane}' drifted from rubric '${route.rubric.rubricId}'."
+      }
+      require(assignment.assignedPaths == route.ownedPaths) {
+        "Prepared assignment '${assignment.lane}' drifted from resolved ownership."
       }
       DelegatedReviewLaunchRequest(
         packet = preparation.packet,

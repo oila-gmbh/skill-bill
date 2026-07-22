@@ -95,7 +95,15 @@ class DelegatedReviewLaunchBroker(
           "${request.rubrics.size}.",
       )
     }
-    return request.rubrics.single()
+    return request.rubrics.single().also { rubric ->
+      val specialist = request.assignment.laneDecision.specialistSkillName
+      if (rubric.rubricId != specialist) {
+        reject(
+          request,
+          "Delegated launch rubric '${rubric.rubricId}' does not match assignment specialist '$specialist'.",
+        )
+      }
+    }
   }
 
   private fun requireSupportedIsolation(request: DelegatedReviewLaunchRequest): ReviewLaunchIsolationStrategy {

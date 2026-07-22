@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonActivation
@@ -84,7 +85,7 @@ class FileSystemReviewRubricResolverTest {
 
     val resolved = FileSystemReviewRubricResolver().resolve(
       configured,
-      "+ @Composable fun Screen() = Unit",
+      listOf(ReviewOwnedFileEvidence("src/commonMain/Screen.kt", "+ @composable fun Screen() = Unit")),
       "bill-kotlin-code-review-ui",
     )
 
@@ -124,7 +125,7 @@ class FileSystemReviewRubricResolverTest {
 
     val resolved = FileSystemReviewRubricResolver().resolve(
       configured,
-      "+++ b/src/commonMain/kotlin/Screen.kt\n+ @Composable fun Screen() = Unit",
+      listOf(ReviewOwnedFileEvidence("src/commonMain/kotlin/Screen.kt", "+ @composable fun Screen() = Unit")),
       "bill-kotlin-code-review-ui",
     )
 
@@ -161,7 +162,7 @@ class FileSystemReviewRubricResolverTest {
 
     val resolved = FileSystemReviewRubricResolver().resolve(
       configured,
-      "+++ b/android/proguard-rules.pro\n+ -keep class example.Model",
+      listOf(ReviewOwnedFileEvidence("android/proguard-rules.pro", "+ -keep class example.Model")),
       "bill-kotlin-code-review-platform-correctness",
     )
 
@@ -198,11 +199,19 @@ class FileSystemReviewRubricResolverTest {
 
     assertEquals(
       emptyList(),
-      resolver.resolve(configured, "+ SQLite migration", "bill-kotlin-code-review-persistence").selectedAddOns,
+      resolver.resolve(
+        configured,
+        listOf(ReviewOwnedFileEvidence("src/Store.kt", "+ sqlite migration")),
+        "bill-kotlin-code-review-persistence",
+      ).selectedAddOns,
     )
     assertEquals(
       listOf("offline-first"),
-      resolver.resolve(configured, "+ SQLite sync queue", "bill-kotlin-code-review-persistence").selectedAddOns,
+      resolver.resolve(
+        configured,
+        listOf(ReviewOwnedFileEvidence("src/Store.kt", "+ sqlite sync queue")),
+        "bill-kotlin-code-review-persistence",
+      ).selectedAddOns,
     )
   }
 

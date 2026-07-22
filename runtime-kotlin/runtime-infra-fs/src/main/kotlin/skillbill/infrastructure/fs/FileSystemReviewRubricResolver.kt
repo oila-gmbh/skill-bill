@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.review.plan.ReviewPathMatcher
 import skillbill.scaffold.model.PlatformManifest
@@ -47,7 +48,11 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
   }
 
   @Suppress("CyclomaticComplexMethod")
-  override fun resolve(manifest: PlatformManifest?, diff: String, specialistSkillName: String): ResolvedReviewRubric {
+  override fun resolve(
+    manifest: PlatformManifest?,
+    evidence: List<ReviewOwnedFileEvidence>,
+    specialistSkillName: String,
+  ): ResolvedReviewRubric {
     val resolved = resolve(manifest)
     if (manifest == null) return resolved
     val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
@@ -60,7 +65,6 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
         else -> emptyList()
       }
     }.distinctBy { it.slug }
-    val evidence = activationEvidence(diff)
     val selected = selections.filter { selection ->
       val condition = requireNotNull(selection.activation) {
         "Governed review add-on '${selection.slug}' has no structured activation."
@@ -111,25 +115,6 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
       "Selected add-on '${path.fileName}' is larger than $MAX_ADDON_FILE_BYTES bytes."
     }
   }
-
-  private fun activationEvidence(diff: String): List<ActivationEvidence> {
-    val parsed = diff.replace("\r\n", "\n")
-      .split(Regex("(?m)(?=^diff --git )"))
-      .mapNotNull { record ->
-        val path = Regex("(?m)^\\+\\+\\+ b/(.+)$").find(record)?.groupValues?.get(1) ?: return@mapNotNull null
-        val content = record.lineSequence()
-          .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
-          .joinToString("\n").lowercase()
-        ActivationEvidence(path.lowercase(), content)
-      }
-    if (parsed.isNotEmpty()) return parsed
-    val content = diff.lineSequence()
-      .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
-      .joinToString("\n").lowercase()
-    return listOf(ActivationEvidence("", content))
-  }
-
-  private data class ActivationEvidence(val path: String, val changedContent: String)
 
   private companion object {
     const val MAX_RUBRIC_BYTES = 256 * 1024L
