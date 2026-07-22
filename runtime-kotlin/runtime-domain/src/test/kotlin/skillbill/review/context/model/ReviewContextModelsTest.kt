@@ -24,6 +24,12 @@ class ReviewContextModelsTest {
     )
     assertTrue("  - \"odd|name\\\\tab\\t.kt\"" in launch.canonicalPayload)
   }
+
+  @Test fun `repository paths accept supplementary Unicode and reject unpaired surrogates`() {
+    requireRepositoryRelativePath("src/rocket-\uD83D\uDE80.kt")
+    assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uD83D.kt") }
+    assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uDE80.kt") }
+  }
   private fun lane(name: String, paths: List<String>, reason: String = "routed") =
     ReviewLaneDecision(
       name,

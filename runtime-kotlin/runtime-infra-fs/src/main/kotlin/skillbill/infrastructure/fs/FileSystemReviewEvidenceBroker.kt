@@ -225,14 +225,14 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
 private fun validateRepositoryMapping(root: Path, repositoryPath: String) {
   requireRepositoryRelativePath(repositoryPath)
-  val relative = runCatching { Path.of(repositoryPath) }
-    .getOrElse { throw IllegalArgumentException("Review path is not representable on the active filesystem.", it) }
-  require(relative.toString() == repositoryPath) {
-    "Review path '$repositoryPath' is not represented exactly on the active filesystem."
-  }
   var current = root
-  relative.forEach { component ->
-    current = current.resolve(component.toString())
+  repositoryPath.split('/').forEach { logicalComponent ->
+    val component = runCatching { Path.of(logicalComponent) }
+      .getOrElse { throw IllegalArgumentException("Review path is not representable on the active filesystem.", it) }
+    require(!component.isAbsolute && component.nameCount == 1 && component.toString() == logicalComponent) {
+      "Review path '$repositoryPath' is not represented exactly on the active filesystem."
+    }
+    current = current.resolve(component)
     require(!Files.isSymbolicLink(current)) { "Review path '$repositoryPath' crosses a symbolic link." }
   }
   require(current.normalize().startsWith(root)) { "Review path '$repositoryPath' escapes the repository root." }

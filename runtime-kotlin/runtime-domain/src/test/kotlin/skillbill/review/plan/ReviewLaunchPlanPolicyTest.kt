@@ -55,6 +55,23 @@ class ReviewLaunchPlanPolicyTest {
   }
 
   @Test
+  fun `diamond composition retains every origin and required reachability`() {
+    val base = pack("base", listOf("security"))
+    val left = pack("left", emptyList(), layers = listOf(layer("base", required = false)))
+    val right = pack("right", emptyList(), layers = listOf(layer("base")))
+    val root = pack(
+      "root",
+      emptyList(),
+      layers = listOf(layer("left", required = false), layer("right", required = false)),
+    )
+
+    val lane = ReviewLaunchPlanPolicy.flatten("root", listOf(root, left, right, base), setOf("security")).lanes.single()
+
+    assertEquals(listOf(listOf("root", "left", "base"), listOf("root", "right", "base")), lane.originLayerChains)
+    assertTrue(lane.required)
+  }
+
+  @Test
   fun `cycle missing layer and contract drift fail loudly`() {
     val a = pack("a", listOf("security"), layers = listOf(layer("b")))
     val b = pack("b", listOf("testing"), layers = listOf(layer("a")))
@@ -96,11 +113,11 @@ class ReviewLaunchPlanPolicyTest {
       codeReviewComposition = layers.takeIf { it.isNotEmpty() }?.let(::CodeReviewComposition),
     )
 
-  private fun layer(slug: String) = CodeReviewBaselineLayer(
+  private fun layer(slug: String, required: Boolean = true) = CodeReviewBaselineLayer(
     platform = slug,
     skill = "bill-$slug-code-review",
     scope = CodeReviewCompositionScope.SameReviewScope,
-    required = true,
+    required = required,
     mode = CodeReviewCompositionMode.KmpBaseline,
   )
 

@@ -77,6 +77,27 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `all assignments preflight before the first worker starts`() {
+    val repo = createGitRepo()
+    createStagedFile(repo)
+    val launcher = ParallelSubtaskLauncher()
+    var admitted = 0
+    val runner = runner(
+      launcher,
+      evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+        admitted++
+        if (admitted == 2) throw IllegalArgumentException("invalid later assignment")
+        TestReviewEvidenceBroker(binding)
+      },
+    )
+
+    assertFailsWith<IllegalArgumentException> { runner.run(baseRequest(repoRoot = repo)) }
+
+    assertEquals(2, admitted)
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
   fun `unsupported agent id throws UsageValidationException`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher)
@@ -623,10 +644,11 @@ class ParallelCodeReviewRunnerTest {
     rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
       ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
     },
+    evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
   ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
     delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
       DelegatedReviewLaunchBroker(
-        evidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
+        evidenceBrokerFactory = evidenceBrokerFactory,
         isolationResolver = { agentId ->
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },

@@ -738,12 +738,31 @@ fun requireRepositoryRelativePath(path: String) {
   require(path.isNotEmpty() && !path.startsWith('/') && !path.startsWith('\\')) {
     "Review paths must be repository-relative."
   }
-  require('\u0000' !in path && path.none { Character.isSurrogate(it) }) {
+  require('\u0000' !in path && path.hasWellFormedUtf16()) {
     "Review paths must contain valid Unicode and no NUL."
   }
+  require(!WINDOWS_ABSOLUTE_PATH.matches(path)) { "Review paths must be repository-relative." }
   require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) {
     "Review paths must use non-traversing Git path components."
   }
+}
+
+private val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:[/\\\\].*")
+
+private fun String.hasWellFormedUtf16(): Boolean {
+  var index = 0
+  while (index < length) {
+    val current = this[index]
+    when {
+      Character.isHighSurrogate(current) -> {
+        if (index + 1 >= length || !Character.isLowSurrogate(this[index + 1])) return false
+        index += 2
+      }
+      Character.isLowSurrogate(current) -> return false
+      else -> index++
+    }
+  }
+  return true
 }
 
 /** Injective UTF-8 length-prefixed encoding used by every content-addressed review identity. */

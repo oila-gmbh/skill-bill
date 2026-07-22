@@ -20,7 +20,6 @@ object ReviewLaunchPlanPolicy {
     val root = bySlug[routedSlug]
       ?: throw MissingCompositionLayerError("Routed platform pack '$routedSlug' is missing from review composition.")
     val candidates = mutableListOf<AreaCandidate>()
-    val expandedDepth = mutableMapOf<String, Int>()
 
     @Suppress("ThrowsCount")
     fun visit(pack: PlatformManifest, depth: Int, chain: List<String>, path: List<String>, required: Boolean) {
@@ -28,10 +27,6 @@ object ReviewLaunchPlanPolicy {
         val cycle = (path.dropWhile { it != pack.slug } + pack.slug).joinToString(" -> ")
         throw ReviewCompositionCycleError("Review composition contains a cycle: $cycle.")
       }
-      val previousDepth = expandedDepth[pack.slug]
-      if (previousDepth != null && previousDepth <= depth) return
-      expandedDepth[pack.slug] = depth
-      candidates.removeAll { it.pack.slug == pack.slug }
       pack.declaredCodeReviewAreas.filter { it in selectedAreas }.forEach { area ->
         candidates += AreaCandidate(pack, area, depth, chain + pack.slug, required)
       }
@@ -60,13 +55,18 @@ object ReviewLaunchPlanPolicy {
       val areaCandidates = candidates.filter { it.area == area }
       val nearestDepth = areaCandidates.minOfOrNull { it.depth } ?: return@mapNotNull null
       val nearest = areaCandidates.filter { it.depth == nearestDepth }
-      if (nearest.size > 1) {
+      val owners = nearest.groupBy { it.pack.slug }
+      if (owners.size > 1) {
         throw AmbiguousLaneOwnershipError(
           "Review area '$area' has ambiguous ownership at composition depth $nearestDepth: " +
-            nearest.map { it.pack.slug }.sorted().joinToString() + ".",
+            owners.keys.sorted().joinToString() + ".",
         )
       }
-      nearest.single()
+      val variants = owners.values.single()
+      variants.first().copy(
+        chains = variants.flatMap { it.chains }.distinct(),
+        required = variants.any { it.required },
+      )
     }.sortedWith(compareBy<AreaCandidate>({ it.depth }, { it.pack.slug }, { it.area }))
 
     return ReviewLaunchPlan(
@@ -81,6 +81,7 @@ object ReviewLaunchPlanPolicy {
           area = winner.area,
           depth = winner.depth,
           originLayerChain = winner.chain,
+          originLayerChains = winner.chains,
           required = winner.required || condition?.required == true,
           addOns = winner.pack.addonUsage.firstOrNull { it.skillRelativeDir == consumer }
             ?.addons.orEmpty().map { it.slug },
@@ -99,5 +100,6 @@ object ReviewLaunchPlanPolicy {
     val depth: Int,
     val chain: List<String>,
     val required: Boolean,
+    val chains: List<List<String>> = listOf(chain),
   )
 }

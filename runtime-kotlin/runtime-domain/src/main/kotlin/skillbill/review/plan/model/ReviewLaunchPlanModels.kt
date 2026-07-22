@@ -14,10 +14,14 @@ data class ReviewLaunchLane(
   val contentSignals: List<String> = emptyList(),
   val ownedPaths: List<String> = emptyList(),
   val changedHunkIds: List<String> = emptyList(),
+  val originLayerChains: List<List<String>> = listOf(originLayerChain),
 ) {
   init {
     require(originLayerChain.isNotEmpty()) { "A review launch lane must retain its composition attribution." }
     require(originLayerChain.last() == packSlug) { "A review launch lane attribution must end at its owner." }
+    require(originLayerChains.isNotEmpty() && originLayerChains.all { it.isNotEmpty() && it.last() == packSlug }) {
+      "Every review launch lane attribution must end at its owner."
+    }
     require(ownedPaths.distinct().size == ownedPaths.size) {
       "A review launch lane must not contain duplicate owned paths."
     }

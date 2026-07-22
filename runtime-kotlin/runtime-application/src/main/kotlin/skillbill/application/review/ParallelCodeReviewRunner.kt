@@ -77,7 +77,7 @@ class ParallelCodeReviewRunner(
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
     val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
-    val prepared = prepare(
+    val launchRequests = prepare(
       request,
       diffText,
       evidence,
@@ -85,7 +85,9 @@ class ParallelCodeReviewRunner(
       detection.manifests,
       listOf(agent1.id, agent2.id),
       budget,
-    ).groupBy { it.agentId }
+    )
+    delegatedReviewExecutionBroker.preflight(launchRequests)
+    val prepared = launchRequests.groupBy { it.agentId }
     val outcomes = runLanes(
       request,
       detection.routed,
@@ -268,7 +270,7 @@ class ParallelCodeReviewRunner(
         PlannedReviewRubric(
           descriptor = lane.copy(addOns = resolved.selectedAddOns),
           rubric = ReviewRubricProjection(lane.skillName, resolved.body, resolved.area ?: lane.area),
-          originLayerChains = matches.map { it.originLayerChain }.distinct(),
+          originLayerChains = matches.flatMap { it.originLayerChains }.distinct(),
         )
       }
   }

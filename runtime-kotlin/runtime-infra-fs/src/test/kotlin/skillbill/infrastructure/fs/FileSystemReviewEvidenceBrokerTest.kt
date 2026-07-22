@@ -34,6 +34,16 @@ class FileSystemReviewEvidenceBrokerTest {
     }
   }
 
+  @Test fun `supplementary Unicode path maps with exact Git identity`() {
+    val path = "src/rocket-\uD83D\uDE80.kt"
+    val root = repo(path to "assigned")
+    val broker = broker(root, assignment(listOf(path)))
+
+    val result = broker.readBatch(ReviewEvidenceBatchRequest("security", listOf(ReviewEvidenceRequest("security", path))))
+
+    assertEquals("assigned", result.results.single().content)
+  }
+
   @Test fun `assigned path crossing a symlink is rejected before evidence access`() {
     val root = repo("target/A.kt" to "assigned")
     Files.createSymbolicLink(root.resolve("link"), root.resolve("target"))

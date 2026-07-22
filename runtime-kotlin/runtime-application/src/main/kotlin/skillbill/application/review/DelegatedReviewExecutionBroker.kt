@@ -15,6 +15,11 @@ class DelegatedReviewExecutionBroker(
   private val launchBroker: DelegatedReviewLaunchBroker,
   private val workerLauncher: DelegatedReviewWorkerLauncher,
 ) {
+  /** Validates every launch boundary before any inline or delegated worker is allowed to start. */
+  fun preflight(requests: List<skillbill.application.review.model.DelegatedReviewLaunchRequest>) {
+    requests.forEach(launchBroker::prepare)
+  }
+
   fun execute(request: DelegatedReviewExecutionRequest): DelegatedReviewExecutionOutcome =
     when (val prepared = launchBroker.prepare(request.launchRequest)) {
       is DelegatedReviewLaunchOutcome.Terminated ->
