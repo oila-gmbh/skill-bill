@@ -15,6 +15,7 @@ import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.LinkOption
 import java.security.MessageDigest
 
 data class NativeAgentLinkOutcome(
@@ -38,7 +39,7 @@ data class NativeAgentLinkRequest(
   val overrides: NativeAgentLinkOverrides = NativeAgentLinkOverrides(),
 )
 
-@Suppress("TooManyFunctions") // cohesive facade: one link/unlink pair per native-agent provider
+@Suppress("TooManyFunctions", "LongMethod", "TooGenericExceptionCaught")
 object InstallNativeAgentOperations {
   fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
@@ -155,6 +156,10 @@ object InstallNativeAgentOperations {
       )
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
     val target = detectTarget(resolvedHome) ?: return NativeAgentLinkOutcome(emptyList(), emptyList())
+    val cacheRoot = request.overrides.installCacheRoot?.toAbsolutePath()?.normalize()
+      ?: NativeAgentOperations.installCacheRoot(resolvedHome, request.platformPacksRoot, request.skillsRoot)
+    val rollback = ProviderReconciliationSnapshot.capture(resolvedHome, provider, cacheRoot)
+    return try {
     val generated = NativeAgentOperations.renderInstallArtifacts(
       NativeAgentInstallRenderRequest(
         platformPacksRoot = request.platformPacksRoot,
@@ -199,7 +204,11 @@ object InstallNativeAgentOperations {
       desired = desired,
       managedRoots = managedRoots,
     )
-    return NativeAgentLinkOutcome(linked, skipped)
+    NativeAgentLinkOutcome(linked, skipped)
+    } catch (error: Throwable) {
+      rollback.restore()
+      throw error
+    }
   }
 
   private fun verifyInstalledNativeAgent(entry: NativeAgentLinkInventoryEntry) {
@@ -218,12 +227,74 @@ object InstallNativeAgentOperations {
       .getOrElse { fail("managed link is dangling or unreadable", it) }
     if (resolved != entry.cacheTargetPath.toRealPath()) fail("managed link resolves outside the current cache target")
     if (!Files.isReadable(resolved)) fail("rendered artifact is unreadable")
-    if (resolved.fileName.toString().substringBeforeLast('.') != entry.logicalName) {
+    if (parseEmbeddedLogicalName(resolved, entry.provider) != entry.logicalName) {
       fail("rendered artifact logical name does not match the launch worker")
     }
     val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(resolved))
       .joinToString("") { byte -> "%02x".format(byte) }
     if (digest != entry.contentDigest) fail("rendered artifact content digest is stale")
+  }
+
+  private fun parseEmbeddedLogicalName(path: Path, provider: String): String? {
+    val text = Files.readString(path)
+    val pattern = if (provider == "codex") {
+      Regex("(?m)^name\\s*=\\s*\\\"([^\\\"]+)\\\"")
+    } else {
+      Regex("(?m)^name:\\s*['\\\"]?([^'\\\"\\r\\n]+)")
+    }
+    return pattern.find(text)?.groupValues?.get(1)?.trim()
+  }
+
+  private data class ProviderReconciliationSnapshot(
+    val links: Map<Path, Path>,
+    val cacheFiles: Map<Path, ByteArray>,
+    val cacheRoot: Path,
+    val inventoryPath: Path,
+    val inventoryBytes: ByteArray?,
+  ) {
+    fun restore() {
+      links.keys.map { it.parent }.distinct().forEach { directory ->
+        if (Files.isDirectory(directory)) Files.list(directory).use { paths ->
+          paths.iterator().asSequence().filter(Files::isSymbolicLink).forEach(Files::deleteIfExists)
+        }
+      }
+      links.forEach { (link, rawTarget) ->
+        Files.createDirectories(link.parent)
+        Files.createSymbolicLink(link, rawTarget)
+      }
+      if (Files.isDirectory(cacheRoot)) Files.walk(cacheRoot).use { paths ->
+        paths.iterator().asSequence().sortedByDescending { it.nameCount }
+          .filter { it != cacheRoot }.forEach(Files::deleteIfExists)
+      }
+      cacheFiles.forEach { (path, bytes) ->
+        Files.createDirectories(path.parent)
+        Files.write(path, bytes)
+      }
+      if (inventoryBytes == null) Files.deleteIfExists(inventoryPath) else {
+        Files.createDirectories(inventoryPath.parent)
+        Files.write(inventoryPath, inventoryBytes)
+      }
+    }
+
+    companion object {
+      fun capture(home: Path, provider: NativeAgentProvider, cacheRoot: Path): ProviderReconciliationSnapshot {
+        val links = provider.homeAgentDirs(home).flatMap { directory ->
+          if (!Files.isDirectory(directory)) emptyList() else Files.list(directory).use { paths ->
+            paths.iterator().asSequence().filter(Files::isSymbolicLink)
+              .associateWith(Files::readSymbolicLink).entries.toList()
+          }
+        }.associate { it.key to it.value }
+        val cacheFiles = if (!Files.isDirectory(cacheRoot)) emptyMap() else Files.walk(cacheRoot).use { paths ->
+          paths.iterator().asSequence().filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
+            .associateWith(Files::readAllBytes)
+        }
+        val inventory = home.resolve(".skill-bill/native-agent-link-inventory.json")
+        return ProviderReconciliationSnapshot(
+          links, cacheFiles, cacheRoot, inventory,
+          inventory.takeIf { Files.isRegularFile(it) }?.let(Files::readAllBytes),
+        )
+      }
+    }
   }
 
   private fun unlinkProviderAgents(provider: NativeAgentProvider, request: NativeAgentLinkRequest): List<Path> {

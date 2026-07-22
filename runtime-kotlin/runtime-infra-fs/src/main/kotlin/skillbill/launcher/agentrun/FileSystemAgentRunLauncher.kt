@@ -38,6 +38,7 @@ class FileSystemAgentRunLauncher(
     return adapter.launch(request.skillRunRequest)
   }
 
+  @Suppress("ReturnCount")
   override fun launchNativeReview(request: NativeReviewWorkerRequest): AgentRunLaunchOutcome {
     val agent = InstallAgent.fromNormalizedId(request.agentId)
     val adapter = adapters[agent] ?: return UnsupportedAgentRunLaunch(
@@ -48,6 +49,15 @@ class FileSystemAgentRunLauncher(
       "Native review isolation does not match the provider strategy."
     }
     val capabilities = adapter.nativeReviewCapabilities
+    if (request.logicalWorkerName == null) {
+      return UnsupportedAgentRunLaunch(agent, "A provider-native governed review requires a logical worker identity.")
+    }
+    if (agent == InstallAgent.JUNIE) {
+      return UnsupportedAgentRunLaunch(
+        agent,
+        "Agent '${agent.id}' cannot select the installed native review worker '${request.logicalWorkerName}'.",
+      )
+    }
     if (!capabilities.supportsGovernedLaunch) {
       return UnsupportedAgentRunLaunch(
         agent,
@@ -70,6 +80,7 @@ class FileSystemAgentRunLauncher(
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = request.broker,
           nativeReviewOperations = request.operations,
+          nativeReviewWorkerName = request.logicalWorkerName,
         ),
       )
     } finally {

@@ -66,6 +66,7 @@ internal object ParallelReviewPreparationCompiler {
           selected.planned.descriptor,
           selected.planned.originLayerChains,
           selected.ownedPaths,
+          selected.planned.workerKind,
         )
       }
     }
@@ -163,7 +164,8 @@ internal object ParallelReviewPreparationCompiler {
         brokerId = "review-evidence-${assignment.digest}",
         budget = budget,
         agentId = route.agentId,
-        workerKind = ReviewWorkerKind.GENERIC,
+        workerKind = route.workerKind,
+        logicalWorkerName = route.descriptor.skillName.takeIf { route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE },
         repoRoot = input.repoRoot,
       )
     }
@@ -186,12 +188,14 @@ private data class SpecialistRoute(
   val descriptor: ReviewLaunchLane,
   val originLayerChains: List<List<String>>,
   val ownedPaths: List<String>,
+  val workerKind: ReviewWorkerKind,
 )
 
 internal data class PlannedReviewRubric(
   val descriptor: ReviewLaunchLane,
   val rubric: ReviewRubricProjection,
   val originLayerChains: List<List<String>> = listOf(descriptor.originLayerChain),
+  val workerKind: ReviewWorkerKind = ReviewWorkerKind.PROVIDER_NATIVE,
 )
 
 internal data class ParallelReviewPreparationInput(

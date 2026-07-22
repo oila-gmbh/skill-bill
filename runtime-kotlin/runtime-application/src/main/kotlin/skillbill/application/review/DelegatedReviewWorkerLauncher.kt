@@ -58,6 +58,7 @@ class DelegatedReviewWorkerLauncher(
     val outcome = launcher.launch(
       NativeReviewWorkerRequest(
         agentId = request.agentId,
+        logicalWorkerName = request.logicalWorkerName,
         issueKey = prepared.launch.assignment.reviewId,
         repoRoot = request.repoRoot,
         timeout = request.timeout,

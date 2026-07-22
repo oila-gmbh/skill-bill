@@ -13,6 +13,7 @@ import kotlin.time.Duration
  */
 data class NativeReviewWorkerRequest(
   val agentId: String,
+  val logicalWorkerName: String? = null,
   val issueKey: String,
   val repoRoot: Path,
   val prompt: String,
@@ -23,6 +24,7 @@ data class NativeReviewWorkerRequest(
   val operations: NativeReviewOperationProtocol,
 ) {
   init {
+    logicalWorkerName?.let { require(it.isNotBlank()) { "logicalWorkerName must be non-blank when provided." } }
     require(isolation.supported) { "A native review worker requires supported fresh-context isolation." }
     if (isolation == ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE) {
       require(isolation.forkTurns == "none") { "A Codex native review request requires fork_turns none." }

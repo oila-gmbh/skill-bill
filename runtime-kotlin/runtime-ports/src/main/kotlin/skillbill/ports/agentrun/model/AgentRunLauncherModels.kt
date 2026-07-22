@@ -33,6 +33,7 @@ data class SkillRunRequest(
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val nativeReviewWorkerName: String? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -51,6 +52,9 @@ data class SkillRunRequest(
     }
     require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
       "A governed review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require(nativeReviewWorkerName == null || reviewEvidenceBroker != null) {
+      "A native review worker name is valid only for a governed review launch."
     }
   }
 }

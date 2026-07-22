@@ -8,6 +8,7 @@ import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import java.nio.file.Files
@@ -23,7 +24,13 @@ class FileSystemReviewNativeAgentPreflight(
     val inventoryPath = home.resolve(".skill-bill/native-agent-link-inventory.json")
     val inventory = readInventory(inventoryPath)
     request.agentIds.distinct().forEach { agentId ->
-      val provider = provider(agentId) ?: return@forEach
+      val provider = provider(agentId) ?: throw MissingInstalledNativeAgentError(
+        request.logicalNames.firstOrNull() ?: "unknown",
+        agentId,
+        environment.userHome.toString(),
+        "provider does not support native-agent selection",
+        REPAIR_COMMAND,
+      )
       request.logicalNames.distinct().forEach { logicalName ->
         val entries = inventory.filter { it.provider == provider.name.lowercase() && it.logicalName == logicalName }
         if (entries.isEmpty()) {
@@ -34,13 +41,31 @@ class FileSystemReviewNativeAgentPreflight(
             "managed inventory entry is missing",
           )
         }
-        entries.forEach { verifyEntry(it, provider) }
+        val activePaths = provider.homeAgentDirs(home).map { it.resolve(provider.fileName(logicalName)).normalize() }.toSet()
+        val applicable = entries.filter { it.installedPath.normalize() in activePaths }
+        if (applicable.isEmpty() || applicable.map { it.installedPath.normalize() }.distinct().size != applicable.size) {
+          fail(logicalName, provider, provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+            "managed inventory must contain one entry per applicable provider path")
+        }
+        applicable.forEach { verifyEntry(it, provider, home, request.repoRoot) }
       }
     }
   }
 
-  private fun verifyEntry(entry: InventoryEntry, provider: NativeAgentProvider) {
+  private fun verifyEntry(entry: InventoryEntry, provider: NativeAgentProvider, home: Path, repoRoot: Path) {
     val installed = entry.installedPath
+    val allowedDirs = provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }
+    if (allowedDirs.none { installed.toAbsolutePath().normalize().parent == it }) {
+      fail(entry.logicalName, provider, installed, "installed path is outside the active provider directories")
+    }
+    val currentCache = NativeAgentOperations.installCacheRoot(
+      home,
+      repoRoot.resolve("platform-packs"),
+      repoRoot.resolve("skills"),
+    ).toAbsolutePath().normalize()
+    if (!entry.cacheTargetPath.toAbsolutePath().normalize().startsWith(currentCache)) {
+      fail(entry.logicalName, provider, installed, "recorded target is outside the current managed cache")
+    }
     if (!Files.isSymbolicLink(installed)) fail(entry.logicalName, provider, installed, "managed link is missing")
     val resolved = runCatching { installed.toRealPath() }
       .getOrElse { fail(entry.logicalName, provider, installed, "managed link is dangling or unreadable", it) }
@@ -60,7 +85,7 @@ class FileSystemReviewNativeAgentPreflight(
     ) {
       fail(entry.logicalName, provider, installed, "managed cache artifact is unreadable")
     }
-    if (resolved.fileName.toString() != provider.fileName(entry.logicalName)) {
+    if (parseLogicalName(resolved, provider) != entry.logicalName) {
       fail(entry.logicalName, provider, installed, "artifact logical name does not match the planned worker")
     }
     if (sha256(
@@ -107,6 +132,17 @@ class FileSystemReviewNativeAgentPreflight(
   }
 
   private fun NativeAgentProvider.fileName(logicalName: String) = "$logicalName.$extension"
+
+  private fun parseLogicalName(path: Path, provider: NativeAgentProvider): String {
+    val text = Files.readString(path)
+    val pattern = if (provider == NativeAgentProvider.Codex) {
+      Regex("(?m)^name\\s*=\\s*\\\"([^\\\"]+)\\\"")
+    } else {
+      Regex("(?m)^name:\\s*['\\\"]?([^'\\\"\\r\\n]+)")
+    }
+    return pattern.find(text)?.groupValues?.get(1)?.trim()
+      ?: fail(path.fileName.toString(), provider, path, "artifact embedded logical name is missing or malformed")
+  }
 
   private fun sha256(path: Path): String = MessageDigest.getInstance("SHA-256")
     .digest(Files.readAllBytes(path)).joinToString("") { "%02x".format(it) }

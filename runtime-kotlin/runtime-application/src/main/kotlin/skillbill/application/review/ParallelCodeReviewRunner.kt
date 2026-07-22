@@ -89,17 +89,17 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
-    nativeAgentPreflight.verify(
-      ReviewNativeAgentPreflightRequest(
+    val providerNativeWorkers = launchRequests
+      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
+      .map { requireNotNull(it.logicalWorkerName) }
+      .distinct()
+    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeWorkers.isNotEmpty()) {
+      nativeAgentPreflight.verify(ReviewNativeAgentPreflightRequest(
         repoRoot = request.repoRoot,
         agentIds = listOf(agent1.id, agent2.id),
-        logicalNames = launchRequests
-          .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
-          .flatMap { it.rubrics }
-          .map { it.rubricId }
-          .distinct(),
-      ),
-    )
+        logicalNames = providerNativeWorkers,
+      ))
+    }
     delegatedReviewExecutionBroker.preflight(launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }
     val outcomes = runLanes(
@@ -212,39 +212,15 @@ class ParallelCodeReviewRunner(
           changedHunkIds = evidence.hunks.map { it.hunkId },
         ),
         ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
+        workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
       ),
     )
   } else {
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     val flattened = routedManifests.flatMap { root ->
-      ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.ifEmpty {
-        val rubric = reviewRubricResolver.resolve(root)
-        rubric.specialists.mapIndexed { index, specialist ->
-          ReviewLaunchLane(
-            specialist.rubricId,
-            root.slug,
-            specialist.area ?: "generic",
-            0,
-            listOf(root.slug),
-            false,
-            emptyList(),
-            index,
-            "routed pack specialist",
-          )
-        }.ifEmpty {
-          listOf(
-            ReviewLaunchLane(
-              rubric.rubricId,
-              root.slug,
-              rubric.area ?: "generic",
-              0,
-              listOf(root.slug),
-              true,
-              emptyList(),
-              0,
-              "routed pack baseline",
-            ),
-          )
+      ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
+        require(lanes.isNotEmpty()) {
+          "Routed pack '${root.slug}' resolved no declared flattened specialist worker."
         }
       }
     }

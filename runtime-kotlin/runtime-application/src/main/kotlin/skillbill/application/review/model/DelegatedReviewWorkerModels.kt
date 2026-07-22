@@ -35,6 +35,7 @@ data class DelegatedReviewLaunchRequest(
   val budget: ReviewContextBudgetPolicy,
   val agentId: String,
   val workerKind: ReviewWorkerKind,
+  val logicalWorkerName: String? = null,
   val repoRoot: Path,
   val namedDependencies: Set<String> = emptySet(),
 )
@@ -57,6 +58,7 @@ data class DelegatedReviewWorkerRequest(
   val agentId: String,
   val repoRoot: Path,
   val timeout: Duration,
+  val logicalWorkerName: String? = null,
   val modelOverride: String? = null,
 )
 
