@@ -174,7 +174,9 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     Files.createDirectories(fixture.home.resolve(".codex"))
     val agentDir = fixture.home.resolve(".codex/agents")
     Files.createDirectories(agentDir)
-    val managedRoot = fixture.home.resolve(".skill-bill/installed-skills/codex-agents")
+    val managedRoot = fixture.home.resolve(
+      ".skill-bill/installed-skills/native-agents-skill-bill-0123456789abcdef/codex-agents",
+    )
     Files.createDirectories(managedRoot)
     val kotlinTarget = managedRoot.resolve("bill-kotlin-code-review.toml")
     val kmpTarget = managedRoot.resolve("bill-kmp-code-review.toml")
@@ -213,10 +215,8 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     listOf(".claude", ".codex", ".config/opencode", ".junie", ".zcode")
       .forEach { Files.createDirectories(fixture.home.resolve(it)) }
-    val cacheRoot = currentNativeAgentApplyCacheRoot(
-      fixture.home,
-      fixture.repoRoot.resolve("platform-packs"),
-      fixture.repoRoot.resolve("skills"),
+    val cacheRoot = fixture.home.resolve(
+      ".skill-bill/installed-skills/native-agents-moved-checkout-0123456789abcdef",
     )
     val danglingLinks = NativeAgentProvider.entries.map { provider ->
       val agentDir = provider.homeAgentDirs(fixture.home).first()
@@ -236,6 +236,28 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     danglingLinks.forEach { link ->
       assertFalse(Files.exists(link, LinkOption.NOFOLLOW_LINKS), "canonical dangling link survived: $link")
     }
+  }
+
+  @Test
+  fun `missing inventory preserves noncanonical installed-skills provider links`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val agentDir = fixture.home.resolve(".codex/agents")
+    Files.createDirectories(agentDir)
+    val target = fixture.home.resolve(
+      ".skill-bill/installed-skills/codex-agents/bill-user-managed-worker.toml",
+    )
+    val link = agentDir.resolve(target.fileName)
+    createSymlinkOrSkip(link, target)
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    assertTrue(Files.isSymbolicLink(link))
+    assertEquals(target.toAbsolutePath().normalize(), readSymlinkTarget(link))
   }
 
   @Test

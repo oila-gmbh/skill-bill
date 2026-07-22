@@ -11,11 +11,12 @@ import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.attribute.DosFileAttributeView
-import java.nio.file.attribute.DosFileAttributes
+import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 
@@ -321,7 +322,10 @@ object InstallNativeAgentOperations {
           Files.createSymbolicLink(path, requireNotNull(rawTarget))
         }
       }
-      permissions?.let { runCatching { Files.setPosixFilePermissions(path, it) } }
+      permissions?.let { captured ->
+        Files.getFileAttributeView(path, PosixFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+          ?.setPermissions(captured)
+      }
       dosAttributes?.restore(path)
     }
 
@@ -334,13 +338,29 @@ object InstallNativeAgentOperations {
         },
         bytes = path.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }?.let(Files::readAllBytes),
         rawTarget = path.takeIf(Files::isSymbolicLink)?.let(Files::readSymbolicLink),
-        permissions = runCatching { Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS) }.getOrNull(),
-        dosAttributes = runCatching {
-          Files.readAttributes(path, DosFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS).let {
-            DosAttributes(it.isReadOnly, it.isHidden, it.isArchive, it.isSystem)
-          }
-        }.getOrNull(),
+        permissions = captureOptionalAttributes {
+          Files.getFileAttributeView(path, PosixFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+            ?.readAttributes()?.permissions()
+        },
+        dosAttributes = captureOptionalAttributes {
+          Files.getFileAttributeView(path, DosFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)
+            ?.readAttributes()?.let { DosAttributes(it.isReadOnly, it.isHidden, it.isArchive, it.isSystem) }
+        },
       )
+
+      private fun <T> captureOptionalAttributes(read: () -> T?): T? = try {
+        read()
+      } catch (_: UnsupportedOperationException) {
+        null
+      } catch (error: FileSystemException) {
+        if (error.reason.orEmpty().contains("not supported", ignoreCase = true) ||
+          error.reason.orEmpty().contains("too many levels of symbolic links", ignoreCase = true)
+        ) {
+          null
+        } else {
+          throw error
+        }
+      }
     }
   }
 
@@ -351,13 +371,11 @@ object InstallNativeAgentOperations {
     val system: Boolean,
   ) {
     fun restore(path: Path) {
-      runCatching {
-        Files.getFileAttributeView(path, DosFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)?.apply {
-          setReadOnly(readOnly)
-          setHidden(hidden)
-          setArchive(archive)
-          setSystem(system)
-        }
+      Files.getFileAttributeView(path, DosFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)?.apply {
+        setReadOnly(readOnly)
+        setHidden(hidden)
+        setArchive(archive)
+        setSystem(system)
       }
     }
   }
