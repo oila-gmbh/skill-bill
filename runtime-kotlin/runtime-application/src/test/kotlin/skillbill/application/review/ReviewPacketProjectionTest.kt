@@ -72,7 +72,7 @@ class ReviewPacketProjectionTest {
 
   @Test fun `hunk ids are content addressed not positional`() {
     assertEquals(hunkA.hunkId, ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha").hunkId)
-    assertEquals(
+    assertNotEquals(
       ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha\n").hunkId,
       ReviewChangedHunk("src\\A.kt", 1, 1, 1, 2, "+alpha\r\n").hunkId,
     )
@@ -137,7 +137,11 @@ class ReviewPacketProjectionTest {
 
   @Test fun `dependency allowlists reject traversal and duplicates`() {
     assertFailsWith<IllegalArgumentException> { ReviewDependencyAllowlist(listOf("../secret")) }
-    assertFailsWith<IllegalArgumentException> { ReviewDependencyAllowlist(listOf("src/A.kt", "src\\A.kt")) }
+    assertFailsWith<IllegalArgumentException> { ReviewDependencyAllowlist(listOf("src/A.kt", "src/A.kt")) }
+    assertEquals(
+      listOf("src/A.kt", "src\\A.kt"),
+      ReviewDependencyAllowlist(listOf("src/A.kt", "src\\A.kt")).normalized,
+    )
   }
 
   @Test fun `assignment rejects dependency entries overlapping assigned paths`() {

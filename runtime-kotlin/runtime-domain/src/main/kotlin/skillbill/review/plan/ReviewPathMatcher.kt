@@ -3,8 +3,8 @@ package skillbill.review.plan
 /** Shared path-condition semantics for stack, lane, assignment, and add-on routing. */
 object ReviewPathMatcher {
   fun matches(path: String, signal: String): Boolean {
-    val normalizedPath = path.replace('\\', '/').lowercase()
-    val normalizedSignal = signal.replace('\\', '/').lowercase()
+    val normalizedPath = path.lowercase()
+    val normalizedSignal = signal.lowercase()
     if ('*' !in normalizedSignal) return normalizedPath.contains(normalizedSignal)
     val pattern = normalizedSignal.split('*').joinToString(".*") { Regex.escape(it) }
     val regex = Regex("^$pattern$")
@@ -12,7 +12,7 @@ object ReviewPathMatcher {
   }
 
   fun isIgnored(path: String): Boolean {
-    val segments = path.replace('\\', '/').lowercase().split('/')
+    val segments = path.lowercase().split('/')
     val fileName = segments.last()
     return segments.any { it in ignoredPathSegments } || fileName.endsWith(".d.ts") ||
       segments.any { it == "generated" || it.startsWith("generated-") }

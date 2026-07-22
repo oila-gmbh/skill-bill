@@ -37,11 +37,11 @@ class ReviewOperationPolicy(
   private val laneRubricId: String,
   private val namedDependencies: Set<String> = emptySet(),
 ) {
-  private val assignedPaths: Set<String> = assignment.assignedPaths.map { it.replace('\\', '/') }.toSet()
+  private val assignedPaths: Set<String> = assignment.assignedPaths.toSet()
 
   private val reachablePaths: Set<String> = assignedPaths +
     assignment.dependencyAllowlist.normalized +
-    namedDependencies.map { it.replace('\\', '/') }
+    namedDependencies
 
   fun classify(operation: ReviewRequestedOperation): ForbiddenReviewOperation? = when (operation.kind) {
     ReviewOperationKind.SHELL_COMMAND -> classifyShell(operation.target)
@@ -51,9 +51,9 @@ class ReviewOperationPolicy(
     ReviewOperationKind.FILE_READ -> classifyFileRead(operation)
   }
 
-  fun isReachable(path: String): Boolean = path.replace('\\', '/') in reachablePaths
+  fun isReachable(path: String): Boolean = path in reachablePaths
 
-  fun isAssigned(path: String): Boolean = path.replace('\\', '/') in assignedPaths
+  fun isAssigned(path: String): Boolean = path in assignedPaths
 
   private fun classifyShell(command: String): ForbiddenReviewOperation? {
     val normalized = command.trim().lowercase()
@@ -77,7 +77,7 @@ class ReviewOperationPolicy(
   }
 
   private fun classifySearch(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
-    val normalizedScopes = operation.searchScopes.map { it.replace('\\', '/') }
+    val normalizedScopes = operation.searchScopes
     normalizedScopes.forEach { scope ->
       classifyAbsoluteProhibitions(scope)?.let { return it }
       if (!isReachable(scope)) {
@@ -116,7 +116,7 @@ class ReviewOperationPolicy(
   }
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
-    val path = operation.target.replace('\\', '/')
+    val path = operation.target
     classifyAbsoluteProhibitions(path)?.let { return it }
     return when {
       path in assignedPaths -> null

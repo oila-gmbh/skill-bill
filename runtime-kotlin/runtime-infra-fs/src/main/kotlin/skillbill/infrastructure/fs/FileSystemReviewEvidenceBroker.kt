@@ -77,11 +77,11 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   private fun readOne(request: ReviewEvidenceRequest): ReviewEvidenceResult {
     requireRepositoryRelativePath(request.path)
-    val normalized = request.path.replace('\\', '/')
-    val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, normalized, request.reachabilityReason)
+    val exactPath = request.path
+    val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
     policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
 
-    val assigned = policy.isAssigned(normalized)
+    val assigned = policy.isAssigned(exactPath)
     if (!assigned) {
       val expansion = requireNotNull(request.authorizedExpansion) {
         "Unassigned evidence requires an authorized expansion record."
@@ -90,8 +90,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       require(expansion.assignmentDigest == assignment.digest) {
         "Expansion '${expansion.expansionId}' does not belong to this assignment."
       }
-      require(expansion.requestedPath.replace('\\', '/') == normalized) {
-        "Expansion '${expansion.expansionId}' does not authorize '$normalized'."
+      require(expansion.requestedPath == exactPath) {
+        "Expansion '${expansion.expansionId}' does not authorize '$exactPath'."
       }
       require(expansion.reachabilityReason == request.reachabilityReason) {
         "Expansion '${expansion.expansionId}' reason provenance changed before admission."
@@ -106,7 +106,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       }
     }
 
-    return readAdmittedFile(normalized, assigned)
+    return readAdmittedFile(exactPath, assigned)
   }
 
   private fun readAdmittedFile(normalized: String, assigned: Boolean): ReviewEvidenceResult {

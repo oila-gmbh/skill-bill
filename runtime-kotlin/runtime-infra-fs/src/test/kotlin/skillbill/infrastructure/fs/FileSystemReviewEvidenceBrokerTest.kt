@@ -69,6 +69,17 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(14, broker.accounting().evidenceBytes)
   }
 
+  @Test fun `literal backslash and slash paths remain distinct evidence identities`() {
+    val root = repo("dir/name.kt" to "slash", "dir\\name.kt" to "backslash")
+    val backslashBroker = broker(root, assignment(listOf("dir\\name.kt")))
+
+    assertEquals("backslash", backslashBroker.readBatch(batch("dir\\name.kt")).results.single().content)
+    assertEquals(
+      "unassigned_file_access",
+      backslashBroker.readBatch(batch("dir/name.kt")).results.single().forbidden?.category,
+    )
+  }
+
   @Test fun `missing assigned files are omitted without bypassing evidence accounting`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt", "Deleted.kt")))
@@ -329,7 +340,11 @@ class FileSystemReviewEvidenceBrokerTest {
 
   private fun repo(vararg files: Pair<String, String>): Path {
     val root = Files.createTempDirectory("review-evidence")
-    files.forEach { (name, content) -> Files.writeString(root.resolve(name), content) }
+    files.forEach { (name, content) ->
+      val target = root.resolve(name)
+      target.parent?.let(Files::createDirectories)
+      Files.writeString(target, content)
+    }
     return root
   }
 

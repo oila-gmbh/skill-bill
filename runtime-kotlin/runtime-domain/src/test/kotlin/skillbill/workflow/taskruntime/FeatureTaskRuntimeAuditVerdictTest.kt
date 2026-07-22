@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
@@ -14,14 +15,27 @@ class FeatureTaskRuntimeAuditVerdictTest {
   }
 
   @Test
-  fun `any unmet criterion classifies as gaps_found and the gaps are carried`() {
+  fun `blocker and major criteria classify as gaps found and are carried`() {
     val gaps = listOf(
-      FeatureTaskRuntimeAuditCriterionGap("Criterion 3 not implemented"),
-      FeatureTaskRuntimeAuditCriterionGap("Criterion 5 missing test"),
+      FeatureTaskRuntimeAuditCriterionGap("Criterion 3 not implemented", FeatureTaskRuntimeAuditSeverity.BLOCKER),
+      FeatureTaskRuntimeAuditCriterionGap("Criterion 5 missing behavior"),
     )
     val verdict = FeatureTaskRuntimeAuditVerdict(gaps)
     assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, verdict.verdict)
     assertEquals(gaps, verdict.unmetCriteria)
+  }
+
+  @Test
+  fun `minor and nit findings do not classify as gaps found`() {
+    val findings = listOf(
+      FeatureTaskRuntimeAuditCriterionGap("Small concern", FeatureTaskRuntimeAuditSeverity.MINOR),
+      FeatureTaskRuntimeAuditCriterionGap("Style concern", FeatureTaskRuntimeAuditSeverity.NIT),
+    )
+
+    val verdict = FeatureTaskRuntimeAuditVerdict(findings)
+
+    assertEquals(FeatureTaskRuntimeVerdict.SATISFIED, verdict.verdict)
+    assertEquals(emptyList(), verdict.blockingCriteria)
   }
 
   @Test

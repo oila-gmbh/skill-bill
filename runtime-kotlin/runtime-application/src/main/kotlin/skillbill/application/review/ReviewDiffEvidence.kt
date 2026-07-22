@@ -2,6 +2,8 @@ package skillbill.application.review
 
 import skillbill.review.context.model.ReviewChangedHunk
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 
 /** Immutable, single-parse evidence used by routing, ownership, preparation, and add-on selection. */
 internal data class ReviewDiffEvidence(
@@ -60,19 +62,24 @@ internal data class ReviewDiffEvidence(
     }
 
     private fun recordPaths(record: String): RecordPaths {
+      val oldHeaderValue = OLD_HEADER_PATH.find(record)?.groupValues?.get(1)
+      val newHeaderValue = HEADER_PATH.find(record)?.groupValues?.get(1)
+      val oldAbsent = oldHeaderValue?.trim() == "/dev/null"
+      val newAbsent = newHeaderValue?.trim() == "/dev/null"
       val oldSources = listOfNotNull(
-        OLD_HEADER_PATH.find(record)?.groupValues?.get(1)?.fileHeaderPath(OLD_PREFIX),
+        oldHeaderValue?.fileHeaderPath(OLD_PREFIX),
         RENAME_FROM.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
         COPY_FROM.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
       )
       val newSources = listOfNotNull(
-        HEADER_PATH.find(record)?.groupValues?.get(1)?.fileHeaderPath(NEW_PREFIX),
+        newHeaderValue?.fileHeaderPath(NEW_PREFIX),
         RENAME_TO.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
         COPY_TO.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
       )
       val headerPaths = parseDiffHeader(record.lineSequence().first(), oldSources, newSources)
-      val old = agree("old", oldSources + listOfNotNull(headerPaths?.first))
-      val new = agree("new", newSources + listOfNotNull(headerPaths?.second))
+      require(!(oldAbsent && newAbsent)) { "Git diff record cannot have /dev/null on both sides." }
+      val old = if (oldAbsent) null else agree("old", oldSources + listOfNotNull(headerPaths?.first))
+      val new = if (newAbsent) null else agree("new", newSources + listOfNotNull(headerPaths?.second))
       val authoritative = new ?: old
         ?: throw IllegalArgumentException("Malformed Git diff record has no attributable repository path.")
       return RecordPaths(old, new, authoritative)
@@ -84,7 +91,10 @@ internal data class ReviewDiffEvidence(
 
     private fun String.repositoryPath(prefix: String?): String? = takeUnless { it.trim() == "/dev/null" }
       ?.let(::decodeGitPath)?.let { path ->
-        if (prefix == null) path else path.removePrefix(prefix)
+        if (prefix == null) path else {
+          require(path.startsWith(prefix)) { "Git path source must carry the '$prefix' prefix." }
+          path.removePrefix(prefix)
+        }
       }
       ?.also { require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
           "Malformed Git diff record has a non-repository path '$it'."
@@ -130,10 +140,17 @@ internal data class ReviewDiffEvidence(
         val start = index
         if (value[index] == '"') {
           index++
+          var closed = false
           while (index < value.length) {
-            if (value[index] == '\\') index += 2
-            else if (value[index++] == '"') break
+            if (value[index] == '\\') {
+              require(index + 1 < value.length) { "Malformed quoted Git path ends with an escape." }
+              index += 2
+            } else if (value[index++] == '"') {
+              closed = true
+              break
+            }
           }
+          require(closed) { "Malformed quoted Git path is missing its closing quote." }
         } else {
           while (index < value.length && !value[index].isWhitespace()) index++
         }
@@ -142,6 +159,7 @@ internal data class ReviewDiffEvidence(
       return tokens
     }
 
+    @Suppress("CyclomaticComplexMethod")
     private fun decodeGitPath(value: String): String {
       val trimmed = value.trim()
       if (!(trimmed.startsWith('"') && trimmed.endsWith('"'))) return trimmed
@@ -161,12 +179,19 @@ internal data class ReviewDiffEvidence(
           index += GIT_OCTAL_WIDTH + 1
         }
         if (bytes.size() > 0) {
-          decoded.append(bytes.toByteArray().toString(Charsets.UTF_8))
+          val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+          val utf8 = runCatching { decoder.decode(ByteBuffer.wrap(bytes.toByteArray())) }
+            .getOrElse { throw IllegalArgumentException("Quoted Git path contains invalid UTF-8 bytes.", it) }
+          decoded.append(utf8)
         } else {
           index++
           require(index < body.length) { "Malformed quoted Git path ends with an escape." }
           decoded.append(when (val escaped = body[index++]) {
-            't' -> '\t'; 'n' -> '\n'; 'r' -> '\r'; else -> escaped
+            'a' -> '\u0007'; 'b' -> '\b'; 'f' -> '\u000c'; 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t';
+            'v' -> '\u000b'; '\\' -> '\\'; '"' -> '"'
+            else -> throw IllegalArgumentException("Unsupported quoted Git path escape '\\$escaped'.")
           })
         }
       }

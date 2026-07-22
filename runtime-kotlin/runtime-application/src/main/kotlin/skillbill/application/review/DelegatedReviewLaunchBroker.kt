@@ -77,7 +77,7 @@ class DelegatedReviewLaunchBroker(
 
   private fun requireBoundedNamedDependencies(request: DelegatedReviewLaunchRequest) {
     val allowed = request.assignment.dependencyAllowlist.normalized.toSet()
-    val requested = request.namedDependencies.map { it.replace('\\', '/') }.toSet()
+    val requested = request.namedDependencies.toSet()
     val escaping = requested - allowed
     if (escaping.isNotEmpty()) {
       reject(

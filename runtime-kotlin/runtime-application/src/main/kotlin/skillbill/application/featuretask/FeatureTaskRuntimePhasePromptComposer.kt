@@ -162,7 +162,8 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun producedOutputsSkeletonEntry(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": [], " +
+          "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
       else -> if (briefing.auditRepairItemIds.isEmpty()) {
@@ -316,9 +317,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     verdict: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   ): String = "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
-    "      message per unmet acceptance criterion; an explicit empty [] affirms every criterion is met)\n" +
+    "      acceptance_criterion_ref/severity/message entry per Blocker or Major gap; an explicit empty []\n" +
+    "      affirms no Blocker or Major gap remains) and a non_blocking_findings array for Minor/Nit.\n" +
     "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
     "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
+    "      SEVERITY GATE: every unmet_criteria entry MUST set severity to blocker or major. Minor and nit\n" +
+    "      entries MUST go only in non_blocking_findings and NEVER trigger gaps_found, an audit_repair_plan,\n" +
+    "      or implementation re-entry. Emit satisfied when unmet_criteria is empty even when non-blocking\n" +
+    "      findings exist.\n" +
     "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
     "      unmet_criteria; use concrete production references such as src/main/Example.kt:Example.\n" +
     "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +

@@ -570,7 +570,7 @@ class ParallelCodeReviewRunner(
           ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
             val findingPath = normalizedFindingPath(finding.location)
             val owners = selected.filter { launch ->
-              launch.assignment.assignedPaths.any { path -> normalizeRepositoryPath(path) == findingPath }
+              launch.assignment.assignedPaths.any { path -> path == findingPath }
             }
             require(owners.isNotEmpty()) {
               "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
@@ -611,10 +611,8 @@ class ParallelCodeReviewRunner(
   private fun normalizedFindingPath(location: String): String {
     val trimmed = location.trim()
     val withoutLine = Regex("^(.*?):\\d+(?::\\d+)?$").matchEntire(trimmed)?.groupValues?.get(1) ?: trimmed
-    return normalizeRepositoryPath(withoutLine)
+    return withoutLine
   }
-
-  private fun normalizeRepositoryPath(path: String): String = path.replace('\\', '/').removePrefix("./")
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, evidence: ReviewDiffEvidence): List<String> {
     return evidence.files.filter { file ->

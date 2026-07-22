@@ -46,7 +46,7 @@ data class ReviewRuleReference(
   }
 
   val canonical: String
-    get() = listOf(ruleId, sourcePath.replace('\\', '/'), excerpt.replace("\r\n", "\n"), digest)
+    get() = listOf(ruleId, sourcePath, excerpt.replace("\r\n", "\n"), digest)
       .joinToString("\u001f")
 }
 
@@ -75,7 +75,7 @@ data class ReviewDependencyAllowlist(val paths: List<String>) {
     require(normalized.distinct().size == normalized.size) { "Dependency allowlist paths must be unique." }
   }
 
-  val normalized: List<String> get() = paths.map { it.replace('\\', '/') }
+  val normalized: List<String> get() = paths
   val canonical: String get() = normalized.sorted().joinToString("\u001f")
 
   companion object {
@@ -92,7 +92,7 @@ data class ReviewEvidenceTarget(val targetId: String, val path: String, val hunk
   }
 
   val canonical: String
-    get() = listOf(targetId, path.replace('\\', '/'), hunkIds.sorted().joinToString(",")).joinToString("\u001f")
+    get() = listOf(targetId, path, hunkIds.sorted().joinToString(",")).joinToString("\u001f")
 }
 
 data class ReviewLaneDecision(
@@ -135,7 +135,7 @@ data class ReviewLaneDecision(
     }
   }
 
-  val normalizedOwnedPaths: List<String> get() = ownedPaths.map { it.replace('\\', '/') }
+  val normalizedOwnedPaths: List<String> get() = ownedPaths
 
   val canonical: String
     get() = listOf(
@@ -174,7 +174,7 @@ data class ReviewExpansionRecord(
     get() = listOf(
       expansionId,
       assignmentDigest,
-      requestedPath.replace('\\', '/'),
+      requestedPath,
       reachabilityReason,
       authorized.toString(),
       sequence.toString(),
@@ -307,7 +307,7 @@ data class ReviewAssignment(
     require(evidenceTargets.map { it.targetId }.distinct().size == evidenceTargets.size) {
       "Evidence target ids must be unique."
     }
-    val assigned = assignedPaths.map { it.replace('\\', '/') }.toSet()
+    val assigned = assignedPaths.toSet()
     require(dependencyAllowlist.normalized.none { it in assigned }) {
       "Dependency-allowlist entries must be disjoint from assigned paths."
     }
@@ -321,7 +321,7 @@ data class ReviewAssignment(
       "Assignment '$lane' expansions must reference their enclosing assignment digest."
     }
     val reachable = assigned + dependencyAllowlist.normalized
-    val escaping = expansions.map { it.requestedPath.replace('\\', '/') }.filterNot { it in reachable }
+    val escaping = expansions.map { it.requestedPath }.filterNot { it in reachable }
     require(escaping.isEmpty()) {
       "Assignment '$lane' expansions authorize paths outside its allowlist and assigned paths: ${escaping.sorted()}."
     }
@@ -341,7 +341,7 @@ data class ReviewAssignment(
         laneDecision.canonical,
         baseRevision,
         headRevision,
-        assignedPaths.map { it.replace('\\', '/') }.sorted().joinToString("\u001f"),
+        assignedPaths.sorted().joinToString("\u001f"),
         assignedHunks.sorted().joinToString("\u001f"),
         criteriaReferences.sorted().joinToString("\u001f"),
         matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),
@@ -367,7 +367,7 @@ data class ReviewChangedHunk(
   val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
 
   internal fun canonicalValue(): String = listOf(
-    path.replace('\\', '/'),
+    path,
     oldStart,
     oldCount,
     newStart,
@@ -424,21 +424,21 @@ data class ReviewContextPacket(
     require(expansionLedger.map { it.sequence }.distinct().size == expansionLedger.size) {
       "Expansion ledger sequences must be unique."
     }
-    val owned = changedHunks.map { it.path.replace('\\', '/') }.toSet()
+    val owned = changedHunks.map { it.path }.toSet()
     val ownedHunks = changedHunks.map { it.hunkId }.toSet()
     val reachable = owned + dependencyAllowlist.normalized
-    val escaping = expansionLedger.map { it.requestedPath.replace('\\', '/') }.filterNot { it in reachable }
+    val escaping = expansionLedger.map { it.requestedPath }.filterNot { it in reachable }
     require(escaping.isEmpty()) {
       "Expansion ledger authorizes paths outside the packet allowlist and owned paths: ${escaping.sorted()}."
     }
-    val targetPaths = evidenceTargets.map { it.path.replace('\\', '/') }.filterNot { it in owned }
+    val targetPaths = evidenceTargets.map { it.path }.filterNot { it in owned }
     require(targetPaths.isEmpty()) { "Evidence targets name paths the packet does not own: ${targetPaths.sorted()}." }
     val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
     require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
   }
 
   val ownedPaths: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-    changedHunks.map { it.path.replace('\\', '/') }.toSet()
+    changedHunks.map { it.path }.toSet()
   }
   val ownedHunkIds: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
     changedHunks.map { it.hunkId }.toSet()
@@ -459,7 +459,7 @@ data class ReviewContextPacket(
   private fun canonicalValue(): String = listOf(
     reviewId,
     reviewRevision.canonical,
-    repositoryIdentity.replace('\\', '/'),
+    repositoryIdentity,
     baseRevision,
     headRevision,
     status.replace("\r\n", "\n"),
@@ -507,7 +507,7 @@ data class GovernedReviewLaunch(
     }
     val packetDecision = packet.laneDecisions.single { it.lane == assignment.lane }
     require(assignment.laneDecision == packetDecision) { "Launch lane decision differs from the packet." }
-    val normalizedAssignedPaths = assignment.assignedPaths.map { it.replace('\\', '/') }.toSet()
+    val normalizedAssignedPaths = assignment.assignedPaths.toSet()
     val unowned = normalizedAssignedPaths.filterNot { it in packet.ownedPaths }
     require(unowned.isEmpty()) { "Launch claims paths the packet does not own: ${unowned.sorted()}." }
     require(normalizedAssignedPaths == packetDecision.normalizedOwnedPaths.toSet()) {
@@ -516,7 +516,7 @@ data class GovernedReviewLaunch(
     val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
     require(unownedHunks.isEmpty()) { "Launch claims hunk ids the packet does not own." }
     val expectedHunks = packet.changedHunks
-      .filter { it.path.replace('\\', '/') in packetDecision.normalizedOwnedPaths }
+      .filter { it.path in packetDecision.normalizedOwnedPaths }
       .map { it.hunkId }
       .toSet()
     require(assignment.assignedHunks.toSet() == expectedHunks) {
@@ -529,7 +529,7 @@ data class GovernedReviewLaunch(
       "Launch matched rules differ from the packet rules."
     }
     val expectedTargets = packet.evidenceTargets
-      .filter { it.path.replace('\\', '/') in packetDecision.normalizedOwnedPaths }
+      .filter { it.path in packetDecision.normalizedOwnedPaths }
       .toSet()
     require(assignment.evidenceTargets.toSet() == expectedTargets) {
       "Launch evidence targets differ from the packet targets for the lane."
@@ -554,14 +554,14 @@ data class GovernedReviewLaunch(
     appendLine("rubric: |")
     rubric.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("assigned_paths:")
-    assignment.assignedPaths.sorted().forEach { appendLine("  - ${it.replace('\\', '/')}") }
+    assignment.assignedPaths.sorted().forEach { appendLine("  - $it") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
     appendLine("immutable_diff_hunks:")
     packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .forEach { hunk ->
-        appendLine("  - path: ${hunk.path.replace('\\', '/')}")
+        appendLine("  - path: ${hunk.path}")
         appendLine("    hunk_id: ${hunk.hunkId}")
         appendLine("    content: |")
         hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
@@ -738,9 +738,8 @@ object ReviewBudgetEvaluator {
 }
 
 fun requireRepositoryRelativePath(path: String) {
-  val normalized = path.replace('\\', '/')
-  require(normalized.isNotBlank() && !normalized.startsWith('/')) { "Review paths must be repository-relative." }
-  require(normalized.split('/').none { it == ".." }) { "Review paths cannot traverse outside the repository." }
+  require(path.isNotBlank() && !path.startsWith('/')) { "Review paths must be repository-relative." }
+  require(path.split('/').none { it == ".." }) { "Review paths cannot traverse outside the repository." }
 }
 
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

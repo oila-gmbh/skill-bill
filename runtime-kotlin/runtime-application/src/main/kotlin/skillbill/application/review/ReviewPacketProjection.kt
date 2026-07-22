@@ -16,7 +16,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "review_id" to reviewId,
     "packet_digest" to digest,
     "review_revision" to reviewRevision.toEnvelope(),
-    "repository_identity" to repositoryIdentity.normalizePath(),
+    "repository_identity" to repositoryIdentity,
     "base_revision" to baseRevision,
     "head_revision" to headRevision,
     "status" to status.normalizeLineEndings(),
@@ -52,7 +52,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "lane_decision" to laneDecision.toEnvelope(),
     "base_revision" to baseRevision,
     "head_revision" to headRevision,
-    "assigned_paths" to assignedPaths.map { it.normalizePath() }.sorted(),
+    "assigned_paths" to assignedPaths.sorted(),
     "assigned_hunks" to assignedHunks.sorted(),
     "criteria_references" to criteriaReferences.sorted(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
@@ -74,7 +74,7 @@ fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewConte
     "head_revision" to assignment.headRevision,
     "specialist_contract" to specialistContract,
     "rubric" to rubric,
-    "assigned_paths" to assignment.assignedPaths.map { it.normalizePath() }.sorted(),
+    "assigned_paths" to assignment.assignedPaths.sorted(),
     "assigned_hunks" to assignment.assignedHunks.sorted(),
     "criteria_references" to assignment.criteriaReferences.sorted(),
     "matched_rules" to assignment.matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
@@ -86,6 +86,4 @@ fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewConte
     "budget" to budget.toEnvelope(),
   ),
 )
-internal fun String.normalizePath(): String = replace('\\', '/')
-
 internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")

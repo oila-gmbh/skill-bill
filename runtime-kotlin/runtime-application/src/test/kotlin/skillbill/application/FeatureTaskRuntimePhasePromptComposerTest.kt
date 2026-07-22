@@ -391,6 +391,15 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `audit prompt separates blocking gaps from non blocking findings`() {
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(auditPrompt, "blocker or major", true, "audit limits remediation gaps by severity")
+    assertContains(auditPrompt, "non_blocking_findings", false, "audit preserves minor and nit findings")
+    assertContains(auditPrompt, "NEVER trigger gaps_found", false, "non-blocking findings cannot reopen implementation")
+  }
+
+  @Test
   fun `non-verifying phases carry no verifying-signal addendum`() {
     listOf("preplan", "plan", "implement", "validate", "write_history", "commit_push", "pr").forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
@@ -466,6 +475,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
     assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(
+      auditRetry,
+      "\"non_blocking_findings\": []",
+      false,
+      "audit skeleton seeds the non-blocking findings key",
+    )
     assertContains(reviewRetry, "\"verdict\": \"approved\"", false, "review skeleton seeds the review verdict")
     assertContains(reviewRetry, "\"findings\": []", false, "review skeleton seeds the review signal key")
   }
@@ -566,6 +581,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
     assertContains(auditPrompt, keys.AUDIT_UNMET_CRITERIA, false, "audit names the unmet_criteria key")
+    assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
 }

@@ -7,6 +7,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ReviewContextModelsTest {
@@ -119,14 +120,15 @@ class ReviewContextModelsTest {
     }
   }
 
-  @Test fun `packet digest normalizes ordering separators and line endings`() {
+  @Test fun `packet digest preserves repository identity while normalizing ordering and line endings`() {
     fun packet(path: String, status: String) = ReviewContextPacket(
       "review", "repo", "base", "head", status, "kotlin", "kotlin", listOf("z", "a"), listOf("testing"),
       listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")),
       reviewRevision = revision(),
-      laneDecisions = listOf(lane("testing", listOf(path.replace('\\', '/')))),
+      laneDecisions = listOf(lane("testing", listOf(path))),
     )
-    assertEquals(packet("src\\A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
+    assertEquals(packet("src/A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
+    assertNotEquals(packet("src\\A.kt", "clean\n").digest, packet("src/A.kt", "clean\n").digest)
   }
 
   @Test fun `packet digest is deterministic for hunks tied on path and new start`() {

@@ -18,7 +18,7 @@ data class ReviewLaunchLane(
   init {
     require(originLayerChain.isNotEmpty()) { "A review launch lane must retain its composition attribution." }
     require(originLayerChain.last() == packSlug) { "A review launch lane attribution must end at its owner." }
-    require(ownedPaths.map { it.replace('\\', '/') }.distinct().size == ownedPaths.size) {
+    require(ownedPaths.distinct().size == ownedPaths.size) {
       "A review launch lane must not contain duplicate owned paths."
     }
     require(changedHunkIds.distinct().size == changedHunkIds.size) {

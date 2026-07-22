@@ -61,6 +61,34 @@ class ReviewDiffEvidenceTest {
     )
     assertEquals(5, evidence.hunks.size)
     assertTrue(evidence.files.first().changedContent.contains("deleted"))
+    assertEquals("deleted.kt", evidence.files.first().oldPath)
+    assertEquals(null, evidence.files.first().newPath)
+  }
+
+  @Test
+  fun `addition keeps old identity absent and malformed quoted bytes fail`() {
+    val addition = ReviewDiffEvidence.parse(
+      """
+      diff --git a/added.kt b/added.kt
+      new file mode 100644
+      --- /dev/null
+      +++ b/added.kt
+      @@ -0,0 +1 @@
+      +val added = true
+      """.trimIndent(),
+    ).files.single()
+    assertEquals(null, addition.oldPath)
+    assertEquals("added.kt", addition.newPath)
+
+    assertFailsWith<IllegalArgumentException> {
+      ReviewDiffEvidence.parse("diff --git \"a/bad\\377.kt\" \"b/bad\\377.kt\"")
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewDiffEvidence.parse("diff --git \"a/unclosed.kt b/unclosed.kt")
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewDiffEvidence.parse("diff --git a/no-prefix.kt no-prefix.kt")
+    }
   }
 
   @Test

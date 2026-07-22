@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
@@ -32,7 +33,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     reviewVerdictFrom(outputObject)?.unresolvedFindings.orEmpty()
 
   fun unmetAuditCriteria(outputObject: Map<String, Any?>?): List<String> =
-    auditVerdictFrom(outputObject)?.unmetCriteria?.map { it.message }.orEmpty()
+    auditVerdictFrom(outputObject)?.blockingCriteria?.map { it.message }.orEmpty()
 
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
@@ -40,15 +41,17 @@ internal object FeatureTaskRuntimeOutputVerification {
     rejectedCriteriaAliasError(producedOutputs)?.let { return it }
     val raw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA)
     if (wireVerdict == FeatureTaskRuntimeVerdict.SATISFIED.wireValue) return auditSatisfiedPayloadError(raw)
-    val criteriaDriveGapsFound = (raw as? List<*>)?.isNotEmpty() == true
+    val parsedCriteria = (raw as? List<*>)?.mapNotNull(::auditCriterionGap).orEmpty()
+    val criteriaDriveGapsFound = parsedCriteria.any { it.severity.blocksAuditGap }
     return when {
       wireVerdict == FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && raw is List<*> && raw.isEmpty() ->
         "Audit verdict 'gaps_found' contradicts empty produced_outputs.unmet_criteria."
       wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound -> null
       raw !is List<*> -> "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
-      raw.isEmpty() || raw.any { auditGapMessage(it) == null } ->
+      raw.isEmpty() || parsedCriteria.size != raw.size ->
         "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
-          "to carry a non-blank message."
+          "to carry a non-blank message and severity blocker or major; move minor and nit findings " +
+          "to produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}."
       else -> null
     }
   }
@@ -92,14 +95,23 @@ internal object FeatureTaskRuntimeOutputVerification {
     val producedOutputs = outputObject?.get("produced_outputs")?.let(JsonSupport::anyToStringAnyMap)
     val gapsRaw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA) as? List<*>
       ?: return null
-    val gaps = gapsRaw.mapNotNull { entry -> auditGapMessage(entry)?.let(::FeatureTaskRuntimeAuditCriterionGap) }
+    val gaps = gapsRaw.mapNotNull(::auditCriterionGap)
     return FeatureTaskRuntimeAuditVerdict(gaps)
   }
 
-  private fun auditGapMessage(entry: Any?): String? = (entry as? String)?.takeIf(String::isNotBlank)
-    ?: JsonSupport.anyToStringAnyMap(entry)?.let { map ->
-      ((map["message"] ?: map["criterion"]) as? String)?.takeIf(String::isNotBlank)
+  private fun auditCriterionGap(entry: Any?): FeatureTaskRuntimeAuditCriterionGap? {
+    val parsed = if (entry is String) {
+      entry.takeIf(String::isNotBlank)?.let { it to FeatureTaskRuntimeAuditSeverity.MAJOR }
+    } else {
+      val map = JsonSupport.anyToStringAnyMap(entry)
+      val message = map?.let { ((it["message"] ?: it["criterion"]) as? String)?.takeIf(String::isNotBlank) }
+      val severity = map?.let {
+        runCatching { FeatureTaskRuntimeAuditSeverity.fromWire(it["severity"] as? String) }.getOrNull()
+      }
+      if (message != null && severity?.blocksAuditGap == true) message to severity else null
     }
+    return parsed?.let { (message, severity) -> FeatureTaskRuntimeAuditCriterionGap(message, severity) }
+  }
 }
 
 private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {

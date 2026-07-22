@@ -17,7 +17,7 @@ internal fun ReviewRevision.toEnvelope(): Map<String, Any?> = linkedMapOf(
 
 internal fun ReviewChangedHunk.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "hunk_id" to hunkId,
-  "path" to path.normalizePath(),
+  "path" to path,
   "old_start" to oldStart,
   "old_count" to oldCount,
   "new_start" to newStart,
@@ -41,7 +41,7 @@ internal fun ReviewLaneDecision.toEnvelope(): Map<String, Any?> = linkedMapOf(
 
 internal fun ReviewRuleReference.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "rule_id" to ruleId,
-  "source_path" to sourcePath.normalizePath(),
+  "source_path" to sourcePath,
   "excerpt" to excerpt.normalizeLineEndings(),
   "digest" to digest,
 )
@@ -60,14 +60,14 @@ internal fun ReviewBuildTestFact.toEnvelope(): Map<String, Any?> = linkedMapOf(
 
 internal fun ReviewEvidenceTarget.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "target_id" to targetId,
-  "path" to path.normalizePath(),
+  "path" to path,
   "hunk_ids" to hunkIds.sorted(),
 )
 
 internal fun ReviewExpansionRecord.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "expansion_id" to expansionId,
   "assignment_digest" to assignmentDigest,
-  "requested_path" to requestedPath.normalizePath(),
+  "requested_path" to requestedPath,
   "reachability_reason" to reachabilityReason,
   "authorized" to authorized,
   "sequence" to sequence,
