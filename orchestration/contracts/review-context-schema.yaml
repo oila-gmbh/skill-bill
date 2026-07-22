@@ -267,29 +267,37 @@ $defs:
   accounting_summary:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, lanes, aggregate_usage, budget_regression]
+    required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
       contract_version: { const: "0.5" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
+      parent:
+        $ref: "#/$defs/accounting_node"
       lanes:
         type: array
         items:
-          type: object
-          additionalProperties: false
-          required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, terminal_outcome, usage]
-          properties:
-            lane: { $ref: "#/$defs/identifier" }
-            assignment_digest: { $ref: "#/$defs/digest" }
-            launch_bytes: { type: integer, minimum: 0 }
-            evidence_bytes: { type: integer, minimum: 0 }
-            result_bytes: { type: integer, minimum: 0 }
-            expansions: { type: integer, minimum: 0 }
-            terminal_outcome: { enum: [completed, review_context_budget_exceeded, budget_regression, failed] }
-            usage: { $ref: "#/$defs/usage" }
-      aggregate_usage: { $ref: "#/$defs/usage" }
+          $ref: "#/$defs/accounting_node"
+      aggregate_direct_usage: { $ref: "#/$defs/usage" }
+      aggregate_inclusive_usage: { $ref: "#/$defs/usage" }
       budget_regression: { type: boolean }
+  accounting_node:
+    type: object
+    additionalProperties: false
+    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, direct_usage, inclusive_usage, terminal_outcome]
+    properties:
+      lane: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
+      direct_usage: { $ref: "#/$defs/usage" }
+      inclusive_usage: { $ref: "#/$defs/usage" }
+      terminal_outcome: { enum: [completed, review_context_budget_exceeded, budget_regression, failed] }
 x-coherence-checks:
   - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
   - Assignment revisions and lane identity equal their parent packet values.
@@ -307,4 +315,6 @@ x-coherence-checks:
   - An assignment records no more expansions than max_assignment_expansions allows.
   - A budget_regression terminal_outcome is reported only for a non-enforceable provider dimension observed after the worker exited, and is never enforceable.
   - Specialist tool calls and model turns are measured at the broker seam and terminate the lane with review_context_budget_exceeded once their budget is passed.
+  - Every inclusive usage value equals the node's direct usage plus each child node's direct usage exactly once.
+  - Aggregate direct usage sums direct ownership only; aggregate inclusive usage is the parent root and nested sessions are never added twice.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

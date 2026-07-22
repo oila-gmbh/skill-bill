@@ -144,6 +144,12 @@ Rules:
   - [F-NNN] Severity | Confidence | file:line | description
   Severity: Blocker, Major, Minor, Nit. Confidence: High, Medium, Low.
 
+## Review context budgets and accounting
+
+Use the schema-validated repository overrides when present; otherwise use the runtime defaults: 524288 parent-packet bytes, 65536 launch bytes per lane, 262144 cumulative evidence bytes per lane, 65536 bytes per evidence result and lane result, three expansions, 40 tool calls, and 24 model turns. Overrides must be positive and coherent and must remain visible in review metadata. A missing, dangling, stale, unreadable, or undeclared native worker stops all launches and reports the governed repair command; never widen access or substitute another worker.
+
+Prepare discovery once at the parent, flatten layered composition into direct lanes, and treat the packet as authoritative. Workers must not rediscover repository state, the base revision, broad diff, AGENTS guidance, routing, add-ons, learnings, or MCP capabilities. Evidence expansion uses bounded broker batches and an immutable ledger. Report direct usage for the owning process and inclusive usage for an already-aggregated process tree; never add inclusive usage to descendants. Cached input is cumulative provider input served from cache. Fresh-token approximation is `max(input - cached_input, 0) + output` and is not billing-accurate.
+
 ## Agent-specific subagent instructions
 
 **If you are `claude`:**

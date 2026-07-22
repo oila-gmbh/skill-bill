@@ -44,6 +44,14 @@ Do not reference this repo-relative path directly from installable skills — us
 - `context:feature-remediation` preserves the governed feature-task review's complete run-owned delta from its durable immutable base; it never narrows pass two to checkpoint-only changes. Like every explicit inline request, it runs every signal-relevant baseline and specialist rubric inline and reports high-risk signals as review coverage rather than refusing or delegating the pass. This context does not weaken finding severity, evidence, or approval rules.
 - `delegated` bypasses automatic inline selection but still performs normal stack routing and specialist selection. Launch the required delegated workers using `review-delegation.md`; if a worker cannot start, stop loudly. Never fall back to inline.
 - A delegated launch preflights the complete flattened worker set against the current installed native-agent inventory before either lane starts. Missing, dangling, stale-digest, unreadable, or undeclared workers stop with the governed reinstall command; never substitute a generic or baseline worker.
+
+## Delegated review context architecture
+
+The parent prepares one authoritative packet after repository, scope, stack, guidance, learnings, and add-on discovery. Composition is flattened before launch: required baseline specialists and signal-selected platform specialists become direct lanes, and no lane invokes another review orchestrator. Workers must not rerun status, base-revision discovery, broad diff, AGENTS traversal, stack routing, add-on discovery, learnings resolution, or unselected MCP discovery.
+
+Each lane receives only its assignment, bounded rubric, immutable identifiers, and named evidence targets. Additional evidence goes through the broker in bounded batches. Authorized expansions are appended to the lane ledger without changing packet or assignment digests. Native-agent inventory and content digests are preflighted for the entire flattened set before the first worker launches; the reported repair command is the only recovery for missing, dangling, stale, unreadable, or undeclared workers.
+
+Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - Only `auto` uses inline eligibility. Treat an automatic scope as inline-eligible only when all of the following are true:
   - one routed stack-specific review skill is sufficient
