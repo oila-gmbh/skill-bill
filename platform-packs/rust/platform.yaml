@@ -18,6 +18,8 @@ routing_signals:
     - "Prefer Rust when Cargo workspace or package metadata and first-party Rust source files dominate the changed product surface."
     - "Do not prefer Rust where it appears only as FFI bindings, wasm build tooling or artifacts, generated code, or vendored crates around another dominant stack."
     - "Exclude target/ build output and vendored dependency trees from dominance scoring."
+  path: ["Cargo.toml", ".rs", "*.rs", "build.rs"]
+  content: ["fn ", "impl ", "trait ", "use "]
 
 declared_code_review_areas:
   - api-contracts
@@ -66,6 +68,18 @@ area_metadata:
   ux-accessibility:
     focus: "Rust UI semantics, keyboard and focus behavior, feedback, localization, and assistive access"
 
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["alloc", "clone", "mutex", "stream"] }
+  security: { content: ["unsafe", "secret", "authorize", "deserialize"] }
+  testing: { content: ["#[test]", "proptest", "criterion"] }
+  api-contracts: { content: ["serde", "ffi", "request", "response"] }
+  persistence: { content: ["transaction", "sqlx", "diesel", "migration"] }
+  reliability: { content: ["retry", "timeout", "shutdown", "backpressure"] }
+  ui: { content: ["wasm", "egui", "tui", "render"] }
+  ux-accessibility: { content: ["aria-", "focus", "keyboard", "localization"] }
+
 declared_quality_check_file: quality-check/bill-rust-code-check/content.md
 
 pointers:
@@ -85,75 +99,35 @@ pointers:
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
   code-review/bill-rust-code-review-api-contracts:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-architecture:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-performance:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-persistence:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-platform-correctness:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-reliability:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-security:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-testing:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-ui:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-rust-code-review-ux-accessibility:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   quality-check/bill-rust-code-check:
     - name: shell-ceremony.md
       target: orchestration/shell-content-contract/shell-ceremony.md

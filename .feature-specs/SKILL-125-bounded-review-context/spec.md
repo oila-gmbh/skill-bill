@@ -1,8 +1,34 @@
 ---
-status: Draft
+status: Superseded
 issue_key: SKILL-125
 source: inline user request informed by the SKILL-120 live review
+superseded_by: SKILL-129
 ---
+
+> **Superseded by SKILL-129** (2026-07-22): SKILL-129 ("super-optimized-code-review",
+> merged via PR #234) names this spec as its direct motivation and implements every
+> claim below. Verified against the current codebase:
+>
+> - Isolated Codex launch — `fork_turns: "none"` enforced and tested
+>   (`AgentRunCommandBuilders.kt`, `requireProcessLaunch`).
+> - Bounded specialist launch payload — `GovernedReviewLaunch` validates a launch
+>   contains only owned paths/criteria/rules (`ReviewContextModels.kt`).
+> - One-time parent discovery — single `ReviewContextPacket` with a stable digest;
+>   `ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY` rendered into every launch.
+> - Bounded evidence surface — `ReviewEvidenceBroker` is the sole measured,
+>   budget-checked read path; expansions require authorization and digest match.
+> - Token attribution — `ProviderTokenUsage`/`ReviewTreeUsage` support fresh/cached
+>   separation, ownership, and tree aggregation without double-counting.
+> - Named budget policy and typed failures — `ReviewContextBudgetPolicy` plus
+>   `ReviewContextBudgetExceeded`/`ReviewBudgetRegression`, validated and evaluated.
+> - Explicit `mode:inline`/`mode:delegated` authority over `mode:auto` eligibility —
+>   `ReviewExecutionModePolicy.resolve()`, covered by a test proving inline overrides
+>   a risky auto-delegate profile.
+>
+> All 5 SKILL-129 subtasks are `status: complete` in its decomposition manifest, with
+> a further goal-wide remediation commit (`f1c6f229`) closing residual findings. No
+> further preparation or implementation against this spec is needed. Kept for
+> historical record of the original SKILL-120 incident and problem statement.
 
 # SKILL-125: Enforce bounded context and token use for delegated code review
 
@@ -221,4 +247,4 @@ usage are separately understandable.
 
 ## Next Path
 
-Run `bill-feature` on `.feature-specs/SKILL-125-bounded-review-context/spec.md`.
+Closed — superseded by SKILL-129. Do not run `bill-feature` on this spec.

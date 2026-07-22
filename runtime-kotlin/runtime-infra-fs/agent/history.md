@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
+Areas: runtime-kotlin/runtime-{application,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}/code-review
+- Provider-neutral declarations and flattened launch plans now share one complete logical worker set; undeclared workers, duplicate provider targets, and misleading baseline identities fail before launch.
+- Native-agent install stages provider artifacts atomically, verifies logical identity, digest, readability, and current-generation ownership, then reconciles the complete managed-link inventory while preserving unmanaged files.
+- Pattern: classify canonical current, obsolete cache, and legacy governed artifact targets through one reusable predicate before replacing or pruning links; never infer ownership from filename alone. reusable
+- Delegated review preflight resolves every selected logical worker from current installed staging and returns a typed failure with the repair command instead of falling back to `general-purpose`.
+- Reconciliation regressions cover dangling Kotlin/KMP links, stale generations, missing artifacts, duplicate targets, unmanaged collisions, legacy layouts, and every supported native-agent provider.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 5/5 implemented
+
 ## [2026-07-14] SKILL-122 agent add-on delivery and scaffolding
 Areas: runtime-infra-fs/{agentaddon,install,scaffold}, runtime-cli/scaffold, runtime-desktop/feature/skillbill, install.sh, uninstall.sh
 - Agent-addon delivery discovers validated declarations dynamically and generates deterministic consumer pointers for `bill-feature` and its internal sidecars only in staged output; targets must remain regular repository files and collisions, self-reference, malformed paths, or missing targets loud-fail before promotion.

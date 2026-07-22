@@ -10,6 +10,7 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
@@ -338,9 +339,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
     assertContains(
       auditPrompt,
-      "\"unmet_criteria\" array",
+      "produced_outputs.gaps array",
       false,
-      "audit names the unmet_criteria signal",
+      "audit names the compact gaps signal",
     )
     assertContains(
       auditPrompt,
@@ -363,6 +364,39 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       false,
       "audit scopes gaps to production",
     )
+    assertContains(
+      auditPrompt,
+      "PROSPECTIVE REPAIR IMPACT ANALYSIS",
+      false,
+      "audit requires counterfactual repair analysis before accepting a plan",
+    )
+    assertContains(
+      auditPrompt,
+      "already-satisfied criteria as non-regression constraints",
+      false,
+      "audit protects previously satisfied behavior while planning repairs",
+    )
+    assertContains(
+      auditPrompt,
+      "cumulative repair delta and cross-repair interactions",
+      false,
+      "follow-up audit checks repair interactions instead of only prior symbols",
+    )
+    assertContains(
+      auditPrompt,
+      "closure-complete for that blast",
+      false,
+      "repair plans must cover the complete evidenced blast radius",
+    )
+  }
+
+  @Test
+  fun `audit prompt separates blocking gaps from non blocking findings`() {
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(auditPrompt, "blocker or major", true, "audit limits remediation gaps by severity")
+    assertContains(auditPrompt, "non_blocking_findings", false, "audit preserves minor and nit findings")
+    assertContains(auditPrompt, "NEVER trigger gaps_found", false, "non-blocking findings cannot reopen implementation")
   }
 
   @Test
@@ -394,6 +428,32 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `an operator blocked-phase retry decision is delivered only to its matching phase`() {
+    val reason = "Use fresh-process isolation for Codex CLI workers."
+    val retry = FeatureTaskRuntimeOperatorBlockRetry(
+      phaseId = "implement",
+      reason = reason,
+      retriedAt = "2026-07-21T16:30:00Z",
+    )
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      operatorBlockRetry = retry,
+    )
+
+    assertContains(prompt, "Operator-applied blocked-phase retry decision")
+    assertContains(prompt, reason)
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("audit"),
+        operatorBlockRetry = retry,
+      )
+    }
+  }
+
+  @Test
   fun `an unparseable-root failure appends a phase-correct fill-in skeleton`() {
     // When the runtime could not parse any JSON object out of the prior output (the audit/review prose
     // or array case), the retry must do more than echo the reason: name the mistake and hand back a
@@ -414,7 +474,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
-    assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(auditRetry, "\"gaps\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(
+      auditRetry,
+      "\"non_blocking_findings\": []",
+      false,
+      "audit skeleton seeds the non-blocking findings key",
+    )
     assertContains(reviewRetry, "\"verdict\": \"approved\"", false, "review skeleton seeds the review verdict")
     assertContains(reviewRetry, "\"findings\": []", false, "review skeleton seeds the review signal key")
   }
@@ -514,7 +580,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
-    assertContains(auditPrompt, keys.AUDIT_UNMET_CRITERIA, false, "audit names the unmet_criteria key")
+    assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
+    assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
 }

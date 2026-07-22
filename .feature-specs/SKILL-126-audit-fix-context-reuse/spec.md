@@ -1,6 +1,19 @@
 # SKILL-126 Audit Fix Context Reuse
 
-Status: ready
+Status: Complete
+
+> Implemented directly on `main` via commit `73a2805f` ("SKILL-126 reuse audit
+> remediation context"), further hardened by `93440dc7` ("fix(feature-task): scope
+> repair audits to current gaps"). All 9 acceptance criteria verified against
+> current runtime code: the `gaps_found` transition only ever targets
+> `PHASE_IMPLEMENT` (`FeatureTaskRuntimePhaseWorkflowDefinition.kt`), remediation
+> requires and reuses the original persisted preplan/plan output and loud-fails
+> rather than regenerating it (`FeatureTaskRuntimeRunState.kt`), standalone and
+> goal-child task runs share the same run-loop, and crash-safe resume, ledger
+> telemetry, and the independent `review_fix` budget are covered by
+> `FeatureTaskRuntimeAuditGapLoopTest.kt` and the goal-child integration test.
+> Governed docs (`skills/bill-feature-task-runtime/content.md`) already describe
+> the loop as context reuse, not re-plan. No further work needed.
 
 ## Intended Outcome
 

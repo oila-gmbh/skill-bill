@@ -41,9 +41,7 @@ private val baselinePointers = listOf(
 )
 
 private val specialistPointers = listOf(
-  "review-orchestrator.md" to "orchestration/review-orchestrator/PLAYBOOK.md",
-  "shell-ceremony.md" to "orchestration/shell-content-contract/shell-ceremony.md",
-  "telemetry-contract.md" to "orchestration/telemetry-contract/PLAYBOOK.md",
+  "specialist-contract.md" to "orchestration/review-orchestrator/specialist-contract.md",
 )
 
 private val qualityCheckPointers = listOf(

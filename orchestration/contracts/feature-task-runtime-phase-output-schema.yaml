@@ -56,6 +56,38 @@ $defs:
       - needs_user_action
       - process_failure
       - invalid_output
+  compactAuditGap:
+    type: object
+    additionalProperties: false
+    required: [criterion, severity, location, issue, fix]
+    properties:
+      criterion:
+        type: string
+        pattern: "^AC-[0-9]{3}$"
+      severity:
+        enum: [blocker, major]
+      location:
+        description: "Compact ClassName or ClassName.memberName reference; never a fully-qualified name."
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z_][A-Za-z0-9_$]*(?:\\.[A-Za-z_][A-Za-z0-9_$]*)?$"
+      file:
+        description: "Optional basename used only when the compact class/member reference is ambiguous."
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_.-]+$"
+      issue:
+        type: string
+        minLength: 1
+        maxLength: 1024
+        pattern: ".*\\S.*"
+      fix:
+        type: string
+        minLength: 1
+        maxLength: 1024
+        pattern: ".*\\S.*"
 required:
   - contract_version
   - phase_id
@@ -65,7 +97,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.2"
+    const: "0.3"
   phase_id:
     type: string
     minLength: 1
@@ -122,18 +154,51 @@ properties:
       findings, which travel inside `produced_outputs` (e.g. a `findings` array
       of severity/message entries) and are forwarded into the `implement_fix`
       handoff. For `audit` the values are `satisfied` (every acceptance criterion
-      met) or `gaps_found` (one or more unmet); the runtime classifies the verdict
-      from the failing criteria, which travel inside `produced_outputs` (an
-      `unmet_criteria` array of message entries) and scope the context-reuse implementation
-      remediation handoff on the `audit_gap` backward edge. Either absent (not set) or a
+      met with no Blocker or Major gap) or `gaps_found` (one or more Blocker or Major gaps);
+      the runtime classifies the verdict from the compact `produced_outputs.gaps` array and derives
+      the durable remediation handoff on the `audit_gap` backward edge. Minor
+      and Nit findings travel separately in `non_blocking_findings` and never reopen implementation.
+      Either absent (not set) or a
       non-empty string; `null` is not a valid value. The field itself is
       additive and optional — existing phase outputs that omit it still
       validate — but the `audit` phase constraints in `allOf` make a
-      `gaps_found` verdict require a complete `audit_repair_plan`, which is why
-      contract_version is `0.2`.
+      `gaps_found` verdict requires one or more compact gaps. This breaking audit-output shape is why
+      contract_version is `0.3`; workflows created under an earlier version require a hard reset.
     type: string
     minLength: 1
 allOf:
+  - if:
+      properties:
+        phase_id: { const: audit }
+      required: [phase_id]
+    then:
+      required: [verdict]
+      properties:
+        verdict: { enum: [satisfied, gaps_found] }
+        produced_outputs:
+          type: object
+          required: [gaps]
+          not:
+            anyOf:
+              - required: [unmet_criteria]
+              - required: [audit_repair_plan]
+              - required: [prior_gap_dispositions]
+              - required: [failing_criteria]
+          properties:
+            gaps:
+              type: array
+              maxItems: 50
+              items: { $ref: "#/$defs/compactAuditGap" }
+            non_blocking_findings:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [acceptance_criterion_ref, message, severity]
+                properties:
+                  acceptance_criterion_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  message: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  severity: { enum: [minor, nit] }
   - if:
       properties:
         phase_id: { const: audit }
@@ -143,11 +208,8 @@ allOf:
       properties:
         produced_outputs:
           type: object
-          required: [unmet_criteria]
-          not:
-            required: [audit_repair_plan]
           properties:
-            unmet_criteria: { type: array, maxItems: 0 }
+            gaps: { type: array, maxItems: 0 }
   - if:
       properties:
         phase_id: { const: audit }
@@ -157,73 +219,7 @@ allOf:
       properties:
         produced_outputs:
           type: object
-          required: [unmet_criteria, audit_repair_plan]
           properties:
-            unmet_criteria: { type: array, minItems: 1 }
-            audit_repair_plan: { type: object }
-  - if:
-      properties:
-        phase_id: { const: audit }
-      required: [phase_id]
-    then:
-      properties:
-        verdict: { enum: [satisfied, gaps_found] }
-  # `failing_criteria` was once an accepted alias of `unmet_criteria`. The verdict readers honored it
-  # while the repair-plan gate keyed only on the canonical name, so an audit spelling it that way was
-  # classified `gaps_found` and reached the audit_gap edge with no plan ever validated. The criteria
-  # signal has exactly one representation at both layers; the Kotlin seam rejects the alias with the
-  # same canonical-key message.
-  - if:
-      properties:
-        phase_id: { const: audit }
-      required: [phase_id]
-    then:
-      properties:
-        produced_outputs:
-          type: object
-          not:
-            required: [failing_criteria]
-  - if:
-      properties:
-        phase_id: { const: audit }
-        produced_outputs:
-          properties:
-            unmet_criteria: { type: array, minItems: 1 }
-          required: [unmet_criteria]
-      required: [phase_id, produced_outputs]
-    then:
-      properties:
-        produced_outputs:
-          type: object
-          required: [unmet_criteria, audit_repair_plan]
-          properties:
-            unmet_criteria:
+            gaps:
               type: array
               minItems: 1
-              items:
-                type: object
-                additionalProperties: false
-                required: [acceptance_criterion_ref, message]
-                properties:
-                  acceptance_criterion_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
-                  message: { type: string, minLength: 1, pattern: ".*\\S.*" }
-            audit_repair_plan:
-              type: object
-              required: [contract_version, gaps]
-  - if:
-      properties:
-        phase_id: { const: audit }
-        produced_outputs:
-          properties:
-            unmet_criteria: { type: array, maxItems: 0 }
-          required: [unmet_criteria]
-      required: [phase_id, produced_outputs]
-    then:
-      properties:
-        produced_outputs:
-          type: object
-          required: [unmet_criteria]
-          not:
-            required: [audit_repair_plan]
-          properties:
-            unmet_criteria: { type: array, maxItems: 0 }

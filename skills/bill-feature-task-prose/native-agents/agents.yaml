@@ -244,6 +244,9 @@ agents:
       - MEDIUM/LARGE: produce a full per-criterion report with evidence paths. Verify against actual code, not the summary.
       - Do NOT implement fixes. Do NOT edit files.
       - If a criterion is partially satisfied, record it as a gap with `suggested_fix`.
+      - On the initial audit, inspect every listed criterion once and report only concrete production defects.
+      - On follow-up audits, verify only the carried unresolved gaps and the repair work performed for them in that round. Inspect the repaired symbols and only the directly necessary evidence needed to classify each carried gap as resolved or recurring.
+      - On follow-up audits, do not rescan the full subtask, full acceptance-criterion surface, or cumulative diff. Do not hunt for unrelated or newly discoverable gaps.
       
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
       

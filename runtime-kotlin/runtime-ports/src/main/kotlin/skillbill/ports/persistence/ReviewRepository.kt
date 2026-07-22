@@ -1,6 +1,7 @@
 package skillbill.ports.persistence
 
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
@@ -9,6 +10,11 @@ import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 
 interface ReviewRepository : WorkflowStatsRepository {
+  /** Stores only the schema-bounded accounting projection; content-bearing review objects cannot cross this seam. */
+  fun saveAccounting(record: ReviewAccountingRecord) = Unit
+
+  fun loadAccounting(reviewId: String): ReviewAccountingRecord? = null
+
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 
   fun markOrchestrated(runId: String)

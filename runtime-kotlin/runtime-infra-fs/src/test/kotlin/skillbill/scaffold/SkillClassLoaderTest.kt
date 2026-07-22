@@ -52,9 +52,7 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
 
 private val LEGACY_PATTERN_GOLDEN: List<Pair<Regex, Set<String>>> = listOf(
   Regex("^bill-[a-z0-9-]+-code-review-[a-z0-9-]+$") to setOf(
-    "review-orchestrator.md",
-    "telemetry-contract.md",
-    "shell-ceremony.md",
+    "specialist-contract.md",
   ),
   Regex("^bill-[a-z0-9-]+-code-review$") to setOf(
     "review-scope.md",

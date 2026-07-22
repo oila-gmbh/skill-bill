@@ -1,3 +1,59 @@
+## [2026-07-22] SKILL-129 durable accounting key and e2e verification (subtask 5)
+Areas: runtime-kotlin/runtime-{application,cli,core,infra-sqlite}, skills/bill-code-review-parallel
+- `ParallelCodeReviewRequest.reviewRunId` now flows through `ParallelReviewPreparationInput` into the compiled packet `reviewId`, so the durable `review_accounting` row is keyed by the same id `ReviewFinishedPayloadSupport.reviewFinishedPayload` resolves via `loadReviewAccounting`; it was previously always null.
+- Added `--review-run-id` to `CodeReviewParallelCommand` and taught `bill-code-review-parallel` to generate or reuse the governed `rvw-YYYYMMDD-HHMMSS-XXXX` id, matching the review-orchestrator playbook's reuse-a-parent-supplied-id rule.
+- Pattern: thread a caller-supplied durable-record key end-to-end through request -> preparation input -> packet -> summary rather than deriving accounting identity from an internal packet id that telemetry never sees. reusable
+- Callers that omit `--review-run-id` keep the prior `code-review-parallel-<revisionId>` packet key; their accounting stays unreachable from `review_finished` telemetry by design, not a regression.
+- `ReviewRecordingHarness` moved to `runtime-application`'s `testFixtures` source set so accounting/e2e tests across modules can share one harness instead of duplicating it.
+- Known limitation: not yet confirmed whether every production caller of `bill-code-review-parallel` supplies `--review-run-id`; downstream review may want to check.
+Feature flag: N/A
+Acceptance criteria: subtask 5: AC-002 gap repaired; full maintainer gate (AC-007) passing
+
+## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
+Areas: runtime-kotlin/runtime-{application,infra-fs,ports}, native-agent rendering/install, platform-packs/{kotlin,kmp}
+- Provider-neutral declarations and flattened review plans now share the complete specialist worker set; missing declarations and ambiguous targets fail validation instead of falling back to baseline or `general-purpose` workers.
+- Install treats the full Skill Bill-managed link inventory as authoritative: selected artifacts are rendered and linked atomically, verified by logical name, digest, and readability, and obsolete or dangling managed links are removed without touching unmanaged files. reusable
+- Runtime preflight validates the exact provider-worker assignments prepared for launch against current cache/staging inventory, avoiding false failures from a provider/worker Cartesian product; typed failures retain the repair command. reusable
+- Pattern: reconcile durable managed inventory before launch, then validate exact launch assignments at the runtime boundary rather than reconstructing selection from independent provider and worker lists. reusable
+- Compatibility constructor support remains for callers that still supply provider and worker lists; new launch paths use explicit `ReviewNativeAgentAssignment` values.
+- Existing install/reconcile coverage locks dangling Kotlin/KMP links, stale hashes, missing specialists, duplicate targets, unmanaged-file preservation, and supported provider layouts.
+- Known limitation: trustworthy worker accounting and end-to-end optimized-flow proof belong to subtask 5.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 5/5 implemented
+
+## [2026-07-22] SKILL-129 flattened layered review composition (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}, orchestration/review-orchestrator
+- Review launch planning recursively expands manifest-declared baseline layers into one ordered, duplicate-free specialist plan before worker preflight; KMP retains required Kotlin coverage without launching a nested Kotlin orchestrator.
+- Flattened ownership preserves every same-owner origin chain, selected add-ons, matched signals, deterministic ordering, and specialist attribution; requiredness comes from the owning lane condition or its immediate composition edge and is not inherited by every descendant.
+- Pattern: resolve layered composition and ambiguous ownership once at the parent boundary, then give each worker only its bounded routed packet and projected rubric; downstream consumers do not rediscover scope, routing, learnings, or telemetry. reusable
+- Missing layers, cycles, incompatible contracts, ownership conflicts, empty assignments, and malformed finding locations fail at typed validation or parsing seams before unsafe launch/merge effects.
+- Kotlin/KMP, mixed-stack, cycle, renderer/snapshot, inline-rubric, isolation, interruption, timeout, failed-lane, provenance, and parser regressions lock the flattened behavior.
+- Known limitation: direct specialist installability and preflight without generic fallback belongs to subtask 4.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 5/5 implemented
+
+## [2026-07-21] SKILL-129 governed review budget broker (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,contracts}, orchestration/contracts
+- Delegated review launches now originate from validated assignments and carry one authoritative projected rubric, assigned hunks and paths, matched rules, bounded dependencies, evidence targets, stable IDs, and explicit budgets.
+- `FileSystemReviewEvidenceBroker` admits only structured, explicitly scoped evidence operations and rejects rediscovery, broad search, unrelated rubric access, and unassigned files while measuring batched reads and expansions. reusable
+- Parent packets, complete evidence-bearing launches, cumulative evidence, lane results, tool calls, model turns, and enforceable provider usage are checked at their production boundaries; decoded lane-result observation is tracked independently from byte count so an empty streamed result cannot trigger raw-envelope fallback validation.
+- Pattern: budget excesses terminate with typed `review_context_budget_exceeded`; completion-only non-enforceable token excess reports `budget_regression` without truncation, scope widening, lane skipping, worker replacement, or mode substitution. reusable
+- Provider isolation is strategy-declared (`fork_turns: "none"` for Codex); adapters without synchronous governed request-response mediation remain explicitly unsupported instead of inferring enforcement from stdout.
+- Fake worker and evidence surfaces cover forbidden operations, excessive reads/turns/results, audited expansions, bounded completion, and sticky terminal budget failures.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
+## [2026-07-21] SKILL-129 review-context packet and preparation service (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,cli}, orchestration/contracts
+- One `ReviewPreparationService` resolves review facts once — immutable review id/revision, changed hunks, matched project rules, build/test facts, learnings refs, add-ons, direct-dependency allowlists, evidence targets, lane decisions with reasons, worker assignments, expansions — and rejects ownership violations and cross-revision drift with typed errors before launch. reusable
+- `review-context-schema.yaml` follows the governed contract recipe (`contract_version` const + parity test + `Invalid…SchemaError` + classpath bundling); cross-field rules live in `x-coherence-checks` and in Kotlin.
+- Canonical digests are computed from explicit ordered input lists on the model itself, so serialization order cannot silently change a digest. reusable
+- Pattern: expansion records are deliberately excluded from assignment and packet digest inputs — including them creates a digest fixed point where any recorded expansion invalidates the digest it references. Bound growth with `maxAssignmentExpansions` instead. reusable
+- `ReviewPacketConsumerContract` states downstream consumers must not rediscover scope, diff, stack, guidance, learnings, build/test, or telemetry ownership; a parity test keeps it aligned with the packet.
+- Known limitation: `canonicalBytes` no longer measures `expansionLedger`, so future evidence-byte accounting for expansions must measure them separately.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 4/4 implemented
+
 ## [2026-07-21] SKILL-135 unaddressed-findings ledger (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-sqlite,ports}, skills/bill-feature-{goal,task-runtime,task-prose,task-subtask-runner}
 - Findings recorded without being addressed are persisted per issue key, subtask, workflow, review pass, severity, category, and location; new columns are added by unconditional startup ensures so already-created databases self-heal.

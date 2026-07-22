@@ -20,6 +20,9 @@ object FeatureTaskRuntimeFixLoopPolicy {
   /** A phase runs at most this many times total (1 initial attempt + 2 re-runs) before blocking. */
   const val MAX_FIX_LOOP_ITERATIONS: Int = 3
 
+  /** Malformed serialization gets its own bounded correction budget and does not consume semantic retries. */
+  const val MAX_FORMAT_RETRY_ATTEMPTS: Int = 3
+
   private val FIX_LOOP_PHASES: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
@@ -60,6 +63,19 @@ object FeatureTaskRuntimeFixLoopPolicy {
       FeatureTaskRuntimeFixLoopDecision.Block(
         blockedReason = blockedReason(phaseId, currentIteration),
       )
+    }
+  }
+
+  fun malformedOutputBlockReason(phaseId: String, malformedAttemptCount: Int): String? {
+    require(malformedAttemptCount >= 1) {
+      "malformedAttemptCount must be >= 1, was $malformedAttemptCount."
+    }
+    return if (malformedAttemptCount >= MAX_FORMAT_RETRY_ATTEMPTS) {
+      "Phase '$phaseId' exhausted the bounded output-format correction budget after " +
+        "$malformedAttemptCount malformed attempts (cap=$MAX_FORMAT_RETRY_ATTEMPTS); semantic repair " +
+        "attempts were not consumed."
+    } else {
+      null
     }
   }
 

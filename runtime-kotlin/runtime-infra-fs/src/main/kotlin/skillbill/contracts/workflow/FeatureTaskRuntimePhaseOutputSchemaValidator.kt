@@ -11,6 +11,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
@@ -18,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import java.nio.file.Files
 import java.nio.file.Path
@@ -134,7 +136,88 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
-    return parsed
+    return expandCompactAuditOutput(parsed, sourceLabel)
+  }
+
+  fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
+    val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
+    val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
+    validate(parsed, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = mapper.writeValueAsString(parsed),
+      envelope = expandCompactAuditOutput(parsed, sourceLabel),
+    )
+  }
+
+  private fun expandCompactAuditOutput(phaseOutput: Map<String, Any?>, sourceLabel: String): Map<String, Any?> {
+    if (sourceLabel != "audit") return phaseOutput
+    val produced = phaseOutput["produced_outputs"] as? Map<*, *> ?: return phaseOutput
+    val compactGaps = produced["gaps"] as? List<*> ?: return phaseOutput
+    val expandedGaps = compactGaps.map(::compactGapToRepairGap)
+    val normalizedProduced = linkedMapOf<String, Any?>().apply {
+      produced.forEach { (key, value) ->
+        if (key is String && key != "gaps") put(key, value)
+      }
+      put(
+        "unmet_criteria",
+        compactGaps.map(::compactGapToUnmetCriterion),
+      )
+      if (expandedGaps.isNotEmpty()) {
+        put(
+          "audit_repair_plan",
+          mapOf(
+            "contract_version" to FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION,
+            "gaps" to expandedGaps,
+          ),
+        )
+      }
+    }
+    return LinkedHashMap(phaseOutput).apply { put("produced_outputs", normalizedProduced) }
+  }
+
+  private fun compactGapToRepairGap(value: Any?): Map<String, Any?> {
+    @Suppress("UNCHECKED_CAST")
+    val gap = value as Map<String, Any?>
+    val criterion = gap.getValue("criterion") as String
+    val location = gap.getValue("location") as String
+    val issue = gap.getValue("issue") as String
+    val fix = gap.getValue("fix") as String
+    val gapId = "${criterion.lowercase()}-gap-1"
+    val repairItemId = "$gapId-item-1"
+    val artifactRef = (gap["file"] as? String)?.let { "$it:$location" } ?: location
+    return mapOf(
+      "gap_id" to gapId,
+      "acceptance_criterion_ref" to criterion,
+      "acceptance_criterion_text" to issue,
+      "failure_evidence" to mapOf(
+        "observation" to "required_behavior_absent",
+        "artifact_ref" to artifactRef,
+        "check_ref" to criterion,
+      ),
+      "diagnosis" to issue,
+      "affected_boundary" to location,
+      "repair_items" to listOf(
+        mapOf(
+          "repair_item_id" to repairItemId,
+          "intended_outcome" to fix,
+          "implementation_actions" to listOf(fix),
+          "affected_paths_or_symbols" to listOf(artifactRef),
+          "required_verification" to listOf("Verify $criterion at $location"),
+          "depends_on" to emptyList<String>(),
+          "status" to "pending",
+        ),
+      ),
+    )
+  }
+
+  private fun compactGapToUnmetCriterion(value: Any?): Map<String, Any?> {
+    @Suppress("UNCHECKED_CAST")
+    val gap = value as Map<String, Any?>
+    return mapOf(
+      "acceptance_criterion_ref" to gap.getValue("criterion"),
+      "severity" to gap.getValue("severity"),
+      "message" to gap.getValue("issue"),
+    )
   }
 
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
@@ -199,12 +282,14 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           sourceLabel = sourceLabel,
           reason = "Phase output is malformed: ${error.originalMessage.orEmpty()}",
           cause = error,
+          failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
         )
       }
     if (node == null || !node.isObject) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "<root> must be an object.",
+        failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
       )
     }
     return node

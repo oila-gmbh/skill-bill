@@ -38,20 +38,22 @@ class JdkFeatureTaskRuntimeWorkerSupervisor : FeatureTaskRuntimeWorkerSupervisor
     ownership: FeatureTaskRuntimeWorkerOwnership,
     local: FeatureTaskRuntimeProcessIdentity,
   ): FeatureTaskRuntimeProcessInspection {
-    if (ownership.hostIdentity != local.hostIdentity || ownership.bootIdentity != local.bootIdentity) {
+    if (ownership.hostIdentity != local.hostIdentity) {
       return FeatureTaskRuntimeProcessInspection.OwnershipMismatch(
-        "Worker ownership belongs to a different host or boot session.",
+        "Worker ownership belongs to a different host.",
       )
     }
-    val handle = ProcessHandle.of(ownership.pid).orElse(null) ?: return FeatureTaskRuntimeProcessInspection.NotRunning
+    if (ownership.bootIdentity != local.bootIdentity) return FeatureTaskRuntimeProcessInspection.NotRunning
+
+    val handle = ProcessHandle.of(ownership.pid).orElse(null)
+      ?: return FeatureTaskRuntimeProcessInspection.NotRunning
     val birth = birthToken(handle)
-      ?: return FeatureTaskRuntimeProcessInspection.Unsupported("Worker PID has no verifiable birth evidence.")
-    return if (handle.isAlive && birth == ownership.processBirthToken) {
-      FeatureTaskRuntimeProcessInspection.ExactLive
-    } else if (!handle.isAlive) {
-      FeatureTaskRuntimeProcessInspection.NotRunning
-    } else {
-      FeatureTaskRuntimeProcessInspection.OwnershipMismatch("Worker PID was reused by a different process.")
+    return when {
+      birth == null ->
+        FeatureTaskRuntimeProcessInspection.Unsupported("Worker PID has no verifiable birth evidence.")
+      handle.isAlive && birth == ownership.processBirthToken -> FeatureTaskRuntimeProcessInspection.ExactLive
+      !handle.isAlive -> FeatureTaskRuntimeProcessInspection.NotRunning
+      else -> FeatureTaskRuntimeProcessInspection.OwnershipMismatch("Worker PID was reused by a different process.")
     }
   }
 

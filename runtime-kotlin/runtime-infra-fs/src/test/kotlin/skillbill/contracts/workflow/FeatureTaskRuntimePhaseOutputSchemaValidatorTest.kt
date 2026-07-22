@@ -18,7 +18,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   private val wellFormed =
     """
-    contract_version: "0.2"
+    contract_version: "0.3"
     phase_id: "plan"
     status: "completed"
     summary: "Produced an ordered implementation plan."
@@ -112,7 +112,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `audit output carrying the failing criteria alias fails validation at a pointer-anchored location`() {
     val alias =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "audit"
       status: "completed"
       summary: "One criterion remains unmet."
@@ -139,7 +139,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output missing a required field fails validation`() {
     val missingSummary =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "plan"
       status: "completed"
       produced_outputs:
@@ -154,7 +154,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with an unknown extra field fails validation`() {
     val extraField =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -169,7 +169,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
   @Test
   fun `output with the wrong contract version fails validation`() {
-    val wrongVersion = wellFormed.replace("\"0.2\"", "\"9.9\"")
+    val wrongVersion = wellFormed.replace("\"0.3\"", "\"9.9\"")
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wrongVersion, "plan")
     }
@@ -188,7 +188,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with an empty produced_outputs object fails validation`() {
     val emptyProducedOutputs =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -203,7 +203,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with a non-empty produced_outputs object passes validation`() {
     val populated =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -224,7 +224,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `review output carrying a top-level verdict and findings passes validation`() {
     val reviewWithVerdict =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "review"
       status: "completed"
       summary: "Reviewed the change and requested fixes."
@@ -294,7 +294,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   @Test
   fun `raw json object passes validation`() {
     val rawJson =
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed",""" +
         """"summary":"ok","produced_outputs":{"tasks":["task-1"]}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(rawJson, "plan")
   }
@@ -306,7 +306,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       Here is the plan output.
 
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
       ```
 
@@ -316,39 +316,26 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
-  fun `markdown prefixed audit gaps normalize once and select the audit gap edge`() {
+  fun `markdown prefixed compact audit gaps normalize once and select the audit gap edge`() {
     val wrapped =
       """
       Audit evidence follows.
       ```json
       {
-        "contract_version":"0.2",
+        "contract_version":"0.3",
         "phase_id":"audit",
         "status":"completed",
         "summary":"One criterion remains unmet.",
         "verdict":"gaps_found",
         "produced_outputs":{
-          "unmet_criteria":[{"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}],
-          "audit_repair_plan":{
-            "contract_version":"0.2",
-            "gaps":[{
-              "gap_id":"ac-128-gap-1",
-              "acceptance_criterion_ref":"AC-128",
-              "acceptance_criterion_text":"Integration coverage exists.",
-              "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin/integration","check_ref":"AC-001"},
-              "diagnosis":"Add the missing integration scenario.",
-              "affected_boundary":"runtime integration tests",
-              "repair_items":[{
-                "repair_item_id":"ac-128-gap-1-item-1",
-                "intended_outcome":"The integration scenario verifies the feature.",
-                "implementation_actions":["Add and execute the integration scenario."],
-                "affected_paths_or_symbols":["runtime-core/src/test"],
-                "required_verification":["Run the integration test."],
-                "depends_on":[],
-                "status":"pending"
-              }]
-            }]
-          }
+          "gaps":[{
+            "criterion":"AC-128",
+            "severity":"major",
+            "location":"ParallelCodeReviewRunner.merge",
+            "file":"ParallelCodeReviewRunner.kt",
+            "issue":"Rejected lanes are omitted.",
+            "fix":"Include rejected lanes in the aggregate."
+          }]
         }
       }
       ```
@@ -373,6 +360,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, transition.phaseId)
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID, transition.loopId)
+    assertContains(normalized.canonicalJson, "\"gaps\"")
+    assertTrue(!normalized.canonicalJson.contains("audit_repair_plan"))
+    assertTrue(produced.containsKey("audit_repair_plan"))
   }
 
   @Test
@@ -380,7 +370,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val withProse =
       """
       I planned the work as follows:
-      {"contract_version":"0.2","phase_id":"plan","status":"completed",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
       Let me know if you need anything else.
       """.trimIndent()
@@ -393,12 +383,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       """
       For reference the shape is:
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"example",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"example",
        "produced_outputs":{"tasks":["example-task"]}}
       ```
       Here is the real output:
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed",
        "summary":"real","produced_outputs":{"tasks":["task-1"]}}
       ```
       """.trimIndent()
@@ -413,12 +403,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val twoObjects =
       """
       For reference the shape is:
-      {"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"example",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+      {"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"example",
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       Here is the real output:
-      {"contract_version":"0.2","phase_id":"audit","status":"completed",
-       "summary":"every criterion met","verdict":"satisfied",
-       "produced_outputs":{"unmet_criteria":[]}}
+      {"contract_version":"0.3","phase_id":"audit","status":"completed",
+       "summary":"every criterion met","verdict":"satisfied","produced_outputs":{"gaps":[]}}
       """.trimIndent()
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoObjects, "audit")
@@ -427,19 +416,19 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
-  fun `audit verdict requires explicit coherent unmet criteria array`() {
+  fun `audit requires one coherent compact gaps array`() {
     val invalidProducedOutputs = listOf(
       """"verdict":"satisfied","produced_outputs":{"evidence":"complete"}""",
-      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":"none"}""",
-      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":[{"message":"gap"}]}""",
-      """"verdict":"gaps_found","produced_outputs":{"evidence":"incomplete"}""",
+      """"verdict":"satisfied","produced_outputs":{"gaps":"none"}""",
+      """"verdict":"satisfied","produced_outputs":{"gaps":[{"criterion":"AC-001"}]}""",
+      """"verdict":"gaps_found","produced_outputs":{"gaps":[]}""",
+      """"verdict":"gaps_found","produced_outputs":{"gaps":"gap"}""",
       """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[]}""",
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":"gap"}""",
     )
 
     invalidProducedOutputs.forEach { suffix ->
       val envelope =
-        """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"audit",$suffix}"""
+        """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",$suffix}"""
       assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
         FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
       }
@@ -447,86 +436,21 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
-  fun `gaps found without a repair plan is rejected`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        auditEnvelope(planJson = null),
-        "audit",
-      )
+  fun `fully qualified and path-like audit locations are rejected`() {
+    val invalidLocations = listOf(
+      "skillbill.review.ParallelCodeReviewRunner.merge",
+      "runtime/ParallelCodeReviewRunner.kt",
+    )
+    invalidLocations.forEach { location ->
+      val envelope =
+        """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
+          """"verdict":"gaps_found","produced_outputs":{"gaps":[{""" +
+          """"criterion":"AC-128","severity":"major","location":"$location",""" +
+          """"issue":"Rejected lanes are omitted.","fix":"Include rejected lanes."}]}}"""
+      assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+        FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
+      }
     }
-
-    assertContains(error.reason, "audit_repair_plan")
-    assertContains(error.reason, "not found")
-  }
-
-  @Test
-  fun `unmet criteria not covered by the declared gaps are rejected`() {
-    val uncovered =
-      """{"acceptance_criterion_ref":"AC-129","message":"Rollback coverage is missing."}"""
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        auditEnvelope(planJson = auditRepairPlanJson, extraUnmetCriteria = uncovered),
-        "audit",
-      )
-    }
-
-    assertContains(error.reason, "produced_outputs.audit_repair_plan")
-    assertContains(error.reason, "AC-129")
-  }
-
-  @Test
-  fun `a gap declaring no repair items is rejected`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        auditEnvelope(planJson = gapWithoutRepairItemsJson),
-        "audit",
-      )
-    }
-
-    assertContains(error.reason, "produced_outputs.audit_repair_plan")
-    assertContains(error.reason, "repair_items")
-  }
-
-  @Test
-  fun `a repair plan stamped with a superseded contract version is rejected`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        auditEnvelope(
-          planJson = auditRepairPlanJson.replace(
-            """"contract_version":"0.2"""",
-            """"contract_version":"0.1"""",
-          ),
-        ),
-        "audit",
-      )
-    }
-
-    assertContains(error.reason, "produced_outputs.audit_repair_plan")
-    assertContains(error.reason, "contract_version")
-  }
-
-  private val gapWithoutRepairItemsJson =
-    """
-    {"contract_version":"0.2","gaps":[{
-      "gap_id":"ac-128-gap-1",
-      "acceptance_criterion_ref":"AC-128",
-      "acceptance_criterion_text":"Integration coverage exists.",
-      "failure_evidence":{"observation":"required_behavior_absent",
-        "artifact_ref":"runtime-kotlin/integration","check_ref":"AC-001"},
-      "diagnosis":"Add the missing integration scenario.",
-      "affected_boundary":"runtime integration tests",
-      "repair_items":[]
-    }]}
-    """.trimIndent()
-
-  private fun auditEnvelope(planJson: String?, extraUnmetCriteria: String? = null): String {
-    val unmet = listOfNotNull(
-      """{"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}""",
-      extraUnmetCriteria,
-    ).joinToString(",")
-    val plan = planJson?.let { ""","audit_repair_plan":$it""" }.orEmpty()
-    return """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"audit",""" +
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[$unmet]$plan}}"""
   }
 
   @Test
@@ -535,7 +459,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     // parses as neither; the balanced-object scan isolates the genuine object.
     val withTrailingBrace =
       """
-      {"contract_version":"0.2","phase_id":"plan","status":"completed",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
       Note: the template placeholder } above is intentional.
       """.trimIndent()
@@ -545,7 +469,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   @Test
   fun `a brace inside a string value does not split the object`() {
     val braceInString =
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed",""" +
         """"summary":"handles a literal } brace in a value","produced_outputs":{"tasks":["task-1"]}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(braceInString, "plan")
   }
@@ -568,14 +492,15 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       """
       Earlier draft of the audit result:
       ```json
-      {"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"draft",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+      {"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"draft",
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       ```
       Corrected final answer:
       ```json
-      {"contract_version":"0.2","phase_id":"audit","status":"completed",
-       "verdict":"gaps_found","produced_outputs":{"unmet_criteria":[
-         {"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}]}}
+      {"contract_version":"0.3","phase_id":"audit","status":"completed",
+       "verdict":"gaps_found","produced_outputs":{"gaps":[{
+         "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
+         "issue":"Integration behavior is missing.","fix":"Implement the missing behavior."}]}}
       ```
       """.trimIndent()
 
@@ -592,16 +517,17 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       """
       Discarded draft, missing its summary:
       ```json
-      {"contract_version":"0.2","phase_id":"audit","status":"completed",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+      {"contract_version":"0.3","phase_id":"audit","status":"completed",
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       ```
       Corrected final answer:
       ```json
-      {"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"one gap remains",
-       "verdict":"gaps_found","produced_outputs":{"unmet_criteria":[
-         {"acceptance_criterion_ref":"AC-128","message":"Integration coverage is missing."}],
-         "audit_repair_plan":
-      """.trimIndent() + auditRepairPlanJson + "}}\n```"
+      {"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"one gap remains",
+       "verdict":"gaps_found","produced_outputs":{"gaps":[{
+         "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
+         "issue":"Rejected lanes are omitted.","fix":"Include rejected lanes."}]}}
+      ```
+      """.trimIndent()
 
     val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(draftThenReal, "audit")
 
@@ -613,13 +539,13 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val reordered =
       """
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"tasks":["task-1"],"notes":["note-1"]}}
       ```
       Restating the same envelope with the fields in a different order:
       ```json
       {"produced_outputs":{"notes":["note-1"],"tasks":["task-1"]},"summary":"ok",
-       "status":"completed","phase_id":"plan","contract_version":"0.2"}
+       "status":"completed","phase_id":"plan","contract_version":"0.3"}
       ```
       """.trimIndent()
 
@@ -631,11 +557,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val reordered =
       """
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"tasks":["task-1","task-2"]}}
       ```
       ```json
-      {"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"tasks":["task-2","task-1"]}}
       ```
       """.trimIndent()
@@ -646,28 +572,6 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
     assertContains(error.reason, "multiple conflicting schema-valid envelopes")
   }
-
-  private val auditRepairPlanJson =
-    """
-    {"contract_version":"0.2","gaps":[{
-      "gap_id":"ac-128-gap-1",
-      "acceptance_criterion_ref":"AC-128",
-      "acceptance_criterion_text":"Integration coverage exists.",
-      "failure_evidence":{"observation":"required_behavior_absent",
-        "artifact_ref":"runtime-kotlin/integration","check_ref":"AC-001"},
-      "diagnosis":"Add the missing integration scenario.",
-      "affected_boundary":"runtime integration tests",
-      "repair_items":[{
-        "repair_item_id":"ac-128-gap-1-item-1",
-        "intended_outcome":"The integration scenario verifies the feature.",
-        "implementation_actions":["Add and execute the integration scenario."],
-        "affected_paths_or_symbols":["runtime-core/src/test"],
-        "required_verification":["Run the integration test."],
-        "depends_on":[],
-        "status":"pending"
-      }]
-    }]}
-    """.trimIndent()
 
   @Test
   fun `prose with no json object still fails validation`() {

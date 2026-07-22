@@ -1,0 +1,28 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/native-agent-link-inventory-schema.yaml
+title: Native Agent Managed Link Inventory
+description: Durable ownership and integrity record for Skill Bill-managed native-agent links.
+type: object
+additionalProperties: false
+required: [contract_version, entries]
+properties:
+  contract_version:
+    const: "0.1"
+  entries:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [logical_name, provider, installed_path, cache_target_path, content_digest, source_root]
+      properties:
+        logical_name: { type: string, minLength: 1 }
+        provider: { enum: [claude, codex, opencode, junie, zcode] }
+        installed_path: { type: string, minLength: 1 }
+        cache_target_path: { type: string, minLength: 1 }
+        content_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+        source_root: { type: string, minLength: 1 }
+x-coherence-checks:
+  - provider and installed_path pairs are unique
+  - provider and logical_name pairs are unique per installed provider directory
+  - installed paths are below provider-declared home agent directories
+  - cache targets are below a Skill Bill-managed cache root

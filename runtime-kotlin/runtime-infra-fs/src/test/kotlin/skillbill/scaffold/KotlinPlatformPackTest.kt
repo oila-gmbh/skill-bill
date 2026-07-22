@@ -257,7 +257,7 @@ class KotlinPlatformPackTest {
       val rendered = renderAuthoringTarget(repoRoot, agent.name)
       assertContains(rendered.stdout, "===== SKILL.md:")
       assertEquals(
-        setOf("review-orchestrator.md", "shell-ceremony.md", "telemetry-contract.md"),
+        setOf("specialist-contract.md"),
         rendered.blocks.drop(1).map { block -> block.header.substringAfterLast('/').substringBefore(" =====") }.toSet(),
       )
     }

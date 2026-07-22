@@ -12,6 +12,7 @@ import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -40,6 +41,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -86,12 +88,15 @@ internal class FeatureTaskRuntimeRunLoop(
   private val subtaskLauncher get() = dependencies.subtaskLauncher
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
-  private val specStatusProjector get() = phaseGates.specStatusProjector
   private val gitOperations get() = phaseGates.gitOperations
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
+  private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
+    .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
+    ?.takeIf { state.recordFor(it.phaseId) == null }
+  private var operatorBlockRetryCompleted: Boolean = false
 
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
@@ -202,7 +207,6 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let { applyPlanningStop(phaseId, it) }
     } else {
       establishBranchIfNeeded(phaseId) ?: run {
-        specStatusProjector.projectCompleteBeforeCommitPhase(phaseId, request, specSource)
         runPhaseFor(phaseId)
       }
     }
@@ -624,6 +628,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
+      if (operatorBlockRetry?.phaseId == phaseId) operatorBlockRetryCompleted = true
       applyPlanningStop(phaseId, completedOutput)
     }
   }
@@ -1324,13 +1329,37 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     var outcome: PhaseOutcome? = null
     var priorSchemaFailure: String? = null
+    var malformedAttemptCount = 0
+    var semanticIteration = iteration - budgetBaseOffset
     while (outcome == null) {
       val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
-      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration - budgetBaseOffset)
-      outcome = attempt.settledOutcome
-        ?: when (decision) {
+      outcome = attempt.settledOutcome ?: if (attempt.malformedOutput) {
+        malformedAttemptCount += 1
+        val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+          run.phaseId,
+          malformedAttemptCount,
+        )
+        if (formatBlock == null) {
+          iteration += 1
+          priorSchemaFailure = attempt.schemaInvalidReason
+          observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
+          null
+        } else {
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidReason)),
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+            fileManifest = attempt.fileManifest,
+            rejectedOutput = attempt.rejectedOutput,
+          )
+        }
+      } else {
+        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
+            semanticIteration += 1
             priorSchemaFailure = attempt.schemaInvalidReason
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
@@ -1345,6 +1374,7 @@ internal class FeatureTaskRuntimeRunLoop(
             rejectedOutput = attempt.rejectedOutput,
           )
         }
+      }
     }
     return outcome
   }
@@ -1454,7 +1484,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    schemaInvalidAttempt(error.reason, fileManifest, outputText)
+    schemaInvalidAttempt(
+      error.reason,
+      fileManifest,
+      outputText,
+      malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+    )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     schemaInvalidAttempt(error.reason, fileManifest, outputText)
   }
@@ -1479,8 +1514,10 @@ internal class FeatureTaskRuntimeRunLoop(
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
-    auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    if (!isCompactAuditOutput(run.phaseId, outputText)) {
+      auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
+        return schemaInvalidAttempt(reason, fileManifest, outputText)
+      }
     }
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
@@ -1612,6 +1649,16 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
     reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
+
+  private fun isCompactAuditOutput(phaseId: String, canonicalJson: String): Boolean {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return false
+    val wireOutput = JsonSupport.parseObjectOrNull(canonicalJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return false
+    val produced = JsonSupport.anyToStringAnyMap(wireOutput["produced_outputs"]) ?: return false
+    return produced.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS)
+  }
 
   @Suppress("ReturnCount", "CyclomaticComplexMethod")
   private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
@@ -1936,7 +1983,13 @@ internal class FeatureTaskRuntimeRunLoop(
     reason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     rejectedOutput: String? = null,
-  ): AttemptResult = AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
+    malformedOutput: Boolean = false,
+  ): AttemptResult = AttemptResult.schemaInvalid(
+    reason,
+    fileManifest,
+    boundedRejectedOutput(rejectedOutput),
+    malformedOutput,
+  )
 
   private fun persistPhase(
     run: PhaseRun,
@@ -2063,6 +2116,8 @@ internal class FeatureTaskRuntimeRunLoop(
             goalSubtaskReviewInput = run.goalReviewInput,
             specSource = run.specSource,
             priorSchemaFailure = priorSchemaFailure,
+            operatorBlockRetry = operatorBlockRetry
+              ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
             specReference = run.request.runInvariants.specReference,
             agentAddonSelection = run.request.agentAddonSelection,
           ),
@@ -2182,12 +2237,14 @@ internal class FeatureTaskRuntimeRunLoop(
       val validationReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
+      override val malformedOutput: Boolean,
     ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
+    val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
 
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
@@ -2195,7 +2252,8 @@ internal class FeatureTaskRuntimeRunLoop(
         validationReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         rejectedOutput: String?,
-      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput)
+        malformedOutput: Boolean = false,
+      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput, malformedOutput)
     }
   }
 

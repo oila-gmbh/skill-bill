@@ -15,6 +15,14 @@ class InvalidManifestSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class ReviewCompositionCycleError(message: String) : ShellContentContractException(message)
+
+class AmbiguousLaneOwnershipError(message: String) : ShellContentContractException(message)
+
+class IncompatibleCompositionContractError(message: String) : ShellContentContractException(message)
+
+class MissingCompositionLayerError(message: String) : ShellContentContractException(message)
+
 class InvalidAgentAddonSchemaError(
   val sourceLabel: String,
   val reason: String,
@@ -109,10 +117,14 @@ class InvalidDecompositionManifestSchemaError(
  * phase-output schema. The message carries the source label and violation
  * reason.
  */
+enum class FeatureTaskRuntimePhaseOutputFailureKind { MALFORMED, SCHEMA_INVALID }
+
 class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val sourceLabel: String,
   val reason: String,
   cause: Throwable? = null,
+  val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
+    FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,
@@ -486,6 +498,24 @@ class InvalidSkillMdShapeError(
   message: String,
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
+
+class InvalidNativeAgentLinkInventorySchemaError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
+class MissingInstalledNativeAgentError(
+  val logicalName: String,
+  val provider: String,
+  val expectedPath: String,
+  val reason: String,
+  val repairCommand: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Native agent '$logicalName' for provider '$provider' failed preflight at '$expectedPath': $reason. " +
+    "Repair with: $repairCommand",
+  cause,
+)
 
 /**
  * SKILL-102 subtask 1: surfaced when an internal-skill classification is invalid. The composed

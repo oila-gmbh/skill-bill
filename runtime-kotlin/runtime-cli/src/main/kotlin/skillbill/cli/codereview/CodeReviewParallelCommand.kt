@@ -13,10 +13,12 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.model.CliExecutionResult
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -64,6 +66,11 @@ class CodeReviewParallelCommand(
     "--execution-mode",
     help = "Shared execution mode for both lanes: delegated (default), auto, or inline.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
+  private val reviewRunId by option(
+    "--review-run-id",
+    help = "Review run id (rvw-YYYYMMDD-HHMMSS-XXXX) this review will report. Pass the same id used " +
+      "in the review output and import so review accounting is reachable from review_finished telemetry.",
+  )
 
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
@@ -96,6 +103,7 @@ class CodeReviewParallelCommand(
           timeout = timeoutMinutes?.minutes,
           codeReviewMode = parseExecutionMode(codeReviewMode),
           suppliedDiffPath = suppliedDiffPath(),
+          reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
@@ -108,7 +116,14 @@ class CodeReviewParallelCommand(
 
     val lanes = listOf(result.lane1, result.lane2)
     val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
-    val output = laneStatusOutput(lanes, result.mergeResult.formattedOutput)
+    val output = buildString {
+      append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+      result.accountingSummary?.let { summary ->
+        appendLine()
+        append("# Review accounting — ")
+        append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
+      }
+    }
     state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
   }
 

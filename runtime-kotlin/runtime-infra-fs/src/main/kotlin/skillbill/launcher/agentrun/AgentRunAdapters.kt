@@ -11,6 +11,8 @@ import java.nio.file.Path
 
 interface AgentRunAdapter {
   val agent: InstallAgent
+  val nativeReviewCapabilities: NativeReviewProviderCapabilities
+    get() = NativeReviewProviderCapabilities.UNMEDIATED
   fun launch(request: SkillRunRequest): AgentRunLaunchFacts
 }
 
@@ -19,6 +21,9 @@ class ProcessAgentRunAdapter(
   private val commandBuilder: AgentRunCommandBuilder,
   private val processRunner: AgentRunProcessRunner,
 ) : AgentRunAdapter {
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities
+    get() = commandBuilder.nativeReviewCapabilities
+
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
     val result = processRunner.run(
@@ -37,6 +42,12 @@ class ProcessAgentRunAdapter(
         outputSink = request.outputSink,
         usePtyStdio = command.usePtyStdio,
         idlePolicy = command.idlePolicy,
+        conversationIsolation = command.conversationIsolation,
+        reviewEvidenceBroker = request.reviewEvidenceBroker,
+        nativeReviewOperations = request.nativeReviewOperations,
+        nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
+          commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
+        },
       ),
     )
     val decoded = commandBuilder.outputDecoder.decode(result.stdout)
@@ -49,6 +60,7 @@ class ProcessAgentRunAdapter(
       interrupted = result.interrupted,
       spawnFailed = result.spawnFailed,
       liveness = result.liveness,
+      stdoutTruncated = result.stdoutTruncated,
       // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
       // descriptors derived from launch context the launcher controls — the
       // child working directory (session path) and a deterministic, non-secret
@@ -61,6 +73,9 @@ class ProcessAgentRunAdapter(
       outputTokens = decoded.outputTokens,
       reasoningTokens = decoded.reasoningTokens,
       totalTokens = decoded.totalTokens,
+      // This decoder runs after process completion. Completion facts are never an enforceable
+      // provider seam, irrespective of what a future command builder can expose in flight.
+      providerUsageEnforceable = false,
     )
   }
 
@@ -103,7 +118,7 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
   val root = structuredOutputMapper.readTree(stdout.trim())
   val usage = root.path("usage")
   DecodedAgentRunOutput(
-    text = root.path("result").takeIf { it.isTextual }?.asText() ?: stdout,
+    text = root.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
     inputTokens = usage.longOrNull("input_tokens"),
     cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
     outputTokens = usage.longOrNull("output_tokens"),
@@ -115,14 +130,16 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
 private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
   var usage: com.fasterxml.jackson.databind.JsonNode? = null
+  var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
     runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
+      decodedEnvelope = true
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
       event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
     }
   }
   return DecodedAgentRunOutput(
-    text = text ?: stdout,
+    text = text ?: if (decodedEnvelope) "" else stdout,
     inputTokens = usage?.longOrNull("input_tokens"),
     cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
     outputTokens = usage?.longOrNull("output_tokens"),

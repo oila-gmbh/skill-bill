@@ -176,13 +176,19 @@ class RuntimeGradleModuleLayeringTest {
       .toSet()
   }
 
+  /**
+   * Layering constrains the shipped dependency graph, so only main-source configurations are
+   * checked. Test and test-fixture code binds real adapters on purpose; that crossing is pinned
+   * per module by [RuntimeAdapterDependencyAllowlistTest].
+   */
   private fun assertNoProjectDependencies(moduleName: String, vararg bannedDependencies: String) {
     val modulePath = moduleName.replace(':', '/')
     val buildFile = runtimeRoot.resolve("$modulePath/build.gradle.kts")
     val source = Files.readString(buildFile)
     val projectDependencies =
-      Regex("project\\(\":([A-Za-z0-9:-]+)\"\\)")
-        .findAll(source)
+      source.lineSequence()
+        .filterNot { line -> TEST_CONFIGURATIONS.any { it in line } }
+        .flatMap { line -> Regex("project\\(\":([A-Za-z0-9:-]+)\"\\)").findAll(line) }
         .map { match -> match.groupValues[1] }
         .toSet()
     val violations =
@@ -199,5 +205,16 @@ class RuntimeGradleModuleLayeringTest {
 
   private companion object {
     val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)
+
+    val TEST_CONFIGURATIONS: List<String> = listOf(
+      "testImplementation",
+      "testFixturesImplementation",
+      "testFixturesApi",
+      "testRuntimeOnly",
+      "testCompileOnly",
+      "androidTestImplementation",
+      "jvmTestImplementation",
+      "commonTestImplementation",
+    )
   }
 }

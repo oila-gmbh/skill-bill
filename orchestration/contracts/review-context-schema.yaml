@@ -10,24 +10,121 @@ oneOf:
   - $ref: "#/$defs/accounting_summary"
 $defs:
   digest: { type: string, pattern: "^[a-f0-9]{64}$" }
-  path: { type: string, minLength: 1, pattern: "^(?!/)(?!.*(?:^|/)\.\.(?:/|$)).+$" }
+  identifier: { type: string, minLength: 1, pattern: '.*\S.*' }
+  path: { type: string, minLength: 1, pattern: '^(?!/)(?!.*\\)(?!.*(?:^|/)\.\.(?:/|$)).+$' }
   strings:
     type: array
     uniqueItems: true
-    items: { type: string, minLength: 1 }
-  header:
+    items: { type: string, minLength: 1, pattern: '.*\S.*' }
+  hunk_id: { type: string, pattern: "^[a-f0-9]{64}$" }
+  hunk_ids:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/hunk_id" }
+  review_revision:
     type: object
-    required: [contract_version, kind, review_id, packet_digest]
+    additionalProperties: false
+    required: [session_id, run_revision]
     properties:
-      contract_version: { const: "0.1" }
-      kind: { type: string }
-      review_id: { type: string, minLength: 1 }
-      packet_digest: { $ref: "#/$defs/digest" }
+      session_id: { $ref: "#/$defs/identifier" }
+      run_revision: { type: integer, minimum: 1 }
+  rule_reference:
+    type: object
+    additionalProperties: false
+    required: [rule_id, source_path, excerpt, digest]
+    properties:
+      rule_id: { $ref: "#/$defs/identifier" }
+      source_path: { $ref: "#/$defs/path" }
+      excerpt: { type: string, minLength: 1, maxLength: 2000, pattern: '.*\S.*' }
+      digest: { $ref: "#/$defs/digest" }
+  rule_references:
+    type: array
+    items: { $ref: "#/$defs/rule_reference" }
+  learnings_reference:
+    type: object
+    additionalProperties: false
+    required: [learning_id, source, digest]
+    properties:
+      learning_id: { $ref: "#/$defs/identifier" }
+      source: { $ref: "#/$defs/identifier" }
+      digest: { $ref: "#/$defs/digest" }
+  build_test_fact:
+    type: object
+    additionalProperties: false
+    required: [kind, command, outcome]
+    properties:
+      kind: { $ref: "#/$defs/identifier" }
+      command: { $ref: "#/$defs/identifier" }
+      outcome: { $ref: "#/$defs/identifier" }
+  dependency_allowlist:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/path" }
+  evidence_target:
+    type: object
+    additionalProperties: false
+    required: [target_id, path, hunk_ids]
+    properties:
+      target_id: { $ref: "#/$defs/identifier" }
+      path: { $ref: "#/$defs/path" }
+      hunk_ids: { $ref: "#/$defs/hunk_ids" }
+  evidence_targets:
+    type: array
+    items: { $ref: "#/$defs/evidence_target" }
+  lane_decision:
+    type: object
+    additionalProperties: false
+    required: [lane, included, reason, owned_paths, order_index, required_lane, origin_layer_chains, owning_pack, specialist_skill_name, add_ons]
+    properties:
+      lane: { $ref: "#/$defs/identifier" }
+      included: { type: boolean }
+      reason: { type: string, minLength: 1, pattern: '.*\S.*' }
+      signals: { $ref: "#/$defs/strings" }
+      owned_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/path" }
+      order_index: { type: integer, minimum: 0 }
+      required_lane: { type: boolean }
+      origin_layer_chains:
+        type: array
+        uniqueItems: true
+        items: { type: array, minItems: 1, items: { $ref: "#/$defs/identifier" } }
+      owning_pack: { type: [string, "null"] }
+      specialist_skill_name: { type: [string, "null"] }
+      add_ons: { $ref: "#/$defs/strings" }
+    allOf:
+      - if:
+          properties:
+            included: { const: true }
+          required: [included]
+        then:
+          required: [origin_layer_chains, owning_pack, specialist_skill_name]
+          properties:
+            origin_layer_chains: { minItems: 1 }
+            owning_pack: { $ref: "#/$defs/identifier" }
+            specialist_skill_name: { $ref: "#/$defs/identifier" }
+  expansion_record:
+    type: object
+    additionalProperties: false
+    required: [expansion_id, assignment_digest, requested_path, reachability_reason, authorized, sequence]
+    properties:
+      expansion_id: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      requested_path: { $ref: "#/$defs/path" }
+      reachability_reason: { type: string, minLength: 1, pattern: '.*\S.*' }
+      authorized: { type: boolean }
+      sequence: { type: integer, minimum: 0 }
+  expansion_records:
+    type: array
+    uniqueItems: true
+    items: { $ref: "#/$defs/expansion_record" }
   hunk:
     type: object
     additionalProperties: false
-    required: [path, old_start, old_count, new_start, new_count, content]
+    required: [hunk_id, path, old_start, old_count, new_start, new_count, content]
     properties:
+      hunk_id: { $ref: "#/$defs/hunk_id" }
       path: { $ref: "#/$defs/path" }
       old_start: { type: integer, minimum: 0 }
       old_count: { type: integer, minimum: 0 }
@@ -37,66 +134,89 @@ $defs:
   parent_packet:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, repository_identity, base_revision, head_revision, status, selected_lanes, changed_hunks]
+    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.6" }
       kind: { const: parent_packet }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
-      repository_identity: { type: string, minLength: 1 }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      repository_identity: { $ref: "#/$defs/identifier" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
       status: { type: string }
       stack: { type: [string, "null"] }
       pack: { type: [string, "null"] }
       add_ons: { $ref: "#/$defs/strings" }
+      composed_layers: { $ref: "#/$defs/strings" }
       selected_lanes: { $ref: "#/$defs/strings", minItems: 1 }
+      lane_decisions:
+        type: array
+        minItems: 1
+        items: { $ref: "#/$defs/lane_decision" }
       changed_hunks: { type: array, items: { $ref: "#/$defs/hunk" } }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      learnings_references:
+        type: array
+        items: { $ref: "#/$defs/learnings_reference" }
+      build_test_facts:
+        type: array
+        items: { $ref: "#/$defs/build_test_fact" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      expansion_ledger: { $ref: "#/$defs/expansion_records" }
   assignment:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.6" }
       kind: { const: assignment }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
-      lane: { type: string, minLength: 1 }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      lane: { $ref: "#/$defs/identifier" }
+      lane_decision: { $ref: "#/$defs/lane_decision" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
-      assigned_hunks: { $ref: "#/$defs/strings" }
+      assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
-      matched_rules: { $ref: "#/$defs/strings" }
-      evidence_targets: { $ref: "#/$defs/strings" }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      expansions: { $ref: "#/$defs/expansion_records" }
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.6" }
       kind: { const: launch }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
-      lane: { type: string, minLength: 1 }
-      base_revision: { type: string, minLength: 1 }
-      head_revision: { type: string, minLength: 1 }
-      specialist_contract: { type: string, minLength: 1 }
-      rubric: { type: string, minLength: 1 }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      lane: { $ref: "#/$defs/identifier" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
+      specialist_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
+      rubric: { type: string, minLength: 1, pattern: '.*\S.*' }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
-      assigned_hunks: { $ref: "#/$defs/strings" }
+      assigned_hunks: { $ref: "#/$defs/hunk_ids" }
       criteria_references: { $ref: "#/$defs/strings" }
-      matched_rules: { $ref: "#/$defs/strings" }
-      evidence_targets: { $ref: "#/$defs/strings" }
-      broker_id: { type: string, minLength: 1 }
+      matched_rules: { $ref: "#/$defs/rule_references" }
+      evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
+      broker_id: { $ref: "#/$defs/identifier" }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
   budget:
     type: object
     additionalProperties: false
-    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, provider_token_thresholds]
+    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, max_specialist_tool_calls, max_specialist_model_turns, provider_token_thresholds]
     properties:
       max_parent_packet_bytes: { type: integer, minimum: 1 }
       max_lane_launch_bytes: { type: integer, minimum: 1 }
@@ -104,6 +224,8 @@ $defs:
       max_evidence_result_bytes: { type: integer, minimum: 1 }
       max_lane_result_bytes: { type: integer, minimum: 1 }
       max_assignment_expansions: { type: integer, minimum: 0 }
+      max_specialist_tool_calls: { type: integer, minimum: 1 }
+      max_specialist_model_turns: { type: integer, minimum: 1 }
       provider_token_thresholds: { $ref: "#/$defs/provider_token_thresholds" }
   provider_token_thresholds:
     type: object
@@ -120,21 +242,21 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.6" }
       kind: { const: budget_outcome }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
-      lane: { type: string, minLength: 1 }
+      lane: { $ref: "#/$defs/identifier" }
       terminal_outcome: { enum: [review_context_budget_exceeded, budget_regression] }
-      budget_kind: { type: string, minLength: 1 }
+      budget_kind: { $ref: "#/$defs/identifier" }
       configured_limit: { type: integer, minimum: 0 }
       observed_value: { type: integer, minimum: 0 }
       enforceable: { type: boolean }
   usage:
     type: object
     additionalProperties: false
-    minProperties: 1
+    minProperties: 0
     properties:
       input_tokens: { type: integer, minimum: 0 }
       cached_input_tokens: { type: integer, minimum: 0 }
@@ -142,35 +264,78 @@ $defs:
       reasoning_tokens: { type: integer, minimum: 0 }
       total_tokens: { type: integer, minimum: 0 }
       fresh_token_approximation: { type: integer, minimum: 0 }
+      ownership: { enum: [direct, inclusive] }
   accounting_summary:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, lanes, aggregate_usage, budget_regression]
+    required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
-      contract_version: { const: "0.1" }
+      contract_version: { const: "0.6" }
       kind: { const: accounting_summary }
-      review_id: { type: string, minLength: 1 }
+      review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
+      parent:
+        $ref: "#/$defs/accounting_node"
       lanes:
         type: array
         items:
-          type: object
-          additionalProperties: false
-          required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, terminal_outcome, usage]
-          properties:
-            lane: { type: string, minLength: 1 }
-            assignment_digest: { $ref: "#/$defs/digest" }
-            launch_bytes: { type: integer, minimum: 0 }
-            evidence_bytes: { type: integer, minimum: 0 }
-            result_bytes: { type: integer, minimum: 0 }
-            expansions: { type: integer, minimum: 0 }
-            terminal_outcome: { enum: [completed, review_context_budget_exceeded, budget_regression, failed] }
-            usage: { $ref: "#/$defs/usage" }
-      aggregate_usage: { $ref: "#/$defs/usage" }
+          $ref: "#/$defs/accounting_node"
+      aggregate_counters: { $ref: "#/$defs/accounting_counters" }
+      aggregate_direct_usage: { $ref: "#/$defs/usage" }
+      aggregate_inclusive_usage: { $ref: "#/$defs/usage" }
       budget_regression: { type: boolean }
+  accounting_counters:
+    type: object
+    additionalProperties: false
+    required: [launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns]
+    properties:
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
+  accounting_node:
+    type: object
+    additionalProperties: false
+    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, inclusive_counters, provider_usage, direct_usage, inclusive_usage, terminal_outcome]
+    properties:
+      lane: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      launch_bytes: { type: integer, minimum: 0 }
+      evidence_bytes: { type: integer, minimum: 0 }
+      result_bytes: { type: integer, minimum: 0 }
+      expansions: { type: integer, minimum: 0 }
+      tool_calls: { type: integer, minimum: 0 }
+      model_turns: { type: integer, minimum: 0 }
+      inclusive_counters: { $ref: "#/$defs/accounting_counters" }
+      provider_usage:
+        allOf:
+          - { $ref: "#/$defs/usage" }
+          - type: object
+            properties:
+              ownership: { enum: [direct, inclusive] }
+      direct_usage: { $ref: "#/$defs/usage" }
+      inclusive_usage: { $ref: "#/$defs/usage" }
+      terminal_outcome:
+        enum: [completed, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure]
 x-coherence-checks:
   - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
   - Assignment revisions and lane identity equal their parent packet values.
   - Assignment paths and hunks are owned by the parent packet and remain unique.
   - Observed budget values exceed their configured limit for exceeded outcomes.
   - Durable projections omit prompts, diffs, source, project guidance, and tool-output bodies.
+  - Parent-packet lane_decisions cover exactly the selected_lanes set, one decision per lane.
+  - Every included lane decision carries a non-blank reason, and excluded lanes produce no assignment.
+  - Every assigned hunk_id and assigned path is owned by the parent packet.
+  - Dependency-allowlist entries are parent-packet-owned and disjoint from assigned_paths.
+  - Assignment and launch review_revision equal the parent-packet review_revision.
+  - Matched-rule excerpts stay within their bound and carry a digest over the referenced rule body.
+  - Expansion records reference an assignment_digest that exists in the current review.
+  - Expansion records are excluded from the digest inputs of the assignment and packet they reference, so recording an expansion leaves assignment_digest and packet_digest unchanged.
+  - An assignment records no more expansions than max_assignment_expansions allows.
+  - A budget_regression terminal_outcome is reported only for a non-enforceable provider dimension observed after the worker exited, and is never enforceable.
+  - Specialist tool calls and model turns are measured at the broker seam and terminate the lane with review_context_budget_exceeded once their budget is passed.
+  - Every inclusive usage value equals the node's direct usage plus each child node's direct usage exactly once.
+  - Aggregate direct usage sums direct ownership only; aggregate inclusive usage is the parent root and nested sessions are never added twice.
+  - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

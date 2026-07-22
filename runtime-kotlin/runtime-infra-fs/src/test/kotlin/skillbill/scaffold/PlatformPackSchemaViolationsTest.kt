@@ -20,6 +20,50 @@ import kotlin.test.assertFailsWith
  */
 class PlatformPackSchemaViolationsTest {
   @Test
+  fun `missing machine readable routing path fails before preparation`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+      declared_code_review_areas: [architecture]
+      declared_files:
+        baseline: code-review/content.md
+        areas:
+          architecture: code-review/architecture/content.md
+      lane_conditions:
+        architecture:
+          required: true
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    assertContains(error.message.orEmpty(), "path")
+  }
+
+  @Test
+  fun `missing declared area lane condition fails before preparation`() {
+    val manifest = """
+      platform: scenarioslug
+      contract_version: "1.2"
+      routing_signals:
+        strong: [".kt"]
+        path: ["*.kt"]
+      lane_conditions: {}
+      declared_code_review_areas: [architecture]
+      declared_files:
+        baseline: code-review/content.md
+        areas:
+          architecture: code-review/architecture/content.md
+    """.trimIndent()
+    val error = assertFailsWith<InvalidManifestSchemaError> {
+      loadPackFromInMemory("scenarioslug", manifest)
+    }
+    assertContains(error.message.orEmpty(), "lane_conditions")
+    assertContains(error.message.orEmpty(), "architecture")
+  }
+
+  @Test
   fun `missing platform field`() {
     val manifest = """
       contract_version: "1.2"

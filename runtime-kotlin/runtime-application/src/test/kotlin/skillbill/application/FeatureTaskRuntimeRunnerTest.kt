@@ -18,7 +18,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
-import skillbill.application.featuretask.FeatureTaskRuntimeSpecStatusProjector
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -31,6 +30,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -458,6 +458,36 @@ class FeatureTaskRuntimeRunnerTest {
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals(2, reviewRecord.attemptCount)
     assertEquals("completed", reviewRecord.status)
+  }
+
+  @Test
+  fun `malformed serialization retries do not consume semantic repair attempts`() {
+    var reviewAttempts = 0
+    val harness = runnerHarness(
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel != "review") return
+          reviewAttempts += 1
+          if (reviewAttempts <= 2) {
+            throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+              sourceLabel = "review",
+              reason = "Phase output is malformed: expected closing bracket",
+              failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+            )
+          }
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "semantic schema failure")
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertEquals(
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FORMAT_RETRY_ATTEMPTS +
+        FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS - 1,
+      reviewAttempts,
+    )
   }
 
   @Test
@@ -1864,7 +1894,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {
   @Test
-  fun `standalone run flips its spec status to complete before commit_push so the commit includes it`() {
+  fun `standalone run does not mutate spec status before commit_push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -1884,12 +1914,12 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertContains(requireNotNull(specAtCommitLaunch), "status: Complete")
-    assertContains(Files.readString(specPath), "status: Complete")
+    assertContains(requireNotNull(specAtCommitLaunch), "status: Pending")
+    assertContains(Files.readString(specPath), "status: Pending")
   }
 
   @Test
-  fun `goal-continuation run leaves its spec status for the goal runner manifest projection to own`() {
+  fun `goal-continuation run does not mutate its spec status`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-spec-status-goal")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -3797,7 +3827,6 @@ private fun runtimePhaseGates(
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
-  FeatureTaskRuntimeSpecStatusProjector(TestDecompositionManifestFileStore),
   specGate,
 )
 

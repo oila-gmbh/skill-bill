@@ -22,6 +22,8 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
+import skillbill.application.review.DelegatedReviewExecutionBroker
+import skillbill.application.review.GoalRunnerNativeReviewWorkerAdapter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -43,6 +45,7 @@ import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
@@ -70,7 +73,10 @@ import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
+import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
+import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
@@ -93,6 +99,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
@@ -132,9 +139,14 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewInputSource
+import skillbill.ports.review.ReviewLaunchIsolationResolver
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
+import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -159,6 +171,7 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -356,6 +369,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewNativeAgentPreflightPort(
+    adapter: FileSystemReviewNativeAgentPreflight,
+  ): ReviewNativeAgentPreflightPort = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore): GoalRunnerManifestStore = adapter
 
   @Provides
@@ -449,6 +468,10 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewRubricResolver(adapter: FileSystemReviewRubricResolver): ReviewRubricResolver = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureTaskRuntimeRunInvariantsSource(
     adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
   ): FeatureTaskRuntimeRunInvariantsSource = adapter
@@ -531,6 +554,28 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewContextEnvelopeValidator(
+    adapter: ReviewContextEnvelopeValidatorAdapter,
+  ): ReviewContextEnvelopeValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewEvidenceBrokerFactory(
+    adapter: FileSystemReviewEvidenceBrokerFactory,
+  ): ReviewEvidenceBrokerFactory = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun nativeReviewWorkerLauncher(adapter: GoalRunnerNativeReviewWorkerAdapter): NativeReviewWorkerLauncher =
+    adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewLaunchIsolationResolver(adapter: AgentRunReviewIsolationResolver): ReviewLaunchIsolationResolver =
+    adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver): FeatureSpecPathResolverPort =
     adapter
 
@@ -550,6 +595,7 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
+  abstract val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.

@@ -17,7 +17,6 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -35,18 +34,15 @@ class GoalRunnerStatusService(
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
-    return manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?.let { loadedState ->
-        val activeWorkflowIds = loadedState.manifest.activeWorkflowIds()
-        val authoritativeOutcomes = outcomeStore.reconcileAuthoritativeOutcomes(
+        val authoritativeOutcomes = outcomeStore.authoritativeOutcomes(
           issueKey = loadedState.manifest.issueKey,
-          activeWorkflowIds = activeWorkflowIds,
-          gate = GoalRunnerReconcileGate(allowInactiveReconciliation = false),
           dbPathOverride = request.dbPathOverride,
         )
-        val state = persistReconciledManifestIfChanged(loadedState, request, authoritativeOutcomes)
-        val currentSubtask = state.manifest.subtasks.firstOrNull { subtask ->
-          subtask.id == state.manifest.currentSubtaskIntent.subtaskId
+        val manifest = loadedState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
+        val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
+          subtask.id == manifest.currentSubtaskIntent.subtaskId
         }
         val progress = currentSubtask
           ?.workflowId
@@ -56,12 +52,12 @@ class GoalRunnerStatusService(
           subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
         }
         GoalRunnerStatusProjector.project(
-          manifest = state.manifest,
+          manifest = manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
             planning = manifestStore.planningStatus(
-              state.parentWorkflowId,
-              state.manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+              loadedState.parentWorkflowId,
+              manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
               planningBlock?.id,
               planningBlock?.blockedReason,
               request.dbPathOverride,
@@ -127,28 +123,6 @@ class GoalRunnerStatusService(
     null
   }
 
-  private fun persistReconciledManifestIfChanged(
-    loadedState: GoalRunnerManifestState,
-    request: GoalRunnerStatusRequest,
-    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
-  ): GoalRunnerManifestState {
-    val initialReconciled = loadedState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
-    if (initialReconciled == loadedState.manifest) {
-      return loadedState
-    }
-    val latestState = manifestStore.loadByIssueKey(
-      issueKey = loadedState.manifest.issueKey,
-      dbPathOverride = request.dbPathOverride,
-      repoRoot = request.repoRoot,
-    ) ?: loadedState
-    val latestReconciled = latestState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
-    return if (latestReconciled != latestState.manifest) {
-      manifestStore.save(latestState.copy(manifest = latestReconciled), request.dbPathOverride)
-    } else {
-      latestState
-    }
-  }
-
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return null
@@ -197,7 +171,13 @@ class GoalRunnerStatusService(
     val outcome = workflowId?.let { id ->
       preferredTerminalOutcome(subtask, id, request, authoritativeOutcomes)
     }
-    return if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
+    val staleRetryOutcome = workflowId != null &&
+      outcome?.workflowId == workflowId &&
+      outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
+      outcomeStore.progress(workflowId, request.dbPathOverride)?.workflowStatus == "running"
+    return if (staleRetryOutcome) {
+      subtask.copy(status = "in_progress", blockedReason = null)
+    } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
       subtask
     } else {
       val status = outcome.toManifestStatus()
@@ -255,14 +235,6 @@ private fun GoalRunnerStoredOutcome.toManifestStatus(): String = when (status) {
   GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
   -> "blocked"
 }
-
-private fun DecompositionManifest.activeWorkflowIds(): Set<String> = subtasks
-  .asSequence()
-  .filter { subtask -> subtask.status == "in_progress" || currentSubtaskIntent.subtaskId == subtask.id }
-  .mapNotNull(DecompositionSubtask::workflowId)
-  .map(String::trim)
-  .filter(String::isNotBlank)
-  .toSet()
 
 private fun DecompositionManifest.withDerivedCurrentIntent(): DecompositionManifest {
   val nextIntent = subtasks.firstOrNull { it.status == "blocked" }?.let { blocked ->

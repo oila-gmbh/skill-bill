@@ -171,6 +171,82 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `resume rejects saved planning when the parent spec changes`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited after planning")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(0, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.contains("provenance"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume reuses saved planning when only parent spec status frontmatter is removed`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.manifestFileStore.replaceSpec(
+      "spec.md",
+      "---\nstatus: Pending\n---\n\n# Initial feature contract",
+    )
+    val prepared = assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(state, harness.request()),
+    )
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract")
+
+    val resumed = harness.sweep.prepare(state, harness.request())
+
+    val outcome = assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
+    assertEquals(prepared.provenance, outcome.provenance)
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume rejects a non-status parent spec frontmatter change`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.manifestFileStore.replaceSpec(
+      "spec.md",
+      "---\nstatus: Pending\nowner: team-a\n---\n# Initial feature contract",
+    )
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec(
+      "spec.md",
+      "---\nowner: team-b\n---\n# Initial feature contract",
+    )
+
+    val resumed = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(resumed)
+    assertTrue(stopped.blockedReason.contains("provenance"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume rejects saved planning when a governed subtask spec changes`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec_subtask_1.md", "# Initial subtask contract edited after planning")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals("plan", stopped.lastResumableStep)
+    assertTrue(stopped.blockedReason.contains("cannot be recovered"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
   fun `non-skipped subtask with an allocated workflow remains planning eligible`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val allocated = manifest(subtaskCount = 1).let { manifest ->
@@ -644,6 +720,7 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
   private val readPaths = mutableListOf<String>()
   private val removedFileNames = mutableSetOf<String>()
   private var decompositionManifest = "content-decomposition-manifest.yaml"
+  private val specContents = mutableMapOf<String, String>()
 
   override fun readText(path: Path): String {
     check(path.fileName.toString() !in removedFileNames) { "missing scratch spec at ${path.fileName}" }
@@ -651,7 +728,7 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
     return if (path.fileName.toString() == "decomposition-manifest.yaml") {
       decompositionManifest
     } else {
-      "content-${path.fileName}"
+      specContents[path.fileName.toString()] ?: "content-${path.fileName}"
     }
   }
 
@@ -673,6 +750,10 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
 
   fun replaceDecompositionManifest(content: String) {
     decompositionManifest = content
+  }
+
+  fun replaceSpec(fileName: String, content: String) {
+    specContents[fileName] = content
   }
 }
 

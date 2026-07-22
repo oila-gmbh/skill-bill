@@ -1,6 +1,6 @@
 package skillbill.contracts.workflow
 
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
@@ -16,6 +16,14 @@ import kotlin.test.assertEquals
  * seam that actually runs first. These cases pin both layers to the same verdict.
  */
 class FeatureTaskRuntimeAuditRepairSchemaParityTest {
+  private val mapper = ObjectMapper()
+  private val schema by lazy {
+    val resource = FeatureTaskRuntimeAuditRepairPlanSchemaPaths.CLASSPATH_RESOURCE
+    val text = checkNotNull(javaClass.classLoader.getResourceAsStream(resource)) {
+      "Missing bundled audit repair schema '$resource'."
+    }.use { it.readBytes().toString(Charsets.UTF_8) }
+    loadAuditRepairPlanSchemaText(text, resource)
+  }
   private val accepted = listOf(
     "GoalSubtaskReviewSummaryReducer.fromOutput collapses each group via minByOrNull(::severityRank).",
     "labelFor returns List<String> instead of the sanitized stem.",
@@ -74,17 +82,8 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     }
   }
 
-  private fun schemaAcceptsEvidence(artifactRef: String, checkRef: String): Boolean = runCatching {
-    FeatureTaskRuntimePhaseOutputSchemaValidator.validate(
-      auditPhaseOutput("A bounded diagnosis.", artifactRef, checkRef),
-      "audit",
-    )
-  }.fold(
-    onSuccess = { true },
-    onFailure = { error ->
-      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) false else throw error
-    },
-  )
+  private fun schemaAcceptsEvidence(artifactRef: String, checkRef: String): Boolean =
+    schema.validate(mapper.valueToTree(auditRepairPlan("A bounded diagnosis.", artifactRef, checkRef))).isEmpty()
 
   private fun domainAcceptsEvidence(artifactRef: String, checkRef: String): Boolean = runCatching {
     FeatureTaskRuntimeEvidence(
@@ -97,14 +96,8 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     onFailure = { error -> if (error is IllegalArgumentException) false else throw error },
   )
 
-  private fun schemaAccepts(diagnosis: String): Boolean = runCatching {
-    FeatureTaskRuntimePhaseOutputSchemaValidator.validate(auditPhaseOutput(diagnosis), "audit")
-  }.fold(
-    onSuccess = { true },
-    onFailure = { error ->
-      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) false else throw error
-    },
-  )
+  private fun schemaAccepts(diagnosis: String): Boolean =
+    schema.validate(mapper.valueToTree(auditRepairPlan(diagnosis))).isEmpty()
 
   private fun domainAccepts(diagnosis: String): Boolean = runCatching { auditGap(diagnosis) }.fold(
     onSuccess = { true },
@@ -134,48 +127,33 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     ),
   )
 
-  private fun auditPhaseOutput(
+  private fun auditRepairPlan(
     diagnosis: String,
     artifactRef: String = "runtime-kotlin/integration",
     checkRef: String = "AC-001",
   ): Map<String, Any?> = mapOf(
-    "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-    "phase_id" to "audit",
-    "status" to "completed",
-    "summary" to "One criterion remains unmet.",
-    "verdict" to "gaps_found",
-    "produced_outputs" to mapOf(
-      "unmet_criteria" to listOf(
-        mapOf(
-          "acceptance_criterion_ref" to "AC-128",
-          "message" to "Integration coverage is missing.",
+    "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
+    "gaps" to listOf(
+      mapOf(
+        "gap_id" to "ac-128-gap-1",
+        "acceptance_criterion_ref" to "AC-128",
+        "acceptance_criterion_text" to "Integration coverage exists.",
+        "failure_evidence" to mapOf(
+          "observation" to "required_behavior_absent",
+          "artifact_ref" to artifactRef,
+          "check_ref" to checkRef,
         ),
-      ),
-      "audit_repair_plan" to mapOf(
-        "contract_version" to AUDIT_REPAIR_CONTRACT_VERSION,
-        "gaps" to listOf(
+        "diagnosis" to diagnosis,
+        "affected_boundary" to "runtime integration tests",
+        "repair_items" to listOf(
           mapOf(
-            "gap_id" to "ac-128-gap-1",
-            "acceptance_criterion_ref" to "AC-128",
-            "acceptance_criterion_text" to "Integration coverage exists.",
-            "failure_evidence" to mapOf(
-              "observation" to "required_behavior_absent",
-              "artifact_ref" to artifactRef,
-              "check_ref" to checkRef,
-            ),
-            "diagnosis" to diagnosis,
-            "affected_boundary" to "runtime integration tests",
-            "repair_items" to listOf(
-              mapOf(
-                "repair_item_id" to "ac-128-gap-1-item-1",
-                "intended_outcome" to "The integration scenario verifies the feature.",
-                "implementation_actions" to listOf("Add and execute the integration scenario."),
-                "affected_paths_or_symbols" to listOf("runtime-core/src/test"),
-                "required_verification" to listOf("Run the integration test."),
-                "depends_on" to emptyList<String>(),
-                "status" to "pending",
-              ),
-            ),
+            "repair_item_id" to "ac-128-gap-1-item-1",
+            "intended_outcome" to "The integration scenario verifies the feature.",
+            "implementation_actions" to listOf("Add and execute the integration scenario."),
+            "affected_paths_or_symbols" to listOf("runtime-core/src/test"),
+            "required_verification" to listOf("Run the integration test."),
+            "depends_on" to emptyList<String>(),
+            "status" to "pending",
           ),
         ),
       ),

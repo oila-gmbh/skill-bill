@@ -27,11 +27,19 @@ object GoalPlanningPreparationSchemaValidator {
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
       val sorted = errors.sortedWith(violationOrdering)
+      val fieldPath = dottedFieldPath(sorted.first().instanceLocation?.toString().orEmpty())
+      val validationReason = formatValidationReason(sorted, instance)
+      val reason = if (fieldPath == "provenance.phase_output_contract_version") {
+        "$validationReason Existing workflow state is incompatible; hard-reset it with " +
+          "'skill-bill goal reset <issue-key> --hard --yes'."
+      } else {
+        validationReason
+      }
       goalPlanningPreparationLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, sorted, instance))
       throw InvalidGoalPlanningPreparationSchemaError(
         sourceLabel = sourceLabel,
-        fieldPath = dottedFieldPath(sorted.first().instanceLocation?.toString().orEmpty()),
-        reason = formatValidationReason(sorted, instance),
+        fieldPath = fieldPath,
+        reason = reason,
       )
     }
   }

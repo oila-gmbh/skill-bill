@@ -7,6 +7,9 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
@@ -114,7 +117,7 @@ class CliCodeReviewParallelRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(2, launcher.launchCount)
-    assertContains(result.stdout, "A.kt:1")
+    assertContains(result.stdout, "path=\"Test.kt\" | line=1")
     assertContains(result.stdout, "[claude")
   }
 
@@ -324,7 +327,25 @@ private fun createStagedFile(dir: Path) {
   ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
 }
 
-private class NoOpAgentRunLauncher : AgentRunLauncher {
+private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher {
+  override fun launchNativeReview(request: NativeReviewWorkerRequest): AgentRunLaunchOutcome = launch(
+    AgentRunLaunchRequest(
+      agentId = request.agentId,
+      skillRunRequest = SkillRunRequest(
+        issueKey = request.issueKey,
+        repoRoot = request.repoRoot,
+        timeout = request.timeout,
+        promptOverride = request.prompt,
+        modelOverride = request.modelOverride,
+        conversationIsolation = ConversationIsolation.NONE,
+        reviewEvidenceBroker = request.broker,
+        nativeReviewOperations = request.operations,
+      ),
+    ),
+  )
+}
+
+private class NoOpAgentRunLauncher : ParallelTestAgentRunLauncher() {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
     exitStatus = 0,
@@ -335,7 +356,7 @@ private class NoOpAgentRunLauncher : AgentRunLauncher {
   )
 }
 
-private class ParallelReviewSuccessLauncher : AgentRunLauncher {
+private class ParallelReviewSuccessLauncher : ParallelTestAgentRunLauncher() {
   private val count = AtomicInteger(0)
   val launchCount: Int get() = count.get()
 
@@ -344,7 +365,7 @@ private class ParallelReviewSuccessLauncher : AgentRunLauncher {
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
-      stdout = "- [F-001] Major | High | A.kt:1 | Issue",
+      stdout = "- [F-001] Major | High | Test.kt:1 | Issue",
       stderr = "",
       timedOut = false,
       spawnFailed = false,
@@ -352,7 +373,7 @@ private class ParallelReviewSuccessLauncher : AgentRunLauncher {
   }
 }
 
-private class ParallelReviewFailFirstLaneLauncher : AgentRunLauncher {
+private class ParallelReviewFailFirstLaneLauncher : ParallelTestAgentRunLauncher() {
   // Route the failure by agent id, not call order: the two lanes launch concurrently, so a
   // call-count check is nondeterministic. agent1 (claude) is the failing lane.
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
@@ -379,7 +400,7 @@ private class ParallelReviewFailFirstLaneLauncher : AgentRunLauncher {
   }
 }
 
-private class BothFailLauncher : AgentRunLauncher {
+private class BothFailLauncher : ParallelTestAgentRunLauncher() {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
     exitStatus = null,
@@ -390,7 +411,7 @@ private class BothFailLauncher : AgentRunLauncher {
   )
 }
 
-private class RecordingParallelLauncher : AgentRunLauncher {
+private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
   private val lock = Any()
   val agentIds: MutableList<String> = mutableListOf()
   val modelsByAgent: MutableMap<String, String?> = mutableMapOf()

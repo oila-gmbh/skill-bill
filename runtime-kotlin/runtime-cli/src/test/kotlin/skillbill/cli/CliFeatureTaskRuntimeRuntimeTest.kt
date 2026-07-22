@@ -965,6 +965,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(1, blocked.exitCode, blocked.stdout)
     val workflowId = blocked.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
+    val operatorReason = "Operator applied the external fix; retry the blocked phase."
     val retry = CliRuntime.run(
       listOf(
         "--db",
@@ -975,7 +976,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
         "--phase",
         "implement",
         "--reason",
-        "Operator applied the external fix; retry the blocked phase.",
+        operatorReason,
       ),
       fixture.context(RecordingPhaseLauncher()),
     )
@@ -1002,6 +1003,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
       listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       resumedLauncher.phaseOrder(),
     )
+    val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
+    assertContains(resumedPrompts.first(), operatorReason)
+    assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })
   }
 
   @Test
@@ -1948,25 +1952,26 @@ private class RecordingPhaseLauncher(
     // output validator rejects it and the runner never marks the phase complete.
     val INVALID_PHASE_OUTPUT =
       """
-      contract_version: "0.2"
+      contract_version: "0.3"
       phase_id: "implement"
       """.trimIndent()
 
     fun validPhaseOutput(phaseId: String): String {
-      // A clean review/audit must emit a verification signal (an empty findings/unmet_criteria array
+      // A clean review/audit must emit a verification signal (an empty findings/gaps array
       // affirms no blocking findings / every criterion met) or the runtime gate blocks it (SKILL-85
       // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
       val producedOutputs = when (phaseId) {
         "review" -> "findings: []"
-        "audit" -> "unmet_criteria: []"
+        "audit" -> "gaps: []"
         else -> """tasks: ["task-1"]"""
       }
       val base =
         """
-        contract_version: "0.2"
+        contract_version: "0.3"
         phase_id: "$phaseId"
         status: "completed"
         summary: "Phase produced a validated output."
+        ${if (phaseId == "audit") "verdict: \"satisfied\"" else ""}
         produced_outputs:
           $producedOutputs
         """.trimIndent()
@@ -1986,7 +1991,7 @@ private class RecordingPhaseLauncher(
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {
-        "contract_version": "0.2",
+        "contract_version": "0.3",
         "phase_id": "plan",
         "status": "completed",
         "summary": "Plan needs ordered subtasks.",

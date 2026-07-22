@@ -26,12 +26,21 @@ data class NativeAgentRegenerationResult(
 
 data class NativeAgentInstallRenderResult(
   val generatedFiles: List<Path>,
+  val artifacts: List<NativeAgentRenderedArtifact>,
   val cacheRoot: Path,
+)
+
+data class NativeAgentRenderedArtifact(
+  val logicalName: String,
+  val path: Path,
+  val contentDigest: String,
 )
 
 data class NativeAgentInstallRenderOverrides(
   val cacheRoot: Path? = null,
   val sourceRoots: List<Path>? = null,
+  val beforeMutation: (Path) -> Unit = {},
+  val afterTemporaryCreation: (Path) -> Unit = {},
 )
 
 data class NativeAgentInstallRenderRequest(
@@ -99,6 +108,7 @@ object NativeAgentOperations {
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
+  @Suppress("LongMethod", "TooGenericExceptionCaught")
   fun renderInstallArtifacts(request: NativeAgentInstallRenderRequest): NativeAgentInstallRenderResult {
     val platformPacksRoot = request.platformPacksRoot
     val skillsRoot = request.skillsRoot
@@ -123,34 +133,72 @@ object NativeAgentOperations {
         contents = provider.render(composed).toByteArray(Charsets.UTF_8),
       )
     }
+    request.overrides.beforeMutation(cacheRoot)
+    request.overrides.beforeMutation(providerRoot)
     Files.createDirectories(providerRoot)
+    val orphanCandidates = Files.list(providerRoot).use { stream ->
+      stream.filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
+        .filter { path -> path.fileName.toString() !in rendered.map { it.targetName }.toSet() }
+        .toList()
+    }
     val staging = Files.createTempDirectory(providerRoot, ".skill-bill-native-agent-render-")
-    return try {
+    request.overrides.afterTemporaryCreation(staging)
+    var result: NativeAgentInstallRenderResult? = null
+    var initiatingFailure: Throwable? = null
+    try {
       rendered.forEach { entry ->
         Files.write(staging.resolve(entry.targetName), entry.contents)
       }
-      val generated = promoteStagedRenders(providerRoot, staging, rendered)
-      NativeAgentInstallRenderResult(
+      val generated = promoteStagedRenders(
+        providerRoot,
+        staging,
+        rendered,
+        orphanCandidates,
+        request.overrides.beforeMutation,
+      )
+      result = NativeAgentInstallRenderResult(
         generatedFiles = generated.sortedBy { it.toString() },
+        artifacts = generated.map { path ->
+          NativeAgentRenderedArtifact(
+            logicalName = path.fileName.toString().removeSuffix(".${provider.extension}"),
+            path = path,
+            contentDigest = sha256(Files.readAllBytes(path)),
+          )
+        }.sortedBy { it.path.toString() },
         cacheRoot = cacheRoot,
       )
-    } finally {
-      deleteDirectoryRecursively(staging)
+    } catch (error: Exception) {
+      initiatingFailure = error
     }
+    val cleanupFailure = runCatching { deleteDirectoryRecursively(staging) }.exceptionOrNull()
+    cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
+    initiatingFailure?.let { throw it }
+    cleanupFailure?.let { throw it }
+    return requireNotNull(result)
   }
+
+  private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes)
+    .joinToString("") { byte -> "%02x".format(byte) }
 
   private data class RenderedAgent(val targetName: String, val contents: ByteArray) {
     override fun equals(other: Any?): Boolean = this === other
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
-  private fun promoteStagedRenders(providerRoot: Path, staging: Path, rendered: List<RenderedAgent>): List<Path> {
+  private fun promoteStagedRenders(
+    providerRoot: Path,
+    staging: Path,
+    rendered: List<RenderedAgent>,
+    orphanCandidates: List<Path>,
+    beforeMutation: (Path) -> Unit,
+  ): List<Path> {
     Files.createDirectories(providerRoot)
-    val expectedNames = rendered.map { it.targetName }.toSet()
-    pruneOrphanArtifacts(providerRoot, expectedNames)
+    pruneOrphanArtifacts(orphanCandidates, beforeMutation)
     return rendered.map { entry ->
       val target = providerRoot.resolve(entry.targetName)
       val source = staging.resolve(entry.targetName)
+      beforeMutation(target)
       try {
         Files.move(
           source,
@@ -169,15 +217,10 @@ object NativeAgentOperations {
     }
   }
 
-  private fun pruneOrphanArtifacts(providerRoot: Path, expectedNames: Set<String>) {
-    if (!Files.isDirectory(providerRoot)) {
-      return
-    }
-    Files.list(providerRoot).use { stream ->
-      stream
-        .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-        .filter { path -> path.fileName.toString() !in expectedNames }
-        .forEach(Files::deleteIfExists)
+  private fun pruneOrphanArtifacts(orphanCandidates: List<Path>, beforeMutation: (Path) -> Unit) {
+    orphanCandidates.forEach { path ->
+      beforeMutation(path)
+      Files.deleteIfExists(path)
     }
   }
 

@@ -17,6 +17,8 @@ routing_signals:
     - "Prefer PHP when Composer metadata, PHP source files, or PHP tests dominate the changed product surface."
     - "Do not prefer PHP in adjacent mixed-stack repositories when PHP appears only as tooling or CI glue around another dominant stack."
     - "Exclude vendor/ dependencies, generated clients, and other generated artifacts from dominance scoring."
+  path: ["composer.json", ".php", "*.php"]
+  content: ["<?php", "namespace ", "function ", "use "]
 
 declared_code_review_areas:
   - api-contracts
@@ -65,6 +67,18 @@ area_metadata:
   ux-accessibility:
     focus: "PHP-rendered labels, errors, keyboard and focus behavior, landmarks, live updates, localization, and progressive enhancement"
 
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["PDO", "hydrate", "serialize", "OPcache"] }
+  security: { content: ["authorize", "csrf", "deserialize", "secret"] }
+  testing: { path: ["Test.php", "Pest.php"] }
+  api-contracts: { content: ["Request", "Response", "webhook", "json"] }
+  persistence: { content: ["transaction", "Doctrine", "Eloquent", "database"] }
+  reliability: { content: ["retry", "queue", "timeout", "worker"] }
+  ui: { content: ["Blade", "Twig", "Livewire", "Form"] }
+  ux-accessibility: { content: ["aria-", "focus", "keyboard", "localization"] }
+
 declared_quality_check_file: quality-check/bill-php-code-check/content.md
 
 # Pointer files are generated into render/install output from this block.
@@ -85,75 +99,35 @@ pointers:
     - name: telemetry-contract.md
       target: orchestration/telemetry-contract/PLAYBOOK.md
   code-review/bill-php-code-review-api-contracts:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-architecture:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-performance:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-persistence:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-platform-correctness:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-reliability:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-security:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-testing:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-ui:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-php-code-review-ux-accessibility:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   quality-check/bill-php-code-check:
     - name: shell-ceremony.md
       target: orchestration/shell-content-contract/shell-ceremony.md

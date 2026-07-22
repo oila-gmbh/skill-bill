@@ -23,7 +23,21 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
-interface GoalRunnerManifestStore {
+interface GoalRunnerManifestLookup {
+  fun loadByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerManifestState?
+
+  fun readByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+}
+
+interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
@@ -31,12 +45,6 @@ interface GoalRunnerManifestStore {
     blockedReason: String? = null,
     dbPathOverride: String? = null,
   ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot? = null
-
-  fun loadByIssueKey(
-    issueKey: String,
-    dbPathOverride: String? = null,
-    repoRoot: Path? = null,
-  ): GoalRunnerManifestState?
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 
@@ -123,6 +131,9 @@ interface GoalRunnerReviewOutcomeStore {
 }
 
 interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalRunnerReviewOutcomeStore {
+
+  fun authoritativeOutcomes(issueKey: String, dbPathOverride: String? = null): Map<Int, GoalRunnerStoredOutcome> =
+    emptyMap()
 
   // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
   // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is

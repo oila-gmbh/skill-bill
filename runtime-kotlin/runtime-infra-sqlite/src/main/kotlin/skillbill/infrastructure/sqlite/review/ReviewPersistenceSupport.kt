@@ -1,10 +1,53 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.contracts.JsonSupport
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
+
+fun upsertReviewAccounting(connection: Connection, record: ReviewAccountingRecord) {
+  connection.prepareStatement(
+    """
+    INSERT INTO review_accounting (review_id, packet_digest, bounded_payload_json, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(review_id) DO UPDATE SET
+      packet_digest = excluded.packet_digest,
+      bounded_payload_json = excluded.bounded_payload_json,
+      updated_at = CURRENT_TIMESTAMP
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(PARAM_ONE, record.reviewId)
+    statement.setString(PARAM_TWO, record.packetDigest)
+    statement.setString(PARAM_THREE, JsonSupport.mapToJsonString(record.boundedPayload))
+    statement.executeUpdate()
+  }
+}
+
+fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccountingRecord? =
+  connection.prepareStatement(
+    "SELECT packet_digest, bounded_payload_json FROM review_accounting WHERE review_id = ?",
+  ).use { statement ->
+    statement.setString(1, reviewId)
+    statement.executeQuery().use { rows ->
+      if (!rows.next()) return@use null
+      ReviewAccountingRecord(
+        reviewId,
+        rows.getString("packet_digest"),
+        requireNotNull(decodeBoundedAccounting(rows.getString("bounded_payload_json"))) {
+          "Malformed bounded review accounting for '$reviewId'."
+        },
+      )
+    }
+  }
+
+// The bounded-payload contract is expressed in plain Kotlin values, so a stored row is decoded all
+// the way down before it reaches the record's validator.
+private fun decodeBoundedAccounting(rawJson: String): Map<String, Any?>? = JsonSupport.parseObjectOrNull(rawJson)?.let {
+  JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+}
 
 fun existingReviewSummary(connection: Connection, reviewRunId: String): ReviewSummary? =
   connection.prepareStatement(reviewSummarySql).use { statement ->

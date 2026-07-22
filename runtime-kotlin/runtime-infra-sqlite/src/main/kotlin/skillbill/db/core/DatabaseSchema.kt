@@ -83,6 +83,14 @@ internal object DatabaseSchema {
       )
       """.trimIndent(),
       """
+      CREATE TABLE IF NOT EXISTS review_accounting (
+        review_id TEXT PRIMARY KEY,
+        packet_digest TEXT NOT NULL,
+        bounded_payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+      """
       CREATE TABLE IF NOT EXISTS findings (
         review_run_id TEXT NOT NULL,
         finding_id TEXT NOT NULL,
@@ -445,7 +453,7 @@ internal object DatabaseSchema {
         contract_version TEXT NOT NULL CHECK (contract_version = '0.2'), parent_spec_hash TEXT NOT NULL,
         decomposition_manifest_hash TEXT NOT NULL, planning_contract_id TEXT NOT NULL,
         planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'),
-        phase_output_contract_id TEXT NOT NULL, phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')),
+        phase_output_contract_id TEXT NOT NULL, phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.2', '0.3')),
         payload_sha256 TEXT NOT NULL, preplan_payload_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(normalized_issue_key, repository_identity)
       )
@@ -458,7 +466,7 @@ internal object DatabaseSchema {
         preparation_status TEXT NOT NULL CHECK (preparation_status = 'prepared'), contract_version TEXT NOT NULL CHECK (contract_version = '0.2'),
         parent_spec_hash TEXT NOT NULL, decomposition_manifest_hash TEXT NOT NULL, planning_contract_id TEXT NOT NULL,
         planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'), phase_output_contract_id TEXT NOT NULL,
-        phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')), payload_sha256 TEXT NOT NULL,
+        phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.2', '0.3')), payload_sha256 TEXT NOT NULL,
         plan_payload_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY(parent_goal_workflow_id, subtask_id), UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
         UNIQUE(parent_goal_workflow_id, manifest_order),

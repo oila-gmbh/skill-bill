@@ -138,7 +138,7 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(600_000, budget.maxParentPacketBytes)
     assertEquals(60_000, budget.maxLaneLaunchBytes)
     assertEquals(1, budget.maxAssignmentExpansions)
-    assertEquals(64_000, budget.providerTokenThresholds.inputTokens)
+    assertEquals(40_000, budget.providerTokenThresholds.inputTokens)
     assertEquals(100_000, budget.providerTokenThresholds.totalTokens)
   }
 

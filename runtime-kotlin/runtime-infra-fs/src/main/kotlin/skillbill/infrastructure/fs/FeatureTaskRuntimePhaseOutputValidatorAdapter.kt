@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
@@ -22,8 +21,6 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
   override fun normalizePhaseOutput(
     phaseOutputText: String,
     sourceLabel: String,
-  ): NormalizedFeatureTaskRuntimePhaseOutput {
-    val envelope = FeatureTaskRuntimePhaseOutputSchemaValidator.validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
-    return NormalizedFeatureTaskRuntimePhaseOutput(JsonSupport.mapToJsonString(envelope), envelope)
-  }
+  ): NormalizedFeatureTaskRuntimePhaseOutput =
+    FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutput(phaseOutputText, sourceLabel)
 }

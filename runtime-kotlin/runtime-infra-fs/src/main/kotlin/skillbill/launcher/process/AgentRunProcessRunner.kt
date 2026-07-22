@@ -1,10 +1,14 @@
 package skillbill.launcher.process
 
+import skillbill.launcher.agentrun.NativeReviewLifecycleCallbacks
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -31,6 +35,10 @@ data class AgentRunProcessRequest(
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+  val conversationIsolation: ConversationIsolation? = null,
+  val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
+  val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val nativeReviewLifecycleCallbacks: NativeReviewLifecycleCallbacks? = null,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }
@@ -45,6 +53,15 @@ data class AgentRunProcessRequest(
     require(statusHeartbeatInterval.isPositive()) { "Agent run status heartbeat interval must be positive." }
     operationDeadline?.let { deadline ->
       require(deadline.isPositive()) { "Agent run operation deadline must be positive when provided." }
+    }
+    require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
+      "A process review evidence transport requires fresh-context isolation."
+    }
+    require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
+      "A process review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require(nativeReviewLifecycleCallbacks == null || nativeReviewOperations != null) {
+      "Native review lifecycle callbacks require the operation protocol."
     }
   }
 }
@@ -81,6 +98,8 @@ data class AgentRunProcessResult(
   val interrupted: Boolean,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
+  /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
+  val stdoutTruncated: Boolean = false,
 )
 
 interface AgentRunProcessRunner {

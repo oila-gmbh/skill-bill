@@ -8,17 +8,20 @@ import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.FeatureAddonUsage
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
@@ -127,6 +130,15 @@ internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
   packs
     .filter { it.codeReviewComposition != null }
     .forEach(::validateCompositionModeSupport)
+  packs
+    .filter { it.codeReviewComposition != null }
+    .forEach { root ->
+      ReviewLaunchPlanPolicy.flatten(
+        routedSlug = root.slug,
+        manifests = packs,
+        selectedAreas = packs.flatMapTo(linkedSetOf()) { it.declaredCodeReviewAreas },
+      )
+    }
 }
 
 private fun loadCompositionClosure(rootPack: PlatformManifest): List<PlatformManifest> {
@@ -204,10 +216,10 @@ private fun validateCompositionModeSupport(sourceSlug: String, index: Int, layer
 
 internal fun unsupportedCompositionModeReason(layer: CodeReviewBaselineLayer): String? = when (layer.mode) {
   CodeReviewCompositionMode.KmpBaseline ->
-    if (layer.platform == "kotlin" && layer.skill == "bill-kotlin-code-review") {
+    if (layer.skill == "bill-${layer.platform}-code-review") {
       null
     } else {
-      "Mode '${layer.mode.wireValue}' is supported only for 'kotlin/bill-kotlin-code-review'."
+      "Mode '${layer.mode.wireValue}' requires the referenced pack's baseline code-review skill."
     }
 }
 
@@ -297,21 +309,26 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   }
 
   val contractVersion = requireStringField(manifest, slug, "contract_version")
-  val routingSignals = parseRoutingSignals(manifest, slug)
   val declaredAreas = parseDeclaredAreas(manifest, slug)
+  val routingSignals = parseRoutingSignals(manifest, slug, requirePath = manifest["lane_conditions"] != null)
   val declaredFiles = parseDeclaredFiles(manifest, slug, packRoot, declaredAreas)
   val areaMetadata = parseAreaMetadata(manifest, slug, declaredAreas)
+  val laneConditions = parseLaneConditions(manifest, slug, declaredAreas)
   val displayName = parseOptionalString(manifest, slug, "display_name")
   val notes = parseOptionalString(manifest, slug, "notes")
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
   val codeReviewComposition = parseCodeReviewComposition(manifest, slug)
   val pointers = parsePointers(manifest, slug)
   val addonUsage = parseAddonUsage(
-    manifest = manifest,
-    slug = slug,
-    packRoot = packRoot,
-    pointers = pointers,
-    declaredSkillDirs = declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile),
+    manifest,
+    AddonUsageManifestContext(
+      slug = slug,
+      packRoot = packRoot,
+      pointers = pointers,
+      declaredSkillDirs = declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile),
+      declaredAreas = declaredAreas.toSet(),
+      strictReviewRouting = laneConditions.isNotEmpty(),
+    ),
   )
   val featureAddonUsage = parseFeatureAddonUsage(
     manifest = manifest,
@@ -326,8 +343,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   // fork-specific fields without patching the canonical schema or the Kotlin runtime.
   // The anchored set is sourced from the schema (`x-runtime-anchored: true`) — never
   // hardcoded here — so the schema stays the single source of truth.
-  val anchoredKeys = anchoredTopLevelFieldNames()
-  val customFields: Map<String, Any?> = typedManifest.filterKeys { it !in anchoredKeys }
+  val customFields = extractCustomFields(typedManifest)
 
   // SKILL-48 A5(b): required anchored fields (e.g. `platform`, `routing_signals`) catch typos
   // via JSON Schema `required`, but OPTIONAL anchored fields (`display_name`, `notes`,
@@ -336,7 +352,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   // anchored field would just default. Walk every customFields key and loud-fail when it is
   // exactly one edit away from an anchored top-level field name. The check is case-sensitive
   // and runs entirely in Kotlin so the canonical schema stays unchanged.
-  guardAgainstAnchoredFieldTypos(slug, manifestPath, customFields.keys, anchoredKeys)
+  guardAgainstAnchoredFieldTypos(slug, manifestPath, customFields.keys, anchoredTopLevelFieldNames())
 
   return PlatformManifest(
     slug = slug,
@@ -346,6 +362,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     declaredCodeReviewAreas = declaredAreas,
     declaredFiles = declaredFiles,
     areaMetadata = areaMetadata,
+    laneConditions = laneConditions,
     displayName = displayName,
     notes = notes,
     declaredQualityCheckFile = declaredQualityCheckFile,
@@ -356,6 +373,9 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     customFields = customFields,
   )
 }
+
+private fun extractCustomFields(manifest: Map<String, Any?>): Map<String, Any?> =
+  manifest.filterKeys { it !in anchoredTopLevelFieldNames() }
 
 private fun requireManifestMap(slug: String, manifestPath: Path, raw: Any?): Map<*, *> = raw as? Map<*, *>
   ?: throw InvalidManifestSchemaError(
@@ -449,14 +469,55 @@ private fun validateAgainstCanonicalSchema(slug: String, manifest: Map<*, *>): M
   return typedManifest
 }
 
-private fun parseRoutingSignals(manifest: Map<*, *>, slug: String): RoutingSignals {
+private fun parseRoutingSignals(manifest: Map<*, *>, slug: String, requirePath: Boolean): RoutingSignals {
   val routing = requireMappingField(manifest, slug, "routing_signals")
   val strongRaw = routing["strong"]
     ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.strong' is required.")
+  if (requirePath && routing["path"] == null) {
+    throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.path' is required.")
+  }
   return RoutingSignals(
     strong = parseStringList(slug, strongRaw, "routing_signals.strong", required = true),
     tieBreakers = parseStringList(slug, routing["tie_breakers"], "routing_signals.tie_breakers", required = false),
+    path = parseStringList(
+      slug,
+      routing["path"] ?: strongRaw.takeUnless { requirePath },
+      "routing_signals.path",
+      required = true,
+    ),
+    content = parseStringList(slug, routing["content"], "routing_signals.content", required = false),
   )
+}
+
+private fun parseLaneConditions(
+  manifest: Map<*, *>,
+  slug: String,
+  declaredAreas: List<String>,
+): Map<String, ReviewLaneCondition> {
+  val raw = manifest["lane_conditions"] ?: return emptyMap()
+  val mapping = raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError("Platform pack '$slug': 'lane_conditions' must be a mapping.")
+  val parsed = mapping.map { (areaRaw, conditionRaw) ->
+    val area = areaRaw as? String
+      ?: throw InvalidManifestSchemaError("Platform pack '$slug': lane condition areas must be strings.")
+    if (area !in declaredAreas) {
+      throw InvalidManifestSchemaError("Platform pack '$slug': lane condition '$area' is not a declared area.")
+    }
+    val condition = conditionRaw as? Map<*, *>
+      ?: throw InvalidManifestSchemaError("Platform pack '$slug': lane condition '$area' must be a mapping.")
+    area to ReviewLaneCondition(
+      required = condition["required"] as? Boolean ?: false,
+      path = parseStringList(slug, condition["path"], "lane_conditions.$area.path", required = false),
+      content = parseStringList(slug, condition["content"], "lane_conditions.$area.content", required = false),
+    )
+  }.toMap()
+  val missing = declaredAreas.toSet() - parsed.keys
+  if (missing.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'lane_conditions' is missing declared areas ${missing.sorted()}.",
+    )
+  }
+  return parsed
 }
 
 private fun parseDeclaredAreas(manifest: Map<*, *>, slug: String): List<String> {
@@ -674,19 +735,26 @@ internal fun parsePointers(manifest: Map<*, *>, slug: String): List<PointerSpec>
   return collected
 }
 
+internal data class AddonUsageManifestContext(
+  val slug: String,
+  val packRoot: Path,
+  val pointers: List<PointerSpec>,
+  val declaredSkillDirs: Set<String>,
+  val declaredAreas: Set<String>,
+  val strictReviewRouting: Boolean = true,
+)
+
 internal fun parseAddonUsage(
   manifest: Map<*, *>,
-  slug: String,
-  packRoot: Path,
-  pointers: List<PointerSpec>,
-  declaredSkillDirs: Set<String>,
+  manifestContext: AddonUsageManifestContext,
 ): List<GovernedAddonUsage> {
+  val slug = manifestContext.slug
   val raw = manifest["addon_usage"] ?: return emptyList()
   val usageMap = raw as? Map<*, *>
     ?: throw InvalidManifestSchemaError(
       "Platform pack '$slug': 'addon_usage' must be a mapping of skill-relative-dir to add-on entries.",
     )
-  val pointersByDir = pointers.groupBy { spec -> spec.skillRelativeDir }
+  val pointersByDir = manifestContext.pointers.groupBy { spec -> spec.skillRelativeDir }
   return usageMap.map { (dirKey, entriesRaw) ->
     val skillRelativeDir = dirKey as? String
       ?: throw InvalidManifestSchemaError(
@@ -698,10 +766,10 @@ internal fun parseAddonUsage(
       )
     }
     requireSafePointerSubpath(slug, skillRelativeDir, "addon_usage skill-relative directory")
-    if (skillRelativeDir !in declaredSkillDirs) {
+    if (skillRelativeDir !in manifestContext.declaredSkillDirs) {
       throw InvalidManifestSchemaError(
         "Platform pack '$slug': 'addon_usage' key '$skillRelativeDir' must match a declared skill directory. " +
-          "Declared skill directories: ${declaredSkillDirs.sorted()}.",
+          "Declared skill directories: ${manifestContext.declaredSkillDirs.sorted()}.",
       )
     }
     val entriesList = entriesRaw as? List<*>
@@ -716,10 +784,12 @@ internal fun parseAddonUsage(
     val context = AddonUsageParseContext(
       slug = slug,
       skillRelativeDir = skillRelativeDir,
-      packRoot = packRoot,
+      packRoot = manifestContext.packRoot,
       fieldName = "addon_usage",
       seenSlugs = mutableSetOf(),
       pointersForDir = pointersByDir[skillRelativeDir].orEmpty(),
+      declaredAreas = manifestContext.declaredAreas,
+      strictReviewRouting = manifestContext.strictReviewRouting,
     )
     val addons = entriesList.mapIndexed { index, entry ->
       parseAddonUsageEntry(context, index, entry)
@@ -766,6 +836,8 @@ internal fun parseFeatureAddonUsage(
       fieldName = "feature_addon_usage",
       seenSlugs = mutableSetOf(),
       pointersForDir = pointersByConsumer[consumer].orEmpty(),
+      declaredAreas = emptySet(),
+      strictReviewRouting = false,
     )
     val addons = entriesList.mapIndexed { index, entry ->
       parseAddonUsageEntry(context, index, entry)
@@ -781,21 +853,14 @@ private data class AddonUsageParseContext(
   val fieldName: String,
   val seenSlugs: MutableSet<String>,
   val pointersForDir: List<PointerSpec>,
+  val declaredAreas: Set<String>,
+  val strictReviewRouting: Boolean,
 )
 
 private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): GovernedAddonSelection {
-  val entry = raw as? Map<*, *>
-    ?: throw InvalidManifestSchemaError(
-      "Platform pack '${context.slug}': '${context.fieldName}[${context.skillRelativeDir}][$index]' must be a mapping.",
-    )
+  val entry = requireAddonUsageEntry(context, index, raw)
   val fieldPrefix = "${context.fieldName}[${context.skillRelativeDir}][$index]"
-  val addonSlug = requireStringInMap(context.slug, entry, "$fieldPrefix.slug", "slug")
-  if (!context.seenSlugs.add(addonSlug)) {
-    throw InvalidManifestSchemaError(
-      "Platform pack '${context.slug}': duplicate add-on usage slug '$addonSlug' under " +
-        "'${context.fieldName}.${context.skillRelativeDir}'.",
-    )
-  }
+  val addonSlug = parseAddonSlug(context, entry, fieldPrefix)
   val entrypoint = requireStringInMap(context.slug, entry, "$fieldPrefix.entrypoint", "entrypoint")
   val companionPointers = parseStringList(
     context.slug,
@@ -803,6 +868,14 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
     "$fieldPrefix.companion_pointers",
     required = false,
   )
+  val activation = parseAddonActivation(context, entry, fieldPrefix)
+  val reviewAddon = isReviewAddon(context)
+  if (reviewAddon && context.strictReviewRouting && activation == null) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.activation' is required for governed review add-ons.",
+    )
+  }
+  val specialistAreas = parseSpecialistAreas(context, entry, fieldPrefix, reviewAddon)
   requirePackOwnedAddonPointer(context, addonSlug, "entrypoint", entrypoint)
   companionPointers.forEach { pointerName ->
     requirePackOwnedAddonPointer(context, addonSlug, "companion_pointers", pointerName)
@@ -811,8 +884,89 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
     slug = addonSlug,
     entrypoint = entrypoint,
     companionPointers = companionPointers,
+    activation = activation,
+    specialistAreas = specialistAreas,
   )
 }
+
+private fun requireAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): Map<*, *> =
+  raw as? Map<*, *>
+    ?: throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '${context.fieldName}[${context.skillRelativeDir}][$index]' must be a mapping.",
+    )
+
+private fun parseAddonSlug(context: AddonUsageParseContext, entry: Map<*, *>, fieldPrefix: String): String {
+  val addonSlug = requireStringInMap(context.slug, entry, "$fieldPrefix.slug", "slug")
+  if (!context.seenSlugs.add(addonSlug)) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': duplicate add-on usage slug '$addonSlug' under " +
+        "'${context.fieldName}.${context.skillRelativeDir}'.",
+    )
+  }
+  return addonSlug
+}
+
+private fun parseAddonActivation(
+  context: AddonUsageParseContext,
+  entry: Map<*, *>,
+  fieldPrefix: String,
+): GovernedAddonActivation? {
+  val rawActivation = entry["activation"] as? Map<*, *> ?: return null
+  fun signals(field: String) = parseStringList(
+    context.slug,
+    rawActivation[field],
+    "$fieldPrefix.activation.$field",
+    required = false,
+  )
+  val anyOfAllContent = (rawActivation["any_of_all_content"] as? List<*>)?.mapIndexed { groupIndex, group ->
+    parseStringList(
+      context.slug,
+      group,
+      "$fieldPrefix.activation.any_of_all_content[$groupIndex]",
+      required = true,
+    )
+  }.orEmpty()
+  return GovernedAddonActivation(
+    anyPath = signals("any_path"),
+    anyContent = signals("any_content"),
+    allContent = signals("all_content"),
+    anyOfAllContent = anyOfAllContent,
+    excludePath = signals("exclude_path"),
+    excludeContent = signals("exclude_content"),
+  )
+}
+
+private fun parseSpecialistAreas(
+  context: AddonUsageParseContext,
+  entry: Map<*, *>,
+  fieldPrefix: String,
+  reviewAddon: Boolean,
+): List<String> {
+  val specialistAreas = parseStringList(
+    context.slug,
+    entry["specialist_areas"],
+    "$fieldPrefix.specialist_areas",
+    required = false,
+  )
+  val unknownSpecialistAreas = specialistAreas.toSet() - context.declaredAreas
+  if (reviewAddon && unknownSpecialistAreas.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' names undeclared areas " +
+        "${unknownSpecialistAreas.sorted()}.",
+    )
+  }
+  val baselineReviewAddon = context.skillRelativeDir.endsWith("-code-review")
+  val requiresSpecialistAreas = reviewAddon && context.strictReviewRouting && baselineReviewAddon
+  if (requiresSpecialistAreas && specialistAreas.isEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' is required for baseline add-on propagation.",
+    )
+  }
+  return specialistAreas
+}
+
+private fun isReviewAddon(context: AddonUsageParseContext): Boolean =
+  context.fieldName == "addon_usage" && context.skillRelativeDir.startsWith("code-review/")
 
 private fun requirePackOwnedAddonPointer(
   context: AddonUsageParseContext,

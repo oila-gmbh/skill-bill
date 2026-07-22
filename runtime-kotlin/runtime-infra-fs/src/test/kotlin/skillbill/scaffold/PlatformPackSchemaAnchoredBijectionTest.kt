@@ -47,6 +47,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "pointers",
     "addon_usage",
     "feature_addon_usage",
+    "lane_conditions",
   )
 
   @Test

@@ -96,23 +96,3 @@ internal fun DecompositionManifest.withRuntimeUpdate(
     currentSubtaskIntent = intentFor(subtaskId, status),
   ).withParentStatus()
 }
-
-internal fun projectCurrentSubtaskStatus(
-  repoRoot: Path,
-  manifest: DecompositionManifest,
-  fileStore: DecompositionManifestFileStore,
-) {
-  projectDecompositionSpecStatus(
-    resolvedParentSpecPath(repoRoot, Path.of(manifest.parentSpecPath)),
-    manifest.status,
-    fileStore,
-  )
-  manifest.subtasks.forEach { subtask ->
-    projectDecompositionSpecStatus(
-      resolvedParentSpecPath(repoRoot, Path.of(subtask.specPath)),
-      subtask.status,
-      fileStore,
-      pendingStatus = "Ready for implementation",
-    )
-  }
-}

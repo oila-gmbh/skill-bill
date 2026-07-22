@@ -76,4 +76,50 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
       ),
     )
   }
+
+  @Test
+  fun `minor and nit findings cannot drive audit gap`() {
+    listOf("minor", "nit").forEach { severity ->
+      val envelope = mapOf(
+        "verdict" to "gaps_found",
+        "produced_outputs" to mapOf(
+          "unmet_criteria" to listOf(mapOf("message" to "non-blocking", "severity" to severity)),
+        ),
+      )
+
+      val reason = assertNotNull(FeatureTaskRuntimeOutputVerification.auditGapPayloadError(envelope))
+      assertContains(reason, "non_blocking_findings")
+      assertEquals(
+        FeatureTaskRuntimeVerdict.SATISFIED,
+        FeatureTaskRuntimeOutputVerification.verdictFor(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+          envelope,
+        ),
+      )
+    }
+  }
+
+  @Test
+  fun `satisfied audit preserves non blocking findings without reopening implementation`() {
+    val envelope = mapOf(
+      "verdict" to "satisfied",
+      "produced_outputs" to mapOf(
+        "unmet_criteria" to emptyList<Any?>(),
+        "non_blocking_findings" to listOf(
+          mapOf("message" to "small cleanup", "severity" to "minor"),
+          mapOf("message" to "naming preference", "severity" to "nit"),
+        ),
+      ),
+    )
+
+    assertEquals(null, FeatureTaskRuntimeOutputVerification.auditGapPayloadError(envelope))
+    assertEquals(
+      FeatureTaskRuntimeVerdict.SATISFIED,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        envelope,
+      ),
+    )
+    assertEquals(emptyList(), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(envelope))
+  }
 }

@@ -7,12 +7,66 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ReviewContextModelsTest {
+  @Test fun `path bearing digests are injective and launch paths are structured`() {
+    val slash = ReviewChangedHunk("a/b.kt", 1, 1, 1, 1, "same")
+    val backslash = ReviewChangedHunk("a\\b.kt", 1, 1, 1, 1, "same")
+    val delimiter = ReviewChangedHunk("a\u001fb.kt", 1, 1, 1, 1, "same")
+    assertNotEquals(slash.hunkId, backslash.hunkId)
+    assertNotEquals(slash.hunkId, delimiter.hunkId)
+
+    val packet = launchPacket(path = "odd|name\\tab\t.kt")
+    val launch = GovernedReviewLaunch(
+      launchAssignment(packet),
+      packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertTrue("  - \"odd|name\\\\tab\\t.kt\"" in launch.canonicalPayload)
+  }
+
+  @Test fun `repository paths accept supplementary Unicode and reject unpaired surrogates`() {
+    requireRepositoryRelativePath("src/rocket-\uD83D\uDE80.kt")
+    assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uD83D.kt") }
+    assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uDE80.kt") }
+  }
+  private fun lane(name: String, paths: List<String>, reason: String = "routed") = ReviewLaneDecision(
+    name,
+    true,
+    reason,
+    ownedPaths = paths,
+    originLayerChains = listOf(listOf("kotlin")),
+    owningPack = "kotlin",
+    specialistSkillName = "bill-kotlin-code-review-$name",
+  )
+
+  private fun revision(session: String = "review", run: Int = 1) = ReviewRevision(session, run)
+
+  private val launchHunk = ReviewChangedHunk("A.kt", 1, 1, 1, 2, "+alpha")
+
+  private fun launchPacket(path: String = "A.kt") = ReviewContextPacket(
+    "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"),
+    listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path)),
+    reviewRevision = revision(),
+    laneDecisions = listOf(lane("security", listOf(path))),
+  )
+
+  private fun launchAssignment(
+    packet: ReviewContextPacket,
+    hunks: List<String> = packet.changedHunks.map { it.hunkId },
+  ) = ReviewAssignment(
+    "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
+    reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
+  )
+
   @Test fun `default budget is governed`() {
     assertEquals(524_288, ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes)
-    assertEquals(96_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
+    assertEquals(56_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
   }
 
   @Test fun `cached input cannot exceed or exist without input`() {
@@ -27,40 +81,155 @@ class ReviewContextModelsTest {
   }
 
   @Test fun `assignment digest is stable`() {
-    fun value(paths: List<String>, criteria: List<String>) =
-      ReviewAssignment("review", "a".repeat(64), "security", "base", "head", paths, listOf("hunk"), criteria)
+    fun value(paths: List<String>, criteria: List<String>) = ReviewAssignment(
+      "review", "a".repeat(64), "security", "base", "head", paths, listOf("hunk"), criteria,
+      reviewRevision = revision(), laneDecision = lane("security", paths),
+    )
     assertEquals(
       value(listOf("b.kt", "a.kt"), listOf("2", "1")).digest,
       value(listOf("a.kt", "b.kt"), listOf("1", "2")).digest,
     )
   }
 
-  @Test fun `paths reject traversal`() {
+  @Test fun `assignment digest tracks revision lane decision and dependency allowlist`() {
+    val base = ReviewAssignment(
+      "review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), listOf("b".repeat(64)),
+      reviewRevision = revision(), laneDecision = lane("security", listOf("A.kt")),
+    )
+    assertEquals(base.digest, base.copy(assignedPaths = listOf("A.kt")).digest)
+    assertTrue(base.digest != base.copy(reviewRevision = ReviewRevision("review", 2)).digest)
+    assertTrue(
+      base.digest != base.copy(dependencyAllowlist = ReviewDependencyAllowlist(listOf("Dep.kt"))).digest,
+    )
+    assertTrue(
+      base.digest != base.copy(laneDecision = lane("security", listOf("A.kt"), "different reason")).digest,
+    )
+    assertTrue(base.digest != base.copy(laneDecision = lane("security", listOf("B.kt"))).digest)
+  }
+
+  @Test fun `assignments reject lane decisions that do not describe the lane`() {
     assertFailsWith<IllegalArgumentException> {
-      ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("../secret"), emptyList())
+      ReviewAssignment(
+        "review",
+        "a".repeat(64),
+        "security",
+        "base",
+        "head",
+        listOf("A.kt"),
+        emptyList(),
+        reviewRevision = revision(),
+        laneDecision = lane("testing", listOf("A.kt")),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewAssignment(
+        "review",
+        "a".repeat(64),
+        "security",
+        "base",
+        "head",
+        listOf("A.kt"),
+        emptyList(),
+        reviewRevision = revision(),
+        laneDecision = ReviewLaneDecision("security", false, "excluded"),
+      )
     }
   }
 
-  @Test fun `packet digest normalizes ordering separators and line endings`() {
+  @Test fun `paths reject traversal`() {
+    assertFailsWith<IllegalArgumentException> {
+      ReviewAssignment(
+        "review", "a".repeat(64), "security", "base", "head", listOf("../secret"), emptyList(),
+        reviewRevision = revision(), laneDecision = lane("security", listOf("A.kt")),
+      )
+    }
+  }
+
+  @Test fun `packet digest preserves repository identity while normalizing ordering and line endings`() {
     fun packet(path: String, status: String) = ReviewContextPacket(
       "review", "repo", "base", "head", status, "kotlin", "kotlin", listOf("z", "a"), listOf("testing"),
       listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")),
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("testing", listOf(path))),
     )
-    assertEquals(packet("src\\A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
+    assertEquals(packet("src/A.kt", "clean\r\n").digest, packet("src/A.kt", "clean\n").digest)
+    assertNotEquals(packet("src\\A.kt", "clean\n").digest, packet("src/A.kt", "clean\n").digest)
+  }
+
+  @Test fun `packet digest is deterministic for hunks tied on path and new start`() {
+    val first = ReviewChangedHunk("A.kt", 1, 1, 5, 1, "+first")
+    val second = ReviewChangedHunk("A.kt", 3, 1, 5, 2, "+second")
+    fun packet(hunks: List<ReviewChangedHunk>) = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"), hunks,
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("A.kt"))),
+    )
+    assertEquals(packet(listOf(first, second)).digest, packet(listOf(second, first)).digest)
   }
 
   @Test fun `governed Codex launches reject inherited and omitted turns`() {
-    val assignment =
-      ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), listOf("@@ -1 +1 @@"))
-    val launch = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val packet = launchPacket()
+    val launch = GovernedReviewLaunch(
+      launchAssignment(packet),
+      packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
     launch.requireCodexForkTurns("none")
     assertFailsWith<IllegalArgumentException> { launch.requireCodexForkTurns(null) }
     assertFailsWith<IllegalArgumentException> { launch.requireCodexForkTurns("all") }
-    assertTrue("parent transcript" !in launch.canonicalPayload)
+    assertEquals(
+      listOf(
+        "review_id", "review_revision", "packet_digest", "assignment_digest", "lane", "base_revision",
+        "head_revision", "broker_id", "specialist_contract", "rubric", "assigned_paths", "assigned_hunks",
+        "immutable_diff_hunks",
+        "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
+        "forbidden_rediscovery", "budgets",
+      ),
+      launch.canonicalPayload.lines().filter { it.isNotBlank() && !it.startsWith("  ") }
+        .map { it.substringBefore(':') },
+    )
+    assertTrue(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY.all { it in launch.canonicalPayload })
+  }
+
+  @Test fun `a launch cannot be projected from an assignment the packet does not attest`() {
+    val packet = launchPacket()
+    val forged = launchAssignment(packet).copy(packetDigest = "a".repeat(64))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(forged, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val widened = launchAssignment(packet).copy(assignedPaths = listOf("A.kt", "Elsewhere.kt"))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(widened, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val stale = launchAssignment(packet).copy(reviewRevision = ReviewRevision("review", 2))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(stale, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val changedDecision = launchAssignment(packet).copy(laneDecision = lane("security", listOf("A.kt"), "forged"))
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(changedDecision, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+    val escapingDependency = launchAssignment(packet).copy(
+      dependencyAllowlist = ReviewDependencyAllowlist(listOf("Elsewhere.kt")),
+    )
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(
+        escapingDependency,
+        packet,
+        "contract",
+        "rubric",
+        "broker",
+        ReviewContextBudgetPolicy.DEFAULT,
+      )
+    }
   }
 
   @Test fun `oversized compact launch returns typed budget evidence`() {
-    val assignment = ReviewAssignment("review", "a".repeat(64), "security", "base", "head", listOf("A.kt"), emptyList())
+    val packet = launchPacket()
+    val assignment = launchAssignment(packet)
     val policy =
       ReviewContextBudgetPolicy(
         maxParentPacketBytes = 10_000,
@@ -69,7 +238,8 @@ class ReviewContextModelsTest {
         maxEvidenceResultBytes = 50,
         maxLaneResultBytes = 50,
       )
-    val outcome = GovernedReviewLaunch(assignment, "contract", "rubric", "broker", policy).budgetOutcomeOrNull()
+    val outcome =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", policy).budgetOutcomeOrNull()
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
   }
 

@@ -59,7 +59,8 @@ class GoalPlanningPreparationValidator(
     record.provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ->
       "provenance.phase_output_contract_id must be the feature-task-runtime phase output schema id"
     record.provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
-      "provenance.phase_output_contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'"
+      "provenance.phase_output_contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'; existing " +
+        "workflow state is incompatible and must be hard-reset"
     else -> null
   }
 

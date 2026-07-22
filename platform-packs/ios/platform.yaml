@@ -25,6 +25,8 @@ routing_signals:
     - "Prefer iOS when native Swift sources, Xcode workspace/project metadata, Apple platform configuration, and iOS framework imports dominate the changed product surface."
     - "Do not prefer iOS in an adjacent mixed-stack repository when another dominant stack owns the changed product surface and Swift appears only in bridging, tooling, or unrelated support code."
     - "Exclude generated sources, vendored dependencies, Pods, .build content, and build outputs from dominance scoring unless the generator or vendored contract is intentionally changed."
+  path: [".xcodeproj", "*.xcodeproj", ".xcworkspace", "*.xcworkspace", ".swift", "*.swift", "project.pbxproj"]
+  content: ["import SwiftUI", "import UIKit", "@MainActor", "Sendable"]
 
 declared_code_review_areas:
   - "api-contracts"
@@ -73,12 +75,33 @@ area_metadata:
   ux-accessibility:
     focus: "VoiceOver semantics, Dynamic Type, localization completeness, and task completion"
 
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["ImageIO", "downsample", "TaskGroup", "memory"] }
+  security: { content: ["Keychain", "ATS", "pasteboard", "secret"] }
+  testing: { path: ["Tests.swift", "Test.swift"] }
+  api-contracts: { content: ["Codable", "URLRequest", "GraphQL", "Decodable"] }
+  persistence: { content: ["CoreData", "SwiftData", "GRDB", "SQLite"] }
+  reliability: { content: ["BGTaskScheduler", "background", "retry", "URLSession"] }
+  ui: { content: ["SwiftUI", "UIView", "NavigationStack", "View"] }
+  ux-accessibility: { content: ["accessibility", "VoiceOver", "Dynamic Type", "focus"] }
+
 declared_quality_check_file: "quality-check/bill-ios-code-check/content.md"
 
 addon_usage:
   code-review/bill-ios-code-review:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation:
+        any_of_all_content:
+          - ["grdb", "sync"]
+          - ["sqlite", "sync"]
+          - ["core data", "sync"]
+          - ["realm", "sync"]
+        any_content: ["background sync", "sync queue", "conflict handling", "download for offline"]
+        exclude_content: ["pure in-memory"]
+      specialist_areas: [persistence, reliability, platform-correctness]
       companion_pointers:
         - offline-sync-consistency.md
         - offline-conflict-resolution.md
@@ -86,18 +109,42 @@ addon_usage:
   code-review/bill-ios-code-review-persistence:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation:
+        any_of_all_content:
+          - ["grdb", "sync"]
+          - ["sqlite", "sync"]
+          - ["core data", "sync"]
+          - ["realm", "sync"]
+        any_content: ["background sync", "sync queue", "conflict handling", "download for offline"]
+        exclude_content: ["pure in-memory"]
       companion_pointers:
         - offline-sync-consistency.md
         - offline-conflict-resolution.md
   code-review/bill-ios-code-review-reliability:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation:
+        any_of_all_content:
+          - ["grdb", "sync"]
+          - ["sqlite", "sync"]
+          - ["core data", "sync"]
+          - ["realm", "sync"]
+        any_content: ["background sync", "sync queue", "conflict handling", "download for offline"]
+        exclude_content: ["pure in-memory"]
       companion_pointers:
         - offline-background-reliability.md
         - offline-sync-consistency.md
   code-review/bill-ios-code-review-platform-correctness:
     - slug: offline-first
       entrypoint: offline-first-review.md
+      activation:
+        any_of_all_content:
+          - ["grdb", "sync"]
+          - ["sqlite", "sync"]
+          - ["core data", "sync"]
+          - ["realm", "sync"]
+        any_content: ["background sync", "sync queue", "conflict handling", "download for offline"]
+        exclude_content: ["pure in-memory"]
       companion_pointers:
         - offline-conflict-resolution.md
 
@@ -127,33 +174,17 @@ pointers:
     - name: offline-background-reliability.md
       target: platform-packs/ios/addons/offline-background-reliability.md
   code-review/bill-ios-code-review-api-contracts:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-architecture:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-performance:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-persistence:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
     - name: offline-first-review.md
       target: platform-packs/ios/addons/offline-first-review.md
     - name: offline-sync-consistency.md
@@ -161,23 +192,15 @@ pointers:
     - name: offline-conflict-resolution.md
       target: platform-packs/ios/addons/offline-conflict-resolution.md
   code-review/bill-ios-code-review-platform-correctness:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
     - name: offline-first-review.md
       target: platform-packs/ios/addons/offline-first-review.md
     - name: offline-conflict-resolution.md
       target: platform-packs/ios/addons/offline-conflict-resolution.md
   code-review/bill-ios-code-review-reliability:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
     - name: offline-first-review.md
       target: platform-packs/ios/addons/offline-first-review.md
     - name: offline-background-reliability.md
@@ -185,33 +208,17 @@ pointers:
     - name: offline-sync-consistency.md
       target: platform-packs/ios/addons/offline-sync-consistency.md
   code-review/bill-ios-code-review-security:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-testing:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-ui:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-ios-code-review-ux-accessibility:
-    - name: review-orchestrator.md
-      target: orchestration/review-orchestrator/PLAYBOOK.md
-    - name: shell-ceremony.md
-      target: orchestration/shell-content-contract/shell-ceremony.md
-    - name: telemetry-contract.md
-      target: orchestration/telemetry-contract/PLAYBOOK.md
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   quality-check/bill-ios-code-check:
     - name: shell-ceremony.md
       target: orchestration/shell-content-contract/shell-ceremony.md

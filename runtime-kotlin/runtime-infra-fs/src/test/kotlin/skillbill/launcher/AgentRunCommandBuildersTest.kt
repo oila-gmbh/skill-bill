@@ -6,12 +6,24 @@ import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.agentrun.NativeReviewOperationBoundary
+import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
+import skillbill.launcher.agentrun.ProviderUsageExposure
 import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
@@ -34,6 +46,8 @@ class AgentRunCommandBuildersTest {
     assertEquals("finding", codex.text)
     assertEquals(5, codex.reasoningTokens)
     assertEquals(100, codex.totalTokens)
+    assertEquals("", AgentRunOutputDecoder.CLAUDE_JSON.decode("""{"usage":{"total_tokens":7}}""").text)
+    assertEquals("", AgentRunOutputDecoder.CODEX_JSONL.decode("""{"usage":{"total_tokens":7}}""").text)
   }
 
   @Test
@@ -87,6 +101,7 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `codex renders exact commands for each directive shape`() {
     val builder = CodexAgentRunCommandBuilder()
+    assertTrue(builder.build(request()).inheritEnvironment)
 
     assertEquals(
       listOf(
@@ -136,6 +151,18 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
+  fun `all feature task codex phases remain writable`() {
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.forEach { phase ->
+      val command = CodexAgentRunCommandBuilder().build(
+        request().copy(promptOverride = "Phase: $phase"),
+      ).command
+
+      assertTrue(command.contains("--dangerously-bypass-approvals-and-sandbox"))
+      assertFalse(command.contains("read-only"))
+    }
+  }
+
+  @Test
   fun `directive capable agents have builders that render their directives`() {
     val builders = listOf(ClaudeAgentRunCommandBuilder(), CodexAgentRunCommandBuilder())
 
@@ -164,18 +191,55 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `headless process builders reject governed specialist isolation`() {
-    val isolated = request().copy(conversationIsolation = ConversationIsolation.NONE)
+  fun `builders materialize governed specialist isolation without provider branching`() {
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
+    )
 
     val builders = listOf(
-      ClaudeAgentRunCommandBuilder(),
-      CodexAgentRunCommandBuilder(),
-      JunieAgentRunCommandBuilder(),
+      ClaudeAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
+      CodexAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
+      JunieAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
     )
-    builders.forEach { builder ->
-      val failure = assertFailsWith<IllegalArgumentException> { builder.build(isolated) }
-      assertTrue(failure.message.orEmpty().contains("native specialist-launch adapter"))
+    builders.forEach { (builder, expectedIsolation) ->
+      assertEquals(expectedIsolation, builder.reviewIsolation)
+      assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
+    assertTrue(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
+    assertEquals(
+      skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
+      CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
+    )
+    assertEquals(
+      skillbill.launcher.agentrun.ProviderUsageExposure.COMPLETION_ONLY,
+      CodexAgentRunCommandBuilder().nativeReviewCapabilities.providerUsageExposure,
+    )
+    assertFalse(
+      NativeReviewProviderCapabilities(
+        operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
+        providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
+        lifecycleCallbacks = null,
+      ).supportsGovernedLaunch,
+    )
+    val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
+    assertTrue(codexCommand.contains("--skip-git-repo-check"))
+    assertTrue(codexCommand.contains("--ignore-user-config"))
+    assertTrue(codexCommand.contains("read-only"))
+    assertTrue(codexCommand.contains("fork_turns=none"))
+    assertTrue(codexCommand.contains("tools.web_search=false"))
+    assertTrue(codexCommand.contains("tools.shell=false"))
+    assertFalse(
+      CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
+    )
+  }
+
+  @Test fun `codex exposes one-shot governed lifecycle support`() {
+    assertNotNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
   private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
@@ -185,4 +249,18 @@ class AgentRunCommandBuildersTest {
     modelOverride = model,
     effortOverride = effort,
   )
+
+  private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {
+    override fun readBatch(request: skillbill.ports.review.model.ReviewEvidenceBatchRequest) = error("unused")
+    override fun recordToolCall(call: skillbill.ports.review.model.ReviewToolCall) = error("unused")
+    override fun recordModelTurn() = error("unused")
+    override fun validateLaneResult(result: String) = error("unused")
+    override fun observeLaneResultChunk(chunk: String) = error("unused")
+    override fun evaluateProviderUsage(
+      usage: skillbill.review.context.model.ProviderTokenUsage,
+      enforceable: Boolean,
+    ) = error("unused")
+    override fun accounting() = error("unused")
+    override fun terminalOutcome() = error("unused")
+  }
 }

@@ -4,26 +4,56 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
+import skillbill.application.review.DelegatedReviewExecutionBroker
+import skillbill.application.review.DelegatedReviewLaunchBroker
+import skillbill.application.review.DelegatedReviewWorkerLauncher
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.RepoLocalConfig
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceResult
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.workflow.model.CodeReviewExecutionMode
+import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -31,14 +61,12 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class ParallelCodeReviewRunnerTest {
-  private val noManifestsCatalogGateway = stubCatalogGateway(emptyList())
-
   @Test
   fun `blank agent2 throws UsageValidationException before any launch`() {
     val launcher = ParallelSubtaskLauncher()
@@ -47,6 +75,27 @@ class ParallelCodeReviewRunnerTest {
     assertThrowsUsageValidation {
       runner.run(baseRequest(agent2Id = ""))
     }
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `all assignments preflight before the first worker starts`() {
+    val repo = createGitRepo()
+    createStagedFile(repo)
+    val launcher = ParallelSubtaskLauncher()
+    var admitted = 0
+    val runner = runnerWithEvidenceBroker(
+      launcher,
+      ReviewEvidenceBrokerFactory { binding ->
+        admitted++
+        require(admitted != 2) { "invalid later assignment" }
+        TestReviewEvidenceBroker(binding)
+      },
+    )
+
+    assertFailsWith<IllegalArgumentException> { runner.run(baseRequest(repoRoot = repo)) }
+
+    assertEquals(2, admitted)
     assertTrue(launcher.requests.isEmpty())
   }
 
@@ -87,7 +136,7 @@ class ParallelCodeReviewRunnerTest {
   fun `both lanes succeed and findings overlap produces coalesced output`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)
-    val sharedFinding = "- [F-001] Major | High | Foo.kt:1 | Shared issue"
+    val sharedFinding = "- [F-001] Major | High | path=\"Test.kt\" | line=1 | Shared issue"
     val launcher = alwaysSuccessLauncher(sharedFinding)
     val runner = runner(launcher)
 
@@ -125,7 +174,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+          stdout = "- [F-001] Minor | Low | path=\"Test.kt\" | line=1 | Issue",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -181,7 +230,7 @@ class ParallelCodeReviewRunnerTest {
 
   @Test
   fun `STAGED scope maps diff command to git diff --cached`() {
-    val resolver = RecordingDiffResolver(default = "diff body")
+    val resolver = RecordingDiffResolver(default = diffFor("A.kt"))
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
 
@@ -194,7 +243,7 @@ class ParallelCodeReviewRunnerTest {
   fun `BRANCH scope resolves merge-base then diffs base against HEAD`() {
     val resolver = RecordingDiffResolver(
       responses = mapOf(listOf("git", "merge-base", "HEAD", "main") to "base-sha\n"),
-      default = "diff body",
+      default = diffFor("A.kt"),
     )
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
@@ -222,18 +271,180 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "+owned change", message = "the authoritative diff must be reviewable")
-      assertContains(prompt, "one complete bill-code-review parent review")
-      assertContains(prompt, "Detected stack: kotlin")
-      assertContains(prompt, "exact diff below as the authoritative review scope")
-      assertContains(prompt, "Route all required baseline and signal-relevant rubrics")
-      assertEquals(null, request.skillRunRequest.conversationIsolation)
-      assertFalse(prompt.contains("Prepare one shared review-context packet"))
-      assertFalse(prompt.contains("assignment_digest:"))
+      assertContains(prompt, "assigned_paths:")
+      assertContains(prompt, "- Child.kt")
+      assertContains(prompt, "specialist_contract:")
+      assertContains(prompt, "rubric:")
+      assertContains(prompt, "evidence_surface:")
+      assertContains(prompt, "brokered_evidence:")
+      assertContains(prompt, "+owned change")
+      assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
+      assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
+      assertContains(prompt, "assignment_digest:")
       assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
     }
+  }
+
+  @Test
+  fun `inline mode bypasses delegated specialist workers`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      assertEquals(null, request.skillRunRequest.reviewEvidenceBroker)
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=\"A.kt\"")
+    }
+  }
+
+  @Test
+  fun `inline mode accounting carries the parent prompt and stdout as one specialist-free turn`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      AgentRunLaunchFacts(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        exitStatus = 0,
+        stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Inline finding",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertTrue(result.lane1.success)
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals("completed", accounting.terminalStatus)
+    assertEquals(1, accounting.modelTurns, "An inline lane is exactly one parent turn, never a specialist child.")
+    assertEquals(0L, accounting.evidenceBytes, "Inline mode never brokers evidence through a child worker.")
+    assertTrue(accounting.launchBytes > 0, "The rendered parent prompt must be measured as launch bytes.")
+    assertEquals(
+      "- [F-001] Major | High | path=\"A.kt\" | line=1 | Inline finding".toByteArray().size.toLong(),
+      accounting.resultBytes,
+    )
+  }
+
+  @Test
+  fun `inline mode accounting reports unsupported_provider without a session turn`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      UnsupportedAgentRunLaunch(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        reason = "not configured for this repo",
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertFalse(result.lane1.success)
+    assertContains(result.lane1.failureReason.orEmpty(), "unsupported agent")
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals("unsupported_provider", accounting.terminalStatus)
+    assertEquals(0L, accounting.resultBytes, "No session ran, so there is no result to measure.")
+  }
+
+  @Test
+  fun `delegated routing launches one rubric per non-empty selected specialist`() {
+    val launcher = ParallelSubtaskLauncher()
+    val architecture = ResolvedReviewRubric(
+      "bill-kotlin-code-review-architecture",
+      "architecture specialist rubric",
+      area = "architecture",
+    )
+    val testing = ResolvedReviewRubric(
+      "bill-kotlin-code-review-testing",
+      "testing specialist rubric",
+      area = "testing",
+    )
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+      rubricResolver = ReviewRubricResolver {
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review",
+          "parent routing rubric",
+          specialists = listOf(architecture, testing),
+        )
+      },
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals(2, launcher.requests.size, "empty testing lanes must be dropped for both review agents")
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "architecture specialist rubric")
+      assertFalse(prompt.contains("testing specialist rubric"))
+      assertFalse(prompt.contains("parent routing rubric"))
+    }
+  }
+
+  @Test
+  fun `a failed specialist does not discard a successful sibling specialist's findings`() {
+    val architectureRubric = "architecture specialist rubric"
+    val testingRubric = "testing specialist rubric"
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      if (prompt.contains(architectureRubric)) {
+        AgentRunLaunchFacts(
+          agent = agent,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "boom",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      } else {
+        AgentRunLaunchFacts(
+          agent = agent,
+          exitStatus = 0,
+          stdout = "- [F-001] Major | High | path=\"src/FooTest.kt\" | line=1 | Testing issue",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      }
+    }
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt") + "\n" + diffFor("src/FooTest.kt")),
+      rubricResolver = ReviewRubricResolver {
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review",
+          "parent routing rubric",
+          specialists = listOf(
+            ResolvedReviewRubric("bill-kotlin-code-review-architecture", architectureRubric, area = "architecture"),
+            ResolvedReviewRubric("bill-kotlin-code-review-testing", testingRubric, area = "testing"),
+          ),
+        )
+      },
+    )
+
+    val result = runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertFalse(result.lane1.success, "The lane as a whole failed because its architecture specialist failed.")
+    assertEquals(
+      1,
+      result.mergeResult.findings.size,
+      "The testing specialist's finding must survive its failed sibling instead of being discarded.",
+    )
   }
 
   @Test
@@ -258,6 +469,9 @@ class ParallelCodeReviewRunnerTest {
 
     assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
     assertEquals(110, result.lane2.tokenUsage?.totalTokens)
+    assertEquals("claude", result.lane1.accounting?.lane)
+    assertEquals(1, result.lane1.accounting?.modelTurns)
+    assertEquals(0, result.lane1.accounting?.resultBytes)
   }
 
   @Test
@@ -271,9 +485,12 @@ class ParallelCodeReviewRunnerTest {
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "review_context_budget_exceeded")
+    assertEquals("review_context_budget_exceeded", result.lane1.budgetOutcome?.type)
     assertTrue(result.mergeResult.findings.isEmpty())
   }
+}
 
+class ParallelCodeReviewRunnerFailureTest {
   @Test
   fun `lane1 interrupted produces lane1Success false`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
@@ -292,14 +509,14 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -316,7 +533,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = null,
-          stdout = "- [F-001] Major | High | Foo.kt:1 | Should not appear in merge",
+          stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Should not appear in merge",
           stderr = "",
           timedOut = true,
           spawnFailed = false,
@@ -325,14 +542,14 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | Bar.kt:2 | Lane 2 finding",
+          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=2 | Lane 2 finding",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -351,13 +568,13 @@ class ParallelCodeReviewRunnerTest {
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+        stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
         stderr = "",
         timedOut = false,
         spawnFailed = false,
       )
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -383,10 +600,10 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(
+    val runner = runnerWithParallelLane(
       launcher,
-      diffResolver = RecordingDiffResolver(default = "diff body"),
-      parallelLaneRunner = StaticParallelLaneRunner(
+      RecordingDiffResolver(default = diffFor("A.kt")),
+      StaticParallelLaneRunner(
         ParallelReviewLaneRunResult(
           lane1 = ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)"),
           lane2 = ParallelReviewLaneOutcome(true, ""),
@@ -419,7 +636,7 @@ class ParallelCodeReviewRunnerTest {
         )
       }
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -439,7 +656,7 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "diff body"))
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
@@ -454,7 +671,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(
       launcher,
       catalogGateway = throwingCatalogGateway(),
-      diffResolver = RecordingDiffResolver(default = "diff body"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
     )
 
     val error = assertFailsWith<StackDetectionException> {
@@ -475,11 +692,29 @@ class ParallelCodeReviewRunnerTest {
 
     runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertTrue(
-      launcher.requests.all { request ->
-        request.skillRunRequest.promptOverride.orEmpty().contains("Detected stack: typescript")
+    assertEquals(2, launcher.requests.size)
+  }
+
+  @Test
+  fun `detected manifest selects the governed baseline rubric before lane launch`() {
+    val launcher = ParallelSubtaskLauncher()
+    var resolvedSlug: String? = null
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+      rubricResolver = ReviewRubricResolver { manifest ->
+        resolvedSlug = manifest?.slug
+        ResolvedReviewRubric("bill-kotlin-code-review", "manifest-owned kotlin rubric")
       },
     )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals("kotlin", resolvedSlug)
+    launcher.requests.forEach { request ->
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "manifest-owned kotlin rubric")
+    }
   }
 
   @Test
@@ -508,66 +743,177 @@ class ParallelCodeReviewRunnerTest {
       },
     )
   }
+}
+private data class RunnerFixtureConfig(
+  val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
+  val diffResolver: DiffResolverPort = RealProcessDiffResolver(),
+  val parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
+  val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
+  },
+  val evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
+  val nativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort =
+    skillbill.ports.review.ReviewNativeAgentPreflightPort { },
+)
 
-  private fun runner(
-    launcher: GoalRunnerSubtaskLauncher,
-    catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
-    diffResolver: DiffResolverPort = RealProcessDiffResolver(),
-    parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
-  ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
-    subtaskLauncher = launcher,
-    scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
+private fun runner(
+  launcher: GoalRunnerSubtaskLauncher,
+  catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
+  diffResolver: DiffResolverPort = RealProcessDiffResolver(),
+  rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
+  },
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(
+    catalogGateway = catalogGateway,
     diffResolver = diffResolver,
-    parallelLaneRunner = parallelLaneRunner,
+    rubricResolver = rubricResolver,
+  ),
+)
+
+private fun runnerWithEvidenceBroker(
+  launcher: GoalRunnerSubtaskLauncher,
+  evidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(evidenceBrokerFactory = evidenceBrokerFactory),
+)
+
+private fun runnerWithParallelLane(
+  launcher: GoalRunnerSubtaskLauncher,
+  diffResolver: DiffResolverPort,
+  parallelLaneRunner: ParallelReviewLaneRunner,
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(diffResolver = diffResolver, parallelLaneRunner = parallelLaneRunner),
+)
+
+private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
+  ParallelCodeReviewRunner(
+    delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
+      DelegatedReviewLaunchBroker(
+        evidenceBrokerFactory = config.evidenceBrokerFactory,
+        isolationResolver = { agentId ->
+          ReviewLaunchIsolationStrategy.FRESH_PROCESS
+        },
+      ),
+      DelegatedReviewWorkerLauncher(
+        NativeReviewWorkerLauncher { request ->
+          request.operations.modelTurn()?.let {
+            return@NativeReviewWorkerLauncher AgentRunLaunchFacts(
+              agent = InstallAgent.fromNormalizedId(request.agentId),
+              exitStatus = null,
+              stdout = "",
+              stderr = "review budget terminated before provider execution",
+              timedOut = false,
+              spawnFailed = false,
+            )
+          }
+          launcher.launch(
+            GoalRunnerSubtaskLaunchRequest(
+              invokedAgentId = request.agentId,
+              configuredAgentOverrideId = null,
+              skillRunRequest = skillbill.ports.agentrun.model.SkillRunRequest(
+                issueKey = request.issueKey,
+                repoRoot = request.repoRoot,
+                timeout = request.timeout,
+                promptOverride = request.prompt,
+                modelOverride = request.modelOverride,
+                conversationIsolation = ConversationIsolation.NONE,
+                reviewEvidenceBroker = request.broker,
+                nativeReviewOperations = request.operations,
+              ),
+            ),
+          )
+        },
+      ),
+    ),
+    parentReviewLauncher = launcher,
+    scaffoldCatalogService = ScaffoldCatalogService(config.catalogGateway),
+    diffResolver = config.diffResolver,
+    parallelLaneRunner = config.parallelLaneRunner,
+    repoLocalConfig = object : RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+        ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
+    },
+    reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
+      override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+    },
+    reviewRubricResolver = config.rubricResolver,
+    nativeAgentPreflight = config.nativeAgentPreflight,
+    database = NoopReviewDatabase,
   )
 
-  private fun baseRequest(
-    agent1Id: String = "claude",
-    agent2Id: String = "codex",
-    scope: ParallelReviewScope = ParallelReviewScope.STAGED,
-    repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
-    timeout: Duration? = null,
-  ) = ParallelCodeReviewRequest(
-    agent1Id = agent1Id,
-    agent2Id = agent2Id,
-    scope = scope,
-    repoRoot = repoRoot,
-    timeout = timeout,
-  )
-
-  private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
-    AgentRunLaunchFacts(
-      agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-      exitStatus = 0,
-      stdout = stdout,
-      stderr = "",
-      timedOut = false,
-      spawnFailed = false,
-    )
-  }
-
-  private fun assertThrowsUsageValidation(block: () -> Unit) {
-    try {
-      block()
-      fail("Expected UsageValidationException")
-    } catch (@Suppress("SwallowedException") e: UsageValidationException) {
-      // expected
+private object NoopReviewDatabase : DatabaseSessionFactory {
+  private val reviews = Proxy.newProxyInstance(
+    ReviewRepository::class.java.classLoader,
+    arrayOf(ReviewRepository::class.java),
+  ) { _, method, _ ->
+    when (method.name) {
+      "saveAccounting" -> Unit
+      "loadAccounting" -> null
+      else -> error("Unexpected review repository call: ${method.name}")
     }
-  }
+  } as ReviewRepository
+  private val unitOfWork = Proxy.newProxyInstance(
+    UnitOfWork::class.java.classLoader,
+    arrayOf(UnitOfWork::class.java),
+  ) { _, method, _ ->
+    when (method.name) {
+      "getReviews" -> reviews
+      "getDbPath" -> Path.of("/tmp/noop-review.db")
+      else -> error("Unexpected unit-of-work call: ${method.name}")
+    }
+  } as UnitOfWork
 
-  private fun createGitRepo(): Path {
-    val dir = Files.createTempDirectory("pr-runner-git")
-    ProcessBuilder("git", "init", dir.toString()).start().waitFor()
-    ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
-    ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
-    return dir
-  }
+  override fun resolveDbPath(dbOverride: String?) = unitOfWork.dbPath
+  override fun databaseExists(dbOverride: String?) = true
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+}
 
-  private fun createStagedFile(dir: Path) {
-    val file = dir.resolve("Test.kt")
-    Files.writeString(file, "fun main() {}\n")
-    ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
-  }
+private fun baseRequest(
+  agent1Id: String = "claude",
+  agent2Id: String = "codex",
+  scope: ParallelReviewScope = ParallelReviewScope.STAGED,
+  repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
+  timeout: Duration? = null,
+) = ParallelCodeReviewRequest(
+  agent1Id = agent1Id,
+  agent2Id = agent2Id,
+  scope = scope,
+  repoRoot = repoRoot,
+  timeout = timeout,
+)
+
+private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
+  AgentRunLaunchFacts(
+    agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+    exitStatus = 0,
+    stdout = stdout,
+    stderr = "",
+    timedOut = false,
+    spawnFailed = false,
+  )
+}
+
+private fun assertThrowsUsageValidation(block: () -> Unit) {
+  assertFailsWith<UsageValidationException> { block() }
+}
+
+private fun createGitRepo(): Path {
+  val dir = Files.createTempDirectory("pr-runner-git")
+  ProcessBuilder("git", "init", dir.toString()).start().waitFor()
+  ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
+  ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
+  return dir
+}
+
+private fun createStagedFile(dir: Path) {
+  val file = dir.resolve("Test.kt")
+  Files.writeString(file, "fun main() {}\n")
+  ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
 }
 
 private class ParallelSubtaskLauncher(
@@ -666,9 +1012,74 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
   packRoot = Path.of("platform-packs/$slug"),
   contractVersion = "1.2",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
-  declaredCodeReviewAreas = emptyList(),
-  declaredFiles = DeclaredFiles(baseline = Path.of("content.md"), areas = emptyMap()),
+  declaredCodeReviewAreas = listOf("architecture", "testing"),
+  declaredFiles = DeclaredFiles(
+    baseline = Path.of("content.md"),
+    areas = mapOf("architecture" to Path.of("architecture.md"), "testing" to Path.of("testing.md")),
+  ),
   areaMetadata = emptyMap(),
+  laneConditions = mapOf(
+    "architecture" to ReviewLaneCondition(required = true),
+    "testing" to ReviewLaneCondition(path = listOf("Test.kt")),
+  ),
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"
+
+private class TestReviewEvidenceBroker(
+  private val binding: ReviewEvidenceBrokerBinding,
+) : ReviewEvidenceBroker {
+  private val identity = ReviewLaneIdentity.of(binding.assignment)
+  private var resultBytes = 0L
+  private var modelTurns = 0
+  private var terminal: ReviewBudgetOutcome? = null
+
+  override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
+    request.requests.map { ReviewEvidenceResult("brokered:${it.path}", 0, 0, 0) },
+    0,
+    emptyList(),
+    terminal,
+  )
+
+  override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult(budgetExceeded = terminal)
+
+  override fun recordModelTurn(): ReviewBudgetOutcome? {
+    modelTurns += 1
+    return terminal ?: ReviewBudgetEvaluator.exceededOrNull(
+      identity,
+      "model_turns",
+      binding.budget.maxSpecialistModelTurns.toLong(),
+      modelTurns.toLong(),
+    ).also { terminal = it }
+  }
+
+  override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
+    resultBytes = maxOf(resultBytes, result.toByteArray().size.toLong())
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
+  }
+
+  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
+    resultBytes += chunk.toByteArray().size
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
+  }
+
+  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
+    terminal ?: ReviewBudgetEvaluator.providerUsageOutcome(
+      identity,
+      binding.budget.providerTokenThresholds,
+      usage,
+      enforceable,
+    ).also { terminal = it }
+
+  override fun accounting() = ReviewLaneAccounting(
+    lane = binding.assignment.lane,
+    evidenceBytes = 0,
+    expansions = emptyList(),
+    toolCalls = 0,
+    modelTurns = modelTurns,
+    resultBytes = resultBytes,
+    terminalOutcome = terminal,
+  )
+
+  override fun terminalOutcome(): ReviewBudgetOutcome? = terminal
+}

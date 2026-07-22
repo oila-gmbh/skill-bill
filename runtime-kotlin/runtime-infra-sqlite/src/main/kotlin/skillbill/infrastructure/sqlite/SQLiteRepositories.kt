@@ -11,8 +11,10 @@ import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.existingReviewSummary
+import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.replaceFindings
 import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
+import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.infrastructure.sqlite.review.upsertReviewRun
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
@@ -31,6 +33,7 @@ import skillbill.ports.persistence.WorkListRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.LearningResolution
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.review.model.FeatureImplementWorkflowStats
@@ -105,6 +108,10 @@ class SQLiteReviewRepository(
   private companion object {
     const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
   }
+
+  override fun saveAccounting(record: ReviewAccountingRecord) = upsertReviewAccounting(connection, record)
+
+  override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = loadReviewAccounting(connection, reviewId)
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)

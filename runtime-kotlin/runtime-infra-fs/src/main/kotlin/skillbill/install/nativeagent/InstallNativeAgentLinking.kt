@@ -7,25 +7,25 @@ import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
 
-private val generatedNativeAgentProviderDirs = NativeAgentProvider.entries
-  .map { provider -> provider.directoryName }
-  .toSet()
-
 internal fun installNativeAgentFile(
   source: Path,
   agentTarget: AgentTarget,
   managedSourceRoots: List<Path>,
+  ownership: NativeAgentLinkOwnership? = null,
+  beforeMutation: (Path) -> Unit = {},
 ): InstallNativeAgentResult {
   val resolvedSource = source.toAbsolutePath().normalize()
   if (!Files.isRegularFile(resolvedSource)) {
     throw java.io.FileNotFoundException("Native agent file '$resolvedSource' does not exist.")
   }
+  beforeMutation(agentTarget.path)
   Files.createDirectories(agentTarget.path)
   val linkPath = agentTarget.path.resolve(resolvedSource.fileName)
   return applyInstallDecision(
     linkPath = linkPath,
     resolvedSource = resolvedSource,
-    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots),
+    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots, ownership),
+    beforeMutation = beforeMutation,
   )
 }
 
@@ -49,6 +49,7 @@ private fun applyInstallDecision(
   linkPath: Path,
   resolvedSource: Path,
   decision: InstallAction,
+  beforeMutation: (Path) -> Unit,
 ): InstallNativeAgentResult = when (decision) {
   InstallAction.Skip -> InstallNativeAgentResult.Skipped(
     linkPath,
@@ -56,6 +57,7 @@ private fun applyInstallDecision(
   )
   InstallAction.AlreadyLinked -> InstallNativeAgentResult.Skipped(linkPath, "already linked to $resolvedSource")
   InstallAction.Replace, InstallAction.Create -> {
+    beforeMutation(linkPath)
     when (decision) {
       InstallAction.Replace -> createReplacementSymlinkWithGuidance(linkPath, resolvedSource)
       InstallAction.Create -> createNewSymlinkWithGuidance(linkPath, resolvedSource)
@@ -69,24 +71,43 @@ private fun applyInstallDecision(
 
 private enum class InstallAction { Skip, AlreadyLinked, Replace, Create }
 
-private fun decideInstallAction(linkPath: Path, resolvedSource: Path, managedSourceRoots: List<Path>): InstallAction {
+internal data class NativeAgentLinkOwnership(
+  val home: Path,
+  val provider: NativeAgentProvider,
+  val logicalName: String,
+)
+
+private fun decideInstallAction(
+  linkPath: Path,
+  resolvedSource: Path,
+  managedSourceRoots: List<Path>,
+  ownership: NativeAgentLinkOwnership?,
+): InstallAction {
   if (!Files.isSymbolicLink(linkPath)) {
     return if (Files.exists(linkPath)) InstallAction.Skip else InstallAction.Create
   }
   val existingTarget = resolveSymlinkTarget(linkPath)
   return when {
     existingTarget == resolvedSource -> InstallAction.AlreadyLinked
-    existingTarget != null && managedSourceRoots.any { root -> existingTarget.startsWith(root) } ->
+    existingTarget != null && ownership != null && isCanonicalNativeAgentArtifactTarget(
+      ownership.home,
+      ownership.provider,
+      ownership.logicalName,
+      existingTarget,
+      managedSourceRoots,
+    ) ->
       InstallAction.Replace
-    existingTarget != null && existingTarget.isLegacyGeneratedNativeAgentArtifact() -> InstallAction.Replace
+    existingTarget != null && managedSourceRoots.any { root ->
+      val normalizedRoot = root.toAbsolutePath().normalize()
+      existingTarget == normalizedRoot.resolve(resolvedSource.fileName) ||
+        existingTarget == normalizedRoot.resolve(resolvedSource.parent.fileName).resolve(resolvedSource.fileName)
+    } ->
+      InstallAction.Replace
     else -> InstallAction.Skip
   }
 }
 
-private fun Path.isLegacyGeneratedNativeAgentArtifact(): Boolean =
-  parent?.fileName?.toString() in generatedNativeAgentProviderDirs
-
-private fun resolveSymlinkTarget(linkPath: Path): Path? = runCatching {
+internal fun resolveSymlinkTarget(linkPath: Path): Path? = runCatching {
   val rawTarget = Files.readSymbolicLink(linkPath)
   val resolvedTarget = if (rawTarget.isAbsolute) rawTarget else linkPath.parent.resolve(rawTarget)
   resolvedTarget.toAbsolutePath().normalize()

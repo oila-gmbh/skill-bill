@@ -5,6 +5,8 @@ package skillbill.ports.agentrun.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -29,6 +31,9 @@ data class SkillRunRequest(
   val effortOverride: String? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
   val conversationIsolation: ConversationIsolation? = null,
+  val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
+  val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val nativeReviewWorkerName: String? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -42,11 +47,30 @@ data class SkillRunRequest(
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive." }
     }
+    require(reviewEvidenceBroker == null || conversationIsolation == ConversationIsolation.NONE) {
+      "A review evidence transport is valid only for a fresh-context governed specialist launch."
+    }
+    require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
+      "A governed review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require(nativeReviewWorkerName == null || reviewEvidenceBroker != null) {
+      "A native review worker name is valid only for a governed review launch."
+    }
   }
 }
 
 enum class ConversationIsolation(val forkTurns: String) {
   NONE("none"),
+}
+
+/**
+ * Named per-agent isolation strategy for governed review launches, resolved from the agent's own
+ * command builder. The process runner never reads agent identity; it reads the strategy.
+ */
+enum class ReviewLaunchIsolationStrategy(val forkTurns: String?, val supported: Boolean) {
+  CODEX_NATIVE_FORK_TURNS_NONE(ConversationIsolation.NONE.forkTurns, true),
+  FRESH_PROCESS(null, true),
+  UNSUPPORTED(null, false),
 }
 
 data class SkillRunGoalContinuationContext(
@@ -179,6 +203,9 @@ data class AgentRunLaunchFacts(
   val reasoningTokens: Long? = null,
   val totalTokens: Long? = null,
   val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
+  val providerUsageEnforceable: Boolean = false,
+  /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
+  val stdoutTruncated: Boolean = false,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }

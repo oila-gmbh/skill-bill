@@ -1,6 +1,7 @@
 package skillbill.contracts.workflow
 
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
 
 class GoalPlanningPreparationSchemaValidatorTest {
@@ -35,6 +36,19 @@ class GoalPlanningPreparationSchemaValidatorTest {
         GoalPlanningPreparationSchemaValidator.validate(envelope, "fixture")
       }
     }
+  }
+
+  @Test
+  fun `legacy phase output provenance tells operators to hard reset`() {
+    val legacyProvenance = provenance() + ("phase_output_contract_version" to "0.2")
+    val error = assertFailsWith<skillbill.error.InvalidGoalPlanningPreparationSchemaError> {
+      GoalPlanningPreparationSchemaValidator.validate(
+        sharedEnvelope() + ("provenance" to legacyProvenance),
+        "goal-1",
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "skill-bill goal reset <issue-key> --hard --yes")
   }
 
   private fun sharedEnvelope(): Map<String, Any?> = linkedMapOf(

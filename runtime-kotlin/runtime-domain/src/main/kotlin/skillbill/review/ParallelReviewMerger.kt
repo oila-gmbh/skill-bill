@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -10,32 +11,7 @@ object ParallelReviewMerger {
   fun merge(lane1: ParallelReviewLaneResult, lane2: ParallelReviewLaneResult): ParallelReviewMergeResult {
     // Findings are the single source of truth: callers gate them on lane success, so a failed lane
     // contributes an empty list here and never leaks into the merged register.
-    val allEntries = mutableListOf<FindingEntry>()
-    var appearanceOrder = 0
-    lane1.findings.forEach { f -> allEntries += FindingEntry(f, lane1.agentId, appearanceOrder++) }
-    lane2.findings.forEach { f -> allEntries += FindingEntry(f, lane2.agentId, appearanceOrder++) }
-
-    // Deterministic greedy single pass in insertion order (lane1 entries first, then lane2).
-    // Each entry joins the first existing cluster whose first-inserted representative shares the
-    // same file path AND clears the Jaccard token-overlap threshold; otherwise it opens a new
-    // cluster. The representative's file path and tokens are cached in ClusterHead to avoid
-    // O(N²) recomputation of tokens() on each probe.
-    val clusters = mutableListOf<ClusterHead>()
-    allEntries.forEach { entry ->
-      val entryFilePath = filePathOf(entry.finding.location)
-      val entryTokens = tokens(entry.finding.description)
-      val cluster = clusters.firstOrNull { head ->
-        head.representativeFilePath == entryFilePath &&
-          jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
-      }
-      if (cluster != null) {
-        cluster.entries += entry
-      } else {
-        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
-      }
-    }
-
-    val candidates = clusters.map(::toCandidate)
+    val candidates = mergeCandidates(lane1, lane2)
 
     val sorted = candidates.sortedWith(
       compareBy<MergedCandidate> { it.severity.ordinal }
@@ -51,18 +27,70 @@ object ParallelReviewMerger {
         confidence = candidate.confidence,
         location = candidate.location,
         description = candidate.description,
+        specialistSkillNames = candidate.specialistSkillNames,
+        originLayerChains = candidate.originLayerChains,
+        repositoryPath = candidate.repositoryPath,
+        line = candidate.line,
       )
     }
 
-    val formattedOutput = mergedFindings.joinToString("\n") { f ->
-      val agentLabel = f.agentIds.joinToString(", ")
-      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | ${f.location} | ${f.description}"
-    }
+    val formattedOutput = mergedFindings.joinToString("\n", transform = ::formatFinding)
 
     return ParallelReviewMergeResult(
       findings = mergedFindings,
       formattedOutput = formattedOutput,
     )
+  }
+
+  private fun mergeCandidates(
+    lane1: ParallelReviewLaneResult,
+    lane2: ParallelReviewLaneResult,
+  ): List<MergedCandidate> {
+    val allEntries = mutableListOf<FindingEntry>()
+    var appearanceOrder = 0
+    lane1.findings.forEach { f -> allEntries += FindingEntry(f, lane1.agentId, appearanceOrder++) }
+    lane2.findings.forEach { f -> allEntries += FindingEntry(f, lane2.agentId, appearanceOrder++) }
+
+    // Deterministic greedy single pass in insertion order (lane1 entries first, then lane2).
+    // Each entry joins the first existing cluster whose first-inserted representative shares the
+    // same file path AND clears the Jaccard token-overlap threshold; otherwise it opens a new
+    // cluster. The representative's file path and tokens are cached in ClusterHead to avoid
+    // O(N²) recomputation of tokens() on each probe.
+    val clusters = mutableListOf<ClusterHead>()
+    allEntries.forEach { entry ->
+      val entryFilePath = entry.finding.repositoryPath ?: filePathOf(entry.finding.location)
+      val entryTokens = tokens(entry.finding.description)
+      val cluster = clusters.firstOrNull { head ->
+        head.representativeFilePath == entryFilePath &&
+          jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
+      }
+      if (cluster != null) {
+        cluster.entries += entry
+      } else {
+        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
+      }
+    }
+
+    return clusters.map(::toCandidate)
+  }
+
+  private fun formatFinding(finding: ParallelReviewMergedFinding): String {
+    val agentLabel = finding.agentIds.joinToString(", ")
+    val provenance = buildList {
+      if (finding.specialistSkillNames.isNotEmpty()) {
+        add("specialists=${finding.specialistSkillNames.joinToString(",")}")
+      }
+      if (finding.originLayerChains.isNotEmpty()) {
+        add("origins=${finding.originLayerChains.joinToString(",") { it.joinToString("->") }}")
+      }
+    }.joinToString("; ").let { if (it.isBlank()) "" else " | $it" }
+    val structuredLocation = if (finding.repositoryPath != null && finding.line != null) {
+      "path=${structuredString(finding.repositoryPath)} | line=${finding.line}"
+    } else {
+      finding.location
+    }
+    return "- [${finding.fNumber}] [$agentLabel] ${finding.severity.displayName} | ${finding.confidence} | " +
+      "$structuredLocation | ${finding.description}$provenance"
   }
 
   private fun toCandidate(head: ClusterHead): MergedCandidate {
@@ -83,6 +111,10 @@ object ParallelReviewMerger {
       description = firstEntry.finding.description,
       isCoalesced = coalesced,
       firstAppearance = firstEntry.appearanceOrder,
+      specialistSkillNames = entries.mapNotNull { it.finding.specialistSkillName }.distinct(),
+      originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
+      repositoryPath = firstEntry.finding.repositoryPath,
+      line = firstEntry.finding.line,
     )
   }
 
@@ -93,8 +125,8 @@ object ParallelReviewMerger {
 
   // File-path portion of a location field ("file:line" -> "file"). Kotlin's substringBeforeLast
   // returns the whole string when there is no colon, so colon-less locations fall back to
-  // themselves. Lower-cased so path comparison is case-insensitive.
-  private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim().lowercase()
+  // themselves. Repository path identity is intentionally case-sensitive.
+  private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim()
 
   // Splits a description into word tokens on any non-alphanumeric run. Hoisted to a constant so the
   // pattern is compiled once, not per pairwise comparison during clustering.
@@ -133,5 +165,9 @@ object ParallelReviewMerger {
     val description: String,
     val isCoalesced: Boolean,
     val firstAppearance: Int,
+    val specialistSkillNames: List<String>,
+    val originLayerChains: List<List<String>>,
+    val repositoryPath: String?,
+    val line: Int?,
   )
 }

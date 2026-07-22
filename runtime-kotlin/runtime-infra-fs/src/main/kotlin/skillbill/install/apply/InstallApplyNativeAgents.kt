@@ -11,16 +11,13 @@ import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkOutcome
 import skillbill.install.nativeagent.NativeAgentLinkOverrides
 import skillbill.install.nativeagent.NativeAgentLinkRequest
-import skillbill.install.plan.platformSkills
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.support.InstallSymlinkException
 import skillbill.nativeagent.rendering.NativeAgentOperations
-import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 internal fun applyNativeAgents(
   plan: InstallPlan,
-  platformManifests: List<PlatformManifest>,
   failures: MutableList<InstallApplyIssue>,
 ): List<NativeAgentApplyOutcome> {
   val selectedAgents = plan.agents.map { target -> target.agent }.toSet()
@@ -30,7 +27,6 @@ internal fun applyNativeAgents(
     installCacheRoot = nativeAgentApplyCacheRoot(plan),
     legacyManagedRoot = nativeAgentLegacyCacheRoot(plan),
     sourceRoots = nativeAgentSourceRoots(plan.skills, plan.selectedPlatformSlugs.toSet()),
-    replacementCleanupSourceRoots = allReplacementCleanupNativeAgentSourceRoots(plan, platformManifests),
   )
   return nativeAgentInstallers
     .filter { installer -> installer.agent in selectedAgents }
@@ -46,9 +42,6 @@ private fun applyNativeAgentProvider(
   installer: NativeAgentInstaller,
   context: NativeAgentApplyContext,
 ): List<NativeAgentApplyOutcome> = runCatching {
-  if (context.plan.request.replaceExistingSkillBillLinks) {
-    installer.unlink(nativeAgentReplacementCleanupRequest(context))
-  }
   installer.link(nativeAgentLinkRequest(context))
 }.fold(
   onSuccess = { outcome -> nativeAgentProviderOutcomes(installer, outcome) },
@@ -67,7 +60,6 @@ private data class NativeAgentApplyContext(
   val installCacheRoot: Path,
   val legacyManagedRoot: Path,
   val sourceRoots: List<Path>,
-  val replacementCleanupSourceRoots: List<Path>,
 )
 
 private fun nativeAgentLinkRequest(context: NativeAgentApplyContext): NativeAgentLinkRequest {
@@ -80,21 +72,6 @@ private fun nativeAgentLinkRequest(context: NativeAgentApplyContext): NativeAgen
     overrides = NativeAgentLinkOverrides(
       installCacheRoot = context.installCacheRoot,
       sourceRoots = context.sourceRoots,
-      legacyManagedRoot = context.legacyManagedRoot,
-    ),
-  )
-}
-
-private fun nativeAgentReplacementCleanupRequest(context: NativeAgentApplyContext): NativeAgentLinkRequest {
-  val plan = context.plan
-  return NativeAgentLinkRequest(
-    platformPacksRoot = plan.installationTargetPaths.platformPacksRoot,
-    skillsRoot = plan.installationTargetPaths.skillsRoot,
-    home = plan.request.home,
-    selectedPlatforms = null,
-    overrides = NativeAgentLinkOverrides(
-      installCacheRoot = context.installCacheRoot,
-      sourceRoots = context.replacementCleanupSourceRoots,
       legacyManagedRoot = context.legacyManagedRoot,
     ),
   )
@@ -161,16 +138,15 @@ private data class NativeAgentInstaller(
   val unlink: (NativeAgentLinkRequest) -> List<Path>,
 )
 
-private fun nativeAgentApplyCacheRoot(plan: InstallPlan): Path {
-  val legacyCacheLeaf = NativeAgentOperations
-    .installCacheRoot(
-      home = plan.request.home,
-      platformPacksRoot = plan.installationTargetPaths.platformPacksRoot,
-      skillsRoot = plan.installationTargetPaths.skillsRoot,
-    )
-    .fileName
-    .toString()
-  return installedSkillsCacheRoot(plan.request.home).resolve("native-agents-$legacyCacheLeaf").normalize()
+private fun nativeAgentApplyCacheRoot(plan: InstallPlan): Path = currentNativeAgentApplyCacheRoot(
+  plan.request.home,
+  plan.installationTargetPaths.platformPacksRoot,
+  plan.installationTargetPaths.skillsRoot,
+)
+
+fun currentNativeAgentApplyCacheRoot(home: Path, platformPacksRoot: Path, skillsRoot: Path?): Path {
+  val cacheLeaf = NativeAgentOperations.installCacheRoot(home, platformPacksRoot, skillsRoot).fileName.toString()
+  return installedSkillsCacheRoot(home).resolve("native-agents-$cacheLeaf").toAbsolutePath().normalize()
 }
 
 private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOperations.installCacheRoot(
@@ -188,16 +164,6 @@ internal fun nativeAgentSourceRoots(
 ): List<Path> = skills
   .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
   .map { skill -> skill.sourceDir }
-
-private fun allReplacementCleanupNativeAgentSourceRoots(
-  plan: InstallPlan,
-  platformManifests: List<PlatformManifest>,
-): List<Path> = (
-  plan.skills +
-    platformManifests.flatMap(::platformSkills)
-  )
-  .map { skill -> skill.sourceDir }
-  .distinct()
 
 private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
   NativeAgentInstaller(

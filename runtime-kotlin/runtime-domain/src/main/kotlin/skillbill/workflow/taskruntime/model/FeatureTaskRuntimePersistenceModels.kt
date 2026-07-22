@@ -17,7 +17,24 @@ import java.math.BigInteger
 const val FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY: String = "feature_task_runtime_phase_records"
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY: String = "feature_task_runtime_phase_ledger"
 const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal_planning_import"
+const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
+const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
+
+data class FeatureTaskRuntimeOperatorBlockRetry(
+  val phaseId: String,
+  val reason: String,
+  val retriedAt: String,
+) {
+  init {
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimeOperatorBlockRetry.phaseId must be non-blank." }
+    require(reason.length in 1..FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH && reason.isNotBlank()) {
+      "FeatureTaskRuntimeOperatorBlockRetry.reason must contain " +
+        "1..$FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH characters."
+    }
+    require(retriedAt.isNotBlank()) { "FeatureTaskRuntimeOperatorBlockRetry.retriedAt must be non-blank." }
+  }
+}
 
 data class FeatureTaskRuntimeGoalPlanningImport(
   val parentGoalWorkflowId: String,

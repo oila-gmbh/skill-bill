@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.defaultFeatureBranch
-import skillbill.application.decomposition.projectCurrentSubtaskStatus
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
@@ -90,7 +89,6 @@ class FeatureSpecPreparationWriter(
     fileStore.writeTextAtomically(parentSpecPath, parentSpecText)
     subtaskRecords.forEach { fileStore.writeTextAtomically(it.path, it.text) }
     fileStore.writeTextAtomically(preparedManifest.manifestPath, preparedManifest.yaml)
-    projectCurrentSubtaskStatus(repoRoot, preparedManifest.manifest, fileStore)
     return FeatureSpecWriteResult(
       mode = request.decision.mode,
       parentSpecPath = parentSpecRelativePath,
@@ -185,10 +183,6 @@ private data class ParentSpecRenderInput(
 )
 
 private fun renderParentSpec(input: ParentSpecRenderInput): String = buildString {
-  appendLine("---")
-  appendLine("status: In Progress")
-  appendLine("---")
-  appendLine()
   appendLine("# ${input.issueKey} - ${input.featureName}")
   appendLine()
   appendLine("## Mode")
@@ -234,10 +228,6 @@ private fun renderSubtaskSpec(
   parentSpecPath: String,
   subtaskPath: String,
 ): String = buildString {
-  appendLine("---")
-  appendLine("status: Pending")
-  appendLine("---")
-  appendLine()
   appendLine("# $issueKey Subtask ${subtask.id} - ${subtask.name}")
   appendLine()
   appendLine("Parent spec: [$parentSpecPath](./spec.md)")

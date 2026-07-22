@@ -52,9 +52,7 @@ class ScaffoldReviewStructureAcceptanceTest {
   }
 
   private fun assertRenderedSharedContract(repo: Path) {
-    val canonical = repo.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
-    Files.writeString(
-      canonical,
+    val contract =
       """
       |## Shared Contract For Every Specialist
       |- Evidence is mandatory: include `file:line` and a consequence.
@@ -63,11 +61,13 @@ class ScaffoldReviewStructureAcceptanceTest {
       |
       |## Shared Delegation Contract
       |- Deduplicate overlapping findings without losing attribution.
-      """.trimMargin(),
-    )
+      """.trimMargin()
+    Files.writeString(repo.resolve("orchestration/review-orchestrator/PLAYBOOK.md"), contract)
+    Files.writeString(repo.resolve("orchestration/review-orchestrator/specialist-contract.md"), contract)
     listOf("bill-java-code-review", "bill-java-code-review-architecture").forEach { skillName ->
       val rendered = renderAuthoringTarget(repo, skillName)
-      val pointer = rendered.blocks.single { it.header.endsWith("review-orchestrator.md =====") }
+      val pointerName = if (skillName.endsWith("-architecture")) "specialist-contract.md" else "review-orchestrator.md"
+      val pointer = rendered.blocks.single { it.header.endsWith("$pointerName =====") }
       val target = pointer.header.substringAfter("pointer: ").substringBeforeLast(" =====")
       val resolved = repo.resolve(target).parent.resolve(pointer.content.trim()).normalize()
       val shared = Files.readString(resolved)
@@ -130,16 +130,8 @@ class ScaffoldReviewStructureAcceptanceTest {
     val pointers = manifest.getValue("pointers") as Map<*, *>
     val expected = listOf(
       mapOf(
-        "name" to "review-orchestrator.md",
-        "target" to "orchestration/review-orchestrator/PLAYBOOK.md",
-      ),
-      mapOf(
-        "name" to "shell-ceremony.md",
-        "target" to "orchestration/shell-content-contract/shell-ceremony.md",
-      ),
-      mapOf(
-        "name" to "telemetry-contract.md",
-        "target" to "orchestration/telemetry-contract/PLAYBOOK.md",
+        "name" to "specialist-contract.md",
+        "target" to "orchestration/review-orchestrator/specialist-contract.md",
       ),
     )
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->

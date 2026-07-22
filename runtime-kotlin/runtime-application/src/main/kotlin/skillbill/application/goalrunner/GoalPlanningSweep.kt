@@ -51,6 +51,7 @@ internal data class GoalPlanningSharedContext(
   val normalizedIssueKey: String,
   val parentWorkflowId: String,
   val repositoryIdentity: String,
+  val parentSpec: String,
   val parentSpecHash: String,
   val decompositionManifestHash: String,
   val dbPathOverride: String?,
@@ -90,19 +91,9 @@ class DefaultGoalPlanningSweep(
       return preSweepStopped(request, sharedContextReason(error))
     }
     val activeSubtasks = state.manifest.subtasks.filter { it.id in includedSubtaskIds(shared.planningPacket) }
-    val provenance = GoalPlanningContractProvenance(
-      shared.parentSpecHash,
-      shared.decompositionManifestHash,
-      GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
-    )
-    if (existingShared != null && existingShared.provenance != provenance) {
-      return stopped(
-        shared,
-        0,
-        "Goal planning shared preplan provenance is incompatible; " +
-          "hard reset or explicit operator migration is required.",
-      )
-    }
+    val currentProvenance = currentProvenance(shared)
+    val provenance = recoverableProvenance(existingShared, currentProvenance, shared)
+      ?: return incompatibleProvenance(shared)
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
       .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance)
@@ -132,6 +123,37 @@ class DefaultGoalPlanningSweep(
       producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload)?.let { return it }
     }
   }
+
+  private fun currentProvenance(shared: GoalPlanningSharedContext) = GoalPlanningContractProvenance(
+    shared.parentSpecHash,
+    shared.decompositionManifestHash,
+    GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+  )
+
+  private fun recoverableProvenance(
+    existing: SharedGoalPreplanCheckpoint?,
+    current: GoalPlanningContractProvenance,
+    shared: GoalPlanningSharedContext,
+  ): GoalPlanningContractProvenance? {
+    val existingProvenance = existing?.provenance ?: return current
+    if (existingProvenance == current) return current
+    val savedParentSpec = shared.planningPacket["parent_spec"] as? String
+    return existingProvenance.takeIf {
+      it.decompositionManifestHash == current.decompositionManifestHash &&
+        it.phaseOutputContractId == current.phaseOutputContractId &&
+        savedParentSpec != null &&
+        sha256HexUtf8(savedParentSpec) == it.parentSpecHash &&
+        canonicalPlanningSpec(savedParentSpec) == canonicalPlanningSpec(shared.parentSpec)
+    }
+  }
+
+  private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped = stopped(
+    shared,
+    0,
+    "Goal planning preparation cannot be recovered because the current governed parent spec or immutable " +
+      "decomposition provenance differs from the saved shared preplan.",
+    PHASE_PREPLAN,
+  )
 
   @Suppress("ReturnCount")
   private fun produceSharedPreplan(
@@ -317,7 +339,6 @@ class DefaultGoalPlanningSweep(
       repositoryIdentity = repositoryIdentity,
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
       parentSpecPath = parentSpecGoverningPath,
-      parentSpec = parentSpec,
       subtasks = state.manifest.subtasks,
     )
     return GoalPlanningSharedContext(
@@ -325,6 +346,7 @@ class DefaultGoalPlanningSweep(
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
       parentWorkflowId = state.parentWorkflowId,
       repositoryIdentity = repositoryIdentity,
+      parentSpec = parentSpec,
       parentSpecHash = parentSpecHash,
       decompositionManifestHash = decompositionManifestHash,
       dbPathOverride = request.dbPathOverride,
@@ -419,7 +441,6 @@ class DefaultGoalPlanningSweep(
     repositoryIdentity: String,
     normalizedIssueKey: String,
     parentSpecPath: String,
-    parentSpec: String,
     subtasks: List<DecompositionSubtask>,
   ) {
     require(packet.keys == SHARED_CONTEXT_PACKET_FIELDS) { "shared context packet fields are invalid" }
@@ -427,9 +448,7 @@ class DefaultGoalPlanningSweep(
     require(packet["repository_identity"] == repositoryIdentity) { "shared context repository identity is invalid" }
     require(packet["normalized_issue_key"] == normalizedIssueKey) { "shared context issue key is invalid" }
     require(packet["parent_spec_path"] == parentSpecPath) { "shared context parent spec path is invalid" }
-    require(packet["parent_spec"] == parentSpec.take(MAX_GOVERNED_CONTEXT_CHARS)) {
-      "shared context parent spec is invalid"
-    }
+    require(packet["parent_spec"] is String) { "shared context parent spec is invalid" }
     require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
       "shared context decomposition manifest is malformed"
     }
@@ -528,6 +547,32 @@ class DefaultGoalPlanningSweep(
 
   private fun packetDigest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
 
+  private fun canonicalPlanningSpec(spec: String): String {
+    val lines = spec.lines()
+    if (lines.firstOrNull() != FRONTMATTER_FENCE) return spec
+    val closingFenceIndex = lines.indexOfFirstFrom(1) { it == FRONTMATTER_FENCE }
+    if (closingFenceIndex < 0) return spec
+    val frontmatter = lines.subList(1, closingFenceIndex)
+    val withoutStatus = frontmatter.filterNot { STATUS_FRONTMATTER_LINE.matches(it) }
+    if (withoutStatus.size == frontmatter.size) return spec
+    val body = lines.drop(closingFenceIndex + 1)
+    return if (withoutStatus.all(String::isBlank)) {
+      body.dropWhileAtMostOne(String::isBlank).joinToString("\n")
+    } else {
+      (listOf(FRONTMATTER_FENCE) + withoutStatus + FRONTMATTER_FENCE + body).joinToString("\n")
+    }
+  }
+
+  private fun <T> List<T>.indexOfFirstFrom(startIndex: Int, predicate: (T) -> Boolean): Int {
+    for (index in startIndex until size) {
+      if (predicate(this[index])) return index
+    }
+    return -1
+  }
+
+  private fun <T> List<T>.dropWhileAtMostOne(predicate: (T) -> Boolean): List<T> =
+    if (firstOrNull()?.let(predicate) == true) drop(1) else this
+
   private fun immutableDecompositionHash(manifest: skillbill.workflow.model.DecompositionManifest): String {
     val immutable = linkedMapOf<String, Any?>(
       "contract_version" to manifest.contractVersion,
@@ -610,6 +655,7 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
     const val SHARED_CONTEXT_PACKET_VERSION = "0.1"
+    const val FRONTMATTER_FENCE = "---"
     const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
     const val MAX_SHARED_CONTEXT_PACKET_CHARS = 524_288
     val SHARED_CONTEXT_PACKET_FIELDS = setOf(
@@ -628,5 +674,6 @@ class DefaultGoalPlanningSweep(
     val PLANNING_SUBTASK_FIELDS = setOf("id", "name", "spec_path", "planning_disposition", "dependencies")
     val PLANNING_DEPENDENCY_FIELDS = setOf("subtask_id", "optional", "skipped")
     val PLANNING_DISPOSITIONS = setOf("included", "skipped")
+    val STATUS_FRONTMATTER_LINE = Regex("^status\\s*:.*$")
   }
 }

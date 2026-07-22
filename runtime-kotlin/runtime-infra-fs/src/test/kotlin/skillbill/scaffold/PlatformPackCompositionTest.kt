@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
@@ -309,6 +310,37 @@ class PlatformPackCompositionTest {
   }
 
   @Test
+  fun `manifest discovery rejects ambiguous same depth lane ownership`() {
+    val sharedArea = mapOf("security" to "code-review/security/content.md")
+    val packsRoot = newTempPacksRoot(
+      "root" to manifest(
+        slug = "root",
+        composition = """
+          code_review_composition:
+            baseline_layers:
+              - platform: left
+                skill: bill-left-code-review
+                scope: same-review-scope
+                required: true
+                mode: kmp-baseline
+              - platform: right
+                skill: bill-right-code-review
+                scope: same-review-scope
+                required: true
+                mode: kmp-baseline
+        """.trimIndent(),
+      ),
+      "left" to manifest(slug = "left", areas = sharedArea),
+      "right" to manifest(slug = "right", areas = sharedArea),
+    )
+
+    val error = assertFailsWith<AmbiguousLaneOwnershipError> { discoverPlatformPackManifests(packsRoot) }
+
+    assertContains(error.message.orEmpty(), "security")
+    assertContains(error.message.orEmpty(), "left, right")
+  }
+
+  @Test
   fun `composition rejects kmp baseline mode for non Kotlin baseline skill`() {
     val packsRoot = newTempPacksRoot(
       "kotlin" to manifest(
@@ -358,7 +390,8 @@ class PlatformPackCompositionTest {
 
     val message = error.message.orEmpty()
     assertContains(message, "unsupported referenced skill")
-    assertContains(message, "kotlin/bill-kotlin-code-review")
+    assertContains(message, "other/bill-kotlin-code-review")
+    assertContains(message, "referenced pack's baseline")
   }
 
   private fun kotlinBaselineComposition(): String = """

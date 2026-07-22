@@ -93,8 +93,11 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.nio.file.Files
@@ -469,6 +472,68 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf(0, 1), sequences)
     assertEquals(sequences.sorted(), sequences)
     assertEquals(listOf("start", "complete"), ledger.map { it["action"] })
+  }
+
+  @Test
+  fun `operator blocked-phase retry is active only while retry is the latest phase transition`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val service = testWorkflowService(database)
+    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val workflowId = (
+      service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
+        as WorkflowOpenResult.Ok
+      ).workflowId
+    val reason = "Use the operator-approved fresh-process isolation boundary."
+    recorder.recordRuntimePhase(
+      workflowId,
+      phaseId = "implement",
+      status = "blocked",
+      finished = false,
+      blockedReason = "native adapter unavailable",
+    )
+
+    val retried = service.retryBlockedFeatureTaskRuntimePhase(workflowId, "implement", reason)
+
+    assertTrue(retried is WorkflowUpdateResult.Ok)
+    assertEquals(reason, recorder.loadOperatorBlockRetry(workflowId)?.reason)
+    recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.START,
+        phaseId = "implement",
+        attemptCount = 1,
+        resolvedAgentId = "codex",
+      ),
+    )
+    assertEquals(null, recorder.loadOperatorBlockRetry(workflowId))
+  }
+
+  @Test
+  fun `operator blocked-phase retry reopens the authoritative goal manifest`() {
+    val fixture = blockedGoalChildRetryFixture()
+
+    val retried = fixture.service.retryBlockedFeatureTaskRuntimePhase(
+      fixture.childWorkflowId,
+      "implement",
+      "Use the operator-approved fresh-process isolation boundary.",
+    )
+
+    assertTrue(retried is WorkflowUpdateResult.Ok)
+    val manifest = loadTestDecompositionManifest(fixture.manifestPath)
+    assertEquals("in_progress", manifest.status)
+    assertEquals("resume", manifest.currentSubtaskIntent.action)
+    assertEquals(1, manifest.currentSubtaskIntent.subtaskId)
+    assertEquals("in_progress", manifest.subtasks.single().status)
+    assertEquals(fixture.childWorkflowId, manifest.subtasks.single().workflowId)
+    assertEquals(null, manifest.subtasks.single().blockedReason)
+    assertEquals("implement", manifest.subtasks.single().lastResumableStep)
+    val parent = fixture.service.get(
+      WorkflowFamilyKind.TASK_PROSE,
+      fixture.parentWorkflowId,
+    ) as WorkflowGetResult.Ok
+    val parentRuntime = parent.snapshot.artifacts["decomposition_runtime"] as Map<*, *>
+    assertEquals("in_progress", parentRuntime["status"])
   }
 
   @Test
@@ -905,14 +970,14 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", blockedSubtask.status)
     assertEquals("runtime: Validation failed.", blockedSubtask.blockedReason)
     assertEquals("validate", blockedSubtask.lastResumableStep)
-    assertEquals("Blocked", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
 
     markDecompositionSubtaskSkipped(service, workflowId, subtaskSpec)
 
     val skippedManifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
     assertEquals("skipped", skippedManifest.subtasks.single().status)
     assertEquals("complete", skippedManifest.currentSubtaskIntent.action)
-    assertEquals("Skipped", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
   }
 
   @Test
@@ -954,7 +1019,7 @@ class ApplicationPersistencePortTest {
     assertEquals("in_progress", subtask.status)
     assertEquals(null, subtask.blockedReason)
     assertEquals("validate", subtask.lastResumableStep)
-    assertEquals("In Progress", statusLine(subtaskSpec))
+    assertEquals("Pending", statusLine(subtaskSpec))
   }
 
   @Test
@@ -1192,7 +1257,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `workflow service completes all subtasks and projects parent spec status`() {
+  fun `workflow service completes all subtasks without mutating specs`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition-complete")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
     val subtaskOne = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
@@ -1218,10 +1283,10 @@ class ApplicationPersistencePortTest {
     assertTrue(manifest.subtasks.all { it.status == "complete" })
     assertTrue(manifest.subtasks.all { it.commitSha == null })
     assertEquals(listOf("SKILL-51 subtask 1: foundation", "SKILL-51 subtask 2: runtime"), git.commits)
-    assertEquals("Complete", statusLine(parentSpec))
-    assertEquals("Complete", statusSection(parentSpec))
-    assertEquals("Complete", statusLine(subtaskOne))
-    assertEquals("Complete", statusLine(subtaskTwo))
+    assertEquals("Pending", statusLine(parentSpec))
+    assertEquals("Pending", statusSection(parentSpec))
+    assertEquals("Pending", statusLine(subtaskOne))
+    assertEquals("Pending", statusLine(subtaskTwo))
   }
 
   @Test
@@ -2142,6 +2207,66 @@ private object NoopWorkflowStateRepository : WorkflowStateRepository {
 
 private fun createDecompositionWorkflow(service: WorkflowService, parentSpec: Path, subtaskSpec: Path): String =
   createDecompositionWorkflow(service, parentSpec, subtaskSpec, null)
+
+private fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
+  val tempDir = Files.createTempDirectory("skillbill-goal-child-retry")
+  val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
+  val subtaskSpec = parentSpec.parent.resolve("spec_subtask_1_foundation.md")
+  writeSpecs(parentSpec, subtaskSpec)
+  val database = FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository())
+  val service = testWorkflowService(database)
+  val parentWorkflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
+  markDecompositionSubtaskBlocked(service, parentWorkflowId, subtaskSpec)
+  val childWorkflowId = (
+    service.openTestFeatureTask(
+      WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId = "ftr-goal-child",
+      dbOverride = null,
+      issueKey = "SKILL-51",
+    ) as WorkflowOpenResult.Ok
+    ).workflowId
+  service.update(
+    WorkflowFamilyKind.TASK_RUNTIME,
+    WorkflowUpdateRequest(
+      workflowId = childWorkflowId,
+      workflowStatus = "running",
+      currentStepId = "preplan",
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to
+          FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = "SKILL-51",
+            subtaskId = 1,
+            suppressPr = true,
+            goalBranch = "feat/SKILL-51-demo",
+            parentWorkflowId = parentWorkflowId,
+            codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+          ).toArtifactMap(),
+      ),
+    ),
+    dbOverride = null,
+  )
+  FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter()).recordRuntimePhase(
+    childWorkflowId,
+    phaseId = "implement",
+    status = "blocked",
+    finished = false,
+    blockedReason = "native adapter unavailable",
+  )
+  return BlockedGoalChildRetryFixture(
+    service = service,
+    parentWorkflowId = parentWorkflowId,
+    childWorkflowId = childWorkflowId,
+    manifestPath = parentSpec.parent.resolve("decomposition-manifest.yaml"),
+  )
+}
+
+private data class BlockedGoalChildRetryFixture(
+  val service: WorkflowService,
+  val parentWorkflowId: String,
+  val childWorkflowId: String,
+  val manifestPath: Path,
+)
 
 private fun createDecompositionWorkflow(
   service: WorkflowService,

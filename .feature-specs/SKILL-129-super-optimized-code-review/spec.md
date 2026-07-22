@@ -1,7 +1,3 @@
----
-status: Pending
----
-
 # SKILL-129 - Super-optimized delegated code review
 
 Created: 2026-07-17

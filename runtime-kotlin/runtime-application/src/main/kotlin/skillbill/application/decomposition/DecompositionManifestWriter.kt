@@ -125,7 +125,6 @@ object DecompositionManifestWriter {
     val prepared = prepare(request, validator, runtimeUpdate, fileStore)
     writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
     val loaded = loadDecompositionManifest(prepared.manifestPath, fileStore, validator)
-    projectCurrentSubtaskStatus(request.repoRoot, loaded, fileStore)
     return DecompositionManifestWriteResult(manifestPath = prepared.manifestPath, manifest = loaded)
   }
 
@@ -317,7 +316,6 @@ private fun writeProjection(
   val yaml = encodeDecompositionManifestYaml(manifest.gitTrackedProjection(), validator, fileStore)
   writeDecompositionManifestText(manifestPath, yaml, fileStore)
   val loaded = loadDecompositionManifest(manifestPath, fileStore, validator)
-  projectCurrentSubtaskStatus(repoRoot, loaded, fileStore)
   DecompositionManifestWriteResult(manifestPath = manifestPath, manifest = loaded)
 } catch (_: IOException) {
   null

@@ -80,7 +80,7 @@ class DecompositionManifestWriterTest {
   }
 
   @Test
-  fun `workflow update records runtime state on matching subtask and projects markdown status`() {
+  fun `workflow update records runtime state without mutating the subtask spec`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-state")
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     val secondSubtaskSpec = parentSpecPath.parent.resolve("spec_subtask_2_runtime.md")
@@ -124,11 +124,11 @@ class DecompositionManifestWriterTest {
     assertEquals("feature/SKILL-51-decomposition", runtimeSubtask.branch)
     assertEquals("wfl-subtask-2", runtimeSubtask.workflowId)
     assertEquals("audit", runtimeSubtask.lastResumableStep)
-    assertContains(Files.readString(secondSubtaskSpec), "status: In Progress")
+    assertContains(Files.readString(secondSubtaskSpec), "status: Pending")
   }
 
   @Test
-  fun `runtime update projects completed subtask status and commit sha from durable runtime`() {
+  fun `runtime update projects completed subtask state only to the manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-completed-projection")
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
@@ -180,11 +180,11 @@ class DecompositionManifestWriterTest {
     val subtask = result.manifest.subtasks.single { it.id == 1 }
     assertEquals("complete", subtask.status)
     assertEquals(null, subtask.commitSha)
-    assertContains(Files.readString(subtaskSpec), "status: Complete")
+    assertContains(Files.readString(subtaskSpec), "status: In Progress")
   }
 
   @Test
-  fun `pending runtime projection restores blocked subtask spec readiness`() {
+  fun `pending runtime projection leaves spec content unchanged`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-reset-projection")
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     val subtaskSpec = parentSpecPath.parent.resolve("spec_subtask_1_foundation.md")
@@ -212,8 +212,8 @@ class DecompositionManifestWriterTest {
     )
 
     assertNotNull(result)
-    assertContains(Files.readString(parentSpecPath), "status: Pending")
-    assertContains(Files.readString(subtaskSpec), "status: Ready for implementation")
+    assertContains(Files.readString(parentSpecPath), "status: Blocked")
+    assertContains(Files.readString(subtaskSpec), "status: Blocked")
   }
 
   @Test

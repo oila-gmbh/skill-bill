@@ -1896,6 +1896,15 @@ class RuntimeArchitectureTest {
       // validation.
       "skillbill.workflow.GoalObservabilityEventValidator.validate",
       "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate",
+      // SKILL-129 subtask 1: the review-context packet, assignment, and
+      // launch envelopes are schema-validated as canonical wire maps. The
+      // typed projection owns composition; only the validation seam and the
+      // envelope wrapper expose the map, mirroring the validator ports above.
+      "skillbill.review.context.ReviewContextEnvelopeValidator.validate",
+      "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
+      "skillbill.application.review.toBoundedPayload",
+      "skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload",
+      "skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting",
       "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
       "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
       "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",

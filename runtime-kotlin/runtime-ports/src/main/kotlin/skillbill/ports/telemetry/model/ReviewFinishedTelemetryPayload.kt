@@ -29,6 +29,7 @@ private class ReviewFinishedTelemetryPayloadContract(
     put("execution_mode", telemetry.executionMode)
     put("review_finished_at", telemetry.reviewFinishedAt)
     put("learnings", telemetry.learnings.toPayload())
+    telemetry.reviewContextAccounting?.let { put("review_context_accounting", it) }
   }
 }
 

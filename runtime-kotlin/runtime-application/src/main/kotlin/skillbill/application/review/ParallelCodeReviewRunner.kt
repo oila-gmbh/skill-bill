@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
@@ -8,6 +9,10 @@ import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
+import skillbill.application.review.model.DelegatedReviewExecutionOutcome
+import skillbill.application.review.model.DelegatedReviewExecutionRequest
+import skillbill.application.review.model.DelegatedReviewLaunchRequest
+import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
@@ -15,30 +20,60 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
+import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewNativeAgentAssignment
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.ReviewExecutionModePolicy
+import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
-import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.ReviewAccountingCounters
+import skillbill.review.context.model.ReviewAccountingInput
+import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewAutoEligibility
+import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
+import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
-import java.nio.charset.StandardCharsets
+import skillbill.review.plan.ReviewContentMatcher
+import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 @Inject
+@Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class ParallelCodeReviewRunner(
-  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  private val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker,
+  private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
   private val parallelLaneRunner: ParallelReviewLaneRunner,
+  private val repoLocalConfig: RepoLocalConfigPort,
+  private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
+  private val reviewRubricResolver: ReviewRubricResolver,
+  private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
+  private val database: DatabaseSessionFactory,
 ) {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -50,35 +85,218 @@ class ParallelCodeReviewRunner(
     }
 
     val diffText = resolveDiff(request)
-    val stack = detectStack(diffText, request.repoRoot)
-    val prompt = buildParentReviewPrompt(diffText, stack, request.codeReviewMode)
+    val evidence = ReviewDiffEvidence.parse(diffText)
+    val detection = detectStack(evidence, request.repoRoot)
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    val launchRequests = prepare(
+      request,
+      diffText,
+      evidence,
+      detection.routed,
+      detection.manifests,
+      detection.ownedPathsBySlug,
+      listOf(agent1.id, agent2.id),
+      budget,
+    )
+    val providerNativeAssignments = launchRequests
+      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
+      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
+      .distinct()
+    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeAssignments.isNotEmpty()) {
+      nativeAgentPreflight.verify(
+        ReviewNativeAgentPreflightRequest(
+          repoRoot = request.repoRoot,
+          assignments = providerNativeAssignments,
+        ),
+      )
+    }
+    // Isolation and launch-boundary preflight only applies to workers this run will actually
+    // start in isolated conversations; inline mode runs everything in the parent's own session
+    // and must not be rejected for an agent that simply has no specialist isolation strategy.
+    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
+      delegatedReviewExecutionBroker.preflight(launchRequests)
+    }
+    val prepared = launchRequests.groupBy { it.agentId }
+    val outcomes = runLanes(
+      request,
+      detection.routed,
+      resolvedMode,
+      prepared,
+      agent1.id,
+      agent2.id,
+    )
+    return parallelResult(agent1.id, agent2.id, outcomes).also { result ->
+      result.accountingSummary?.let { summary ->
+        database.transaction { unitOfWork ->
+          unitOfWork.reviews.saveAccounting(
+            ReviewAccountingRecord(summary.reviewId, summary.packetDigest, summary.toBoundedPayload()),
+          )
+        }
+      }
+    }
+  }
 
-    val timeoutSec = request.timeout?.inWholeSeconds ?: (DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE)
-    val laneRunResult = parallelLaneRunner.runTwoLanes(
+  private fun resolvedMode(
+    request: ParallelCodeReviewRequest,
+    diffText: String,
+    manifests: List<PlatformManifest>,
+    maxLaneLaunchBytes: Long,
+  ) = ReviewExecutionModePolicy.resolve(
+    request.codeReviewMode,
+    ReviewAutoEligibility(
+      oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
+      highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
+      layeredStack = manifests.any { it.codeReviewComposition != null },
+    ),
+  )
+
+  private fun runLanes(
+    request: ParallelCodeReviewRequest,
+    routedManifests: List<PlatformManifest>,
+    resolvedMode: ResolvedReviewExecutionMode,
+    prepared: Map<String, List<DelegatedReviewLaunchRequest>>,
+    agent1Id: String,
+    agent2Id: String,
+  ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
+    val manifest = routedManifests.firstOrNull()
+    val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
+    return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = { launchLane(agent1.id, prompt, request) },
-        lane2 = { launchLane(agent2.id, prompt, request, request.agent2Model) },
+        lane1 = {
+          launchResolvedLane(
+            resolvedMode,
+            prepared[agent1Id].orEmpty(),
+            agent1Id,
+            routedManifests,
+            request,
+          )
+        },
+        lane2 = {
+          launchResolvedLane(
+            resolvedMode,
+            prepared[agent2Id].orEmpty(),
+            agent2Id,
+            routedManifests,
+            request,
+            request.agent2Model,
+          )
+        },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
       ),
     )
-    val outcome1 = laneRunResult.lane1
-    val outcome2 = laneRunResult.lane2
+  }
 
-    val lane1Result = ParallelReviewLaneResult(
-      agentId = agent1.id,
-      findings = if (outcome1.success) ParallelReviewFindingParser.parse(outcome1.rawOutput) else emptyList(),
+  @Suppress("LongMethod")
+  private fun prepare(
+    request: ParallelCodeReviewRequest,
+    diffText: String,
+    evidence: ReviewDiffEvidence,
+    routedManifests: List<PlatformManifest>,
+    manifests: List<PlatformManifest>,
+    ownedPathsBySlug: Map<String, Set<String>>,
+    agentIds: List<String>,
+    budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
+  ): List<DelegatedReviewLaunchRequest> {
+    val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
+    return ParallelReviewPreparationCompiler.compile(
+      input = ParallelReviewPreparationInput(
+        diff = diffText,
+        evidence = evidence,
+        stack = routedManifests.joinToString("+") { it.slug }.ifBlank { null },
+        agents = agentIds,
+        repoRoot = request.repoRoot,
+        routedPacks = routedManifests.map { it.slug },
+        lanes = plannedRubrics,
+        reviewRunId = request.reviewRunId,
+      ),
+      budget = budget,
+      envelopeValidator = reviewContextEnvelopeValidator,
     )
-    val lane2Result = ParallelReviewLaneResult(
-      agentId = agent2.id,
-      findings = if (outcome2.success) ParallelReviewFindingParser.parse(outcome2.rawOutput) else emptyList(),
-    )
+  }
 
-    val mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result)
-    return ParallelCodeReviewResult(
-      mergeResult = mergeResult,
-      lane1 = ParallelReviewLaneStatus(agent1.id, outcome1.success, outcome1.failureReason, outcome1.tokenUsage),
-      lane2 = ParallelReviewLaneStatus(agent2.id, outcome2.success, outcome2.failureReason, outcome2.tokenUsage),
+  @Suppress("LongMethod")
+  private fun resolvePlannedRubrics(
+    evidence: ReviewDiffEvidence,
+    routedManifests: List<PlatformManifest>,
+    manifests: List<PlatformManifest>,
+    ownedPathsBySlug: Map<String, Set<String>>,
+  ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
+    val rubric = reviewRubricResolver.resolve(null)
+    listOf(
+      PlannedReviewRubric(
+        ReviewLaunchLane(
+          rubric.rubricId,
+          "generic",
+          rubric.area ?: "generic",
+          0,
+          listOf("generic"),
+          true,
+          emptyList(),
+          0,
+          "generic fallback",
+          ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
+          changedHunkIds = evidence.hunks.map { it.hunkId },
+        ),
+        ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
+        workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
+      ),
     )
+  } else {
+    val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
+    // Each root pack only owns the files that actually routed to it; a required baseline lane
+    // must claim exactly that root's routed files, never every changed file across the whole
+    // (possibly cross-stack) diff, or a Kotlin required specialist would also claim Python files.
+    val flattened = routedManifests.flatMap { root ->
+      val rootOwnedPaths = ownedPathsBySlug[root.slug].orEmpty()
+      val rootFiles = evidence.files.filter { it.path in rootOwnedPaths }
+      ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
+        require(lanes.isNotEmpty()) {
+          "Routed pack '${root.slug}' resolved no declared flattened specialist worker."
+        }
+      }.map { lane ->
+        val ownedPaths = if (lane.required) rootOwnedPaths.toList() else laneOwnedPaths(lane, rootFiles)
+        lane.copy(
+          ownedPaths = ownedPaths.distinct().sorted(),
+          changedHunkIds = evidence.hunks.filter { it.path in ownedPaths }.map { it.hunkId },
+        )
+      }
+    }
+    flattened
+      .filter { lane -> lane.ownedPaths.isNotEmpty() }
+      .groupBy { it.skillName }
+      .values
+      .mapIndexed { index, matches ->
+        val first = matches.first()
+        val lane = first.copy(
+          orderIndex = index,
+          required = matches.any { it.required },
+          ownedPaths = matches.flatMap { it.ownedPaths }.distinct().sorted(),
+          changedHunkIds = matches.flatMap { it.changedHunkIds }.distinct(),
+        )
+        require(
+          matches.all {
+            it.packSlug == lane.packSlug && it.area == lane.area && it.skillName == lane.skillName &&
+              it.addOns == lane.addOns
+          },
+        ) {
+          "Conflicting ownership for specialist '${lane.skillName}'."
+        }
+        val owner = manifests.single { it.slug == lane.packSlug }
+        val ownedEvidence = evidence.ownedFiles(lane.ownedPaths.toSet()).map {
+          ReviewOwnedFileEvidence(it.path, it.changedContent)
+        }
+        val resolvedOwner = reviewRubricResolver.resolve(owner, ownedEvidence, lane.skillName)
+        val resolved = resolvedOwner
+          .specialists.singleOrNull { it.area == lane.area }
+          ?: resolvedOwner
+        PlannedReviewRubric(
+          descriptor = lane.copy(addOns = resolved.selectedAddOns),
+          rubric = ReviewRubricProjection(lane.skillName, resolved.body, resolved.area ?: lane.area),
+          originLayerChains = matches.flatMap { it.originLayerChains }.distinct(),
+        )
+      }
   }
 
   private fun resolveAgent(agentId: String, label: String): InstallAgent {
@@ -133,7 +351,7 @@ class ParallelCodeReviewRunner(
       "Command failed: ${args.joinToString(" ")}",
     )
 
-  private fun detectStack(diffText: String, repoRoot: Path): String? {
+  private fun detectStack(evidence: ReviewDiffEvidence, repoRoot: Path): StackDetection {
     val packsRoot = repoRoot.resolve("platform-packs")
     // A missing platform-packs directory yields an empty list (no exception) and degrades to a
     // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
@@ -149,52 +367,256 @@ class ParallelCodeReviewRunner(
         e,
       )
     }
-    if (manifests.isEmpty()) return null
+    if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList(), emptyMap())
 
-    val diffPaths = DIFF_PATH_PATTERN
-      .findAll(diffText)
-      .map { it.groupValues[1] }
-      .filterNot(RoutingSignalPathMatcher::isIgnored)
-      .toList()
+    val changedFiles = evidence.files.filterNot { RoutingSignalPathMatcher.isIgnored(it.path) }
 
-    val scores = manifests.associateWith { manifest ->
-      manifest.routingSignals.strong.sumOf { signal ->
-        diffPaths.count { path -> RoutingSignalPathMatcher.matches(path, signal) }
+    val signalOwners = manifests.flatMap { manifest ->
+      manifest.routingSignals.path.distinct().map { it to manifest.slug }
+    }.groupBy({ it.first }, { it.second })
+    val routedSlugs = linkedSetOf<String>()
+    val ownedPathsBySlug = mutableMapOf<String, MutableSet<String>>()
+    changedFiles.forEach { changed ->
+      // Path evidence is near-authoritative (a .kt file is a Kotlin file); content signals are
+      // broad, language-agnostic tokens ("class ", "import ") that legitimately appear in most
+      // stacks' source, so they may only break ties among equally-path-scored manifests and must
+      // never let a manifest with no path match at all outrank one with a real path match.
+      val scores = manifests.associateWith { manifest ->
+        val pathScore = manifest.routingSignals.path.distinct().sumOf { signal ->
+          if (!RoutingSignalPathMatcher.matches(changed.path, signal)) {
+            0
+          } else if (signalOwners.getValue(signal).size == 1) {
+            UNIQUE_PATH_SIGNAL_SCORE
+          } else {
+            1
+          }
+        }
+        val contentScore = manifest.routingSignals.content.distinct().count { signal ->
+          changed.changedContent.contains(signal, ignoreCase = true)
+        } * CONTENT_SIGNAL_SCORE
+        pathScore to contentScore
+      }.filterValues { (pathScore, contentScore) -> pathScore > 0 || contentScore > 0 }
+      val best = scores.values.maxWithOrNull(compareBy({ it.first }, { it.second })) ?: return@forEach
+      val winners = scores.filterValues { it == best }.keys.toMutableList()
+      if (winners.size > 1) {
+        // With only shared signals, prefer a baseline pack over a composed root. A root wins
+        // naturally as soon as one of its manifest-owned KMP/Android/etc. signals matches.
+        val composedRoots = winners.filter { it.codeReviewComposition != null }.toSet()
+        val baselineSlugs = composedRoots.flatMap { root ->
+          root.codeReviewComposition!!.baselineLayers.map { it.platform }
+        }.toSet()
+        if (baselineSlugs.any { slug -> winners.any { it.slug == slug } }) {
+          winners.removeAll(composedRoots)
+        }
+      }
+      winners.forEach { winner ->
+        routedSlugs += winner.slug
+        ownedPathsBySlug.getOrPut(winner.slug) { mutableSetOf() } += changed.path
       }
     }
-
-    val best = scores.maxByOrNull { it.value }
-    return if (best != null && best.value > 0) best.key.slug else null
+    val routed = manifests.filter { it.slug in routedSlugs }
+    return StackDetection(routed, manifests, ownedPathsBySlug)
   }
 
-  private fun buildParentReviewPrompt(
-    diffText: String,
-    stack: String?,
-    codeReviewMode: skillbill.workflow.model.CodeReviewExecutionMode,
-  ): String = buildString {
-    appendLine("Run one complete bill-code-review parent review.")
-    appendLine("Execution mode: ${codeReviewMode.wireValue}")
-    appendLine("Detected stack: ${stack ?: "generic"}")
-    appendLine("Use the exact diff below as the authoritative review scope; do not rediscover or replace it.")
-    appendLine(
-      "Route all required baseline and signal-relevant rubrics. Governed specialists, if selected, " +
-        "must be launched through the native bounded-context boundary.",
-    )
-    appendLine(
-      "Return only a risk register in F-XXX bullet format, one finding per line: " +
-        "- [F-NNN] Blocker|Major|Minor|Nit | High|Medium|Low | file:line | description",
-    )
-    appendLine()
-    append(diffText.replace("\r\n", "\n"))
-  }
-
-  private fun launchLane(
+  private fun launchResolvedLane(
+    mode: ResolvedReviewExecutionMode,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
     agentId: String,
-    prompt: String,
+    routedManifests: List<PlatformManifest>,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String? = null,
+  ): ParallelReviewLaneOutcome = when (mode) {
+    ResolvedReviewExecutionMode.INLINE ->
+      launchInlineParentLane(agentId, launchRequests, routedManifests, request, modelOverride)
+    ResolvedReviewExecutionMode.DELEGATED -> launchDelegatedLane(agentId, launchRequests, request, modelOverride)
+  }
+
+  @Suppress("LoopWithTooManyJumpStatements")
+  private fun launchDelegatedLane(
+    agentId: String,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome {
-    val outcome = subtaskLauncher.launch(
+    require(launchRequests.isNotEmpty()) { "Delegated review selected no specialist launches for '$agentId'." }
+    val timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes
+    val started = TimeSource.Monotonic.markNow()
+    val outcomes = mutableListOf<ParallelReviewLaneOutcome>()
+    for (launchRequest in launchRequests) {
+      val remaining = timeout - started.elapsedNow()
+      if (remaining <= 0.seconds) {
+        outcomes += ParallelReviewLaneOutcome(
+          success = false,
+          rawOutput = "",
+          failureReason = "shared specialist deadline exhausted before '${launchRequest.assignment.lane}'",
+          accounting = ReviewLaneAccounting(
+            lane = launchRequest.assignment.lane,
+            reviewId = launchRequest.assignment.reviewId,
+            packetDigest = launchRequest.assignment.packetDigest,
+            assignmentDigest = launchRequest.assignment.digest,
+            evidenceBytes = 0,
+            expansions = emptyList(),
+            toolCalls = 0,
+            modelTurns = 0,
+            resultBytes = 0,
+            terminalStatus = "timeout",
+          ),
+        )
+        continue
+      }
+      val outcome = launchSpecialist(launchRequest, request, modelOverride, remaining)
+      outcomes += outcome
+      // An interrupted launch signals a parent shutdown/cancellation; continuing to launch the
+      // remaining specialists at that point only starts workers that will themselves be
+      // immediately torn down.
+      if (outcome.interrupted) break
+    }
+    val failed = outcomes.firstOrNull { !it.success }
+    return ParallelReviewLaneOutcome(
+      success = failed == null,
+      rawOutput = outcomes.filter { it.success }.joinToString("\n") { it.rawOutput },
+      findings = outcomes.filter { it.success }.flatMap { it.findings },
+      failureReason = failed?.failureReason,
+      tokenUsage = outcomes.singleOrNull()?.tokenUsage,
+      budgetOutcome = failed?.budgetOutcome,
+      accounting = aggregateAccounting(agentId, outcomes.mapNotNull { it.accounting }),
+      specialistAccounting = outcomes.flatMap { it.specialistAccounting },
+    )
+  }
+
+  @Suppress("LongMethod")
+  private fun launchSpecialist(
+    launchRequest: DelegatedReviewLaunchRequest,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String? = null,
+    timeout: kotlin.time.Duration = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+  ): ParallelReviewLaneOutcome {
+    val execution = delegatedReviewExecutionBroker.execute(
+      DelegatedReviewExecutionRequest(
+        launchRequest = launchRequest,
+        repoRoot = request.repoRoot,
+        timeout = timeout,
+        modelOverride = modelOverride,
+      ),
+    )
+    return when (execution) {
+      is DelegatedReviewExecutionOutcome.Terminated -> ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = describeBudgetOutcome(execution.budgetOutcome),
+        budgetOutcome = execution.budgetOutcome,
+        accounting = execution.accounting,
+      )
+      is DelegatedReviewExecutionOutcome.Completed -> {
+        val worker = execution.worker
+        worker.budgetOutcome?.takeIf { worker.facts == null }?.let { budgetOutcome ->
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = describeBudgetOutcome(budgetOutcome),
+            budgetOutcome = budgetOutcome,
+            accounting = worker.accounting,
+          )
+        }
+        worker.forbiddenOperation?.let { forbidden ->
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = "forbidden review operation: ${forbidden.reason}",
+            accounting = worker.accounting,
+          )
+        }
+        val outcome = worker.facts
+        if (outcome == null) {
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = "unsupported agent: ${worker.unsupportedReason}",
+            accounting = worker.accounting,
+          )
+        }
+        val usage = providerTokenUsage(outcome)
+        val processFailure = laneFailureReason(outcome)
+        val budgetOutcome = worker.budgetOutcome
+        val reason = budgetOutcome?.takeIf { it.enforceable }?.let(::describeBudgetOutcome) ?: processFailure
+        ParallelReviewLaneOutcome(
+          success = reason == null,
+          rawOutput = outcome.stdout,
+          failureReason = reason,
+          tokenUsage = usage,
+          budgetOutcome = budgetOutcome,
+          accounting = worker.accounting,
+          interrupted = outcome.interrupted,
+          findings = if (reason == null) {
+            ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
+              require(finding.repositoryPath in launchRequest.assignment.assignedPaths) {
+                "Delegated finding location '${finding.location}' is outside the authoritative assignment ownership."
+              }
+              val assignedSpecialist = launchRequest.assignment.laneDecision.specialistSkillName
+              require(finding.specialistSkillName == null || finding.specialistSkillName == assignedSpecialist) {
+                "Delegated finding specialist '${finding.specialistSkillName}' does not match '$assignedSpecialist'."
+              }
+              finding.copy(
+                specialistSkillName = assignedSpecialist,
+                originLayerChains = launchRequest.assignment.laneDecision.originLayerChains,
+              )
+            }
+          } else {
+            emptyList()
+          },
+        )
+      }
+    }
+  }
+
+  @Suppress("LongMethod")
+  private fun launchInlineParentLane(
+    agentId: String,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+    routedManifests: List<PlatformManifest>,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String?,
+  ): ParallelReviewLaneOutcome {
+    require(launchRequests.isNotEmpty()) { "Inline review selected no resolved assignments for '$agentId'." }
+    val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
+    val prompt = buildString {
+      appendLine("Run one complete bill-code-review mode:inline parent review.")
+      appendLine("Resolved execution mode: inline")
+      appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
+      val rubricLabel = selected.joinToString { launch ->
+        val decision = launch.assignment.laneDecision
+        "${decision.specialistSkillName}" +
+          "[paths=${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }};" +
+          "add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }};" +
+          "origins=${decision.originLayerChains.joinToString("|") { it.joinToString("->") }}]"
+      }.ifBlank { "parallel-code-review" }
+      appendLine("Authoritative routed rubric identities: $rubricLabel")
+      selected.forEach { launch ->
+        val decision = launch.assignment.laneDecision
+        appendLine()
+        appendLine("## Resolved rubric: ${decision.specialistSkillName}")
+        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
+        launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
+      }
+      appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
+      appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
+      appendLine(
+        "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
+          "path=<JSON string> | line=<positive integer> | description' lines.",
+      )
+      appendLine()
+      // Hunks carry only line-number headers, never their file path, so grouping by path here is
+      // the only place that attribution survives; a flat concatenation across files leaves the
+      // agent unable to tell which hunk belongs to which changed file.
+      launchRequests.first().packet.changedHunks
+        .groupBy { it.path }
+        .toSortedMap()
+        .forEach { (path, hunks) ->
+          appendLine("## Changed file: ${structuredString(path)}")
+          hunks.forEach { hunk -> appendLine(hunk.content) }
+        }
+    }
+    val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
         configuredAgentOverrideId = null,
@@ -207,52 +629,70 @@ class ParallelCodeReviewRunner(
         ),
       ),
     )
+    val inlineAssignment = selected.first().assignment
     return when (outcome) {
+      is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = "unsupported agent: ${outcome.reason}",
+        accounting = inlineParentAccounting(agentId, inlineAssignment, prompt, "unsupported_provider", null),
+      )
       is AgentRunLaunchFacts -> {
-        val resultBytes = outcome.stdout.toByteArray(StandardCharsets.UTF_8).size.toLong()
-        val maxLaneResultBytes = ReviewContextBudgetPolicy.DEFAULT.maxLaneResultBytes
-        val reason = laneFailureReason(outcome) ?: if (resultBytes > maxLaneResultBytes) {
-          "$REVIEW_CONTEXT_BUDGET_EXCEEDED: lane_result_bytes $resultBytes > $maxLaneResultBytes"
+        val reason = laneFailureReason(outcome)
+        val findings = if (reason == null) {
+          ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
+            val findingPath = requireNotNull(finding.repositoryPath)
+            val owners = selected.filter { launch ->
+              launch.assignment.assignedPaths.any { path -> path == findingPath }
+            }
+            require(owners.isNotEmpty()) {
+              "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
+            }
+            val distinctOwners = owners.distinctBy { it.assignment.laneDecision.specialistSkillName }
+            val declaredSpecialist = finding.specialistSkillName
+            require(declaredSpecialist != null || distinctOwners.size == 1) {
+              "Inline finding location '${finding.location}' has overlapping ownership and must name its specialist."
+            }
+            val owner = if (declaredSpecialist == null) {
+              distinctOwners.single()
+            } else {
+              distinctOwners.singleOrNull {
+                it.assignment.laneDecision.specialistSkillName == declaredSpecialist
+              } ?: error(
+                "Inline finding specialist '$declaredSpecialist' does not own '${finding.location}'.",
+              )
+            }
+            finding.copy(
+              specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
+              originLayerChains = owner.assignment.laneDecision.originLayerChains,
+            )
+          }
         } else {
-          null
+          emptyList()
         }
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
           failureReason = reason,
           tokenUsage = providerTokenUsage(outcome),
+          accounting = inlineParentAccounting(
+            agentId,
+            inlineAssignment,
+            prompt,
+            inlineTerminalStatus(outcome),
+            outcome,
+          ),
+          findings = findings,
         )
       }
-      is UnsupportedAgentRunLaunch ->
-        ParallelReviewLaneOutcome(
-          success = false,
-          rawOutput = "",
-          failureReason = "unsupported agent: ${outcome.reason}",
-        )
     }
   }
 
-  private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
-    val values = listOf(
-      outcome.inputTokens,
-      outcome.cachedInputTokens,
-      outcome.outputTokens,
-      outcome.reasoningTokens,
-      outcome.totalTokens,
-    )
-    if (values.none { it != null }) return null
-    return ProviderTokenUsage(
-      inputTokens = outcome.inputTokens,
-      cachedInputTokens = outcome.cachedInputTokens,
-      outputTokens = outcome.outputTokens,
-      reasoningTokens = outcome.reasoningTokens,
-      totalTokens = outcome.totalTokens,
-      ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
-        TokenOwnership.INCLUSIVE
-      } else {
-        TokenOwnership.DIRECT
-      },
-    )
+  private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {
+    return files.filter { file ->
+      lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
+        lane.contentSignals.any { ReviewContentMatcher.contains(file.changedContent, it) }
+    }.map { it.path }
   }
 
   // Maps a completed launch to a human-readable failure reason, or null when the lane succeeded.
@@ -271,6 +711,10 @@ class ParallelCodeReviewRunner(
         append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
       }
     }
+    // A truncated stdout means the retained bytes may not contain the agent's actual result at
+    // all; parsing it as if complete risks reporting a false empty success instead of surfacing
+    // the truncation.
+    facts.stdoutTruncated -> "agent output exceeded the retention cap before completion"
     else -> null
   }
 
@@ -280,6 +724,167 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
-    val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
+    const val UNIQUE_PATH_SIGNAL_SCORE = 10
+    const val CONTENT_SIGNAL_SCORE = 20
+    val HIGH_RISK_SIGNAL = Regex(
+      "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
+    )
   }
+
+  private data class StackDetection(
+    val routed: List<PlatformManifest>,
+    val manifests: List<PlatformManifest>,
+    val ownedPathsBySlug: Map<String, Set<String>>,
+  )
+}
+
+private fun parallelResult(
+  agent1Id: String,
+  agent2Id: String,
+  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+): ParallelCodeReviewResult {
+  // A lane's own `findings` already carries the right value in both modes: delegated lanes keep
+  // every successful specialist's findings even when a sibling specialist in the same lane failed,
+  // and inline lanes carry an empty list on failure. Gating the whole lane's findings on `success`
+  // discarded those already-correct successful-sibling findings whenever any specialist failed; the
+  // success check is needed only to avoid re-parsing a failed run's raw output as a fallback.
+  val lane1Result = ParallelReviewLaneResult(
+    agentId = agent1Id,
+    findings = outcomes.lane1.findings.ifEmpty {
+      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) else emptyList()
+    },
+  )
+  val lane2Result = ParallelReviewLaneResult(
+    agentId = agent2Id,
+    findings = outcomes.lane2.findings.ifEmpty {
+      if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+    },
+  )
+  return ParallelCodeReviewResult(
+    mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result),
+    lane1 = outcomes.lane1.toStatus(agent1Id),
+    lane2 = outcomes.lane2.toStatus(agent2Id),
+    accountingSummary = parallelAccountingSummary(outcomes),
+  )
+}
+
+private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReviewLaneStatus(
+  agentId,
+  success,
+  failureReason,
+  tokenUsage,
+  budgetOutcome,
+  accounting,
+  specialistAccounting,
+)
+
+private fun aggregateAccounting(agentId: String, values: List<ReviewLaneAccounting>): ReviewLaneAccounting? {
+  if (values.isEmpty()) return null
+  return ReviewLaneAccounting(
+    lane = agentId,
+    reviewId = values.first().reviewId,
+    packetDigest = values.first().packetDigest,
+    assignmentDigest = sha256HexUtf8(values.joinToString("+") { it.assignmentDigest }),
+    launchBytes = values.sumOf { it.launchBytes },
+    evidenceBytes = values.sumOf { it.evidenceBytes },
+    expansions = values.flatMap { it.expansions },
+    toolCalls = values.sumOf { it.toolCalls },
+    modelTurns = values.sumOf { it.modelTurns },
+    resultBytes = values.sumOf { it.resultBytes },
+    terminalStatus = values.firstOrNull { it.terminalStatus != "completed" }?.terminalStatus ?: "completed",
+    terminalOutcome = values.firstNotNullOfOrNull { it.terminalOutcome },
+  )
+}
+
+private fun parallelAccountingSummary(
+  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+): ReviewAccountingSummary? {
+  val specialists = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+  if (specialists.isEmpty()) return null
+  fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
+    lane = lane,
+    assignmentDigest = assignmentDigest,
+    counters = ReviewAccountingCounters(
+      launchBytes,
+      evidenceBytes,
+      resultBytes,
+      expansions.size,
+      toolCalls,
+      modelTurns,
+    ),
+    usage = providerUsage ?: ProviderTokenUsage(),
+    terminalOutcome = terminalStatus,
+  )
+  val roots = listOf(outcomes.lane1, outcomes.lane2).mapIndexed { index, outcome ->
+    ReviewAccountingInput(
+      lane = "parallel-agent-${index + 1}",
+      assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
+      children = outcome.specialistAccounting.map(ReviewLaneAccounting::toInput),
+      terminalOutcome = if (outcome.success) "completed" else "partial_failure",
+    )
+  }
+  return ReviewTreeAccounting.summarize(
+    reviewId = specialists.first().reviewId,
+    packetDigest = specialists.first().packetDigest,
+    root = ReviewAccountingInput("parallel-review", sha256HexUtf8("parallel-review"), children = roots),
+  )
+}
+
+/**
+ * An inline lane runs the whole review in one parent session, so its accounting node owns the
+ * parent's own launch and result bytes and exactly one model turn. It has no specialist children.
+ */
+private fun inlineParentAccounting(
+  agentId: String,
+  assignment: ReviewAssignment,
+  prompt: String,
+  terminalStatus: String,
+  outcome: AgentRunLaunchFacts?,
+) = ReviewLaneAccounting(
+  lane = agentId,
+  reviewId = assignment.reviewId,
+  packetDigest = assignment.packetDigest,
+  assignmentDigest = assignment.digest,
+  launchBytes = prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+  evidenceBytes = 0,
+  expansions = emptyList(),
+  toolCalls = 0,
+  modelTurns = 1,
+  resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
+  providerUsage = outcome?.let(::providerTokenUsage),
+  terminalStatus = terminalStatus,
+)
+
+private fun inlineTerminalStatus(facts: AgentRunLaunchFacts): String = when {
+  facts.timedOut -> "timeout"
+  facts.interrupted -> "interrupted"
+  facts.spawnFailed -> "spawn_failure"
+  facts.exitStatus != 0 -> "process_failure"
+  else -> "completed"
+}
+
+private fun describeBudgetOutcome(outcome: ReviewBudgetOutcome): String =
+  "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}"
+
+private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
+  val values = listOf(
+    outcome.inputTokens,
+    outcome.cachedInputTokens,
+    outcome.outputTokens,
+    outcome.reasoningTokens,
+    outcome.totalTokens,
+  )
+  if (values.none { it != null }) return null
+  return ProviderTokenUsage(
+    inputTokens = outcome.inputTokens,
+    cachedInputTokens = outcome.cachedInputTokens,
+    outputTokens = outcome.outputTokens,
+    reasoningTokens = outcome.reasoningTokens,
+    totalTokens = outcome.totalTokens,
+    ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
+      TokenOwnership.INCLUSIVE
+    } else {
+      TokenOwnership.DIRECT
+    },
+  )
 }

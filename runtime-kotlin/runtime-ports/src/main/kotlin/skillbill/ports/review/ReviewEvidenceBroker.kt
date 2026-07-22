@@ -1,8 +1,41 @@
 package skillbill.ports.review
 
-import skillbill.ports.review.model.ReviewEvidenceRequest
-import skillbill.ports.review.model.ReviewEvidenceResult
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.review.model.ReviewToolCallResult
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewBudgetOutcome
 
-fun interface ReviewEvidenceBroker {
-  fun read(request: ReviewEvidenceRequest): ReviewEvidenceResult
+/**
+ * The single measured surface a delegated specialist may act through. Every call is policy-checked
+ * and accounted; once a lane produces a terminal outcome the broker keeps returning that outcome
+ * rather than serving more context.
+ */
+interface ReviewEvidenceBroker {
+  fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult
+
+  fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult
+
+  fun recordModelTurn(): ReviewBudgetOutcome?
+
+  fun validateLaneResult(result: String): ReviewBudgetOutcome?
+
+  /** Observes cumulative provider result bytes while the lane is still running. */
+  fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome?
+
+  /** Distinguishes an observed empty provider result from a provider with no decoded result. */
+  fun hasObservedLaneResult(): Boolean = accounting().resultBytes > 0
+
+  fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome?
+
+  fun accounting(): ReviewLaneAccounting
+
+  fun terminalOutcome(): ReviewBudgetOutcome?
+}
+
+fun interface ReviewEvidenceBrokerFactory {
+  fun brokerFor(binding: ReviewEvidenceBrokerBinding): ReviewEvidenceBroker
 }

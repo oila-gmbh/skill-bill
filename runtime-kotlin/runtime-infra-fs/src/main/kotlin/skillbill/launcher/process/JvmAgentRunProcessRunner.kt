@@ -20,6 +20,9 @@ import skillbill.workflow.model.GoalProgressOutcome
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.ByteBuffer
+import java.nio.CharBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.ZoneOffset
@@ -81,6 +84,12 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     ptyMasterCloseable: AutoCloseable?,
   ): AgentRunProcessResult {
     liveProcesses.add(process)
+    val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
+      requireNotNull(request.nativeReviewOperations),
+    )
+    if (turnOutcome != null) {
+      process.destroy()
+    }
     val outputTracker = OutputObservationTracker()
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
@@ -88,7 +97,14 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
-      onChunkRead = { outputTracker.markObserved() },
+      onChunkRead = { chunk ->
+        outputTracker.markObserved()
+        val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
+          requireNotNull(request.nativeReviewOperations),
+          chunk,
+        )
+        if (usageOutcome != null) process.destroy()
+      },
     ).also { it.start() }
     val stderr = CappedUtf8Drain(
       input = stderrStream,
@@ -149,6 +165,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       interrupted = false,
       spawnFailed = false,
       liveness = wait.liveness,
+      stdoutTruncated = stdout.wasTruncated(),
     )
   }
 
@@ -308,6 +325,15 @@ private class ProcessWaitLoop(
   }
 
   private fun nextWait(): ProcessWait? {
+    if (request.reviewEvidenceBroker?.terminalOutcome() != null) {
+      return ProcessWait(
+        finished = false,
+        progressIdleTimedOut = false,
+        fileActivityGraceExhausted = false,
+        wallClockTimedOut = false,
+        liveness = liveness("review_budget", "review_context_budget_exceeded", "killed"),
+      )
+    }
     val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
       finished = false,
       progressIdleTimedOut = false,
@@ -735,33 +761,68 @@ private sealed interface ProcessStart {
 
 private class CappedUtf8Drain(
   private val input: InputStream,
-  private val limitBytes: Int,
+  private val limitBytes: Int?,
   private val outputStream: AgentRunOutputStream,
   private val outputSink: AgentRunOutputSink,
-  private val onChunkRead: () -> Unit,
+  private val onChunkRead: (String) -> Unit,
 ) {
-  private val output = ByteArrayOutputStream(limitBytes.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES))
+  private val output = ByteArrayOutputStream(
+    limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
+  )
+
+  @Volatile private var truncated = false
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
         val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
         var remaining = limitBytes
-        while (remaining > 0) {
-          val read = stream.read(buffer, 0, remaining.coerceAtMost(buffer.size))
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPLACE)
+          .onUnmappableCharacter(CodingErrorAction.REPLACE)
+        val carry = ByteBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES + UTF8_MAX_BYTES_PER_CODE_POINT)
+        val decoded = CharBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES)
+        while (true) {
+          val read = stream.read(buffer)
           if (read == -1) {
             break
           }
-          onChunkRead()
-          output.write(buffer, 0, read)
-          outputSink.write(outputStream, String(buffer, 0, read, StandardCharsets.UTF_8))
-          remaining -= read
+          // Whether the retention cap still has room at the START of this read: sink forwarding
+          // stops once the cap is exhausted, independent of onChunkRead's lifecycle decoding, which
+          // must keep observing output regardless of the cap to enforce provider budgets correctly.
+          val withinCap = remaining == null || remaining > 0
+          carry.put(buffer, 0, read)
+          carry.flip()
+          decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, false) }
+          carry.compact()
+
+          val retained = remaining?.coerceAtMost(read) ?: read
+          if (retained > 0) {
+            output.write(buffer, 0, retained)
+            remaining = remaining?.minus(retained)
+          }
+          if (retained < read) truncated = true
         }
-        while (stream.read(buffer) != -1) {
-          // Keep draining so the child cannot block on a full pipe after the cap is reached.
-        }
+        val withinCap = remaining == null || remaining > 0
+        carry.flip()
+        decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, true) }
+        decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
       }
     } catch (_: IOException) {
       // Forced process teardown can close pipes while drain threads are blocked in read().
+    }
+  }
+
+  private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> java.nio.charset.CoderResult) {
+    while (true) {
+      val result = decode()
+      decoded.flip()
+      if (decoded.hasRemaining()) {
+        val chunk = decoded.toString()
+        onChunkRead(chunk)
+        if (forwardToSink) outputSink.write(outputStream, chunk)
+      }
+      decoded.clear()
+      if (!result.isOverflow) return
     }
   }
 
@@ -774,6 +835,9 @@ private class CappedUtf8Drain(
   }
 
   fun text(): String = String(output.toByteArray(), StandardCharsets.UTF_8)
+
+  /** True once more bytes arrived than the retention cap could keep, so [text] is incomplete. */
+  fun wasTruncated(): Boolean = truncated
 }
 
 private class OutputObservationTracker {
@@ -799,6 +863,7 @@ private fun Instant.toIsoUtc(): String = DateTimeFormatter.ISO_OFFSET_DATE_TIME
   .format(atOffset(ZoneOffset.UTC))
 
 private const val DEFAULT_DRAIN_BUFFER_BYTES = 8192
+private const val UTF8_MAX_BYTES_PER_CODE_POINT = 4
 private const val INITIAL_OUTPUT_BUFFER_BYTES = DEFAULT_DRAIN_BUFFER_BYTES
 private const val DRAIN_JOIN_TIMEOUT_MILLIS = 1_000L
 private const val MIN_TIMEOUT_MILLIS = 1L

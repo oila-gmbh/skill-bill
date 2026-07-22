@@ -179,9 +179,10 @@ audit emits `satisfied` even if test coverage is absent or inadequate.
   original `preplan` and `plan` outputs plus the complete durably accepted audit
   repair plan and cumulative unresolved-gap ledger. Every gap has a stable id,
   criterion reference, evidence, diagnosis, boundary, and dependency-ordered
-  repair items. Remediation attempts every runnable item in the same invocation
-  and emits an exact terminal result set; review or validation cannot substitute
-  for executing carried work. This
+  repair items. One remediation invocation repairs the complete carried gap set,
+  honoring internal dependencies without launching a separate pass per gap, and
+  emits an exact terminal result for every repair item; review or validation
+  cannot substitute for executing carried work. This
   `audit` → `implement` → `audit` cycle has no fixed
   iteration cap. Its durable counter records progress and recovery state but
   never turns a valid `gaps_found` verdict into a permanent policy block. The
@@ -190,10 +191,13 @@ audit emits `satisfied` even if test coverage is absent or inadequate.
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the
 correct phase and iteration while preserving the accepted plan, stable ids, and
-`audit_gap` watermark. The following audit classifies every prior gap as resolved
-or recurring and assigns new ids only to genuinely new gaps. Equivalent recurring
-gap sets without repository change or newly resolved repair items block loudly as
-non-progress instead of looping indefinitely.
+`audit_gap` watermark. The initial audit checks the full open acceptance-criterion
+surface once. Every following audit checks only the carried unresolved gaps and
+the repair work performed for them in that round. It classifies each carried gap
+as resolved or recurring; it does not rescan the full subtask, cumulative diff,
+or unrelated acceptance surface and does not discover new gaps. Equivalent
+recurring gap sets without repository change or newly resolved repair items block
+loudly as non-progress instead of looping indefinitely.
 
 Review begins only after the audit-gap loop is closed. Its first pass uses the
 selected delegated mode and its only remediation pass is inline. Each backward

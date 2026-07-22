@@ -1,5 +1,8 @@
+@file:Suppress("MagicNumber")
+
 package skillbill.review
 
+import skillbill.review.context.model.requireRepositoryRelativePath
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 
@@ -8,7 +11,9 @@ object ParallelReviewFindingParser {
     "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
       "(?<severity>Blocker|Critical|Major|Minor|Nit)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
-      "(?<location>[^|]+?)\\s+\\|\\s+" +
+      "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
+      "(?:path=(?<path>\"(?:\\\\.|[^\"\\\\])*\")\\s+\\|\\s+line=(?<line>\\d+)" +
+      "|(?<legacyPath>[^|\\r\\n]+?):(?<legacyLine>\\d+))\\s+\\|\\s+" +
       "(?<description>.+)$",
     RegexOption.MULTILINE,
   )
@@ -16,13 +21,51 @@ object ParallelReviewFindingParser {
   fun parse(text: String): List<ParallelReviewRawFinding> = parallelFindingPattern.findAll(text).mapNotNull { match ->
     val severityStr = match.groups["severity"]?.value.orEmpty()
     val severity = mapSeverity(severityStr) ?: return@mapNotNull null
+    val structuredPath = match.groups["path"]?.value
+    val path = structuredPath?.let(::decodeStructuredString)
+      ?: match.groups["legacyPath"]?.value?.trim().orEmpty()
+    requireRepositoryRelativePath(path)
+    val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
+    val line = lineText?.toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
     ParallelReviewRawFinding(
       severity = severity,
       confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
-      location = match.groups["location"]?.value.orEmpty().trim(),
+      location = "$path:$line",
       description = match.groups["description"]?.value.orEmpty().trim(),
+      specialistSkillName = match.groups["specialistSkillName"]?.value,
+      repositoryPath = path,
+      line = line,
     )
   }.toList()
+
+  private fun decodeStructuredString(encoded: String): String {
+    require(encoded.length >= 2 && encoded.first() == '"' && encoded.last() == '"')
+    val body = encoded.substring(1, encoded.length - 1)
+    val result = StringBuilder()
+    var index = 0
+    while (index < body.length) {
+      if (body[index] != '\\') {
+        result.append(body[index++])
+        continue
+      }
+      require(++index < body.length) { "Malformed structured finding path escape." }
+      when (val escaped = body[index++]) {
+        '"', '\\', '/' -> result.append(escaped)
+        'b' -> result.append('\b')
+        'f' -> result.append('\u000c')
+        'n' -> result.append('\n')
+        'r' -> result.append('\r')
+        't' -> result.append('\t')
+        'u' -> {
+          require(index + 4 <= body.length) { "Malformed Unicode escape in finding path." }
+          result.append(body.substring(index, index + 4).toInt(16).toChar())
+          index += 4
+        }
+        else -> error("Unsupported structured finding path escape '$escaped'.")
+      }
+    }
+    return result.toString()
+  }
 
   private fun mapSeverity(severityStr: String): ParallelReviewSeverity? = when (severityStr.lowercase()) {
     "blocker", "critical" -> ParallelReviewSeverity.BLOCKER

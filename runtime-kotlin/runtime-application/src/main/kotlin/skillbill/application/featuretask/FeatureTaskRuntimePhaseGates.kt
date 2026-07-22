@@ -9,6 +9,5 @@ class FeatureTaskRuntimePhaseGates(
   val planningStopper: FeatureTaskRuntimePlanningStopper,
   val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   val gitOperations: WorkflowGitOperations,
-  val specStatusProjector: FeatureTaskRuntimeSpecStatusProjector,
   val specGate: FeatureTaskRuntimeSpecGate,
 )

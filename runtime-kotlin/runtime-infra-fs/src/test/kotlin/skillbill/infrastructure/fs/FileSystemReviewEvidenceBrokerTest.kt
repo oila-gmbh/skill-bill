@@ -1,57 +1,389 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewOperationKind
+import skillbill.review.context.model.ReviewRevision
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
-  @Test fun `assigned reads are bounded and excessive evidence terminates typed`() {
-    val root = Files.createTempDirectory("review-evidence")
-    Files.writeString(root.resolve("A.kt"), "assigned")
-    val broker = FileSystemReviewEvidenceBroker(
-      root,
-      assignment(listOf("A.kt")),
-      emptySet(),
-      policy(result = 4, cumulative = 8),
+  @Test fun `filesystem unsafe assigned path is rejected while broker is constructed`() {
+    val root = repo("A.kt" to "assigned")
+    assertFailsWith<IllegalArgumentException> {
+      broker(root, assignment(listOf("missing/../A.kt")))
+    }
+  }
+
+  @Test fun `supplementary Unicode path maps with exact Git identity`() {
+    val path = "src/rocket-\uD83D\uDE80.kt"
+    val root = repo(path to "assigned")
+    val broker = broker(root, assignment(listOf(path)))
+
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest("security", listOf(ReviewEvidenceRequest("security", path))),
     )
-    val result = broker.read(ReviewEvidenceRequest("security", "A.kt"))
-    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.budgetExceeded?.type)
-    assertEquals(null, result.content)
-    val repeated = broker.read(ReviewEvidenceRequest("security", "A.kt"))
-    assertSame(result.budgetExceeded, repeated.budgetExceeded)
+
+    assertEquals("assigned", result.results.single().content)
+  }
+
+  @Test fun `assigned path crossing a symlink is rejected before evidence access`() {
+    val root = repo("target/A.kt" to "assigned")
+    Files.createSymbolicLink(root.resolve("link"), root.resolve("target"))
+    assertFailsWith<IllegalArgumentException> {
+      broker(root, assignment(listOf("link/A.kt")))
+    }
+  }
+
+  @Test fun `native operation protocol rejects forbidden tools before execution`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
+
+    val rejected = protocol.tool(ReviewToolCall("security", ReviewOperationKind.SHELL_COMMAND, "git status"))
+
+    assertFalse(rejected.admitted)
+    assertEquals(0, broker.accounting().toolCalls)
+  }
+
+  @Test fun `native operation protocol admits measured reads and authorized expansions`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dependency")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "called by assigned hunk")
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)))
+    val protocol = BrokerBackedNativeReviewOperationProtocol(broker)
+
+    val result = protocol.read(
+      ReviewEvidenceBatchRequest.of(request),
+    )
+
+    assertEquals("dependency", result.results.single().content)
+    assertEquals(1, result.expansions.size)
+    assertEquals(10, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `batched assigned reads are measured in one pass`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "second")
+    val broker = broker(root, assignment(listOf("A.kt", "B.kt")))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
+      ),
+    )
+    assertEquals(listOf("assigned", "second"), result.results.map { it.content })
+    assertNull(result.terminalOutcome)
+    assertEquals(14, result.cumulativeBytes)
+    assertEquals(14, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `literal backslash and slash paths remain distinct evidence identities`() {
+    val root = repo("dir/name.kt" to "slash", "dir\\name.kt" to "backslash")
+    val backslashBroker = broker(root, assignment(listOf("dir\\name.kt")))
+
+    assertEquals("backslash", backslashBroker.readBatch(batch("dir\\name.kt")).results.single().content)
+    assertEquals(
+      "unassigned_file_access",
+      backslashBroker.readBatch(batch("dir/name.kt")).results.single().forbidden?.category,
+    )
+  }
+
+  @Test fun `missing assigned files are omitted without bypassing evidence accounting`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt", "Deleted.kt")))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "Deleted.kt")),
+      ),
+    )
+
+    assertEquals(listOf("assigned", null), result.results.map { it.content })
+    assertEquals(listOf(8L, 0L), result.results.map { it.bytes })
+    assertEquals(8, result.cumulativeBytes)
+    assertEquals(8, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `per-result excess terminates the lane and the rest of the batch`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "second")
+    val broker = broker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 4, cumulative = 8))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
+      ),
+    )
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.terminalOutcome?.type)
+    assertEquals("evidence_result_bytes", result.terminalOutcome?.budgetKind)
+    assertTrue(result.results.all { it.content == null })
+    val repeated = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "A.kt")))
+    assertSame(result.terminalOutcome, repeated.terminalOutcome)
+  }
+
+  @Test fun `cumulative evidence excess terminates the lane`() {
+    val root = repo("A.kt" to "12345", "B.kt" to "67890")
+    val broker = broker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 8, cumulative = 8))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
+      ),
+    )
+    assertEquals("lane_evidence_bytes", result.terminalOutcome?.budgetKind)
+    assertEquals(10, result.terminalOutcome?.observedValue)
+  }
+
+  @Test fun `authorized expansion is admitted and audited with its reachability reason`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "called by assigned symbol")
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(request),
+    )
+    assertEquals("dep", result.results.single().content)
+    val expansion = result.expansions.single()
+    assertEquals("B.kt", expansion.requestedPath)
+    assertEquals("called by assigned symbol", expansion.reachabilityReason)
+    assertTrue(expansion.authorized)
+    assertEquals(0, expansion.sequence)
+    assertEquals("exp-1", expansion.expansionId)
+    assertEquals(assignment.digest, expansion.assignmentDigest)
+    assertEquals(result.expansions, broker.accounting().expansions)
+  }
+
+  @Test fun `lane accepts its expansion at a later global packet sequence`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val expansion = ReviewExpansionRecord(
+      "exp-lane-2",
+      assignment.digest,
+      "B.kt",
+      "called by assigned symbol",
+      true,
+      4,
+    )
+    val broker = broker(root, assignment, trustedExpansionLedger = listOf(expansion))
+
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "B.kt", expansion.reachabilityReason, expansion),
+      ),
+    )
+
+    assertEquals("dep", result.results.single().content)
+    assertEquals(4, result.expansions.single().sequence)
+  }
+
+  @Test fun `assigned symlink cannot expose another repository file`() {
+    val root = repo("secret.txt" to "secret")
+    Files.createSymbolicLink(root.resolve("assigned.txt"), root.resolve("secret.txt"))
+    assertFailsWith<IllegalArgumentException> {
+      broker(root, assignment(listOf("assigned.txt")))
+    }
+  }
+
+  @Test fun `unauthorized expansion is rejected before filesystem resolution and is not recorded`() {
+    val root = repo("A.kt" to "assigned")
+    val assignment = assignment(listOf("A.kt"), listOf("missing.kt"))
+    val broker = broker(root, assignment)
+    val request = ReviewEvidenceRequest(
+      "security",
+      "missing.kt",
+      "called by assigned symbol",
+      ReviewExpansionRecord(
+        "exp-denied",
+        assignment.digest,
+        "missing.kt",
+        "called by assigned symbol",
+        false,
+        0,
+      ),
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      broker.readBatch(ReviewEvidenceBatchRequest.of(request))
+    }
+    assertTrue(broker.accounting().expansions.isEmpty())
+    assertEquals(0, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `unassigned read without a reason is a forbidden operation, not an expansion`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val result = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "B.kt")))
+    assertEquals("unassigned_file_access", result.results.single().forbidden?.category)
+    assertNull(result.results.single().content)
+    assertTrue(result.expansions.isEmpty())
+  }
+
+  @Test fun `expansion budget excess terminates the lane`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "reachable from assigned symbol")
+    val broker = broker(
+      root,
+      assignment,
+      policy(expansions = 0),
+      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
+    )
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(request),
+    )
+    assertEquals("assignment_expansions", result.terminalOutcome?.budgetKind)
+  }
+
+  @Test fun `named dependency is still measured as an authorized expansion`() {
+    val root = repo("A.kt" to "assigned", "B.kt" to "dep")
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "called by assigned symbol")
+    val broker = broker(
+      root,
+      assignment,
+      namedDependencies = setOf("B.kt"),
+      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
+    )
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(request),
+    )
+    assertEquals("dep", result.results.single().content)
+    assertEquals(listOf("B.kt"), result.expansions.map { it.requestedPath })
+  }
+
+  @Test fun `forbidden tool calls are rejected and never counted`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val rejected = broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.SHELL_COMMAND, "git status"))
+    assertEquals("review_status", rejected.forbidden?.category)
+    assertEquals(0, broker.accounting().toolCalls)
+  }
+
+  @Test fun `tool-call budget excess terminates the lane`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")), policy(toolCalls = 1))
+    assertTrue(broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security")).admitted)
+    val second = broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security"))
+    assertEquals("specialist_tool_calls", second.budgetExceeded?.budgetKind)
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, second.budgetExceeded?.type)
+  }
+
+  @Test fun `model-turn budget excess terminates the lane`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")), policy(modelTurns = 1))
+    assertNull(broker.recordModelTurn())
+    assertEquals("specialist_model_turns", broker.recordModelTurn()?.budgetKind)
+    assertEquals("specialist_model_turns", broker.accounting().terminalOutcome?.budgetKind)
   }
 
   @Test fun `lane result excess terminates subsequent evidence`() {
-    val root = Files.createTempDirectory("review-result")
-    Files.writeString(root.resolve("A.kt"), "ok")
-    val broker = FileSystemReviewEvidenceBroker(root, assignment(listOf("A.kt")), emptySet(), policy())
+    val root = repo("A.kt" to "ok")
+    val broker = broker(root, assignment(listOf("A.kt")))
     assertEquals("lane_result_bytes", broker.validateLaneResult("x".repeat(101))?.budgetKind)
-    assertEquals("lane_result_bytes", broker.read(ReviewEvidenceRequest("security", "A.kt")).budgetExceeded?.budgetKind)
+    val followUp = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "A.kt")))
+    assertEquals("lane_result_bytes", followUp.terminalOutcome?.budgetKind)
   }
 
-  @Test fun `out of assignment reads require reason and consume expansion`() {
+  @Test fun `streamed lane result excess is typed before completion and stays terminal`() {
+    val root = repo("A.kt" to "ok")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    assertNull(broker.observeLaneResultChunk("x".repeat(60)))
+    val exceeded = broker.observeLaneResultChunk("y".repeat(41))
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, exceeded?.type)
+    assertEquals("lane_result_bytes", exceeded?.budgetKind)
+    assertEquals(101, broker.accounting().resultBytes)
+    assertEquals(exceeded, broker.terminalOutcome())
+  }
+
+  @Test fun `non-enforceable provider excess reports a regression without terminating`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val outcome = broker.evaluateProviderUsage(ProviderTokenUsage(totalTokens = 500_000), enforceable = false)
+    assertEquals(REVIEW_BUDGET_REGRESSION, outcome?.type)
+    assertEquals(false, outcome?.enforceable)
+    assertNull(broker.accounting().terminalOutcome)
+    assertEquals("assigned", broker.readBatch(batch("A.kt")).results.single().content)
+  }
+
+  @Test fun `enforceable provider excess terminates the lane`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val outcome = BrokerBackedNativeReviewOperationProtocol(broker)
+      .providerUsage(ProviderTokenUsage(totalTokens = 500_000))
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
+    assertNotNull(broker.accounting().terminalOutcome)
+    assertEquals("total_tokens", outcome?.budgetKind)
+  }
+
+  @Test fun `paths escaping the repository are rejected`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    assertFailsWith<IllegalArgumentException> { broker.readBatch(batch("../outside.kt")) }
+  }
+
+  @Test fun `an ordinary bounded review completes with full accounting and no termination`() {
+    val root = repo("A.kt" to "assigned")
+    val broker = broker(root, assignment(listOf("A.kt")))
+    broker.recordModelTurn()
+    broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security"))
+    broker.readBatch(batch("A.kt"))
+    assertNull(broker.validateLaneResult("- [F-001] Minor | Low | A.kt:1 | bounded finding"))
+    val accounting = broker.accounting()
+    assertEquals(8, accounting.evidenceBytes)
+    assertEquals(1, accounting.toolCalls)
+    assertEquals(1, accounting.modelTurns)
+    assertEquals(48, accounting.resultBytes)
+    assertNull(accounting.terminalOutcome)
+  }
+
+  private fun batch(path: String) = ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", path))
+
+  private fun expansionRequest(assignment: ReviewAssignment, path: String, reason: String) = ReviewEvidenceRequest(
+    "security",
+    path,
+    reason,
+    ReviewExpansionRecord("exp-1", assignment.digest, path, reason, true, 0),
+  )
+
+  private fun repo(vararg files: Pair<String, String>): Path {
     val root = Files.createTempDirectory("review-evidence")
-    Files.writeString(root.resolve("B.kt"), "dep")
-    val broker = FileSystemReviewEvidenceBroker(root, assignment(emptyList()), emptySet(), policy(expansions = 0))
-    assertFailsWith<IllegalArgumentException> { broker.read(ReviewEvidenceRequest("security", "B.kt")) }
-    val result = broker.read(ReviewEvidenceRequest("security", "B.kt", "called by assigned symbol"))
-    assertEquals("assignment_expansions", result.budgetExceeded?.budgetKind)
+    files.forEach { (name, content) ->
+      val target = root.resolve(name)
+      target.parent?.let(Files::createDirectories)
+      Files.writeString(target, content)
+    }
+    return root
   }
 
-  @Test fun `named direct dependency does not consume expansion`() {
-    val root = Files.createTempDirectory("review-evidence")
-    Files.writeString(root.resolve("B.kt"), "dep")
-    val broker = FileSystemReviewEvidenceBroker(root, assignment(emptyList()), setOf("B.kt"), policy())
-    assertEquals("dep", broker.read(ReviewEvidenceRequest("security", "B.kt")).content)
-  }
+  private fun broker(
+    root: Path,
+    assignment: ReviewAssignment,
+    budget: ReviewContextBudgetPolicy = policy(),
+    namedDependencies: Set<String> = emptySet(),
+    trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
+  ) = FileSystemReviewEvidenceBroker(
+    ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies, trustedExpansionLedger),
+  )
 
-  private fun assignment(paths: List<String>) = ReviewAssignment(
+  private fun assignment(paths: List<String>, dependencies: List<String> = emptyList()) = ReviewAssignment(
     "review",
     "a".repeat(64),
     "security",
@@ -59,13 +391,33 @@ class FileSystemReviewEvidenceBrokerTest {
     "head",
     paths,
     emptyList(),
+    reviewRevision = ReviewRevision("rvs-1", 1),
+    laneDecision = ReviewLaneDecision(
+      "security",
+      true,
+      "routed",
+      ownedPaths = paths.ifEmpty { listOf("A.kt") },
+      originLayerChains = listOf(listOf("kotlin")),
+      owningPack = "kotlin",
+      specialistSkillName = "bill-kotlin-code-review-security",
+    ),
+    dependencyAllowlist = ReviewDependencyAllowlist(dependencies),
   )
-  private fun policy(result: Long = 100, cumulative: Long = 200, expansions: Int = 1) = ReviewContextBudgetPolicy(
+
+  private fun policy(
+    result: Long = 100,
+    cumulative: Long = 200,
+    expansions: Int = 1,
+    toolCalls: Int = 40,
+    modelTurns: Int = 24,
+  ) = ReviewContextBudgetPolicy(
     maxParentPacketBytes = 1_000,
     maxLaneLaunchBytes = 500,
     maxLaneEvidenceBytes = cumulative,
     maxEvidenceResultBytes = result,
     maxLaneResultBytes = 100,
     maxAssignmentExpansions = expansions,
+    maxSpecialistToolCalls = toolCalls,
+    maxSpecialistModelTurns = modelTurns,
   )
 }
