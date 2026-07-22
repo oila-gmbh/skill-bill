@@ -5,6 +5,7 @@ import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.context.model.structuredString
 
 object ParallelReviewMerger {
   fun merge(lane1: ParallelReviewLaneResult, lane2: ParallelReviewLaneResult): ParallelReviewMergeResult {
@@ -22,7 +23,7 @@ object ParallelReviewMerger {
     // O(N²) recomputation of tokens() on each probe.
     val clusters = mutableListOf<ClusterHead>()
     allEntries.forEach { entry ->
-      val entryFilePath = filePathOf(entry.finding.location)
+      val entryFilePath = entry.finding.repositoryPath ?: filePathOf(entry.finding.location)
       val entryTokens = tokens(entry.finding.description)
       val cluster = clusters.firstOrNull { head ->
         head.representativeFilePath == entryFilePath &&
@@ -53,6 +54,8 @@ object ParallelReviewMerger {
         description = candidate.description,
         specialistSkillNames = candidate.specialistSkillNames,
         originLayerChains = candidate.originLayerChains,
+        repositoryPath = candidate.repositoryPath,
+        line = candidate.line,
       )
     }
 
@@ -64,7 +67,10 @@ object ParallelReviewMerger {
           add("origins=${f.originLayerChains.joinToString(",") { it.joinToString("->") }}")
         }
       }.joinToString("; ").let { if (it.isBlank()) "" else " | $it" }
-      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | ${f.location} | " +
+      val structuredLocation = if (f.repositoryPath != null && f.line != null) {
+        "path=${structuredString(f.repositoryPath)} | line=${f.line}"
+      } else f.location
+      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | $structuredLocation | " +
         "${f.description}$provenance"
     }
 
@@ -94,6 +100,8 @@ object ParallelReviewMerger {
       firstAppearance = firstEntry.appearanceOrder,
       specialistSkillNames = entries.mapNotNull { it.finding.specialistSkillName }.distinct(),
       originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
+      repositoryPath = firstEntry.finding.repositoryPath,
+      line = firstEntry.finding.line,
     )
   }
 
@@ -104,8 +112,8 @@ object ParallelReviewMerger {
 
   // File-path portion of a location field ("file:line" -> "file"). Kotlin's substringBeforeLast
   // returns the whole string when there is no colon, so colon-less locations fall back to
-  // themselves. Lower-cased so path comparison is case-insensitive.
-  private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim().lowercase()
+  // themselves. Repository path identity is intentionally case-sensitive.
+  private fun filePathOf(location: String): String = location.substringBeforeLast(":").trim()
 
   // Splits a description into word tokens on any non-alphanumeric run. Hoisted to a constant so the
   // pattern is compiled once, not per pairwise comparison during clustering.
@@ -146,5 +154,7 @@ object ParallelReviewMerger {
     val firstAppearance: Int,
     val specialistSkillNames: List<String>,
     val originLayerChains: List<List<String>>,
+    val repositoryPath: String?,
+    val line: Int?,
   )
 }

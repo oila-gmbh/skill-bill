@@ -113,7 +113,7 @@ class ParallelCodeReviewRunnerTest {
   fun `both lanes succeed and findings overlap produces coalesced output`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)
-    val sharedFinding = "- [F-001] Major | High | Foo.kt:1 | Shared issue"
+    val sharedFinding = "- [F-001] Major | High | path=\"Test.kt\" | line=1 | Shared issue"
     val launcher = alwaysSuccessLauncher(sharedFinding)
     val runner = runner(launcher)
 
@@ -151,7 +151,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+          stdout = "- [F-001] Minor | Low | path=\"Test.kt\" | line=1 | Issue",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -279,7 +279,7 @@ class ParallelCodeReviewRunnerTest {
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
-      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=A.kt")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=\"A.kt\"")
     }
   }
 
@@ -380,7 +380,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -404,7 +404,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = null,
-          stdout = "- [F-001] Major | High | Foo.kt:1 | Should not appear in merge",
+          stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Should not appear in merge",
           stderr = "",
           timedOut = true,
           spawnFailed = false,
@@ -413,7 +413,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | Bar.kt:2 | Lane 2 finding",
+          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=2 | Lane 2 finding",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -439,7 +439,7 @@ class ParallelCodeReviewRunnerTest {
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "- [F-001] Minor | Low | A.kt:1 | Issue",
+        stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
         stderr = "",
         timedOut = false,
         spawnFailed = false,

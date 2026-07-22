@@ -1,3 +1,5 @@
+@file:Suppress("SpreadOperator", "MagicNumber")
+
 package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets
@@ -19,7 +21,7 @@ data class ReviewRevision(val sessionId: String, val runRevision: Int) {
     require(runRevision >= 1) { "Review run revision must be positive." }
   }
 
-  val canonical: String get() = "$sessionId\u001f$runRevision"
+  val canonical: String get() = canonicalFields(sessionId, runRevision)
 }
 
 data class ReviewRuleReference(
@@ -47,7 +49,7 @@ data class ReviewRuleReference(
 
   val canonical: String
     get() = listOf(ruleId, sourcePath, excerpt.replace("\r\n", "\n"), digest)
-      .joinToString("\u001f")
+      .let { canonicalFields(*it.toTypedArray()) }
 }
 
 data class ReviewLearningsReference(val learningId: String, val source: String, val digest: String) {
@@ -56,7 +58,7 @@ data class ReviewLearningsReference(val learningId: String, val source: String, 
     require(digest.matches(SHA256_HEX)) { "Learnings reference digest must be lowercase SHA-256." }
   }
 
-  val canonical: String get() = listOf(learningId, source, digest).joinToString("\u001f")
+  val canonical: String get() = canonicalFields(learningId, source, digest)
 }
 
 data class ReviewBuildTestFact(val kind: String, val command: String, val outcome: String) {
@@ -66,7 +68,7 @@ data class ReviewBuildTestFact(val kind: String, val command: String, val outcom
     }
   }
 
-  val canonical: String get() = listOf(kind, command, outcome).joinToString("\u001f")
+  val canonical: String get() = canonicalFields(kind, command, outcome)
 }
 
 data class ReviewDependencyAllowlist(val paths: List<String>) {
@@ -76,7 +78,7 @@ data class ReviewDependencyAllowlist(val paths: List<String>) {
   }
 
   val normalized: List<String> get() = paths
-  val canonical: String get() = normalized.sorted().joinToString("\u001f")
+  val canonical: String get() = canonicalFields(*normalized.sorted().toTypedArray())
 
   companion object {
     val EMPTY: ReviewDependencyAllowlist = ReviewDependencyAllowlist(emptyList())
@@ -92,7 +94,7 @@ data class ReviewEvidenceTarget(val targetId: String, val path: String, val hunk
   }
 
   val canonical: String
-    get() = listOf(targetId, path, hunkIds.sorted().joinToString(",")).joinToString("\u001f")
+    get() = canonicalFields(targetId, path, canonicalFields(*hunkIds.sorted().toTypedArray()))
 }
 
 data class ReviewLaneDecision(
@@ -142,16 +144,16 @@ data class ReviewLaneDecision(
       lane,
       included.toString(),
       reason,
-      signals.sorted().joinToString(","),
-      normalizedOwnedPaths.sorted().joinToString(","),
+      canonicalFields(*signals.sorted().toTypedArray()),
+      canonicalFields(*normalizedOwnedPaths.sorted().toTypedArray()),
       orderIndex.toString(),
       required.toString(),
-      originLayerChains.joinToString(";") { it.joinToString("->") },
+      canonicalFields(*originLayerChains.map { canonicalFields(*it.toTypedArray()) }.toTypedArray()),
       owningPack.orEmpty(),
       specialistSkillName.orEmpty(),
-      addOns.joinToString(","),
+      canonicalFields(*addOns.toTypedArray()),
     )
-      .joinToString("\u001f")
+      .let { canonicalFields(*it.toTypedArray()) }
 }
 
 data class ReviewExpansionRecord(
@@ -178,7 +180,7 @@ data class ReviewExpansionRecord(
       reachabilityReason,
       authorized.toString(),
       sequence.toString(),
-    ).joinToString("\u001f")
+    ).let { canonicalFields(*it.toTypedArray()) }
 }
 
 data class ReviewAutoEligibility(val oversized: Boolean, val highRisk: Boolean, val layeredStack: Boolean)
@@ -341,13 +343,13 @@ data class ReviewAssignment(
         laneDecision.canonical,
         baseRevision,
         headRevision,
-        assignedPaths.sorted().joinToString("\u001f"),
-        assignedHunks.sorted().joinToString("\u001f"),
-        criteriaReferences.sorted().joinToString("\u001f"),
-        matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),
-        evidenceTargets.map { it.canonical }.sorted().joinToString("\u001f"),
+        canonicalFields(*assignedPaths.sorted().toTypedArray()),
+        canonicalFields(*assignedHunks.sorted().toTypedArray()),
+        canonicalFields(*criteriaReferences.sorted().toTypedArray()),
+        canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
+        canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
         dependencyAllowlist.canonical,
-      ).joinToString("\n").replace("\r\n", "\n"),
+      ).let { canonicalFields(*it.toTypedArray()) }.replace("\r\n", "\n"),
     )
 }
 
@@ -366,14 +368,9 @@ data class ReviewChangedHunk(
 
   val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
 
-  internal fun canonicalValue(): String = listOf(
-    path,
-    oldStart,
-    oldCount,
-    newStart,
-    newCount,
-    content.replace("\r\n", "\n"),
-  ).joinToString("\u001f")
+  internal fun canonicalValue(): String = canonicalFields(
+    path, oldStart, oldCount, newStart, newCount, content.replace("\r\n", "\n"),
+  )
 }
 
 data class ReviewContextPacket(
@@ -465,19 +462,19 @@ data class ReviewContextPacket(
     status.replace("\r\n", "\n"),
     stack.orEmpty(),
     pack.orEmpty(),
-    addOns.sorted().joinToString("\u001f"),
-    composedLayers.joinToString("\u001f"),
-    selectedLanes.joinToString("\u001f"),
+    canonicalFields(*addOns.sorted().toTypedArray()),
+    canonicalFields(*composedLayers.toTypedArray()),
+    canonicalFields(*selectedLanes.toTypedArray()),
     laneDecisions.sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
-      .joinToString("\u001f") { it.canonical },
+      .map { it.canonical }.let { canonicalFields(*it.toTypedArray()) },
     changedHunks.sortedBy { it.canonicalValue() }
-      .joinToString("\u001e") { it.canonicalValue() },
-    matchedRules.map { it.canonical }.sorted().joinToString("\u001f"),
-    learningsReferences.map { it.canonical }.sorted().joinToString("\u001f"),
-    buildTestFacts.map { it.canonical }.sorted().joinToString("\u001f"),
+      .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
+    canonicalFields(*learningsReferences.map { it.canonical }.sorted().toTypedArray()),
+    canonicalFields(*buildTestFacts.map { it.canonical }.sorted().toTypedArray()),
     dependencyAllowlist.canonical,
-    evidenceTargets.map { it.canonical }.sorted().joinToString("\u001f"),
-  ).joinToString("\n")
+    canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
+  ).let { canonicalFields(*it.toTypedArray()) }
 }
 
 enum class ReviewConversationIsolation { FRESH }
@@ -554,14 +551,14 @@ data class GovernedReviewLaunch(
     appendLine("rubric: |")
     rubric.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("assigned_paths:")
-    assignment.assignedPaths.sorted().forEach { appendLine("  - $it") }
+    assignment.assignedPaths.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
     appendLine("immutable_diff_hunks:")
     packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .forEach { hunk ->
-        appendLine("  - path: ${hunk.path}")
+        appendLine("  - path: ${structuredString(hunk.path)}")
         appendLine("    hunk_id: ${hunk.hunkId}")
         appendLine("    content: |")
         hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
@@ -573,7 +570,7 @@ data class GovernedReviewLaunch(
     appendLine("evidence_targets:")
     assignment.evidenceTargets.map { it.targetId }.sorted().forEach { appendLine("  - $it") }
     appendLine("dependency_allowlist:")
-    assignment.dependencyAllowlist.normalized.sorted().forEach { appendLine("  - $it") }
+    assignment.dependencyAllowlist.normalized.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("forbidden_rediscovery:")
     ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY.forEach { appendLine("  - $it") }
     appendLine(
@@ -738,8 +735,39 @@ object ReviewBudgetEvaluator {
 }
 
 fun requireRepositoryRelativePath(path: String) {
-  require(path.isNotBlank() && !path.startsWith('/')) { "Review paths must be repository-relative." }
-  require(path.split('/').none { it == ".." }) { "Review paths cannot traverse outside the repository." }
+  require(path.isNotEmpty() && !path.startsWith('/') && !path.startsWith('\\')) {
+    "Review paths must be repository-relative."
+  }
+  require('\u0000' !in path && path.none { Character.isSurrogate(it) }) {
+    "Review paths must contain valid Unicode and no NUL."
+  }
+  require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) {
+    "Review paths must use non-traversing Git path components."
+  }
+}
+
+/** Injective UTF-8 length-prefixed encoding used by every content-addressed review identity. */
+internal fun canonicalFields(vararg values: Any): String = values.joinToString("") { value ->
+  val text = value.toString()
+  "${text.toByteArray(StandardCharsets.UTF_8).size}:$text"
+}
+
+/** JSON scalar encoding keeps path data from becoming launch-payload structure. */
+fun structuredString(value: String): String = buildString {
+  append('"')
+  value.forEach { char ->
+    when (char) {
+      '"' -> append("\\\"")
+      '\\' -> append("\\\\")
+      '\b' -> append("\\b")
+      '\u000c' -> append("\\f")
+      '\n' -> append("\\n")
+      '\r' -> append("\\r")
+      '\t' -> append("\\t")
+      else -> if (char.code < 0x20) append("\\u%04x".format(char.code)) else append(char)
+    }
+  }
+  append('"')
 }
 
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

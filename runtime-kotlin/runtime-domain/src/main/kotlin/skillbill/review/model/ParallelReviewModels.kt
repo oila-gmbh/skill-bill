@@ -14,6 +14,8 @@ data class ParallelReviewRawFinding(
   val description: String,
   val specialistSkillName: String? = null,
   val originLayerChains: List<List<String>> = emptyList(),
+  val repositoryPath: String? = null,
+  val line: Int? = null,
 )
 
 data class ParallelReviewLaneResult(
@@ -30,6 +32,8 @@ data class ParallelReviewMergedFinding(
   val description: String,
   val specialistSkillNames: List<String> = emptyList(),
   val originLayerChains: List<List<String>> = emptyList(),
+  val repositoryPath: String? = null,
+  val line: Int? = null,
 )
 
 data class ParallelReviewMergeResult(

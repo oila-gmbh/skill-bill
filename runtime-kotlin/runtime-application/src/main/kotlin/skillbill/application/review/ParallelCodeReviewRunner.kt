@@ -39,6 +39,7 @@ import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
+import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
@@ -494,8 +495,15 @@ class ParallelCodeReviewRunner(
           accounting = worker.accounting,
           findings = if (reason == null) {
             ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
+              require(finding.repositoryPath in launchRequest.assignment.assignedPaths) {
+                "Delegated finding location '${finding.location}' is outside the authoritative assignment ownership."
+              }
+              val assignedSpecialist = launchRequest.assignment.laneDecision.specialistSkillName
+              require(finding.specialistSkillName == null || finding.specialistSkillName == assignedSpecialist) {
+                "Delegated finding specialist '${finding.specialistSkillName}' does not match '$assignedSpecialist'."
+              }
               finding.copy(
-                specialistSkillName = launchRequest.assignment.laneDecision.specialistSkillName,
+                specialistSkillName = assignedSpecialist,
                 originLayerChains = launchRequest.assignment.laneDecision.originLayerChains,
               )
             }
@@ -524,7 +532,7 @@ class ParallelCodeReviewRunner(
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision
         "${decision.specialistSkillName}" +
-          "[paths=${launch.assignment.assignedPaths.joinToString("+")};" +
+          "[paths=${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }};" +
           "add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }};" +
           "origins=${decision.originLayerChains.joinToString("|") { it.joinToString("->") }}]"
       }.ifBlank { "parallel-code-review" }
@@ -533,14 +541,14 @@ class ParallelCodeReviewRunner(
         val decision = launch.assignment.laneDecision
         appendLine()
         appendLine("## Resolved rubric: ${decision.specialistSkillName}")
-        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(", ")}")
+        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
       appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
-          "repository/path:line | description' lines.",
+          "path=<JSON string> | line=<positive integer> | description' lines.",
       )
       appendLine()
       append(launchRequests.first().packet.changedHunks.joinToString("\n") { it.content })
@@ -568,7 +576,7 @@ class ParallelCodeReviewRunner(
         val reason = laneFailureReason(outcome)
         val findings = if (reason == null) {
           ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
-            val findingPath = normalizedFindingPath(finding.location)
+            val findingPath = requireNotNull(finding.repositoryPath)
             val owners = selected.filter { launch ->
               launch.assignment.assignedPaths.any { path -> path == findingPath }
             }
@@ -606,12 +614,6 @@ class ParallelCodeReviewRunner(
         )
       }
     }
-  }
-
-  private fun normalizedFindingPath(location: String): String {
-    val trimmed = location.trim()
-    val withoutLine = Regex("^(.*?):\\d+(?::\\d+)?$").matchEntire(trimmed)?.groupValues?.get(1) ?: trimmed
-    return withoutLine
   }
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, evidence: ReviewDiffEvidence): List<String> {

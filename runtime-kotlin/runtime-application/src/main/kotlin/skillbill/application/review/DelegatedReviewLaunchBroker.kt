@@ -146,6 +146,10 @@ class DelegatedReviewLaunchBroker(
     workerKind: ReviewWorkerKind,
   ): String = buildString {
     appendLine(launch.canonicalPayload)
+    appendLine(
+      "finding_protocol: [F-NNN] Severity | Confidence | optional specialist=<exact identity> | " +
+        "path=<JSON string> | line=<positive integer> | description",
+    )
     appendLine("isolation: ${isolation.name.lowercase()}")
     appendLine(
       when (workerKind) {

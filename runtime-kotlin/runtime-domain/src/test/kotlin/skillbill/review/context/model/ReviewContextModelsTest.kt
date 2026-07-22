@@ -11,6 +11,19 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ReviewContextModelsTest {
+  @Test fun `path bearing digests are injective and launch paths are structured`() {
+    val slash = ReviewChangedHunk("a/b.kt", 1, 1, 1, 1, "same")
+    val backslash = ReviewChangedHunk("a\\b.kt", 1, 1, 1, 1, "same")
+    val delimiter = ReviewChangedHunk("a\u001fb.kt", 1, 1, 1, 1, "same")
+    assertNotEquals(slash.hunkId, backslash.hunkId)
+    assertNotEquals(slash.hunkId, delimiter.hunkId)
+
+    val packet = launchPacket(path = "odd|name\\tab\t.kt")
+    val launch = GovernedReviewLaunch(
+      launchAssignment(packet), packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertTrue("  - \"odd|name\\\\tab\\t.kt\"" in launch.canonicalPayload)
+  }
   private fun lane(name: String, paths: List<String>, reason: String = "routed") =
     ReviewLaneDecision(
       name,
@@ -26,17 +39,17 @@ class ReviewContextModelsTest {
 
   private val launchHunk = ReviewChangedHunk("A.kt", 1, 1, 1, 2, "+alpha")
 
-  private fun launchPacket() = ReviewContextPacket(
+  private fun launchPacket(path: String = "A.kt") = ReviewContextPacket(
     "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"),
-    listOf(launchHunk),
+    listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path)),
     reviewRevision = revision(),
-    laneDecisions = listOf(lane("security", listOf("A.kt"))),
+    laneDecisions = listOf(lane("security", listOf(path))),
   )
 
-  private fun launchAssignment(packet: ReviewContextPacket, hunks: List<String> = listOf(launchHunk.hunkId)) =
+  private fun launchAssignment(packet: ReviewContextPacket, hunks: List<String> = packet.changedHunks.map { it.hunkId }) =
     ReviewAssignment(
-      "review", packet.digest, "security", "base", "head", listOf("A.kt"), hunks,
-      reviewRevision = revision(), laneDecision = lane("security", listOf("A.kt")),
+      "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
+      reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
     )
 
   @Test fun `default budget is governed`() {

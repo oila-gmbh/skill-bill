@@ -1,3 +1,5 @@
+@file:Suppress("MaxLineLength")
+
 package skillbill.review
 
 import skillbill.review.model.ParallelReviewLaneResult
@@ -9,6 +11,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ParallelReviewMergerTest {
+  @Test
+  fun `case distinct paths never deduplicate`() {
+    val lower = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR, "High", "a.kt:1", "same exact issue", repositoryPath = "a.kt", line = 1,
+    )
+    val upper = lower.copy(location = "A.kt:1", repositoryPath = "A.kt")
+    val result = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("one", listOf(lower)), ParallelReviewLaneResult("two", listOf(upper)),
+    )
+    assertEquals(2, result.findings.size)
+  }
   @Test
   fun `dedup retains specialist and composition provenance`() {
     val baseline = ParallelReviewRawFinding(
@@ -48,7 +61,7 @@ class ParallelReviewMergerTest {
     confidence: String = "High",
     location: String = "Foo.kt:1",
     description: String = "A finding",
-  ) = "- [$id] $severity | $confidence | $location | $description"
+  ) = "- [$id] $severity | $confidence | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
 
   @Test
   fun `both lanes empty produces empty result`() {
@@ -77,10 +90,10 @@ class ParallelReviewMergerTest {
   @Test
   fun `no shared findings produces two independent lists ordered by severity`() {
     val lane1Output = """
-      - [F-001] Minor | Low | Foo.kt:10 | Minor issue
+      - [F-001] Minor | Low | path="Foo.kt" | line=10 | Minor issue
     """.trimIndent()
     val lane2Output = """
-      - [F-001] Major | High | Bar.kt:5 | Major issue
+      - [F-001] Major | High | path="Bar.kt" | line=5 | Major issue
     """.trimIndent()
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -161,8 +174,8 @@ class ParallelReviewMergerTest {
   fun `severity disagreement on same finding uses higher severity`() {
     val location = "Auth.kt:99"
     val description = "Same issue different severity"
-    val lane1Output = "- [F-001] Minor | Low | $location | $description"
-    val lane2Output = "- [F-001] Major | High | $location | $description"
+    val lane1Output = "- [F-001] Minor | Low | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane2Output = "- [F-001] Major | High | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -176,8 +189,8 @@ class ParallelReviewMergerTest {
   @Test
   fun `F-XXX renumbering is sequential from F-001 regardless of original IDs`() {
     val lane1Output = """
-      - [F-999] Major | High | A.kt:1 | Finding A
-      - [F-042] Minor | Low | B.kt:2 | Finding B
+      - [F-999] Major | High | path="A.kt" | line=1 | Finding A
+      - [F-042] Minor | Low | path="B.kt" | line=2 | Finding B
     """.trimIndent()
 
     val result = ParallelReviewMerger.merge(
@@ -192,8 +205,8 @@ class ParallelReviewMergerTest {
   @Test
   fun `Nit severity is parsed and sorted below Minor`() {
     val lane1Output = """
-      - [F-001] Nit | Low | A.kt:1 | Nit issue
-      - [F-002] Minor | Medium | B.kt:2 | Minor issue
+      - [F-001] Nit | Low | path="A.kt" | line=1 | Nit issue
+      - [F-002] Minor | Medium | path="B.kt" | line=2 | Minor issue
     """.trimIndent()
 
     val result = ParallelReviewMerger.merge(
@@ -208,7 +221,7 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `Critical maps to Blocker`() {
-    val lane1Output = "- [F-001] Critical | High | A.kt:1 | Critical issue"
+    val lane1Output = "- [F-001] Critical | High | path=\"A.kt\" | line=1 | Critical issue"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -221,7 +234,7 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `formattedOutput format matches spec AC11`() {
-    val lane1Output = "- [F-001] Major | High | Auth.kt:10 | Token logged"
+    val lane1Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=10 | Token logged"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -229,15 +242,15 @@ class ParallelReviewMergerTest {
     )
 
     assertEquals(
-      "- [F-001] [claude] Major | High | Auth.kt:10 | Token logged",
+      "- [F-001] [claude] Major | High | path=\"Auth.kt\" | line=10 | Token logged",
       result.formattedOutput,
     )
   }
 
   @Test
   fun `fuzzy match on same file coalesces when token overlap above threshold`() {
-    val lane1Output = "- [F-001] Major | High | Auth.kt:42 | token exposed in logs"
-    val lane2Output = "- [F-001] Major | High | Auth.kt:42 | token exposed in logs here"
+    val lane1Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=42 | token exposed in logs"
+    val lane2Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=42 | token exposed in logs here"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -251,8 +264,8 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `same description on different files is never coalesced`() {
-    val lane1Output = "- [F-001] Major | High | A.kt:1 | token exposed in logs"
-    val lane2Output = "- [F-001] Major | High | B.kt:1 | token exposed in logs"
+    val lane1Output = "- [F-001] Major | High | path=\"A.kt\" | line=1 | token exposed in logs"
+    val lane2Output = "- [F-001] Major | High | path=\"B.kt\" | line=1 | token exposed in logs"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -266,8 +279,8 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `same file with disjoint descriptions below threshold is not coalesced`() {
-    val lane1Output = "- [F-001] Major | High | Auth.kt:7 | token exposed in logs"
-    val lane2Output = "- [F-001] Major | High | Auth.kt:7 | null pointer dereference here"
+    val lane1Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | token exposed in logs"
+    val lane2Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | null pointer dereference here"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -282,8 +295,8 @@ class ParallelReviewMergerTest {
   @Test
   fun `same file with partial overlap below threshold is not coalesced`() {
     // tokens: {token,exposed,in,logs,here} vs {token,missing,csrf,header,on,post} -> 1/10 = 0.1 < 0.6
-    val lane1Output = "- [F-001] Major | High | Auth.kt:7 | token exposed in logs here"
-    val lane2Output = "- [F-001] Major | High | Auth.kt:7 | token missing csrf header on post"
+    val lane1Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | token exposed in logs here"
+    val lane2Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | token missing csrf header on post"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -295,8 +308,8 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `severity disagreement on fuzzy-coalesced pair resolves to higher severity`() {
-    val lane1Output = "- [F-001] Minor | Low | Auth.kt:42 | token exposed in logs"
-    val lane2Output = "- [F-001] Major | High | Auth.kt:42 | token exposed in logs here"
+    val lane1Output = "- [F-001] Minor | Low | path=\"Auth.kt\" | line=42 | token exposed in logs"
+    val lane2Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=42 | token exposed in logs here"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -310,7 +323,7 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `coalesced finding format matches spec AC12`() {
-    val finding = "- [F-001] Major | High | Auth.kt:10 | Token logged"
+    val finding = "- [F-001] Major | High | path=\"Auth.kt\" | line=10 | Token logged"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", finding),
@@ -318,7 +331,7 @@ class ParallelReviewMergerTest {
     )
 
     assertEquals(
-      "- [F-001] [claude, codex] Major | High | Auth.kt:10 | Token logged",
+      "- [F-001] [claude, codex] Major | High | path=\"Auth.kt\" | line=10 | Token logged",
       result.formattedOutput,
     )
   }
@@ -329,8 +342,8 @@ class ParallelReviewMergerTest {
     // severe assessment's severity AND its confidence (Major|Low), never Major|High.
     val location = "Auth.kt:42"
     val description = "token exposed in logs"
-    val lane1Output = "- [F-001] Minor | High | $location | $description"
-    val lane2Output = "- [F-001] Major | Low | $location | $description"
+    val lane1Output = "- [F-001] Minor | High | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane2Output = "- [F-001] Major | Low | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -345,8 +358,8 @@ class ParallelReviewMergerTest {
   @Test
   fun `same file with token overlap exactly at threshold is not coalesced`() {
     // tokens {alpha,beta,gamma,delta} vs {alpha,beta,gamma,epsilon} -> 3/5 = 0.6, not strictly above.
-    val lane1Output = "- [F-001] Major | High | Auth.kt:7 | alpha beta gamma delta"
-    val lane2Output = "- [F-001] Major | High | Auth.kt:7 | alpha beta gamma epsilon"
+    val lane1Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | alpha beta gamma delta"
+    val lane2Output = "- [F-001] Major | High | path=\"Auth.kt\" | line=7 | alpha beta gamma epsilon"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -360,8 +373,8 @@ class ParallelReviewMergerTest {
 
   @Test
   fun `findings without leading dash are parsed and coalesced with dash-prefixed findings`() {
-    val withDash = "- [F-001] Major | High | Auth.kt:10 | Token logged"
-    val withoutDash = "[F-001] Major | High | Auth.kt:10 | Token logged"
+    val withDash = "- [F-001] Major | High | path=\"Auth.kt\" | line=10 | Token logged"
+    val withoutDash = "[F-001] Major | High | path=\"Auth.kt\" | line=10 | Token logged"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", withDash),

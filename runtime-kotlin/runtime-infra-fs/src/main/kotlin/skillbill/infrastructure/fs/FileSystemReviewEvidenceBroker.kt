@@ -47,6 +47,12 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val expansionLedger = mutableListOf<ReviewExpansionRecord>()
   private var terminalOutcome: ReviewBudgetOutcome? = null
 
+  init {
+    val admitted = assignment.assignedPaths + assignment.dependencyAllowlist.normalized +
+      assignment.evidenceTargets.map { it.path } + assignment.expansions.map { it.requestedPath }
+    admitted.distinct().forEach { validateRepositoryMapping(root, it) }
+  }
+
   @Synchronized
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     require(request.lane == assignment.lane) { "Evidence lane does not own this assignment." }
@@ -215,6 +221,21 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   private fun batchResult(results: List<ReviewEvidenceResult>, outcome: ReviewBudgetOutcome?) =
     ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
+}
+
+private fun validateRepositoryMapping(root: Path, repositoryPath: String) {
+  requireRepositoryRelativePath(repositoryPath)
+  val relative = runCatching { Path.of(repositoryPath) }
+    .getOrElse { throw IllegalArgumentException("Review path is not representable on the active filesystem.", it) }
+  require(relative.toString() == repositoryPath) {
+    "Review path '$repositoryPath' is not represented exactly on the active filesystem."
+  }
+  var current = root
+  relative.forEach { component ->
+    current = current.resolve(component.toString())
+    require(!Files.isSymbolicLink(current)) { "Review path '$repositoryPath' crosses a symbolic link." }
+  }
+  require(current.normalize().startsWith(root)) { "Review path '$repositoryPath' escapes the repository root." }
 }
 
 private fun resolveRepositoryFile(root: Path, normalized: String): Path? {

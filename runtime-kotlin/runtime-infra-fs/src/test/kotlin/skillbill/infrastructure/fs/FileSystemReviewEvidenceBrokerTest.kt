@@ -27,6 +27,20 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
+  @Test fun `filesystem unsafe assigned path is rejected while broker is constructed`() {
+    val root = repo("A.kt" to "assigned")
+    assertFailsWith<IllegalArgumentException> {
+      broker(root, assignment(listOf("missing/../A.kt")))
+    }
+  }
+
+  @Test fun `assigned path crossing a symlink is rejected before evidence access`() {
+    val root = repo("target/A.kt" to "assigned")
+    Files.createSymbolicLink(root.resolve("link"), root.resolve("target"))
+    assertFailsWith<IllegalArgumentException> {
+      broker(root, assignment(listOf("link/A.kt")))
+    }
+  }
   @Test fun `native operation protocol rejects forbidden tools before execution`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))
@@ -170,10 +184,8 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `assigned symlink cannot expose another repository file`() {
     val root = repo("secret.txt" to "secret")
     Files.createSymbolicLink(root.resolve("assigned.txt"), root.resolve("secret.txt"))
-    val broker = broker(root, assignment(listOf("assigned.txt")))
-
     assertFailsWith<IllegalArgumentException> {
-      broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "assigned.txt")))
+      broker(root, assignment(listOf("assigned.txt")))
     }
   }
 
