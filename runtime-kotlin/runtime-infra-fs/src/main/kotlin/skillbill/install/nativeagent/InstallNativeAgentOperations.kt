@@ -5,8 +5,6 @@ import skillbill.install.model.AgentTarget
 import skillbill.install.plan.CLAUDE_AGENTS_KIND
 import skillbill.install.plan.JUNIE_AGENTS_KIND
 import skillbill.install.plan.ZCODE_AGENTS_KIND
-import skillbill.install.plan.detectCodexAgentsTarget
-import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
@@ -16,6 +14,7 @@ import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 
 data class NativeAgentLinkOutcome(
@@ -60,7 +59,9 @@ object InstallNativeAgentOperations {
   fun linkCodexAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Codex,
     request = request,
-    detectTargets = { listOfNotNull(detectCodexAgentsTarget(it)) },
+    detectTargets = { home ->
+      NativeAgentProvider.Codex.activeHomeAgentDirs(home).map { AgentTarget("codex-agents", it) }
+    },
   )
 
   fun unlinkCodexAgents(request: NativeAgentLinkRequest): List<Path> {
@@ -77,7 +78,9 @@ object InstallNativeAgentOperations {
   fun linkOpencodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Opencode,
     request = request,
-    detectTargets = { listOfNotNull(detectOpencodeAgentsTarget(it)) },
+    detectTargets = { home ->
+      NativeAgentProvider.Opencode.activeHomeAgentDirs(home).map { AgentTarget("opencode-agents", it) }
+    },
   )
 
   fun unlinkOpencodeAgents(request: NativeAgentLinkRequest): List<Path> {
@@ -209,7 +212,7 @@ object InstallNativeAgentOperations {
       )
       NativeAgentLinkOutcome(linked, skipped)
     } catch (error: Throwable) {
-      rollback.restore()
+      runCatching { rollback.restore() }.exceptionOrNull()?.let(error::addSuppressed)
       throw error
     }
   }
@@ -250,14 +253,23 @@ object InstallNativeAgentOperations {
 
   private data class ProviderReconciliationSnapshot(
     val links: Map<Path, Path>,
-    val cacheFiles: Map<Path, ByteArray>,
+    val providerDirectories: Map<Path, Boolean>,
+    val cacheEntries: Map<Path, FileSnapshot>,
     val cacheRoot: Path,
+    val cacheRootExisted: Boolean,
     val inventoryPath: Path,
-    val inventoryBytes: ByteArray?,
+    val inventory: FileSnapshot?,
     val managedRoots: List<Path>,
   ) {
     fun restore() {
-      links.keys.map { it.parent }.distinct().forEach { directory ->
+      restoreProviderLinks()
+      restoreCache()
+      restoreInventory()
+      removeCreatedDirectories()
+    }
+
+    private fun restoreProviderLinks() {
+      providerDirectories.keys.forEach { directory ->
         if (Files.isDirectory(directory)) {
           Files.list(directory).use { paths ->
             paths.iterator().asSequence().filter(Files::isSymbolicLink).filter { link ->
@@ -276,22 +288,36 @@ object InstallNativeAgentOperations {
           Files.createSymbolicLink(link, rawTarget)
         }
       }
+    }
+
+    private fun restoreCache() {
       if (Files.isDirectory(cacheRoot)) {
         Files.walk(cacheRoot).use { paths ->
           paths.iterator().asSequence().sortedByDescending { it.nameCount }
             .filter { it != cacheRoot }.forEach(Files::deleteIfExists)
         }
       }
-      cacheFiles.forEach { (path, bytes) ->
-        Files.createDirectories(path.parent)
-        Files.write(path, bytes)
-      }
-      if (inventoryBytes == null) {
+      cacheEntries.entries.sortedBy { it.key.nameCount }.forEach { (path, snapshot) -> snapshot.restore(path) }
+    }
+
+    private fun restoreInventory() {
+      if (inventory == null) {
         Files.deleteIfExists(inventoryPath)
       } else {
         Files.createDirectories(inventoryPath.parent)
-        Files.write(inventoryPath, inventoryBytes)
+        inventory.restore(inventoryPath)
       }
+    }
+
+    private fun removeCreatedDirectories() {
+      if (!cacheRootExisted && Files.isDirectory(cacheRoot) && isEmptyDirectory(cacheRoot)) {
+        Files.deleteIfExists(cacheRoot)
+      }
+      providerDirectories.filterValues { existed -> !existed }.keys
+        .sortedByDescending { it.nameCount }
+        .forEach { path ->
+          if (Files.isDirectory(path) && isEmptyDirectory(path)) Files.deleteIfExists(path)
+        }
     }
 
     companion object {
@@ -301,7 +327,8 @@ object InstallNativeAgentOperations {
         cacheRoot: Path,
         managedRoots: List<Path>,
       ): ProviderReconciliationSnapshot {
-        val links = provider.homeAgentDirs(home).flatMap { directory ->
+        val providerDirectories = provider.homeAgentDirs(home).associateWith { Files.isDirectory(it) }
+        val links = providerDirectories.keys.flatMap { directory ->
           if (!Files.isDirectory(directory)) {
             emptyList()
           } else {
@@ -311,26 +338,68 @@ object InstallNativeAgentOperations {
             }
           }
         }.associate { it.key to it.value }
-        val cacheFiles = if (!Files.isDirectory(cacheRoot)) {
+        val cacheEntries = if (!Files.isDirectory(cacheRoot)) {
           emptyMap()
         } else {
           Files.walk(cacheRoot).use { paths ->
-            paths.iterator().asSequence().filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }
-              .associateWith(Files::readAllBytes)
+            paths.iterator().asSequence().filter { it != cacheRoot }
+              .associateWith(FileSnapshot::capture)
           }
         }
         val inventory = home.resolve(".skill-bill/native-agent-link-inventory.json")
         return ProviderReconciliationSnapshot(
           links,
-          cacheFiles,
+          providerDirectories,
+          cacheEntries,
           cacheRoot,
+          Files.isDirectory(cacheRoot),
           inventory,
-          inventory.takeIf { Files.isRegularFile(it) }?.let(Files::readAllBytes),
+          inventory.takeIf { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }?.let(FileSnapshot::capture),
           managedRoots.map { it.toAbsolutePath().normalize() },
         )
       }
     }
   }
+
+  private data class FileSnapshot(
+    val kind: FileKind,
+    val bytes: ByteArray?,
+    val rawTarget: Path?,
+    val permissions: Set<PosixFilePermission>?,
+  ) {
+    fun restore(path: Path) {
+      Files.deleteIfExists(path)
+      when (kind) {
+        FileKind.Directory -> Files.createDirectories(path)
+        FileKind.Regular -> {
+          Files.createDirectories(path.parent)
+          Files.write(path, requireNotNull(bytes))
+        }
+        FileKind.SymbolicLink -> {
+          Files.createDirectories(path.parent)
+          Files.createSymbolicLink(path, requireNotNull(rawTarget))
+        }
+      }
+      permissions?.let { runCatching { Files.setPosixFilePermissions(path, it) } }
+    }
+
+    companion object {
+      fun capture(path: Path): FileSnapshot = FileSnapshot(
+        kind = when {
+          Files.isSymbolicLink(path) -> FileKind.SymbolicLink
+          Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> FileKind.Directory
+          else -> FileKind.Regular
+        },
+        bytes = path.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }?.let(Files::readAllBytes),
+        rawTarget = path.takeIf(Files::isSymbolicLink)?.let(Files::readSymbolicLink),
+        permissions = runCatching { Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS) }.getOrNull(),
+      )
+    }
+  }
+
+  private enum class FileKind { Directory, Regular, SymbolicLink }
+
+  private fun isEmptyDirectory(path: Path): Boolean = Files.list(path).use { !it.findAny().isPresent }
 
   private fun unlinkProviderAgents(provider: NativeAgentProvider, request: NativeAgentLinkRequest): List<Path> {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))

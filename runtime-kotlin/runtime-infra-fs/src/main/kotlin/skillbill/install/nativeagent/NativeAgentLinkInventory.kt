@@ -55,15 +55,24 @@ internal object NativeAgentLinkInventory {
   fun read(home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
     val path = inventoryPath(home)
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return bootstrap(home, managedRoots)
+    if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+      throw InvalidNativeAgentLinkInventorySchemaError(
+        "Invalid native-agent link inventory '$path': inventory must be a regular file. Delete it and reinstall.",
+      )
+    }
     return decode(path, home, managedRoots)
   }
 
   private fun removeIfStillManaged(entry: NativeAgentLinkInventoryEntry, managedRoots: List<Path>) {
     val link = entry.installedPath
+    val provider = provider(entry.provider)
+    if (link.fileName.toString() != provider.fileName(entry.logicalName)) return
     if (!Files.isSymbolicLink(link)) return
     val rawTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return
     val resolved = (link.parent ?: link.toAbsolutePath().parent).resolve(rawTarget).toAbsolutePath().normalize()
-    if (managedRoots.any { resolved.startsWith(it.toAbsolutePath().normalize()) }) Files.deleteIfExists(link)
+    if (managedRoots.any { root -> resolved == provider.cacheArtifactPath(root, entry.logicalName) }) {
+      Files.deleteIfExists(link)
+    }
   }
 
   private fun decode(path: Path, home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
@@ -98,14 +107,22 @@ internal object NativeAgentLinkInventory {
           "source_root must be an absolute bounded path"
         }
         require(entry.sourceRoot == entry.sourceRoot.normalize()) { "source_root must be normalized" }
+        require(Files.isDirectory(entry.sourceRoot, LinkOption.NOFOLLOW_LINKS)) {
+          "source_root must identify a regular repository directory"
+        }
         require(entry.installedPath == entry.installedPath.normalize()) { "installed_path must be normalized" }
         require(entry.cacheTargetPath == entry.cacheTargetPath.normalize()) { "cache_target_path must be normalized" }
-        val provider = skillbill.nativeagent.rendering.NativeAgentProvider.entries
-          .single { it.name.lowercase() == entry.provider }
+        require(LOGICAL_NAME.matches(entry.logicalName)) { "logical_name must be a single filename stem" }
+        val provider = provider(entry.provider)
         val allowedDirs = provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }
         require(entry.installedPath.parent in allowedDirs) { "installed_path is outside provider directory" }
-        require(managedRoots.any { entry.cacheTargetPath.startsWith(it.toAbsolutePath().normalize()) }) {
-          "cache_target_path is outside a trusted managed cache root"
+        require(entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName)) {
+          "installed_path does not match provider/logical_name identity"
+        }
+        require(
+          managedRoots.any { root -> entry.cacheTargetPath == provider.cacheArtifactPath(root, entry.logicalName) },
+        ) {
+          "cache_target_path does not match a trusted provider artifact"
         }
       }
       entries
@@ -125,9 +142,15 @@ internal object NativeAgentLinkInventory {
           paths.iterator().asSequence().filter(Files::isSymbolicLink).mapNotNull { link: Path ->
             val raw = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return@mapNotNull null
             val resolved = link.parent.resolve(raw).toAbsolutePath().normalize()
-            if (managedRoots.none { resolved.startsWith(it.toAbsolutePath().normalize()) }) return@mapNotNull null
+            val logicalName = link.fileName.toString().removeSuffix(".${provider.extension}")
+            if (!LOGICAL_NAME.matches(logicalName) || link.fileName.toString() != provider.fileName(logicalName)) {
+              return@mapNotNull null
+            }
+            if (managedRoots.none { root -> resolved == provider.cacheArtifactPath(root, logicalName) }) {
+              return@mapNotNull null
+            }
             NativeAgentLinkInventoryEntry(
-              link.fileName.toString().removeSuffix(".${provider.extension}"),
+              logicalName,
               provider.name.lowercase(),
               link.toAbsolutePath().normalize(),
               resolved,
@@ -178,5 +201,8 @@ internal object NativeAgentLinkInventory {
   private const val MAX_BYTES = 1024 * 1024L
   private const val DIGEST_HEX_LENGTH = 64
   private const val MAX_SOURCE_ROOT_LENGTH = 4096
+  private val LOGICAL_NAME = Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
   private val PROVIDERS = setOf("claude", "codex", "opencode", "junie", "zcode")
+  private fun provider(id: String) = skillbill.nativeagent.rendering.NativeAgentProvider.entries
+    .single { it.name.lowercase() == id }
 }

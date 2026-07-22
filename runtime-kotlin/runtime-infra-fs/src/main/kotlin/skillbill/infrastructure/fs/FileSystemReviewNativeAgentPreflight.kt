@@ -7,8 +7,6 @@ import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.apply.currentNativeAgentApplyCacheRoot
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
-import skillbill.install.plan.detectCodexAgentsTarget
-import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
@@ -54,6 +52,14 @@ class FileSystemReviewNativeAgentPreflight(
         }
         val activePaths = activeProviderDirs(provider, home)
           .map { it.resolve(provider.fileName(logicalName)).toAbsolutePath().normalize() }.toSet()
+        if (activePaths.isEmpty()) {
+          fail(
+            logicalName,
+            provider,
+            provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+            "active provider directory is missing",
+          )
+        }
         val applicable = entries.filter { it.installedPath.normalize() in activePaths }
         if (applicable.map { it.installedPath.normalize() }.toSet() != activePaths) {
           fail(
@@ -114,15 +120,8 @@ class FileSystemReviewNativeAgentPreflight(
     else -> null
   }
 
-  private fun activeProviderDirs(provider: NativeAgentProvider, home: Path): List<Path> = when (provider) {
-    NativeAgentProvider.Claude -> provider.homeAgentDirs(home)
-    NativeAgentProvider.Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
-    NativeAgentProvider.Opencode -> listOfNotNull(detectOpencodeAgentsTarget(home)?.path)
-    NativeAgentProvider.Junie -> listOf(provider.homeAgentDirs(home).single())
-    NativeAgentProvider.Zcode -> listOf(provider.homeAgentDirs(home).single())
-  }
-
-  private fun NativeAgentProvider.fileName(logicalName: String) = "$logicalName.$extension"
+  private fun activeProviderDirs(provider: NativeAgentProvider, home: Path): List<Path> =
+    provider.activeHomeAgentDirs(home)
 
   private fun parseLogicalName(path: Path, provider: NativeAgentProvider): String {
     val text = Files.readString(path)

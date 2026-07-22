@@ -2,8 +2,11 @@
 
 package skillbill.nativeagent.rendering
 
+import skillbill.install.plan.detectCodexAgentsTarget
+import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.install.support.claudeConfigRoots
 import skillbill.nativeagent.composition.NativeAgentSource
+import java.nio.file.Files
 import java.nio.file.Path
 
 enum class NativeAgentProvider(
@@ -36,6 +39,19 @@ enum class NativeAgentProvider(
   abstract fun render(source: NativeAgentSource): String
 
   abstract fun homeAgentDirs(home: Path): List<Path>
+
+  fun fileName(logicalName: String): String = "$logicalName.$extension"
+
+  fun activeHomeAgentDirs(home: Path): List<Path> = when (this) {
+    Claude -> homeAgentDirs(home)
+    Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
+    Opencode -> listOfNotNull(detectOpencodeAgentsTarget(home)?.path)
+    Junie -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".junie")) }.orEmpty()
+    Zcode -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".zcode")) }.orEmpty()
+  }.map { it.toAbsolutePath().normalize() }
+
+  fun cacheArtifactPath(cacheRoot: Path, logicalName: String): Path =
+    cacheRoot.resolve(directoryName).resolve(fileName(logicalName)).toAbsolutePath().normalize()
 }
 
 private fun renderCodexAgentToml(agent: NativeAgentSource): String = buildString {
