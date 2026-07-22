@@ -78,44 +78,237 @@ private abstract class StatefulNativeReviewLifecycleCallbacks : NativeReviewLife
 }
 
 private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
-  private val bufferedOutput = StringBuilder()
-  private var observedResult = false
+  private val resultDecoder = IncrementalJsonStringFieldDecoder(
+    targetField = "result",
+    targetContainerField = null,
+    stopAfterFirstMatch = true,
+  )
 
   override fun newSession(): NativeReviewLifecycleCallbacks = ClaudeNativeReviewLifecycleCallbacks()
 
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
-    if (observedResult) return null
-    bufferedOutput.append(chunk)
-    val result = runCatching { ObjectMapper().readTree(bufferedOutput.toString()) }.getOrNull()
-      ?.path("result")
-      ?.takeIf { it.isTextual }
-      ?.asText()
-      ?: return null
-    observedResult = true
-    return operations.laneResultChunk(result)
-  }
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+    resultDecoder.observe(operations, chunk)
 }
 
 private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
-  private val pendingLine = StringBuilder()
+  private val textDecoder = IncrementalJsonStringFieldDecoder(
+    targetField = "text",
+    targetContainerField = "item",
+    stopAfterFirstMatch = false,
+  )
 
   override fun newSession(): NativeReviewLifecycleCallbacks = CodexNativeReviewLifecycleCallbacks()
 
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
-    pendingLine.append(chunk)
-    while (true) {
-      val newline = pendingLine.indexOf("\n")
-      if (newline < 0) return null
-      val line = pendingLine.substring(0, newline).trimEnd('\r')
-      pendingLine.delete(0, newline + 1)
-      val text = runCatching { ObjectMapper().readTree(line) }.getOrNull()
-        ?.path("item")
-        ?.path("text")
-        ?.takeIf { it.isTextual }
-        ?.asText()
-        ?: continue
-      operations.laneResultChunk(text)?.let { return it }
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+    textDecoder.observe(operations, chunk)
+}
+
+/**
+ * Streams one JSON string field without retaining its provider envelope. Only field names and
+ * incomplete escape state are buffered, so a provider cannot move the lane-result byte boundary
+ * behind an arbitrarily large JSON document or JSONL record.
+ */
+private class IncrementalJsonStringFieldDecoder(
+  private val targetField: String,
+  private val targetContainerField: String?,
+  private val stopAfterFirstMatch: Boolean,
+) {
+  private sealed interface ContainerContext
+
+  private data class ObjectContext(
+    val enteredByField: String?,
+    var expectingKey: Boolean = true,
+    var pendingField: String? = null,
+  ) : ContainerContext
+
+  private data object ArrayContext : ContainerContext
+
+  private val containers = ArrayDeque<ContainerContext>()
+  private val token = StringBuilder()
+  private var inString = false
+  private var stringIsKey = false
+  private var stringIsTarget = false
+  private var escaping = false
+  private var unicodeDigitsRemaining = 0
+  private var unicodeValue = 0
+  private var pendingHighSurrogate: Char? = null
+  private var matchedTarget = false
+  private var currentTargetHasContent = false
+  private var overflowDepth = 0
+
+  @Suppress(
+    "CyclomaticComplexMethod",
+    "LongMethod",
+    "LoopWithTooManyJumpStatements",
+    "MagicNumber",
+    "NestedBlockDepth",
+    "ReturnCount",
+  )
+  fun observe(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
+    if (stopAfterFirstMatch && matchedTarget) return null
+    val emitted = StringBuilder()
+
+    fun flush(): ReviewBudgetOutcome? {
+      if (emitted.isEmpty()) return null
+      val value = emitted.toString()
+      emitted.clear()
+      return operations.laneResultChunk(value)
     }
+
+    fun appendDecoded(char: Char) {
+      currentTargetHasContent = true
+      val high = pendingHighSurrogate
+      when {
+        high != null && char.isLowSurrogate() -> {
+          emitted.append(high)
+          emitted.append(char)
+          pendingHighSurrogate = null
+        }
+        high != null -> {
+          emitted.append(high)
+          pendingHighSurrogate = if (char.isHighSurrogate()) char else null
+          if (!char.isHighSurrogate()) emitted.append(char)
+        }
+        char.isHighSurrogate() -> pendingHighSurrogate = char
+        else -> emitted.append(char)
+      }
+    }
+
+    for (char in chunk) {
+      if (inString) {
+        if (unicodeDigitsRemaining > 0) {
+          val digit = char.digitToIntOrNull(16)
+          if (digit == null) {
+            unicodeDigitsRemaining = 0
+            unicodeValue = 0
+          } else {
+            unicodeValue = (unicodeValue shl 4) or digit
+            unicodeDigitsRemaining--
+            if (unicodeDigitsRemaining == 0) {
+              if (stringIsTarget) {
+                appendDecoded(unicodeValue.toChar())
+              } else if (stringIsKey && token.length <= MAX_FIELD_NAME_LENGTH) {
+                token.append(unicodeValue.toChar())
+              }
+              unicodeValue = 0
+            }
+          }
+          continue
+        }
+        if (escaping) {
+          escaping = false
+          if (char == 'u') {
+            unicodeDigitsRemaining = 4
+            unicodeValue = 0
+          } else {
+            val decoded = when (char) {
+              'b' -> '\b'
+              'f' -> '\u000c'
+              'n' -> '\n'
+              'r' -> '\r'
+              't' -> '\t'
+              else -> char
+            }
+            if (stringIsTarget) {
+              appendDecoded(decoded)
+            } else if (stringIsKey && token.length <= MAX_FIELD_NAME_LENGTH) {
+              token.append(decoded)
+            }
+          }
+          continue
+        }
+        when (char) {
+          '\\' -> escaping = true
+          '"' -> {
+            inString = false
+            if (stringIsKey) {
+              (containers.lastOrNull() as? ObjectContext)?.apply {
+                pendingField = token.takeIf { it.length <= MAX_FIELD_NAME_LENGTH }?.toString()
+                expectingKey = false
+              }
+            }
+            if (stringIsTarget) {
+              pendingHighSurrogate?.let(emitted::append)
+              pendingHighSurrogate = null
+              if (!currentTargetHasContent) {
+                operations.laneResultChunk("")?.let { return it }
+              }
+              matchedTarget = true
+              flush()?.let { return it }
+              if (stopAfterFirstMatch) return null
+            }
+          }
+          else -> {
+            if (stringIsTarget) {
+              appendDecoded(char)
+            } else if (stringIsKey && token.length <= MAX_FIELD_NAME_LENGTH) {
+              token.append(char)
+            }
+          }
+        }
+        continue
+      }
+
+      if (overflowDepth > 0) {
+        when (char) {
+          '{', '[' -> overflowDepth++
+          '}', ']' -> overflowDepth--
+          '"' -> {
+            inString = true
+            stringIsKey = false
+            stringIsTarget = false
+            escaping = false
+          }
+        }
+        continue
+      }
+
+      when (char) {
+        '{' -> {
+          if (containers.size == MAX_CONTAINER_DEPTH) {
+            overflowDepth = 1
+          } else {
+            val parentField = (containers.lastOrNull() as? ObjectContext)?.pendingField
+            containers.addLast(ObjectContext(enteredByField = parentField))
+          }
+        }
+        '[' -> {
+          if (containers.size == MAX_CONTAINER_DEPTH) {
+            overflowDepth = 1
+          } else {
+            containers.addLast(ArrayContext)
+          }
+        }
+        '}', ']' -> {
+          if (containers.isNotEmpty()) containers.removeLast()
+          (containers.lastOrNull() as? ObjectContext)?.apply {
+            pendingField = null
+            expectingKey = true
+          }
+        }
+        ',' -> (containers.lastOrNull() as? ObjectContext)?.apply {
+          pendingField = null
+          expectingKey = true
+        }
+        '"' -> {
+          val context = containers.lastOrNull() as? ObjectContext
+          stringIsKey = context?.expectingKey == true
+          stringIsTarget = !stringIsKey &&
+            context?.pendingField == targetField &&
+            (targetContainerField == null || context.enteredByField == targetContainerField)
+          currentTargetHasContent = false
+          token.clear()
+          inString = true
+          escaping = false
+        }
+      }
+    }
+    return flush()
+  }
+
+  private companion object {
+    const val MAX_FIELD_NAME_LENGTH = 128
+    const val MAX_CONTAINER_DEPTH = 64
   }
 }
 
