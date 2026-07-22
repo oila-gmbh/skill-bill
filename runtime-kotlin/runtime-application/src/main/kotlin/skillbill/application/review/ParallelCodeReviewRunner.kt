@@ -33,6 +33,7 @@ import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewNativeAgentAssignment
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
@@ -97,16 +98,15 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
-    val providerNativeWorkers = launchRequests
+    val providerNativeAssignments = launchRequests
       .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
-      .map { requireNotNull(it.logicalWorkerName) }
+      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
       .distinct()
-    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeWorkers.isNotEmpty()) {
+    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeAssignments.isNotEmpty()) {
       nativeAgentPreflight.verify(
         ReviewNativeAgentPreflightRequest(
           repoRoot = request.repoRoot,
-          agentIds = listOf(agent1.id, agent2.id),
-          logicalNames = providerNativeWorkers,
+          assignments = providerNativeAssignments,
         ),
       )
     }

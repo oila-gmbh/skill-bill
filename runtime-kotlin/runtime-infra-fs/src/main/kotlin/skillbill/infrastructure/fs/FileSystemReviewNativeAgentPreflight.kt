@@ -32,45 +32,45 @@ class FileSystemReviewNativeAgentPreflight(
       request.repoRoot.resolve("skills"),
     )
     val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache), request.repoRoot)
-    request.agentIds.distinct().forEach { agentId ->
+    request.assignments.distinct().forEach { assignment ->
+      val agentId = assignment.agentId
+      val logicalName = assignment.logicalName
       val provider = provider(agentId) ?: throw MissingInstalledNativeAgentError(
-        request.logicalNames.firstOrNull() ?: "unknown",
+        logicalName,
         agentId,
         environment.userHome.toString(),
         "provider does not support native-agent selection",
         REPAIR_COMMAND,
       )
-      request.logicalNames.distinct().forEach { logicalName ->
-        val entries = inventory.filter { it.provider == provider.name.lowercase() && it.logicalName == logicalName }
-        if (entries.isEmpty()) {
-          fail(
-            logicalName,
-            provider,
-            provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
-            "managed inventory entry is missing",
-          )
-        }
-        val activePaths = activeProviderDirs(provider, home)
-          .map { it.resolve(provider.fileName(logicalName)).toAbsolutePath().normalize() }.toSet()
-        if (activePaths.isEmpty()) {
-          fail(
-            logicalName,
-            provider,
-            provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
-            "active provider directory is missing",
-          )
-        }
-        val applicable = entries.filter { it.installedPath.normalize() in activePaths }
-        if (applicable.map { it.installedPath.normalize() }.toSet() != activePaths) {
-          fail(
-            logicalName,
-            provider,
-            provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
-            "managed inventory must contain one entry per applicable provider path",
-          )
-        }
-        applicable.forEach { verifyEntry(it, provider, currentCache) }
+      val entries = inventory.filter { it.provider == provider.name.lowercase() && it.logicalName == logicalName }
+      if (entries.isEmpty()) {
+        fail(
+          logicalName,
+          provider,
+          provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+          "managed inventory entry is missing",
+        )
       }
+      val activePaths = activeProviderDirs(provider, home)
+        .map { it.resolve(provider.fileName(logicalName)).toAbsolutePath().normalize() }.toSet()
+      if (activePaths.isEmpty()) {
+        fail(
+          logicalName,
+          provider,
+          provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+          "active provider directory is missing",
+        )
+      }
+      val applicable = entries.filter { it.installedPath.normalize() in activePaths }
+      if (applicable.map { it.installedPath.normalize() }.toSet() != activePaths) {
+        fail(
+          logicalName,
+          provider,
+          provider.homeAgentDirs(home).first().resolve(provider.fileName(logicalName)),
+          "managed inventory must contain one entry per applicable provider path",
+        )
+      }
+      applicable.forEach { verifyEntry(it, provider, currentCache) }
     }
   }
 

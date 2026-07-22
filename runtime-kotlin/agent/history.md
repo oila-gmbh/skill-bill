@@ -1,3 +1,15 @@
+## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
+Areas: runtime-kotlin/runtime-{application,infra-fs,ports}, native-agent rendering/install, platform-packs/{kotlin,kmp}
+- Provider-neutral declarations and flattened review plans now share the complete specialist worker set; missing declarations and ambiguous targets fail validation instead of falling back to baseline or `general-purpose` workers.
+- Install treats the full Skill Bill-managed link inventory as authoritative: selected artifacts are rendered and linked atomically, verified by logical name, digest, and readability, and obsolete or dangling managed links are removed without touching unmanaged files. reusable
+- Runtime preflight validates the exact provider-worker assignments prepared for launch against current cache/staging inventory, avoiding false failures from a provider/worker Cartesian product; typed failures retain the repair command. reusable
+- Pattern: reconcile durable managed inventory before launch, then validate exact launch assignments at the runtime boundary rather than reconstructing selection from independent provider and worker lists. reusable
+- Compatibility constructor support remains for callers that still supply provider and worker lists; new launch paths use explicit `ReviewNativeAgentAssignment` values.
+- Existing install/reconcile coverage locks dangling Kotlin/KMP links, stale hashes, missing specialists, duplicate targets, unmanaged-file preservation, and supported provider layouts.
+- Known limitation: trustworthy worker accounting and end-to-end optimized-flow proof belong to subtask 5.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 5/5 implemented
+
 ## [2026-07-22] SKILL-129 flattened layered review composition (subtask 3)
 Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}, orchestration/review-orchestrator
 - Review launch planning recursively expands manifest-declared baseline layers into one ordered, duplicate-free specialist plan before worker preflight; KMP retains required Kotlin coverage without launching a nested Kotlin orchestrator.
