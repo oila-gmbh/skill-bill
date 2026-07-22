@@ -26,10 +26,10 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -41,9 +41,9 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
-import skillbill.review.plan.ReviewContentMatcher
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -253,10 +253,12 @@ class ParallelCodeReviewRunner(
           ownedPaths = matches.flatMap { it.ownedPaths }.distinct().sorted(),
           changedHunkIds = matches.flatMap { it.changedHunkIds }.distinct(),
         )
-        require(matches.all {
-          it.packSlug == lane.packSlug && it.area == lane.area && it.skillName == lane.skillName &&
-            it.addOns == lane.addOns
-        }) {
+        require(
+          matches.all {
+            it.packSlug == lane.packSlug && it.area == lane.area && it.skillName == lane.skillName &&
+              it.addOns == lane.addOns
+          },
+        ) {
           "Conflicting ownership for specialist '${lane.skillName}'."
         }
         val owner = manifests.single { it.slug == lane.packSlug }

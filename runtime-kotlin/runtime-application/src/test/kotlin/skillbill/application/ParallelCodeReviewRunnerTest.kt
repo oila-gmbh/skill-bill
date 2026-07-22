@@ -58,13 +58,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.test.fail
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class ParallelCodeReviewRunnerTest {
-  private val noManifestsCatalogGateway = stubCatalogGateway(emptyList())
-
   @Test
   fun `blank agent2 throws UsageValidationException before any launch`() {
     val launcher = ParallelSubtaskLauncher()
@@ -82,11 +79,11 @@ class ParallelCodeReviewRunnerTest {
     createStagedFile(repo)
     val launcher = ParallelSubtaskLauncher()
     var admitted = 0
-    val runner = runner(
+    val runner = runnerWithEvidenceBroker(
       launcher,
-      evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+      ReviewEvidenceBrokerFactory { binding ->
         admitted++
-        if (admitted == 2) throw IllegalArgumentException("invalid later assignment")
+        require(admitted != 2) { "invalid later assignment" }
         TestReviewEvidenceBroker(binding)
       },
     )
@@ -382,7 +379,9 @@ class ParallelCodeReviewRunnerTest {
     assertEquals("review_context_budget_exceeded", result.lane1.budgetOutcome?.type)
     assertTrue(result.mergeResult.findings.isEmpty())
   }
+}
 
+class ParallelCodeReviewRunnerFailureTest {
   @Test
   fun `lane1 interrupted produces lane1Success false`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
@@ -492,10 +491,10 @@ class ParallelCodeReviewRunnerTest {
         spawnFailed = false,
       )
     }
-    val runner = runner(
+    val runner = runnerWithParallelLane(
       launcher,
-      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
-      parallelLaneRunner = StaticParallelLaneRunner(
+      RecordingDiffResolver(default = diffFor("A.kt")),
+      StaticParallelLaneRunner(
         ParallelReviewLaneRunResult(
           lane1 = ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)"),
           lane2 = ParallelReviewLaneOutcome(true, ""),
@@ -635,20 +634,55 @@ class ParallelCodeReviewRunnerTest {
       },
     )
   }
+}
+private data class RunnerFixtureConfig(
+  val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
+  val diffResolver: DiffResolverPort = RealProcessDiffResolver(),
+  val parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
+  val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
+  },
+  val evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
+)
 
-  private fun runner(
-    launcher: GoalRunnerSubtaskLauncher,
-    catalogGateway: ScaffoldCatalogGateway = noManifestsCatalogGateway,
-    diffResolver: DiffResolverPort = RealProcessDiffResolver(),
-    parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
-    rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
-      ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
-    },
-    evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
-  ): ParallelCodeReviewRunner = ParallelCodeReviewRunner(
+private fun runner(
+  launcher: GoalRunnerSubtaskLauncher,
+  catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
+  diffResolver: DiffResolverPort = RealProcessDiffResolver(),
+  rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
+  },
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(
+    catalogGateway = catalogGateway,
+    diffResolver = diffResolver,
+    rubricResolver = rubricResolver,
+  ),
+)
+
+private fun runnerWithEvidenceBroker(
+  launcher: GoalRunnerSubtaskLauncher,
+  evidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(evidenceBrokerFactory = evidenceBrokerFactory),
+)
+
+private fun runnerWithParallelLane(
+  launcher: GoalRunnerSubtaskLauncher,
+  diffResolver: DiffResolverPort,
+  parallelLaneRunner: ParallelReviewLaneRunner,
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(diffResolver = diffResolver, parallelLaneRunner = parallelLaneRunner),
+)
+
+private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
+  ParallelCodeReviewRunner(
     delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
       DelegatedReviewLaunchBroker(
-        evidenceBrokerFactory = evidenceBrokerFactory,
+        evidenceBrokerFactory = config.evidenceBrokerFactory,
         isolationResolver = { agentId ->
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
@@ -685,9 +719,9 @@ class ParallelCodeReviewRunnerTest {
       ),
     ),
     parentReviewLauncher = launcher,
-    scaffoldCatalogService = ScaffoldCatalogService(catalogGateway),
-    diffResolver = diffResolver,
-    parallelLaneRunner = parallelLaneRunner,
+    scaffoldCatalogService = ScaffoldCatalogService(config.catalogGateway),
+    diffResolver = config.diffResolver,
+    parallelLaneRunner = config.parallelLaneRunner,
     repoLocalConfig = object : RepoLocalConfigPort {
       override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
         ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
@@ -695,56 +729,50 @@ class ParallelCodeReviewRunnerTest {
     reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
-    reviewRubricResolver = rubricResolver,
+    reviewRubricResolver = config.rubricResolver,
   )
 
-  private fun baseRequest(
-    agent1Id: String = "claude",
-    agent2Id: String = "codex",
-    scope: ParallelReviewScope = ParallelReviewScope.STAGED,
-    repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
-    timeout: Duration? = null,
-  ) = ParallelCodeReviewRequest(
-    agent1Id = agent1Id,
-    agent2Id = agent2Id,
-    scope = scope,
-    repoRoot = repoRoot,
-    timeout = timeout,
+private fun baseRequest(
+  agent1Id: String = "claude",
+  agent2Id: String = "codex",
+  scope: ParallelReviewScope = ParallelReviewScope.STAGED,
+  repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
+  timeout: Duration? = null,
+) = ParallelCodeReviewRequest(
+  agent1Id = agent1Id,
+  agent2Id = agent2Id,
+  scope = scope,
+  repoRoot = repoRoot,
+  timeout = timeout,
+)
+
+private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
+  AgentRunLaunchFacts(
+    agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+    exitStatus = 0,
+    stdout = stdout,
+    stderr = "",
+    timedOut = false,
+    spawnFailed = false,
   )
+}
 
-  private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
-    AgentRunLaunchFacts(
-      agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-      exitStatus = 0,
-      stdout = stdout,
-      stderr = "",
-      timedOut = false,
-      spawnFailed = false,
-    )
-  }
+private fun assertThrowsUsageValidation(block: () -> Unit) {
+  assertFailsWith<UsageValidationException> { block() }
+}
 
-  private fun assertThrowsUsageValidation(block: () -> Unit) {
-    try {
-      block()
-      fail("Expected UsageValidationException")
-    } catch (@Suppress("SwallowedException") e: UsageValidationException) {
-      // expected
-    }
-  }
+private fun createGitRepo(): Path {
+  val dir = Files.createTempDirectory("pr-runner-git")
+  ProcessBuilder("git", "init", dir.toString()).start().waitFor()
+  ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
+  ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
+  return dir
+}
 
-  private fun createGitRepo(): Path {
-    val dir = Files.createTempDirectory("pr-runner-git")
-    ProcessBuilder("git", "init", dir.toString()).start().waitFor()
-    ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
-    ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
-    return dir
-  }
-
-  private fun createStagedFile(dir: Path) {
-    val file = dir.resolve("Test.kt")
-    Files.writeString(file, "fun main() {}\n")
-    ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
-  }
+private fun createStagedFile(dir: Path) {
+  val file = dir.resolve("Test.kt")
+  Files.writeString(file, "fun main() {}\n")
+  ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
 }
 
 private class ParallelSubtaskLauncher(

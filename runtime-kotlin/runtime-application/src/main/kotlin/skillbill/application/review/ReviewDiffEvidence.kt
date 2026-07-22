@@ -91,14 +91,18 @@ internal data class ReviewDiffEvidence(
 
     private fun String.repositoryPath(prefix: String?): String? = takeUnless { it.trim() == "/dev/null" }
       ?.let(::decodeGitPath)?.let { path ->
-        if (prefix == null) path else {
+        if (prefix == null) {
+          path
+        } else {
           require(path.startsWith(prefix)) { "Git path source must carry the '$prefix' prefix." }
           path.removePrefix(prefix)
         }
       }
-      ?.also { require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
+      ?.also {
+        require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
           "Malformed Git diff record has a non-repository path '$it'."
-        } }
+        }
+      }
 
     private fun parseDiffHeader(
       line: String,
@@ -188,11 +192,20 @@ internal data class ReviewDiffEvidence(
         } else {
           index++
           require(index < body.length) { "Malformed quoted Git path ends with an escape." }
-          decoded.append(when (val escaped = body[index++]) {
-            'a' -> '\u0007'; 'b' -> '\b'; 'f' -> '\u000c'; 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t';
-            'v' -> '\u000b'; '\\' -> '\\'; '"' -> '"'
-            else -> throw IllegalArgumentException("Unsupported quoted Git path escape '\\$escaped'.")
-          })
+          decoded.append(
+            when (val escaped = body[index++]) {
+              'a' -> '\u0007'
+              'b' -> '\b'
+              'f' -> '\u000c'
+              'n' -> '\n'
+              'r' -> '\r'
+              't' -> '\t'
+              'v' -> '\u000b'
+              '\\' -> '\\'
+              '"' -> '"'
+              else -> throw IllegalArgumentException("Unsupported quoted Git path escape '\\$escaped'.")
+            },
+          )
         }
       }
       return decoded.toString()

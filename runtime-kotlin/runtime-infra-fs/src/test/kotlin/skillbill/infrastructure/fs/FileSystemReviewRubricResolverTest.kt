@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.review.ReviewOwnedFileEvidence
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.scaffold.model.DeclaredFiles
-import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonActivation
+import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals

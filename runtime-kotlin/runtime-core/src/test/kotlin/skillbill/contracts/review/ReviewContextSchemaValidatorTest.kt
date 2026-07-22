@@ -143,9 +143,11 @@ class ReviewContextSchemaValidatorTest {
 
   @Test fun `included lane decisions require composition attribution and specialist ownership`() {
     val valid = packet.toParentPacketEnvelope().asWireMap()
-    val baseDecision = ((valid.getValue("lane_decisions") as List<*>)
-      .map { it as Map<*, *> }
-      .single { it["included"] == true })
+    val baseDecision = (
+      (valid.getValue("lane_decisions") as List<*>)
+        .map { it as Map<*, *> }
+        .single { it["included"] == true }
+      )
       .entries.associate { (key, value) -> key as String to value }
     listOf("origin_layer_chains", "owning_pack", "specialist_skill_name").forEach { omitted ->
       val envelope = valid.toMutableMap()

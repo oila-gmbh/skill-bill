@@ -1,16 +1,51 @@
 package skillbill.review
 
+import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
-import skillbill.review.context.model.structuredString
 
 object ParallelReviewMerger {
   fun merge(lane1: ParallelReviewLaneResult, lane2: ParallelReviewLaneResult): ParallelReviewMergeResult {
     // Findings are the single source of truth: callers gate them on lane success, so a failed lane
     // contributes an empty list here and never leaks into the merged register.
+    val candidates = mergeCandidates(lane1, lane2)
+
+    val sorted = candidates.sortedWith(
+      compareBy<MergedCandidate> { it.severity.ordinal }
+        .thenBy { if (it.isCoalesced) 0 else 1 }
+        .thenBy { it.firstAppearance },
+    )
+
+    val mergedFindings = sorted.mapIndexed { index, candidate ->
+      ParallelReviewMergedFinding(
+        fNumber = "F-%03d".format(index + 1),
+        agentIds = candidate.agentIds,
+        severity = candidate.severity,
+        confidence = candidate.confidence,
+        location = candidate.location,
+        description = candidate.description,
+        specialistSkillNames = candidate.specialistSkillNames,
+        originLayerChains = candidate.originLayerChains,
+        repositoryPath = candidate.repositoryPath,
+        line = candidate.line,
+      )
+    }
+
+    val formattedOutput = mergedFindings.joinToString("\n", transform = ::formatFinding)
+
+    return ParallelReviewMergeResult(
+      findings = mergedFindings,
+      formattedOutput = formattedOutput,
+    )
+  }
+
+  private fun mergeCandidates(
+    lane1: ParallelReviewLaneResult,
+    lane2: ParallelReviewLaneResult,
+  ): List<MergedCandidate> {
     val allEntries = mutableListOf<FindingEntry>()
     var appearanceOrder = 0
     lane1.findings.forEach { f -> allEntries += FindingEntry(f, lane1.agentId, appearanceOrder++) }
@@ -36,48 +71,26 @@ object ParallelReviewMerger {
       }
     }
 
-    val candidates = clusters.map(::toCandidate)
+    return clusters.map(::toCandidate)
+  }
 
-    val sorted = candidates.sortedWith(
-      compareBy<MergedCandidate> { it.severity.ordinal }
-        .thenBy { if (it.isCoalesced) 0 else 1 }
-        .thenBy { it.firstAppearance },
-    )
-
-    val mergedFindings = sorted.mapIndexed { index, candidate ->
-      ParallelReviewMergedFinding(
-        fNumber = "F-%03d".format(index + 1),
-        agentIds = candidate.agentIds,
-        severity = candidate.severity,
-        confidence = candidate.confidence,
-        location = candidate.location,
-        description = candidate.description,
-        specialistSkillNames = candidate.specialistSkillNames,
-        originLayerChains = candidate.originLayerChains,
-        repositoryPath = candidate.repositoryPath,
-        line = candidate.line,
-      )
+  private fun formatFinding(finding: ParallelReviewMergedFinding): String {
+    val agentLabel = finding.agentIds.joinToString(", ")
+    val provenance = buildList {
+      if (finding.specialistSkillNames.isNotEmpty()) {
+        add("specialists=${finding.specialistSkillNames.joinToString(",")}")
+      }
+      if (finding.originLayerChains.isNotEmpty()) {
+        add("origins=${finding.originLayerChains.joinToString(",") { it.joinToString("->") }}")
+      }
+    }.joinToString("; ").let { if (it.isBlank()) "" else " | $it" }
+    val structuredLocation = if (finding.repositoryPath != null && finding.line != null) {
+      "path=${structuredString(finding.repositoryPath)} | line=${finding.line}"
+    } else {
+      finding.location
     }
-
-    val formattedOutput = mergedFindings.joinToString("\n") { f ->
-      val agentLabel = f.agentIds.joinToString(", ")
-      val provenance = buildList {
-        if (f.specialistSkillNames.isNotEmpty()) add("specialists=${f.specialistSkillNames.joinToString(",")}")
-        if (f.originLayerChains.isNotEmpty()) {
-          add("origins=${f.originLayerChains.joinToString(",") { it.joinToString("->") }}")
-        }
-      }.joinToString("; ").let { if (it.isBlank()) "" else " | $it" }
-      val structuredLocation = if (f.repositoryPath != null && f.line != null) {
-        "path=${structuredString(f.repositoryPath)} | line=${f.line}"
-      } else f.location
-      "- [${f.fNumber}] [$agentLabel] ${f.severity.displayName} | ${f.confidence} | $structuredLocation | " +
-        "${f.description}$provenance"
-    }
-
-    return ParallelReviewMergeResult(
-      findings = mergedFindings,
-      formattedOutput = formattedOutput,
-    )
+    return "- [${finding.fNumber}] [$agentLabel] ${finding.severity.displayName} | ${finding.confidence} | " +
+      "$structuredLocation | ${finding.description}$provenance"
   }
 
   private fun toCandidate(head: ClusterHead): MergedCandidate {

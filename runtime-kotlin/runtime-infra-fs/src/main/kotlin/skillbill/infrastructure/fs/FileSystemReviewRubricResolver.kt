@@ -2,10 +2,10 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.ports.review.model.ResolvedReviewRubric
-import skillbill.review.plan.ReviewPathMatcher
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.plan.ReviewContentMatcher
+import skillbill.review.plan.ReviewPathMatcher
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 

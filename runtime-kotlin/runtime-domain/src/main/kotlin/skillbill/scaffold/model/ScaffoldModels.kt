@@ -98,11 +98,13 @@ data class GovernedAddonActivation(
   val excludeContent: List<String> = emptyList(),
 ) {
   init {
-    require(anyPath.isNotEmpty() || anyContent.isNotEmpty() || allContent.isNotEmpty() || anyOfAllContent.isNotEmpty()) {
+    require(
+      anyPath.isNotEmpty() || anyContent.isNotEmpty() || allContent.isNotEmpty() || anyOfAllContent.isNotEmpty(),
+    ) {
       "Add-on activation must declare any, all, or any_of_all signals."
     }
-    require((anyPath + anyContent + allContent + anyOfAllContent.flatten() + excludePath + excludeContent)
-      .all(String::isNotBlank)) {
+    val signals = anyPath + anyContent + allContent + anyOfAllContent.flatten() + excludePath + excludeContent
+    require(signals.all(String::isNotBlank)) {
       "Add-on activation signals must not be blank."
     }
   }

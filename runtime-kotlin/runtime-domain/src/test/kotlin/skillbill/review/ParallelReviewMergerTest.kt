@@ -14,14 +14,21 @@ class ParallelReviewMergerTest {
   @Test
   fun `case distinct paths never deduplicate`() {
     val lower = ParallelReviewRawFinding(
-      ParallelReviewSeverity.MAJOR, "High", "a.kt:1", "same exact issue", repositoryPath = "a.kt", line = 1,
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "a.kt:1",
+      "same exact issue",
+      repositoryPath = "a.kt",
+      line = 1,
     )
     val upper = lower.copy(location = "A.kt:1", repositoryPath = "A.kt")
     val result = ParallelReviewMerger.merge(
-      ParallelReviewLaneResult("one", listOf(lower)), ParallelReviewLaneResult("two", listOf(upper)),
+      ParallelReviewLaneResult("one", listOf(lower)),
+      ParallelReviewLaneResult("two", listOf(upper)),
     )
     assertEquals(2, result.findings.size)
   }
+
   @Test
   fun `dedup retains specialist and composition provenance`() {
     val baseline = ParallelReviewRawFinding(
@@ -61,7 +68,9 @@ class ParallelReviewMergerTest {
     confidence: String = "High",
     location: String = "Foo.kt:1",
     description: String = "A finding",
-  ) = "- [$id] $severity | $confidence | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
+  ) = "- [$id] $severity | $confidence | path=\"${location.substringBeforeLast(
+    ":",
+  )}\" | line=${location.substringAfterLast(":")} | $description"
 
   @Test
   fun `both lanes empty produces empty result`() {
@@ -174,8 +183,12 @@ class ParallelReviewMergerTest {
   fun `severity disagreement on same finding uses higher severity`() {
     val location = "Auth.kt:99"
     val description = "Same issue different severity"
-    val lane1Output = "- [F-001] Minor | Low | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
-    val lane2Output = "- [F-001] Major | High | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane1Output = "- [F-001] Minor | Low | path=\"${location.substringBeforeLast(
+      ":",
+    )}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane2Output = "- [F-001] Major | High | path=\"${location.substringBeforeLast(
+      ":",
+    )}\" | line=${location.substringAfterLast(":")} | $description"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),
@@ -342,8 +355,12 @@ class ParallelReviewMergerTest {
     // severe assessment's severity AND its confidence (Major|Low), never Major|High.
     val location = "Auth.kt:42"
     val description = "token exposed in logs"
-    val lane1Output = "- [F-001] Minor | High | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
-    val lane2Output = "- [F-001] Major | Low | path=\"${location.substringBeforeLast(":")}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane1Output = "- [F-001] Minor | High | path=\"${location.substringBeforeLast(
+      ":",
+    )}\" | line=${location.substringAfterLast(":")} | $description"
+    val lane2Output = "- [F-001] Major | Low | path=\"${location.substringBeforeLast(
+      ":",
+    )}\" | line=${location.substringAfterLast(":")} | $description"
 
     val result = ParallelReviewMerger.merge(
       laneResult("claude", lane1Output),

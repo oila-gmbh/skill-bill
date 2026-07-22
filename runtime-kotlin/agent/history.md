@@ -1,3 +1,14 @@
+## [2026-07-22] SKILL-129 flattened layered review composition (subtask 3)
+Areas: runtime-kotlin/runtime-{application,cli,core,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}, orchestration/review-orchestrator
+- Review launch planning recursively expands manifest-declared baseline layers into one ordered, duplicate-free specialist plan before worker preflight; KMP retains required Kotlin coverage without launching a nested Kotlin orchestrator.
+- Flattened ownership preserves every same-owner origin chain, required status across depths, selected add-ons, matched signals, deterministic ordering, and specialist attribution through merge/dedup output.
+- Pattern: resolve layered composition and ambiguous ownership once at the parent boundary, then give each worker only its bounded routed packet and projected rubric; downstream consumers do not rediscover scope, routing, learnings, or telemetry. reusable
+- Missing layers, cycles, incompatible contracts, ownership conflicts, empty assignments, and malformed finding locations fail at typed validation or parsing seams before unsafe launch/merge effects.
+- Kotlin/KMP, mixed-stack, cycle, renderer/snapshot, inline-rubric, isolation, interruption, timeout, failed-lane, provenance, and parser regressions lock the flattened behavior.
+- Known limitation: direct specialist installability and preflight without generic fallback belongs to subtask 4.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 5/5 implemented
+
 ## [2026-07-21] SKILL-129 governed review budget broker (subtask 2)
 Areas: runtime-kotlin/runtime-{domain,application,ports,infra-fs,contracts}, orchestration/contracts
 - Delegated review launches now originate from validated assignments and carry one authoritative projected rubric, assigned hunks and paths, matched rules, bounded dependencies, evidence targets, stable IDs, and explicit budgets.

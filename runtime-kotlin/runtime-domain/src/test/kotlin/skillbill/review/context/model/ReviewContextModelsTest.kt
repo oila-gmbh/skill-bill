@@ -20,7 +20,12 @@ class ReviewContextModelsTest {
 
     val packet = launchPacket(path = "odd|name\\tab\t.kt")
     val launch = GovernedReviewLaunch(
-      launchAssignment(packet), packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT,
+      launchAssignment(packet),
+      packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
     )
     assertTrue("  - \"odd|name\\\\tab\\t.kt\"" in launch.canonicalPayload)
   }
@@ -30,16 +35,15 @@ class ReviewContextModelsTest {
     assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uD83D.kt") }
     assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uDE80.kt") }
   }
-  private fun lane(name: String, paths: List<String>, reason: String = "routed") =
-    ReviewLaneDecision(
-      name,
-      true,
-      reason,
-      ownedPaths = paths,
-      originLayerChains = listOf(listOf("kotlin")),
-      owningPack = "kotlin",
-      specialistSkillName = "bill-kotlin-code-review-$name",
-    )
+  private fun lane(name: String, paths: List<String>, reason: String = "routed") = ReviewLaneDecision(
+    name,
+    true,
+    reason,
+    ownedPaths = paths,
+    originLayerChains = listOf(listOf("kotlin")),
+    owningPack = "kotlin",
+    specialistSkillName = "bill-kotlin-code-review-$name",
+  )
 
   private fun revision(session: String = "review", run: Int = 1) = ReviewRevision(session, run)
 
@@ -52,11 +56,13 @@ class ReviewContextModelsTest {
     laneDecisions = listOf(lane("security", listOf(path))),
   )
 
-  private fun launchAssignment(packet: ReviewContextPacket, hunks: List<String> = packet.changedHunks.map { it.hunkId }) =
-    ReviewAssignment(
-      "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
-      reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
-    )
+  private fun launchAssignment(
+    packet: ReviewContextPacket,
+    hunks: List<String> = packet.changedHunks.map { it.hunkId },
+  ) = ReviewAssignment(
+    "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
+    reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
+  )
 
   @Test fun `default budget is governed`() {
     assertEquals(524_288, ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes)

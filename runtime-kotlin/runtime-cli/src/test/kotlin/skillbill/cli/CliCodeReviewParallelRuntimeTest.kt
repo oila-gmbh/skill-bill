@@ -117,7 +117,7 @@ class CliCodeReviewParallelRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(2, launcher.launchCount)
-    assertContains(result.stdout, "A.kt:1")
+    assertContains(result.stdout, "path=\"Test.kt\" | line=1")
     assertContains(result.stdout, "[claude")
   }
 
@@ -365,7 +365,7 @@ private class ParallelReviewSuccessLauncher : ParallelTestAgentRunLauncher() {
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
-      stdout = "- [F-001] Major | High | A.kt:1 | Issue",
+      stdout = "- [F-001] Major | High | Test.kt:1 | Issue",
       stderr = "",
       timedOut = false,
       spawnFailed = false,

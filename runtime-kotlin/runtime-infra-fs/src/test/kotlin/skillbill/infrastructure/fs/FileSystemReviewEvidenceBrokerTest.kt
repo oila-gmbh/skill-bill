@@ -39,7 +39,9 @@ class FileSystemReviewEvidenceBrokerTest {
     val root = repo(path to "assigned")
     val broker = broker(root, assignment(listOf(path)))
 
-    val result = broker.readBatch(ReviewEvidenceBatchRequest("security", listOf(ReviewEvidenceRequest("security", path))))
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest("security", listOf(ReviewEvidenceRequest("security", path))),
+    )
 
     assertEquals("assigned", result.results.single().content)
   }
@@ -51,6 +53,7 @@ class FileSystemReviewEvidenceBrokerTest {
       broker(root, assignment(listOf("link/A.kt")))
     }
   }
+
   @Test fun `native operation protocol rejects forbidden tools before execution`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))

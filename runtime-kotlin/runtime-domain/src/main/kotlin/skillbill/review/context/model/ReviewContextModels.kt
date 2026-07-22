@@ -369,7 +369,12 @@ data class ReviewChangedHunk(
   val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
 
   internal fun canonicalValue(): String = canonicalFields(
-    path, oldStart, oldCount, newStart, newCount, content.replace("\r\n", "\n"),
+    path,
+    oldStart,
+    oldCount,
+    newStart,
+    newCount,
+    content.replace("\r\n", "\n"),
   )
 }
 

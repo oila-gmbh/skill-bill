@@ -16,6 +16,7 @@ import skillbill.ports.install.addon.model.SkippedExternalAddonSource
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PointerSpec
+import skillbill.scaffold.platformpack.AddonUsageManifestContext
 import skillbill.scaffold.platformpack.declaredSkillRelativeDirs
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.parseAddonUsage
@@ -93,13 +94,15 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
     fragmentPointers.forEach { pointer -> requireFlatAddonTarget(slug, pointer.target) }
     val fragmentAddonUsage = wrapParserErrors(slug) {
       parseAddonUsage(
-        manifest = rewritten,
-        slug = slug,
-        packRoot = installed.packRoot,
-        pointers = fragmentPointers,
-        declaredSkillDirs = installed.declaredSkillRelativeDirs(),
-        declaredAreas = installed.declaredCodeReviewAreas.toSet(),
-        strictReviewRouting = installed.laneConditions.isNotEmpty(),
+        rewritten,
+        AddonUsageManifestContext(
+          slug = slug,
+          packRoot = installed.packRoot,
+          pointers = fragmentPointers,
+          declaredSkillDirs = installed.declaredSkillRelativeDirs(),
+          declaredAreas = installed.declaredCodeReviewAreas.toSet(),
+          strictReviewRouting = installed.laneConditions.isNotEmpty(),
+        ),
       )
     }
 
