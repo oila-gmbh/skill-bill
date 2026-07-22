@@ -15,14 +15,14 @@ import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.FeatureAddonUsage
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.GovernedAddonSelection
-import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.model.RoutingSignals
 import skillbill.scaffold.model.ReviewLaneCondition
+import skillbill.scaffold.model.RoutingSignals
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
@@ -309,8 +309,8 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   }
 
   val contractVersion = requireStringField(manifest, slug, "contract_version")
-  val routingSignals = parseRoutingSignals(manifest, slug)
   val declaredAreas = parseDeclaredAreas(manifest, slug)
+  val routingSignals = parseRoutingSignals(manifest, slug, requirePath = manifest["lane_conditions"] != null)
   val declaredFiles = parseDeclaredFiles(manifest, slug, packRoot, declaredAreas)
   val areaMetadata = parseAreaMetadata(manifest, slug, declaredAreas)
   val laneConditions = parseLaneConditions(manifest, slug, declaredAreas)
@@ -464,14 +464,22 @@ private fun validateAgainstCanonicalSchema(slug: String, manifest: Map<*, *>): M
   return typedManifest
 }
 
-private fun parseRoutingSignals(manifest: Map<*, *>, slug: String): RoutingSignals {
+private fun parseRoutingSignals(manifest: Map<*, *>, slug: String, requirePath: Boolean): RoutingSignals {
   val routing = requireMappingField(manifest, slug, "routing_signals")
   val strongRaw = routing["strong"]
     ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.strong' is required.")
+  if (requirePath && routing["path"] == null) {
+    throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.path' is required.")
+  }
   return RoutingSignals(
     strong = parseStringList(slug, strongRaw, "routing_signals.strong", required = true),
     tieBreakers = parseStringList(slug, routing["tie_breakers"], "routing_signals.tie_breakers", required = false),
-    path = parseStringList(slug, routing["path"] ?: strongRaw, "routing_signals.path", required = true),
+    path = parseStringList(
+      slug,
+      routing["path"] ?: strongRaw.takeUnless { requirePath },
+      "routing_signals.path",
+      required = true,
+    ),
     content = parseStringList(slug, routing["content"], "routing_signals.content", required = false),
   )
 }
@@ -481,10 +489,14 @@ private fun parseLaneConditions(
   slug: String,
   declaredAreas: List<String>,
 ): Map<String, ReviewLaneCondition> {
-  val raw = manifest["lane_conditions"] ?: return emptyMap()
+  val raw = manifest["lane_conditions"] ?: if (declaredAreas.isEmpty()) {
+    return emptyMap()
+  } else {
+    throw InvalidManifestSchemaError("Platform pack '$slug': 'lane_conditions' is required.")
+  }
   val mapping = raw as? Map<*, *>
     ?: throw InvalidManifestSchemaError("Platform pack '$slug': 'lane_conditions' must be a mapping.")
-  return mapping.map { (areaRaw, conditionRaw) ->
+  val parsed = mapping.map { (areaRaw, conditionRaw) ->
     val area = areaRaw as? String
       ?: throw InvalidManifestSchemaError("Platform pack '$slug': lane condition areas must be strings.")
     if (area !in declaredAreas) {
@@ -498,6 +510,13 @@ private fun parseLaneConditions(
       content = parseStringList(slug, condition["content"], "lane_conditions.$area.content", required = false),
     )
   }.toMap()
+  val missing = declaredAreas.toSet() - parsed.keys
+  if (missing.isNotEmpty()) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'lane_conditions' is missing declared areas ${missing.sorted()}.",
+    )
+  }
+  return parsed
 }
 
 private fun parseDeclaredAreas(manifest: Map<*, *>, slug: String): List<String> {
@@ -722,7 +741,7 @@ internal fun parseAddonUsage(
   pointers: List<PointerSpec>,
   declaredSkillDirs: Set<String>,
   declaredAreas: Set<String>,
-  strictReviewRouting: Boolean = manifest["lane_conditions"] != null,
+  strictReviewRouting: Boolean = true,
 ): List<GovernedAddonUsage> {
   val raw = manifest["addon_usage"] ?: return emptyList()
   val usageMap = raw as? Map<*, *>
@@ -854,9 +873,24 @@ private fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, ra
   )
   val activation = (entry["activation"] as? Map<*, *>)?.let { rawActivation ->
     GovernedAddonActivation(
-      anyPath = parseStringList(context.slug, rawActivation["any_path"], "$fieldPrefix.activation.any_path", required = false),
-      anyContent = parseStringList(context.slug, rawActivation["any_content"], "$fieldPrefix.activation.any_content", required = false),
-      allContent = parseStringList(context.slug, rawActivation["all_content"], "$fieldPrefix.activation.all_content", required = false),
+      anyPath = parseStringList(
+        context.slug,
+        rawActivation["any_path"],
+        "$fieldPrefix.activation.any_path",
+        required = false,
+      ),
+      anyContent = parseStringList(
+        context.slug,
+        rawActivation["any_content"],
+        "$fieldPrefix.activation.any_content",
+        required = false,
+      ),
+      allContent = parseStringList(
+        context.slug,
+        rawActivation["all_content"],
+        "$fieldPrefix.activation.all_content",
+        required = false,
+      ),
       anyOfAllContent = (rawActivation["any_of_all_content"] as? List<*>)?.mapIndexed { groupIndex, group ->
         parseStringList(
           context.slug,

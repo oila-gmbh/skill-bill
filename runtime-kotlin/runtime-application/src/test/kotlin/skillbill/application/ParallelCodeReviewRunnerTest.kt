@@ -47,8 +47,8 @@ import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.RoutingSignals
 import skillbill.scaffold.model.ReviewLaneCondition
+import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
@@ -278,6 +278,8 @@ class ParallelCodeReviewRunnerTest {
       assertEquals(null, request.skillRunRequest.reviewEvidenceBroker)
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "paths=A.kt")
     }
   }
 

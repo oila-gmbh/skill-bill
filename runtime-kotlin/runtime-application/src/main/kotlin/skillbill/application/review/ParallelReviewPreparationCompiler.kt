@@ -174,15 +174,9 @@ internal object ParallelReviewPreparationCompiler {
 
   private fun ownedPathsFor(descriptor: ReviewLaunchLane, hunks: List<ReviewChangedHunk>): List<String> {
     return hunks.filter { hunk ->
-      descriptor.pathSignals.any { pathSignal -> pathMatches(hunk.path, pathSignal) } ||
+      descriptor.pathSignals.any { pathSignal -> RoutingSignalPathMatcher.matches(hunk.path, pathSignal) } ||
         descriptor.contentSignals.any { hunk.content.contains(it, ignoreCase = true) }
     }.map { it.path }.distinct().sorted()
-  }
-
-  private fun pathMatches(path: String, signal: String): Boolean {
-    val normalized = signal.lowercase().removePrefix("*")
-    val candidate = path.lowercase()
-    return candidate.endsWith(normalized) || candidate.contains(normalized.trim('/'))
   }
 
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
