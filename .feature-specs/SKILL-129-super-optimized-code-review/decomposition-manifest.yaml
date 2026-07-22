@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Enforce bounded launches and evidence"
   spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec_subtask_2_runtime_budget_broker.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260722-144150-4c8g"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
