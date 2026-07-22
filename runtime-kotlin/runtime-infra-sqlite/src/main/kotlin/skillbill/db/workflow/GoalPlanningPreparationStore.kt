@@ -866,7 +866,9 @@ private fun normalizedProvenanceFailure(provenance: GoalPlanningContractProvenan
   provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ->
     "provenance.phase_output_contract_id" to "phase_output_contract_id is incompatible"
   provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
-    "provenance.phase_output_contract_version" to "phase_output_contract_version is incompatible"
+    "provenance.phase_output_contract_version" to
+      "phase_output_contract_version is incompatible; hard-reset the workflow with " +
+      "'skill-bill goal reset <issue-key> --hard --yes'"
   else -> null
 }
 

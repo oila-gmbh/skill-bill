@@ -34,36 +34,14 @@ class FeatureTaskRuntimeAuditSeveritySchemaValidatorTest {
   }
 
   private fun auditGapEnvelope(severity: String): String =
-    """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"audit",""" +
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[""" +
-      """{"acceptance_criterion_ref":"AC-128","message":"Behavior is missing.","severity":"$severity"}],""" +
-      """"audit_repair_plan":$auditRepairPlanJson}}"""
+    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """"verdict":"gaps_found","produced_outputs":{"gaps":[""" +
+      """{"criterion":"AC-128","severity":"$severity","location":"ReviewRunner.merge",""" +
+      """"issue":"Behavior is missing.","fix":"Add the missing behavior."}]}}"""
 
   private val satisfiedWithNonBlockingFindings =
-    """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"audit",""" +
-      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":[],"non_blocking_findings":[""" +
+    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[""" +
       """{"acceptance_criterion_ref":"AC-128","message":"Small cleanup remains.","severity":"minor"},""" +
       """{"acceptance_criterion_ref":"AC-129","message":"Naming could improve.","severity":"nit"}]}}"""
-
-  private val auditRepairPlanJson =
-    """
-    {"contract_version":"0.2","gaps":[{
-      "gap_id":"ac-128-gap-1",
-      "acceptance_criterion_ref":"AC-128",
-      "acceptance_criterion_text":"Behavior exists.",
-      "failure_evidence":{"observation":"required_behavior_absent",
-        "artifact_ref":"runtime-kotlin/application","check_ref":"AC-128"},
-      "diagnosis":"Add the missing behavior.",
-      "affected_boundary":"runtime application",
-      "repair_items":[{
-        "repair_item_id":"ac-128-gap-1-item-1",
-        "intended_outcome":"The required behavior exists.",
-        "implementation_actions":["Add the required behavior."],
-        "affected_paths_or_symbols":["runtime-application/src/main"],
-        "required_verification":["Run the focused test."],
-        "depends_on":[],
-        "status":"pending"
-      }]
-    }]}
-    """.trimIndent()
 }

@@ -1,9 +1,9 @@
 package skillbill.application.review
 
-import skillbill.review.context.ReviewAccountingCounters
-import skillbill.review.context.ReviewAccountingInput
 import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewAccountingCounters
+import skillbill.review.context.model.ReviewAccountingInput
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

@@ -99,14 +99,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.auditRepairItemIds.joinToString() + ".\n" +
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
-    val dispositionCorrection = if (briefing.unresolvedAuditGapIds.isEmpty()) {
-      ""
-    } else {
-      "\nDisposition every durable unresolved gap exactly once in this order: " +
-        briefing.unresolvedAuditGapIds.joinToString() + ".\n" +
-        priorGapDispositionsExample(briefing.unresolvedAuditGapIds)
-    }
-    return base + remediationCorrection + dispositionCorrection +
+    return base + remediationCorrection +
       unparseableRootCorrection(briefing, priorSchemaFailure)
   }
 
@@ -162,7 +155,7 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun producedOutputsSkeletonEntry(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": [], " +
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
@@ -291,7 +284,6 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
-    val unmetCriteria = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
@@ -304,7 +296,6 @@ object FeatureTaskRuntimePhasePromptComposer {
           ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
           "      recorded as other."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
-        unmetCriteria = unmetCriteria,
         verdict = verdict,
         briefing = briefing,
       )
@@ -312,41 +303,38 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
   }
 
-  private fun auditProducedOutputsAddendum(
-    unmetCriteria: String,
-    verdict: String,
-    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-  ): String = "\n    - This is a VERIFYING phase: produced_outputs MUST carry an \"$unmetCriteria\" array (one\n" +
-    "      acceptance_criterion_ref/severity/message entry per Blocker or Major gap; an explicit empty []\n" +
-    "      affirms no Blocker or Major gap remains) and a non_blocking_findings array for Minor/Nit.\n" +
-    "      AND/OR a top-level \"$verdict\" of \"satisfied\" or \"gaps_found\". Output carrying NEITHER signal\n" +
-    "      fails the schema gate loudly — a prose verdict (e.g. a Markdown table) cannot advance the gate.\n" +
-    "      SEVERITY GATE: every unmet_criteria entry MUST set severity to blocker or major. Minor and nit\n" +
-    "      entries MUST go only in non_blocking_findings and NEVER trigger gaps_found, an audit_repair_plan,\n" +
-    "      or implementation re-entry. Emit satisfied when unmet_criteria is empty even when non-blocking\n" +
-    "      findings exist.\n" +
-    "      A gaps_found result MUST include one schema-valid audit_repair_plan covering every entry in\n" +
-    "      unmet_criteria; use concrete production references such as src/main/Example.kt:Example.\n" +
-    "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
-    "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
-    "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
-    "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
-    "      concrete defect in production behavior or production implementation; when no such defect is\n" +
-    "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
-    "      PROSPECTIVE REPAIR IMPACT ANALYSIS: before emitting gaps_found, analyze every proposed repair\n" +
-    "      as if it were already applied. Trace the affected production callers and callees, provider and\n" +
-    "      platform variants, lifecycle and state transitions, persistence/schema/serialization seams,\n" +
-    "      failure/timeout/cancellation/retry paths, permissions and isolation boundaries, and interactions\n" +
-    "      among all repairs in this plan. Treat already-satisfied criteria as non-regression constraints:\n" +
-    "      include preventative actions now for any boundary a repair could regress; do not wait for a\n" +
-    "      later audit to discover the consequence. Make each gap's diagnosis, affected_boundary,\n" +
-    "      implementation_actions, dependencies, and required_verification closure-complete for that blast\n" +
-    "      radius. If a proposed repair would expose or introduce another evidenced production defect,\n" +
-    "      include it in this same plan as an action or separate gap. On follow-up audits, inspect the full\n" +
-    "      cumulative repair delta and cross-repair interactions, not only the previously named symbols.\n" +
-    "      Do not invent speculative gaps: every added action or gap still needs concrete repository evidence." +
-    auditDispositionAddendum(briefing.unresolvedAuditGapIds) +
-    auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
+  private fun auditProducedOutputsAddendum(verdict: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+    "\n    - This is a VERIFYING phase. Set top-level \"$verdict\" to \"satisfied\" or \"gaps_found\" and\n" +
+      "      emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For gaps_found,\n" +
+      "      each entry contains only criterion, severity (blocker or major), location, optional file, " +
+      "issue, and fix.\n" +
+      "      location MUST be ClassName or ClassName.memberName, never a package-qualified class name.\n" +
+      "      file is the basename only and SHOULD be omitted unless the location is ambiguous. Example:\n" +
+      "      {\"criterion\":\"AC-003\",\"severity\":\"major\",\"location\":\"ReviewRunner.merge\",\n" +
+      "       \"file\":\"ReviewRunner.kt\",\"issue\":\"Rejected lanes are omitted\",\n" +
+      "       \"fix\":\"Include rejected lanes in the aggregate\"}.\n" +
+      "      Do not emit unmet_criteria, audit_repair_plan, gap IDs, repair-item IDs, dependency arrays,\n" +
+      "      acceptance-criterion text, or repeated paths; the runtime derives its durable repair model.\n" +
+      "      Minor and nit entries go only in non_blocking_findings and NEVER trigger gaps_found.\n" +
+      "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
+      "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
+      "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
+      "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
+      "      concrete defect in production behavior or production implementation; when no such defect is\n" +
+      "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
+      "      PROSPECTIVE REPAIR IMPACT ANALYSIS: before emitting gaps_found, analyze every proposed repair\n" +
+      "      as if it were already applied. Trace the affected production callers and callees, provider and\n" +
+      "      platform variants, lifecycle and state transitions, persistence/schema/serialization seams,\n" +
+      "      failure/timeout/cancellation/retry paths, permissions and isolation boundaries, and interactions\n" +
+      "      among all repairs in this plan. Treat already-satisfied criteria as non-regression constraints:\n" +
+      "      include preventative actions now for any boundary a repair could regress; do not wait for a\n" +
+      "      later audit to discover the consequence. Make each gap's diagnosis, affected_boundary,\n" +
+      "      issue and fix closure-complete for that blast radius. If a proposed repair would expose or\n" +
+      "      introduce another evidenced production defect, include it as a separate compact gap. On\n" +
+      "      follow-up audits, inspect the full\n" +
+      "      cumulative repair delta and cross-repair interactions, not only the previously named symbols.\n" +
+      "      Do not invent speculative gaps: every gap still needs concrete repository evidence." +
+      auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
     if (closedCriterionRefs.isEmpty()) {
@@ -354,7 +342,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     } else {
       "\n      The acceptance criteria ${closedCriterionRefs.sorted().joinToString()} already reached a " +
         "satisfied verdict and are durably closed: verify ONLY the criteria this briefing still lists, and " +
-        "never report an unmet_criteria entry or an audit_repair_plan gap against a closed criterion. Doing " +
+        "never report a compact gap against a closed criterion. Doing " +
         "so fails the schema gate loudly."
     }
 
@@ -363,26 +351,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       "  \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
       "  \"repair_item_results\": ${repairItemResultsJson(repairItemIds)}\n" +
       "}\n```"
-
-  private fun auditDispositionAddendum(gapIds: List<String>): String = if (gapIds.isEmpty()) {
-    ""
-  } else {
-    "\n      This follow-up audit MUST include produced_outputs.prior_gap_dispositions with exactly these " +
-      "gap ids in order: ${gapIds.joinToString()}. Each entry contains only gap_id, status " +
-      "(resolved or recurring), and evidence with observation (resolution_verified or recurrence_verified), " +
-      "artifact_ref, and check_ref.\n" + priorGapDispositionsExample(gapIds)
-  }
-
-  private fun priorGapDispositionsExample(gapIds: List<String>): String =
-    "Required prior_gap_dispositions shape:\n```json\n" + gapIds.joinToString(
-      prefix = "[",
-      postfix = "]\n```",
-      separator = ", ",
-    ) { gapId ->
-      "{ \"gap_id\": \"$gapId\", \"status\": \"resolved\", \"evidence\": { " +
-        "\"observation\": \"resolution_verified\", \"artifact_ref\": \"src/main/Example.kt:Example\", " +
-        "\"check_ref\": \"ExampleTest\" } }"
-    }
 
   private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
     prefix = "[",

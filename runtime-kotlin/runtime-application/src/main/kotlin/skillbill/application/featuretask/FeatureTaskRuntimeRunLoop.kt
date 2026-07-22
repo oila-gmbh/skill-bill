@@ -12,6 +12,7 @@ import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -1328,13 +1329,37 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     var outcome: PhaseOutcome? = null
     var priorSchemaFailure: String? = null
+    var malformedAttemptCount = 0
+    var semanticIteration = iteration - budgetBaseOffset
     while (outcome == null) {
       val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
-      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, iteration - budgetBaseOffset)
-      outcome = attempt.settledOutcome
-        ?: when (decision) {
+      outcome = attempt.settledOutcome ?: if (attempt.malformedOutput) {
+        malformedAttemptCount += 1
+        val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+          run.phaseId,
+          malformedAttemptCount,
+        )
+        if (formatBlock == null) {
+          iteration += 1
+          priorSchemaFailure = attempt.schemaInvalidReason
+          observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
+          null
+        } else {
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidReason)),
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+            fileManifest = attempt.fileManifest,
+            rejectedOutput = attempt.rejectedOutput,
+          )
+        }
+      } else {
+        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
+            semanticIteration += 1
             priorSchemaFailure = attempt.schemaInvalidReason
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
@@ -1349,6 +1374,7 @@ internal class FeatureTaskRuntimeRunLoop(
             rejectedOutput = attempt.rejectedOutput,
           )
         }
+      }
     }
     return outcome
   }
@@ -1458,7 +1484,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    schemaInvalidAttempt(error.reason, fileManifest, outputText)
+    schemaInvalidAttempt(
+      error.reason,
+      fileManifest,
+      outputText,
+      malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+    )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     schemaInvalidAttempt(error.reason, fileManifest, outputText)
   }
@@ -1940,7 +1971,13 @@ internal class FeatureTaskRuntimeRunLoop(
     reason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     rejectedOutput: String? = null,
-  ): AttemptResult = AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(rejectedOutput))
+    malformedOutput: Boolean = false,
+  ): AttemptResult = AttemptResult.schemaInvalid(
+    reason,
+    fileManifest,
+    boundedRejectedOutput(rejectedOutput),
+    malformedOutput,
+  )
 
   private fun persistPhase(
     run: PhaseRun,
@@ -2188,12 +2225,14 @@ internal class FeatureTaskRuntimeRunLoop(
       val validationReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
+      override val malformedOutput: Boolean,
     ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
+    val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
 
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
@@ -2201,7 +2240,8 @@ internal class FeatureTaskRuntimeRunLoop(
         validationReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         rejectedOutput: String?,
-      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput)
+        malformedOutput: Boolean = false,
+      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput, malformedOutput)
     }
   }
 

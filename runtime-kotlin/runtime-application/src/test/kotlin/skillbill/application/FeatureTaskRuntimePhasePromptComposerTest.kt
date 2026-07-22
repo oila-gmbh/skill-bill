@@ -339,9 +339,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
     assertContains(
       auditPrompt,
-      "\"unmet_criteria\" array",
+      "produced_outputs.gaps array",
       false,
-      "audit names the unmet_criteria signal",
+      "audit names the compact gaps signal",
     )
     assertContains(
       auditPrompt,
@@ -474,7 +474,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
-    assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(auditRetry, "\"gaps\": []", false, "audit skeleton seeds the audit signal key")
     assertContains(
       auditRetry,
       "\"non_blocking_findings\": []",
@@ -580,7 +580,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
-    assertContains(auditPrompt, keys.AUDIT_UNMET_CRITERIA, false, "audit names the unmet_criteria key")
+    assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
     assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }

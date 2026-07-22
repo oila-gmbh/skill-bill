@@ -117,10 +117,14 @@ class InvalidDecompositionManifestSchemaError(
  * phase-output schema. The message carries the source label and violation
  * reason.
  */
+enum class FeatureTaskRuntimePhaseOutputFailureKind { MALFORMED, SCHEMA_INVALID }
+
 class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val sourceLabel: String,
   val reason: String,
   cause: Throwable? = null,
+  val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
+    FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

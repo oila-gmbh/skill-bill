@@ -67,6 +67,7 @@ class DatabaseMigrationsTest {
         10 to "rebuild-goal-planning-plans-for-phase-output-0-2",
         11 to "require-goal-planning-phase-output-0-2",
         12 to "add-bounded-review-accounting",
+        13 to "allow-goal-planning-phase-output-0-3",
       ),
       migrationDefinitions,
     )

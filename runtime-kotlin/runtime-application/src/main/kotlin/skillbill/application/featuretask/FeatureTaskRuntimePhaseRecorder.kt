@@ -32,11 +32,13 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BL
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -144,9 +146,14 @@ class FeatureTaskRuntimePhaseRecorder(
       val currentDispositions = (outputProduced?.get("prior_gap_dispositions") as? List<*>)
         ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
         ?.mapIndexed { index, value -> priorGapDispositionFromWire(value, "audit.prior_gap_dispositions[$index]") }
+      val effectiveDispositions = currentDispositions ?: inferAuditGapDispositions(
+        phaseId = request.phaseId,
+        prior = priorAuditState,
+        latestPlan = latestPlan,
+      )
       val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
         priorAuditState != null
-      val auditRepairPatch = if (latestPlan != null || repairResults != null || currentDispositions != null ||
+      val auditRepairPatch = if (latestPlan != null || repairResults != null || effectiveDispositions != null ||
         reconcilesAuditState
       ) {
         mapOf(
@@ -156,7 +163,7 @@ class FeatureTaskRuntimePhaseRecorder(
                 prior = priorAuditState,
                 latestPlan = latestPlan,
                 repairResults = repairResults.orEmpty(),
-                dispositions = currentDispositions,
+                dispositions = effectiveDispositions,
                 repositoryFingerprint = request.repositoryFingerprint,
                 edgeIteration = request.edgeIteration,
                 auditWrite = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
@@ -179,6 +186,37 @@ class FeatureTaskRuntimePhaseRecorder(
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true
+    }
+  }
+
+  private fun inferAuditGapDispositions(
+    phaseId: String,
+    prior: FeatureTaskRuntimeAuditRepairState?,
+    latestPlan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan?,
+  ): List<FeatureTaskRuntimePriorGapDisposition>? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT || prior == null) return null
+    val latestByGapId = latestPlan?.gaps.orEmpty().associateBy { it.gapId }
+    val priorByGapId = prior.acceptedPlans.last().gaps.associateBy { it.gapId }
+    return prior.unresolvedGapLedger.unresolvedGaps.map { unresolved ->
+      val recurring = latestByGapId[unresolved.gapId]
+      val evidenceSource = recurring ?: requireNotNull(priorByGapId[unresolved.gapId])
+      FeatureTaskRuntimePriorGapDisposition(
+        gapId = unresolved.gapId,
+        status = if (recurring == null) {
+          FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
+        } else {
+          FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
+        },
+        evidence = FeatureTaskRuntimeEvidence(
+          observation = if (recurring == null) {
+            FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
+          } else {
+            FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
+          },
+          artifactRef = evidenceSource.failureEvidence.artifactRef,
+          checkRef = unresolved.acceptanceCriterionRef,
+        ),
+      )
     }
   }
 

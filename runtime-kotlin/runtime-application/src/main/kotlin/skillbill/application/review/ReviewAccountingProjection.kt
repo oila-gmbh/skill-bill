@@ -1,10 +1,12 @@
 package skillbill.application.review
 
-import skillbill.review.context.ReviewAccountingNode
-import skillbill.review.context.ReviewAccountingSummary
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.ReviewAccountingNode
+import skillbill.review.context.model.ReviewAccountingSummary
 
 /** The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally absent. */
+@OpenBoundaryMap("Schema-bounded review-accounting wire projection")
 fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "contract_version" to "0.5",
   "kind" to "accounting_summary",

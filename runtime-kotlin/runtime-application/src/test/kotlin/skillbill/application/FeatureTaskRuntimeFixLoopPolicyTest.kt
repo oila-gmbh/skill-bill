@@ -4,6 +4,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -137,5 +138,20 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
         )
       }
     }
+  }
+
+  @Test
+  fun `malformed output uses a separate bounded formatting budget`() {
+    (1 until FeatureTaskRuntimeFixLoopPolicy.MAX_FORMAT_RETRY_ATTEMPTS).forEach { attempt ->
+      assertEquals(
+        null,
+        FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason("audit", attempt),
+      )
+    }
+    val reason = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+      "audit",
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FORMAT_RETRY_ATTEMPTS,
+    )
+    assertContains(requireNotNull(reason), "semantic repair attempts were not consumed")
   }
 }

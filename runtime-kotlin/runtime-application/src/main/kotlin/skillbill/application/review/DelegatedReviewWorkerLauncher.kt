@@ -45,7 +45,12 @@ class DelegatedReviewWorkerLauncher(
     if (forbidden != null) {
       return DelegatedReviewWorkerOutcome(
         forbiddenOperation = forbidden,
-        accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), prepared.prompt, "forbidden_operation"),
+        accounting = completeAccounting(
+          request,
+          prepared.evidenceBroker.accounting(),
+          prepared.prompt,
+          "forbidden_operation",
+        ),
       )
     }
     val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence?.results.orEmpty())
@@ -73,7 +78,12 @@ class DelegatedReviewWorkerLauncher(
     return when (outcome) {
       is UnsupportedAgentRunLaunch -> DelegatedReviewWorkerOutcome(
         unsupportedReason = outcome.reason,
-        accounting = completeAccounting(request, prepared.evidenceBroker.accounting(), boundedPrompt, "unsupported_provider"),
+        accounting = completeAccounting(
+          request,
+          prepared.evidenceBroker.accounting(),
+          boundedPrompt,
+          "unsupported_provider",
+        ),
       )
       is AgentRunLaunchFacts -> {
         val resultOutcome = prepared.evidenceBroker.validateLaneResult(outcome.stdout)

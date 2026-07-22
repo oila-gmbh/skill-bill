@@ -18,6 +18,9 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
   /** produced_outputs key the audit gate reads: unmet acceptance criteria (an empty [] affirms all met). */
   const val AUDIT_UNMET_CRITERIA = "unmet_criteria"
 
+  /** Compact agent-facing audit gaps; normalized into the durable unmet-criteria and repair-plan model. */
+  const val AUDIT_GAPS = "gaps"
+
   /** produced_outputs key for Minor/Nit audit findings that never reopen implementation. */
   const val AUDIT_NON_BLOCKING_FINDINGS = "non_blocking_findings"
 

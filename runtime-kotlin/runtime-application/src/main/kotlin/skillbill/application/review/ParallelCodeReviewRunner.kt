@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
@@ -14,7 +15,6 @@ import skillbill.application.review.model.DelegatedReviewLaunchRequest
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
-import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -26,7 +26,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.ReviewAccountingRecord
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
@@ -39,11 +39,12 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
-import skillbill.review.context.ReviewAccountingCounters
-import skillbill.review.context.ReviewAccountingInput
 import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.ReviewAccountingCounters
+import skillbill.review.context.model.ReviewAccountingInput
+import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
@@ -746,13 +747,20 @@ private fun aggregateAccounting(agentId: String, values: List<ReviewLaneAccounti
 
 private fun parallelAccountingSummary(
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
-): skillbill.review.context.ReviewAccountingSummary? {
+): ReviewAccountingSummary? {
   val specialists = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
   if (specialists.isEmpty()) return null
   fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
     lane = lane,
     assignmentDigest = assignmentDigest,
-    counters = ReviewAccountingCounters(launchBytes, evidenceBytes, resultBytes, expansions.size, toolCalls, modelTurns),
+    counters = ReviewAccountingCounters(
+      launchBytes,
+      evidenceBytes,
+      resultBytes,
+      expansions.size,
+      toolCalls,
+      modelTurns,
+    ),
     usage = providerUsage ?: ProviderTokenUsage(),
     terminalOutcome = terminalStatus,
   )

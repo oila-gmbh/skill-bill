@@ -53,9 +53,9 @@ import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.model.CodeReviewExecutionMode
+import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
-import java.lang.reflect.Proxy
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

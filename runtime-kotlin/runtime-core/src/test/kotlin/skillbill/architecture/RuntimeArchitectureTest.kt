@@ -1902,6 +1902,9 @@ class RuntimeArchitectureTest {
       // envelope wrapper expose the map, mirroring the validator ports above.
       "skillbill.review.context.ReviewContextEnvelopeValidator.validate",
       "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
+      "skillbill.application.review.toBoundedPayload",
+      "skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload",
+      "skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting",
       "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
       "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
       "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",

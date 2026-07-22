@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.ReviewAccountingRecord
+import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
@@ -19,9 +19,9 @@ fun upsertReviewAccounting(connection: Connection, record: ReviewAccountingRecor
       updated_at = CURRENT_TIMESTAMP
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(1, record.reviewId)
-    statement.setString(2, record.packetDigest)
-    statement.setString(3, JsonSupport.mapToJsonString(record.boundedPayload))
+    statement.setString(PARAM_ONE, record.reviewId)
+    statement.setString(PARAM_TWO, record.packetDigest)
+    statement.setString(PARAM_THREE, JsonSupport.mapToJsonString(record.boundedPayload))
     statement.executeUpdate()
   }
 }
