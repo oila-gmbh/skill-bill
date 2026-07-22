@@ -85,13 +85,51 @@ class FileSystemReviewRubricResolverTest {
 
     val resolved = FileSystemReviewRubricResolver().resolve(
       configured,
-      listOf(ReviewOwnedFileEvidence("src/commonMain/Screen.kt", "+ @composable fun Screen() = Unit")),
+      listOf(ReviewOwnedFileEvidence("src/commonMain/Screen.kt", "+ @COMPOSABLE fun Screen() = Unit")),
       "bill-kotlin-code-review-ui",
     )
 
     assertEquals(listOf("android-compose"), resolved.selectedAddOns)
     assertEquals(true, resolved.body.contains("Selected governed add-on guidance"))
     assertEquals(true, resolved.body.contains("@Composable"))
+  }
+
+  @Test
+  fun `content activation and exclusion use the same case stable semantics`() {
+    val root = Files.createTempDirectory("review-rubric-case")
+    val baseline = root.resolve("code-review/content.md")
+    val ui = root.resolve("code-review/ui/content.md")
+    val addon = root.resolve("addons/android-compose-review.md")
+    Files.createDirectories(ui.parent)
+    Files.createDirectories(addon.parent)
+    Files.writeString(baseline, "baseline rubric")
+    Files.writeString(ui, "ui specialist rubric")
+    Files.writeString(addon, "compose guidance")
+    val configured = manifest(root, baseline, mapOf("ui" to ui)).copy(
+      addonUsage = listOf(
+        GovernedAddonUsage(
+          "code-review/bill-kotlin-code-review-ui",
+          listOf(
+            GovernedAddonSelection(
+              "android-compose",
+              "android-compose-review.md",
+              activation = GovernedAddonActivation(
+                anyContent = listOf("@composable"),
+                excludeContent = listOf("commonmain"),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+
+    val resolved = FileSystemReviewRubricResolver().resolve(
+      configured,
+      listOf(ReviewOwnedFileEvidence("Screen.kt", "+ @COMPOSABLE fun Screen() = COMMONMAIN")),
+      "bill-kotlin-code-review-ui",
+    )
+
+    assertEquals(emptyList(), resolved.selectedAddOns)
   }
 
   @Test

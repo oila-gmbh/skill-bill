@@ -42,6 +42,7 @@ import skillbill.review.context.model.TokenOwnership
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.ReviewContentMatcher
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -245,15 +246,19 @@ class ParallelCodeReviewRunner(
         val first = matches.first()
         val lane = first.copy(
           orderIndex = index,
+          required = matches.any { it.required },
           ownedPaths = matches.flatMap { it.ownedPaths }.distinct().sorted(),
           changedHunkIds = matches.flatMap { it.changedHunkIds }.distinct(),
         )
-        require(matches.all { it.packSlug == lane.packSlug && it.area == lane.area }) {
+        require(matches.all {
+          it.packSlug == lane.packSlug && it.area == lane.area && it.skillName == lane.skillName &&
+            it.addOns == lane.addOns
+        }) {
           "Conflicting ownership for specialist '${lane.skillName}'."
         }
         val owner = manifests.single { it.slug == lane.packSlug }
         val ownedEvidence = evidence.ownedFiles(lane.ownedPaths.toSet()).map {
-          ReviewOwnedFileEvidence(it.path, it.changedContent.lowercase())
+          ReviewOwnedFileEvidence(it.path, it.changedContent)
         }
         val resolvedOwner = reviewRubricResolver.resolve(owner, ownedEvidence, lane.skillName)
         val resolved = resolvedOwner
@@ -614,7 +619,7 @@ class ParallelCodeReviewRunner(
   private fun laneOwnedPaths(lane: ReviewLaunchLane, evidence: ReviewDiffEvidence): List<String> {
     return evidence.files.filter { file ->
       lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
-        lane.contentSignals.any { file.changedContent.contains(it, ignoreCase = true) }
+        lane.contentSignals.any { ReviewContentMatcher.contains(file.changedContent, it) }
     }.map { it.path }
   }
 

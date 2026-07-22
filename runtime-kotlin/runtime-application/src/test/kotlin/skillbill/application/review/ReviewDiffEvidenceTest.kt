@@ -61,4 +61,25 @@ class ReviewDiffEvidenceTest {
     assertEquals(5, evidence.hunks.size)
     assertTrue(evidence.files.first().changedContent.contains("deleted"))
   }
+
+  @Test
+  fun `headers with spaces and quoted utf8 bytes retain exact old new and authoritative paths`() {
+    val evidence = ReviewDiffEvidence.parse(
+      """
+      diff --git a/mode only file.kt b/mode only file.kt
+      old mode 100644
+      new mode 100755
+      diff --git "a/na\303\257ve.kt" "b/renamed \303\251.kt"
+      similarity index 100%
+      rename from "na\303\257ve.kt"
+      rename to "renamed \303\251.kt"
+      """.trimIndent(),
+    )
+
+    assertEquals(listOf("mode only file.kt", "renamed é.kt"), evidence.files.map { it.path })
+    assertEquals("mode only file.kt", evidence.files[0].oldPath)
+    assertEquals("mode only file.kt", evidence.files[0].newPath)
+    assertEquals("naïve.kt", evidence.files[1].oldPath)
+    assertEquals("renamed é.kt", evidence.files[1].newPath)
+  }
 }

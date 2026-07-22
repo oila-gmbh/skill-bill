@@ -5,6 +5,7 @@ import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewOwnedFileEvidence
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.review.plan.ReviewPathMatcher
+import skillbill.review.plan.ReviewContentMatcher
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 
@@ -71,14 +72,14 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
       }
       val eligible = evidence.filterNot { file ->
         condition.excludePath.any { ReviewPathMatcher.matches(file.path, it) } ||
-          condition.excludeContent.any(file.changedContent::contains)
+          condition.excludeContent.any { ReviewContentMatcher.contains(file.changedContent, it) }
       }
       val eligibleContent = eligible.joinToString("\n") { it.changedContent }
-      eligible.isNotEmpty() && condition.allContent.all(eligibleContent::contains) &&
+      eligible.isNotEmpty() && ReviewContentMatcher.containsAll(eligibleContent, condition.allContent) &&
         (
           condition.anyPath.any { signal -> eligible.any { ReviewPathMatcher.matches(it.path, signal) } } ||
-            condition.anyContent.any(eligibleContent::contains) ||
-            condition.anyOfAllContent.any { group -> group.all(eligibleContent::contains) } ||
+            condition.anyContent.any { ReviewContentMatcher.contains(eligibleContent, it) } ||
+            condition.anyOfAllContent.any { group -> ReviewContentMatcher.containsAll(eligibleContent, group) } ||
             (condition.anyPath.isEmpty() && condition.anyContent.isEmpty() && condition.anyOfAllContent.isEmpty())
           )
     }
