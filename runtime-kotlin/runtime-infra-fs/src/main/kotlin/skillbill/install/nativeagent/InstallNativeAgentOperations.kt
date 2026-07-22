@@ -179,6 +179,7 @@ object InstallNativeAgentOperations {
       val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
       val linked = mutableListOf<Path>()
       val skipped = mutableListOf<NativeAgentSkippedLink>()
+      val artifactsByPath = generated.artifacts.associateBy { it.path }
       targets.forEach { target ->
         generated.generatedFiles.forEach { file ->
           when (
@@ -186,6 +187,11 @@ object InstallNativeAgentOperations {
               file,
               target,
               managedSourceRoots = managedRoots,
+              ownership = NativeAgentLinkOwnership(
+                resolvedHome,
+                provider,
+                requireNotNull(artifactsByPath[file]).logicalName,
+              ),
               beforeMutation = journal::beforeMutation,
             )
           ) {

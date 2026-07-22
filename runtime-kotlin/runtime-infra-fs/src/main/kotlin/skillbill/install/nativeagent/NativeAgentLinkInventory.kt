@@ -106,7 +106,7 @@ internal object NativeAgentLinkInventory {
     if (!Files.isSymbolicLink(link)) return
     val rawTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return
     val resolved = (link.parent ?: link.toAbsolutePath().parent).resolve(rawTarget).toAbsolutePath().normalize()
-    if (isCanonicalArtifactTarget(home, provider, entry.logicalName, resolved, managedRoots)) {
+    if (isCanonicalNativeAgentArtifactTarget(home, provider, entry.logicalName, resolved, managedRoots)) {
       beforeMutation(link)
       Files.deleteIfExists(link)
     }
@@ -153,7 +153,9 @@ internal object NativeAgentLinkInventory {
         require(entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName)) {
           "installed_path does not match provider/logical_name identity"
         }
-        require(isCanonicalArtifactTarget(home, provider, entry.logicalName, entry.cacheTargetPath, managedRoots)) {
+        require(
+          isCanonicalNativeAgentArtifactTarget(home, provider, entry.logicalName, entry.cacheTargetPath, managedRoots),
+        ) {
           "cache_target_path does not match a trusted provider artifact"
         }
       }
@@ -185,7 +187,7 @@ internal object NativeAgentLinkInventory {
             if (!LOGICAL_NAME.matches(logicalName) || link.fileName.toString() != provider.fileName(logicalName)) {
               return@mapNotNull null
             }
-            if (!isCanonicalArtifactTarget(home, provider, logicalName, resolved, managedRoots)) {
+            if (!isCanonicalNativeAgentArtifactTarget(home, provider, logicalName, resolved, managedRoots)) {
               return@mapNotNull null
             }
             val entry = NativeAgentLinkInventoryEntry(
@@ -288,7 +290,9 @@ internal object NativeAgentLinkInventory {
       require(entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName)) {
         "invalid installed identity"
       }
-      require(isCanonicalArtifactTarget(home, provider, entry.logicalName, entry.cacheTargetPath, managedRoots)) {
+      require(
+        isCanonicalNativeAgentArtifactTarget(home, provider, entry.logicalName, entry.cacheTargetPath, managedRoots),
+      ) {
         "cache_target_path does not match a trusted provider artifact"
       }
       require(entry.contentDigest.matches(Regex("[0-9a-f]{$DIGEST_HEX_LENGTH}"))) { "invalid content_digest" }
@@ -308,7 +312,7 @@ internal object NativeAgentLinkInventory {
       entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName) &&
         Files.isSymbolicLink(entry.installedPath) &&
         resolved == entry.cacheTargetPath &&
-        isCanonicalArtifactTarget(home, provider, entry.logicalName, resolved, managedRoots) &&
+        isCanonicalNativeAgentArtifactTarget(home, provider, entry.logicalName, resolved, managedRoots) &&
         Files.isRegularFile(resolved) &&
         Files.isReadable(resolved) &&
         parseEmbeddedLogicalName(resolved, entry.provider) == entry.logicalName &&
@@ -345,29 +349,6 @@ internal object NativeAgentLinkInventory {
     return (managedRoots.map { it.toAbsolutePath().normalize() } + installedGenerations + legacyGenerations).distinct()
   }
 
-  @Suppress("ReturnCount")
-  private fun isCanonicalArtifactTarget(
-    home: Path,
-    provider: skillbill.nativeagent.rendering.NativeAgentProvider,
-    logicalName: String,
-    target: Path,
-    managedRoots: List<Path>,
-  ): Boolean {
-    val normalized = target.toAbsolutePath().normalize()
-    val root = normalized.parent?.parent ?: return false
-    if (normalized != provider.cacheArtifactPath(root, logicalName)) return false
-    if (root in managedRoots.map { it.toAbsolutePath().normalize() }) return true
-    val normalizedHome = home.toAbsolutePath().normalize()
-    val parent = root.parent ?: return false
-    val leaf = root.fileName.toString()
-    return when (parent) {
-      normalizedHome.resolve(".skill-bill/installed-skills") ->
-        leaf.startsWith("native-agents-") && CACHE_GENERATION.matches(leaf.removePrefix("native-agents-"))
-      normalizedHome.resolve(".skill-bill/native-agents") -> CACHE_GENERATION.matches(leaf)
-      else -> false
-    }
-  }
-
   private fun generationChildren(parent: Path, prefix: String = ""): List<Path> {
     if (!Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) return emptyList()
     return Files.list(parent).use { children ->
@@ -391,8 +372,45 @@ internal object NativeAgentLinkInventory {
   private val EMPTY_DIGEST = "0".repeat(DIGEST_HEX_LENGTH)
   private const val MAX_SOURCE_ROOT_LENGTH = 4096
   private val LOGICAL_NAME = Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
-  private val CACHE_GENERATION = Regex("(?:[a-z0-9](?:[a-z0-9-]{0,31})-)?[0-9a-f]{16}")
+  internal val CACHE_GENERATION = Regex("(?:[a-z0-9](?:[a-z0-9-]{0,31})-)?[0-9a-f]{16}")
   private val PROVIDERS = setOf("claude", "codex", "opencode", "junie", "zcode")
   private fun provider(id: String) = skillbill.nativeagent.rendering.NativeAgentProvider.entries
     .single { it.name.lowercase() == id }
 }
+
+@Suppress("ReturnCount")
+internal fun isCanonicalNativeAgentArtifactTarget(
+  home: Path,
+  provider: skillbill.nativeagent.rendering.NativeAgentProvider,
+  logicalName: String,
+  target: Path,
+  currentRoots: List<Path>,
+): Boolean {
+  val normalized = target.toAbsolutePath().normalize()
+  val root = normalized.parent?.parent ?: return false
+  if (normalized != provider.cacheArtifactPath(root, logicalName)) return false
+  if (root in currentRoots.map { it.toAbsolutePath().normalize() }) return true
+  val normalizedHome = home.toAbsolutePath().normalize()
+  val parent = root.parent ?: return false
+  val leaf = root.fileName.toString()
+  return when (parent) {
+    normalizedHome.resolve(".skill-bill/installed-skills") ->
+      leaf.startsWith("native-agents-") &&
+        NativeAgentLinkInventory.CACHE_GENERATION.matches(leaf.removePrefix("native-agents-"))
+    normalizedHome.resolve(".skill-bill/native-agents") ->
+      LEGACY_CACHE_GENERATION.matches(leaf)
+    else -> isLegacyGeneratedRepositoryArtifactTarget(root, logicalName)
+  }
+}
+
+private fun isLegacyGeneratedRepositoryArtifactTarget(root: Path, logicalName: String): Boolean {
+  val owner = root.fileName.toString()
+  val authoredSurface = root.parent
+  val matchesOwner = logicalName == owner || logicalName.startsWith("$owner-")
+  val isBaseSkill = authoredSurface?.fileName?.toString() == "skills"
+  val isPlatformReview = authoredSurface?.fileName?.toString() == "code-review" &&
+    authoredSurface.parent?.parent?.fileName?.toString() == "platform-packs"
+  return matchesOwner && (isBaseSkill || isPlatformReview)
+}
+
+private val LEGACY_CACHE_GENERATION = Regex("[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?")

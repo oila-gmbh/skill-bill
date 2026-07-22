@@ -3,6 +3,7 @@ package skillbill.install.nativeagent
 import skillbill.install.model.AgentTarget
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.install.support.createReplacementSymlinkWithGuidance
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -10,6 +11,7 @@ internal fun installNativeAgentFile(
   source: Path,
   agentTarget: AgentTarget,
   managedSourceRoots: List<Path>,
+  ownership: NativeAgentLinkOwnership? = null,
   beforeMutation: (Path) -> Unit = {},
 ): InstallNativeAgentResult {
   val resolvedSource = source.toAbsolutePath().normalize()
@@ -22,7 +24,7 @@ internal fun installNativeAgentFile(
   return applyInstallDecision(
     linkPath = linkPath,
     resolvedSource = resolvedSource,
-    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots),
+    decision = decideInstallAction(linkPath, resolvedSource, managedSourceRoots, ownership),
     beforeMutation = beforeMutation,
   )
 }
@@ -69,13 +71,32 @@ private fun applyInstallDecision(
 
 private enum class InstallAction { Skip, AlreadyLinked, Replace, Create }
 
-private fun decideInstallAction(linkPath: Path, resolvedSource: Path, managedSourceRoots: List<Path>): InstallAction {
+internal data class NativeAgentLinkOwnership(
+  val home: Path,
+  val provider: NativeAgentProvider,
+  val logicalName: String,
+)
+
+private fun decideInstallAction(
+  linkPath: Path,
+  resolvedSource: Path,
+  managedSourceRoots: List<Path>,
+  ownership: NativeAgentLinkOwnership?,
+): InstallAction {
   if (!Files.isSymbolicLink(linkPath)) {
     return if (Files.exists(linkPath)) InstallAction.Skip else InstallAction.Create
   }
   val existingTarget = resolveSymlinkTarget(linkPath)
   return when {
     existingTarget == resolvedSource -> InstallAction.AlreadyLinked
+    existingTarget != null && ownership != null && isCanonicalNativeAgentArtifactTarget(
+      ownership.home,
+      ownership.provider,
+      ownership.logicalName,
+      existingTarget,
+      managedSourceRoots,
+    ) ->
+      InstallAction.Replace
     existingTarget != null && managedSourceRoots.any { root ->
       val normalizedRoot = root.toAbsolutePath().normalize()
       existingTarget == normalizedRoot.resolve(resolvedSource.fileName) ||

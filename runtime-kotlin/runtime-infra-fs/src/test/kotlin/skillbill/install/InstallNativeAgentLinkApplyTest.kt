@@ -14,6 +14,7 @@ import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
 import skillbill.install.nativeagent.InstallNativeAgentResult
 import skillbill.install.nativeagent.NativeAgentLinkInventory
+import skillbill.install.nativeagent.NativeAgentLinkOwnership
 import skillbill.install.nativeagent.installNativeAgentFile
 import skillbill.install.runtime.InstallOperations
 import skillbill.install.support.createNewSymlinkWithGuidance
@@ -261,6 +262,53 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `apply replaces desired links from obsolete canonical generations before verification`() {
+    listOf(false, true).forEach { inventoryExists ->
+      listOf(false, true).forEach { dangling ->
+        val fixture = setupApplyFixture()
+        Files.createDirectories(fixture.home.resolve(".codex"))
+        val logicalName = "bill-code-review-worker"
+        val agentDir = fixture.home.resolve(".codex/agents")
+        Files.createDirectories(agentDir)
+        val obsoleteRoot = fixture.home.resolve(
+          ".skill-bill/installed-skills/native-agents-old-checkout-0123456789abcdef",
+        )
+        val obsoleteTarget = NativeAgentProvider.Codex.cacheArtifactPath(obsoleteRoot, logicalName)
+        if (!dangling) {
+          Files.createDirectories(obsoleteTarget.parent)
+          Files.writeString(obsoleteTarget, "name = \"$logicalName\"\n")
+        }
+        val installed = agentDir.resolve(NativeAgentProvider.Codex.fileName(logicalName))
+        createSymlinkOrSkip(installed, obsoleteTarget)
+        if (inventoryExists) {
+          val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+          Files.createDirectories(inventory.parent)
+          Files.writeString(inventory, inventoryJson(logicalName, installed, obsoleteTarget, fixture.repoRoot))
+        }
+        val plan = InstallOperations.planInstall(
+          fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+        )
+
+        val result = InstallOperations.applyInstall(plan)
+
+        assertEquals(InstallApplyStatus.SUCCESS, result.status)
+        val currentRoot = currentNativeAgentApplyCacheRoot(
+          fixture.home,
+          fixture.repoRoot.resolve("platform-packs"),
+          fixture.repoRoot.resolve("skills"),
+        )
+        assertEquals(
+          NativeAgentProvider.Codex.cacheArtifactPath(currentRoot, logicalName),
+          readSymlinkTarget(installed),
+          "inventory=$inventoryExists dangling=$dangling",
+        )
+        val entries = NativeAgentLinkInventory.read(fixture.home, listOf(currentRoot), fixture.repoRoot)
+        assertTrue(entries.single { it.installedPath == installed }.contentDigest != "0".repeat(64))
+      }
+    }
+  }
+
+  @Test
   fun `selected all-agent apply distinguishes Copilot skill and MCP handling from native providers`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".claude"))
@@ -367,6 +415,37 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
 
     assertTrue(result is InstallNativeAgentResult.Skipped)
     assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
+  fun `link decision replaces exact obsolete generations for every provider`() {
+    val home = Files.createTempDirectory("skillbill-native-home").also(tempDirs::add)
+    NativeAgentProvider.entries.forEach { provider ->
+      listOf(
+        home.resolve(".skill-bill/installed-skills/native-agents-old-checkout-0123456789abcdef"),
+        home.resolve(".skill-bill/native-agents/old-checkout-0123456789abcdef"),
+      ).forEachIndexed { index, obsoleteRoot ->
+        val logicalName = "bill-worker-$index"
+        val currentRoot = home.resolve("current-${provider.name.lowercase()}-$index")
+        val currentSource = provider.cacheArtifactPath(currentRoot, logicalName)
+        Files.createDirectories(currentSource.parent)
+        Files.writeString(currentSource, "current")
+        val targetDir = home.resolve("targets/${provider.name.lowercase()}-$index")
+        Files.createDirectories(targetDir)
+        val installed = targetDir.resolve(provider.fileName(logicalName))
+        createSymlinkOrSkip(installed, provider.cacheArtifactPath(obsoleteRoot, logicalName))
+
+        val result = installNativeAgentFile(
+          source = currentSource,
+          agentTarget = AgentTarget(provider.name, targetDir),
+          managedSourceRoots = listOf(currentRoot),
+          ownership = NativeAgentLinkOwnership(home, provider, logicalName),
+        )
+
+        assertTrue(result is InstallNativeAgentResult.Linked)
+        assertEquals(currentSource.toAbsolutePath().normalize(), readSymlinkTarget(installed))
+      }
+    }
   }
 
   @Test

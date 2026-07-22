@@ -63,12 +63,12 @@ subtasks:
 - id: 4
   name: "Reconcile and preflight native agents"
   spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec_subtask_4_native_agent_reconciliation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260722-100509-oj6o"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

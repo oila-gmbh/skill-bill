@@ -94,11 +94,13 @@ class ParallelCodeReviewRunner(
       .map { requireNotNull(it.logicalWorkerName) }
       .distinct()
     if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeWorkers.isNotEmpty()) {
-      nativeAgentPreflight.verify(ReviewNativeAgentPreflightRequest(
-        repoRoot = request.repoRoot,
-        agentIds = listOf(agent1.id, agent2.id),
-        logicalNames = providerNativeWorkers,
-      ))
+      nativeAgentPreflight.verify(
+        ReviewNativeAgentPreflightRequest(
+          repoRoot = request.repoRoot,
+          agentIds = listOf(agent1.id, agent2.id),
+          logicalNames = providerNativeWorkers,
+        ),
+      )
     }
     delegatedReviewExecutionBroker.preflight(launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }

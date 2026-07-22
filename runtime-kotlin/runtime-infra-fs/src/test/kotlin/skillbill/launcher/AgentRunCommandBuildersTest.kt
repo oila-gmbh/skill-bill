@@ -196,6 +196,7 @@ class AgentRunCommandBuildersTest {
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
 
     val builders = listOf(
