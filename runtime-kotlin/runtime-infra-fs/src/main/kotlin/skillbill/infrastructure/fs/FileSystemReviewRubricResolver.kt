@@ -3,6 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.review.plan.ReviewPathMatcher
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 
@@ -45,28 +46,37 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     )
   }
 
+  @Suppress("CyclomaticComplexMethod")
   override fun resolve(manifest: PlatformManifest?, diff: String, specialistSkillName: String): ResolvedReviewRubric {
     val resolved = resolve(manifest)
     if (manifest == null) return resolved
     val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
     val consumer = "code-review/$specialistSkillName"
-    val exact = manifest.addonUsage.firstOrNull { it.skillRelativeDir == consumer }?.addons.orEmpty()
-    val baseline = manifest.routedSkillName?.let { baselineName ->
-      manifest.addonUsage.firstOrNull { it.skillRelativeDir == "code-review/$baselineName" }?.addons.orEmpty()
-    }.orEmpty().filter { specialist.area in it.specialistAreas }
-    val selections = (exact + baseline).distinctBy { it.slug }
+    val baselineConsumer = manifest.routedSkillName?.let { "code-review/$it" }
+    val selections = manifest.addonUsage.flatMap { usage ->
+      when (usage.skillRelativeDir) {
+        consumer -> usage.addons
+        baselineConsumer -> usage.addons.filter { specialist.area in it.specialistAreas }
+        else -> emptyList()
+      }
+    }.distinctBy { it.slug }
     val evidence = activationEvidence(diff)
     val selected = selections.filter { selection ->
       val condition = requireNotNull(selection.activation) {
         "Governed review add-on '${selection.slug}' has no structured activation."
       }
-      condition.excludePath.none { signal -> evidence.paths.any { matchesPath(it, signal) } } &&
-        condition.excludeContent.none(evidence.content::contains) &&
-        condition.allContent.all(evidence.content::contains) &&
-        (condition.anyPath.any { signal -> evidence.paths.any { matchesPath(it, signal) } } ||
-          condition.anyContent.any(evidence.content::contains) ||
-          condition.anyOfAllContent.any { group -> group.all(evidence.content::contains) } ||
-          (condition.anyPath.isEmpty() && condition.anyContent.isEmpty() && condition.anyOfAllContent.isEmpty()))
+      val eligible = evidence.filterNot { file ->
+        condition.excludePath.any { ReviewPathMatcher.matches(file.path, it) } ||
+          condition.excludeContent.any(file.changedContent::contains)
+      }
+      val eligibleContent = eligible.joinToString("\n") { it.changedContent }
+      eligible.isNotEmpty() && condition.allContent.all(eligibleContent::contains) &&
+        (
+          condition.anyPath.any { signal -> eligible.any { ReviewPathMatcher.matches(it.path, signal) } } ||
+            condition.anyContent.any(eligibleContent::contains) ||
+            condition.anyOfAllContent.any { group -> group.all(eligibleContent::contains) } ||
+            (condition.anyPath.isEmpty() && condition.anyContent.isEmpty() && condition.anyOfAllContent.isEmpty())
+          )
     }
     if (selected.isEmpty()) return specialist
     val guidance = selected.joinToString("\n\n") { selection ->
@@ -102,20 +112,24 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     }
   }
 
-  private fun activationEvidence(diff: String): ActivationEvidence {
-    val paths = Regex("""(?m)^\+\+\+ b/(.+)$""").findAll(diff).map { it.groupValues[1].lowercase() }.toList()
+  private fun activationEvidence(diff: String): List<ActivationEvidence> {
+    val parsed = diff.replace("\r\n", "\n")
+      .split(Regex("(?m)(?=^diff --git )"))
+      .mapNotNull { record ->
+        val path = Regex("(?m)^\\+\\+\\+ b/(.+)$").find(record)?.groupValues?.get(1) ?: return@mapNotNull null
+        val content = record.lineSequence()
+          .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
+          .joinToString("\n").lowercase()
+        ActivationEvidence(path.lowercase(), content)
+      }
+    if (parsed.isNotEmpty()) return parsed
     val content = diff.lineSequence()
       .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
       .joinToString("\n").lowercase()
-    return ActivationEvidence(paths, content)
+    return listOf(ActivationEvidence("", content))
   }
 
-  private fun matchesPath(path: String, signal: String): Boolean {
-    val normalized = signal.lowercase().removePrefix("*")
-    return if ('/' in normalized) path.contains(normalized.trim('/')) else path.endsWith(normalized) || path.contains(normalized)
-  }
-
-  private data class ActivationEvidence(val paths: List<String>, val content: String)
+  private data class ActivationEvidence(val path: String, val changedContent: String)
 
   private companion object {
     const val MAX_RUBRIC_BYTES = 256 * 1024L

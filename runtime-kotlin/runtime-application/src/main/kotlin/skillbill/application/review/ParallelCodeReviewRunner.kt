@@ -69,13 +69,15 @@ class ParallelCodeReviewRunner(
     }
 
     val diffText = resolveDiff(request)
-    val detection = detectStack(diffText, request.repoRoot)
+    val evidence = ReviewDiffEvidence.parse(diffText)
+    val detection = detectStack(evidence, request.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
     val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
     val prepared = prepare(
       request,
       diffText,
+      evidence,
       detection.routed,
       detection.manifests,
       listOf(agent1.id, agent2.id),
@@ -146,15 +148,17 @@ class ParallelCodeReviewRunner(
   private fun prepare(
     request: ParallelCodeReviewRequest,
     diffText: String,
+    evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
-    val plannedRubrics = resolvePlannedRubrics(diffText, routedManifests, manifests)
+    val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests)
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
+        evidence = evidence,
         stack = routedManifests.joinToString("+") { it.slug }.ifBlank { null },
         agents = agentIds,
         repoRoot = request.repoRoot,
@@ -168,7 +172,7 @@ class ParallelCodeReviewRunner(
 
   @Suppress("LongMethod")
   private fun resolvePlannedRubrics(
-    diffText: String,
+    evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
   ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
@@ -185,6 +189,8 @@ class ParallelCodeReviewRunner(
           emptyList(),
           0,
           "generic fallback",
+          ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
+          changedHunkIds = evidence.hunks.map { it.hunkId },
         ),
         ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
       ),
@@ -224,7 +230,14 @@ class ParallelCodeReviewRunner(
       }
     }
     flattened
-      .filter { lane -> lane.required || laneOwnedPaths(lane, diffText).isNotEmpty() }
+      .map { lane ->
+        val ownedPaths = if (lane.required) evidence.hunks.map { it.path } else laneOwnedPaths(lane, evidence)
+        lane.copy(
+          ownedPaths = ownedPaths.distinct().sorted(),
+          changedHunkIds = evidence.hunks.filter { it.path in ownedPaths }.map { it.hunkId },
+        )
+      }
+      .filter { lane -> lane.ownedPaths.isNotEmpty() }
       .groupBy { it.skillName }
       .values
       .mapIndexed { index, matches ->
@@ -233,12 +246,7 @@ class ParallelCodeReviewRunner(
           "Conflicting ownership for specialist '${lane.skillName}'."
         }
         val owner = manifests.single { it.slug == lane.packSlug }
-        val ownedPaths = if (lane.required) {
-          routingEvidence(diffText).map { it.path }
-        } else {
-          laneOwnedPaths(lane, diffText)
-        }
-        val ownedDiff = diffForOwnedPaths(diffText, ownedPaths.toSet())
+        val ownedDiff = evidence.ownedDiff(lane.ownedPaths.toSet())
         val resolvedOwner = reviewRubricResolver.resolve(owner, ownedDiff, lane.skillName)
         val resolved = resolvedOwner
           .specialists.singleOrNull { it.area == lane.area }
@@ -250,13 +258,6 @@ class ParallelCodeReviewRunner(
         )
       }
   }
-
-  private fun diffForOwnedPaths(diff: String, ownedPaths: Set<String>): String = diff.replace("\r\n", "\n")
-    .split(Regex("(?m)(?=^diff --git )"))
-    .filter { record ->
-      DIFF_PATH_PATTERN.find(record)?.groupValues?.get(1) in ownedPaths
-    }
-    .joinToString("")
 
   private fun resolveAgent(agentId: String, label: String): InstallAgent {
     if (agentId.isBlank()) {
@@ -310,7 +311,7 @@ class ParallelCodeReviewRunner(
       "Command failed: ${args.joinToString(" ")}",
     )
 
-  private fun detectStack(diffText: String, repoRoot: Path): StackDetection {
+  private fun detectStack(evidence: ReviewDiffEvidence, repoRoot: Path): StackDetection {
     val packsRoot = repoRoot.resolve("platform-packs")
     // A missing platform-packs directory yields an empty list (no exception) and degrades to a
     // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
@@ -328,7 +329,7 @@ class ParallelCodeReviewRunner(
     }
     if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList())
 
-    val changedFiles = routingEvidence(diffText)
+    val changedFiles = evidence.files
 
     val signalOwners = manifests.flatMap { manifest ->
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
@@ -340,14 +341,14 @@ class ParallelCodeReviewRunner(
           if (!RoutingSignalPathMatcher.matches(changed.path, signal)) {
             0
           } else if (signalOwners.getValue(signal).size == 1) {
-            10
+            UNIQUE_PATH_SIGNAL_SCORE
           } else {
             1
           }
         }
         val contentScore = manifest.routingSignals.content.distinct().count { signal ->
-          changed.content.contains(signal, ignoreCase = true)
-        } * 20
+          changed.changedContent.contains(signal, ignoreCase = true)
+        } * CONTENT_SIGNAL_SCORE
         pathScore + contentScore
       }.filterValues { it > 0 }
       val best = pathScores.values.maxOrNull() ?: return@forEach
@@ -369,16 +370,6 @@ class ParallelCodeReviewRunner(
     return StackDetection(routed, manifests)
   }
 
-  private fun routingEvidence(diff: String): List<ChangedFileEvidence> =
-    diff.replace("\r\n", "\n").split(Regex("(?m)(?=^diff --git )")).mapNotNull { record ->
-      val path = DIFF_PATH_PATTERN.find(record)?.groupValues?.get(1) ?: return@mapNotNull null
-      if (RoutingSignalPathMatcher.isIgnored(path)) return@mapNotNull null
-      val content = record.lineSequence()
-        .filter { (it.startsWith("+") || it.startsWith("-")) && !it.startsWith("+++") && !it.startsWith("---") }
-        .joinToString("\n")
-      ChangedFileEvidence(path, content)
-    }
-
   private fun launchResolvedLane(
     mode: ResolvedReviewExecutionMode,
     launchRequests: List<DelegatedReviewLaunchRequest>,
@@ -392,6 +383,7 @@ class ParallelCodeReviewRunner(
     ResolvedReviewExecutionMode.DELEGATED -> launchDelegatedLane(agentId, launchRequests, request, modelOverride)
   }
 
+  @Suppress("LoopWithTooManyJumpStatements")
   private fun launchDelegatedLane(
     agentId: String,
     launchRequests: List<DelegatedReviewLaunchRequest>,
@@ -560,9 +552,13 @@ class ParallelCodeReviewRunner(
         val reason = laneFailureReason(outcome)
         val findings = if (reason == null) {
           ParallelReviewFindingParser.parse(outcome.stdout).flatMap { finding ->
+            val findingPath = normalizedFindingPath(finding.location)
             val owners = selected.filter { launch ->
-              launch.assignment.assignedPaths.any { path -> finding.location.contains(path) }
-            }.ifEmpty { selected }
+              launch.assignment.assignedPaths.any { path -> normalizeRepositoryPath(path) == findingPath }
+            }
+            require(owners.isNotEmpty()) {
+              "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
+            }
             owners.distinctBy { it.assignment.laneDecision.specialistSkillName }.map { owner ->
               finding.copy(
                 specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
@@ -584,11 +580,18 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun laneOwnedPaths(lane: ReviewLaunchLane, diff: String): List<String> {
-    val files = routingEvidence(diff)
-    return files.filter { file ->
+  private fun normalizedFindingPath(location: String): String {
+    val trimmed = location.trim()
+    val withoutLine = Regex("^(.*?):\\d+(?::\\d+)?$").matchEntire(trimmed)?.groupValues?.get(1) ?: trimmed
+    return normalizeRepositoryPath(withoutLine)
+  }
+
+  private fun normalizeRepositoryPath(path: String): String = path.replace('\\', '/').removePrefix("./")
+
+  private fun laneOwnedPaths(lane: ReviewLaunchLane, evidence: ReviewDiffEvidence): List<String> {
+    return evidence.files.filter { file ->
       lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
-        lane.contentSignals.any { file.content.contains(it, ignoreCase = true) }
+        lane.contentSignals.any { file.changedContent.contains(it, ignoreCase = true) }
     }.map { it.path }
   }
 
@@ -617,7 +620,8 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
-    val DIFF_PATH_PATTERN = Regex("^\\+\\+\\+ b/(.+)$", RegexOption.MULTILINE)
+    const val UNIQUE_PATH_SIGNAL_SCORE = 10
+    const val CONTENT_SIGNAL_SCORE = 20
     val HIGH_RISK_SIGNAL = Regex(
       "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
     )
@@ -627,8 +631,6 @@ class ParallelCodeReviewRunner(
     val routed: List<PlatformManifest>,
     val manifests: List<PlatformManifest>,
   )
-
-  private data class ChangedFileEvidence(val path: String, val content: String)
 }
 
 private fun parallelResult(

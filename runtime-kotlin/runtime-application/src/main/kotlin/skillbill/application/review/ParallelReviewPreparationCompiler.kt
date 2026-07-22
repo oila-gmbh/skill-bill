@@ -29,11 +29,8 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
   ): List<DelegatedReviewLaunchRequest> {
-    val parsedHunks = parseUnifiedDiff(input.diff)
-    val parsedPaths = parsedHunks.mapTo(mutableSetOf()) { it.path }
-    val hunks = parsedHunks + headerOnlyChanges(input.diff).filterNot { it.path in parsedPaths }
-    require(hunks.isNotEmpty()) { "The authoritative review diff contains no parseable changed hunks." }
-    val routes = specialistRoutes(input, hunks)
+    val hunks = input.evidence.hunks
+    val routes = specialistRoutes(input)
     val decisions = routes.map { route ->
       ReviewLaneDecision(
         route.lane,
@@ -54,17 +51,9 @@ internal object ParallelReviewPreparationCompiler {
     return launchRequests(input, preparation, routes, budget)
   }
 
-  private fun specialistRoutes(
-    input: ParallelReviewPreparationInput,
-    hunks: List<ReviewChangedHunk>,
-  ): List<SpecialistRoute> {
+  private fun specialistRoutes(input: ParallelReviewPreparationInput): List<SpecialistRoute> {
     val selectedRubrics = input.lanes.mapNotNull { planned ->
-      val ownedPaths = ownedPathsFor(planned.descriptor, hunks)
-      val authoritativePaths = if (planned.descriptor.required) {
-        hunks.map { it.path }.distinct().sorted()
-      } else {
-        ownedPaths
-      }
+      val authoritativePaths = planned.descriptor.ownedPaths
       planned.takeIf { authoritativePaths.isNotEmpty() }?.let { SelectedRubric(it, authoritativePaths) }
     }
     require(selectedRubrics.isNotEmpty()) { "Review routing selected no non-empty specialist lane." }
@@ -172,96 +161,12 @@ internal object ParallelReviewPreparationCompiler {
     }
   }
 
-  private fun ownedPathsFor(descriptor: ReviewLaunchLane, hunks: List<ReviewChangedHunk>): List<String> {
-    return hunks.filter { hunk ->
-      descriptor.pathSignals.any { pathSignal -> RoutingSignalPathMatcher.matches(hunk.path, pathSignal) } ||
-        descriptor.contentSignals.any { hunk.content.contains(it, ignoreCase = true) }
-    }.map { it.path }.distinct().sorted()
-  }
-
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
 
-  private fun parseUnifiedDiff(diff: String): List<ReviewChangedHunk> {
-    val lines = diff.replace("\r\n", "\n").lines()
-    val result = mutableListOf<ReviewChangedHunk>()
-    var oldPath: String? = null
-    var newPath: String? = null
-    var index = 0
-    val header = Regex(
-      "^@@ -(?<oldStart>\\d+)(?:,(?<oldCount>\\d+))? " +
-        "\\+(?<newStart>\\d+)(?:,(?<newCount>\\d+))? @@",
-    )
-    while (index < lines.size) {
-      val line = lines[index]
-      when {
-        line.startsWith("--- ") -> oldPath = diffPath(line.removePrefix("--- "))
-        line.startsWith("+++ ") -> newPath = diffPath(line.removePrefix("+++ "))
-        line.startsWith("@@ ") -> {
-          val match = requireNotNull(header.find(line)) { "Malformed unified-diff hunk header: $line" }
-          val content = buildString {
-            appendLine(line)
-            index += 1
-            while (index < lines.size && !lines[index].startsWith("@@ ") && !lines[index].startsWith("diff --git ")) {
-              appendLine(lines[index])
-              index += 1
-            }
-          }.removeSuffix("\n")
-          val path = requireNotNull(newPath ?: oldPath) { "Unified-diff hunk has no file path." }
-          val oldStart = requireNotNull(match.groups["oldStart"]).value
-          val oldCount = match.groups["oldCount"]?.value.orEmpty()
-          val newStart = requireNotNull(match.groups["newStart"]).value
-          val newCount = match.groups["newCount"]?.value.orEmpty()
-          result += ReviewChangedHunk(
-            path,
-            oldStart.toInt(),
-            oldCount.ifBlank { "1" }.toInt(),
-            newStart.toInt(),
-            newCount.ifBlank { "1" }.toInt(),
-            content,
-          )
-          continue
-        }
-      }
-      index += 1
-    }
-    return result
-  }
-
-  private fun diffPath(raw: String): String? {
-    val value = raw.substringBefore('\t')
-    if (value == "/dev/null") return null
-    return value.removePrefix("a/").removePrefix("b/")
-  }
-
-  private fun headerOnlyChanges(diff: String): List<ReviewChangedHunk> {
-    val normalized = diff.replace("\r\n", "\n")
-    val records = normalized.split(Regex("(?m)(?=^diff --git )"))
-      .mapNotNull { record ->
-        if (!record.startsWith("diff --git ")) return@mapNotNull null
-        val lines = record.lines()
-        val path = lines.firstNotNullOfOrNull { line ->
-          line.takeIf { it.startsWith("+++ b/") }
-            ?.removePrefix("+++ b/")
-            ?.substringBefore('\t')
-        } ?: DIFF_GIT_PATH.find(lines.first())?.groupValues?.get(1)
-        path?.let { ReviewChangedHunk(it, 0, 0, 0, 0, record.trimEnd()) }
-      }
-      .distinctBy { it.path }
-    if (records.isNotEmpty()) return records
-    val lines = normalized.lines()
-    return lines.mapIndexedNotNull { index, line ->
-      if (!line.startsWith("+++ b/")) return@mapIndexedNotNull null
-      val path = line.removePrefix("+++ b/").substringBefore('\t')
-      val content = lines.drop(index + 1).takeWhile { !it.startsWith("diff --git ") }.joinToString("\n")
-      ReviewChangedHunk(path, 0, 0, 0, 0, content)
-    }.distinctBy { it.path }
-  }
-
   private const val SPECIALIST_CONTRACT =
     "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."
-  private val DIFF_GIT_PATH = Regex("^diff --git (?:a/\\S+|\"a/.+\") (?:b/|\"b/)(.+?)\"?$")
 }
 
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
@@ -283,6 +188,7 @@ internal data class PlannedReviewRubric(
 
 internal data class ParallelReviewPreparationInput(
   val diff: String,
+  val evidence: ReviewDiffEvidence,
   val stack: String?,
   val agents: List<String>,
   val repoRoot: Path,
