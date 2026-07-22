@@ -1514,8 +1514,10 @@ internal class FeatureTaskRuntimeRunLoop(
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
-    auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    if (!isCompactAuditOutput(run.phaseId, outputText)) {
+      auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
+        return schemaInvalidAttempt(reason, fileManifest, outputText)
+      }
     }
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
@@ -1647,6 +1649,16 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
     reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
+
+  private fun isCompactAuditOutput(phaseId: String, canonicalJson: String): Boolean {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return false
+    val wireOutput = JsonSupport.parseObjectOrNull(canonicalJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return false
+    val produced = JsonSupport.anyToStringAnyMap(wireOutput["produced_outputs"]) ?: return false
+    return produced.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS)
+  }
 
   @Suppress("ReturnCount", "CyclomaticComplexMethod")
   private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {

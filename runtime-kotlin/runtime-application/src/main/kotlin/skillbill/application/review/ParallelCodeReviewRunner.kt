@@ -440,10 +440,9 @@ class ParallelCodeReviewRunner(
             terminalStatus = "timeout",
           ),
         )
-        break
+        continue
       }
       outcomes += launchSpecialist(launchRequest, request, modelOverride, remaining)
-      if (!outcomes.last().success) break
     }
     val failed = outcomes.firstOrNull { !it.success }
     return ParallelReviewLaneOutcome(

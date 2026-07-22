@@ -56,7 +56,7 @@ data class NativeReviewProviderCapabilities(
     val PROMPT_ONLY = NativeReviewProviderCapabilities(
       operationBoundary = NativeReviewOperationBoundary.DISABLED,
       providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
-      lifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks,
+      lifecycleCallbacks = ClaudeNativeReviewLifecycleCallbacks(),
     )
   }
 }
@@ -69,15 +69,54 @@ interface NativeReviewLifecycleCallbacks {
   fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage): ReviewBudgetOutcome?
 }
 
-private object OneShotNativeReviewLifecycleCallbacks : NativeReviewLifecycleCallbacks {
-  override fun newSession(): NativeReviewLifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks
+private abstract class StatefulNativeReviewLifecycleCallbacks : NativeReviewLifecycleCallbacks {
   override fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome? = operations.modelTurn()
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
-    null
   override fun observeProviderUsage(
     operations: NativeReviewOperationProtocol,
     usage: ProviderTokenUsage,
   ): ReviewBudgetOutcome? = operations.providerUsage(usage)
+}
+
+private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
+  private val bufferedOutput = StringBuilder()
+  private var observedResult = false
+
+  override fun newSession(): NativeReviewLifecycleCallbacks = ClaudeNativeReviewLifecycleCallbacks()
+
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
+    if (observedResult) return null
+    bufferedOutput.append(chunk)
+    val result = runCatching { ObjectMapper().readTree(bufferedOutput.toString()) }.getOrNull()
+      ?.path("result")
+      ?.takeIf { it.isTextual }
+      ?.asText()
+      ?: return null
+    observedResult = true
+    return operations.laneResultChunk(result)
+  }
+}
+
+private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
+  private val pendingLine = StringBuilder()
+
+  override fun newSession(): NativeReviewLifecycleCallbacks = CodexNativeReviewLifecycleCallbacks()
+
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? {
+    pendingLine.append(chunk)
+    while (true) {
+      val newline = pendingLine.indexOf("\n")
+      if (newline < 0) return null
+      val line = pendingLine.substring(0, newline).trimEnd('\r')
+      pendingLine.delete(0, newline + 1)
+      val text = runCatching { ObjectMapper().readTree(line) }.getOrNull()
+        ?.path("item")
+        ?.path("text")
+        ?.takeIf { it.isTextual }
+        ?.asText()
+        ?: continue
+      operations.laneResultChunk(text)?.let { return it }
+    }
+  }
 }
 
 enum class NativeReviewOperationBoundary { SYNCHRONOUS_BROKER, DISABLED, UNMEDIATED }
@@ -152,7 +191,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   override val nativeReviewCapabilities: NativeReviewProviderCapabilities = NativeReviewProviderCapabilities(
     operationBoundary = NativeReviewOperationBoundary.DISABLED,
     providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
-    lifecycleCallbacks = OneShotNativeReviewLifecycleCallbacks,
+    lifecycleCallbacks = CodexNativeReviewLifecycleCallbacks(),
   )
 
   override fun build(request: SkillRunRequest): AgentRunCommand {

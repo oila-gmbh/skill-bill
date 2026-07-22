@@ -19,6 +19,9 @@ interface NativeReviewOperationProtocol {
   /** Called synchronously before each provider model turn. A non-null result forbids the turn. */
   fun modelTurn(): ReviewBudgetOutcome?
 
+  /** Called synchronously for decoded lane-result content. A non-null result forbids further work. */
+  fun laneResultChunk(chunk: String): ReviewBudgetOutcome?
+
   /** Called synchronously for an in-flight usage update. A non-null result forbids further work. */
   fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome?
 }
@@ -29,6 +32,7 @@ class BrokerBackedNativeReviewOperationProtocol(
   override fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult = broker.readBatch(request)
   override fun tool(call: ReviewToolCall): ReviewToolCallResult = broker.recordToolCall(call)
   override fun modelTurn(): ReviewBudgetOutcome? = broker.recordModelTurn()
+  override fun laneResultChunk(chunk: String): ReviewBudgetOutcome? = broker.observeLaneResultChunk(chunk)
   override fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome? =
     broker.evaluateProviderUsage(usage, enforceable = true)
 }
