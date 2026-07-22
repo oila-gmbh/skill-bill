@@ -53,12 +53,66 @@ class RuntimeAdapterDependencyAllowlistTest {
     )
   }
 
+  @Test
+  fun `every declared module has only the curated test-fixtures runtime project dependencies`() {
+    assertEquals(
+      RuntimeModule.declaredGradleModules.toSet(),
+      ModuleAllowlists.TEST_FIXTURES_PROJECT_DEPENDENCIES.keys,
+      "RuntimeAdapterDependencyAllowlistTest must classify every declared Gradle module.",
+    )
+
+    val drift = RuntimeModule.declaredGradleModules.mapNotNull { moduleName ->
+      val expected = ModuleAllowlists.TEST_FIXTURES_PROJECT_DEPENDENCIES.getValue(moduleName)
+      val actual = testFixturesProjectDependencies(moduleName)
+      val missing = expected - actual
+      val extra = actual - expected
+      if (missing.isEmpty() && extra.isEmpty()) {
+        null
+      } else {
+        buildString {
+          append(moduleName)
+          if (missing.isNotEmpty()) {
+            append("\n  Missing: ")
+            append(missing.sorted().joinToString())
+          }
+          if (extra.isNotEmpty()) {
+            append("\n  Extra: ")
+            append(extra.sorted().joinToString())
+          }
+        }
+      }
+    }
+
+    assertEquals(
+      emptyList(),
+      drift,
+      "Test-fixtures-source project dependencies drifted from the curated per-module allow-list.",
+    )
+  }
+
+  private fun testFixturesProjectDependencies(moduleName: String): Set<String> {
+    val buildFile = runtimeRoot.resolve("${moduleName.replace(':', '/')}/build.gradle.kts")
+    val source = Files.readString(buildFile)
+    val testFixturesConfigurations = listOf("testFixturesImplementation", "testFixturesApi")
+    val projectDependencies = mutableSetOf<String>()
+    source.lineSequence().forEach { line ->
+      if (testFixturesConfigurations.any { configName -> line.contains(configName) }) {
+        Regex("project\\(\":([A-Za-z0-9:-]+)\"\\)")
+          .findAll(line)
+          .forEach { match -> projectDependencies += match.groupValues[1] }
+      }
+    }
+    return projectDependencies
+  }
+
   private fun mainProjectDependencies(moduleName: String): Set<String> {
     val buildFile = runtimeRoot.resolve("${moduleName.replace(':', '/')}/build.gradle.kts")
     val source = Files.readString(buildFile)
     val testConfigurations =
       listOf(
         "testImplementation",
+        "testFixturesImplementation",
+        "testFixturesApi",
         "testRuntimeOnly",
         "testCompileOnly",
         "androidTestImplementation",
@@ -166,6 +220,30 @@ class RuntimeAdapterDependencyAllowlistTest {
         "runtime-ports",
       ),
       "runtime-ports" to setOf("runtime-contracts", "runtime-domain"),
+    )
+
+    val TEST_FIXTURES_PROJECT_DEPENDENCIES: Map<String, Set<String>> = mapOf(
+      "runtime-application" to setOf("runtime-infra-fs"),
+      "runtime-contracts" to emptySet(),
+      "runtime-core" to emptySet(),
+      "runtime-domain" to emptySet(),
+      "runtime-infra-fs" to emptySet(),
+      "runtime-infra-http" to emptySet(),
+      "runtime-infra-sqlite" to emptySet(),
+      "runtime-cli" to emptySet(),
+      "runtime-desktop" to emptySet(),
+      "runtime-desktop:core:common" to emptySet(),
+      "runtime-desktop:core:data" to emptySet(),
+      "runtime-desktop:core:database" to emptySet(),
+      "runtime-desktop:core:datastore" to emptySet(),
+      "runtime-desktop:core:designsystem" to emptySet(),
+      "runtime-desktop:core:domain" to emptySet(),
+      "runtime-desktop:core:navigation" to emptySet(),
+      "runtime-desktop:core:testing" to emptySet(),
+      "runtime-desktop:core:ui" to emptySet(),
+      "runtime-desktop:feature:skillbill" to emptySet(),
+      "runtime-mcp" to emptySet(),
+      "runtime-ports" to emptySet(),
     )
   }
 }

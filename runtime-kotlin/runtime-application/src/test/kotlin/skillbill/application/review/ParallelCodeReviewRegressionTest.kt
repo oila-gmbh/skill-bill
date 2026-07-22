@@ -144,11 +144,11 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(exceeded.all { it.counters.modelTurns >= 2 })
   }
 
-  @Test fun `excessive brokered evidence terminates the lane with a typed evidence outcome`() {
+  @Test fun `a single oversized evidence file terminates the lane before any of it is admitted`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
-      config(budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneEvidenceBytes = 64, maxEvidenceResultBytes = 64))
-        .withEvidenceBody { "E".repeat(256) },
+      config(budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxEvidenceResultBytes = 64))
+        .copy(evidenceBody = { "E".repeat(256) }),
       recorder,
     )
 
@@ -157,7 +157,31 @@ class ParallelCodeReviewRegressionTest {
     val specialists = summary.lanes.filter { it.children.isEmpty() }
     assertTrue(specialists.isNotEmpty())
     assertTrue(specialists.all { it.terminalOutcome == REVIEW_CONTEXT_BUDGET_EXCEEDED })
-    assertTrue(specialists.all { it.counters.evidenceBytes > 64 })
+    assertTrue(
+      specialists.all { it.counters.evidenceBytes == 0L },
+      "An over-budget file is never read, so its bytes never enter the lane's cumulative evidence.",
+    )
+  }
+
+  @Test fun `cumulative brokered evidence beyond the lane budget terminates after the admitted reads`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(
+      config(
+        diff = diffForPaths("src/Repo.kt", "src/Other.kt"),
+        budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneEvidenceBytes = 64, maxEvidenceResultBytes = 48),
+      ).copy(evidenceBody = { "E".repeat(40) }),
+      recorder,
+    )
+
+    val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
+
+    val specialists = summary.lanes.filter { it.children.isEmpty() }
+    assertTrue(specialists.isNotEmpty())
+    assertTrue(specialists.all { it.terminalOutcome == REVIEW_CONTEXT_BUDGET_EXCEEDED })
+    assertTrue(
+      specialists.all { it.counters.evidenceBytes == 40L },
+      "The lane keeps the bytes it was served and stops at the read that would exceed the budget.",
+    )
   }
 
   @Test fun `an enforceable provider threshold excess terminates the lane it belongs to`() {
@@ -233,12 +257,3 @@ class ParallelCodeReviewRegressionTest {
     preflight = preflight,
   )
 }
-
-internal fun ReviewHarnessConfig.withEvidenceBody(body: (String) -> String) = ReviewHarnessConfig(
-  manifests = manifests,
-  diff = diff,
-  response = response,
-  budget = budget,
-  preflight = preflight,
-  evidenceBody = body,
-)

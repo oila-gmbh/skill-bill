@@ -1,3 +1,14 @@
+## [2026-07-22] SKILL-129 durable accounting key and e2e verification (subtask 5)
+Areas: runtime-kotlin/runtime-{application,cli,core,infra-sqlite}, skills/bill-code-review-parallel
+- `ParallelCodeReviewRequest.reviewRunId` now flows through `ParallelReviewPreparationInput` into the compiled packet `reviewId`, so the durable `review_accounting` row is keyed by the same id `ReviewFinishedPayloadSupport.reviewFinishedPayload` resolves via `loadReviewAccounting`; it was previously always null.
+- Added `--review-run-id` to `CodeReviewParallelCommand` and taught `bill-code-review-parallel` to generate or reuse the governed `rvw-YYYYMMDD-HHMMSS-XXXX` id, matching the review-orchestrator playbook's reuse-a-parent-supplied-id rule.
+- Pattern: thread a caller-supplied durable-record key end-to-end through request -> preparation input -> packet -> summary rather than deriving accounting identity from an internal packet id that telemetry never sees. reusable
+- Callers that omit `--review-run-id` keep the prior `code-review-parallel-<revisionId>` packet key; their accounting stays unreachable from `review_finished` telemetry by design, not a regression.
+- `ReviewRecordingHarness` moved to `runtime-application`'s `testFixtures` source set so accounting/e2e tests across modules can share one harness instead of duplicating it.
+- Known limitation: not yet confirmed whether every production caller of `bill-code-review-parallel` supplies `--review-run-id`; downstream review may want to check.
+Feature flag: N/A
+Acceptance criteria: subtask 5: AC-002 gap repaired; full maintainer gate (AC-007) passing
+
 ## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
 Areas: runtime-kotlin/runtime-{application,infra-fs,ports}, native-agent rendering/install, platform-packs/{kotlin,kmp}
 - Provider-neutral declarations and flattened review plans now share the complete specialist worker set; missing declarations and ambiguous targets fail validation instead of falling back to baseline or `general-purpose` workers.

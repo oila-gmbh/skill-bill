@@ -79,12 +79,12 @@ subtasks:
 - id: 5
   name: "Report cost and prove end-to-end optimization"
   spec_path: ".feature-specs/SKILL-129-super-optimized-code-review/spec_subtask_5_accounting_and_e2e.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260722-170636-pk78"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -6,25 +6,37 @@ import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
+import skillbill.review.context.model.ReviewAccountingSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ReviewAccountingProjectionRedactionTest {
-  private val forbidden = listOf(
-    "PROMPT_SECRET",
-    "DIFF_SECRET",
-    "SOURCE_SECRET",
-    "GUIDANCE_SECRET",
-    "RUBRIC_SECRET",
-    "TOOL_OUTPUT_SECRET",
-  )
+  private val forbidden = listOf("DIFF_SECRET", "SOURCE_SECRET", "RUBRIC_SECRET", "TOOL_OUTPUT_SECRET")
+
+  @Test fun `projection of a real review contains bounded metadata and no content bodies`() {
+    val (recorder, recorded) = recordedReview()
+    val serialized = recorded.toBoundedPayload().toString()
+
+    assertTrue(
+      recorder.nativeLaunches.isNotEmpty() &&
+        recorder.nativeLaunches.all { launch -> forbidden.dropLast(1).all { launch.prompt.contains(it) } },
+      "The projection proof needs a run whose prompts actually carried the content bodies.",
+    )
+    forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
+    assertEquals(
+      recorder.nativeLaunches.size * 1_000L,
+      recorded.aggregateDirectUsage.inputTokens,
+      "The measured provider dimensions survive the projection the bodies do not.",
+    )
+    assertTrue(serialized.contains("fresh_token_approximation="))
+  }
 
   @Test fun `projection contains bounded metadata and no content bodies`() {
     val serialized = summary().toBoundedPayload().toString()
 
-    forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
     assertTrue(serialized.contains("fresh_token_approximation=80"))
     assertTrue(serialized.contains("tool_calls=2"))
   }
@@ -77,9 +89,10 @@ class ReviewAccountingProjectionRedactionTest {
   }
 
   @Test fun `bounded payload survives the durable record contract`() {
-    val payload = summary().toBoundedPayload()
+    val recorded = recordedReview().second
+    val payload = recorded.toBoundedPayload()
 
-    val record = ReviewAccountingRecord("review-id", "packet-digest", payload)
+    val record = ReviewAccountingRecord(recorded.reviewId, recorded.packetDigest, payload)
 
     assertEquals(payload, record.boundedPayload)
     forbidden.forEach { assertFalse(record.boundedPayload.toString().contains(it)) }
@@ -91,6 +104,28 @@ class ReviewAccountingProjectionRedactionTest {
     val failure = runCatching { ReviewAccountingRecord("review-id", "packet-digest", leaking) }.exceptionOrNull()
 
     assertTrue(failure is IllegalArgumentException, "Content-bearing accounting payload must fail loudly.")
+  }
+
+  /** A production review run whose diff, rubric, brokered source, and lane result all carry secrets. */
+  private fun recordedReview(): Pair<ReviewRecorder, ReviewAccountingSummary> {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/DIFF_SECRET.kt"),
+        response = {
+          RecordedWorkerResponse(
+            stdout = "TOOL_OUTPUT_SECRET ".repeat(8),
+            usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
+          )
+        },
+        evidenceBody = { "SOURCE_SECRET ".repeat(8) },
+        rubricBody = { "RUBRIC_SECRET ".repeat(8) },
+      ),
+      recorder,
+    ).run(harnessRequest())
+
+    return recorder to assertNotNull(result.accountingSummary)
   }
 
   private fun summary() = ReviewTreeAccounting.summarize(

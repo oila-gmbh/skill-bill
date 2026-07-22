@@ -4,6 +4,7 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -33,7 +34,6 @@ import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
@@ -43,12 +43,8 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewLaneIdentity
-import skillbill.review.context.model.ReviewOperationKind
-import skillbill.review.context.model.ReviewOperationPolicy
 import skillbill.review.context.model.ReviewRequestedOperation
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
@@ -83,112 +79,52 @@ class ReviewRecorder {
   val launchedSpecialists: List<String> get() = nativeLaunches.mapNotNull { it.logicalWorkerName }
 }
 
-/** Serves brokered evidence and refuses everything the governed operation policy rejects. */
-class RecordingReviewEvidenceBroker(
+/**
+ * A pure observer over the production [FileSystemReviewEvidenceBroker]. It records what the
+ * delegated worker asked for and what the production broker refused; every policy decision, byte
+ * count, and budget termination is the production broker's, never this class's.
+ */
+class ObservingReviewEvidenceBroker(
   private val recorder: ReviewRecorder,
-  private val binding: ReviewEvidenceBrokerBinding,
-  private val evidenceBody: (String) -> String = { "// brokered body for $it" },
+  private val delegate: ReviewEvidenceBroker,
 ) : ReviewEvidenceBroker {
-  private val identity = ReviewLaneIdentity.of(binding.assignment)
-  private val policy = ReviewOperationPolicy(binding.assignment, binding.laneRubricId, binding.namedDependencies)
-  private var evidenceBytes = 0L
-  private var resultBytes = 0L
-  private var toolCalls = 0
-  private var modelTurns = 0
-  private var terminal: ReviewBudgetOutcome? = null
-
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     recorder.evidenceBatches += request
-    terminal?.let { return ReviewEvidenceBatchResult(emptyList(), evidenceBytes, emptyList(), it) }
-    val results = request.requests.map { evidenceRequest ->
-      val refusal = policy.classify(
-        ReviewRequestedOperation(
-          ReviewOperationKind.FILE_READ,
-          evidenceRequest.path,
-          evidenceRequest.reachabilityReason,
-        ),
-      )
-      if (refusal != null) {
-        recorder.refusedOperations += refusal
-        return@map ReviewEvidenceResult(null, 0, evidenceBytes, 0, forbidden = refusal)
-      }
-      val body = evidenceBody(evidenceRequest.path)
-      evidenceBytes += body.toByteArray().size
-      ReviewEvidenceResult(body, body.toByteArray().size.toLong(), evidenceBytes, 0)
+    return delegate.readBatch(request).also { result ->
+      recorder.refusedOperations += result.results.mapNotNull { it.forbidden }
     }
-    terminal = ReviewBudgetEvaluator.exceededOrNull(
-      identity,
-      "lane_evidence_bytes",
-      binding.budget.maxLaneEvidenceBytes,
-      evidenceBytes,
-    )
-    return ReviewEvidenceBatchResult(results, evidenceBytes, emptyList(), terminal)
   }
 
-  override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult {
-    val refusal = policy.classify(ReviewRequestedOperation(call.kind, call.target, searchScopes = call.searchScopes))
-    if (refusal != null) {
-      recorder.refusedOperations += refusal
-      return ReviewToolCallResult(forbidden = refusal)
-    }
-    toolCalls += 1
-    terminal = terminal ?: ReviewBudgetEvaluator.exceededOrNull(
-      identity,
-      "tool_calls",
-      binding.budget.maxSpecialistToolCalls.toLong(),
-      toolCalls.toLong(),
-    )
-    return ReviewToolCallResult(budgetExceeded = terminal)
+  override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult =
+    delegate.recordToolCall(call).also { result -> result.forbidden?.let { recorder.refusedOperations += it } }
+
+  override fun recordModelTurn(): ReviewBudgetOutcome? = delegate.recordModelTurn()
+
+  override fun validateLaneResult(result: String): ReviewBudgetOutcome? = delegate.validateLaneResult(result)
+
+  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? = delegate.observeLaneResultChunk(chunk)
+
+  override fun hasObservedLaneResult(): Boolean = delegate.hasObservedLaneResult()
+
+  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
+    delegate.evaluateProviderUsage(usage, enforceable)
+
+  override fun accounting(): ReviewLaneAccounting = delegate.accounting()
+
+  override fun terminalOutcome(): ReviewBudgetOutcome? = delegate.terminalOutcome()
+}
+
+/**
+ * Writes the files a lane is allowed to read into the review repository so the production broker
+ * measures real file bytes. Repeated bindings over one repository root rewrite identical content.
+ */
+private fun materializeLaneEvidence(binding: ReviewEvidenceBrokerBinding, body: (String) -> String) {
+  val paths = binding.assignment.assignedPaths + binding.assignment.expansions.map { it.requestedPath }
+  paths.distinct().forEach { path ->
+    val target = binding.repoRoot.resolve(path)
+    target.parent?.let(Files::createDirectories)
+    Files.writeString(target, body(path))
   }
-
-  override fun recordModelTurn(): ReviewBudgetOutcome? {
-    modelTurns += 1
-    terminal = terminal ?: ReviewBudgetEvaluator.exceededOrNull(
-      identity,
-      "model_turns",
-      binding.budget.maxSpecialistModelTurns.toLong(),
-      modelTurns.toLong(),
-    )
-    return terminal
-  }
-
-  override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
-    resultBytes = maxOf(resultBytes, result.toByteArray().size.toLong())
-    terminal = terminal ?: ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes)
-    return terminal
-  }
-
-  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
-    resultBytes += chunk.toByteArray().size
-    terminal = terminal ?: ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes)
-    return terminal
-  }
-
-  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? {
-    val outcome = ReviewBudgetEvaluator.providerUsageOutcome(
-      identity,
-      binding.budget.providerTokenThresholds,
-      usage,
-      enforceable,
-    )
-    terminal = terminal ?: outcome
-    return outcome
-  }
-
-  override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
-    lane = binding.assignment.lane,
-    reviewId = binding.assignment.reviewId,
-    packetDigest = binding.assignment.packetDigest,
-    assignmentDigest = binding.assignment.digest,
-    evidenceBytes = evidenceBytes,
-    expansions = emptyList(),
-    toolCalls = toolCalls,
-    modelTurns = modelTurns,
-    resultBytes = resultBytes,
-    terminalOutcome = terminal,
-  )
-
-  override fun terminalOutcome(): ReviewBudgetOutcome? = terminal
 }
 
 /** What a recorded specialist run reports back, keyed by logical worker name. */
@@ -202,13 +138,14 @@ data class RecordedWorkerResponse(
   val modelTurns: Int = 1,
 )
 
-class ReviewHarnessConfig(
+data class ReviewHarnessConfig(
   val manifests: List<PlatformManifest>,
   val diff: String,
   val response: (NativeReviewWorkerRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val preflight: (ReviewNativeAgentPreflightRequest) -> Unit = {},
   val evidenceBody: (String) -> String = { "// brokered body for $it" },
+  val rubricBody: (String) -> String = { "governed rubric body for $it" },
 )
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
@@ -217,7 +154,8 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       DelegatedReviewLaunchBroker(
         evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
           recorder.brokerBindings += binding
-          RecordingReviewEvidenceBroker(recorder, binding, config.evidenceBody)
+          materializeLaneEvidence(binding, config.evidenceBody)
+          ObservingReviewEvidenceBroker(recorder, FileSystemReviewEvidenceBroker(binding))
         },
         isolationResolver = { ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE },
       ),
@@ -249,7 +187,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
-    reviewRubricResolver = recordingRubricResolver(recorder),
+    reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
     nativeAgentPreflight = ReviewNativeAgentPreflightPort { request ->
       recorder.preflightRequests += request
       config.preflight(request)
@@ -262,10 +200,13 @@ private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: Revie
   NativeReviewWorkerLauncher { request ->
     recorder.nativeLaunches += request
     val response = config.response(request)
+    // The production broker only admits calls addressed to the assignment it was bound to, so the
+    // lane identity comes from the broker rather than from the worker's logical name.
+    val lane = request.broker.accounting().lane
     response.childOperations.forEach { operation ->
       request.operations.tool(
         ReviewToolCall(
-          lane = request.logicalWorkerName ?: request.issueKey,
+          lane = lane,
           kind = operation.kind,
           target = operation.target,
           searchScopes = operation.searchScopes,
@@ -306,25 +247,26 @@ private class SequentialLaneRunner : ParallelReviewLaneRunner {
   }
 }
 
-private fun recordingRubricResolver(recorder: ReviewRecorder) = object : ReviewRubricResolver {
-  override fun resolve(manifest: PlatformManifest?): ResolvedReviewRubric {
-    recorder.rubricResolutions += manifest?.slug ?: "generic"
-    return ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
-  }
+private fun recordingRubricResolver(recorder: ReviewRecorder, rubricBody: (String) -> String) =
+  object : ReviewRubricResolver {
+    override fun resolve(manifest: PlatformManifest?): ResolvedReviewRubric {
+      recorder.rubricResolutions += manifest?.slug ?: "generic"
+      return ResolvedReviewRubric("parallel-code-review", rubricBody("parallel-code-review"))
+    }
 
-  override fun resolve(
-    manifest: PlatformManifest?,
-    evidence: List<skillbill.ports.review.model.ReviewOwnedFileEvidence>,
-    specialistSkillName: String,
-  ): ResolvedReviewRubric {
-    recorder.rubricResolutions += specialistSkillName
-    return ResolvedReviewRubric(
-      rubricId = specialistSkillName,
-      body = "governed rubric body for $specialistSkillName",
-      area = specialistSkillName.substringAfter("-code-review-", "generic"),
-    )
+    override fun resolve(
+      manifest: PlatformManifest?,
+      evidence: List<skillbill.ports.review.model.ReviewOwnedFileEvidence>,
+      specialistSkillName: String,
+    ): ResolvedReviewRubric {
+      recorder.rubricResolutions += specialistSkillName
+      return ResolvedReviewRubric(
+        rubricId = specialistSkillName,
+        body = rubricBody(specialistSkillName),
+        area = specialistSkillName.substringAfter("-code-review-", "generic"),
+      )
+    }
   }
-}
 
 private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory {
   val reviews = Proxy.newProxyInstance(

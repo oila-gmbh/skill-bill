@@ -18,6 +18,9 @@ dependencies {
   implementation(project(":runtime-infra-sqlite"))
   implementation(libs.kotlin.inject.runtime)
   ksp(libs.kotlin.inject.compiler)
+  // SKILL-129 subtask 5: the durable/telemetry redaction proof drives the production review runner
+  // through the shared recording harness rather than hand-building an accounting summary.
+  testImplementation(testFixtures(project(":runtime-application")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }
