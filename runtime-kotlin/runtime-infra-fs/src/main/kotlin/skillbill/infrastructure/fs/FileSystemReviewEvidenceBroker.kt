@@ -42,6 +42,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   private var cumulativeBytes = 0L
   private var resultBytes = 0L
+  private var laneResultObserved = false
   private var toolCalls = 0
   private var modelTurns = 0
   private val expansionLedger = mutableListOf<ReviewExpansionRecord>()
@@ -159,6 +160,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   @Synchronized
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
+    laneResultObserved = true
     terminalOutcome?.let { return it }
     resultBytes = maxOf(resultBytes, result.toByteArray(StandardCharsets.UTF_8).size.toLong())
     return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
@@ -166,10 +168,14 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   @Synchronized
   override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
+    laneResultObserved = true
     terminalOutcome?.let { return it }
     resultBytes += chunk.toByteArray(StandardCharsets.UTF_8).size.toLong()
     return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { terminalOutcome = it }
   }
+
+  @Synchronized
+  override fun hasObservedLaneResult(): Boolean = laneResultObserved
 
   @Synchronized
   override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? {

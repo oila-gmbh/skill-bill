@@ -26,6 +26,9 @@ interface ReviewEvidenceBroker {
   /** Observes cumulative provider result bytes while the lane is still running. */
   fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome?
 
+  /** Distinguishes an observed empty provider result from a provider with no decoded result. */
+  fun hasObservedLaneResult(): Boolean = accounting().resultBytes > 0
+
   fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome?
 
   fun accounting(): ReviewLaneAccounting
