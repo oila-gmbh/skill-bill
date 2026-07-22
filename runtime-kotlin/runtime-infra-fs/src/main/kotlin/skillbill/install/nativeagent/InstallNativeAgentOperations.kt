@@ -156,12 +156,7 @@ object InstallNativeAgentOperations {
     if (targets.isEmpty()) return NativeAgentLinkOutcome(emptyList(), emptyList())
     val cacheRoot = request.overrides.installCacheRoot?.toAbsolutePath()?.normalize()
       ?: NativeAgentOperations.installCacheRoot(resolvedHome, request.platformPacksRoot, request.skillsRoot)
-    val rollback = ProviderReconciliationSnapshot.capture(
-      resolvedHome,
-      provider,
-      cacheRoot,
-      listOfNotNull(cacheRoot, request.overrides.legacyManagedRoot),
-    )
+    val journal = ProviderMutationJournal()
     return try {
       val generated = NativeAgentOperations.renderInstallArtifacts(
         NativeAgentInstallRenderRequest(
@@ -173,6 +168,7 @@ object InstallNativeAgentOperations {
           overrides = NativeAgentInstallRenderOverrides(
             cacheRoot = request.overrides.installCacheRoot,
             sourceRoots = request.overrides.sourceRoots,
+            beforeMutation = journal::beforeMutation,
           ),
         ),
       )
@@ -181,7 +177,14 @@ object InstallNativeAgentOperations {
       val skipped = mutableListOf<NativeAgentSkippedLink>()
       targets.forEach { target ->
         generated.generatedFiles.forEach { file ->
-          when (val result = installNativeAgentFile(file, target, managedSourceRoots = managedRoots)) {
+          when (
+            val result = installNativeAgentFile(
+              file,
+              target,
+              managedSourceRoots = managedRoots,
+              beforeMutation = journal::beforeMutation,
+            )
+          ) {
             is InstallNativeAgentResult.Linked -> linked.add(result.link)
             is InstallNativeAgentResult.Skipped -> skipped.add(NativeAgentSkippedLink(result.link, result.reason))
           }
@@ -209,10 +212,12 @@ object InstallNativeAgentOperations {
         provider = provider.name.lowercase(),
         desired = desired,
         managedRoots = managedRoots,
+        sourceRoot = validationRoot,
+        beforeMutation = journal::beforeMutation,
       )
       NativeAgentLinkOutcome(linked, skipped)
     } catch (error: Throwable) {
-      runCatching { rollback.restore() }.exceptionOrNull()?.let(error::addSuppressed)
+      journal.restore().forEach(error::addSuppressed)
       throw error
     }
   }
@@ -251,113 +256,32 @@ object InstallNativeAgentOperations {
     return pattern.find(text)?.groupValues?.get(1)?.trim()
   }
 
-  private data class ProviderReconciliationSnapshot(
-    val links: Map<Path, Path>,
-    val providerDirectories: Map<Path, Boolean>,
-    val cacheEntries: Map<Path, FileSnapshot>,
-    val cacheRoot: Path,
-    val cacheRootExisted: Boolean,
-    val inventoryPath: Path,
-    val inventory: FileSnapshot?,
-    val managedRoots: List<Path>,
-  ) {
-    fun restore() {
-      restoreProviderLinks()
-      restoreCache()
-      restoreInventory()
-      removeCreatedDirectories()
-    }
+  private class ProviderMutationJournal {
+    private val entries = linkedMapOf<Path, FileSnapshot?>()
 
-    private fun restoreProviderLinks() {
-      providerDirectories.keys.forEach { directory ->
-        if (Files.isDirectory(directory)) {
-          Files.list(directory).use { paths ->
-            paths.iterator().asSequence().filter(Files::isSymbolicLink).filter { link ->
-              val raw = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return@filter false
-              val resolved = link.parent.resolve(raw).toAbsolutePath().normalize()
-              managedRoots.any { resolved.startsWith(it.toAbsolutePath().normalize()) }
-            }.forEach(Files::deleteIfExists)
-          }
-        }
-      }
-      links.forEach { (link, rawTarget) ->
-        Files.createDirectories(link.parent)
-        val currentTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull()
-        if (currentTarget != rawTarget) {
-          Files.deleteIfExists(link)
-          Files.createSymbolicLink(link, rawTarget)
-        }
+    fun beforeMutation(path: Path) {
+      val normalized = path.toAbsolutePath().normalize()
+      if (normalized !in entries) {
+        entries[normalized] = normalized.takeIf { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
+          ?.let(FileSnapshot::capture)
       }
     }
 
-    private fun restoreCache() {
-      if (Files.isDirectory(cacheRoot)) {
-        Files.walk(cacheRoot).use { paths ->
-          paths.iterator().asSequence().sortedByDescending { it.nameCount }
-            .filter { it != cacheRoot }.forEach(Files::deleteIfExists)
-        }
-      }
-      cacheEntries.entries.sortedBy { it.key.nameCount }.forEach { (path, snapshot) -> snapshot.restore(path) }
-    }
-
-    private fun restoreInventory() {
-      if (inventory == null) {
-        Files.deleteIfExists(inventoryPath)
-      } else {
-        Files.createDirectories(inventoryPath.parent)
-        inventory.restore(inventoryPath)
-      }
-    }
-
-    private fun removeCreatedDirectories() {
-      if (!cacheRootExisted && Files.isDirectory(cacheRoot) && isEmptyDirectory(cacheRoot)) {
-        Files.deleteIfExists(cacheRoot)
-      }
-      providerDirectories.filterValues { existed -> !existed }.keys
-        .sortedByDescending { it.nameCount }
-        .forEach { path ->
-          if (Files.isDirectory(path) && isEmptyDirectory(path)) Files.deleteIfExists(path)
-        }
-    }
-
-    companion object {
-      fun capture(
-        home: Path,
-        provider: NativeAgentProvider,
-        cacheRoot: Path,
-        managedRoots: List<Path>,
-      ): ProviderReconciliationSnapshot {
-        val providerDirectories = provider.homeAgentDirs(home).associateWith { Files.isDirectory(it) }
-        val links = providerDirectories.keys.flatMap { directory ->
-          if (!Files.isDirectory(directory)) {
-            emptyList()
-          } else {
-            Files.list(directory).use { paths ->
-              paths.iterator().asSequence().filter(Files::isSymbolicLink)
-                .associateWith(Files::readSymbolicLink).entries.toList()
+    fun restore(): List<Throwable> {
+      val failures = mutableListOf<Throwable>()
+      entries.entries.toList().asReversed().forEach { (path, snapshot) ->
+        runCatching {
+          if (snapshot == null) {
+            when {
+              Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) && isEmptyDirectory(path) -> Files.deleteIfExists(path)
+              !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> Files.deleteIfExists(path)
             }
+          } else {
+            snapshot.restore(path)
           }
-        }.associate { it.key to it.value }
-        val cacheEntries = if (!Files.isDirectory(cacheRoot)) {
-          emptyMap()
-        } else {
-          Files.walk(cacheRoot).use { paths ->
-            paths.iterator().asSequence().filter { it != cacheRoot }
-              .associateWith(FileSnapshot::capture)
-          }
-        }
-        val inventory = home.resolve(".skill-bill/native-agent-link-inventory.json")
-        return ProviderReconciliationSnapshot(
-          links,
-          providerDirectories,
-          cacheEntries,
-          cacheRoot,
-          Files.isDirectory(cacheRoot),
-          inventory,
-          inventory.takeIf { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }?.let(FileSnapshot::capture),
-          managedRoots.map { it.toAbsolutePath().normalize() },
-        )
+        }.exceptionOrNull()?.let(failures::add)
       }
+      return failures
     }
   }
 
@@ -368,14 +292,15 @@ object InstallNativeAgentOperations {
     val permissions: Set<PosixFilePermission>?,
   ) {
     fun restore(path: Path) {
-      Files.deleteIfExists(path)
       when (kind) {
         FileKind.Directory -> Files.createDirectories(path)
         FileKind.Regular -> {
+          Files.deleteIfExists(path)
           Files.createDirectories(path.parent)
           Files.write(path, requireNotNull(bytes))
         }
         FileKind.SymbolicLink -> {
+          Files.deleteIfExists(path)
           Files.createDirectories(path.parent)
           Files.createSymbolicLink(path, requireNotNull(rawTarget))
         }

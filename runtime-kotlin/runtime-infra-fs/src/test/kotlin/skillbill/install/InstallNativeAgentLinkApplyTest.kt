@@ -273,6 +273,51 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `native agent install preserves external symlink under similarly named provider directory`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
+    val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
+    val externalRoot = Files.createTempDirectory("skillbill-native-external").also(tempDirs::add)
+    val newSource = managedRoot.resolve("codex-agents/bill-worker.toml")
+    val userSource = externalRoot.resolve("codex-agents/bill-worker.toml")
+    Files.createDirectories(newSource.parent)
+    Files.createDirectories(userSource.parent)
+    Files.writeString(newSource, "new")
+    Files.writeString(userSource, "user")
+    val linkPath = targetDir.resolve("bill-worker.toml")
+    createSymlinkOrSkip(linkPath, userSource)
+
+    val result = installNativeAgentFile(newSource, AgentTarget("codex", targetDir), listOf(managedRoot))
+
+    assertTrue(result is InstallNativeAgentResult.Skipped)
+    assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
+  fun `inventory deletion followed by multi provider apply publishes canonical readable entries`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".config/opencode"))
+    val request = fixture.request(
+      selectedPlatforms = setOf("kotlin"),
+      agents = setOf(InstallAgent.CODEX, InstallAgent.OPENCODE),
+    )
+    val first = InstallOperations.applyInstall(InstallOperations.planInstall(request))
+    assertEquals(InstallApplyStatus.SUCCESS, first.status)
+    Files.delete(fixture.home.resolve(".skill-bill/native-agent-link-inventory.json"))
+
+    val second = InstallOperations.applyInstall(InstallOperations.planInstall(request))
+    assertEquals(InstallApplyStatus.SUCCESS, second.status)
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val entries = NativeAgentLinkInventory.read(fixture.home, listOf(cacheRoot), fixture.repoRoot)
+    assertEquals(setOf("codex", "opencode"), entries.map { it.provider }.toSet())
+    assertTrue(entries.all { it.contentDigest != "0".repeat(64) && Files.isReadable(it.cacheTargetPath) })
+  }
+
+  @Test
   fun `native agent install preserves non agent symlink inside source roots`() {
     val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
     val cacheRoot = Files.createTempDirectory("skillbill-native-cache-root").also(tempDirs::add)

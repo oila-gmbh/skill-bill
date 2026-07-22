@@ -1,4 +1,4 @@
-@file:Suppress("TooGenericExceptionCaught")
+@file:Suppress("TooGenericExceptionCaught", "TooManyFunctions", "LongParameterList")
 
 package skillbill.install.nativeagent
 
@@ -9,11 +9,13 @@ import com.networknt.schema.SpecVersion
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
 import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import skillbill.nativeagent.rendering.NativeAgentOperations
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
 
 internal data class NativeAgentLinkInventoryEntry(
   val logicalName: String,
@@ -31,17 +33,30 @@ internal object NativeAgentLinkInventory {
     JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(YAMLMapper().readTree(resource))
   }
 
-  fun reconcile(home: Path, provider: String, desired: List<NativeAgentLinkInventoryEntry>, managedRoots: List<Path>) {
+  fun reconcile(
+    home: Path,
+    provider: String,
+    desired: List<NativeAgentLinkInventoryEntry>,
+    managedRoots: List<Path>,
+    sourceRoot: Path,
+    beforeMutation: (Path) -> Unit = {},
+  ) {
     val path = inventoryPath(home)
     val trustedRoots = managedRoots + listOf(home.resolve(".skill-bill/installed-skills"))
-    val previous = read(home, trustedRoots)
+    val previous = read(home, trustedRoots, sourceRoot)
     val desiredPaths = desired.map { it.installedPath.normalize() }.toSet()
     previous.filter { it.provider == provider && it.installedPath.normalize() !in desiredPaths }.forEach { stale ->
-      removeIfStillManaged(stale, trustedRoots)
+      removeIfStillManaged(stale, home, trustedRoots, beforeMutation)
     }
     val retained = previous.filter { it.provider != provider }
     try {
-      write(path, (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })))
+      write(
+        path,
+        (retained + desired).sortedWith(compareBy({ it.provider }, { it.installedPath.toString() })),
+        home,
+        trustedRoots,
+        beforeMutation,
+      )
     } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
       throw error
     } catch (error: Exception) {
@@ -52,9 +67,11 @@ internal object NativeAgentLinkInventory {
     }
   }
 
-  fun read(home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> {
+  fun read(home: Path, managedRoots: List<Path>, sourceRoot: Path? = null): List<NativeAgentLinkInventoryEntry> {
     val path = inventoryPath(home)
-    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return bootstrap(home, managedRoots)
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      return sourceRoot?.let { bootstrap(home, managedRoots, it) }.orEmpty()
+    }
     if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
       throw InvalidNativeAgentLinkInventorySchemaError(
         "Invalid native-agent link inventory '$path': inventory must be a regular file. Delete it and reinstall.",
@@ -63,14 +80,23 @@ internal object NativeAgentLinkInventory {
     return decode(path, home, managedRoots)
   }
 
-  private fun removeIfStillManaged(entry: NativeAgentLinkInventoryEntry, managedRoots: List<Path>) {
+  private fun removeIfStillManaged(
+    entry: NativeAgentLinkInventoryEntry,
+    home: Path,
+    managedRoots: List<Path>,
+    beforeMutation: (Path) -> Unit,
+  ) {
     val link = entry.installedPath
     val provider = provider(entry.provider)
     if (link.fileName.toString() != provider.fileName(entry.logicalName)) return
     if (!Files.isSymbolicLink(link)) return
     val rawTarget = runCatching { Files.readSymbolicLink(link) }.getOrNull() ?: return
     val resolved = (link.parent ?: link.toAbsolutePath().parent).resolve(rawTarget).toAbsolutePath().normalize()
-    if (managedRoots.any { root -> resolved == provider.cacheArtifactPath(root, entry.logicalName) }) {
+    if (canonicalCacheRoots(home, entry, managedRoots).any { root ->
+        resolved == provider.cacheArtifactPath(root, entry.logicalName)
+      }
+    ) {
+      beforeMutation(link)
       Files.deleteIfExists(link)
     }
   }
@@ -107,9 +133,6 @@ internal object NativeAgentLinkInventory {
           "source_root must be an absolute bounded path"
         }
         require(entry.sourceRoot == entry.sourceRoot.normalize()) { "source_root must be normalized" }
-        require(Files.isDirectory(entry.sourceRoot, LinkOption.NOFOLLOW_LINKS)) {
-          "source_root must identify a regular repository directory"
-        }
         require(entry.installedPath == entry.installedPath.normalize()) { "installed_path must be normalized" }
         require(entry.cacheTargetPath == entry.cacheTargetPath.normalize()) { "cache_target_path must be normalized" }
         require(LOGICAL_NAME.matches(entry.logicalName)) { "logical_name must be a single filename stem" }
@@ -120,7 +143,9 @@ internal object NativeAgentLinkInventory {
           "installed_path does not match provider/logical_name identity"
         }
         require(
-          managedRoots.any { root -> entry.cacheTargetPath == provider.cacheArtifactPath(root, entry.logicalName) },
+          canonicalCacheRoots(home, entry, managedRoots).any { root ->
+            entry.cacheTargetPath == provider.cacheArtifactPath(root, entry.logicalName)
+          },
         ) {
           "cache_target_path does not match a trusted provider artifact"
         }
@@ -134,7 +159,7 @@ internal object NativeAgentLinkInventory {
     }
   }
 
-  private fun bootstrap(home: Path, managedRoots: List<Path>): List<NativeAgentLinkInventoryEntry> =
+  private fun bootstrap(home: Path, managedRoots: List<Path>, sourceRoot: Path): List<NativeAgentLinkInventoryEntry> =
     skillbill.nativeagent.rendering.NativeAgentProvider.entries.flatMap { provider ->
       provider.homeAgentDirs(home).flatMap { directory ->
         if (!Files.isDirectory(directory)) return@flatMap emptyList()
@@ -154,15 +179,21 @@ internal object NativeAgentLinkInventory {
               provider.name.lowercase(),
               link.toAbsolutePath().normalize(),
               resolved,
-              "0".repeat(DIGEST_HEX_LENGTH),
-              home.resolve(".skill-bill/native-agents"),
+              sha256(Files.readAllBytes(resolved)),
+              sourceRoot.toAbsolutePath().normalize(),
             )
           }.toList()
         }
       }
     }
 
-  private fun write(path: Path, entries: List<NativeAgentLinkInventoryEntry>) {
+  private fun write(
+    path: Path,
+    entries: List<NativeAgentLinkInventoryEntry>,
+    home: Path,
+    managedRoots: List<Path>,
+    beforeMutation: (Path) -> Unit,
+  ) {
     path.parent?.let(Files::createDirectories)
     val root = mapper.createObjectNode().put("contract_version", NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION)
     val array = root.putArray("entries")
@@ -179,9 +210,11 @@ internal object NativeAgentLinkInventory {
     require(bytes.size <= MAX_BYTES) { "native-agent link inventory exceeds $MAX_BYTES bytes" }
     val schemaErrors = schema.validate(mapper.readTree(bytes))
     require(schemaErrors.isEmpty()) { schemaErrors.joinToString("; ") { it.message } }
+    validateSemanticEntries(entries, home, managedRoots)
     val temporary = Files.createTempFile(path.parent, "${path.fileName}.", ".tmp")
     try {
       Files.write(temporary, bytes)
+      beforeMutation(path)
       try {
         Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
       } catch (_: AtomicMoveNotSupportedException) {
@@ -191,6 +224,61 @@ internal object NativeAgentLinkInventory {
       Files.deleteIfExists(temporary)
     }
   }
+
+  private fun validateSemanticEntries(
+    entries: List<NativeAgentLinkInventoryEntry>,
+    home: Path,
+    managedRoots: List<Path>,
+  ) {
+    require(entries.map { it.provider to it.installedPath.normalize() }.distinct().size == entries.size) {
+      "duplicate provider/installed_path entry"
+    }
+    val logicalIdentities = entries.map {
+      Triple(it.provider, it.installedPath.parent.normalize(), it.logicalName)
+    }
+    require(logicalIdentities.distinct().size == entries.size) {
+      "duplicate provider/directory/logical_name entry"
+    }
+    entries.forEach { entry ->
+      val provider = provider(entry.provider)
+      require(entry.sourceRoot.isAbsolute && entry.sourceRoot == entry.sourceRoot.normalize()) {
+        "invalid source_root"
+      }
+      require(entry.installedPath.isAbsolute && entry.installedPath == entry.installedPath.normalize()) {
+        "invalid installed_path"
+      }
+      require(entry.cacheTargetPath.isAbsolute && entry.cacheTargetPath == entry.cacheTargetPath.normalize()) {
+        "invalid cache_target_path"
+      }
+      require(entry.installedPath.parent in provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }) {
+        "installed_path is outside provider directory"
+      }
+      require(entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName)) {
+        "invalid installed identity"
+      }
+      require(
+        canonicalCacheRoots(home, entry, managedRoots).any {
+          entry.cacheTargetPath == provider.cacheArtifactPath(it, entry.logicalName)
+        },
+      ) {
+        "cache_target_path does not match a trusted provider artifact"
+      }
+      require(entry.contentDigest.matches(Regex("[0-9a-f]{$DIGEST_HEX_LENGTH}"))) { "invalid content_digest" }
+    }
+  }
+
+  private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+    .digest(bytes).joinToString("") { byte -> "%02x".format(byte) }
+
+  private fun canonicalCacheRoots(
+    home: Path,
+    entry: NativeAgentLinkInventoryEntry,
+    managedRoots: List<Path>,
+  ): List<Path> = managedRoots.map { it.toAbsolutePath().normalize() } + NativeAgentOperations.installCacheRoot(
+    home,
+    entry.sourceRoot.resolve("platform-packs"),
+    entry.sourceRoot.resolve("skills"),
+  )
 
   private fun com.fasterxml.jackson.databind.JsonNode.requiredText(field: String): String =
     get(field)?.asText()?.takeIf(String::isNotBlank) ?: error("$field is required")

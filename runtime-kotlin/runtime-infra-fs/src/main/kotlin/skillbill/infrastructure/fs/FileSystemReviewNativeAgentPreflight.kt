@@ -31,7 +31,7 @@ class FileSystemReviewNativeAgentPreflight(
       request.repoRoot.resolve("platform-packs"),
       request.repoRoot.resolve("skills"),
     )
-    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache))
+    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache), request.repoRoot)
     request.agentIds.distinct().forEach { agentId ->
       val provider = provider(agentId) ?: throw MissingInstalledNativeAgentError(
         request.logicalNames.firstOrNull() ?: "unknown",
