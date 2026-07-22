@@ -125,6 +125,31 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `failed first reconciliation removes every transaction created ancestor`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+    Files.createDirectories(inventory.parent)
+    Files.writeString(inventory, "not-json")
+    val nativeAgentCache = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val providerAgents = fixture.home.resolve(".codex/agents")
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.FAILURE, result.status)
+    assertFalse(Files.exists(nativeAgentCache, LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(providerAgents, LinkOption.NOFOLLOW_LINKS))
+    assertEquals("not-json", Files.readString(inventory))
+  }
+
+  @Test
   fun `preflight accepts the current installed-skills native-agent generation`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
@@ -181,6 +206,36 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertFalse(Files.exists(kotlinLink, LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(kmpLink, LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `missing inventory removes canonical dangling links across provider layouts`() {
+    val fixture = setupApplyFixture()
+    listOf(".claude", ".codex", ".config/opencode", ".junie", ".zcode")
+      .forEach { Files.createDirectories(fixture.home.resolve(it)) }
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val danglingLinks = NativeAgentProvider.entries.map { provider ->
+      val agentDir = provider.homeAgentDirs(fixture.home).first()
+      Files.createDirectories(agentDir)
+      val logicalName = "bill-obsolete-${provider.name.lowercase()}-worker"
+      val target = provider.cacheArtifactPath(cacheRoot, logicalName)
+      agentDir.resolve(provider.fileName(logicalName)).also { createSymlinkOrSkip(it, target) }
+    }
+    Files.deleteIfExists(fixture.home.resolve(".skill-bill/native-agent-link-inventory.json"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    danglingLinks.forEach { link ->
+      assertFalse(Files.exists(link, LinkOption.NOFOLLOW_LINKS), "canonical dangling link survived: $link")
+    }
   }
 
   @Test

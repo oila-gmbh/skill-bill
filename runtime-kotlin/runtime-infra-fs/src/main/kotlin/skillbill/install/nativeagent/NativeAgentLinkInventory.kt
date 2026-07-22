@@ -40,15 +40,29 @@ internal object NativeAgentLinkInventory {
     managedRoots: List<Path>,
     sourceRoot: Path,
     beforeMutation: (Path) -> Unit = {},
+    afterTemporaryCreation: (Path) -> Unit = {},
   ) {
     val path = inventoryPath(home)
     val trustedRoots = managedRoots + listOf(home.resolve(".skill-bill/installed-skills"))
-    val previous = read(home, trustedRoots, sourceRoot)
+    val previous = if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      read(home, trustedRoots, sourceRoot)
+    } else {
+      val bootstrap = bootstrap(home, trustedRoots, sourceRoot)
+      bootstrap.remove.forEach { removeIfStillManaged(it, home, trustedRoots, beforeMutation) }
+      bootstrap.retain
+    }
     val desiredPaths = desired.map { it.installedPath.normalize() }.toSet()
     previous.filter { it.provider == provider && it.installedPath.normalize() !in desiredPaths }.forEach { stale ->
       removeIfStillManaged(stale, home, trustedRoots, beforeMutation)
     }
-    val retained = previous.filter { it.provider != provider }
+    val retained = previous.filter { it.provider != provider }.filter { entry ->
+      if (isSemanticallyValid(entry, home, trustedRoots)) {
+        true
+      } else {
+        removeIfStillManaged(entry, home, trustedRoots, beforeMutation)
+        false
+      }
+    }
     try {
       write(
         path,
@@ -56,6 +70,7 @@ internal object NativeAgentLinkInventory {
         home,
         trustedRoots,
         beforeMutation,
+        afterTemporaryCreation,
       )
     } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
       throw error
@@ -70,7 +85,7 @@ internal object NativeAgentLinkInventory {
   fun read(home: Path, managedRoots: List<Path>, sourceRoot: Path? = null): List<NativeAgentLinkInventoryEntry> {
     val path = inventoryPath(home)
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-      return sourceRoot?.let { bootstrap(home, managedRoots, it) }.orEmpty()
+      return sourceRoot?.let { bootstrap(home, managedRoots, it).retain }.orEmpty()
     }
     if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
       throw InvalidNativeAgentLinkInventorySchemaError(
@@ -159,7 +174,14 @@ internal object NativeAgentLinkInventory {
     }
   }
 
-  private fun bootstrap(home: Path, managedRoots: List<Path>, sourceRoot: Path): List<NativeAgentLinkInventoryEntry> =
+  private data class BootstrapPlan(
+    val retain: List<NativeAgentLinkInventoryEntry>,
+    val remove: List<NativeAgentLinkInventoryEntry>,
+  )
+
+  private fun bootstrap(home: Path, managedRoots: List<Path>, sourceRoot: Path): BootstrapPlan {
+    val retain = mutableListOf<NativeAgentLinkInventoryEntry>()
+    val remove = mutableListOf<NativeAgentLinkInventoryEntry>()
     skillbill.nativeagent.rendering.NativeAgentProvider.entries.flatMap { provider ->
       provider.homeAgentDirs(home).flatMap { directory ->
         if (!Files.isDirectory(directory)) return@flatMap emptyList()
@@ -174,18 +196,26 @@ internal object NativeAgentLinkInventory {
             if (managedRoots.none { root -> resolved == provider.cacheArtifactPath(root, logicalName) }) {
               return@mapNotNull null
             }
-            NativeAgentLinkInventoryEntry(
+            val entry = NativeAgentLinkInventoryEntry(
               logicalName,
               provider.name.lowercase(),
               link.toAbsolutePath().normalize(),
               resolved,
-              sha256(Files.readAllBytes(resolved)),
-              sourceRoot.toAbsolutePath().normalize(),
+              contentDigest = if (Files.isRegularFile(resolved) && Files.isReadable(resolved)) {
+                runCatching { sha256(Files.readAllBytes(resolved)) }.getOrDefault(EMPTY_DIGEST)
+              } else {
+                EMPTY_DIGEST
+              },
+              sourceRoot = sourceRoot.toAbsolutePath().normalize(),
             )
+            if (isSemanticallyValid(entry, home, managedRoots)) retain += entry else remove += entry
+            entry
           }.toList()
         }
       }
     }
+    return BootstrapPlan(retain, remove)
+  }
 
   private fun write(
     path: Path,
@@ -193,8 +223,12 @@ internal object NativeAgentLinkInventory {
     home: Path,
     managedRoots: List<Path>,
     beforeMutation: (Path) -> Unit,
+    afterTemporaryCreation: (Path) -> Unit,
   ) {
-    path.parent?.let(Files::createDirectories)
+    path.parent?.let { parent ->
+      journalMissingAncestors(parent, beforeMutation)
+      Files.createDirectories(parent)
+    }
     val root = mapper.createObjectNode().put("contract_version", NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION)
     val array = root.putArray("entries")
     entries.forEach { entry ->
@@ -212,6 +246,8 @@ internal object NativeAgentLinkInventory {
     require(schemaErrors.isEmpty()) { schemaErrors.joinToString("; ") { it.message } }
     validateSemanticEntries(entries, home, managedRoots)
     val temporary = Files.createTempFile(path.parent, "${path.fileName}.", ".tmp")
+    afterTemporaryCreation(temporary)
+    var initiatingFailure: Exception? = null
     try {
       Files.write(temporary, bytes)
       beforeMutation(path)
@@ -220,9 +256,13 @@ internal object NativeAgentLinkInventory {
       } catch (_: AtomicMoveNotSupportedException) {
         Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
       }
-    } finally {
-      Files.deleteIfExists(temporary)
+    } catch (error: Exception) {
+      initiatingFailure = error
     }
+    val cleanupFailure = runCatching { Files.deleteIfExists(temporary) }.exceptionOrNull()
+    cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
+    initiatingFailure?.let { throw it }
+    cleanupFailure?.let { throw it }
   }
 
   private fun validateSemanticEntries(
@@ -264,7 +304,46 @@ internal object NativeAgentLinkInventory {
         "cache_target_path does not match a trusted provider artifact"
       }
       require(entry.contentDigest.matches(Regex("[0-9a-f]{$DIGEST_HEX_LENGTH}"))) { "invalid content_digest" }
+      require(isSemanticallyValid(entry, home, managedRoots)) { "installed artifact is not semantically valid" }
     }
+  }
+
+  private fun isSemanticallyValid(
+    entry: NativeAgentLinkInventoryEntry,
+    home: Path,
+    managedRoots: List<Path>,
+  ): Boolean {
+    return runCatching {
+      val provider = provider(entry.provider)
+      val raw = Files.readSymbolicLink(entry.installedPath)
+      val resolved = entry.installedPath.parent.resolve(raw).toAbsolutePath().normalize()
+      entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName) &&
+        Files.isSymbolicLink(entry.installedPath) &&
+        resolved == entry.cacheTargetPath &&
+        canonicalCacheRoots(home, entry, managedRoots).any {
+          resolved == provider.cacheArtifactPath(it, entry.logicalName)
+        } &&
+        Files.isRegularFile(resolved) &&
+        Files.isReadable(resolved) &&
+        parseEmbeddedLogicalName(resolved, entry.provider) == entry.logicalName &&
+        sha256(Files.readAllBytes(resolved)) == entry.contentDigest
+    }.getOrDefault(false)
+  }
+
+  private fun parseEmbeddedLogicalName(path: Path, provider: String): String? {
+    val text = Files.readString(path)
+    val pattern = if (provider == "codex") {
+      Regex("(?m)^name\\s*=\\s*\\\"([^\\\"]+)\\\"")
+    } else {
+      Regex("(?m)^name:\\s*['\\\"]?([^'\\\"\\r\\n]+)")
+    }
+    return pattern.find(text)?.groupValues?.get(1)?.trim()
+  }
+
+  private fun journalMissingAncestors(path: Path, beforeMutation: (Path) -> Unit) {
+    val missing = generateSequence(path.toAbsolutePath().normalize()) { it.parent }
+      .takeWhile { !Files.exists(it, LinkOption.NOFOLLOW_LINKS) }.toList().asReversed()
+    missing.forEach(beforeMutation)
   }
 
   private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
@@ -288,6 +367,7 @@ internal object NativeAgentLinkInventory {
 
   private const val MAX_BYTES = 1024 * 1024L
   private const val DIGEST_HEX_LENGTH = 64
+  private val EMPTY_DIGEST = "0".repeat(DIGEST_HEX_LENGTH)
   private const val MAX_SOURCE_ROOT_LENGTH = 4096
   private val LOGICAL_NAME = Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
   private val PROVIDERS = setOf("claude", "codex", "opencode", "junie", "zcode")

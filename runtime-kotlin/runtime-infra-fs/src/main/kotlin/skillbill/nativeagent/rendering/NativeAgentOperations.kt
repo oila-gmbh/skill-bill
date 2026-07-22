@@ -40,6 +40,7 @@ data class NativeAgentInstallRenderOverrides(
   val cacheRoot: Path? = null,
   val sourceRoots: List<Path>? = null,
   val beforeMutation: (Path) -> Unit = {},
+  val afterTemporaryCreation: (Path) -> Unit = {},
 )
 
 data class NativeAgentInstallRenderRequest(
@@ -107,6 +108,7 @@ object NativeAgentOperations {
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
+  @Suppress("LongMethod", "TooGenericExceptionCaught")
   fun renderInstallArtifacts(request: NativeAgentInstallRenderRequest): NativeAgentInstallRenderResult {
     val platformPacksRoot = request.platformPacksRoot
     val skillsRoot = request.skillsRoot
@@ -140,7 +142,10 @@ object NativeAgentOperations {
         .toList()
     }
     val staging = Files.createTempDirectory(providerRoot, ".skill-bill-native-agent-render-")
-    return try {
+    request.overrides.afterTemporaryCreation(staging)
+    var result: NativeAgentInstallRenderResult? = null
+    var initiatingFailure: Throwable? = null
+    try {
       rendered.forEach { entry ->
         Files.write(staging.resolve(entry.targetName), entry.contents)
       }
@@ -151,7 +156,7 @@ object NativeAgentOperations {
         orphanCandidates,
         request.overrides.beforeMutation,
       )
-      NativeAgentInstallRenderResult(
+      result = NativeAgentInstallRenderResult(
         generatedFiles = generated.sortedBy { it.toString() },
         artifacts = generated.map { path ->
           NativeAgentRenderedArtifact(
@@ -162,9 +167,14 @@ object NativeAgentOperations {
         }.sortedBy { it.path.toString() },
         cacheRoot = cacheRoot,
       )
-    } finally {
-      deleteDirectoryRecursively(staging)
+    } catch (error: Exception) {
+      initiatingFailure = error
     }
+    val cleanupFailure = runCatching { deleteDirectoryRecursively(staging) }.exceptionOrNull()
+    cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
+    initiatingFailure?.let { throw it }
+    cleanupFailure?.let { throw it }
+    return requireNotNull(result)
   }
 
   private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")

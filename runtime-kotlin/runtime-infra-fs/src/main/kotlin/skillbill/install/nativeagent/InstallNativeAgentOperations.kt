@@ -14,6 +14,8 @@ import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.attribute.DosFileAttributeView
+import java.nio.file.attribute.DosFileAttributes
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
 
@@ -169,6 +171,7 @@ object InstallNativeAgentOperations {
             cacheRoot = request.overrides.installCacheRoot,
             sourceRoots = request.overrides.sourceRoots,
             beforeMutation = journal::beforeMutation,
+            afterTemporaryCreation = journal::afterTemporaryCreation,
           ),
         ),
       )
@@ -214,6 +217,7 @@ object InstallNativeAgentOperations {
         managedRoots = managedRoots,
         sourceRoot = validationRoot,
         beforeMutation = journal::beforeMutation,
+        afterTemporaryCreation = journal::afterTemporaryCreation,
       )
       NativeAgentLinkOutcome(linked, skipped)
     } catch (error: Throwable) {
@@ -261,6 +265,17 @@ object InstallNativeAgentOperations {
 
     fun beforeMutation(path: Path) {
       val normalized = path.toAbsolutePath().normalize()
+      generateSequence(normalized.parent) { it.parent }
+        .takeWhile { !Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
+        .toList().asReversed().forEach(::record)
+      record(normalized)
+    }
+
+    fun afterTemporaryCreation(path: Path) {
+      entries.putIfAbsent(path.toAbsolutePath().normalize(), null)
+    }
+
+    private fun record(normalized: Path) {
       if (normalized !in entries) {
         entries[normalized] = normalized.takeIf { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
           ?.let(FileSnapshot::capture)
@@ -290,6 +305,7 @@ object InstallNativeAgentOperations {
     val bytes: ByteArray?,
     val rawTarget: Path?,
     val permissions: Set<PosixFilePermission>?,
+    val dosAttributes: DosAttributes?,
   ) {
     fun restore(path: Path) {
       when (kind) {
@@ -306,6 +322,7 @@ object InstallNativeAgentOperations {
         }
       }
       permissions?.let { runCatching { Files.setPosixFilePermissions(path, it) } }
+      dosAttributes?.restore(path)
     }
 
     companion object {
@@ -318,7 +335,30 @@ object InstallNativeAgentOperations {
         bytes = path.takeIf { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }?.let(Files::readAllBytes),
         rawTarget = path.takeIf(Files::isSymbolicLink)?.let(Files::readSymbolicLink),
         permissions = runCatching { Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS) }.getOrNull(),
+        dosAttributes = runCatching {
+          Files.readAttributes(path, DosFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS).let {
+            DosAttributes(it.isReadOnly, it.isHidden, it.isArchive, it.isSystem)
+          }
+        }.getOrNull(),
       )
+    }
+  }
+
+  private data class DosAttributes(
+    val readOnly: Boolean,
+    val hidden: Boolean,
+    val archive: Boolean,
+    val system: Boolean,
+  ) {
+    fun restore(path: Path) {
+      runCatching {
+        Files.getFileAttributeView(path, DosFileAttributeView::class.java, LinkOption.NOFOLLOW_LINKS)?.apply {
+          setReadOnly(readOnly)
+          setHidden(hidden)
+          setArchive(archive)
+          setSystem(system)
+        }
+      }
     }
   }
 
