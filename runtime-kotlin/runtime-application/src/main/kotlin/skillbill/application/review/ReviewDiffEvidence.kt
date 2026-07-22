@@ -60,32 +60,65 @@ internal data class ReviewDiffEvidence(
     }
 
     private fun recordPaths(record: String): RecordPaths {
-      val headerPaths = parseDiffHeader(record.lineSequence().first())
-      val old = OLD_HEADER_PATH.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: RENAME_FROM.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: COPY_FROM.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: headerPaths?.first?.repositoryPath()
-      val new = HEADER_PATH.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: RENAME_TO.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: COPY_TO.find(record)?.groupValues?.get(1)?.repositoryPath()
-        ?: headerPaths?.second?.repositoryPath()
+      val oldSources = listOfNotNull(
+        OLD_HEADER_PATH.find(record)?.groupValues?.get(1)?.fileHeaderPath(OLD_PREFIX),
+        RENAME_FROM.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
+        COPY_FROM.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
+      )
+      val newSources = listOfNotNull(
+        HEADER_PATH.find(record)?.groupValues?.get(1)?.fileHeaderPath(NEW_PREFIX),
+        RENAME_TO.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
+        COPY_TO.find(record)?.groupValues?.get(1)?.extendedHeaderPath(),
+      )
+      val headerPaths = parseDiffHeader(record.lineSequence().first(), oldSources, newSources)
+      val old = agree("old", oldSources + listOfNotNull(headerPaths?.first))
+      val new = agree("new", newSources + listOfNotNull(headerPaths?.second))
       val authoritative = new ?: old
         ?: throw IllegalArgumentException("Malformed Git diff record has no attributable repository path.")
       return RecordPaths(old, new, authoritative)
     }
 
-    private fun String.repositoryPath(): String? = takeUnless { it.trim() == "/dev/null" }
-      ?.let(::decodeGitPath)?.removePrefix("a/")?.removePrefix("b/")?.replace('\\', '/')
+    private fun String.fileHeaderPath(prefix: String): String? = repositoryPath(prefix)
+
+    private fun String.extendedHeaderPath(): String? = repositoryPath(prefix = null)
+
+    private fun String.repositoryPath(prefix: String?): String? = takeUnless { it.trim() == "/dev/null" }
+      ?.let(::decodeGitPath)?.let { path ->
+        if (prefix == null) path else path.removePrefix(prefix)
+      }
       ?.also { require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
           "Malformed Git diff record has a non-repository path '$it'."
         } }
 
-    private fun parseDiffHeader(line: String): Pair<String, String>? {
+    private fun parseDiffHeader(
+      line: String,
+      corroboratedOld: List<String>,
+      corroboratedNew: List<String>,
+    ): Pair<String, String>? {
       val body = line.removePrefix("diff --git ").takeIf { it != line } ?: return null
       val tokens = parseGitTokens(body)
-      if (tokens.size == 2) return tokens[0] to tokens[1]
-      val boundary = body.lastIndexOf(" b/")
-      return if (boundary > 0) body.substring(0, boundary) to body.substring(boundary + 1) else null
+      if (tokens.size == 2) {
+        return requireNotNull(tokens[0].repositoryPath(OLD_PREFIX)) to
+          requireNotNull(tokens[1].repositoryPath(NEW_PREFIX))
+      }
+      val candidates = Regex(" b/").findAll(body).mapNotNull { boundary ->
+        runCatching {
+          requireNotNull(body.substring(0, boundary.range.first).repositoryPath(OLD_PREFIX)) to
+            requireNotNull(body.substring(boundary.range.first + 1).repositoryPath(NEW_PREFIX))
+        }.getOrNull()
+      }.filter { (old, new) ->
+        (corroboratedOld.isEmpty() || old in corroboratedOld) &&
+          (corroboratedNew.isEmpty() || new in corroboratedNew) &&
+          (corroboratedOld.isNotEmpty() || corroboratedNew.isNotEmpty() || old == new)
+      }.distinct().toList()
+      require(candidates.size == 1) { "Ambiguous Git diff header cannot establish repository path ownership." }
+      return candidates.single()
+    }
+
+    private fun agree(side: String, paths: List<String>): String? {
+      val distinct = paths.distinct()
+      require(distinct.size <= 1) { "Git diff $side path sources disagree: ${distinct.joinToString()}" }
+      return distinct.singleOrNull()
     }
 
     private fun parseGitTokens(value: String): List<String> {
@@ -152,6 +185,8 @@ internal data class ReviewDiffEvidence(
     private const val NEW_COUNT_GROUP = 4
     private const val GIT_OCTAL_WIDTH = 3
     private const val GIT_OCTAL_RADIX = 8
+    private const val OLD_PREFIX = "a/"
+    private const val NEW_PREFIX = "b/"
   }
 }
 
