@@ -322,19 +322,27 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
       "      concrete defect in production behavior or production implementation; when no such defect is\n" +
       "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
-      "      PROSPECTIVE REPAIR IMPACT ANALYSIS: before emitting gaps_found, analyze every proposed repair\n" +
-      "      as if it were already applied. Trace the affected production callers and callees, provider and\n" +
-      "      platform variants, lifecycle and state transitions, persistence/schema/serialization seams,\n" +
-      "      failure/timeout/cancellation/retry paths, permissions and isolation boundaries, and interactions\n" +
-      "      among all repairs in this plan. Treat already-satisfied criteria as non-regression constraints:\n" +
-      "      include preventative actions now for any boundary a repair could regress; do not wait for a\n" +
-      "      later audit to discover the consequence. Make each gap's diagnosis, affected_boundary,\n" +
-      "      issue and fix closure-complete for that blast radius. If a proposed repair would expose or\n" +
-      "      introduce another evidenced production defect, include it as a separate compact gap. On\n" +
-      "      follow-up audits, inspect the full\n" +
-      "      cumulative repair delta and cross-repair interactions, not only the previously named symbols.\n" +
-      "      Do not invent speculative gaps: every gap still needs concrete repository evidence." +
+      auditRoundScopeAddendum(briefing) +
       auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
+
+  private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+    if (briefing.unresolvedAuditGapIds.isEmpty()) {
+      "      INITIAL AUDIT SCOPE: inspect every listed acceptance criterion once. " +
+        "PROSPECTIVE REPAIR IMPACT ANALYSIS\n" +
+        "      belongs only to this initial pass: before reporting gaps, analyze the complete proposed repair batch\n" +
+        "      so each fix is closure-complete for that blast radius. Treat " +
+        "already-satisfied criteria as non-regression constraints\n" +
+        "      and account for the cumulative repair delta and cross-repair interactions\n" +
+        "      now, allowing every evidenced gap to be repaired together in one implementation invocation. Verify\n" +
+        "      concrete production behavior and do not invent speculative gaps.\n"
+    } else {
+      "      FOLLOW-UP AUDIT SCOPE: verify ONLY the carried unresolved gaps and the repair work performed\n" +
+        "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Inspect only the\n" +
+        "      repaired symbols and the directly necessary production evidence needed to decide whether each\n" +
+        "      carried gap is resolved or recurring. Do not rescan the full subtask, the full acceptance-criterion\n" +
+        "      surface, or the cumulative diff. Do not hunt for unrelated or newly discoverable gaps. Emit a\n" +
+        "      compact gap only when one of the carried gaps still recurs; otherwise emit satisfied with gaps [].\n"
+    }
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
     if (closedCriterionRefs.isEmpty()) {

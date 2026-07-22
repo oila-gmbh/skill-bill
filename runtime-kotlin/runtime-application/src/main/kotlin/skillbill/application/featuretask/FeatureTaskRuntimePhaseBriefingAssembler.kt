@@ -102,8 +102,11 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         JsonSupport.mapToJsonString(auditRepairPlanToWire(plan)).lineSequence().forEach { appendLine("  $it") }
         appendLine("audit_remediation_execution_rules:")
         appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
-        appendLine("  - Treat the ordered repair items as an exhaustive execution checklist for this invocation.")
-        appendLine("  - Process each runnable item one by one in dependency order; do not skip or batch away an item.")
+        appendLine(
+          "  - Repair every carried gap in this single implementation invocation; never launch one pass per gap.",
+        )
+        appendLine("  - Treat the complete repair-item set as the exhaustive execution checklist for this invocation.")
+        appendLine("  - Honor dependency order internally without deferring any runnable item to another round.")
         appendLine(
           "  - After each item, verify its repository outcome and record its terminal result before continuing.",
         )

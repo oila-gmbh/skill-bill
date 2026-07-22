@@ -271,10 +271,12 @@ Step id: `audit`
 
 Primary artifact: `audit_report`
 
-Run the completeness audit against the not-yet-satisfied acceptance criteria.
-On gaps, carry its stable repair plan into `implement`, then re-run `audit`
-without regenerating planning or entering review. When satisfied, persist
-`audit_report` and advance to `review`.
+Run the initial completeness audit against the not-yet-satisfied acceptance
+criteria. On gaps, carry its stable repair plan into `implement`, then re-run
+`audit` only against those carried gaps and the repair work performed in that
+round, without regenerating planning, rescanning the full subtask, or entering
+review. When the carried gaps are satisfied, persist `audit_report` and advance
+to `review`.
 
 ## Step 6: Code Review (orchestrator)
 
@@ -343,7 +345,7 @@ SMALL: the subagent returns a quick confirmation for each criterion. MEDIUM/LARG
 
 The subagent returns the audit return contract: `pass: bool`, `per_criterion: [...]`, `gaps: [...]`.
 
-If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the audit's repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into a fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That subagent attempts every carried repair item in the same pass and returns a terminal outcome for each (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not defer a carried item to review, audit, or validation. The orchestrator then re-spawns the audit subagent; review begins only after audit is satisfied. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
+If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the complete audit repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into one fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That single invocation repairs every carried gap, honors dependencies internally, and returns a terminal outcome for every repair item (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not launch one pass per gap or defer a carried item to review, audit, validation, or another round. The orchestrator then re-spawns the audit subagent once, scoped only to that complete carried gap set and the round's repair work. The follow-up audit classifies each carried gap as resolved or recurring; it does not rescan the full subtask, cumulative diff, or unrelated acceptance surface and does not discover new gaps. Review begins only after the carried gaps are satisfied. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
 
 When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
 
@@ -1003,9 +1005,9 @@ Instructions:
 - MEDIUM/LARGE: produce a full per-criterion report with evidence paths. Verify against actual code, not the summary.
 - Do NOT implement fixes. Do NOT edit files.
 - If a criterion is partially satisfied, record it as a gap with `suggested_fix`.
-- Before suggesting any fix, analyze it as if already applied. Trace affected production callers and callees, provider/platform variants, lifecycle and state transitions, persistence/schema/serialization seams, failure/timeout/cancellation/retry paths, permissions/isolation boundaries, and interactions with every other suggested fix.
-- Treat satisfied criteria as non-regression constraints. Make each `suggested_fix` closure-complete for the evidenced blast radius, including preventative changes needed to avoid regressions. If the fix would expose or introduce another evidenced production defect, report that defect in this same audit instead of deferring it to a later pass.
-- On follow-up audits, inspect the full cumulative repair delta and cross-repair interactions, not only files or symbols named by the previous gaps. Do not invent speculative gaps; every reported issue still requires concrete repository evidence.
+- On the initial audit, inspect every listed criterion once and report only concrete production defects.
+- On follow-up audits, verify only the carried unresolved gaps and the repair work performed for them in that round. Inspect the repaired symbols and only the directly necessary evidence needed to classify each carried gap as resolved or recurring.
+- On follow-up audits, do not rescan the full subtask, full acceptance-criterion surface, or cumulative diff. Do not hunt for unrelated or newly discoverable gaps.
 - Follow the Durable Progress Write Contract in this skill:
   - write progress at phase start, per-criterion start/completion, heartbeat interval, and phase completion before `RESULT:`
   - use `workflow_id`, `step_id`, and `attempt_count` from this briefing
