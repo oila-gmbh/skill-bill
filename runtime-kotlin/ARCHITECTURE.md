@@ -838,7 +838,11 @@ reasons, not a projection claim — settles through the terminal path and never
 reaches the gate. A `decompose`-mode plan is likewise exempt: it terminates the
 run at planning and hands the planning stopper a separately-contracted
 decomposition package (`featureTaskRuntimeIsDecompositionPackage`), which no
-consumer parses as an executable plan. The rejection reason names the phase, the
+consumer parses as an executable plan. That exemption is scoped to the
+executable-plan producer (`plan`), the only phase with a decompose stopper
+backstop; a `preplan` or `implement` output merely shaped like a decomposition
+package has no backstop and still faces the gate, so it cannot settle `completed`
+and wedge its consumer. The rejection reason names the phase, the
 expected projection kind, and the underlying validation failure (its source label
 plus reason), bounded by the existing `SCHEMA_GATE_DETAIL_MAX_CHARS` schema-gate
 detail truncation — no second truncation rule.

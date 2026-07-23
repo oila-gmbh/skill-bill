@@ -6,6 +6,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage
@@ -158,8 +159,14 @@ internal fun producerProjectionGateReason(
     ?: return null
   // A decompose plan stops the run at planning and hands the planning stopper a decomposition package,
   // which has its own contract and its own loud-fail path. It is not an executable plan and no phase
-  // downstream parses it as one.
-  if (featureTaskRuntimeIsDecompositionPackage(outputMap)) return null
+  // downstream parses it as one. Only `plan` owns that stopper backstop, so the exemption is scoped to
+  // the executable-plan producer; a preplan/implement output merely shaped like a decompose package has
+  // no such backstop and must still face the gate, or it settles completed and wedges its consumer.
+  if (expectedKind == FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN &&
+    featureTaskRuntimeIsDecompositionPackage(outputMap)
+  ) {
+    return null
+  }
   return try {
     featureTaskRuntimePlanningProjectionFromEnvelope(
       envelope = outputMap,

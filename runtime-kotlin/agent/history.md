@@ -1,3 +1,14 @@
+## [2026-07-23] SKILL-140 producer-side planning-projection gating (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application}, runtime-kotlin/ARCHITECTURE.md
+- A producing phase (`preplan`/`plan`/`implement`) that completes with `produced_outputs` failing its projection contract is now rejected producer-side and re-enters that phase's own bounded fix loop with the projection error in the retry context, instead of handing a broken projection to a consumer that cannot repair it; it blocks only at the existing cap. reusable
+- Domain-owned producing-phase-to-kind mapping (`preplan`->preplanning_digest, `plan`->executable_plan, `implement`->implementation_receipt) is the single source deciding which phase outputs are gated; the gate is a lookup, not per-phase branching. reusable
+- Gate sits in `settleValidatedOutput` after the terminal (blocked/failed) path, so blocked and failed outputs are never projection-gated; decompose-package plan outputs are exempt because they carry no consumer projection.
+- Producer gate and launch seam both call `featureTaskRuntimePlanningProjectionFromEnvelope` with the same validator port — no projection rule is restated at the gate; a parity test binds the real gate and the real launch-seam assemble to one function so accept/reject move in lockstep. reusable
+- Rejection reason names the phase, the expected `projection_kind`, and the underlying validation failure, reusing the existing schema-gate detail truncation (no new truncation path).
+- Rejection tests cover the two RDN-29 production shapes: `preplanning_digest.rollout` as an array not an object, and `implementation_receipt.deviations` entries as free-text strings not `{ref, note}` objects; also the implement-fix re-entry.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 6/6 implemented
+
 ## [2026-07-23] SKILL-137 planning and implementation projections + remediation gate (subtask 2)
 Areas: runtime-kotlin/runtime-{domain,application}, orchestration/contracts
 - Schema/model parity: the planning-projections schema gained a `nonEmptyStrings` $def and `minItems:1` on exactly the fields the Kotlin model rejects when empty (affected_boundaries, risks, validation_strategy, test_obligations, criterionRefs, changed_paths), so a schema-valid projection can never clear the infra-fs gate and then throw in `fromMap`. reusable

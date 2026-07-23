@@ -111,6 +111,34 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     assertContains(blocked.blockedReason, "deviations")
   }
 
+  // --- the decompose exemption is scoped to the executable-plan producer ------------------------
+
+  @Test
+  fun `a decompose-shaped preplan output faces the gate because preplan owns no decompose backstop`() {
+    // Only `plan` hands a decomposition package to the planning stopper; a preplan output merely shaped
+    // like one (mode=decompose, no projection_kind) has no backstop. If the exemption applied here it
+    // would settle 'completed' and then wedge the plan launch seam with no fix loop able to reach it —
+    // the exact stuck state this subtask exists to eliminate. The gate must reject it instead.
+    val outcome = runBlockingProducer("preplan", PREPLAN_DECOMPOSE_SHAPED)
+
+    assertEquals("preplan", outcome.blocked.lastIncompletePhase)
+    assertEquals(cap, outcome.launchCount("preplan"))
+    assertContains(outcome.blocked.blockedReason, "preplanning_digest")
+    assertContains(outcome.blocked.blockedReason, "is not a valid")
+    assertTrue(outcome.launchedNever("plan"), "a decompose-shaped preplan must not bypass the gate and wedge plan")
+  }
+
+  @Test
+  fun `a decompose-shaped implement receipt faces the gate because only plan owns the decompose backstop`() {
+    val outcome = runBlockingProducer("implement", IMPLEMENT_DECOMPOSE_SHAPED)
+
+    assertEquals("implement", outcome.blocked.lastIncompletePhase)
+    assertEquals(cap, outcome.launchCount("implement"))
+    assertContains(outcome.blocked.blockedReason, "implementation_receipt")
+    assertContains(outcome.blocked.blockedReason, "is not a valid")
+    assertTrue(outcome.launchedNever("audit"), "a decompose-shaped implement must not bypass the gate and wedge audit")
+  }
+
   // --- conforming fixtures advance unchanged ----------------------------------------------------
 
   @Test
@@ -313,6 +341,22 @@ private val PLAN_UNDECLARED_DEPENDENCY: String = envelope(
   """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
     """"tasks":[{"task_id":"task-1","depends_on":["task-ghost"],"description":"t",""" +
     """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+)
+
+// A completed producing-phase output shaped like a decomposition package (mode=decompose, no
+// projection_kind). Only `plan` has a decompose stopper backstop, so for any other producer this must
+// still face the projection gate rather than the exemption. The implement variant carries
+// reconciled_state so it clears the separate mutating-phase reconciliation gate and actually reaches
+// the projection gate under test.
+private val PREPLAN_DECOMPOSE_SHAPED: String = envelope(
+  "preplan",
+  """{"mode":"decompose","reason":"looks like a decompose but preplan owns no stopper"}""",
+)
+
+private val IMPLEMENT_DECOMPOSE_SHAPED: String = envelope(
+  "implement",
+  """{"mode":"decompose","reason":"looks like a decompose but implement owns no stopper",""" +
+    """"reconciled_state":{"reconciled":true}}""",
 )
 
 private val PREPLAN_ROLLOUT_AS_ARRAY: String = envelope(
