@@ -2,6 +2,8 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 
 /**
  * Typed handoff-projection primitives. Together they replace the generic upstream-payload map with a
@@ -160,6 +162,31 @@ data class FeatureTaskRuntimeHandoffProjectionBudget(
      */
     val ADDON_CONTENT: FeatureTaskRuntimeHandoffProjectionBudget =
       FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 98_304, maxCollectionItems = 16)
+
+    /**
+     * The bounded planning projections deliver many typed lists rather than one whole-receipt text
+     * field, so [PHASE_RECEIPT]'s item cap — sized when a projection was worth a single item — would
+     * reject an ordinary feature's implementation receipt long before its byte budget was near.
+     *
+     * The cap is therefore derived from the projections' own per-list caps, which the schema repeats
+     * as `maxItems`: the widest variant is the implementation receipt, at one `changed_paths` list,
+     * six ordinary lists, and its two scalar fields. Model, schema, and budget agree by construction,
+     * so a schema-valid projection can never overflow the budget it is delivered under, and an
+     * overflow here means a producer bypassed the model's own validation.
+     */
+    val PLANNING_PROJECTION: FeatureTaskRuntimeHandoffProjectionBudget =
+      FeatureTaskRuntimeHandoffProjectionBudget(
+        maxUtf8Bytes = 196_608,
+        maxCollectionItems = FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT +
+          (IMPLEMENTATION_RECEIPT_ORDINARY_LIST_FIELDS * FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT) +
+          IMPLEMENTATION_RECEIPT_SCALAR_FIELDS,
+      )
+
+    /** completed_task_ids, tests_added, tests_updated, tests_executed, deviations, unresolved_items. */
+    private const val IMPLEMENTATION_RECEIPT_ORDINARY_LIST_FIELDS: Int = 6
+
+    /** reconciliation_evidence and repository_checkpoint. */
+    private const val IMPLEMENTATION_RECEIPT_SCALAR_FIELDS: Int = 2
   }
 }
 
@@ -481,4 +508,11 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   val addonContentBySlug: Map<String, String> = emptyMap(),
   val workflowId: String? = null,
+  /**
+   * Canonical planning-projections schema gate, called before a bounded projection is parsed. The
+   * default leaves the schema unenforced and exists only for suites asserting the typed Kotlin rules
+   * in isolation; production wiring passes the infra-fs-backed adapter.
+   */
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 )

@@ -30,6 +30,7 @@ import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -73,6 +74,7 @@ class DefaultGoalPlanningSweep(
   private val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   private val manifestFileStore: DecompositionManifestFileStore,
   private val contextDiscovery: GoalPlanningContextDiscovery,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -258,7 +260,10 @@ class DefaultGoalPlanningSweep(
       runInvariants = runInvariants,
       recordedOutputs = recordedOutputs,
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = planningProjectionValidator,
+    )
     val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       issueKey = request.issueKey,
       briefing = briefing,

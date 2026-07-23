@@ -64,6 +64,13 @@ x-coherence-checks:
     description: >-
       implementation_receipt.changed_paths are normalized repository-relative paths: no absolute
       paths, no backslashes, no `..` segments, no duplicates, and bounded by the projection budget.
+  - id: list-cap-budget-agreement
+    description: >-
+      Every `maxItems` here equals the matching Kotlin cap
+      (FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, or FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT
+      for changed_paths and working_tree_owned_paths), and
+      FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION sums the widest variant's caps.
+      A schema-valid projection therefore cannot overflow the item budget it is delivered under.
   - id: tests-executed-distinct
     description: >-
       tests_executed entries (name + outcome) are distinct from the tests_added/tests_updated
@@ -91,6 +98,7 @@ $defs:
       - { not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" } }
   strings:
     type: array
+    maxItems: 128
     items: { $ref: "#/$defs/nonBlank" }
   # Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors
   # review-context-schema.yaml's `path` $def so changed-path normalization is identical everywhere.
@@ -104,6 +112,7 @@ $defs:
     pattern: "^AC-[0-9]{3}$"
   criterionRefs:
     type: array
+    maxItems: 128
     items: { $ref: "#/$defs/criterionRef" }
   taskId:
     type: string
@@ -120,6 +129,7 @@ $defs:
       head_ref: { $ref: "#/$defs/nonBlank" }
       working_tree_owned_paths:
         type: array
+        maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
 
   preplanning_digest:
@@ -151,6 +161,10 @@ $defs:
       validation_strategy: { $ref: "#/$defs/strings" }
       unresolved_questions: { $ref: "#/$defs/strings" }
       evidence_refs: { $ref: "#/$defs/strings" }
+      # Governed co-resident of the goal-planning sweep's preplan produced_outputs, owned by
+      # goal-planning-preparation-schema.yaml. Named here only so additionalProperties:false does not
+      # reject an output that seam requires; it is not part of the digest this variant delivers.
+      _goal_planning_shared_context: { type: object }
 
   executable_plan:
     type: object
@@ -168,6 +182,7 @@ $defs:
       tasks:
         type: array
         minItems: 1
+        maxItems: 128
         items: { $ref: "#/$defs/plan_task" }
       validation_strategy: { $ref: "#/$defs/strings" }
       decomposition_subtask_count: { type: integer, minimum: 1 }
@@ -176,11 +191,14 @@ $defs:
   plan_task:
     type: object
     additionalProperties: false
-    required: [task_id, depends_on, description, criterion_refs, test_obligations, constraints]
+    # depends_on, target_paths_or_symbols and constraints are legitimately empty on a single-task or
+    # unconstrained plan, so they are optional here and default to empty in the Kotlin model.
+    required: [task_id, description, criterion_refs, test_obligations]
     properties:
       task_id: { $ref: "#/$defs/taskId" }
       depends_on:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/taskId" }
       description: { $ref: "#/$defs/compactSummary" }
       criterion_refs: { $ref: "#/$defs/criterionRefs" }
@@ -204,6 +222,7 @@ $defs:
       task_commitments:
         type: array
         minItems: 1
+        maxItems: 128
         items: { $ref: "#/$defs/task_commitment" }
 
   task_commitment:
@@ -232,26 +251,38 @@ $defs:
       contract_version: { $ref: "#/$defs/contractVersion" }
       completed_task_ids:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/taskId" }
       changed_paths:
         type: array
         uniqueItems: true
+        maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
       tests_added:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/repoPath" }
       tests_updated:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/repoPath" }
       tests_executed:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/test_execution" }
       deviations:
         type: array
+        maxItems: 128
         items: { $ref: "#/$defs/deviation" }
       unresolved_items: { $ref: "#/$defs/strings" }
       reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
       repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
+      # Governed co-residents of a mutating phase's produced_outputs, owned by the phase-output and
+      # audit-repair-plan contracts. They are named here only so additionalProperties:false does not
+      # reject an output that those contracts require; their shape stays with their owning schema and
+      # they are not part of the projection this variant delivers.
+      reconciled_state: { type: object }
+      repair_item_results: { type: array }
 
   test_execution:
     type: object

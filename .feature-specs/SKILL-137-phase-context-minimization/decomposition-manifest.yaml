@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Planning and implementation projections"
   spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_2_planning-and-implementation-projections.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260723-092523-bwo3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

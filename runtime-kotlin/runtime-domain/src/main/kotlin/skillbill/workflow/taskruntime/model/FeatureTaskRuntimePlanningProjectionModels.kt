@@ -5,6 +5,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 
 /**
  * Typed models for the four concrete bounded planning projections (preplanning digest, executable plan,
@@ -16,6 +17,17 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
  * Field-name constants ([DECLARED_FIELD_NAMES]) are the single source a handoff declaration references, so
  * the delivered projection shape and the declared shape cannot drift.
  */
+
+/**
+ * Closed family of the four bounded planning projections. Parsing returns this type rather than `Any`,
+ * so a consumer narrows with an exhaustive `when` and a producer/declaration kind mismatch surfaces as
+ * a typed rejection instead of a raw `ClassCastException` at the launch seam.
+ */
+sealed interface FeatureTaskRuntimePlanningProjection {
+  val projectionKind: FeatureTaskRuntimeProjectionKind
+
+  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField>
+}
 
 enum class FeatureTaskRuntimeProjectionKind(val wireValue: String) {
   PREPLANNING_DIGEST("preplanning_digest"),
@@ -47,7 +59,16 @@ private val REPO_PATH_PATTERN = Regex("^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)
 private val TASK_ID_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 private const val REPO_PATH_MAX_LENGTH: Int = 1024
 private const val TEXT_MAX_LENGTH: Int = 4096
-private const val CHANGED_PATH_MAX_COUNT: Int = 512
+
+/**
+ * Entry cap for an ordinary projection list. The schema carries the same number as `maxItems` and
+ * [FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION] sums these caps, so a schema-valid
+ * projection can never overflow the item budget it is delivered under.
+ */
+const val FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT: Int = 128
+
+/** changed_paths is the one list sized for a large feature's file inventory rather than a summary. */
+const val FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT: Int = 512
 
 /**
  * The bounded digest `plan` receives from `preplan` (AC-003). Excludes the complete preplan envelope,
@@ -61,7 +82,10 @@ data class FeatureTaskRuntimePrePlanningDigest(
   val validationStrategy: List<String>,
   val unresolvedQuestions: List<String> = emptyList(),
   val evidenceRefs: List<String> = emptyList(),
-) {
+) : FeatureTaskRuntimePlanningProjection {
+  override val projectionKind: FeatureTaskRuntimeProjectionKind =
+    FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
+
   init {
     requireNonBlankStrings(affectedBoundaries, "affected_boundaries")
     requireNonBlankStrings(risks, "risks")
@@ -71,7 +95,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
     requireNonBlankStrings(evidenceRefs, "evidence_refs")
   }
 
-  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
+  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
     field(FIELD_AFFECTED_BOUNDARIES, FeatureTaskRuntimeHandoffProjectionValue.TextList(affectedBoundaries)),
     field(FIELD_PATTERNS_AND_DECISIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(patternsAndDecisions)),
     field(FIELD_RISKS, FeatureTaskRuntimeHandoffProjectionValue.TextList(risks)),
@@ -160,9 +184,12 @@ data class FeatureTaskRuntimeExecutablePlan(
   val validationStrategy: List<String>,
   val decompositionSubtaskCount: Int? = null,
   val decompositionManifestRef: String? = null,
-) {
+) : FeatureTaskRuntimePlanningProjection {
+  override val projectionKind: FeatureTaskRuntimeProjectionKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
+
   init {
     require(tasks.isNotEmpty()) { "FeatureTaskRuntimeExecutablePlan.tasks must contain at least one task." }
+    requireListSize(tasks.size, "tasks")
     val ids = tasks.map { it.taskId }
     require(ids.distinct().size == ids.size) {
       "FeatureTaskRuntimeExecutablePlan task ids must be unique, duplicated ${ids.duplicates()}."
@@ -174,7 +201,7 @@ data class FeatureTaskRuntimeExecutablePlan(
     }
   }
 
-  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
+  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
     field(FIELD_MODE, FeatureTaskRuntimeHandoffProjectionValue.Text(mode.wireValue)),
     field(FIELD_TASKS, FeatureTaskRuntimeHandoffProjectionValue.TextList(tasks.map { it.toBriefingLine() })),
     field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
@@ -222,6 +249,7 @@ data class FeatureTaskRuntimePlanTask(
     requireNonBlankStrings(testObligations, "test_obligations")
     requireNonBlankStrings(constraints, "constraints")
     requireNonBlankStrings(targetPathsOrSymbols, "target_paths_or_symbols")
+    requireListSize(dependsOn.size, "depends_on")
     dependsOn.forEach { dependency ->
       require(TASK_ID_PATTERN.matches(dependency)) {
         "FeatureTaskRuntimePlanTask.dependsOn entry '$dependency' must match ${TASK_ID_PATTERN.pattern}."
@@ -242,16 +270,19 @@ data class FeatureTaskRuntimePlanTask(
  */
 data class FeatureTaskRuntimePlanCommitment(
   val taskCommitments: List<FeatureTaskRuntimeTaskCommitment>,
-) {
+) : FeatureTaskRuntimePlanningProjection {
+  override val projectionKind: FeatureTaskRuntimeProjectionKind = FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT
+
   init {
     require(taskCommitments.isNotEmpty()) { "FeatureTaskRuntimePlanCommitment.taskCommitments must be non-empty." }
+    requireListSize(taskCommitments.size, "task_commitments")
     val ids = taskCommitments.map { it.taskId }
     require(ids.distinct().size == ids.size) {
       "FeatureTaskRuntimePlanCommitment task ids must be unique, duplicated ${ids.duplicates()}."
     }
   }
 
-  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
+  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
     field(
       FIELD_TASK_COMMITMENTS,
       FeatureTaskRuntimeHandoffProjectionValue.TextList(taskCommitments.map { it.toBriefingLine() }),
@@ -299,11 +330,17 @@ data class FeatureTaskRuntimeImplementationReceipt(
   val unresolvedItems: List<String> = emptyList(),
   val reconciliationEvidence: FeatureTaskRuntimeReconciliationEvidence,
   val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint,
-) {
+) : FeatureTaskRuntimePlanningProjection {
+  override val projectionKind: FeatureTaskRuntimeProjectionKind =
+    FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
+
   init {
+    requireListSize(completedTaskIds.size, "completed_task_ids")
     completedTaskIds.forEach {
       require(TASK_ID_PATTERN.matches(it)) { "completed_task_ids entry '$it' is not a valid task id." }
     }
+    requireListSize(testsExecuted.size, "tests_executed")
+    requireListSize(deviations.size, "deviations")
     requireChangedPaths(changedPaths)
     requireNonBlankStrings(testsAdded, "tests_added", allowRepoPath = true)
     requireNonBlankStrings(testsUpdated, "tests_updated", allowRepoPath = true)
@@ -314,7 +351,7 @@ data class FeatureTaskRuntimeImplementationReceipt(
     }
   }
 
-  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
+  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
     field(FIELD_COMPLETED_TASK_IDS, FeatureTaskRuntimeHandoffProjectionValue.TextList(completedTaskIds)),
     field(FIELD_CHANGED_PATHS, FeatureTaskRuntimeHandoffProjectionValue.TextList(changedPaths)),
     field(FIELD_TESTS_ADDED, FeatureTaskRuntimeHandoffProjectionValue.TextList(testsAdded)),
@@ -422,7 +459,12 @@ private fun field(
   value: FeatureTaskRuntimeHandoffProjectionValue,
 ): FeatureTaskRuntimeHandoffProjectionField = FeatureTaskRuntimeHandoffProjectionField(name = name, value = value)
 
+private fun requireListSize(size: Int, field: String, max: Int = FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT) {
+  require(size <= max) { "$field allows at most $max entries, had $size." }
+}
+
 private fun requireNonBlankStrings(values: List<String>, field: String, allowRepoPath: Boolean = false) {
+  requireListSize(values.size, field)
   values.forEach { value ->
     require(value.isNotBlank()) { "$field entries must be non-blank." }
     require(value.length <= REPO_PATH_MAX_LENGTH) { "$field entry exceeds $REPO_PATH_MAX_LENGTH chars." }
@@ -443,9 +485,7 @@ private fun requireCriterionRef(value: String) {
 }
 
 private fun requireChangedPaths(paths: List<String>) {
-  require(paths.size <= CHANGED_PATH_MAX_COUNT) {
-    "changed_paths allows at most $CHANGED_PATH_MAX_COUNT entries, had ${paths.size}."
-  }
+  requireListSize(paths.size, "changed_paths", FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT)
   val duplicates = paths.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
   require(duplicates.isEmpty()) { "changed_paths must be unique, duplicated $duplicates." }
   paths.forEach { requireRepoPath(it, "changed_paths entry") }
@@ -481,28 +521,77 @@ private fun List<String>.duplicates(): List<String> =
   groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
 
 /**
- * Parses a producing phase's `produced_outputs` into the typed planning projection matching its
- * `projection_kind`. The whole producing envelope may be passed; only `produced_outputs` is read.
- * Throws [InvalidFeatureTaskRuntimePlanningProjectionSchemaError] on any malformed shape so a legacy
- * free-form payload loud-fails rather than being reinterpreted as a bounded projection.
+ * Parses a producing phase's `produced_outputs` into the typed planning projection the consumer's
+ * declaration asked for. The whole producing envelope may be passed; only `produced_outputs` is read.
+ *
+ * Four gates run before any field is read, in order: the producer's `projection_kind` must be the
+ * [expectedKind] the consuming declaration names (so a kind/contract mismatch is a typed rejection,
+ * not a cast failure downstream), `contract_version` must equal the pinned schema version, the
+ * canonical Draft 2020-12 schema must accept the payload through [schemaValidator] (this is what
+ * enforces `additionalProperties:false`, the anti-paste patterns, and `uniqueItems` at runtime), and
+ * only then do the typed cross-field rules run.
+ *
+ * Every failure — including a `require` inside a model's `init` — leaves this function as
+ * [InvalidFeatureTaskRuntimePlanningProjectionSchemaError], so callers have exactly one exception type
+ * to handle and a legacy free-form payload loud-fails rather than aborting the driver with an
+ * unhandled [IllegalArgumentException].
  */
+@Suppress("ThrowsCount") // one rejection per gate; collapsing them would blur the operator diagnosis
 @OpenBoundaryMap("Feature-task-runtime planning projection parse from the schema-validated phase-output wire map")
-fun featureTaskRuntimePlanningProjectionFromEnvelope(envelope: Map<String, Any?>, producingPhaseId: String): Any {
+fun featureTaskRuntimePlanningProjectionFromEnvelope(
+  envelope: Map<String, Any?>,
+  producingPhaseId: String,
+  expectedKind: FeatureTaskRuntimeProjectionKind,
+  schemaValidator: FeatureTaskRuntimePlanningProjectionValidator,
+): FeatureTaskRuntimePlanningProjection {
+  val sourceLabel = "$producingPhaseId#produced_outputs"
   val produced = envelope.stringAnyMap("produced_outputs")
     ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-      sourceLabel = "$producingPhaseId#produced_outputs",
+      sourceLabel = sourceLabel,
       reason = "produced_outputs is missing or not an object.",
     )
   val kind = produced["projection_kind"]?.toString()
     ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-      sourceLabel = "$producingPhaseId#produced_outputs",
+      sourceLabel = sourceLabel,
       reason = "produced_outputs.projection_kind is missing; a bounded projection requires it.",
     )
-  return when (FeatureTaskRuntimeProjectionKind.fromWire(kind)) {
-    FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST -> FeatureTaskRuntimePrePlanningDigest.fromMap(produced)
-    FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(produced)
-    FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(produced)
-    FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT -> FeatureTaskRuntimeImplementationReceipt.fromMap(produced)
+  val declaredKind = FeatureTaskRuntimeProjectionKind.fromWire(kind)
+  if (declaredKind != expectedKind) {
+    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "the consuming declaration expects projection_kind '${expectedKind.wireValue}' but the producer " +
+        "emitted '${declaredKind.wireValue}'.",
+    )
+  }
+  requirePinnedContractVersion(produced, sourceLabel)
+  schemaValidator.validatePlanningProjection(produced, sourceLabel)
+  return try {
+    when (expectedKind) {
+      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST -> FeatureTaskRuntimePrePlanningDigest.fromMap(produced)
+      FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(produced)
+      FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(produced)
+      FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT ->
+        FeatureTaskRuntimeImplementationReceipt.fromMap(produced)
+    }
+  } catch (error: IllegalArgumentException) {
+    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+      sourceLabel = sourceLabel,
+      reason = error.message ?: "the payload violates a typed planning-projection rule.",
+      cause = error,
+    )
+  }
+}
+
+// A bump must loud-fail a legacy durable record rather than reinterpret its fields under new
+// semantics, so an absent or mismatched version is a rejection, never a default.
+private fun requirePinnedContractVersion(produced: Map<String, Any?>, sourceLabel: String) {
+  val version = produced["contract_version"]?.toString()
+  if (version != FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION) {
+    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "produced_outputs.contract_version must be " +
+        "'$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION', was ${version?.let { "'$it'" } ?: "absent"}.",
+    )
   }
 }
 

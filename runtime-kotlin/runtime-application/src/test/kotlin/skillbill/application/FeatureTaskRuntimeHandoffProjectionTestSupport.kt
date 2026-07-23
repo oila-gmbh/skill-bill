@@ -38,19 +38,20 @@ internal val FINALIZATION_PHASE_IDS: Set<String> = setOf("write_history", "commi
  */
 internal object PlanningProjectionFixtures {
   const val PREPLAN_DIGEST: String =
-    """{"projection_kind":"preplanning_digest","affected_boundaries":["runtime-application"],""" +
+    """{"projection_kind":"preplanning_digest","contract_version":"0.1",""" +
+      """"affected_boundaries":["runtime-application"],""" +
       """"risks":["Fixture risk."],""" +
       """"rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},""" +
       """"validation_strategy":["Focused runtime tests."]}"""
 
   const val EXECUTABLE_PLAN: String =
-    """{"projection_kind":"executable_plan","mode":"direct","tasks":[{"task_id":"task-1",""" +
+    """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +
       """"description":"Fixture task.","criterion_refs":["AC-001"],""" +
       """"target_paths_or_symbols":["src/Foo.kt"],"test_obligations":["Focused test."]}],""" +
       """"validation_strategy":["Focused runtime tests."]}"""
 
   const val IMPLEMENTATION_RECEIPT: String =
-    """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"],""" +
+    """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
       """"changed_paths":["src/Foo.kt"],""" +
       """"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
       """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
@@ -62,7 +63,7 @@ internal object PlanningProjectionFixtures {
    * bounded implementation-receipt projection audit consumes.
    */
   const val RECEIPT_FIELDS: String =
-    """"projection_kind":"implementation_receipt","completed_task_ids":["task-1"],""" +
+    """"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
       """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
       """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
       """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"""

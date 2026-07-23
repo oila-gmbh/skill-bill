@@ -36,6 +36,7 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.SpecSource
@@ -297,6 +298,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       discovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
 
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
@@ -313,6 +315,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       discovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
 
     val resumed = initial.copy(
@@ -498,6 +501,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       fakeContextDiscovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -564,6 +568,7 @@ class GoalPlanningSweepTest {
       FakeInvariantsSource(),
       ThrowingManifestFileStore(),
       fakeContextDiscovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -1161,6 +1166,7 @@ private fun sweepHarness(
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
     contextDiscovery,
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }

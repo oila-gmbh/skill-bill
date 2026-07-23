@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -544,7 +545,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
       "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
       "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
-      "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\" and the " +
+      "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
+      "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
       "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
       "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
       "preplan envelope, a generic summary, or progress diagnostics.",
@@ -552,7 +554,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
       "the upstream preplan digest as planning context. Do not modify repository files during " +
       "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
-      "projection_kind \"executable_plan\", mode (direct or decompose), stable ordered tasks " +
+      "projection_kind \"executable_plan\", contract_version " +
+      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
+      "stable ordered tasks " +
       "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
       "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
       "generic producer notes; decomposition detail stays private to the preparation boundary.",
@@ -560,7 +564,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "Reconcile the repository to the intended state the upstream plan output describes: make the " +
       "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
       "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
-      "(projection_kind \"implementation_receipt\": completed_task_ids, normalized changed_paths, " +
+      "(projection_kind \"implementation_receipt\", contract_version " +
+      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
+      "normalized changed_paths, " +
       "tests_added, tests_updated, tests_executed with outcomes, deviations, unresolved_items, " +
       "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
       "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
@@ -578,7 +584,12 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
       "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
       "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
-      "test-only concerns as audit gaps.",
+      "test-only concerns as audit gaps. The upstream implementation receipt is a producer CLAIM, not " +
+      "evidence: read the repository itself at the resolved checkpoint in the briefing — the diff over its " +
+      "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
+      "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
+      "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
+      "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
       "Run the repository validation gate relevant to the change. Fix validation findings at " +
       "their root cause and rerun the gate until it passes; validation findings are repair work, " +

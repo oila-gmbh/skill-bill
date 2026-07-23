@@ -16,6 +16,8 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -1988,19 +1990,19 @@ private class RecordingPhaseLauncher(
 
     // Flow-style so each stays a single YAML line the phase-output template can substitute directly.
     private const val PREPLAN_DIGEST_OUTPUTS: String =
-      """{projection_kind: "preplanning_digest", affected_boundaries: ["runtime-cli"], """ +
+      """{projection_kind: "preplanning_digest", contract_version: "0.1", affected_boundaries: ["runtime-cli"], """ +
         """risks: ["Fixture risk."], """ +
         """rollout: {flag_required: false, flag_pattern: "none", notes: "No flag needed."}, """ +
         """validation_strategy: ["Focused runtime tests."]}"""
 
     private const val EXECUTABLE_PLAN_OUTPUTS: String =
-      """{projection_kind: "executable_plan", mode: "direct", tasks: [{task_id: "task-1", """ +
+      """{projection_kind: "executable_plan", contract_version: "0.1", mode: "direct", tasks: [{task_id: "task-1", """ +
         """description: "Fixture task.", criterion_refs: ["AC-001"], """ +
         """target_paths_or_symbols: ["src/Foo.kt"], test_obligations: ["Focused test."]}], """ +
         """validation_strategy: ["Focused runtime tests."]}"""
 
     private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
-      """{projection_kind: "implementation_receipt", completed_task_ids: ["task-1"], """ +
+      """{projection_kind: "implementation_receipt", contract_version: "0.1", completed_task_ids: ["task-1"], """ +
         """changed_paths: ["src/Foo.kt"], tests_executed: [{name: "FooTest", outcome: "passed"}], """ +
         """reconciliation_evidence: {reconciled: true, evidence: "Fixture tree at target state."}, """ +
         """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
@@ -2093,7 +2095,12 @@ private val ALL_PHASES =
 private class FakeRuntimeGitOperations(
   private var currentBranchValue: String = "feat/pre-created-runtime-branch",
   private val checkoutResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider, RepositoryFingerprintGitOperationsProvider {
+) : WorkflowGitOperations,
+  GoalSubtaskReviewGitOperationsProvider,
+  RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider {
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
+
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   val checkoutBranches: MutableList<String> = mutableListOf()

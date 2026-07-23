@@ -49,6 +49,7 @@ import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
@@ -177,6 +178,7 @@ import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
@@ -547,6 +549,14 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimePhaseOutputValidator(
     adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter,
   ): FeatureTaskRuntimePhaseOutputValidator = adapter
+
+  // SKILL-137: the canonical planning-projections schema gate. The domain parse seam calls this port
+  // before building a typed projection, so the schema is enforced at runtime, not just authored.
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimePlanningProjectionValidator(
+    adapter: FeatureTaskRuntimePlanningProjectionValidatorAdapter,
+  ): FeatureTaskRuntimePlanningProjectionValidator = adapter
 
   @Provides
   @JvmSynthetic

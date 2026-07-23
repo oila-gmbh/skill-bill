@@ -62,6 +62,8 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
@@ -80,6 +82,8 @@ import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
@@ -1918,11 +1922,15 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.worktreeStatusValue = buildString {
-      appendLine(" M runtime-domain/Child.kt")
-      appendLine("?? .feature-specs/SKILL-137/spec_subtask_9_sibling.md")
-      appendLine("R  runtime-domain/Old.kt -> runtime-domain/Renamed.kt")
-    }
+    // The owned inventory and the parent-captured baseline are both `ls-files`-shaped, so a sibling's
+    // wholly-untracked directory matches entry-for-entry. Under the old porcelain-derived inventory it
+    // arrived as the collapsed `dir/` entry, matched nothing in the baseline, and leaked (F-005).
+    git.ownedPathsValue = listOf(
+      "runtime-domain/Child.kt",
+      "runtime-domain/Renamed.kt",
+      ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+      ".feature-specs/SKILL-137/sibling/notes.md",
+    )
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -1935,7 +1943,10 @@ class FeatureTaskRuntimeCheckpointScopeTest {
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline(
             "0".repeat(40),
-            listOf(".feature-specs/SKILL-137/spec_subtask_9_sibling.md"),
+            listOf(
+              ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+              ".feature-specs/SKILL-137/sibling/notes.md",
+            ),
           ),
         ),
       ),
@@ -1949,19 +1960,40 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
     assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
-    // A rename contributes its destination, not the "old -> new" status entry.
     assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
     assertFalse(
       auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
       "a sibling subtask's baseline path must not enter the goal-child audit projection",
     )
     assertFalse(
-      auditBriefing.briefingText.contains("- R  runtime-domain/Old.kt"),
-      "owned paths must be normalized repository-relative paths, not raw porcelain status lines",
+      auditBriefing.briefingText.contains(".feature-specs/SKILL-137/sibling"),
+      "no entry from a sibling subtask's untracked directory may enter the goal-child audit projection",
     )
-    assertFalse(
-      auditBriefing.briefingText.contains("-  M runtime-domain/Child.kt"),
-      "owned paths must be normalized repository-relative paths, not raw porcelain status lines",
+  }
+
+  @Test
+  fun `an unmeasurable owned-path read blocks audit instead of rendering an empty scope`() {
+    // An empty inventory reads as "this scope owns nothing", so an audit given it can conclude no work
+    // exists and pass criteria never implemented. An unmeasurable read must not produce that answer;
+    // it drops the checkpoint, and the refresh_from_repository receipt edge then rejects the launch.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsResult = WorkflowGitOperationResult(status = "error", value = "")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "checkpoint")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted against an unmeasurable repository scope",
     )
   }
 }
@@ -3923,23 +3955,29 @@ internal data class RuntimeHarnessConfig(
   val eventSink: FeatureTaskRuntimeRunEventSink? = null,
   val dbPathOverride: String? = null,
   val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
   SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
 
+@Suppress("LongParameterList") // mirrors FeatureTaskRuntimePhaseGates' own constructor arity
 private fun runtimePhaseGates(
   branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
   planningStopper: FeatureTaskRuntimePlanningStopper,
   lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
   specGate,
+  planningProjectionValidator,
 )
 
 private fun testSpecGate(
@@ -4030,6 +4068,7 @@ internal fun runnerHarness(
       disabledRuntimeLifecycleTelemetry(database),
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
+      runtimeConfig.planningProjectionValidator,
     ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
@@ -4329,6 +4368,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "preplan" ->
     """{
       "projection_kind":"preplanning_digest",
+      "contract_version":"0.1",
       "affected_boundaries":["runtime-application"],
       "risks":["Fixture risk."],
       "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
@@ -4338,6 +4378,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "plan" ->
     """{
       "projection_kind":"executable_plan",
+      "contract_version":"0.1",
       "mode":"direct",
       "tasks":[{
         "task_id":"task-1",
@@ -4355,6 +4396,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "implement", "implement_fix" ->
     """{
       "projection_kind":"implementation_receipt",
+      "contract_version":"0.1",
       "completed_task_ids":["task-1"],
       "changed_paths":["src/Foo.kt"],
       "tests_executed":[{"name":"FooTest","outcome":"passed"}],
@@ -4671,6 +4713,7 @@ internal class RecordingWorkflowGitOperations(
 ) : WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
@@ -4685,6 +4728,13 @@ internal class RecordingWorkflowGitOperations(
   var worktreeStatusValue: String = ""
   var worktreeStatusResult: WorkflowGitOperationResult? = null
   val worktreeStatusSequence = ArrayDeque<String>()
+
+  // NUL-delimited owned-path inventory, the same `-z` plumbing representation the goal-child baseline
+  // is written in. Seeded as a path list for readability.
+  var ownedPathsValue: List<String> = emptyList()
+
+  // Overrides the inventory with a raw result, to model an unmeasurable owned-path read.
+  var ownedPathsResult: WorkflowGitOperationResult? = null
   val repositoryFingerprintSequence = ArrayDeque<String>()
   var repositoryFingerprintValue: String? = null
   var repositoryFingerprintCalls: Int = 0
@@ -4775,6 +4825,15 @@ internal class RecordingWorkflowGitOperations(
       status = "ok",
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
+
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
+    object : RepositoryOwnedPathsGitOperations {
+      override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = ownedPathsResult
+        ?: WorkflowGitOperationResult(
+          status = "ok",
+          value = ownedPathsValue.joinToString(separator = "") { "$it\u0000" },
+        )
+    }
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {

@@ -4,6 +4,7 @@ package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
@@ -20,12 +21,20 @@ import java.nio.file.Path
  * message carrying schema locations, never projection bodies.
  */
 object FeatureTaskRuntimePlanningProjectionSchemaValidator {
-  private val schema: JsonSchema by lazy { loadPlanningProjectionsSchema() }
+  private val schemaDocument: JsonNode by lazy { loadPlanningProjectionsSchemaDocument() }
+  private val schema: JsonSchema by lazy { compile(schemaDocument) }
+  private val variantSchemas: Map<String, JsonSchema> by lazy { compileVariants(schemaDocument) }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
 
   fun validate(payload: Map<String, Any?>, sourceLabel: String) {
     val instance: JsonNode = mapper.valueToTree(payload)
-    val errors: Set<ValidationMessage> = schema.validate(instance)
+    // Validating a mismatched payload against the whole `oneOf` reports every violation of all four
+    // variants at once, burying the actual offending field under two dozen irrelevant ones. When the
+    // payload declares a known kind, check that variant directly so the message names the real cause;
+    // an unknown or absent kind still falls back to the full family.
+    val declaredKind = payload["projection_kind"] as? String
+    val effective = variantSchemas[declaredKind] ?: schema
+    val errors: Set<ValidationMessage> = effective.validate(instance)
     if (errors.isNotEmpty()) {
       throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
         sourceLabel = sourceLabel,
@@ -33,6 +42,24 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
       )
     }
   }
+
+  private fun compileVariants(document: JsonNode): Map<String, JsonSchema> =
+    PROJECTION_VARIANT_DEFS.associateWith { variant ->
+      val wrapper = document.deepCopy<ObjectNode>()
+      wrapper.remove("oneOf")
+      wrapper.put("\$ref", "#/\$defs/$variant")
+      compile(wrapper)
+    }
+
+  private fun compile(document: JsonNode): JsonSchema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+    .getSchema(ObjectMapper().writeValueAsString(document))
+
+  private val PROJECTION_VARIANT_DEFS: Set<String> = setOf(
+    "preplanning_digest",
+    "executable_plan",
+    "plan_commitment",
+    "implementation_receipt",
+  )
 
   private fun formatReason(errors: Set<ValidationMessage>): String =
     errors.sortedBy { it.instanceLocation?.toString().orEmpty() }
@@ -58,11 +85,10 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
   private const val MAX_REPORTED_VIOLATIONS: Int = 3
 }
 
-private fun loadPlanningProjectionsSchema(): JsonSchema = try {
+private fun loadPlanningProjectionsSchemaDocument(): JsonNode = try {
   val yamlNode = YAMLMapper().readTree(readPlanningProjectionsSchemaText())
   FeatureTaskRuntimePlanningProjectionSchemaValidator.assertIdentity(yamlNode)
-  JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    .getSchema(ObjectMapper().writeValueAsString(yamlNode))
+  yamlNode
 } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
   throw error
 } catch (error: Exception) {

@@ -17,6 +17,7 @@ import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -28,6 +29,7 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
@@ -93,6 +95,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
+  private val planningProjectionValidator get() = phaseGates.planningProjectionValidator
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
@@ -1595,16 +1598,17 @@ internal class FeatureTaskRuntimeRunLoop(
     // On a goal child the review state, not the resolved branch, holds the immutable base and the
     // baseline untracked inventory the parent captured for this subtask alone.
     val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val ownedPaths = checkpointOwnedPaths(
+      run,
+      goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+    ) ?: return null
     return FeatureTaskRuntimeRepositoryCheckpoint(
       fingerprint = fingerprint,
       baseRef = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
       // The run-owned branch, not a measured HEAD: the durable pair is the same base/head scope review
       // resolves, and measuring HEAD here would add a git read the commit-sha path deliberately avoids.
       headRef = resolvedBranch?.branch?.takeIf(String::isNotBlank),
-      workingTreeOwnedPaths = checkpointOwnedPaths(
-        run,
-        goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
-      ),
+      workingTreeOwnedPaths = ownedPaths,
     )
   }
 
@@ -1612,29 +1616,28 @@ internal class FeatureTaskRuntimeRunLoop(
    * Owned paths for the checkpoint scope. Subtracting the run's recorded baseline untracked inventory
    * is what keeps a goal-child scoped to its own subtask: sibling subtasks share the tree, and every
    * path they left behind is already in that baseline.
+   *
+   * Both sides of that subtraction come from the same NUL-delimited plumbing listing. `git status
+   * --porcelain` is deliberately not the source: it collapses a wholly-untracked directory to one
+   * `dir/` entry and C-quotes non-ASCII paths, so a sibling subtask's new directory would never match
+   * the `ls-files`-written baseline and would leak into the child's audit scope (AC-014).
+   *
+   * Returns null when the listing cannot be measured. An empty inventory is a real answer — the scope
+   * owns nothing — and an audit reading it concludes no work exists here, so an unmeasurable read must
+   * not be able to produce it. The caller drops the whole checkpoint, matching how an unmeasurable
+   * fingerprint already blocks the launch instead of degrading it.
    */
-  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String> {
-    val worktree = gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!worktree.ok) return emptyList()
+  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String>? {
+    val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
+    if (!owned.ok) return null
     val baseline = baselineUntrackedPaths.toSet()
-    return worktree.value.orEmpty()
-      .lineSequence()
-      .mapNotNull(::porcelainStatusPath)
+    return owned.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
       .filterNot { it in baseline }
       .distinct()
       .sorted()
-      .toList()
-  }
-
-  // Porcelain entries are "XY <path>", with a rename/copy rendering as "old -> new"; the owned path is
-  // the destination. Quoted paths (non-ASCII or whitespace) keep git's surrounding quotes off.
-  private fun porcelainStatusPath(line: String): String? {
-    if (line.length <= PORCELAIN_STATUS_PREFIX_LENGTH) return null
-    val entry = line.substring(PORCELAIN_STATUS_PREFIX_LENGTH).trim()
-    return entry.substringAfter(PORCELAIN_RENAME_ARROW, entry)
-      .trim()
-      .removeSurrounding("\"")
-      .takeIf(String::isNotBlank)
   }
 
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
@@ -2147,7 +2150,11 @@ internal class FeatureTaskRuntimeRunLoop(
       expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, run.request.workflowId)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      run.request.workflowId,
+      planningProjectionValidator,
+    )
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       issueKey = run.request.issueKey,
@@ -2200,6 +2207,15 @@ internal class FeatureTaskRuntimeRunLoop(
       return LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
           error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      // A producing phase is already settled completed by the time its projection is parsed, so an
+      // unhandled throw here would unwind past the handler that persisted STATUS_RUNNING and leave the
+      // row running with no blockedReason, crashing identically on every later resume. Block durably
+      // instead, naming the producing phase so the operator knows which record to migrate or delete.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected an upstream bounded planning projection at the " +
+          "launch seam (workflow '${run.request.workflowId}'): ${error.message}",
       )
     } catch (error: InvalidWorkflowStateSchemaError) {
       return LaunchResult.projectionRejected(
@@ -2396,9 +2412,8 @@ private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
 
-// `git status --porcelain` fixes the two status columns plus one separating space ahead of the path.
-private const val PORCELAIN_STATUS_PREFIX_LENGTH = 3
-private const val PORCELAIN_RENAME_ARROW = " -> "
+// NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
+private const val OWNED_PATH_DELIMITER = '\u0000'
 
 private const val FORWARD_DEFERRAL_PATTERN =
   "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +

@@ -3,9 +3,11 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionModelsTest {
@@ -126,10 +128,14 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
       "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
       "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
     )
-    val parsed = featureTaskRuntimePlanningProjectionFromEnvelope(
-      envelope = linkedMapOf("produced_outputs" to produced),
-      producingPhaseId = "implement",
-    ) as FeatureTaskRuntimeImplementationReceipt
+    val parsed = assertIs<FeatureTaskRuntimeImplementationReceipt>(
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = linkedMapOf("produced_outputs" to produced),
+        producingPhaseId = "implement",
+        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      ),
+    )
 
     assertEquals(listOf("task-01"), parsed.completedTaskIds)
     val fieldNames = parsed.toProjectionFields().map { it.name }
@@ -142,6 +148,8 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
       featureTaskRuntimePlanningProjectionFromEnvelope(
         envelope = linkedMapOf("produced_outputs" to linkedMapOf("projection_kind" to "whole_envelope")),
         producingPhaseId = "plan",
+        expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
       )
     }
   }

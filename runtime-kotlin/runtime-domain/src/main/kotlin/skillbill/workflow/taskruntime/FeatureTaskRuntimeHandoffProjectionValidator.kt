@@ -17,7 +17,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -109,11 +109,17 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   /**
    * Applies the declared checkpoint policy and returns the fields the consumer actually receives.
    *
-   * A receipt carries its own checkpoint fingerprint, so an unchecked receipt lets a consumer audit a
-   * tree that is no longer the one the producer measured. `must_match` rejects that outright;
-   * `refresh_from_repository` keeps the producer's claim fields untouched and rewrites only the
-   * repository-derived checkpoint field to the resolved fingerprint, tagged with the superseded one so
-   * the refresh is visible rather than silent (AC-012).
+   * The fingerprint a receipt carries is authored by the producing agent and is not comparable to the
+   * runtime's own: the resolved value is a content hash over HEAD, the staged/unstaged diffs, and
+   * untracked contents, while the carried value is whatever string the agent wrote. Comparing them
+   * would reject or "refresh" on producer phrasing rather than on repository movement, so the carried
+   * value is treated as an opaque claim throughout.
+   *
+   * `must_match` therefore compares only the two runtime-produced fingerprints — the freshly resolved
+   * one and the one recorded earlier for this run — which is the comparison that actually detects a
+   * moved tree. `refresh_from_repository` keeps the producer's claim fields untouched and rewrites the
+   * repository-derived checkpoint field to the resolved fingerprint, appending the producer's claim so
+   * the substitution is visible rather than silent (AC-012).
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -129,7 +135,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         } else {
           null
         }
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs, carried)
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs)
     }
     if (violation != null) {
       reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, violation)
@@ -137,14 +143,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     if (declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY) {
       return fields
     }
-    val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint
-    if (carried == null || resolvedFingerprint == null || carried == resolvedFingerprint) return fields
+    val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint ?: return fields
     return fields.map { field ->
       if (field.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
         field.copy(
           value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
             kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
-            value = resolvedFingerprint + CHECKPOINT_REFRESHED_FROM_SEPARATOR + carried,
+            value = resolvedFingerprint + (carried?.let { CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it }.orEmpty()),
           ),
         )
       } else {
@@ -153,24 +158,20 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
   }
 
+  // Re-projecting an already-substituted field must keep the producer's original claim rather than
+  // promote the runtime fingerprint written over it, so an appended claim wins over the whole value.
   private fun receiptCarriedCheckpointFingerprint(fields: List<FeatureTaskRuntimeHandoffProjectionField>): String? =
     fields.firstOrNull { it.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT }
       ?.value
       ?.let { it as? FeatureTaskRuntimeHandoffProjectionValue.CompactReference }
       ?.takeIf { it.kind == FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT }
       ?.value
-      ?.substringBefore(CHECKPOINT_REFRESHED_FROM_SEPARATOR)
+      ?.substringAfter(CHECKPOINT_PRODUCER_CLAIM_SEPARATOR)
+      ?.takeIf(String::isNotBlank)
 
-  private fun mustMatchViolation(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    receiptCarriedFingerprint: String?,
-  ): String? {
+  private fun mustMatchViolation(inputs: FeatureTaskRuntimeHandoffProjectionInputs): String? {
     val resolved = inputs.resolvedCheckpoint
       ?: return "policy must_match requires a resolved repository checkpoint, none was supplied."
-    if (receiptCarriedFingerprint != null && receiptCarriedFingerprint != resolved.fingerprint) {
-      return "policy must_match requires the resolved repository fingerprint to equal the one carried by the " +
-        "producer receipt; they differ, so the receipt describes a different tree."
-    }
     val expected = inputs.expectedCheckpoint
       ?: return "policy must_match requires a recorded repository checkpoint to compare against, none was supplied."
     return if (resolved.fingerprint == expected.fingerprint) {
@@ -189,7 +190,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     val fields = when (val sourceRef = declaration.sourceRef) {
       is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
         inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
-          planningProjectionFields(declaration, sourceRef.producingPhaseId, output)
+          planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
             ?: listOf(
               FeatureTaskRuntimeHandoffProjectionField(
                 name = PHASE_OUTPUT_RECEIPT_FIELD,
@@ -376,8 +377,12 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun referencesPrivateEvidence(referenceValue: String): Boolean =
     referenceValue.startsWith(PRIVATE_EVIDENCE_LOCATOR_PREFIX)
 
-  /** Joins the authoritative fingerprint to the superseded receipt one; single-token, so it stays a compact ref. */
-  const val CHECKPOINT_REFRESHED_FROM_SEPARATOR: String = "+refreshed-from:"
+  /**
+   * Joins the authoritative runtime fingerprint to the producer's own checkpoint claim. The two are
+   * not comparable values — see `enforceCheckpointPolicy` — so the claim is carried as provenance, not
+   * as a superseded fingerprint. Single-token, so the field stays a compact reference.
+   */
+  const val CHECKPOINT_PRODUCER_CLAIM_SEPARATOR: String = "+producer-claimed:"
 
   const val PRIVATE_EVIDENCE_LOCATOR_PREFIX: String = "$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY/"
   const val PHASE_OUTPUT_RECEIPT_FIELD: String = "phase_output_receipt"
@@ -402,34 +407,35 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * plan and narrows it to the obligation-only subset (AC-011).
    */
   private fun planningProjectionFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
     producingPhaseId: String,
     output: FeatureTaskRuntimePhaseOutput,
   ): List<FeatureTaskRuntimeHandoffProjectionField>? {
-    if (declaration.projectionContractId !in PLANNING_PROJECTION_CONTRACT_IDS) return null
-    val envelope = phaseOutputEnvelope(output, producingPhaseId)
-    return when (declaration.projectionContractId) {
+    val contractId = declaration.projectionContractId
+    if (contractId !in PLANNING_PROJECTION_CONTRACT_IDS) return null
+    // A plan_commitment is derived from the plan's executable_plan output, so the kind the PRODUCER
+    // must emit is not always the kind this edge delivers.
+    val expectedKind = when (contractId) {
       FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID ->
-        (
-          featureTaskRuntimePlanningProjectionFromEnvelope(envelope, producingPhaseId)
-            as FeatureTaskRuntimePrePlanningDigest
-          ).toProjectionFields()
-      FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID ->
-        (
-          featureTaskRuntimePlanningProjectionFromEnvelope(envelope, producingPhaseId)
-            as FeatureTaskRuntimeExecutablePlan
-          ).toProjectionFields()
-      FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID ->
-        (
-          featureTaskRuntimePlanningProjectionFromEnvelope(envelope, producingPhaseId)
-            as FeatureTaskRuntimeExecutablePlan
-          ).toPlanCommitment().toProjectionFields()
-      FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID ->
-        (
-          featureTaskRuntimePlanningProjectionFromEnvelope(envelope, producingPhaseId)
-            as FeatureTaskRuntimeImplementationReceipt
-          ).toProjectionFields()
-      else -> null
+        FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
+      FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
+      FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
+      -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
+      else -> FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
+    }
+    val projection = featureTaskRuntimePlanningProjectionFromEnvelope(
+      envelope = phaseOutputEnvelope(output, producingPhaseId),
+      producingPhaseId = producingPhaseId,
+      expectedKind = expectedKind,
+      schemaValidator = inputs.planningProjectionValidator,
+    )
+    // Exhaustive narrowing on the parsed type: no cast, so a shape the declaration did not ask for is
+    // a typed rejection rather than a ClassCastException on an already-completed producing phase.
+    return when {
+      contractId == FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID &&
+        projection is FeatureTaskRuntimeExecutablePlan -> projection.toPlanCommitment().toProjectionFields()
+      else -> projection.toProjectionFields()
     }
   }
 

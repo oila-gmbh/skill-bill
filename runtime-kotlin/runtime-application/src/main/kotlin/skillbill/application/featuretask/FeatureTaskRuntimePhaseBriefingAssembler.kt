@@ -2,6 +2,8 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
@@ -79,6 +81,8 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
     workflowId: String? = null,
+    planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       FeatureTaskRuntimeHandoffProjectionInputs(
@@ -89,6 +93,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         resolvedCheckpoint = handoff.repositoryCheckpoint,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         workflowId = workflowId,
+        planningProjectionValidator = planningProjectionValidator,
       ),
     )
     val briefingText = serialize(handoff, envelope)
@@ -197,7 +202,14 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     if (handoff.derivedContextKeys.isEmpty()) {
       append("(none)")
     } else {
-      append(handoff.derivedContextKeys.joinToString(separator = "\n") { key -> "- $key" })
+      // A derived-context key names evidence the phase must acquire itself, so the bare key leaves the
+      // obligation implicit; each known key carries the instruction that makes it actionable, and an
+      // unknown key still renders so a newly declared one is visible rather than silently dropped.
+      append(
+        handoff.derivedContextKeys.joinToString(separator = "\n") { key ->
+          DERIVED_CONTEXT_INSTRUCTIONS[key]?.let { instruction -> "- $key: $instruction" } ?: "- $key"
+        },
+      )
     }
   }
 
@@ -255,16 +267,31 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     val single = projection.fields.size == 1 &&
       field.name == FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD
     when (val value = field.value) {
-      is FeatureTaskRuntimeHandoffProjectionValue.Text ->
-        if (single) appendLine(value.text) else appendLine("${field.name}: ${value.text}")
+      is FeatureTaskRuntimeHandoffProjectionValue.Text -> {
+        val text = escapeBriefingLineBreaks(value.text)
+        if (single) appendLine(text) else appendLine("${field.name}: $text")
+      }
       is FeatureTaskRuntimeHandoffProjectionValue.TextList -> {
         appendLine("${field.name}:")
-        value.items.forEach { item -> appendLine("  - $item") }
+        value.items.forEach { item -> appendLine("  - ${escapeBriefingLineBreaks(item)}") }
       }
       is FeatureTaskRuntimeHandoffProjectionValue.CompactReference ->
         appendLine("${field.name}: ${value.kind.wireValue}=${value.value}")
     }
   }
+
+  /**
+   * Keeps one producer-supplied value on one briefing line.
+   *
+   * The briefing is a line-structured document whose section headers ("## Run invariants", "##
+   * Repository checkpoint") are what a consumer trusts to tell run-owned context from producer claims.
+   * An unescaped line break inside a projection string would let a producer emit its own header and
+   * forge that context for the next phase — a real escalation on commit_push and pr, where the run
+   * invariants section is the sole delivery path for operator mandates. Escaping keeps the content
+   * intact and readable while making it structurally incapable of opening a new section.
+   */
+  private fun escapeBriefingLineBreaks(value: String): String =
+    value.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
 
   // Layer 1 rendering is allowlist-driven per phase; the typed fields stay on the briefing regardless.
   private fun StringBuilder.appendAllowlistedRunInvariants(handoff: FeatureTaskRuntimePhaseHandoff) {
@@ -309,4 +336,15 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       closedCriterionRefs.sorted().forEach { criterionRef -> appendLine("  - $criterionRef") }
     }
   }
+
+  private val DERIVED_CONTEXT_INSTRUCTIONS: Map<String, String> = mapOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF to
+      "read the branch diff yourself; it is not delivered in this briefing",
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE to
+      "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
+      "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
+      "as the evidence for every criterion",
+    "current_unit_of_work" to
+      "read the current unit of work yourself; it is not delivered in this briefing",
+  )
 }
