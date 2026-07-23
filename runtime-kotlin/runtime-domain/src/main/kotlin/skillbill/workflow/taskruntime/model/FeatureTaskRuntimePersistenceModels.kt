@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -191,6 +192,70 @@ data class FeatureTaskRuntimeGoalContinuationOutcome(
  * reads rather than dead computation. Each entry is the latest briefing for that phase.
  */
 const val FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY: String = "feature_task_runtime_phase_briefings"
+
+/**
+ * Delivered-projection tier of the durable store, structurally separate from
+ * [FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]. The two keys must never merge: the phase-records
+ * store holds complete validated phase output as PRIVATE EVIDENCE, while this store holds the exact
+ * envelope a consumer phase was delivered. Merging them would let a round trip hand a consumer the
+ * private artifact in place of its projection, which is the whole failure this split prevents.
+ */
+const val FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY: String =
+  "feature_task_runtime_delivered_projections"
+
+/**
+ * One delivered handoff envelope, recorded per consumer phase and iteration. Carries only the
+ * projection envelope: there is no field on this record that can hold a complete phase output.
+ */
+data class FeatureTaskRuntimeDeliveredProjectionRecord(
+  val workflowId: String,
+  val consumerPhaseId: String,
+  val iteration: Int,
+  val envelope: FeatureTaskRuntimeHandoffEnvelope,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeDeliveredProjectionRecord.workflowId must be non-blank." }
+    require(consumerPhaseId.isNotBlank()) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord.consumerPhaseId must be non-blank."
+    }
+    require(iteration >= 1) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord.iteration must be >= 1, was $iteration."
+    }
+    require(envelope.consumerPhaseId == consumerPhaseId) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord for '$consumerPhaseId' carries an envelope addressed to " +
+        "'${envelope.consumerPhaseId}'."
+    }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime delivered-projection record at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "workflow_id" to workflowId,
+    "consumer_phase_id" to consumerPhaseId,
+    "iteration" to iteration,
+    "handoff_envelope" to envelope.toEnvelopeMap(),
+  )
+
+  companion object {
+    @OpenBoundaryMap("Feature-task-runtime delivered-projection decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord =
+      FeatureTaskRuntimeDeliveredProjectionRecord(
+        workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
+        consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
+        iteration = (raw["iteration"] as? Number)?.toInt() ?: missing("iteration"),
+        envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
+          JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
+            // Named explicitly: the private phase-output artifact is never an acceptable substitute
+            // for the delivered projection, so an absent envelope is a hard decode failure.
+            ?: missing("handoff_envelope"),
+        ),
+      )
+
+    // Single throw seam so the strict decoder stays within the throw-count budget.
+    private fun missing(field: String): Nothing = throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime delivered-projection record is missing field '$field'.",
+    )
+  }
+}
 
 /** Terminal status persisted on a phase record that the runtime blocked on. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED: String = "blocked"

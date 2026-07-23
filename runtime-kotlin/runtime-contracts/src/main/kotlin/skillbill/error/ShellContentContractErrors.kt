@@ -130,6 +130,44 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   cause,
 )
 
+/** Why a handoff projection was rejected before an agent was launched. */
+enum class FeatureTaskRuntimeHandoffProjectionFailureKind {
+  MISSING_REQUIRED_SOURCE,
+  MALFORMED_FIELD,
+  UNSUPPORTED_CONTRACT_VERSION,
+  UNDECLARED_FIELD,
+  DUPLICATE_PROJECTION_NAME,
+  BUDGET_OVERFLOW,
+  INVALID_COMPACT_REFERENCE,
+  CHECKPOINT_POLICY_VIOLATION,
+  SCHEMA_INVALID,
+}
+
+/**
+ * Surfaced when a declared handoff projection cannot be delivered. The message names the workflow
+ * (when known), the consumer phase, the projection, and its contract id/version, plus a short
+ * caller-supplied [reason]. Call sites pass a diagnosis, never payload or field content, so a
+ * rejection is actionable without echoing the private evidence it refused to project.
+ */
+@Suppress("LongParameterList") // each identifier is required by the actionable-message contract
+class InvalidFeatureTaskRuntimeHandoffProjectionError(
+  val workflowId: String?,
+  val consumerPhaseId: String,
+  val projectionName: String,
+  val projectionContractId: String,
+  val projectionContractVersion: String,
+  val failureKind: FeatureTaskRuntimeHandoffProjectionFailureKind,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime handoff projection '${projectionName.ifBlank { "<unknown>" }}' " +
+    "(contract ${projectionContractId.ifBlank { "<unknown>" }}@${projectionContractVersion.ifBlank { "<unknown>" }}) " +
+    "for consumer phase '${consumerPhaseId.ifBlank { "<unknown>" }}' " +
+    "in workflow '${workflowId?.ifBlank { null } ?: "<unknown>"}' " +
+    "was rejected [$failureKind]: $reason",
+  cause,
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,

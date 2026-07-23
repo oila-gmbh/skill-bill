@@ -4,12 +4,15 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 
 /**
@@ -50,13 +53,61 @@ object FeatureTaskRuntimePhasePromptComposer {
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
-      AgentAddonPromptFormatter.format(agentAddonSelection),
+      AgentAddonPromptFormatter.format(budgetedAddonsFor(briefing.phaseId, agentAddonSelection)),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
       outputContract(briefing),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
+
+  /**
+   * Applies the add-on content budget before hydrated content reaches the prompt.
+   *
+   * The declared consumer assignment is manifest-owned `feature_addon_usage.feature-task`, which
+   * scopes add-ons to a feature-task run as a whole — every phase of this composer's run is that
+   * consumer, so there is no narrower per-phase assignment to honor here. What this seam adds is the
+   * budget: it is deliberately separate from the per-projection phase-receipt budget, so neither can
+   * consume the other's headroom and an oversized add-on rejects with a typed error rather than
+   * silently inflating the briefing.
+   */
+  internal fun budgetedAddonsFor(
+    phaseId: String,
+    selection: HydratedAgentAddonSelection,
+  ): HydratedAgentAddonSelection {
+    val budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT
+    if (selection.entries.size > budget.maxCollectionItems) {
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = null,
+        consumerPhaseId = phaseId,
+        projectionName = ADDON_CONTENT_PROJECTION_NAME,
+        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
+        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "${selection.entries.size} hydrated add-ons exceed the ${budget.maxCollectionItems}-item " +
+          "add-on budget; the runtime rejects rather than dropping add-ons.",
+      )
+    }
+    val totalBytes = selection.entries.sumOf { it.content.toByteArray(Charsets.UTF_8).size }
+    if (totalBytes > budget.maxUtf8Bytes) {
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = null,
+        consumerPhaseId = phaseId,
+        projectionName = ADDON_CONTENT_PROJECTION_NAME,
+        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
+        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "hydrated add-on content is $totalBytes UTF-8 bytes against the ${budget.maxUtf8Bytes}-byte " +
+          "add-on budget, which is counted independently of the phase-receipt budget; the runtime rejects " +
+          "rather than truncating add-on content.",
+      )
+    }
+    return selection
+  }
+
+  internal const val ADDON_CONTENT_PROJECTION_NAME: String = "agent_addon_content"
+  private const val ADDON_CONTENT_CONTRACT_ID: String = "feature_task_runtime.agent_addon_content"
+  private const val ADDON_CONTENT_CONTRACT_VERSION: String = "0.1"
 
   private fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRuntimeOperatorBlockRetry?): String {
     if (retry == null) return ""

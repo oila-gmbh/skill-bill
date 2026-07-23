@@ -30,6 +30,21 @@ object FeatureTaskRuntimePhaseOutputSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml"
 }
 
+/**
+ * Runtime-side mirror of the handoff-envelope schema's `contract_version`;
+ * `FeatureTaskRuntimeHandoffEnvelopeSchemaContractVersionTest` fails the build if they diverge.
+ */
+const val FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeHandoffEnvelopeSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
+}
+
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {

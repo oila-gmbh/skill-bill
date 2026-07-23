@@ -374,12 +374,18 @@ class FeatureTaskRuntimeRunnerTest {
       assertEquals(listOf("AC-1", "AC-2"), briefing.acceptanceCriteria, "criteria for $phaseId")
       assertContains(briefing.briefingText, "feature_size: SMALL")
       assertContains(briefing.briefingText, SPEC_REFERENCE)
-      assertContains(briefing.briefingText, "mandate-X")
+      // Identity and ceremony reach every phase; the policy mandates are allowlisted away from the
+      // finalization phases, which act on already-settled work.
+      if (phaseId in FINALIZATION_PHASE_IDS) {
+        assertFalse(briefing.briefingText.contains("mandate-X"), "mandates rendered for $phaseId")
+      } else {
+        assertContains(briefing.briefingText, "mandate-X")
+      }
     }
-    assertTrue(briefings.getValue("plan").upstreamOutputsByPhaseId.containsKey("preplan"))
-    assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId.getValue("preplan"))
-    assertTrue(briefings.getValue("implement").upstreamOutputsByPhaseId.containsKey("plan"))
-    assertEquals(PLAN_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId.getValue("plan"))
+    assertTrue(briefings.getValue("plan").hasUpstreamReceipt("preplan"))
+    assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").requireUpstreamReceipt("preplan"))
+    assertTrue(briefings.getValue("implement").hasUpstreamReceipt("plan"))
+    assertEquals(PLAN_OUTPUT, briefings.getValue("implement").requireUpstreamReceipt("plan"))
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
     assertEquals(listOf("diff"), briefings.getValue("pr").derivedContextKeys)
@@ -596,19 +602,19 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
-    assertEquals(PLAN_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["plan"])
-    assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["implement"])
+    assertEquals(PLAN_OUTPUT, auditBriefing.upstreamReceipt("plan"))
+    assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamReceipt("implement"))
     // Audit runs before review, so it no longer carries any review output.
-    assertFalse(auditBriefing.upstreamOutputsByPhaseId.containsKey("review"))
+    assertFalse(auditBriefing.hasUpstreamReceipt("review"))
     val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["implement"])
-    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["audit"])
+    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamReceipt("implement"))
+    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamReceipt("audit"))
     val historyBriefing = requireNotNull(briefings["write_history"]) { "history briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamOutputsByPhaseId["implement"])
+    assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamReceipt("implement"))
     val commitBriefing = requireNotNull(briefings["commit_push"]) { "commit briefing must be persisted" }
-    assertTrue(commitBriefing.upstreamOutputsByPhaseId.containsKey("write_history"))
+    assertTrue(commitBriefing.hasUpstreamReceipt("write_history"))
     val prBriefing = requireNotNull(briefings["pr"]) { "pr briefing must be persisted" }
-    assertTrue(prBriefing.upstreamOutputsByPhaseId.containsKey("commit_push"))
+    assertTrue(prBriefing.hasUpstreamReceipt("commit_push"))
   }
 
   @Test
@@ -625,7 +631,7 @@ class FeatureTaskRuntimeRunnerTest {
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(PREPLAN_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
+    assertEquals(PREPLAN_OUTPUT, planBriefing.upstreamReceipt("preplan"))
     assertContains(planBriefing.briefingText, "### from: preplan")
     assertContains(planBriefing.briefingText, PREPLAN_OUTPUT)
   }
@@ -640,7 +646,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(ALL_PHASES, harness.launchedPhaseOrder())
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(VALID_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
+    assertEquals(VALID_OUTPUT, planBriefing.upstreamReceipt("preplan"))
     assertContains(planBriefing.briefingText, "### from: preplan")
   }
 
@@ -1254,15 +1260,19 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertEquals(listOf("mandate-X"), briefing.mandatesAndOverrides, "mandates for $phaseId")
       assertContains(briefing.briefingText, "feature_size: MEDIUM")
       assertContains(briefing.briefingText, SPEC_REFERENCE)
-      assertContains(briefing.briefingText, "mandate-X")
+      // The typed mandates field is durable state on every briefing (asserted above); only the
+      // rendered prompt narrows, per the per-phase run-invariant allowlist.
+      if (phaseId !in FINALIZATION_PHASE_IDS) {
+        assertContains(briefing.briefingText, "mandate-X")
+      }
     }
-    assertEquals(VALID_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId["preplan"])
-    assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId["plan"])
+    assertEquals(VALID_OUTPUT, briefings.getValue("plan").upstreamReceipt("preplan"))
+    assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamReceipt("plan"))
     // implement carries its reconciliation report (mutating-phase gate), so review's implement
     // upstream is the full reconciliation output rather than the minimal VALID_OUTPUT.
     assertEquals(
       normalizedOutput(validJsonOutput("implement")),
-      normalizedOutput(briefings.getValue("review").upstreamOutputsByPhaseId.getValue("implement")),
+      normalizedOutput(briefings.getValue("review").requireUpstreamReceipt("implement")),
     )
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "diff")
@@ -1338,7 +1348,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertContains(prompt, "feature_size: MEDIUM")
       assertContains(prompt, "Scaling changes scope and verbosity only")
       assertContains(prompt, SPEC_REFERENCE)
-      assertContains(prompt, "mandate-X")
+      if (phaseId !in FINALIZATION_PHASE_IDS) {
+        assertContains(prompt, "mandate-X")
+      }
       assertContains(prompt, "Required final output")
       assertContains(prompt, "\"phase_id\": must be \"$phaseId\"")
       assertContains(

@@ -8,12 +8,17 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
 /**
  * The experimental runtime-driven feature-task pipeline definition, fully independent
@@ -135,16 +140,54 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     requiredArtifactPresenceResolver = FeatureTaskRuntimeRequiredArtifactPresenceResolver,
   )
 
+  /** Contract id of the coarse whole-receipt projection every declared edge currently uses. */
+  const val UPSTREAM_PHASE_RECEIPT_CONTRACT_ID: String = "feature_task_runtime.upstream_phase_receipt"
+
+  /** Version of [UPSTREAM_PHASE_RECEIPT_CONTRACT_ID]; the envelope schema pins the outer version. */
+  const val UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION: String = "0.1"
+
   /**
-   * Per-phase declarations: consumed upstream phase ids (mirroring
-   * [WorkflowDefinition.requiredArtifactsByStep]) plus derived-context keys.
-   * `review` and `pr` declare derived `diff` context for branch-diff inspection.
+   * One coarse whole-receipt projection per declared upstream edge: the producing phase's validated
+   * output delivered as a single bounded text field. This is deliberately the widest projection the
+   * mechanism allows — it proves the declaration path is load-bearing without yet claiming any edge
+   * is minimally scoped. Per-edge named-field projections replace these coarse receipts later.
+   */
+  fun upstreamReceiptProjections(
+    consumerPhaseId: String,
+    producingPhaseIds: List<String>,
+  ): List<PhaseHandoffProjectionDeclaration> = producingPhaseIds.distinct().map { producingPhaseId ->
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+      projectionName = "${producingPhaseId}_receipt",
+      projectionContractId = UPSTREAM_PHASE_RECEIPT_CONTRACT_ID,
+      projectionContractVersion = UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION,
+      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+      budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+      declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+      // Presence of a declared upstream output is already gated ahead of launch by the run loop's
+      // missing-upstream check, which blocks the phase with an operator-facing reason. Marking these
+      // projections required would relocate that decision into a typed projection failure and change
+      // a graceful block into an exception. The validator's required path stays load-bearing for
+      // declarations that own their own presence contract.
+      required = false,
+    )
+  }
+
+  /**
+   * Per-phase declarations: the typed projection set (one coarse receipt per edge in
+   * [WorkflowDefinition.requiredArtifactsByStep]) plus derived-context keys. `review` and `pr`
+   * declare derived `diff` context for branch-diff inspection.
    */
   val phaseDeclarations: Map<String, FeatureTaskRuntimePhaseDeclaration> =
     definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimePhaseDeclaration(
         phaseId = phaseId,
-        consumedUpstreamPhaseIds = definition.requiredArtifactsByStep[phaseId].orEmpty(),
+        projectionDeclarations = upstreamReceiptProjections(
+          phaseId,
+          definition.requiredArtifactsByStep[phaseId].orEmpty(),
+        ),
         derivedContextKeys = if (phaseId in setOf(PHASE_REVIEW, PHASE_PR)) listOf("diff") else emptyList(),
       )
     }

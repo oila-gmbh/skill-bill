@@ -45,6 +45,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -892,9 +894,12 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = listOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+            ),
           ),
         )
       } else if (
@@ -902,8 +907,11 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = declaration.consumedUpstreamPhaseIds +
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            declaration.consumedUpstreamPhaseIds +
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          ),
         )
       } else {
         declaration
@@ -1566,6 +1574,32 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
+  /**
+   * Resolves a repository checkpoint only when some declaration actually needs one, reusing the same
+   * `WorkflowGitOperations` fingerprint the audit-repair path already depends on. No new git port is
+   * introduced and the domain stays git-agnostic: the checkpoint arrives as a plain value.
+   */
+  private fun resolveRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
+    val needsCheckpoint = run.declaration.projectionDeclarations.any { projection ->
+      projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+    }
+    if (!needsCheckpoint) return null
+    val fingerprint = gitOperations.repositoryFingerprint(run.request.repoRoot)
+      .takeIf { it.ok }
+      ?.value
+      ?.takeIf(String::isNotBlank)
+      ?: return null
+    val worktree = gitOperations.worktreeStatus(run.request.repoRoot)
+    return FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = fingerprint,
+      workingTreeOwnedPaths = if (worktree.ok) {
+        worktree.value.orEmpty().lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
+      } else {
+        emptyList()
+      },
+    )
+  }
+
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
     if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
       gitOperations.repositoryFingerprint(run.request.repoRoot)
@@ -2086,8 +2120,11 @@ internal class FeatureTaskRuntimeRunLoop(
       } else {
         emptyList()
       },
+      repositoryCheckpoint = resolveRepositoryCheckpoint(run),
+      expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
+        ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, run.request.workflowId)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
