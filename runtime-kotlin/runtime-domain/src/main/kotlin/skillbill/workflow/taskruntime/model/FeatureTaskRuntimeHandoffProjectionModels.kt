@@ -151,9 +151,15 @@ data class FeatureTaskRuntimeHandoffProjectionBudget(
     val PREPLAN_DIGEST_RECEIPT: FeatureTaskRuntimeHandoffProjectionBudget =
       FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 196_608, maxCollectionItems = 64)
 
-    /** Add-on content is budgeted independently of phase receipts so neither can starve the other. */
+    /**
+     * Sized against the manifest-declared feature-task add-on consumers: the largest shipped consumer
+     * set (the kmp pack's seven `feature-task` add-ons) sums to 31,863 UTF-8 bytes, so 96 KiB leaves
+     * better than 3x headroom while add-on content stays bounded independently of the phase-receipt
+     * budget. A rejection here means an add-on payload grew far beyond every shipped consumer set, not
+     * that an ordinary run outgrew its budget.
+     */
     val ADDON_CONTENT: FeatureTaskRuntimeHandoffProjectionBudget =
-      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 16_384, maxCollectionItems = 16)
+      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 98_304, maxCollectionItems = 16)
   }
 }
 

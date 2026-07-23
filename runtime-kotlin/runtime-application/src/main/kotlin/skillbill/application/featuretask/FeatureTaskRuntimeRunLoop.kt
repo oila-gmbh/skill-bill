@@ -2166,6 +2166,11 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
           error.message,
       )
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
+          error.message,
+      )
     }
     val briefing = prepared.briefing
     val outcome = subtaskLauncher.launch(

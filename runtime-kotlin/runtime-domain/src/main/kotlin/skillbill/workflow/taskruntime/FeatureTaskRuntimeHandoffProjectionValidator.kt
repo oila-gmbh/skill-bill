@@ -4,7 +4,6 @@ import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
@@ -259,8 +258,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
             "reference must be an identifier, not an inlined body."
         reference.value.any { it == '\n' || it == '\r' } ->
           "reference in field '${field.name}' contains a line break; a compact reference must be a single token."
-        reference.kind == FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT &&
-          !declaration.allowsPrivateArtifactReference ->
+        referencesPrivateEvidence(reference.value) && !declaration.allowsPrivateArtifactReference ->
           "field '${field.name}' references a private evidence artifact, but this projection does not declare a " +
             "runtime-owned deterministic inspection operation for it."
         else -> null
@@ -319,8 +317,12 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * here grants a model an open retrieval capability.
    */
   fun privateEvidenceReference(producingPhaseId: String, iteration: Int): String =
-    "$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY/$producingPhaseId#$iteration"
+    PRIVATE_EVIDENCE_LOCATOR_PREFIX + "$producingPhaseId#$iteration"
 
+  private fun referencesPrivateEvidence(referenceValue: String): Boolean =
+    referenceValue.startsWith(PRIVATE_EVIDENCE_LOCATOR_PREFIX)
+
+  const val PRIVATE_EVIDENCE_LOCATOR_PREFIX: String = "$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY/"
   const val PHASE_OUTPUT_RECEIPT_FIELD: String = "phase_output_receipt"
   const val CEREMONY_SCALING_FIELD: String = "ceremony_scaling"
   const val ADDON_CONTENT_FIELD: String = "addon_content"

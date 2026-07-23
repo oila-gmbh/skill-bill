@@ -271,6 +271,25 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     assertFalse(reference.value.contains("""{"plan":"""), "the reference must not inline the private body")
   }
 
+  @Test
+  fun `a private-evidence locator mislabelled as another reference kind is still gated`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(
+            declaration(
+              inlineAlternative = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_PATH,
+              allowsPrivateArtifactReference = false,
+            ),
+          ),
+        ),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.INVALID_COMPACT_REFERENCE, error.failureKind)
+    assertContains(error.message.orEmpty(), "private evidence artifact")
+  }
+
   @Suppress("LongParameterList") // mirrors the declaration record under test; each field is varied by a case
   private fun declaration(
     consumerPhaseId: String = CONSUMER,

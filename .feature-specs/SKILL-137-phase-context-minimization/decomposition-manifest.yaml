@@ -20,7 +20,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260723-064104-b2rz"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -88,6 +88,7 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -3240,6 +3241,36 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     assertEquals("feat/first-branch", persisted.branch)
     assertEquals("main", persisted.baseBranch)
     assertEquals(true, persisted.created)
+  }
+}
+
+class FeatureTaskRuntimeLegacyBriefingBlockTest {
+  @Test
+  fun `a legacy briefing row blocks the phase durably instead of unwinding the run`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+
+    val legacyBriefing: Map<String, Any?> = linkedMapOf(
+      "phase_id" to "plan",
+      "spec_reference" to ".feature-specs/SKILL-137/spec.md",
+      "feature_size" to "MEDIUM",
+      "acceptance_criteria" to listOf("AC-1"),
+      "mandates_and_overrides" to emptyList<String>(),
+      "upstream_outputs_by_phase_id" to mapOf("preplan" to "legacy payload"),
+      "derived_context_keys" to emptyList<String>(),
+      "briefing_text" to "legacy briefing text",
+    )
+    val artifacts = LinkedHashMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID))
+    artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = mapOf("plan" to legacyBriefing)
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "durable handoff envelope")
+    assertContains(blocked.blockedReason, "upstream_outputs_by_phase_id")
   }
 }
 
