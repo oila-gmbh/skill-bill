@@ -1,3 +1,14 @@
+## [2026-07-23] SKILL-140 canonicalize planning projections before validate (subtask 2)
+Areas: runtime-kotlin/runtime-domain
+- A deterministic, referential, idempotent canonicalizer normalizes planning-projection wire maps (lowercasing task ids and their matching `depends_on` references, trimming/normalizing summary and nonBlank trivia) and runs inside the single shared parse function immediately before strict schema validation, so both the producer gate and the launch seam absorb id/summary/whitespace trivia identically before the bounded fix loop ever sees a structural error. reusable
+- Canonicalization only repairs trivia: it never synthesizes missing fields, reorders/drops collection entries, or coerces types; structural violations (missing required fields, unknown keys, budget overflow, dependency cycles, empty-after-canonicalization ids) still reject with unchanged error typing, and the schema YAML patterns stay authoritative for post-canonicalization values.
+- Anti-paste protection survives normalization: a description with backticks/tabs is normalized and accepted, but a pasted JSON body or diff hunk still rejects on the anti-paste pattern.
+- Applied canonicalizations are recorded as bounded text-free typed diagnostics (no plan bodies or prompt text). reusable
+- Because canonicalization lives in the one shared function, gate and seam observe identical results; a parity test proves an envelope canonicalized at the gate parses identically at the seam, and an idempotence property test over the fixture corpus proves applying it twice is a no-op. reusable
+- Test placement note: real-schema acceptance/rejection tests live in runtime-infra-fs (runtime-domain cannot depend on the infra-fs schema adapter); runtime-application testFixtures gained `RealPlanningProjectionValidator` so the parity test reaches the real Draft 2020-12 adapter. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
 ## [2026-07-23] SKILL-140 producer-side planning-projection gating (subtask 1)
 Areas: runtime-kotlin/runtime-{domain,application}, runtime-kotlin/ARCHITECTURE.md
 - A producing phase (`preplan`/`plan`/`implement`) that completes with `produced_outputs` failing its projection contract is now rejected producer-side and re-enters that phase's own bounded fix loop with the projection error in the retry context, instead of handing a broken projection to a consumer that cannot repair it; it blocks only at the existing cap. reusable

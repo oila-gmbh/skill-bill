@@ -13,7 +13,7 @@ internal object FeatureTaskRuntimeProjectionCanonicalizationFixtures {
     "tasks" to listOf(
       mapOf(
         "task_id" to "T1",
-        "description" to "add\t`contract`\n now ",
+        "description" to "add\t`contract`\tnow ",
         "criterion_refs" to listOf("AC-001"),
         "target_paths_or_symbols" to listOf("  src/Foo.kt  "),
         "test_obligations" to listOf(" parity "),
@@ -57,7 +57,7 @@ internal object FeatureTaskRuntimeProjectionCanonicalizationFixtures {
     "completed_task_ids" to listOf("T1", "Task_2"),
     "changed_paths" to listOf("src/Foo.kt"),
     "tests_executed" to listOf(mapOf("name" to "FooTest", "outcome" to "passed")),
-    "deviations" to listOf(mapOf("ref" to "AC-001", "note" to "adjusted\t`x`\nslightly")),
+    "deviations" to listOf(mapOf("ref" to "AC-001", "note" to "adjusted\t`x`\tslightly")),
     "unresolved_items" to listOf("  follow up  "),
     "reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "  tree at target  "),
     "repository_checkpoint" to mapOf("fingerprint" to "  abc  "),

@@ -62,10 +62,10 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   // --- compact summaries (task 2) ---------------------------------------------------------------
 
   @Test
-  fun `compact summary replaces tab CR LF runs with one space and strips backticks`() {
+  fun `compact summary collapses tab runs and strips backticks, trimming boundary whitespace`() {
     val produced = mapOf(
-      "tasks" to listOf(taskMap("t1", description = "call\t\t`fn()`\nnow\r\n ")),
-      "deviations" to listOf(mapOf("ref" to "AC-001", "note" to "see `x`\tand\ny")),
+      "tasks" to listOf(taskMap("t1", description = "call\t\t`fn()`\tnow ")),
+      "deviations" to listOf(mapOf("ref" to "AC-001", "note" to " see `x`\tand\ty ")),
     )
 
     val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
@@ -74,6 +74,18 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
     assertEquals("call fn() now", task["description"])
     val deviation = (result.canonical["deviations"] as List<*>)[0] as Map<*, *>
     assertEquals("see x and y", deviation["note"])
+  }
+
+  @Test
+  fun `compact summary never removes an interior line break, so a multi-line paste stays rejectable`() {
+    // Collapsing CR/LF would flatten a multi-line body into a single line the schema's no-line-break
+    // guard then accepts, and slide the diff marker off its line start. The interior break must survive.
+    val produced = mapOf("tasks" to listOf(taskMap("t1", description = "changes:\ndiff --git a/x b/x")))
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val task = (result.canonical["tasks"] as List<*>)[0] as Map<*, *>
+    assertEquals("changes:\ndiff --git a/x b/x", task["description"])
   }
 
   // --- nonBlank trims (task 2) ------------------------------------------------------------------
@@ -130,13 +142,13 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
 
   @Test
   fun `a compact-summary canonicalization records the field path and transform kinds but never the text`() {
-    val produced = mapOf("tasks" to listOf(taskMap("t1", description = "call\t`fn`\nnow ")))
+    val produced = mapOf("tasks" to listOf(taskMap("t1", description = "call\t`fn`\tnow ")))
 
     val record = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced).diagnostics
       .single { it.fieldPath == "tasks[0].description" }
 
     assertEquals(
-      listOf(Transform.LINE_BREAKS_TO_SPACE, Transform.BACKTICKS_STRIPPED, Transform.TRIMMED),
+      listOf(Transform.TABS_TO_SPACE, Transform.BACKTICKS_STRIPPED, Transform.TRIMMED),
       record.transforms,
     )
     assertNull(record.originalId, "a compact-summary record must not carry the field text")

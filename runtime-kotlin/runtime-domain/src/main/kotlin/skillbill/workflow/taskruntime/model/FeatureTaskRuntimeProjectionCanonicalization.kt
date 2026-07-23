@@ -3,15 +3,16 @@ package skillbill.workflow.taskruntime.model
 /**
  * SKILL-140 subtask 2: deterministic canonicalization of an agent-produced planning-projection wire
  * map, applied inside [featureTaskRuntimePlanningProjectionFromEnvelope] immediately before strict
- * schema validation. It absorbs lexical trivia — id casing/separators, tab/CR/LF and backtick noise in
+ * schema validation. It absorbs lexical trivia — id casing/separators, tab and backtick noise in
  * compact summaries, and surrounding whitespace on nonBlank strings — so the bounded fix loop's
  * attempts are spent on structural problems, not spelling.
  *
  * It never synthesizes missing fields, reorders or drops collection entries, or coerces types: a value
  * of an unexpected shape is passed through untouched so the schema and the typed models reject it
  * exactly as before. Anti-paste rejection stays with the schema — canonicalization strips backticks and
- * normalizes line breaks but leaves the JSON/diff markers the `compactSummary` pattern refuses, so a
- * pasted body still rejects.
+ * collapses tab runs but never removes an interior line break, so a multi-line paste keeps the CR/LF the
+ * `compactSummary` no-line-break guard refuses and any `^`-anchored diff marker stays at its line start
+ * where the anti-paste pattern still catches it, and a pasted JSON/diff body still rejects.
  *
  * Because it lives inside the single shared parse function, the producer gate (subtask 1) and the
  * consumer launch seam observe identical behavior with no per-seam copy.
@@ -165,18 +166,24 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     }
   }
 
+  // Collapses tab runs and strips backticks — the trivia AC-002 accepts — but never removes an interior
+  // line break. A line break is the multi-line-paste signal the schema's `^[^\n\r\t`]+$` guard keys on;
+  // collapsing it would flatten a multi-line JSON/diff body into an accepted single line and slide a
+  // `^`-anchored diff marker off its line start where the anti-paste pattern misses it. Multi-line
+  // content is left intact so the schema still rejects it. The trailing trim removes only boundary
+  // whitespace, so a leading-line diff marker lands at position 0 where the pattern still catches it.
   private fun canonicalizeCompactSummary(
     value: Any?,
     records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
     fieldPath: String,
   ): Any? {
     val raw = value as? String ?: return value
-    val afterBreaks = raw.replace(LINE_BREAK_RUN, " ")
-    val afterBackticks = afterBreaks.replace("`", "")
+    val afterTabs = raw.replace(TAB_RUN, " ")
+    val afterBackticks = afterTabs.replace("`", "")
     val trimmed = afterBackticks.trim()
     val transforms = buildList {
-      if (afterBreaks != raw) add(FeatureTaskRuntimeProjectionCanonicalizationTransform.LINE_BREAKS_TO_SPACE)
-      if (afterBackticks != afterBreaks) add(FeatureTaskRuntimeProjectionCanonicalizationTransform.BACKTICKS_STRIPPED)
+      if (afterTabs != raw) add(FeatureTaskRuntimeProjectionCanonicalizationTransform.TABS_TO_SPACE)
+      if (afterBackticks != afterTabs) add(FeatureTaskRuntimeProjectionCanonicalizationTransform.BACKTICKS_STRIPPED)
       if (trimmed != afterBackticks) add(FeatureTaskRuntimeProjectionCanonicalizationTransform.TRIMMED)
     }
     if (transforms.isNotEmpty()) records += textFreeRecord(fieldPath, transforms)
@@ -258,7 +265,7 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
   private fun Map<*, *>.stringKeyedView(): Map<String, Any?> =
     if (keys.all { it is String }) this as Map<String, Any?> else LinkedHashMap()
 
-  private val LINE_BREAK_RUN = Regex("[\\t\\r\\n]+")
+  private val TAB_RUN = Regex("\\t+")
 
   private val ID_SEPARATOR_RUN = Regex("[\\s_]+")
   private val ID_INVALID_CHAR = Regex("[^a-z0-9-]")
@@ -315,7 +322,7 @@ data class FeatureTaskRuntimeProjectionCanonicalizationRecord(
 
 enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: String) {
   TASK_ID_NORMALIZED("task_id_normalized"),
-  LINE_BREAKS_TO_SPACE("line_breaks_to_space"),
+  TABS_TO_SPACE("tabs_to_space"),
   BACKTICKS_STRIPPED("backticks_stripped"),
   TRIMMED("trimmed"),
 }

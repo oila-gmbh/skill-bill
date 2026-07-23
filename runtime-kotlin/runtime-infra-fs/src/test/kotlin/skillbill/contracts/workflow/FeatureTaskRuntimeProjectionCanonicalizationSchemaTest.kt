@@ -73,6 +73,33 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
     }
   }
 
+  @Test
+  fun `a diff paste whose marker is not at line-start still rejects after canonicalization`() {
+    // The anti-paste diff markers are `^`-anchored; collapsing the interior line break to a space would
+    // slide `diff --git` off line-start where the pattern misses it. The break is preserved, so the
+    // no-line-break guard rejects the whole multi-line body.
+    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      parsePlan(
+        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
+          """{"task_id":"task-1","description":"changes:\ndiff --git a/x b/x","criterion_refs":["AC-001"],""" +
+          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+      )
+    }
+  }
+
+  @Test
+  fun `a description that is a multi-line JSON-array body still rejects after canonicalization`() {
+    // A pasted JSON array of strings matches none of the single-line anti-paste markers, so only its
+    // line breaks keep it out; collapsing them would flatten it into an accepted single line.
+    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      parsePlan(
+        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
+          """{"task_id":"task-1","description":"[\n\"alpha\",\n\"beta\"\n]","criterion_refs":["AC-001"],""" +
+          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+      )
+    }
+  }
+
   // --- AC-003: structural violations reject as before, with unchanged typing --------------------
 
   @Test
