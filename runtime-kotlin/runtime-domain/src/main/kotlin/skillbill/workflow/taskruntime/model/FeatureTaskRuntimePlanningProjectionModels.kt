@@ -558,14 +558,51 @@ private fun List<String>.duplicates(): List<String> =
  * to handle and a legacy free-form payload loud-fails rather than aborting the driver with an
  * unhandled [IllegalArgumentException].
  */
-@Suppress("ThrowsCount") // one rejection per gate; collapsing them would blur the operator diagnosis
 @OpenBoundaryMap("Feature-task-runtime planning projection parse from the schema-validated phase-output wire map")
 fun featureTaskRuntimePlanningProjectionFromEnvelope(
   envelope: Map<String, Any?>,
   producingPhaseId: String,
   expectedKind: FeatureTaskRuntimeProjectionKind,
   schemaValidator: FeatureTaskRuntimePlanningProjectionValidator,
-): FeatureTaskRuntimePlanningProjection {
+): FeatureTaskRuntimePlanningProjection =
+  featureTaskRuntimePlanningProjectionParseFromEnvelope(envelope, producingPhaseId, expectedKind, schemaValidator)
+    .projection
+
+/**
+ * The projection plus the bounded canonicalizations applied to reach it. The one-value overload above
+ * stays source-compatible for callers that only need the projection; this overload exposes the typed
+ * diagnostics for later telemetry pickup without duplicating the parse.
+ */
+internal data class FeatureTaskRuntimePlanningProjectionParse(
+  val projection: FeatureTaskRuntimePlanningProjection,
+  val canonicalizations: List<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+)
+
+/**
+ * Parses a producing phase's `produced_outputs` into the typed planning projection the consumer's
+ * declaration asked for, returning the applied canonicalizations alongside it. The whole producing
+ * envelope may be passed; only `produced_outputs` is read.
+ *
+ * Gates run in order before any field is read: the producer's `projection_kind` must be the
+ * [expectedKind] the consuming declaration names, `contract_version` must equal the pinned schema
+ * version, the payload is then canonicalized (id casing/separators, compact-summary line-break/backtick
+ * trivia, nonBlank trims) so the fix loop is spent on structure not spelling, the canonical map is
+ * validated against the canonical Draft 2020-12 schema through [schemaValidator], and only then do the
+ * typed cross-field rules run on that same canonical map. Canonicalization lives here alone, so the
+ * producer gate and the launch-seam parse observe identical behavior.
+ *
+ * Every failure — including a `require` inside a model's `init` — leaves this function as
+ * [InvalidFeatureTaskRuntimePlanningProjectionSchemaError], so callers have exactly one exception type
+ * to handle and a legacy free-form payload loud-fails rather than aborting the driver with an
+ * unhandled [IllegalArgumentException].
+ */
+@Suppress("ThrowsCount") // one rejection per gate; collapsing them would blur the operator diagnosis
+internal fun featureTaskRuntimePlanningProjectionParseFromEnvelope(
+  envelope: Map<String, Any?>,
+  producingPhaseId: String,
+  expectedKind: FeatureTaskRuntimeProjectionKind,
+  schemaValidator: FeatureTaskRuntimePlanningProjectionValidator,
+): FeatureTaskRuntimePlanningProjectionParse {
   val sourceLabel = "$producingPhaseId#produced_outputs"
   val produced = envelope.stringAnyMap("produced_outputs")
     ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
@@ -586,15 +623,18 @@ fun featureTaskRuntimePlanningProjectionFromEnvelope(
     )
   }
   requirePinnedContractVersion(produced, sourceLabel)
-  schemaValidator.validatePlanningProjection(produced, sourceLabel)
+  val canonicalization = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+  val canonical = canonicalization.canonical
+  schemaValidator.validatePlanningProjection(canonical, sourceLabel)
   return try {
-    when (expectedKind) {
-      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST -> FeatureTaskRuntimePrePlanningDigest.fromMap(produced)
-      FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(produced)
-      FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(produced)
+    val projection = when (expectedKind) {
+      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST -> FeatureTaskRuntimePrePlanningDigest.fromMap(canonical)
+      FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(canonical)
+      FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(canonical)
       FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT ->
-        FeatureTaskRuntimeImplementationReceipt.fromMap(produced)
+        FeatureTaskRuntimeImplementationReceipt.fromMap(canonical)
     }
+    FeatureTaskRuntimePlanningProjectionParse(projection, canonicalization.diagnostics)
   } catch (error: IllegalArgumentException) {
     throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
       sourceLabel = sourceLabel,

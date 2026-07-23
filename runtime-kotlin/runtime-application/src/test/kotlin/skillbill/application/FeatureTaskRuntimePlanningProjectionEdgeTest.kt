@@ -364,8 +364,10 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
   fun `a typed model rule violation leaves the parse seam as the planning-projection error`() {
     // F-002: model init blocks threw bare IllegalArgumentException, which no run-loop catch site
-    // handled, so a malformed durable record aborted the driver instead of blocking the phase.
-    val badTaskId = executablePlanPayload().replace(""""task_id":"task-01"""", """"task_id":"Task_01"""")
+    // handled, so a malformed durable record aborted the driver instead of blocking the phase. The id
+    // is a leading-digit value canonicalization leaves untouched (it repairs casing/separators, never
+    // fabricates a valid id), so it still reaches — and trips — the model's taskId pattern rule.
+    val badTaskId = executablePlanPayload().replace(""""task_id":"task-01"""", """"task_id":"1task"""")
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       assemble(
@@ -495,6 +497,49 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       assertEquals(gateRejected, seamRejected, "gate and launch seam must agree on the ${edge.producer} edge")
     }
   }
+
+  @Test
+  fun `an envelope canonicalized at the producer gate parses identically at the consumer launch seam`() {
+    // AC-005: canonicalization lives inside the shared parse function, so the gate (subtask 1's
+    // producerProjectionGateReason) and the launch seam observe it identically. A canonicalizable plan
+    // (uppercase task id + matching depends_on) is accepted at the real gate call site and, at the
+    // corresponding consumer edge, delivers the canonical ids — the same rewrite, one source, no drift.
+    // The real Draft 2020-12 validator runs at both call sites, not the Noop stand-in.
+    val validator = realPlanningProjectionValidator
+
+    assertNull(
+      producerProjectionGateReason(phasePlan, producerEnvelope(canonicalizablePlanPayload()), validator),
+      "the producer gate must accept the canonicalizable plan",
+    )
+
+    val briefing = assemble(
+      consumer = phaseImplement,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
+      recordedOutputs = listOf(phaseOutput(phasePlan, canonicalizablePlanPayload())),
+      runInvariants = runInvariants(),
+      planningProjectionValidator = validator,
+    )
+
+    // The seam delivers the canonical declaration and its reference, proving the gate and the seam
+    // applied one identical canonicalization.
+    assertContains(briefing.briefingText, "t1")
+    assertContains(briefing.briefingText, "task-2 [depends: t1]")
+    assertFalse(briefing.briefingText.contains("Task_2"), "no pre-canonical id may survive to the consumer")
+  }
+
+  private fun canonicalizablePlanPayload(): String = """
+    {"produced_outputs":{
+      "projection_kind":"executable_plan",
+      "contract_version":"0.1",
+      "mode":"direct",
+      "tasks":[
+        {"task_id":"T1","description":"first","criterion_refs":["AC-001"],"test_obligations":["parity"]},
+        {"task_id":"Task_2","depends_on":["T1"],"description":"second","criterion_refs":["AC-002"],
+         "test_obligations":["parity"]}
+      ],
+      "validation_strategy":["focused gradle"]
+    }}
+  """.trimIndent()
 
   private data class ParityEdge(
     val producer: String,

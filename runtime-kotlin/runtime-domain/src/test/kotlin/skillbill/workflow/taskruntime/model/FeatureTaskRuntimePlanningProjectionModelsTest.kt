@@ -238,6 +238,66 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
     assertFalse(featureTaskRuntimeIsDecompositionPackage(mapOf("produced_outputs" to mapOf("steps" to listOf("x")))))
   }
 
+  @Test
+  fun `a plan with an uppercase task id and matching depends_on canonicalizes both and parses to the canonical ids`() {
+    val plan = executablePlanMap(taskId = "T1", secondTaskId = "Task_2", dependsOn = listOf("T1"))
+
+    val parsed = assertIs<FeatureTaskRuntimeExecutablePlan>(
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = linkedMapOf("produced_outputs" to plan),
+        producingPhaseId = "plan",
+        expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      ),
+    )
+
+    assertEquals(listOf("t1", "task-2"), parsed.tasks.map { it.taskId })
+    assertEquals(listOf("t1"), parsed.tasks[1].dependsOn, "the reference canonicalizes to the declared canonical id")
+  }
+
+  @Test
+  fun `the canonicalized map is the value passed to the schema validator and to the variant constructor`() {
+    val recording = RecordingSchemaValidator()
+
+    val parsed = assertIs<FeatureTaskRuntimeExecutablePlan>(
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = linkedMapOf("produced_outputs" to executablePlanMap(taskId = "T1")),
+        producingPhaseId = "plan",
+        expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+        schemaValidator = recording,
+      ),
+    )
+
+    val validatedTasks = recording.captured.single()["tasks"] as List<*>
+    assertEquals("t1", (validatedTasks.single() as Map<*, *>)["task_id"], "the validator must see the canonical map")
+    assertEquals("t1", parsed.tasks.single().taskId, "fromMap must build from the same canonical map")
+  }
+
+  private fun executablePlanMap(
+    taskId: String,
+    secondTaskId: String? = null,
+    dependsOn: List<String> = emptyList(),
+  ): Map<String, Any?> {
+    fun task(id: String, deps: List<String>) = linkedMapOf<String, Any?>(
+      "task_id" to id,
+      "depends_on" to deps,
+      "description" to "add contract",
+      "criterion_refs" to listOf("AC-005"),
+      "test_obligations" to listOf("parity"),
+    )
+    val tasks = buildList {
+      add(task(taskId, emptyList()))
+      if (secondTaskId != null) add(task(secondTaskId, dependsOn))
+    }
+    return linkedMapOf(
+      "projection_kind" to "executable_plan",
+      "contract_version" to FeatureTaskRuntimePlanningProjectionContract.VERSION,
+      "mode" to "direct",
+      "tasks" to tasks,
+      "validation_strategy" to listOf("focused gradle"),
+    )
+  }
+
   private fun receipt(
     changedPaths: List<String>,
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
@@ -250,4 +310,13 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
     reconciliationEvidence = reconciliation,
     repositoryCheckpoint = checkpoint,
   )
+}
+
+/** Captures the exact wire map handed to the schema gate so a test can prove it is the canonical map. */
+private class RecordingSchemaValidator : skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator {
+  val captured = mutableListOf<Map<String, Any?>>()
+
+  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String) {
+    captured += producedOutputs
+  }
 }
