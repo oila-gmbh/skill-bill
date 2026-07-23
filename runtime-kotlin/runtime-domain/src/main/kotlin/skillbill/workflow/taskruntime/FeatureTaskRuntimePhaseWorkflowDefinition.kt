@@ -46,6 +46,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_COMMIT_PUSH: String = "commit_push"
   const val PHASE_PR: String = "pr"
 
+  const val DERIVED_CONTEXT_DIFF: String = "diff"
+  const val DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE: String = "scoped_repository_state"
+
   // The M1 review->implement_fix remediation loop id, named once so durable accounting and telemetry
   // (the finished-event review-fix iteration count) reference the same loop the backward edge mints.
   const val REVIEW_FIX_LOOP_ID: String = "review_fix"
@@ -290,7 +293,13 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
             phaseId,
             definition.requiredArtifactsByStep[phaseId].orEmpty(),
           ),
-        derivedContextKeys = if (phaseId in setOf(PHASE_REVIEW, PHASE_PR)) listOf("diff") else emptyList(),
+        derivedContextKeys = when (phaseId) {
+          PHASE_REVIEW, PHASE_PR -> listOf(DERIVED_CONTEXT_DIFF)
+          // Audit compares the plan commitment and the receipt against the tree itself, so it needs
+          // the scoped repository state at the envelope's checkpoint, not the branch-wide diff.
+          PHASE_AUDIT -> listOf(DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE)
+          else -> emptyList()
+        },
       )
     }
 

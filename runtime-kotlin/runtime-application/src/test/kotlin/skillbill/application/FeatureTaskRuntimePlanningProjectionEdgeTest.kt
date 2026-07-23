@@ -4,12 +4,14 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -131,20 +133,100 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     assertTrue(threw, "a free-form payload under a planning contract must loud-fail")
   }
 
+  @Test
+  fun `a receipt checkpoint that no longer matches the tree is refreshed, not silently audited`() {
+    val briefing = assemble(
+      consumer = phaseAudit,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
+      recordedOutputs = listOf(phaseOutput(phaseImplement, implementationReceiptPayload(checkpoint = "stale-abc"))),
+      runInvariants = runInvariants(),
+    )
+
+    assertContains(
+      briefing.briefingText,
+      "fixture-checkpoint-1${FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_REFRESHED_FROM_SEPARATOR}" +
+        "stale-abc",
+    )
+    // The refresh re-derives repository evidence only; the producer's own claims survive intact.
+    assertContains(briefing.briefingText, "task-01")
+    assertContains(briefing.briefingText, "runtime-domain/model/X.kt")
+    assertContains(briefing.briefingText, "files at target")
+  }
+
+  @Test
+  fun `a receipt checkpoint that still matches the resolved tree is delivered unchanged`() {
+    val briefing = assemble(
+      consumer = phaseAudit,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
+      recordedOutputs = listOf(
+        phaseOutput(phaseImplement, implementationReceiptPayload(checkpoint = "fixture-checkpoint-1")),
+      ),
+      runInvariants = runInvariants(),
+    )
+
+    assertContains(briefing.briefingText, "repository_checkpoint: repository_checkpoint=fixture-checkpoint-1\n")
+    assertFalse(
+      briefing.briefingText.contains(
+        FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_REFRESHED_FROM_SEPARATOR,
+      ),
+      "a matching checkpoint must not be marked as refreshed",
+    )
+  }
+
+  @Test
+  fun `audit receives the resolved repository checkpoint as scoped comparison context`() {
+    val briefing = assemble(
+      consumer = phaseAudit,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
+      recordedOutputs = listOf(phaseOutput(phaseImplement, implementationReceiptPayload())),
+      runInvariants = runInvariants(),
+      checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        fingerprint = "fixture-checkpoint-1",
+        baseRef = "0".repeat(40),
+        headRef = "feat/SKILL-137",
+        workingTreeOwnedPaths = listOf("runtime-domain/model/X.kt"),
+      ),
+    )
+
+    assertContains(briefing.briefingText, "## Repository checkpoint (layer 2, resolved)")
+    assertContains(briefing.briefingText, "fingerprint: fixture-checkpoint-1")
+    assertContains(briefing.briefingText, "base_ref: ${"0".repeat(40)}")
+    assertContains(briefing.briefingText, "head_ref: feat/SKILL-137")
+    assertContains(briefing.briefingText, "scoped_owned_paths:\n  - runtime-domain/model/X.kt")
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE),
+      FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseAudit).derivedContextKeys,
+    )
+  }
+
+  @Test
+  fun `a phase whose declarations require no checkpoint renders no checkpoint section`() {
+    val briefing = assemble(
+      consumer = phasePlan,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
+      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
+      runInvariants = runInvariants(),
+    )
+
+    assertFalse(briefing.briefingText.contains("## Repository checkpoint"))
+  }
+
   private fun assemble(
     consumer: String,
     declarations: List<skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration>,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     runInvariants: FeatureTaskRuntimeRunInvariants,
+    // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
+    checkpoint: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint =
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        fingerprint = "fixture-checkpoint-1",
+      ),
   ) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseDeclaration(consumer, declarations, emptyList()),
       runInvariants = runInvariants,
       recordedOutputs = recordedOutputs,
-      // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
-      repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
-        fingerprint = "fixture-checkpoint-1",
-      ),
+      repositoryCheckpoint = checkpoint,
     ),
   )
 
@@ -190,7 +272,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     """.trimIndent()
   }
 
-  private fun implementationReceiptPayload(): String = """
+  private fun implementationReceiptPayload(checkpoint: String = "abc123"): String = """
     {"produced_outputs":{
       "projection_kind":"implementation_receipt",
       "contract_version":"0.1",
@@ -198,7 +280,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       "changed_paths":["runtime-domain/model/X.kt"],
       "tests_executed":[{"name":"XTest.kt","outcome":"passed"}],
       "reconciliation_evidence":{"reconciled":true,"evidence":"files at target"},
-      "repository_checkpoint":{"fingerprint":"abc123"},
+      "repository_checkpoint":{"fingerprint":"$checkpoint"},
       "complete_implement_envelope_secret":"MUST NOT SURVIVE"
     }}
   """.trimIndent()

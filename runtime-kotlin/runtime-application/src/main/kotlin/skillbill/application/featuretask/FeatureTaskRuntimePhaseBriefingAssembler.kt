@@ -11,6 +11,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.charset.StandardCharsets
@@ -191,12 +192,40 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     appendLine("## Upstream projections (layer 2, declared and validated)")
     appendProjections(envelope)
     appendLine()
+    appendRepositoryCheckpoint(handoff, envelope)
     appendLine("## Derived context (layer 3, declared)")
     if (handoff.derivedContextKeys.isEmpty()) {
       append("(none)")
     } else {
       append(handoff.derivedContextKeys.joinToString(separator = "\n") { key -> "- $key" })
     }
+  }
+
+  /**
+   * The resolved checkpoint the envelope was validated against (AC-011). A consumer that must compare
+   * producer claims to the tree — audit above all — needs the exact scope, not just the claims. The
+   * section renders in the framing pass too, so an oversized owned-path inventory hits the framing
+   * ceiling and loud-fails instead of being silently trimmed.
+   */
+  private fun StringBuilder.appendRepositoryCheckpoint(
+    handoff: FeatureTaskRuntimePhaseHandoff,
+    envelope: FeatureTaskRuntimeHandoffEnvelope,
+  ) {
+    val requiresCheckpoint = handoff.projectionDeclarations.any { declaration ->
+      declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+    }
+    val checkpoint = envelope.repositoryCheckpoint?.takeIf { requiresCheckpoint } ?: return
+    appendLine("## Repository checkpoint (layer 2, resolved)")
+    appendLine("fingerprint: ${checkpoint.fingerprint}")
+    checkpoint.baseRef?.let { appendLine("base_ref: $it") }
+    checkpoint.headRef?.let { appendLine("head_ref: $it") }
+    appendLine("scoped_owned_paths:")
+    if (checkpoint.workingTreeOwnedPaths.isEmpty()) {
+      appendLine("  (none)")
+    } else {
+      checkpoint.workingTreeOwnedPaths.forEach { path -> appendLine("  - $path") }
+    }
+    appendLine()
   }
 
   // Only prompt-visible projections render; a private-evidence-only projection stays durable state.

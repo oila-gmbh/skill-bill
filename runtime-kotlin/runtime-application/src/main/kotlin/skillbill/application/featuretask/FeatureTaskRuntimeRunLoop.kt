@@ -1591,15 +1591,50 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.value
       ?.takeIf(String::isNotBlank)
       ?: return null
-    val worktree = gitOperations.worktreeStatus(run.request.repoRoot)
+    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    // On a goal child the review state, not the resolved branch, holds the immutable base and the
+    // baseline untracked inventory the parent captured for this subtask alone.
+    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
     return FeatureTaskRuntimeRepositoryCheckpoint(
       fingerprint = fingerprint,
-      workingTreeOwnedPaths = if (worktree.ok) {
-        worktree.value.orEmpty().lineSequence().map(String::trim).filter(String::isNotEmpty).toList()
-      } else {
-        emptyList()
-      },
+      baseRef = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+      // The run-owned branch, not a measured HEAD: the durable pair is the same base/head scope review
+      // resolves, and measuring HEAD here would add a git read the commit-sha path deliberately avoids.
+      headRef = resolvedBranch?.branch?.takeIf(String::isNotBlank),
+      workingTreeOwnedPaths = checkpointOwnedPaths(
+        run,
+        goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+      ),
     )
+  }
+
+  /**
+   * Owned paths for the checkpoint scope. Subtracting the run's recorded baseline untracked inventory
+   * is what keeps a goal-child scoped to its own subtask: sibling subtasks share the tree, and every
+   * path they left behind is already in that baseline.
+   */
+  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String> {
+    val worktree = gitOperations.worktreeStatus(run.request.repoRoot)
+    if (!worktree.ok) return emptyList()
+    val baseline = baselineUntrackedPaths.toSet()
+    return worktree.value.orEmpty()
+      .lineSequence()
+      .mapNotNull(::porcelainStatusPath)
+      .filterNot { it in baseline }
+      .distinct()
+      .sorted()
+      .toList()
+  }
+
+  // Porcelain entries are "XY <path>", with a rename/copy rendering as "old -> new"; the owned path is
+  // the destination. Quoted paths (non-ASCII or whitespace) keep git's surrounding quotes off.
+  private fun porcelainStatusPath(line: String): String? {
+    if (line.length <= PORCELAIN_STATUS_PREFIX_LENGTH) return null
+    val entry = line.substring(PORCELAIN_STATUS_PREFIX_LENGTH).trim()
+    return entry.substringAfter(PORCELAIN_RENAME_ARROW, entry)
+      .trim()
+      .removeSurrounding("\"")
+      .takeIf(String::isNotBlank)
   }
 
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
@@ -2360,6 +2395,10 @@ internal class FeatureTaskRuntimeRunLoop(
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
+
+// `git status --porcelain` fixes the two status columns plus one separating space ahead of the path.
+private const val PORCELAIN_STATUS_PREFIX_LENGTH = 3
+private const val PORCELAIN_RENAME_ARROW = " -> "
 
 private const val FORWARD_DEFERRAL_PATTERN =
   "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +

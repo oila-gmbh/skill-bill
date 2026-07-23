@@ -1912,6 +1912,60 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 }
 
+/** AC-014: the goal-child audit checkpoint is scoped to the child's own base and inventory. */
+class FeatureTaskRuntimeCheckpointScopeTest {
+  @Test
+  fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.worktreeStatusValue = buildString {
+      appendLine(" M runtime-domain/Child.kt")
+      appendLine("?? .feature-specs/SKILL-137/spec_subtask_9_sibling.md")
+      appendLine("R  runtime-domain/Old.kt -> runtime-domain/Renamed.kt")
+    }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline(
+            "0".repeat(40),
+            listOf(".feature-specs/SKILL-137/spec_subtask_9_sibling.md"),
+          ),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
+    assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
+    // A rename contributes its destination, not the "old -> new" status entry.
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
+    assertFalse(
+      auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
+      "a sibling subtask's baseline path must not enter the goal-child audit projection",
+    )
+    assertFalse(
+      auditBriefing.briefingText.contains("- R  runtime-domain/Old.kt"),
+      "owned paths must be normalized repository-relative paths, not raw porcelain status lines",
+    )
+    assertFalse(
+      auditBriefing.briefingText.contains("-  M runtime-domain/Child.kt"),
+      "owned paths must be normalized repository-relative paths, not raw porcelain status lines",
+    )
+  }
+}
+
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {
   @Test
   fun `standalone run does not mutate spec status before commit_push`() {

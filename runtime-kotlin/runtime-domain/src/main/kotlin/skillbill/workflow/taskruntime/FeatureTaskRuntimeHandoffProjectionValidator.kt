@@ -6,6 +6,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
@@ -40,8 +41,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     val projections = inputs.declarations.mapNotNull { declaration ->
       requireSameConsumer(inputs, declaration)
       requireSupportedContractVersion(inputs, declaration)
-      enforceCheckpointPolicy(inputs, declaration)
-      val fields = resolveFields(inputs, declaration) ?: return@mapNotNull null
+      val resolved = resolveFields(inputs, declaration)
+      val fields = enforceCheckpointPolicy(inputs, declaration, resolved.orEmpty())
+      if (resolved == null) return@mapNotNull null
       enforceDeclaredShape(inputs, declaration, fields)
       enforceCompactReferences(inputs, declaration, fields)
       val projection = FeatureTaskRuntimeHandoffProjection(
@@ -104,10 +106,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
   }
 
+  /**
+   * Applies the declared checkpoint policy and returns the fields the consumer actually receives.
+   *
+   * A receipt carries its own checkpoint fingerprint, so an unchecked receipt lets a consumer audit a
+   * tree that is no longer the one the producer measured. `must_match` rejects that outright;
+   * `refresh_from_repository` keeps the producer's claim fields untouched and rewrites only the
+   * repository-derived checkpoint field to the resolved fingerprint, tagged with the superseded one so
+   * the refresh is visible rather than silent (AC-012).
+   */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
-  ) {
+    fields: List<FeatureTaskRuntimeHandoffProjectionField>,
+  ): List<FeatureTaskRuntimeHandoffProjectionField> {
+    val carried = receiptCarriedCheckpointFingerprint(fields)
     val violation = when (declaration.checkpointPolicy) {
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
       FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY ->
@@ -116,16 +129,48 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         } else {
           null
         }
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs)
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs, carried)
     }
     if (violation != null) {
       reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, violation)
     }
+    if (declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY) {
+      return fields
+    }
+    val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint
+    if (carried == null || resolvedFingerprint == null || carried == resolvedFingerprint) return fields
+    return fields.map { field ->
+      if (field.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
+        field.copy(
+          value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+            kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+            value = resolvedFingerprint + CHECKPOINT_REFRESHED_FROM_SEPARATOR + carried,
+          ),
+        )
+      } else {
+        field
+      }
+    }
   }
 
-  private fun mustMatchViolation(inputs: FeatureTaskRuntimeHandoffProjectionInputs): String? {
+  private fun receiptCarriedCheckpointFingerprint(fields: List<FeatureTaskRuntimeHandoffProjectionField>): String? =
+    fields.firstOrNull { it.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT }
+      ?.value
+      ?.let { it as? FeatureTaskRuntimeHandoffProjectionValue.CompactReference }
+      ?.takeIf { it.kind == FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT }
+      ?.value
+      ?.substringBefore(CHECKPOINT_REFRESHED_FROM_SEPARATOR)
+
+  private fun mustMatchViolation(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    receiptCarriedFingerprint: String?,
+  ): String? {
     val resolved = inputs.resolvedCheckpoint
       ?: return "policy must_match requires a resolved repository checkpoint, none was supplied."
+    if (receiptCarriedFingerprint != null && receiptCarriedFingerprint != resolved.fingerprint) {
+      return "policy must_match requires the resolved repository fingerprint to equal the one carried by the " +
+        "producer receipt; they differ, so the receipt describes a different tree."
+    }
     val expected = inputs.expectedCheckpoint
       ?: return "policy must_match requires a recorded repository checkpoint to compare against, none was supplied."
     return if (resolved.fingerprint == expected.fingerprint) {
@@ -330,6 +375,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   private fun referencesPrivateEvidence(referenceValue: String): Boolean =
     referenceValue.startsWith(PRIVATE_EVIDENCE_LOCATOR_PREFIX)
+
+  /** Joins the authoritative fingerprint to the superseded receipt one; single-token, so it stays a compact ref. */
+  const val CHECKPOINT_REFRESHED_FROM_SEPARATOR: String = "+refreshed-from:"
 
   const val PRIVATE_EVIDENCE_LOCATOR_PREFIX: String = "$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY/"
   const val PHASE_OUTPUT_RECEIPT_FIELD: String = "phase_output_receipt"
