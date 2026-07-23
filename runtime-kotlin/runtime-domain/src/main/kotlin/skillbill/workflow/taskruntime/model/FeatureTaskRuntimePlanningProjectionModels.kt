@@ -261,6 +261,9 @@ data class FeatureTaskRuntimePlanTask(
     append(taskId)
     if (dependsOn.isNotEmpty()) append(" [depends: ${dependsOn.joinToString(",")}]")
     append(" ${criterionRefs.joinToString(",")}: $description")
+    if (targetPathsOrSymbols.isNotEmpty()) append(" | targets: ${targetPathsOrSymbols.joinToString(", ")}")
+    append(" | tests: ${testObligations.joinToString("; ")}")
+    if (constraints.isNotEmpty()) append(" | constraints: ${constraints.joinToString("; ")}")
   }
 }
 

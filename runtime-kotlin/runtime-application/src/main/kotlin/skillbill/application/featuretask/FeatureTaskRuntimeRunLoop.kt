@@ -12,6 +12,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
@@ -1626,18 +1627,41 @@ internal class FeatureTaskRuntimeRunLoop(
    * owns nothing — and an audit reading it concludes no work exists here, so an unmeasurable read must
    * not be able to produce it. The caller drops the whole checkpoint, matching how an unmeasurable
    * fingerprint already blocks the launch instead of degrading it.
+   *
+   * An inventory past [MAX_CHECKPOINT_OWNED_PATHS] is rejected as a typed projection failure rather
+   * than left to trip the briefing framing ceiling: that ceiling throws `IllegalArgumentException`,
+   * which the launch path does not catch, so it would unwind past the handler that already persisted
+   * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
+   * option — audit would read a silently narrowed scope as the complete one.
    */
   private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String>? {
     val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
     if (!owned.ok) return null
     val baseline = baselineUntrackedPaths.toSet()
-    return owned.value.orEmpty()
+    val paths = owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
       .filterNot { it in baseline }
       .distinct()
       .sorted()
+    if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {
+      val declaration = run.declaration.projectionDeclarations.first { projection ->
+        projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+      }
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        projectionName = declaration.projectionName,
+        projectionContractId = declaration.projectionContractId,
+        projectionContractVersion = declaration.projectionContractVersion,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
+          "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
+          "unrelated working-tree changes before relaunching",
+      )
+    }
+    return paths
   }
 
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
@@ -2414,6 +2438,10 @@ private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'
+
+// Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
+// inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
+private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 
 private const val FORWARD_DEFERRAL_PATTERN =
   "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +

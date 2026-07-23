@@ -1996,6 +1996,32 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       "no audit briefing may be persisted against an unmeasurable repository scope",
     )
   }
+
+  @Test
+  fun `an owned-path inventory past the checkpoint limit blocks the phase instead of unwinding the run`() {
+    // The rendered scope sits inside the briefing framing ceiling, whose overflow throw is untyped and
+    // uncaught: it would unwind past the handler that already persisted STATUS_RUNNING and leave the
+    // row running with no blocked reason. The cap turns that into a typed durable block.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsValue = (1..2_000).map { "runtime-domain/Generated$it.kt" }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "owned-path inventory holds 2000 entries")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted from an over-limit repository scope",
+    )
+  }
 }
 
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {

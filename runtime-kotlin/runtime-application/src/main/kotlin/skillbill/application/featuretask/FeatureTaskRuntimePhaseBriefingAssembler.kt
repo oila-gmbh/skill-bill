@@ -228,14 +228,16 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     }
     val checkpoint = envelope.repositoryCheckpoint?.takeIf { requiresCheckpoint } ?: return
     appendLine("## Repository checkpoint (layer 2, resolved)")
-    appendLine("fingerprint: ${checkpoint.fingerprint}")
-    checkpoint.baseRef?.let { appendLine("base_ref: $it") }
-    checkpoint.headRef?.let { appendLine("head_ref: $it") }
+    appendLine("fingerprint: ${escapeBriefingLineBreaks(checkpoint.fingerprint)}")
+    checkpoint.baseRef?.let { appendLine("base_ref: ${escapeBriefingLineBreaks(it)}") }
+    checkpoint.headRef?.let { appendLine("head_ref: ${escapeBriefingLineBreaks(it)}") }
     appendLine("scoped_owned_paths:")
     if (checkpoint.workingTreeOwnedPaths.isEmpty()) {
       appendLine("  (none)")
     } else {
-      checkpoint.workingTreeOwnedPaths.forEach { path -> appendLine("  - $path") }
+      // The inventory comes from `-z` plumbing, which disables C-quoting, so a filename may legally
+      // carry a newline. Unescaped, such a path would open its own briefing section.
+      checkpoint.workingTreeOwnedPaths.forEach { path -> appendLine("  - ${escapeBriefingLineBreaks(path)}") }
     }
     appendLine()
   }
