@@ -366,6 +366,10 @@ class FeatureTaskRuntimeRunnerTest {
         declaration = declaration,
         runInvariants = invariants,
         recordedOutputs = recorded,
+        // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
+        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+          fingerprint = "fixture-checkpoint-1",
+        ),
       )
       FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     }
@@ -380,10 +384,9 @@ class FeatureTaskRuntimeRunnerTest {
       // phases the mandates most directly govern.
       assertContains(briefing.briefingText, "mandate-X", message = "mandates missing for $phaseId")
     }
-    assertTrue(briefings.getValue("plan").hasUpstreamReceipt("preplan"))
-    assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").requireUpstreamReceipt("preplan"))
-    assertTrue(briefings.getValue("implement").hasUpstreamReceipt("plan"))
-    assertEquals(PLAN_OUTPUT, briefings.getValue("implement").requireUpstreamReceipt("plan"))
+    // plan and implement receive bounded planning projections rather than coarse upstream receipts.
+    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
     assertEquals(listOf("diff"), briefings.getValue("pr").derivedContextKeys)
@@ -600,8 +603,10 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
-    assertEquals(PLAN_OUTPUT, auditBriefing.upstreamReceipt("plan"))
-    assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamReceipt("implement"))
+    // audit receives the bounded plan commitment and implementation receipt, not the complete envelopes.
+    assertContains(auditBriefing.briefingText, "task_commitments")
+    assertContains(auditBriefing.briefingText, "changed_paths")
+    assertFalse(auditBriefing.briefingText.contains("Phase produced a validated output."))
     // Audit runs before review, so it no longer carries any review output.
     assertFalse(auditBriefing.hasUpstreamReceipt("review"))
     val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
@@ -629,9 +634,11 @@ class FeatureTaskRuntimeRunnerTest {
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(PREPLAN_OUTPUT, planBriefing.upstreamReceipt("preplan"))
+    // plan receives the bounded preplanning digest, not preplan's complete envelope.
     assertContains(planBriefing.briefingText, "### from: preplan")
-    assertContains(planBriefing.briefingText, PREPLAN_OUTPUT)
+    assertContains(planBriefing.briefingText, "affected_boundaries")
+    assertContains(planBriefing.briefingText, "Fixture risk.")
+    assertFalse(planBriefing.briefingText.contains("Phase produced a validated output."))
   }
 
   @Test
@@ -644,8 +651,8 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(ALL_PHASES, harness.launchedPhaseOrder())
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(VALID_OUTPUT, planBriefing.upstreamReceipt("preplan"))
     assertContains(planBriefing.briefingText, "### from: preplan")
+    assertContains(planBriefing.briefingText, "affected_boundaries")
   }
 
   @Test
@@ -1264,8 +1271,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         assertContains(briefing.briefingText, "mandate-X")
       }
     }
-    assertEquals(VALID_OUTPUT, briefings.getValue("plan").upstreamReceipt("preplan"))
-    assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamReceipt("plan"))
+    // plan and implement receive bounded planning projections rather than coarse upstream receipts.
+    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     // implement carries its reconciliation report (mutating-phase gate), so review's implement
     // upstream is the full reconciliation output rather than the minimal VALID_OUTPUT.
     assertEquals(
@@ -1544,10 +1552,12 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-subtask")
     val harness = runnerHarness(
+      // A goal child plans in direct mode: decomposition is not a valid terminal outcome for it, and
+      // AC-015 keeps decomposition data out of the implementation projection entirely.
       launcher = RuntimeRecordingLauncher { request ->
         val prompt = requireNotNull(request.skillRunRequest.promptOverride)
         val phaseId = phaseIdFromPrompt(prompt)
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        facts(validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -3580,9 +3590,17 @@ private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.2","produced_o
 // criterion is met" signal the audit gate requires, SKILL-85 Subtask 5 AC1); used by the default launcher.
 private const val VALID_AUDIT_OUTPUT =
   """{"contract_version":"0.2","produced_outputs":{"unmet_criteria":[]}}"""
-private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
-private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
-internal const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
+
+// preplan, plan, and implement feed the bounded planning projections, so their seeded outputs are
+// full envelopes carrying the declared projection body rather than bare produced_outputs fragments.
+private val PREPLAN_OUTPUT = seededProjectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
+private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
+internal val IMPLEMENT_OUTPUT =
+  seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENTATION_RECEIPT)
+
+private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): String =
+  """{"contract_version":"0.2","phase_id":"$phaseId","status":"completed",""" +
+    """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
@@ -4102,6 +4120,9 @@ internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String
   val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
   return when {
     FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) -> validJsonOutput(phaseId)
+    // preplan and plan feed the bounded planning projections, so they must carry the declared
+    // projection payload rather than the minimal VALID_OUTPUT envelope.
+    phaseId == "preplan" || phaseId == "plan" -> validJsonOutput(phaseId)
     // A clean review must emit a verification signal (an empty findings array affirms no blocking
     // findings) or the review gate blocks (SKILL-85 Subtask 4 F-003).
     phaseId == "review" -> VALID_REVIEW_OUTPUT
@@ -4249,10 +4270,42 @@ internal fun validJsonOutput(phaseId: String): String = """
 
 internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
+  // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
+  // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
+  "preplan" ->
+    """{
+      "projection_kind":"preplanning_digest",
+      "affected_boundaries":["runtime-application"],
+      "risks":["Fixture risk."],
+      "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
+      "validation_strategy":["Focused runtime tests."]
+    }
+    """.trimIndent()
+  "plan" ->
+    """{
+      "projection_kind":"executable_plan",
+      "mode":"direct",
+      "tasks":[{
+        "task_id":"task-1",
+        "description":"Fixture task.",
+        "criterion_refs":["AC-001"],
+        "target_paths_or_symbols":["src/Foo.kt"],
+        "test_obligations":["Focused test."]
+      }],
+      "validation_strategy":["Focused runtime tests."]
+    }
+    """.trimIndent()
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
   // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
+  // implement additionally feeds audit's bounded implementation-receipt projection.
   "implement", "implement_fix" ->
     """{
+      "projection_kind":"implementation_receipt",
+      "completed_task_ids":["task-1"],
+      "changed_paths":["src/Foo.kt"],
+      "tests_executed":[{"name":"FooTest","outcome":"passed"}],
+      "reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},
+      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "changed_files":["src/Foo.kt"],
       "reconciled_state":{"reconciled":true},
       "repair_item_results":[{

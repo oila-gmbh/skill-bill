@@ -1405,7 +1405,23 @@ private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
 
 private fun phasePlanningPayload(phaseId: String): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
-    """"status":"completed","summary":"$phaseId","produced_outputs":{"result":"$phaseId"}}"""
+    """"status":"completed","summary":"$phaseId","produced_outputs":""" +
+    (planningProjectionOutputs(phaseId) ?: """{"result":"$phaseId"}""") + "}"
+
+// preplan and plan feed the bounded planning projections, so their payloads carry the declared shape.
+private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId) {
+  "preplan" ->
+    """{"projection_kind":"preplanning_digest","affected_boundaries":["runtime-cli"],""" +
+      """"risks":["Fixture risk."],""" +
+      """"rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},""" +
+      """"validation_strategy":["Focused runtime tests."]}"""
+  "plan" ->
+    """{"projection_kind":"executable_plan","mode":"direct","tasks":[{"task_id":"task-1",""" +
+      """"description":"Fixture task.","criterion_refs":["AC-001"],""" +
+      """"target_paths_or_symbols":["src/Foo.kt"],"test_obligations":["Focused test."]}],""" +
+      """"validation_strategy":["Focused runtime tests."]}"""
+  else -> null
+}
 
 private fun subtaskSpecText(id: Int): String =
   "---\nstatus: Pending\n---\n\n# Subtask $id\n\n## Acceptance Criteria\n\n1. Subtask $id delivers its part.\n"

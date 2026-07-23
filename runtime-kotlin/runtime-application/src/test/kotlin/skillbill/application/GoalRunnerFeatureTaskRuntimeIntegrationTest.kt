@@ -916,6 +916,7 @@ private fun goalRemediationOutput(reportedItemIds: List<String>): String {
       "status": "completed",
       "summary": "Goal-child remediation reported its repair item results.",
       "produced_outputs": {
+        ${PlanningProjectionFixtures.RECEIPT_FIELDS}
         "changed_files":["src/Foo.kt"],
         "reconciled_state":{"reconciled":true},
         "repair_item_results":[$results]

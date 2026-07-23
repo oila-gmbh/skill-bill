@@ -25,6 +25,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 private val CEILING = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING
 
@@ -150,14 +151,15 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = listOf(
-        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"ok"}"""),
+        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
         phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"undeclared"}"""),
       ),
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    assertEquals("""{"plan":"ok"}""", briefing.requireUpstreamReceipt("plan"))
+    // `implement` receives plan as the bounded executable-plan projection, not a coarse receipt.
+    assertTrue(briefing.briefingText.contains("Fixture task."))
     assertFalse(briefing.hasUpstreamReceipt("review"))
     assertFalse(briefing.briefingText.contains("undeclared"))
   }
@@ -227,7 +229,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
       runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = listOf(phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"ok"}""")),
+      recordedOutputs = listOf(
+        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+      ),
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
@@ -262,4 +266,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   private fun phaseOutput(phaseId: String, payload: String) =
     FeatureTaskRuntimePhaseOutput(phaseId = phaseId, iteration = 1, payload = payload)
+
+  // `plan` feeds implement's bounded executable-plan projection, so its recorded output is a full
+  // envelope carrying the declared projection body.
+  private fun planProjectionOutput(): String = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
+    """"summary":"Phase produced a validated output.","produced_outputs":""" +
+    PlanningProjectionFixtures.EXECUTABLE_PLAN + "}"
 }

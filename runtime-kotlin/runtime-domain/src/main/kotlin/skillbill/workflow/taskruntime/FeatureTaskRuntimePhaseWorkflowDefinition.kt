@@ -7,12 +7,17 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanCommitment
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
@@ -183,18 +188,108 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     }
 
   /**
+   * Concrete bounded planning projections for the preplan->plan, plan->implement, and
+   * plan+implement->audit edges (AC-003/005/008/011). Each names its source, the concrete projection
+   * contract id/version, the prompt-visible field set declared by the owning domain model, and a
+   * budget; the consumer cannot widen the shape at runtime. The plan_commitment narrows the source
+   * executable plan to its obligation-only subset for audit.
+   */
+  fun preplanningDigestDeclaration(
+    consumerPhaseId: String,
+    producingPhaseId: String = PHASE_PREPLAN,
+  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
+    consumerPhaseId = consumerPhaseId,
+    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+    projectionName = "${producingPhaseId}_preplanning_digest",
+    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID,
+    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PREPLAN_DIGEST_RECEIPT,
+    declaredFieldNames = FeatureTaskRuntimePrePlanningDigest.DECLARED_FIELD_NAMES,
+    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+    required = false,
+  )
+
+  fun executablePlanDeclaration(
+    consumerPhaseId: String,
+    producingPhaseId: String = PHASE_PLAN,
+  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
+    consumerPhaseId = consumerPhaseId,
+    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+    projectionName = "${producingPhaseId}_executable_plan",
+    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
+    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+    declaredFieldNames = FeatureTaskRuntimeExecutablePlan.DECLARED_FIELD_NAMES,
+    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+    required = false,
+  )
+
+  fun planCommitmentDeclaration(
+    consumerPhaseId: String,
+    producingPhaseId: String = PHASE_PLAN,
+  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
+    consumerPhaseId = consumerPhaseId,
+    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+    projectionName = "${producingPhaseId}_plan_commitment",
+    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
+    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+    declaredFieldNames = FeatureTaskRuntimePlanCommitment.DECLARED_FIELD_NAMES,
+    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+    required = false,
+  )
+
+  fun implementationReceiptDeclaration(
+    consumerPhaseId: String,
+    producingPhaseId: String = PHASE_IMPLEMENT,
+  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
+    consumerPhaseId = consumerPhaseId,
+    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+    projectionName = "${producingPhaseId}_implementation_receipt",
+    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
+    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+    declaredFieldNames = FeatureTaskRuntimeImplementationReceipt.DECLARED_FIELD_NAMES,
+    // AC-012: the receipt is a producer claim, so audit refreshes its repository-derived context from a
+    // freshly resolved checkpoint rather than inspecting whatever tree happens to be current. The
+    // producer's own claims survive the refresh; only the repository evidence is re-derived.
+    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    required = false,
+  )
+
+  /**
    * Per-phase declarations: the typed projection set (one coarse receipt per edge in
    * [WorkflowDefinition.requiredArtifactsByStep]) plus derived-context keys. `review` and `pr`
    * declare derived `diff` context for branch-diff inspection.
+   *
+   * The preplan->plan, plan->implement, and plan+implement->audit edges resolve to the concrete
+   * bounded planning projections instead: `plan` sees only preplan's digest, `implement` only the
+   * executable plan (never the digest — `requiredArtifactsByStep` already excludes `preplan` from its
+   * upstream set), and `audit` only the plan commitment plus the implementation receipt. Every other
+   * edge keeps the coarse whole-receipt projection, which subtasks 3/4/8 own.
    */
+  private val PLANNING_PROJECTION_EDGES: Map<String, List<PhaseHandoffProjectionDeclaration>> = mapOf(
+    PHASE_PLAN to listOf(preplanningDigestDeclaration(PHASE_PLAN)),
+    PHASE_IMPLEMENT to listOf(executablePlanDeclaration(PHASE_IMPLEMENT)),
+    PHASE_AUDIT to listOf(
+      planCommitmentDeclaration(PHASE_AUDIT),
+      implementationReceiptDeclaration(PHASE_AUDIT),
+    ),
+  )
+
   val phaseDeclarations: Map<String, FeatureTaskRuntimePhaseDeclaration> =
     definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimePhaseDeclaration(
         phaseId = phaseId,
-        projectionDeclarations = upstreamReceiptProjections(
-          phaseId,
-          definition.requiredArtifactsByStep[phaseId].orEmpty(),
-        ),
+        projectionDeclarations = PLANNING_PROJECTION_EDGES[phaseId]
+          ?: upstreamReceiptProjections(
+            phaseId,
+            definition.requiredArtifactsByStep[phaseId].orEmpty(),
+          ),
         derivedContextKeys = if (phaseId in setOf(PHASE_REVIEW, PHASE_PR)) listOf("diff") else emptyList(),
       )
     }

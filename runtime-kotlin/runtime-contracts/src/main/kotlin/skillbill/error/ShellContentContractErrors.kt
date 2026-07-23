@@ -178,6 +178,21 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
 )
 
 /**
+ * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
+ * plan commitment, or implementation receipt) fails the canonical planning-projections schema.
+ * Mirrors [InvalidReviewContextSchemaError]; the dedicated subclass keeps the four concrete bounded
+ * projections distinguishable from the generic handoff envelope and audit repair plan in logs/tests.
+ */
+class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime planning projection '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when a feature-task-runtime path would enter a gated phase before its gating phase
  * settled with the required verdict — for example entering `review` before `audit` reached
  * `satisfied`. The message names the attempted phase, the gating phase, the required verdict, and

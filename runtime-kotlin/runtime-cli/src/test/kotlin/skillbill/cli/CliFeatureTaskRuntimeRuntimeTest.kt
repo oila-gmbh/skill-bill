@@ -735,7 +735,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime explicit goal-continuation skips decomposition and pr`() {
     val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
-    val launcher = RecordingPhaseLauncher(decomposePlan = true)
+    // A goal child plans in direct mode: decomposition is not a valid terminal outcome for it, and
+    // AC-015 keeps decomposition data out of the implementation projection entirely.
+    val launcher = RecordingPhaseLauncher()
     val goalContinuationArgs = listOf(
       "--agent",
       "codex",
@@ -802,7 +804,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime goal continuation reuses branch while direct run creates branch and opens pr phase`() {
     val goalFixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
-    val goalLauncher = RecordingPhaseLauncher(decomposePlan = true)
+    // A goal child plans in direct mode (see AC-015); only the standalone run may decompose.
+    val goalLauncher = RecordingPhaseLauncher()
     val goalGit = FakeRuntimeGitOperations(currentBranchValue = "feat/pre-created-runtime-branch")
     assertGoalContinuationUsesExistingBranch(goalFixture, goalLauncher, goalGit)
     assertDirectRunCreatesFeatureBranch()
@@ -1963,6 +1966,11 @@ private class RecordingPhaseLauncher(
       val producedOutputs = when (phaseId) {
         "review" -> "findings: []"
         "audit" -> "gaps: []"
+        // preplan, plan, and implement feed the bounded planning projections, so they emit the
+        // declared projection body rather than a generic task list.
+        "preplan" -> PREPLAN_DIGEST_OUTPUTS
+        "plan" -> EXECUTABLE_PLAN_OUTPUTS
+        "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
         else -> """tasks: ["task-1"]"""
       }
       val base =
@@ -1975,17 +1983,30 @@ private class RecordingPhaseLauncher(
         produced_outputs:
           $producedOutputs
         """.trimIndent()
-      if (phaseId != "implement") {
-        return base
-      }
-      val reconciliationReport =
-        """
-          reconciled_state:
-            reconciled: true
-            evidence: "All planned changes are present at their intended state."
-        """.trimIndent().prependIndent("  ")
-      return "$base\n$reconciliationReport"
+      return base
     }
+
+    // Flow-style so each stays a single YAML line the phase-output template can substitute directly.
+    private const val PREPLAN_DIGEST_OUTPUTS: String =
+      """{projection_kind: "preplanning_digest", affected_boundaries: ["runtime-cli"], """ +
+        """risks: ["Fixture risk."], """ +
+        """rollout: {flag_required: false, flag_pattern: "none", notes: "No flag needed."}, """ +
+        """validation_strategy: ["Focused runtime tests."]}"""
+
+    private const val EXECUTABLE_PLAN_OUTPUTS: String =
+      """{projection_kind: "executable_plan", mode: "direct", tasks: [{task_id: "task-1", """ +
+        """description: "Fixture task.", criterion_refs: ["AC-001"], """ +
+        """target_paths_or_symbols: ["src/Foo.kt"], test_obligations: ["Focused test."]}], """ +
+        """validation_strategy: ["Focused runtime tests."]}"""
+
+    private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
+      """{projection_kind: "implementation_receipt", completed_task_ids: ["task-1"], """ +
+        """changed_paths: ["src/Foo.kt"], tests_executed: [{name: "FooTest", outcome: "passed"}], """ +
+        """reconciliation_evidence: {reconciled: true, evidence: "Fixture tree at target state."}, """ +
+        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
+        // The mutating-phase reconciliation gate reads this alongside the receipt's own evidence.
+        """reconciled_state: {reconciled: true, """ +
+        """evidence: "All planned changes are present at their intended state."}}"""
 
     fun validPhaseOutputForTest(phaseId: String): String = validPhaseOutput(phaseId)
 

@@ -1,0 +1,280 @@
+# Feature-task-runtime planning-projections schema (canonical source of truth).
+#
+# This file describes the four concrete, bounded projections that replace the coarse whole-receipt
+# projection for the preplan->plan, plan->implement, and plan+implement->audit handoff edges:
+#
+# - preplanning_digest   : what `plan` receives from `preplan` (AC-003)
+# - executable_plan      : what `implement` receives from `plan` (AC-005)
+# - plan_commitment      : the bounded task/criterion obligation `audit` receives from `plan` (AC-011)
+# - implementation_receipt: the bounded producer claim `audit` receives from `implement` (AC-008/009)
+#
+# The generic handoff envelope (feature-task-runtime-handoff-envelope-schema.yaml) is the wire
+# container; each concrete projection names its contract id/version there. This schema is the
+# value-level contract for the structured payload those projections parse and forward: it pins the
+# allowed field names, the discriminator, the contract version, and strict
+# additionalProperties:false per variant, so a producer envelope, a narration block, a generic
+# producer summary, progress diagnostics, tool output, or raw source body cannot satisfy any variant.
+#
+# Why this exists:
+#
+# - AC-006/AC-009/AC-011: the projection excludes planning narration, presentation summary, generic
+#   producer summary, progress diagnostics, and arbitrary plan output fields. Strict per-variant
+#   shape is what keeps the delivered projection bounded rather than the whole producing output.
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines the SHAPE of each variant: required fields, enums, the pinned contract version,
+#   and strict additionalProperties:false so an undeclared wire field fails loudly.
+# - Task-dependency acyclicity, changed-path normalization/uniqueness/count limits beyond what JSON
+#   Schema expresses, decomposition-data-forbidden-under-direct, and the checkpoint policy are
+#   cross-field rules enforced in FeatureTaskRuntimePlanningProjectionModels.kt and documented under
+#   x-coherence-checks.
+#
+# Versioning rule:
+#
+# - contract_version is pinned by FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION in
+#   runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt.
+# - The parity test FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest fails the build
+#   if this file and that constant diverge.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
+title: "Feature-task-runtime planning projections"
+description: "Strict oneOf over the four concrete bounded projections for the planning/implementation/audit edges."
+type: object
+oneOf:
+  - $ref: "#/$defs/preplanning_digest"
+  - $ref: "#/$defs/executable_plan"
+  - $ref: "#/$defs/plan_commitment"
+  - $ref: "#/$defs/implementation_receipt"
+
+x-coherence-checks:
+  - id: discriminator-uniqueness
+    description: >-
+      Each variant carries a unique projection_kind. The Kotlin ProjectionKind enum mirrors these
+      four values; an unknown or missing kind is a malformed-projection rejection.
+  - id: decomposition-data-only-under-decompose
+    description: >-
+      decomposition_* fields are accepted only when executable_plan.mode is "decompose". A DIRECT
+      plan carrying decomposition data is rejected by FeatureTaskRuntimeExecutablePlan construction.
+  - id: task-dependency-acyclicity
+    description: >-
+      executable_plan.tasks.depends_on must be acyclic and reference declared task ids; enforced by
+      FeatureTaskRuntimeExecutablePlan, mirroring FeatureTaskRuntimeAuditRepairPlan's dependency check.
+  - id: changed-path-normalization
+    description: >-
+      implementation_receipt.changed_paths are normalized repository-relative paths: no absolute
+      paths, no backslashes, no `..` segments, no duplicates, and bounded by the projection budget.
+  - id: tests-executed-distinct
+    description: >-
+      tests_executed entries (name + outcome) are distinct from the tests_added/tests_updated
+      identifier lists; a test merely listed as added is not also counted as executed.
+  - id: contract-version-parity
+    description: >-
+      every variant's contract_version.const equals FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+      pinned by FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest.
+
+$defs:
+  contractVersion:
+    type: string
+    const: "0.1"
+  nonBlank:
+    type: string
+    minLength: 1
+    maxLength: 4096
+    pattern: ".*\\S.*"
+  # A compact one-line summary that may name symbols, paths, or commands but must never carry a
+  # pasted payload: no line breaks, no code fences, no JSON/diff/patch markers, no role-prompt headers.
+  compactSummary:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - { pattern: "^[^\\n\\r\\t`]+$" }
+      - { not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" } }
+  strings:
+    type: array
+    items: { $ref: "#/$defs/nonBlank" }
+  # Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors
+  # review-context-schema.yaml's `path` $def so changed-path normalization is identical everywhere.
+  repoPath:
+    type: string
+    minLength: 1
+    maxLength: 1024
+    pattern: "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+  criterionRef:
+    type: string
+    pattern: "^AC-[0-9]{3}$"
+  criterionRefs:
+    type: array
+    items: { $ref: "#/$defs/criterionRef" }
+  taskId:
+    type: string
+    pattern: "^[a-z][a-z0-9-]*$"
+    minLength: 1
+    maxLength: 128
+  repositoryCheckpoint:
+    type: object
+    additionalProperties: false
+    required: [fingerprint]
+    properties:
+      fingerprint: { $ref: "#/$defs/nonBlank" }
+      base_ref: { $ref: "#/$defs/nonBlank" }
+      head_ref: { $ref: "#/$defs/nonBlank" }
+      working_tree_owned_paths:
+        type: array
+        items: { $ref: "#/$defs/repoPath" }
+
+  preplanning_digest:
+    type: object
+    additionalProperties: false
+    required:
+      - projection_kind
+      - contract_version
+      - affected_boundaries
+      - risks
+      - rollout
+      - validation_strategy
+    properties:
+      projection_kind: { const: "preplanning_digest" }
+      contract_version: { $ref: "#/$defs/contractVersion" }
+      affected_boundaries: { $ref: "#/$defs/strings" }
+      patterns_and_decisions: { $ref: "#/$defs/strings" }
+      risks: { $ref: "#/$defs/strings" }
+      rollout:
+        type: object
+        additionalProperties: false
+        required: [flag_required, notes]
+        properties:
+          flag_required: { type: boolean }
+          flag_pattern:
+            type: string
+            enum: [none, simple_conditional, di_switch, legacy]
+          notes: { $ref: "#/$defs/nonBlank" }
+      validation_strategy: { $ref: "#/$defs/strings" }
+      unresolved_questions: { $ref: "#/$defs/strings" }
+      evidence_refs: { $ref: "#/$defs/strings" }
+
+  executable_plan:
+    type: object
+    additionalProperties: false
+    required:
+      - projection_kind
+      - contract_version
+      - mode
+      - tasks
+      - validation_strategy
+    properties:
+      projection_kind: { const: "executable_plan" }
+      contract_version: { $ref: "#/$defs/contractVersion" }
+      mode: { enum: [direct, decompose] }
+      tasks:
+        type: array
+        minItems: 1
+        items: { $ref: "#/$defs/plan_task" }
+      validation_strategy: { $ref: "#/$defs/strings" }
+      decomposition_subtask_count: { type: integer, minimum: 1 }
+      decomposition_manifest_ref: { $ref: "#/$defs/nonBlank" }
+
+  plan_task:
+    type: object
+    additionalProperties: false
+    required: [task_id, depends_on, description, criterion_refs, test_obligations, constraints]
+    properties:
+      task_id: { $ref: "#/$defs/taskId" }
+      depends_on:
+        type: array
+        items: { $ref: "#/$defs/taskId" }
+      description: { $ref: "#/$defs/compactSummary" }
+      criterion_refs: { $ref: "#/$defs/criterionRefs" }
+      target_paths_or_symbols: { $ref: "#/$defs/strings" }
+      test_obligations: { $ref: "#/$defs/strings" }
+      constraints: { $ref: "#/$defs/strings" }
+
+  plan_commitment:
+    type: object
+    additionalProperties: false
+    required:
+      - projection_kind
+      - contract_version
+      - task_commitments
+    description: >-
+      Bounded subset of executable_plan forwarded to audit: task/criterion/test obligations only.
+      Carries no description, target paths, narration, presentation summary, or validation strategy.
+    properties:
+      projection_kind: { const: "plan_commitment" }
+      contract_version: { $ref: "#/$defs/contractVersion" }
+      task_commitments:
+        type: array
+        minItems: 1
+        items: { $ref: "#/$defs/task_commitment" }
+
+  task_commitment:
+    type: object
+    additionalProperties: false
+    required: [task_id, criterion_refs, test_obligations]
+    properties:
+      task_id: { $ref: "#/$defs/taskId" }
+      criterion_refs: { $ref: "#/$defs/criterionRefs" }
+      test_obligations: { $ref: "#/$defs/strings" }
+      constraints: { $ref: "#/$defs/strings" }
+
+  implementation_receipt:
+    type: object
+    additionalProperties: false
+    required:
+      - projection_kind
+      - contract_version
+      - completed_task_ids
+      - changed_paths
+      - tests_executed
+      - reconciliation_evidence
+      - repository_checkpoint
+    properties:
+      projection_kind: { const: "implementation_receipt" }
+      contract_version: { $ref: "#/$defs/contractVersion" }
+      completed_task_ids:
+        type: array
+        items: { $ref: "#/$defs/taskId" }
+      changed_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/repoPath" }
+      tests_added:
+        type: array
+        items: { $ref: "#/$defs/repoPath" }
+      tests_updated:
+        type: array
+        items: { $ref: "#/$defs/repoPath" }
+      tests_executed:
+        type: array
+        items: { $ref: "#/$defs/test_execution" }
+      deviations:
+        type: array
+        items: { $ref: "#/$defs/deviation" }
+      unresolved_items: { $ref: "#/$defs/strings" }
+      reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
+      repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
+
+  test_execution:
+    type: object
+    additionalProperties: false
+    required: [name, outcome]
+    properties:
+      name: { $ref: "#/$defs/repoPath" }
+      outcome:
+        type: string
+        enum: [passed, failed, skipped]
+
+  deviation:
+    type: object
+    additionalProperties: false
+    required: [ref, note]
+    properties:
+      ref: { $ref: "#/$defs/nonBlank" }
+      note: { $ref: "#/$defs/compactSummary" }
+
+  reconciliation_evidence:
+    type: object
+    additionalProperties: false
+    required: [reconciled, evidence]
+    properties:
+      reconciled: { const: true }
+      evidence: { $ref: "#/$defs/nonBlank" }

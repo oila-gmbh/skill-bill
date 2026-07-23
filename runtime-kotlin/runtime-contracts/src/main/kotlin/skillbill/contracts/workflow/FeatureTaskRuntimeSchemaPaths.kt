@@ -45,6 +45,23 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
 }
 
+/**
+ * Runtime-side mirror of the planning-projections schema's `contract_version`;
+ * `FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest` fails the build if they diverge.
+ * Pins the four concrete bounded projections (preplanning digest, executable plan, plan commitment,
+ * implementation receipt) that replace the coarse whole-receipt projection on the plan/implement/audit edges.
+ */
+const val FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-planning-projections-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
+}
+
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {

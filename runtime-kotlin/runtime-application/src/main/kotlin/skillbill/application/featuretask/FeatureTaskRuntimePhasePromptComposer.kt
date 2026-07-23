@@ -543,18 +543,29 @@ object FeatureTaskRuntimePhasePromptComposer {
   private val phaseDirectives: Map<String, String> = mapOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
       "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
-      "repository files during this phase. Emit a " +
-      "schema-valid produced_outputs object containing the digest for the downstream plan phase.",
+      "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
+      "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\" and the " +
+      "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
+      "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
+      "preplan envelope, a generic summary, or progress diagnostics.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
       "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
       "the upstream preplan digest as planning context. Do not modify repository files during " +
-      "this phase.",
+      "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
+      "projection_kind \"executable_plan\", mode (direct or decompose), stable ordered tasks " +
+      "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
+      "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
+      "generic producer notes; decomposition detail stays private to the preparation boundary.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
       "Reconcile the repository to the intended state the upstream plan output describes: make the " +
       "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-      "idempotency contract below. When the briefing carries audit_gaps, reuse its immutable initial " +
-      "preplan and plan outputs and change only what the latest listed gaps require; do not regenerate " +
-      "planning, expand scope, or disturb settled implementation.",
+      "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
+      "(projection_kind \"implementation_receipt\": completed_task_ids, normalized changed_paths, " +
+      "tests_added, tests_updated, tests_executed with outcomes, deviations, unresolved_items, " +
+      "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
+      "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
+      "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
+      "settled implementation.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
       "Address the carried review Blocker findings on the CURRENT working tree as incremental " +
       "reconciliation: fix exactly those findings using the review findings, the latest implement " +

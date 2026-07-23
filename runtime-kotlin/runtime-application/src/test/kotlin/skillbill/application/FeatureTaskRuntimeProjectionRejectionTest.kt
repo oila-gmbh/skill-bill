@@ -12,16 +12,22 @@ import kotlin.test.assertTrue
  * The projection budgets are sized against recorded runtime phase outputs, and a projection that
  * still overflows must block the phase durably instead of aborting the driver mid-run.
  */
-// Largest `preplan` output across the 239 durable phase outputs the budgets were sized against.
-private const val LARGEST_RECORDED_PREPLAN_BYTES = 131_901
+// The bounded digest's real ceiling is the projection item budget, not the legacy byte figure: the
+// pre-projection preplan receipt peaked at 131,901 UTF-8 bytes, but a digest is now a bounded set of
+// length-capped entries, so the largest deliverable digest is one that exactly fills the item budget.
+// One item of the budget is spent on the single-valued `rollout` field; the rest are list entries.
+private val LARGEST_DELIVERABLE_DIGEST_ITEMS =
+  FeatureTaskRuntimeHandoffProjectionBudget.PREPLAN_DIGEST_RECEIPT.maxCollectionItems - 1
 
 class FeatureTaskRuntimeProjectionRejectionTest {
   @Test
-  fun `a preplan digest at the largest recorded size is delivered to plan, not rejected`() {
+  fun `a preplan digest at the largest deliverable size is delivered to plan, not rejected`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "preplan") preplanOutput(LARGEST_RECORDED_PREPLAN_BYTES) else validJsonOutput(phaseId))
+        facts(
+          if (phaseId == "preplan") preplanOutput(LARGEST_DELIVERABLE_DIGEST_ITEMS) else validJsonOutput(phaseId),
+        )
       },
       agentAssignment = phasePerAgentAssignment(),
     )
@@ -34,13 +40,18 @@ class FeatureTaskRuntimeProjectionRejectionTest {
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .firstOrNull { phaseIdFromPrompt(it) == "plan" },
     )
-    // Delivered whole, not truncated: the digest body reaches the consumer verbatim.
-    assertContains(planPrompt, "d".repeat(LARGEST_RECORDED_PREPLAN_BYTES / 2))
+    // Delivered whole, not truncated: every bounded digest entry reaches the consumer verbatim.
+    assertContains(planPrompt, RISK_ENTRY)
+    assertEquals(
+      LARGEST_DELIVERABLE_DIGEST_ITEMS,
+      planPrompt.split(RISK_ENTRY).size - 1,
+      "every digest entry must be delivered, none dropped by truncation",
+    )
   }
 
   @Test
   fun `a projection that overflows its budget blocks the phase durably instead of aborting the run`() {
-    val oversized = FeatureTaskRuntimeHandoffProjectionBudget.PREPLAN_DIGEST_RECEIPT.maxUtf8Bytes + 8_192
+    val oversized = LARGEST_DELIVERABLE_DIGEST_ITEMS + 8
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -65,19 +76,42 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     assertTrue(requireNotNull(record.blockedReason).isNotBlank())
   }
 
-  private fun preplanOutput(bodyBytes: Int): String {
-    val envelope = { body: String ->
-      """
-        {
-          "contract_version": "0.2",
-          "phase_id": "preplan",
-          "status": "completed",
-          "summary": "Preplanning digest.",
-          "produced_outputs": {"preplanning_digest": {"notes": "$body"}}
+  // The digest carries the declared preplanning_digest projection shape. Size is driven by repeating
+  // bounded `risks` entries rather than one giant string, because each projection field is itself
+  // length-capped — the budget is what a whole digest may weigh, not what one field may.
+  // Builds a digest carrying exactly [totalItems] length-capped entries, spread across the digest's
+  // list fields so no single field is unrealistically deep.
+  private fun preplanOutput(totalItems: Int): String {
+    val fields = DIGEST_LIST_FIELDS.mapIndexed { index, name ->
+      val count = totalItems / DIGEST_LIST_FIELDS.size +
+        if (index < totalItems % DIGEST_LIST_FIELDS.size) 1 else 0
+      val entries = List(count) { "\"$RISK_ENTRY\"" }.joinToString(",")
+      "\"$name\": [$entries]"
+    }.joinToString(",\n          ")
+    return """
+      {
+        "contract_version": "0.2",
+        "phase_id": "preplan",
+        "status": "completed",
+        "summary": "Preplanning digest.",
+        "produced_outputs": {
+          "projection_kind": "preplanning_digest",
+          $fields,
+          "rollout": {"flag_required": false, "flag_pattern": "none", "notes": "No flag needed."}
         }
-      """.trimIndent()
-    }
-    val overhead = envelope("").toByteArray(Charsets.UTF_8).size
-    return envelope("d".repeat((bodyBytes - overhead).coerceAtLeast(1)))
+      }
+    """.trimIndent()
   }
 }
+
+private val DIGEST_LIST_FIELDS = listOf(
+  "affected_boundaries",
+  "risks",
+  "validation_strategy",
+  "patterns_and_decisions",
+  "unresolved_questions",
+  "evidence_refs",
+)
+
+// One bounded digest entry, just under the projection's per-entry length cap.
+private val RISK_ENTRY = "d".repeat(1_000)

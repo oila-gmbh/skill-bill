@@ -743,7 +743,8 @@ private fun spawnBlockedOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
 
 private fun phasePayload(phaseId: String): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
-    """"status":"completed","summary":"s","produced_outputs":{"result":"$phaseId"}}"""
+    """"status":"completed","summary":"s","produced_outputs":""" +
+    (PlanningProjectionFixtures.producedOutputsOrNull(phaseId) ?: """{"result":"$phaseId"}""") + "}"
 
 private fun fencedPhasePayload(phaseId: String): String =
   "Here is the $phaseId output.\n```json\n" + phasePayload(phaseId) + "\n```\nLet me know if you need more."
