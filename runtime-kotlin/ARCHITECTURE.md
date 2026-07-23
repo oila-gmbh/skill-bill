@@ -763,11 +763,13 @@ identity, acceptance-contract, policy, ceremony, review, add-on, or finalization
 Identity and ceremony reach every phase; the acceptance contract and policy
 mandates are withheld from the finalization phases (`write_history`,
 `commit_push`, `pr`), which act on work audit and validate already settled.
-Hydrated add-on content is injected only for declared consumer phases and is
-budgeted independently of phase receipts in
-`FeatureTaskRuntimePhasePromptComposer`, so neither budget can borrow the
-other's headroom and an oversized add-on rejects rather than inflating the
-briefing.
+Hydrated add-on content is scoped by the manifest-owned
+`feature_addon_usage.feature-task` consumer assignment, which is run-scoped:
+every phase of a feature-task run is that consumer, so there is no narrower
+per-phase gate in `FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor`.
+What that seam does own is the budget — hydrated add-on content is budgeted
+independently of phase receipts, so neither budget can borrow the other's
+headroom and an oversized add-on rejects rather than inflating the briefing.
 
 `FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING` now bounds only the
 non-projection framing. Projection bodies are bounded by their own declared

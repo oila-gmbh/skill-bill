@@ -47,6 +47,7 @@ import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
@@ -174,6 +175,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
@@ -545,6 +547,12 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimePhaseOutputValidator(
     adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter,
   ): FeatureTaskRuntimePhaseOutputValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeHandoffEnvelopeValidator(
+    adapter: FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter,
+  ): FeatureTaskRuntimeHandoffEnvelopeValidator = adapter
 
   @Provides
   @JvmSynthetic

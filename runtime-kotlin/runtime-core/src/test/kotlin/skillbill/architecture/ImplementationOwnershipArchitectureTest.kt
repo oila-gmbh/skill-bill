@@ -157,6 +157,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.install.model.InstallPlanWireValidator",
       "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
       "skillbill.workflow.DecompositionManifestValidator",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
       "skillbill.workflow.GoalObservabilityEventValidator",
       "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",

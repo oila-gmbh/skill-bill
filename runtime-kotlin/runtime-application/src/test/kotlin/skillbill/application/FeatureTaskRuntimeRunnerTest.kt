@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
@@ -3904,7 +3905,11 @@ internal fun runnerHarness(
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
-  val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
+  val recorder = FeatureTaskRuntimePhaseRecorder(
+    database,
+    NoopWorkflowSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
@@ -3965,7 +3970,11 @@ internal fun telemetryRunnerHarness(
   val repository = InMemoryRuntimeWorkflowRepository()
   val lifecycle = RecordingLifecycleTelemetryRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository, lifecycle)
-  val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
+  val recorder = FeatureTaskRuntimePhaseRecorder(
+    database,
+    NoopWorkflowSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)

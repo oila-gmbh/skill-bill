@@ -16,6 +16,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -24,6 +25,7 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -32,6 +34,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BL
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -60,6 +63,7 @@ import java.time.Instant
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -393,8 +397,10 @@ class FeatureTaskRuntimePhaseRecorder(
     }
 
   /**
-   * Persists the assembled per-phase launch briefing keyed by phase id; the latest briefing
-   * per phase replaces the prior one. Returns true when the workflow row exists and was updated.
+   * Persists the assembled per-phase launch briefing keyed by phase id, plus the delivered
+   * projection for that launch under its own artifact key; the latest entry per phase replaces the
+   * prior one. The envelope is schema-validated before it is written, so a violating envelope never
+   * becomes durable state. Returns true when the workflow row exists and was updated.
    */
   fun recordPhaseBriefing(
     workflowId: String,
@@ -403,12 +409,25 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
+    handoffEnvelopeValidator.validateEnvelope(briefing.handoffEnvelope.toEnvelopeMap(), workflowId)
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val existingBriefings = phaseBriefingsFrom(artifacts)
-    val updatedBriefings = LinkedHashMap(existingBriefings).apply { put(briefing.phaseId, briefing) }
+    val updatedBriefings = LinkedHashMap(phaseBriefingsFrom(artifacts, ::validateEnvelopeWire))
+      .apply { put(briefing.phaseId, briefing) }
+    val existingDelivered = deliveredProjectionsFrom(artifacts, ::validateEnvelopeWire)
+    val delivered = FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = workflowId,
+      consumerPhaseId = briefing.phaseId,
+      // Each briefing write is one delivery to that consumer, so the iteration counts re-entries.
+      iteration = (existingDelivered[briefing.phaseId]?.iteration ?: 0) + 1,
+      envelope = briefing.handoffEnvelope,
+    )
+    val updatedDelivered = LinkedHashMap(existingDelivered)
+      .apply { put(briefing.phaseId, delivered) }
     val patch = mapOf(
       FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
         updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },
+      FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY to
+        updatedDelivered.mapValues { (_, value) -> value.toArtifactMap() },
     )
     persistPatch(unitOfWork.workflowStates, record, patch)
     true
@@ -424,8 +443,29 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
-    phaseBriefingsFrom(decodeArtifacts(record.artifactsJson))
+    phaseBriefingsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
+      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
+    }
   }
+
+  /**
+   * Strict read of the delivered-projection tier keyed by consumer phase id. Separate from
+   * [loadPhaseBriefings] on purpose: this store holds only envelopes, so no read of it can return
+   * private phase evidence.
+   */
+  fun loadDeliveredProjections(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    deliveredProjectionsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
+      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
+    }
+  }
+
+  private fun validateEnvelopeWire(envelope: Map<String, Any?>) =
+    handoffEnvelopeValidator.validateEnvelope(envelope, workflowId = null)
 
   fun loadAuditRepairState(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditRepairState? =
     database.read(dbOverride) { unitOfWork ->
