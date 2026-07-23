@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
@@ -61,6 +62,8 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
@@ -79,6 +82,8 @@ import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
@@ -87,6 +92,7 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -364,6 +370,10 @@ class FeatureTaskRuntimeRunnerTest {
         declaration = declaration,
         runInvariants = invariants,
         recordedOutputs = recorded,
+        // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
+        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+          fingerprint = "fixture-checkpoint-1",
+        ),
       )
       FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
     }
@@ -374,12 +384,13 @@ class FeatureTaskRuntimeRunnerTest {
       assertEquals(listOf("AC-1", "AC-2"), briefing.acceptanceCriteria, "criteria for $phaseId")
       assertContains(briefing.briefingText, "feature_size: SMALL")
       assertContains(briefing.briefingText, SPEC_REFERENCE)
-      assertContains(briefing.briefingText, "mandate-X")
+      // Identity, ceremony, and the policy mandates reach every phase, including the finalization
+      // phases the mandates most directly govern.
+      assertContains(briefing.briefingText, "mandate-X", message = "mandates missing for $phaseId")
     }
-    assertTrue(briefings.getValue("plan").upstreamOutputsByPhaseId.containsKey("preplan"))
-    assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId.getValue("preplan"))
-    assertTrue(briefings.getValue("implement").upstreamOutputsByPhaseId.containsKey("plan"))
-    assertEquals(PLAN_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId.getValue("plan"))
+    // plan and implement receive bounded planning projections rather than coarse upstream receipts.
+    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
     assertEquals(listOf("diff"), briefings.getValue("pr").derivedContextKeys)
@@ -596,19 +607,21 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
-    assertEquals(PLAN_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["plan"])
-    assertEquals(IMPLEMENT_OUTPUT, auditBriefing.upstreamOutputsByPhaseId["implement"])
+    // audit receives the bounded plan commitment and implementation receipt, not the complete envelopes.
+    assertContains(auditBriefing.briefingText, "task_commitments")
+    assertContains(auditBriefing.briefingText, "changed_paths")
+    assertFalse(auditBriefing.briefingText.contains("Phase produced a validated output."))
     // Audit runs before review, so it no longer carries any review output.
-    assertFalse(auditBriefing.upstreamOutputsByPhaseId.containsKey("review"))
+    assertFalse(auditBriefing.hasUpstreamReceipt("review"))
     val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["implement"])
-    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamOutputsByPhaseId["audit"])
+    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamReceipt("implement"))
+    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamReceipt("audit"))
     val historyBriefing = requireNotNull(briefings["write_history"]) { "history briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamOutputsByPhaseId["implement"])
+    assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamReceipt("implement"))
     val commitBriefing = requireNotNull(briefings["commit_push"]) { "commit briefing must be persisted" }
-    assertTrue(commitBriefing.upstreamOutputsByPhaseId.containsKey("write_history"))
+    assertTrue(commitBriefing.hasUpstreamReceipt("write_history"))
     val prBriefing = requireNotNull(briefings["pr"]) { "pr briefing must be persisted" }
-    assertTrue(prBriefing.upstreamOutputsByPhaseId.containsKey("commit_push"))
+    assertTrue(prBriefing.hasUpstreamReceipt("commit_push"))
   }
 
   @Test
@@ -625,9 +638,11 @@ class FeatureTaskRuntimeRunnerTest {
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(PREPLAN_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
+    // plan receives the bounded preplanning digest, not preplan's complete envelope.
     assertContains(planBriefing.briefingText, "### from: preplan")
-    assertContains(planBriefing.briefingText, PREPLAN_OUTPUT)
+    assertContains(planBriefing.briefingText, "affected_boundaries")
+    assertContains(planBriefing.briefingText, "Fixture risk.")
+    assertFalse(planBriefing.briefingText.contains("Phase produced a validated output."))
   }
 
   @Test
@@ -640,8 +655,8 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(ALL_PHASES, harness.launchedPhaseOrder())
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    assertEquals(VALID_OUTPUT, planBriefing.upstreamOutputsByPhaseId["preplan"])
     assertContains(planBriefing.briefingText, "### from: preplan")
+    assertContains(planBriefing.briefingText, "affected_boundaries")
   }
 
   @Test
@@ -1254,15 +1269,20 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertEquals(listOf("mandate-X"), briefing.mandatesAndOverrides, "mandates for $phaseId")
       assertContains(briefing.briefingText, "feature_size: MEDIUM")
       assertContains(briefing.briefingText, SPEC_REFERENCE)
-      assertContains(briefing.briefingText, "mandate-X")
+      // The typed mandates field is durable state on every briefing (asserted above); only the
+      // rendered prompt narrows, per the per-phase run-invariant allowlist.
+      if (phaseId !in FINALIZATION_PHASE_IDS) {
+        assertContains(briefing.briefingText, "mandate-X")
+      }
     }
-    assertEquals(VALID_OUTPUT, briefings.getValue("plan").upstreamOutputsByPhaseId["preplan"])
-    assertEquals(VALID_OUTPUT, briefings.getValue("implement").upstreamOutputsByPhaseId["plan"])
+    // plan and implement receive bounded planning projections rather than coarse upstream receipts.
+    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     // implement carries its reconciliation report (mutating-phase gate), so review's implement
     // upstream is the full reconciliation output rather than the minimal VALID_OUTPUT.
     assertEquals(
       normalizedOutput(validJsonOutput("implement")),
-      normalizedOutput(briefings.getValue("review").upstreamOutputsByPhaseId.getValue("implement")),
+      normalizedOutput(briefings.getValue("review").requireUpstreamReceipt("implement")),
     )
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "diff")
@@ -1338,7 +1358,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertContains(prompt, "feature_size: MEDIUM")
       assertContains(prompt, "Scaling changes scope and verbosity only")
       assertContains(prompt, SPEC_REFERENCE)
-      assertContains(prompt, "mandate-X")
+      if (phaseId !in FINALIZATION_PHASE_IDS) {
+        assertContains(prompt, "mandate-X")
+      }
       assertContains(prompt, "Required final output")
       assertContains(prompt, "\"phase_id\": must be \"$phaseId\"")
       assertContains(
@@ -1534,10 +1556,12 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-subtask")
     val harness = runnerHarness(
+      // A goal child plans in direct mode: decomposition is not a valid terminal outcome for it, and
+      // AC-015 keeps decomposition data out of the implementation projection entirely.
       launcher = RuntimeRecordingLauncher { request ->
         val prompt = requireNotNull(request.skillRunRequest.promptOverride)
         val phaseId = phaseIdFromPrompt(prompt)
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        facts(validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -1889,6 +1913,141 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     harness.runner.run(harness.request())
 
     assertEquals(0, git.headCommitShaCalls, "a non-goal-continuation run must not measure git HEAD for an outcome")
+  }
+}
+
+/** AC-014: the goal-child audit checkpoint is scoped to the child's own base and inventory. */
+class FeatureTaskRuntimeCheckpointScopeTest {
+  @Test
+  fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    // The owned inventory and the parent-captured baseline are both `ls-files`-shaped, so a sibling's
+    // wholly-untracked directory matches entry-for-entry. Under the old porcelain-derived inventory it
+    // arrived as the collapsed `dir/` entry, matched nothing in the baseline, and leaked (F-005).
+    git.ownedPathsValue = listOf(
+      "runtime-domain/Child.kt",
+      "runtime-domain/Renamed.kt",
+      ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+      ".feature-specs/SKILL-137/sibling/notes.md",
+    )
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline(
+            "0".repeat(40),
+            listOf(
+              ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+              ".feature-specs/SKILL-137/sibling/notes.md",
+            ),
+          ),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
+    assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
+    assertFalse(
+      auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
+      "a sibling subtask's baseline path must not enter the goal-child audit projection",
+    )
+    assertFalse(
+      auditBriefing.briefingText.contains(".feature-specs/SKILL-137/sibling"),
+      "no entry from a sibling subtask's untracked directory may enter the goal-child audit projection",
+    )
+  }
+
+  @Test
+  fun `an unmeasurable owned-path read blocks audit instead of rendering an empty scope`() {
+    // An empty inventory reads as "this scope owns nothing", so an audit given it can conclude no work
+    // exists and pass criteria never implemented. An unmeasurable read must not produce that answer;
+    // it drops the checkpoint, and the refresh_from_repository receipt edge then rejects the launch.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsResult = WorkflowGitOperationResult(status = "error", value = "")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "checkpoint")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted against an unmeasurable repository scope",
+    )
+  }
+
+  @Test
+  fun `an owned-path inventory past the checkpoint limit blocks the phase instead of unwinding the run`() {
+    // The rendered scope sits inside the briefing framing ceiling, whose overflow throw is untyped and
+    // uncaught: it would unwind past the handler that already persisted STATUS_RUNNING and leave the
+    // row running with no blocked reason. The cap turns that into a typed durable block.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsValue = (1..2_000).map { "runtime-domain/Generated$it.kt" }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "owned-path inventory holds 2000 entries")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted from an over-limit repository scope",
+    )
+  }
+
+  @Test
+  fun `an owned-path inventory under the count cap but over the byte ceiling blocks instead of unwinding the run`() {
+    // F-001: the count cap (<=500) does not bound bytes. ~200 long but realistic paths clear the count
+    // cap yet render past the 65536-byte briefing framing ceiling. The framing throw is now typed and
+    // caught at the launch seam, so the audit phase blocks durably instead of unwinding past the
+    // STATUS_RUNNING persist and crash-looping on every resume.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsValue = (1..200).map { "runtime-domain/model/${"segment".repeat(50)}/Generated$it.kt" }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "ceiling")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted when its framing overflows the byte ceiling",
+    )
   }
 }
 
@@ -2408,7 +2567,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 Major review finding advances without launching implement_fix`() {
+  fun `m1 Major review finding launches implement_fix then moves on at cap`() {
     val majorFindingOutput = reviewFindingsOutput(changesRequested = true)
       .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
     val harness = runnerHarness(
@@ -2420,9 +2579,12 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
+    // A Major reopens implement_fix so it is fixed in the same review pass; a Major that survives the
+    // bounded remediation is not advance-blocking, so the run moves on rather than looping or blocking.
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "implement_fix" })
-    assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" })
+    val launched = harness.launchedPromptPhaseOrder()
+    assertTrue(launched.any { it == "implement_fix" }, "a Major review finding must launch implement_fix")
+    assertTrue(launched.any { it == "audit" })
   }
 
   // (b)+(e) AC2/AC6/AC10: changes_requested spawns implement_fix carrying the findings, then re-reviews.
@@ -3234,6 +3396,36 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   }
 }
 
+class FeatureTaskRuntimeLegacyBriefingBlockTest {
+  @Test
+  fun `a legacy briefing row blocks the phase durably instead of unwinding the run`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+
+    val legacyBriefing: Map<String, Any?> = linkedMapOf(
+      "phase_id" to "plan",
+      "spec_reference" to ".feature-specs/SKILL-137/spec.md",
+      "feature_size" to "MEDIUM",
+      "acceptance_criteria" to listOf("AC-1"),
+      "mandates_and_overrides" to emptyList<String>(),
+      "upstream_outputs_by_phase_id" to mapOf("preplan" to "legacy payload"),
+      "derived_context_keys" to emptyList<String>(),
+      "briefing_text" to "legacy briefing text",
+    )
+    val artifacts = LinkedHashMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID))
+    artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = mapOf("plan" to legacyBriefing)
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "durable handoff envelope")
+    assertContains(blocked.blockedReason, "upstream_outputs_by_phase_id")
+  }
+}
+
 // SKILL-85 Subtask 3 (AC2/3/4/5/6/8): reconcile-on-resume idempotency for the now-fix-loop mutating
 // implement phase, exercised through a synthetic backward edge review --needs_fix--> implement.
 class FeatureTaskRuntimeReconcileOnResumeTest {
@@ -3540,9 +3732,17 @@ private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.2","produced_o
 // criterion is met" signal the audit gate requires, SKILL-85 Subtask 5 AC1); used by the default launcher.
 private const val VALID_AUDIT_OUTPUT =
   """{"contract_version":"0.2","produced_outputs":{"unmet_criteria":[]}}"""
-private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
-private const val PLAN_OUTPUT = """{"plan":"do-the-thing"}"""
-internal const val IMPLEMENT_OUTPUT = """{"implement":"done"}"""
+
+// preplan, plan, and implement feed the bounded planning projections, so their seeded outputs are
+// full envelopes carrying the declared projection body rather than bare produced_outputs fragments.
+private val PREPLAN_OUTPUT = seededProjectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
+private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
+internal val IMPLEMENT_OUTPUT =
+  seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENTATION_RECEIPT)
+
+private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): String =
+  """{"contract_version":"0.2","phase_id":"$phaseId","status":"completed",""" +
+    """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
@@ -3811,23 +4011,29 @@ internal data class RuntimeHarnessConfig(
   val eventSink: FeatureTaskRuntimeRunEventSink? = null,
   val dbPathOverride: String? = null,
   val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
   SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
 
+@Suppress("LongParameterList") // mirrors FeatureTaskRuntimePhaseGates' own constructor arity
 private fun runtimePhaseGates(
   branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
   planningStopper: FeatureTaskRuntimePlanningStopper,
   lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
   lifecycleTelemetry,
   gitOperations,
   specGate,
+  planningProjectionValidator,
 )
 
 private fun testSpecGate(
@@ -3892,7 +4098,11 @@ internal fun runnerHarness(
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
-  val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
+  val recorder = FeatureTaskRuntimePhaseRecorder(
+    database,
+    NoopWorkflowSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
@@ -3914,6 +4124,7 @@ internal fun runnerHarness(
       disabledRuntimeLifecycleTelemetry(database),
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
+      runtimeConfig.planningProjectionValidator,
     ),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
@@ -3953,7 +4164,11 @@ internal fun telemetryRunnerHarness(
   val repository = InMemoryRuntimeWorkflowRepository()
   val lifecycle = RecordingLifecycleTelemetryRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository, lifecycle)
-  val recorder = FeatureTaskRuntimePhaseRecorder(database, NoopWorkflowSnapshotValidator)
+  val recorder = FeatureTaskRuntimePhaseRecorder(
+    database,
+    NoopWorkflowSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
@@ -4054,6 +4269,9 @@ internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String
   val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
   return when {
     FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) -> validJsonOutput(phaseId)
+    // preplan and plan feed the bounded planning projections, so they must carry the declared
+    // projection payload rather than the minimal VALID_OUTPUT envelope.
+    phaseId == "preplan" || phaseId == "plan" -> validJsonOutput(phaseId)
     // A clean review must emit a verification signal (an empty findings array affirms no blocking
     // findings) or the review gate blocks (SKILL-85 Subtask 4 F-003).
     phaseId == "review" -> VALID_REVIEW_OUTPUT
@@ -4201,10 +4419,45 @@ internal fun validJsonOutput(phaseId: String): String = """
 
 internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
+  // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
+  // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
+  "preplan" ->
+    """{
+      "projection_kind":"preplanning_digest",
+      "contract_version":"0.1",
+      "affected_boundaries":["runtime-application"],
+      "risks":["Fixture risk."],
+      "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
+      "validation_strategy":["Focused runtime tests."]
+    }
+    """.trimIndent()
+  "plan" ->
+    """{
+      "projection_kind":"executable_plan",
+      "contract_version":"0.1",
+      "mode":"direct",
+      "tasks":[{
+        "task_id":"task-1",
+        "description":"Fixture task.",
+        "criterion_refs":["AC-001"],
+        "target_paths_or_symbols":["src/Foo.kt"],
+        "test_obligations":["Focused test."]
+      }],
+      "validation_strategy":["Focused runtime tests."]
+    }
+    """.trimIndent()
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
   // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
+  // implement additionally feeds audit's bounded implementation-receipt projection.
   "implement", "implement_fix" ->
     """{
+      "projection_kind":"implementation_receipt",
+      "contract_version":"0.1",
+      "completed_task_ids":["task-1"],
+      "changed_paths":["src/Foo.kt"],
+      "tests_executed":[{"name":"FooTest","outcome":"passed"}],
+      "reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},
+      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "changed_files":["src/Foo.kt"],
       "reconciled_state":{"reconciled":true},
       "repair_item_results":[{
@@ -4516,6 +4769,7 @@ internal class RecordingWorkflowGitOperations(
 ) : WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
@@ -4530,6 +4784,13 @@ internal class RecordingWorkflowGitOperations(
   var worktreeStatusValue: String = ""
   var worktreeStatusResult: WorkflowGitOperationResult? = null
   val worktreeStatusSequence = ArrayDeque<String>()
+
+  // NUL-delimited owned-path inventory, the same `-z` plumbing representation the goal-child baseline
+  // is written in. Seeded as a path list for readability.
+  var ownedPathsValue: List<String> = emptyList()
+
+  // Overrides the inventory with a raw result, to model an unmeasurable owned-path read.
+  var ownedPathsResult: WorkflowGitOperationResult? = null
   val repositoryFingerprintSequence = ArrayDeque<String>()
   var repositoryFingerprintValue: String? = null
   var repositoryFingerprintCalls: Int = 0
@@ -4620,6 +4881,15 @@ internal class RecordingWorkflowGitOperations(
       status = "ok",
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
+
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
+    object : RepositoryOwnedPathsGitOperations {
+      override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = ownedPathsResult
+        ?: WorkflowGitOperationResult(
+          status = "ok",
+          value = ownedPathsValue.joinToString(separator = "") { "$it\u0000" },
+        )
+    }
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
     object : RepositoryFingerprintGitOperations {

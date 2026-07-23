@@ -1,9 +1,14 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
+import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -88,269 +93,195 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   }
 
   @Test
-  fun `assembler bounds an unbounded upstream payload so the briefing stays within the documented budget`() {
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = (1..11).map { "AC-$it: ${"criterion-detail ".repeat(20)}" },
-      mandatesAndOverrides = (1..6).map { "mandate-$it: ${"override-detail ".repeat(20)}" },
-    )
+  fun `an oversized upstream projection is rejected, never truncated into the briefing`() {
     val oversizedBytes = 400_000
-    val recordedOutputs = listOf(
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        iteration = 1,
-        payload = """{"plan":"${"p".repeat(oversizedBytes)}"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        iteration = 1,
-        payload = """{"implement":"${"i".repeat(oversizedBytes)}"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        iteration = 1,
-        payload = """{"review":"${"r".repeat(oversizedBytes)}"}""",
-      ),
-    )
-
-    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
-    // is still exercised across three upstream payloads now that audit runs before review.
-    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = multiUpstreamDeclaration,
-      runInvariants = invariants,
-      recordedOutputs = recordedOutputs,
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+      runInvariants = multiUpstreamInvariants(),
+      recordedOutputs = multiUpstreamOutputs(oversizedBytes),
     )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
-    assertTrue(
-      // The documented guarantee is at-or-under, and an exactly-fitting split across three truncated
-      // upstreams lands on the ceiling itself; the other budget assertions here already use <=.
-      byteSize <= CEILING,
-      "Assembled per-phase briefing was $byteSize bytes, exceeding the $CEILING ceiling; " +
-        "the assembler stopped bounding an unbounded upstream payload inlined into a single phase briefing.",
-    )
-    assertContains(briefing.briefingText, FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER)
-    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN}")
-    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT}")
-    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW}")
-    assertContains(briefing.briefingText, """{"plan":"pppp""")
-    assertContains(briefing.briefingText, """{"implement":"iiii""")
-    assertContains(briefing.briefingText, """{"review":"rrrr""")
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, error.consumerPhaseId)
+    assertEquals("wftr-1", error.workflowId)
+    assertContains(error.message.orEmpty(), "wftr-1")
+    assertContains(error.message.orEmpty(), error.projectionName)
+    assertContains(error.message.orEmpty(), error.projectionContractId)
     assertFalse(
-      briefing.briefingText.contains("p".repeat(oversizedBytes)),
-      "the unbounded plan payload was inlined verbatim; the runtime bound was not applied",
-    )
-    assertEquals(
-      """{"plan":"${"p".repeat(oversizedBytes)}"}""",
-      briefing.upstreamOutputsByPhaseId.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+      error.message.orEmpty().contains("p".repeat(64)),
+      "the rejection echoed the oversized payload body; typed errors must name identifiers, not content",
     )
   }
 
   @Test
-  fun `normal-size upstream payloads are inlined verbatim and within budget`() {
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = (1..11).map { "AC-$it: ${"criterion-detail ".repeat(20)}" },
-      mandatesAndOverrides = (1..6).map { "mandate-$it: ${"override-detail ".repeat(20)}" },
-    )
+  fun `normal-size upstream projections are delivered verbatim and within the framing ceiling`() {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
     val recordedOutputs = listOf(
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        iteration = 1,
-        payload = """{"plan":"$planBody"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        iteration = 1,
-        payload = """{"implement":"$implementBody"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        iteration = 1,
-        payload = """{"review":"$reviewBody"}""",
-      ),
+      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"$planBody"}"""),
+      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, """{"implement":"$implementBody"}"""),
+      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"$reviewBody"}"""),
     )
-
-    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
-    // is still exercised across three upstream payloads now that audit runs before review.
-    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = multiUpstreamDeclaration,
-      runInvariants = invariants,
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+      runInvariants = multiUpstreamInvariants(),
       recordedOutputs = recordedOutputs,
     )
+
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
-    assertTrue(byteSize < CEILING, "normal-size briefing was $byteSize bytes, over the $CEILING ceiling")
-    assertFalse(
-      briefing.briefingText.contains(FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER),
-      "normal-size payloads must not be truncated",
-    )
     assertContains(briefing.briefingText, """{"plan":"$planBody"}""")
     assertContains(briefing.briefingText, """{"implement":"$implementBody"}""")
     assertContains(briefing.briefingText, """{"review":"$reviewBody"}""")
+    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN}")
+    assertEquals("""{"plan":"$planBody"}""", briefing.requireUpstreamReceipt("plan"))
   }
 
   @Test
-  fun `large-but-feasible layer-1 is counted in the total budget and the briefing stays within the ceiling`() {
-    val largeCriterion = "AC-big: ${"contract-detail ".repeat(3_000)}"
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = listOf("AC-1: small", largeCriterion),
-      mandatesAndOverrides = listOf("mandate-1: ${"override-detail ".repeat(20)}"),
-    )
-    val recordedOutputs = listOf(
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        iteration = 1,
-        payload = """{"plan":"${"p".repeat(20_000)}"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        iteration = 1,
-        payload = """{"implement":"${"i".repeat(20_000)}"}""",
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        iteration = 1,
-        payload = """{"review":"${"r".repeat(20_000)}"}""",
-      ),
-    )
-    // Use the implement_fix declaration: it consumes plan, implement, AND review, so the budget bound
-    // is still exercised across three upstream payloads now that audit runs before review.
-    val multiUpstreamDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
+  fun `an undeclared recorded output is never delivered, even when it is present in state`() {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = multiUpstreamDeclaration,
-      runInvariants = invariants,
-      recordedOutputs = recordedOutputs,
+      // `implement` declares only `plan`; the recorded `review` output has no declaration.
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+      runInvariants = multiUpstreamInvariants(),
+      recordedOutputs = listOf(
+        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"undeclared"}"""),
+      ),
     )
+
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
-    assertTrue(
-      byteSize <= CEILING,
-      "briefing with large layer-1 was $byteSize bytes, exceeding the $CEILING ceiling; " +
-        "layer-1 was not counted against the total budget (only layer-2 was bounded).",
-    )
-    assertContains(briefing.briefingText, largeCriterion)
-    assertContains(briefing.briefingText, FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER)
+    // `implement` receives plan as the bounded executable-plan projection, not a coarse receipt.
+    assertTrue(briefing.briefingText.contains("Fixture task."))
+    assertFalse(briefing.hasUpstreamReceipt("review"))
+    assertFalse(briefing.briefingText.contains("undeclared"))
   }
 
   @Test
   fun `pathologically large layer-1 loud-fails instead of emitting an over-budget or truncated-contract briefing`() {
     val pathologicalCriterion = "AC-huge: ${"x".repeat(CEILING + 10_000)}"
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = listOf(pathologicalCriterion),
-      mandatesAndOverrides = emptyList(),
-    )
     val handoff = FeatureTaskRuntimePhaseHandoff(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      runInvariants = invariants,
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
+        acceptanceCriteria = listOf(pathologicalCriterion),
+        mandatesAndOverrides = emptyList(),
+      ),
       upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(emptyMap()),
       derivedContextKeys = emptyList(),
     )
-    assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+
+    // F-001: the framing ceiling must throw a TYPED error the launch seam catches, not a bare
+    // IllegalArgumentException that would unwind past the STATUS_RUNNING persist and wedge the row.
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseBriefingFramingError> {
+      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    }
+    assertEquals("wftr-1", error.workflowId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, error.consumerPhaseId)
+    assertTrue(error.framingBytes > error.ceilingBytes, "the error must report the measured overflow")
+    assertFalse(
+      error.message.orEmpty().contains("x".repeat(64)),
+      "a framing rejection must name the measured size, never echo the contract content it refused to deliver",
+    )
+  }
+
+  @Test
+  fun `a finalization phase omits the acceptance contract but still receives the operator mandates`() {
+    val invariants = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-137/spec.md",
+      acceptanceCriteria = listOf("AC-1: the acceptance contract text"),
+      mandatesAndOverrides = listOf("mandate-1: the policy text"),
+    )
+    fun briefingFor(phaseId: String) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      FeatureTaskRuntimePhaseHandoff(
+        phaseId = phaseId,
+        runInvariants = invariants,
+        upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(emptyMap()),
+        derivedContextKeys = emptyList(),
+      ),
+    )
+
+    val implementText = briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT).briefingText
+    assertContains(implementText, "acceptance_criteria:")
+    assertContains(implementText, "mandates_and_overrides:")
+
+    listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+    ).forEach { phaseId ->
+      val briefing = briefingFor(phaseId)
+      assertFalse(
+        briefing.briefingText.contains("acceptance_criteria:"),
+        "finalization phase '$phaseId' rendered the acceptance contract; the allowlist did not apply",
+      )
+      assertContains(
+        briefing.briefingText,
+        "the policy text",
+        message = "finalization phase '$phaseId' lost the operator mandates; " +
+          "the allowlist is their only delivery path",
+      )
+      // Identity stays durable state on the briefing even when it is not prompt-rendered.
+      assertEquals(invariants.acceptanceCriteria, briefing.acceptanceCriteria)
+      assertContains(briefing.briefingText, "spec_reference:")
     }
   }
 
   @Test
-  fun `more than three large upstream outputs still stay within the total budget`() {
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = listOf("AC-1: small contract"),
-      mandatesAndOverrides = emptyList(),
+  fun `the rendered briefing carries no forbidden raw-context field name`() {
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+      runInvariants = multiUpstreamInvariants(),
+      recordedOutputs = listOf(
+        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+      ),
     )
-    val upstreamCount = 6
-    val outputsByPhaseId = (1..upstreamCount).associate { index ->
-      val phaseId = "upstream-$index"
-      phaseId to FeatureTaskRuntimePhaseOutput(
-        phaseId = phaseId,
-        iteration = 1,
-        payload = """{"out":"${"u".repeat(50_000)}"}""",
+
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val serialized = JsonSupport.mapToJsonString(briefing.toArtifactMap())
+
+    FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES.forEach { forbidden ->
+      assertFalse(
+        serialized.contains("\"$forbidden\""),
+        "the persisted briefing carries forbidden raw-context field '$forbidden'",
+      )
+      assertFalse(
+        briefing.briefingText.contains("$forbidden:"),
+        "the rendered briefing carries forbidden raw-context field '$forbidden'",
       )
     }
-    val handoff = FeatureTaskRuntimePhaseHandoff(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      runInvariants = invariants,
-      upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(outputsByPhaseId),
-      derivedContextKeys = emptyList(),
-    )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-
-    val byteSize = briefing.briefingText.toByteArray(Charsets.UTF_8).size
-    assertTrue(
-      byteSize <= CEILING,
-      "briefing with $upstreamCount large upstreams was $byteSize bytes, exceeding the $CEILING ceiling; " +
-        "the budget is not upstream-count-independent (a fixed per-upstream cap was reintroduced).",
-    )
-    (1..upstreamCount).forEach { index ->
-      assertContains(briefing.briefingText, "### from: upstream-$index")
-    }
-    assertContains(briefing.briefingText, FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER)
   }
 
-  @Test
-  fun `genuine replacement chars at the truncation boundary survive (a trimEnd regression would strip them)`() {
-    // A decoder-based prefix must keep genuine U+FFFD that survives within the byte
-    // budget; only a blanket `trimEnd('�')` would strip them along with the partial
-    // tail. The payload places the U+FFFD run (3 UTF-8 bytes each) right at the cut
-    // boundary so the surviving prefix deterministically ends in genuine U+FFFD.
-    val replacementChar = '�'
-    val head = "head-boundary|"
-    val payload = head + replacementChar.toString().repeat(100_000)
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
-      acceptanceCriteria = listOf("AC-1: small contract"),
-      mandatesAndOverrides = emptyList(),
-    )
-    val handoff = FeatureTaskRuntimePhaseHandoff(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      runInvariants = invariants,
-      upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(
-        mapOf(
-          "upstream-1" to FeatureTaskRuntimePhaseOutput(phaseId = "upstream-1", iteration = 1, payload = payload),
-        ),
-      ),
-      derivedContextKeys = emptyList(),
-    )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val text = briefing.briefingText
+  private fun multiUpstreamInvariants() = FeatureTaskRuntimeRunInvariants(
+    specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
+    acceptanceCriteria = (1..11).map { "AC-$it: ${"criterion-detail ".repeat(20)}" },
+    mandatesAndOverrides = (1..6).map { "mandate-$it: ${"override-detail ".repeat(20)}" },
+  )
 
-    assertContains(text, head)
-    assertContains(text, FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER)
+  private fun multiUpstreamOutputs(bodyBytes: Int) = listOf(
+    phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"${"p".repeat(bodyBytes)}"}"""),
+    phaseOutput(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      """{"implement":"${"i".repeat(bodyBytes)}"}""",
+    ),
+    phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"${"r".repeat(bodyBytes)}"}"""),
+  )
 
-    val markerIndex = text.indexOf(FeatureTaskRuntimePhaseBriefingAssembler.UPSTREAM_PAYLOAD_TRUNCATION_MARKER)
-    assertTrue(markerIndex > 0, "expected the truncation marker to follow a non-empty bounded prefix")
-    assertEquals(
-      replacementChar,
-      text[markerIndex - 1],
-      "the bounded prefix must end in a genuine U+FFFD from the payload; a trimEnd('�') regression stripped it",
-    )
+  private fun phaseOutput(phaseId: String, payload: String) =
+    FeatureTaskRuntimePhaseOutput(phaseId = phaseId, iteration = 1, payload = payload)
 
-    val survivingGenuineReplacements = text.count { it == replacementChar }
-    assertTrue(
-      survivingGenuineReplacements > 1_000,
-      "expected the bounded prefix to preserve the genuine U+FFFD run (got $survivingGenuineReplacements); " +
-        "a trimEnd('�') regression would strip the trailing genuine replacement chars down toward zero",
-    )
-
-    val bodyStart = text.indexOf(head)
-    val survivingBody = text.substring(bodyStart, markerIndex)
-    assertEquals(
-      head + replacementChar.toString().repeat(survivingBody.length - head.length),
-      survivingBody,
-      "the surviving bounded body must be exactly head + genuine U+FFFD run with no truncation-artifact leakage",
-    )
-  }
+  // `plan` feeds implement's bounded executable-plan projection, so its recorded output is a full
+  // envelope carrying the declared projection body.
+  private fun planProjectionOutput(): String = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
+    """"summary":"Phase produced a validated output.","produced_outputs":""" +
+    PlanningProjectionFixtures.EXECUTABLE_PLAN + "}"
 }

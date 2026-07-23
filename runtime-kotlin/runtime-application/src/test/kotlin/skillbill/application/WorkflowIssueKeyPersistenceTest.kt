@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
@@ -83,6 +84,7 @@ class WorkflowIssueKeyPersistenceTest {
     val recorder = FeatureTaskRuntimePhaseRecorder(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      handoffEnvelopeValidator = AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     )
 
     recorder.ensureWorkflowOpen("wftr-117", "session-117")

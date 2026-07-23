@@ -12,6 +12,8 @@ import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -30,6 +32,7 @@ import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -73,6 +76,7 @@ class DefaultGoalPlanningSweep(
   private val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   private val manifestFileStore: DecompositionManifestFileStore,
   private val contextDiscovery: GoalPlanningContextDiscovery,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -253,21 +257,23 @@ class DefaultGoalPlanningSweep(
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
   ): GoalPlanningPhaseProduction {
-    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
-      runInvariants = runInvariants,
-      recordedOutputs = recordedOutputs,
-    )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = request.issueKey,
-      briefing = briefing,
-      suppressDecomposition = true,
-      specSource = shared.specSource,
-      specReference = runInvariants.specReference,
-      agentAddonSelection = request.agentAddonSelection,
-    )
-    val prompt = GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)
+    val currentSubtaskId = subtask?.id ?: 0
+    // A recovered shared preplan is already settled by the time its bounded projection is parsed here,
+    // so an unhandled rejection would crash the goal driver with no Stopped outcome, no blocked_reason
+    // and no closed telemetry segment, then crash identically on every resume. Block durably instead.
+    val prompt = runCatching {
+      composePlanningPrompt(shared, request, subtask, runInvariants, phaseId, recordedOutputs)
+    }
+      .getOrElse { error ->
+        if (error !is InvalidFeatureTaskRuntimePlanningProjectionSchemaError &&
+          error !is InvalidFeatureTaskRuntimeHandoffProjectionError
+        ) {
+          throw error
+        }
+        return GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
+        )
+      }
     request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -289,7 +295,6 @@ class DefaultGoalPlanningSweep(
         ),
       ),
     )
-    val currentSubtaskId = subtask?.id ?: 0
     val stdout = stdoutFor(outcome)
       ?: return GoalPlanningPhaseProduction.Stopped(
         stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
@@ -308,6 +313,34 @@ class DefaultGoalPlanningSweep(
         GoalPlanningPhaseProduction.Stopped(stopped(shared, currentSubtaskId, malformedReason(phaseId, error), phaseId))
       },
     )
+  }
+
+  private fun composePlanningPrompt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+  ): String {
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
+      runInvariants = runInvariants,
+      recordedOutputs = recordedOutputs,
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = planningProjectionValidator,
+    )
+    val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = true,
+      specSource = shared.specSource,
+      specReference = runInvariants.specReference,
+      agentAddonSelection = request.agentAddonSelection,
+    )
+    return GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)
   }
 
   private fun gatherSharedContext(
@@ -388,6 +421,10 @@ class DefaultGoalPlanningSweep(
 
   private fun sharedContextReason(error: Throwable): String =
     "Goal planning shared context could not be gathered: ${error.message.orEmpty()}"
+
+  private fun projectionRejectedReason(phaseId: String, error: Throwable): String =
+    "Goal planning phase '$phaseId' rejected a declared bounded projection at the launch seam: " +
+      "${error.message.orEmpty()}. Migrate or delete the affected goal-planning preparation record."
 
   private fun preparationStateReadReason(error: Throwable): String =
     "Goal planning preparation state could not be read: ${error.message.orEmpty()}"

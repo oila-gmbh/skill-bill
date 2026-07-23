@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
@@ -11,10 +12,14 @@ import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -26,6 +31,7 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
@@ -45,6 +51,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -89,6 +97,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
+  private val planningProjectionValidator get() = phaseGates.planningProjectionValidator
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
@@ -892,9 +901,12 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = listOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+            ),
           ),
         )
       } else if (
@@ -902,8 +914,11 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = declaration.consumedUpstreamPhaseIds +
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            declaration.consumedUpstreamPhaseIds +
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          ),
         )
       } else {
         declaration
@@ -1459,7 +1474,7 @@ internal class FeatureTaskRuntimeRunLoop(
           iteration,
           reason,
           observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
         ),
       )
@@ -1564,6 +1579,90 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest,
       repositoryFingerprint,
     )
+  }
+
+  /**
+   * Resolves a repository checkpoint only when some declaration actually needs one, reusing the same
+   * `WorkflowGitOperations` fingerprint the audit-repair path already depends on. No new git port is
+   * introduced and the domain stays git-agnostic: the checkpoint arrives as a plain value.
+   */
+  private fun resolveRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
+    val needsCheckpoint = run.declaration.projectionDeclarations.any { projection ->
+      projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+    }
+    if (!needsCheckpoint) return null
+    val fingerprint = gitOperations.repositoryFingerprint(run.request.repoRoot)
+      .takeIf { it.ok }
+      ?.value
+      ?.takeIf(String::isNotBlank)
+      ?: return null
+    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    // On a goal child the review state, not the resolved branch, holds the immutable base and the
+    // baseline untracked inventory the parent captured for this subtask alone.
+    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val ownedPaths = checkpointOwnedPaths(
+      run,
+      goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+    ) ?: return null
+    return FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = fingerprint,
+      baseRef = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+      // The run-owned branch, not a measured HEAD: the durable pair is the same base/head scope review
+      // resolves, and measuring HEAD here would add a git read the commit-sha path deliberately avoids.
+      headRef = resolvedBranch?.branch?.takeIf(String::isNotBlank),
+      workingTreeOwnedPaths = ownedPaths,
+    )
+  }
+
+  /**
+   * Owned paths for the checkpoint scope. Subtracting the run's recorded baseline untracked inventory
+   * is what keeps a goal-child scoped to its own subtask: sibling subtasks share the tree, and every
+   * path they left behind is already in that baseline.
+   *
+   * Both sides of that subtraction come from the same NUL-delimited plumbing listing. `git status
+   * --porcelain` is deliberately not the source: it collapses a wholly-untracked directory to one
+   * `dir/` entry and C-quotes non-ASCII paths, so a sibling subtask's new directory would never match
+   * the `ls-files`-written baseline and would leak into the child's audit scope (AC-014).
+   *
+   * Returns null when the listing cannot be measured. An empty inventory is a real answer — the scope
+   * owns nothing — and an audit reading it concludes no work exists here, so an unmeasurable read must
+   * not be able to produce it. The caller drops the whole checkpoint, matching how an unmeasurable
+   * fingerprint already blocks the launch instead of degrading it.
+   *
+   * An inventory past [MAX_CHECKPOINT_OWNED_PATHS] is rejected as a typed projection failure rather
+   * than left to trip the briefing framing ceiling: that ceiling throws `IllegalArgumentException`,
+   * which the launch path does not catch, so it would unwind past the handler that already persisted
+   * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
+   * option — audit would read a silently narrowed scope as the complete one.
+   */
+  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String>? {
+    val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
+    if (!owned.ok) return null
+    val baseline = baselineUntrackedPaths.toSet()
+    val paths = owned.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .filterNot { it in baseline }
+      .distinct()
+      .sorted()
+    if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {
+      val declaration = run.declaration.projectionDeclarations.first { projection ->
+        projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+      }
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        projectionName = declaration.projectionName,
+        projectionContractId = declaration.projectionContractId,
+        projectionContractVersion = declaration.projectionContractVersion,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
+          "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
+          "unrelated working-tree changes before relaunching",
+      )
+    }
+    return paths
   }
 
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
@@ -2054,6 +2153,58 @@ internal class FeatureTaskRuntimeRunLoop(
     return state.outputFor(phaseId)?.takeIf { budgetCompleted }
   }
 
+  private fun prepareLaunch(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    priorSchemaFailure: String?,
+  ): PreparedLaunch {
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = run.declaration,
+      runInvariants = run.request.runInvariants,
+      recordedOutputs = state.outputs(),
+      drivingVerdict = run.reentry?.drivingVerdict,
+      reentryGapCriteria = auditGapCriteriaFor(run, state),
+      auditRepairPlan = run.reentry?.auditRepairPlan,
+      auditRepairState = run.reentry?.auditRepairState,
+      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        durablyClosedCriterionRefs()
+      } else {
+        emptyList()
+      },
+      repositoryCheckpoint = resolveRepositoryCheckpoint(run),
+      expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
+        ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      run.request.workflowId,
+      planningProjectionValidator,
+    )
+    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = run.request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = isGoalContinuationRun(run.request),
+      parallelReviewAgent = run.request.parallelReviewAgent
+        ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
+      codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
+          run.request.runInvariants.codeReviewMode,
+          passNumber,
+        )
+      } ?: run.request.runInvariants.codeReviewMode,
+      reviewPassNumber = reviewPassNumber(run, state),
+      goalSubtaskReviewInput = run.goalReviewInput,
+      specSource = run.specSource,
+      priorSchemaFailure = priorSchemaFailure,
+      operatorBlockRetry = operatorBlockRetry
+        ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
+      specReference = run.request.runInvariants.specReference,
+      agentAddonSelection = run.request.agentAddonSelection,
+    )
+    return PreparedLaunch(briefing, prompt)
+  }
+
   @Suppress("ReturnCount")
   private fun launchAndCapture(
     run: PhaseRun,
@@ -2073,22 +2224,39 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
-    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = run.declaration,
-      runInvariants = run.request.runInvariants,
-      recordedOutputs = state.outputs(),
-      drivingVerdict = run.reentry?.drivingVerdict,
-      reentryGapCriteria = auditGapCriteriaFor(run, state),
-      auditRepairPlan = run.reentry?.auditRepairPlan,
-      auditRepairState = run.reentry?.auditRepairState,
-      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-        durablyClosedCriterionRefs()
-      } else {
-        emptyList()
-      },
-    )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    val prepared = try {
+      prepareLaunch(run, state, priorSchemaFailure)
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      // A projection rejection is static declaration/config drift, not agent output: block the phase
+      // durably instead of unwinding out of a run that already persisted STATUS_RUNNING.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+      // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
+      // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
+      // persist and wedge the row with no blockedReason; block durably instead.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not fit its launch briefing under the byte ceiling: " +
+          error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      // A producing phase is already settled completed by the time its projection is parsed, so an
+      // unhandled throw here would unwind past the handler that persisted STATUS_RUNNING and leave the
+      // row running with no blockedReason, crashing identically on every later resume. Block durably
+      // instead, naming the producing phase so the operator knows which record to migrate or delete.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected an upstream bounded planning projection at the " +
+          "launch seam (workflow '${run.request.workflowId}'): ${error.message}",
+      )
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
+          error.message,
+      )
+    }
+    val briefing = prepared.briefing
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -2100,27 +2268,7 @@ internal class FeatureTaskRuntimeRunLoop(
           timeout = run.request.timeout,
           modelOverride = run.modelDirective?.model,
           effortOverride = run.modelDirective?.effort,
-          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(
-            issueKey = run.request.issueKey,
-            briefing = briefing,
-            suppressDecomposition = isGoalContinuationRun(run.request),
-            parallelReviewAgent = run.request.parallelReviewAgent
-              ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
-              skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
-                run.request.runInvariants.codeReviewMode,
-                passNumber,
-              )
-            } ?: run.request.runInvariants.codeReviewMode,
-            reviewPassNumber = reviewPassNumber(run, state),
-            goalSubtaskReviewInput = run.goalReviewInput,
-            specSource = run.specSource,
-            priorSchemaFailure = priorSchemaFailure,
-            operatorBlockRetry = operatorBlockRetry
-              ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-            specReference = run.request.runInvariants.specReference,
-            agentAddonSelection = run.request.agentAddonSelection,
-          ),
+          promptOverride = prepared.prompt,
         ),
       ),
     )
@@ -2209,6 +2357,11 @@ internal class FeatureTaskRuntimeRunLoop(
     val durableRecord: FeatureTaskRuntimePhaseRecord? = null,
   )
 
+  private data class PreparedLaunch(
+    val briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    val prompt: String,
+  )
+
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
@@ -2217,17 +2370,24 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class InfraFailure(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+      val disposition: FeatureTaskRuntimeFailureDisposition,
     ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition
+      get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
       fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
         Captured(stdout, fileManifest)
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
-        InfraFailure(reason, fileManifest)
+        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+
+      /** Static declaration or configuration drift: retrying without operator action reproduces it. */
+      fun projectionRejected(reason: String): LaunchResult =
+        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
     }
   }
 
@@ -2284,6 +2444,13 @@ internal class FeatureTaskRuntimeRunLoop(
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
+
+// NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
+private const val OWNED_PATH_DELIMITER = '\u0000'
+
+// Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
+// inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
+private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 
 private const val FORWARD_DEFERRAL_PATTERN =
   "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +

@@ -493,4 +493,4 @@ contract regardless of which agent runs it.
 
 ## Audit-first review and findings ledger
 
-Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. Blocker findings stop advancement, while non-blocker findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. A Blocker or Major finding reopens `implement_fix` so both are remediated in the same review pass; Minor and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. After the bounded remediation, only an unresolved Blocker stops advancement — a surviving Major moves on and is recorded in the ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

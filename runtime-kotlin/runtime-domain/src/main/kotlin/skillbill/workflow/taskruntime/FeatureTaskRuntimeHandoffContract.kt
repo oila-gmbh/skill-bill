@@ -2,9 +2,11 @@ package skillbill.workflow.taskruntime
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -45,8 +47,13 @@ object FeatureTaskRuntimeHandoffContract {
   ): FeatureTaskRuntimeResolvedUpstreamOutputs {
     val latestByPhase = selectLatestOutputsByPhase(recordedOutputs)
     val resolved = LinkedHashMap<String, FeatureTaskRuntimePhaseOutput>()
-    declaration.consumedUpstreamPhaseIds.forEach { producingPhaseId ->
-      latestByPhase[producingPhaseId]?.let { resolved[producingPhaseId] = it }
+    // Resolution walks the declared projections, so a producing phase with a recorded output but no
+    // declaration is never picked up: the projection set is the only way in.
+    declaration.projectionDeclarations.forEach { projection ->
+      val sourceRef = projection.sourceRef
+      if (sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
+        latestByPhase[sourceRef.producingPhaseId]?.let { resolved[sourceRef.producingPhaseId] = it }
+      }
     }
     return FeatureTaskRuntimeResolvedUpstreamOutputs(resolved)
   }
@@ -67,11 +74,16 @@ object FeatureTaskRuntimeHandoffContract {
     auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
     auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
     durablyClosedCriterionRefs: List<String> = emptyList(),
+    repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+    expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
     upstreamOutputs = resolveUpstreamOutputs(declaration, recordedOutputs),
     derivedContextKeys = declaration.derivedContextKeys,
+    projectionDeclarations = declaration.projectionDeclarations,
+    repositoryCheckpoint = repositoryCheckpoint,
+    expectedRepositoryCheckpoint = expectedRepositoryCheckpoint,
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,

@@ -526,6 +526,7 @@ private fun remediationResultsOutput(
       "status": "completed",
       "summary": "$summary",
       "produced_outputs": {
+        ${PlanningProjectionFixtures.RECEIPT_FIELDS}
         "changed_files":["src/Foo.kt"],
         "reconciled_state":{"reconciled":true},
         "repair_item_results":[$results]$extraProducedOutputs
@@ -543,6 +544,7 @@ private fun blockedRemediationOutput(gapId: String, repairItemId: String): Strin
     "status": "blocked",
     "summary": "Remediation cannot make the first repair item work.",
     "produced_outputs": {
+      ${PlanningProjectionFixtures.RECEIPT_FIELDS}
       "changed_files":[],
       "reconciled_state":{"reconciled":true},
       "repair_item_results":[],

@@ -462,6 +462,15 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
+    - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
@@ -691,6 +700,114 @@ skillbill.workflow.verify
   (`WorkflowGoalRunnerOutcomeStore.progress`) decodes the latest declared event
   softly so a malformed stored record cannot disable deterministic liveness.
 
+## Phase Context Boundary (SKILL-137 handoff projections)
+
+A feature-task-runtime phase no longer receives the complete output of its
+upstream phases. Context reaching a phase is split into four parts with distinct
+owners, storage, and failure modes.
+
+**1. Private evidence.** Complete validated phase output stays on
+`FeatureTaskRuntimePhaseRecord.outputArtifact` (and `rejectedOutput` for
+schema-rejected attempts) under the
+`feature_task_runtime_phase_records` artifact key. It is the run's durable record
+of what each phase actually produced. Nothing reads it into a prompt directly.
+
+**2. Consumer projection.** What a phase receives is declared, not inferred.
+`PhaseHandoffProjectionDeclaration` (`runtime-domain`) names one source, one
+projection contract id/version, prompt visibility, a UTF-8-byte and
+collection-item budget, and a repository-checkpoint policy.
+`FeatureTaskRuntimePhaseDeclaration.projectionDeclarations` is the sole place a
+source can be declared; `consumedUpstreamPhaseIds` is derived from it, so a
+recorded output with no declaration is never delivered.
+`FeatureTaskRuntimeHandoffProjectionValidator` turns declarations into a
+`FeatureTaskRuntimeHandoffEnvelope` of named typed projections and compact
+references. It rejects — never truncates — on a missing required source,
+malformed or undeclared field, unsupported contract version, duplicate
+projection name, budget overflow, invalid compact reference, or
+checkpoint-policy violation, each through
+`InvalidFeatureTaskRuntimeHandoffProjectionError` naming the workflow, consumer
+phase, projection, and contract without echoing payload bodies. The envelope has
+its own Draft 2020-12 contract
+(`orchestration/contracts/feature-task-runtime-handoff-envelope-schema.yaml`,
+pinned by `FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION` and
+`FeatureTaskRuntimeHandoffEnvelopeSchemaContractVersionTest`), reached from the
+domain only through the `FeatureTaskRuntimeHandoffEnvelopeValidator` port with
+`FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter` in `runtime-infra-fs` —
+the same domain/infra validator-boundary convention as
+`WorkflowSnapshotValidator`. Delivered envelopes persist separately from private
+evidence as `FeatureTaskRuntimeDeliveredProjectionRecord` under
+`feature_task_runtime_delivered_projections`; the two artifact keys must never
+merge, because merging them is exactly how a round trip could hand a consumer
+the private artifact in place of its projection. Raw-map exposure is confined to
+`@OpenBoundaryMap`-annotated wire seams.
+
+A projection may declare `inlineAlternative` to deliver a lossless compact
+reference instead of inline content. A `private_evidence_artifact` reference is
+accepted only when the declaration also sets `allowsPrivateArtifactReference`,
+and the reference itself is minted by the runtime from the source's durable
+identity, so dereferencing it is a deterministic runtime operation rather than
+model-driven retrieval.
+
+**3. Repository-derived context.** `FeatureTaskRuntimeRepositoryCheckpoint`
+carries a deterministic fingerprint, optional base/head refs, and working-tree
+ownership. Policies are `not_required`, `must_match` (resolved and recorded
+fingerprints must be equal), and `refresh_from_repository` (a freshly resolved
+checkpoint is required). The domain stays git-agnostic: the application layer
+resolves the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
+`WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
+the audit-repair path already depends on. No new git port was introduced.
+
+**4. Phase-local instructions.** Run identity remains durable state on every
+briefing, but prompt rendering is selected per phase by
+`FeatureTaskRuntimeRunInvariantPromptAllowlist`.
+`FeatureTaskRuntimeRunInvariantPromptField` classifies each invariant as
+identity, acceptance-contract, policy, ceremony, review, add-on, or finalization.
+Identity, ceremony, and policy mandates reach every phase; the acceptance
+contract is withheld from the finalization phases (`write_history`,
+`commit_push`, `pr`), which act on work audit and validate already settled.
+Policy mandates are not withheld: they are free-form operator directives that
+govern the irreversible outward-facing phases, and this allowlist is their only
+delivery path.
+Hydrated add-on content is scoped by the manifest-owned
+`feature_addon_usage.feature-task` consumer assignment, which is run-scoped:
+every phase of a feature-task run is that consumer, so there is no narrower
+per-phase gate in `FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor`.
+What that seam does own is the budget — hydrated add-on content is budgeted
+independently of phase receipts, so neither budget can borrow the other's
+headroom and an oversized add-on rejects rather than inflating the briefing.
+
+`FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING` now bounds only the
+non-projection framing. Projection bodies are bounded by their own declared
+budgets, which is what makes the no-truncation guarantee expressible: the
+assembler has no budget left to split, so it has nothing to truncate.
+
+The shipped per-edge declarations are currently one coarse whole-receipt
+projection per edge (`FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections`).
+That proves the mechanism is load-bearing without yet claiming any edge is
+minimally scoped; fine-grained named-field projections replace them per edge
+later. Those coarse projections are declared `required = false` because presence
+of a declared upstream output is already gated ahead of launch by the run loop's
+missing-upstream block; the validator's required path stays load-bearing for
+declarations that own their own presence contract.
+
+Because those coarse receipts carry a whole phase output, their budgets are sized
+against recorded runtime phase outputs rather than picked as round numbers: no
+phase other than `preplan` exceeded 20,844 UTF-8 bytes across 239 durable
+outputs, while `preplan` reached 131,901. Hence `PHASE_RECEIPT` (65,536 bytes)
+for every edge and `PREPLAN_DIGEST_RECEIPT` (196,608 bytes) for the single
+`preplan` -> `plan` edge. A rejection therefore means a phase output grew far
+beyond every observed size, not that an ordinary run outgrew its budget. Re-size
+them from the same measurement when the delivered shape narrows to named fields.
+
+When a projection is rejected anyway, `FeatureTaskRuntimeRunLoop` catches
+`InvalidFeatureTaskRuntimeHandoffProjectionError` at the launch seam and blocks
+the phase through the ordinary `blockAndPersistInPhase` path with a
+`needs_user_action` disposition. The rejection is static declaration or
+configuration drift rather than agent output, so retrying without operator action
+reproduces it; blocking durably keeps the phase row and the run's finalization
+consistent instead of unwinding out of a run that already persisted
+`STATUS_RUNNING`.
+
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
 Install request validation and pure install-plan construction live in
@@ -885,6 +1002,8 @@ Categories:
 ### open_extension (@OpenBoundaryMap)
 
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
+- `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.application.review.toBoundedPayload`
@@ -924,6 +1043,13 @@ Categories:
 - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
