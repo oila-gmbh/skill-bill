@@ -9,6 +9,7 @@ import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.launcher.agentrun.NativeReviewOperationBoundary
 import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
 import skillbill.launcher.agentrun.ProviderUsageExposure
+import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -48,6 +49,80 @@ class AgentRunCommandBuildersTest {
     assertEquals(100, codex.totalTokens)
     assertEquals("", AgentRunOutputDecoder.CLAUDE_JSON.decode("""{"usage":{"total_tokens":7}}""").text)
     assertEquals("", AgentRunOutputDecoder.CODEX_JSONL.decode("""{"usage":{"total_tokens":7}}""").text)
+  }
+
+  @Test
+  fun `streamed claude output decodes identically to the buffered form`() {
+    val buffered = """{"type":"result","subtype":"success","result":"PLAN-OK","usage":""" +
+      """{"input_tokens":2,"cache_read_input_tokens":17931,"output_tokens":6,"total_tokens":120}}"""
+    val streamed = listOf(
+      """{"type":"system","subtype":"init","session_id":"s-1","cwd":"/repo"}""",
+      """{"type":"assistant","message":{"model":"claude-opus-4-8"},"session_id":"s-1"}""",
+      """{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"},"session_id":"s-1"}""",
+      buffered,
+    ).joinToString("\n")
+
+    val fromBuffered = AgentRunOutputDecoder.CLAUDE_JSON.decode(buffered)
+    val fromStream = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(streamed)
+
+    assertEquals(fromBuffered.text, fromStream.text)
+    assertEquals("PLAN-OK", fromStream.text)
+    assertEquals(fromBuffered.inputTokens, fromStream.inputTokens)
+    assertEquals(fromBuffered.cachedInputTokens, fromStream.cachedInputTokens)
+    assertEquals(fromBuffered.outputTokens, fromStream.outputTokens)
+    assertEquals(fromBuffered.totalTokens, fromStream.totalTokens)
+  }
+
+  @Test
+  fun `stream decoding ignores non-terminal events and tolerates a truncated stream`() {
+    val noResultEvent = """{"type":"assistant","message":{"model":"claude-opus-4-8"}}"""
+    assertEquals(noResultEvent, AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(noResultEvent).text)
+
+    val laterResultWins = listOf(
+      """{"type":"result","subtype":"success","result":"stale"}""",
+      """{"type":"assistant","message":{"content":"result"}}""",
+      """{"type":"result","subtype":"success","result":"fresh"}""",
+    ).joinToString("\n")
+    assertEquals("fresh", AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(laterResultWins).text)
+
+    val partialLine = """{"type":"result","subtype":"success","result":"kept"}""" + "\n{\"type\":\"resu"
+    assertEquals("kept", AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(partialLine).text)
+  }
+
+  @Test
+  fun `a liveness-streamed claude launch swaps output format decoder and idle policy`() {
+    val builder = ClaudeAgentRunCommandBuilder()
+
+    val streamed = builder.build(request().copy(streamOutputForLiveness = true))
+
+    assertEquals(
+      listOf(
+        "claude",
+        "--print",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
+        "--add-dir",
+        "/tmp/skillbill-agent-run",
+      ),
+      streamed.command,
+    )
+    assertEquals(AgentRunOutputDecoder.CLAUDE_STREAM_JSON, streamed.outputDecoder)
+    assertEquals(AgentRunIdlePolicy.OUTPUT_EXTENDED, streamed.idlePolicy)
+
+    val buffered = builder.build(request())
+    assertEquals(null, buffered.outputDecoder, "a non-streamed launch keeps the builder default decoder")
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, buffered.idlePolicy)
+  }
+
+  @Test
+  fun `builders that cannot stream fall back to process liveness instead of a watchdog they cannot satisfy`() {
+    val streaming = request().copy(streamOutputForLiveness = true)
+
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, CodexAgentRunCommandBuilder().build(streaming).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, JunieAgentRunCommandBuilder().build(streaming).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, CodexAgentRunCommandBuilder().build(request()).idlePolicy)
   }
 
   @Test

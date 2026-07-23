@@ -48,7 +48,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 class GoalPlanningSweepTest {
   @Test
@@ -381,6 +383,59 @@ class GoalPlanningSweepTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
     assertEquals(listOf("preplan", "plan", "plan"), harness.launcher.phases)
     assertEquals(1, discovery.calls, "resume after shared-preplan persistence must not repeat discovery")
+  }
+
+  @Test
+  fun `every planning launch streams for liveness and carries its own budget`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val request = harness.request().copy(
+      timeout = 5.minutes,
+      progressIdleTimeout = 10.minutes,
+      planningBudget = 45.minutes,
+    )
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), request)
+
+    assertEquals(3, harness.launcher.requests.size)
+    harness.launcher.requests.forEach { launch ->
+      assertTrue(
+        launch.skillRunRequest.streamOutputForLiveness,
+        "planning writes no durable progress, so it must prove liveness by streaming output",
+      )
+      assertEquals(45.minutes, launch.skillRunRequest.timeout, "planning is bounded by its own budget")
+      assertEquals(10.minutes, launch.skillRunRequest.progressIdleTimeout, "silence is still bounded")
+    }
+  }
+
+  @Test
+  fun `a disabled planning budget leaves planning bounded only by output silence`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val request = harness.request().copy(progressIdleTimeout = 10.minutes, planningBudget = null)
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), request)
+
+    harness.launcher.requests.forEach { launch ->
+      assertNull(launch.skillRunRequest.timeout)
+      assertEquals(10.minutes, launch.skillRunRequest.progressIdleTimeout)
+      assertTrue(launch.skillRunRequest.streamOutputForLiveness)
+    }
+  }
+
+  @Test
+  fun `an exhausted planning budget names the budget and the flag that raises it`() {
+    val harness = sweepHarness { _, _, _ ->
+      launchFacts(stdout = "").copy(timedOut = true, exitStatus = null)
+    }
+
+    val outcome = harness.sweep.prepare(
+      harness.stateFor(manifest(subtaskCount = 1)),
+      harness.request().copy(planningBudget = 45.minutes),
+    )
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertTrue(stopped.blockedReason.contains("45m"), stopped.blockedReason)
+    assertTrue(stopped.blockedReason.contains("--planning-budget-minutes"), stopped.blockedReason)
+    assertEquals(0, harness.preparedCount())
   }
 
   @Test

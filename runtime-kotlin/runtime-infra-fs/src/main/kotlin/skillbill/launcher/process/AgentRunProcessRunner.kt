@@ -76,14 +76,33 @@ fun interface AgentRunActivityProbe {
   }
 }
 
+/**
+ * Liveness observations available when the durable-progress idle window has elapsed.
+ * [lastOutputNanos] is null until the child has written its first stdout/stderr byte.
+ */
+data class AgentRunIdleSignals(
+  val lastLiveHeartbeatNanos: Long,
+  val lastOutputNanos: Long?,
+  val idleTimeoutNanos: Long,
+  val nowNanos: Long,
+)
+
 fun interface AgentRunIdlePolicy {
-  fun extendIdleWindow(lastLiveHeartbeatNanos: Long, idleTimeoutNanos: Long, nowNanos: Long): Boolean
+  fun extendIdleWindow(signals: AgentRunIdleSignals): Boolean
 
   companion object {
-    val HEARTBEAT_EXTENDED: AgentRunIdlePolicy = AgentRunIdlePolicy { heartbeat, timeout, now ->
-      now - heartbeat < timeout
+    val HEARTBEAT_EXTENDED: AgentRunIdlePolicy = AgentRunIdlePolicy { signals ->
+      signals.nowNanos - signals.lastLiveHeartbeatNanos < signals.idleTimeoutNanos
     }
-    val DB_PROGRESS_ONLY: AgentRunIdlePolicy = AgentRunIdlePolicy { _, _, _ -> false }
+    val DB_PROGRESS_ONLY: AgentRunIdlePolicy = AgentRunIdlePolicy { false }
+
+    /**
+     * For launches that report progress only by producing output. Incremental provider output
+     * keeps the window open; a silent child still dies at the idle deadline.
+     */
+    val OUTPUT_EXTENDED: AgentRunIdlePolicy = AgentRunIdlePolicy { signals ->
+      signals.lastOutputNanos?.let { observed -> signals.nowNanos - observed < signals.idleTimeoutNanos } == true
+    }
   }
 }
 

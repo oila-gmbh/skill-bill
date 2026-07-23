@@ -23,6 +23,8 @@ data class AgentRunCommand(
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
+  /** Overrides the builder's default decoder when this command selects a different output format. */
+  val outputDecoder: AgentRunOutputDecoder? = null,
 )
 
 interface AgentRunCommandBuilder {
@@ -342,12 +344,16 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
+    val streaming = request.streamOutputForLiveness
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("claude")
         add("--print")
         add("--output-format")
-        add("json")
+        // stream-json emits one NDJSON event per turn instead of a single buffered object at
+        // exit, so a launch with no durable progress signal can still prove it is working.
+        add(if (streaming) "stream-json" else "json")
+        if (streaming) add("--verbose")
         request.modelOverride?.let {
           add("--model")
           add(it)
@@ -372,6 +378,8 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       environment = goalContinuationEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
+      idlePolicy = if (streaming) AgentRunIdlePolicy.OUTPUT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+      outputDecoder = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.takeIf { streaming },
     )
   }
 }
@@ -431,6 +439,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       environment = goalContinuationEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
+      idlePolicy = unstreamedLivenessPolicy(request),
     )
   }
 }
@@ -463,9 +472,18 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       environment = goalContinuationEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
+      idlePolicy = unstreamedLivenessPolicy(request),
     )
   }
 }
+
+/**
+ * Fallback for a builder that cannot honor [SkillRunRequest.streamOutputForLiveness]. Such a launch
+ * can never satisfy a durable-progress watchdog, so process liveness stands in and its wall-clock
+ * budget remains the real bound.
+ */
+private fun unstreamedLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy =
+  if (request.streamOutputForLiveness) AgentRunIdlePolicy.HEARTBEAT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY
 
 internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."

@@ -254,7 +254,7 @@ object McpToolRegistry {
         required = listOf("issue_key", "repository_identity"),
         properties = mapOf(
           "issue_key" to stringSchema(),
-          "repository_identity" to stringSchema(),
+          "repository_identity" to repositoryIdentitySchema,
           "workflow_id" to stringSchema(),
         ),
       ),

@@ -11,6 +11,7 @@ import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.launcher.agentrun.WorktreeActivityProbe
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.launcher.process.AgentRunActivityProbe
+import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessResult
 import skillbill.launcher.process.AgentRunProcessRunner
@@ -279,6 +280,52 @@ class AgentRunLauncherTest {
     assertEquals(null, result.exitStatus)
     assertContains(result.stderr, "without durable workflow progress")
     assertContains(result.stderr, "No file activity was observed")
+  }
+
+  @Test
+  fun `incremental output alone keeps a db-silent process alive past the idle window`() {
+    val emitting = listOf("sh", "-c", "i=0; while [ \$i -lt 8 ]; do echo tick; sleep 0.15; i=\$((i+1)); done")
+
+    val streamed = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = emitting,
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        progressIdleTimeout = 600.milliseconds,
+        progressProbe = AgentRunProgressProbe { null },
+        idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED,
+      ),
+    )
+
+    assertFalse(streamed.timedOut, "output arriving inside the idle window must extend it")
+    assertEquals(0, streamed.exitStatus)
+
+    val unstreamed = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = emitting,
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        progressIdleTimeout = 600.milliseconds,
+        progressProbe = AgentRunProgressProbe { null },
+        idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+      ),
+    )
+
+    assertTrue(unstreamed.timedOut, "the same output must not rescue a db-progress-only launch")
+  }
+
+  @Test
+  fun `a silent process still dies at the idle deadline under output-extended liveness`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 5"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        progressIdleTimeout = 300.milliseconds,
+        progressProbe = AgentRunProgressProbe { null },
+        idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED,
+      ),
+    )
+
+    assertTrue(result.timedOut)
+    assertEquals(null, result.exitStatus)
   }
 
   @Test

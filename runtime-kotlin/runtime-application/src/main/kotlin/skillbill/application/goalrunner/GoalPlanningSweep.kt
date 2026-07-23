@@ -37,6 +37,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
+import kotlin.time.Duration
 
 fun interface GoalPlanningSweep {
   fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome
@@ -277,17 +278,21 @@ class DefaultGoalPlanningSweep(
           repoRoot = shared.repoRoot,
           subtaskId = subtask?.id,
           dbPathOverride = shared.dbPathOverride,
-          timeout = request.timeout,
+          // Planning checkpoints only after the child exits, so it emits no durable progress
+          // token and no worktree activity. It proves liveness by streaming output instead:
+          // the idle window then bounds silence, and the budget bounds total time.
+          timeout = request.planningBudget,
           progressIdleTimeout = request.progressIdleTimeout,
           outputSink = request.outputSink,
           promptOverride = prompt,
+          streamOutputForLiveness = true,
         ),
       ),
     )
     val currentSubtaskId = subtask?.id ?: 0
     val stdout = stdoutFor(outcome)
       ?: return GoalPlanningPhaseProduction.Stopped(
-        stopped(shared, currentSubtaskId, exhaustedReason(outcome), phaseId),
+        stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
       )
     return runCatching { outputValidator.validateAndReadPhaseOutput(stdout, phaseId) }.fold(
       onSuccess = { payload ->
@@ -398,14 +403,17 @@ class DefaultGoalPlanningSweep(
     is UnsupportedAgentRunLaunch -> null
   }
 
-  private fun exhaustedReason(outcome: AgentRunLaunchOutcome): String = when (outcome) {
+  private fun exhaustedReason(outcome: AgentRunLaunchOutcome, planningBudget: Duration?): String = when (outcome) {
     is UnsupportedAgentRunLaunch -> "Goal planning could not launch a planning agent: ${outcome.reason}"
-    is AgentRunLaunchFacts -> "Goal planning produced no usable agent output: ${exhaustedCause(outcome)}."
+    is AgentRunLaunchFacts ->
+      "Goal planning produced no usable agent output: ${exhaustedCause(outcome, planningBudget)}."
   }
 
-  private fun exhaustedCause(facts: AgentRunLaunchFacts): String = when {
+  private fun exhaustedCause(facts: AgentRunLaunchFacts, planningBudget: Duration?): String = when {
     facts.spawnFailed -> "the planning agent failed to spawn"
-    facts.timedOut -> "the planning agent timed out"
+    facts.timedOut ->
+      "the planning agent exhausted its $planningBudget planning budget; " +
+        "raise or disable it with --planning-budget-minutes"
     facts.interrupted -> "the planning agent was interrupted"
     facts.exitStatus != null && facts.exitStatus != 0 -> "the planning agent exited with status ${facts.exitStatus}"
     else -> "the planning agent produced no usable output"

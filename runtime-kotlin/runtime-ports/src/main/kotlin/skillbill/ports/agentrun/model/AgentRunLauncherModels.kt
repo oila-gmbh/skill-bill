@@ -27,6 +27,11 @@ data class SkillRunRequest(
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
+  /**
+   * Request incremental provider output so a launch that writes no durable workflow rows can still
+   * prove liveness. A builder that cannot stream must keep the idle watchdog off its own launch.
+   */
+  val streamOutputForLiveness: Boolean = false,
   val modelOverride: String? = null,
   val effortOverride: String? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,

@@ -2,6 +2,8 @@
 
 package skillbill.mcp.core
 
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+
 internal val emptyObjectSchema: Map<String, Any?> = McpToolSpec.strictObjectSchema()
 internal val freeObjectSchema: Map<String, Any?> = mapOf("type" to "object")
 internal val integerSchema: Map<String, Any?> = mapOf("type" to "integer")
@@ -10,6 +12,16 @@ internal val historySignalSchema: Map<String, Any?> =
   stringSchema(enum = listOf("none", "irrelevant", "low", "medium", "high"))
 internal val qualityCheckScopeSchema: Map<String, Any?> =
   stringSchema(enum = listOf("files", "working_tree", "branch_diff", "repo"))
+
+// FeatureTaskExecutionIdentityPolicy enforces the prefix, but callers see only this schema;
+// without the description a bare absolute path is the natural — and rejected — guess.
+internal val repositoryIdentitySchema: Map<String, Any?> = stringSchema(
+  description = "Canonical repository identity: the literal prefix " +
+    "'${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}' followed by the absolute " +
+    "real path of the Git top-level directory. Example: " +
+    "${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/home/me/projects/app",
+  pattern = "^${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}/",
+)
 internal val remoteStatsWorkflowSchema: Map<String, Any?> =
   stringSchema(
     enum =
@@ -48,7 +60,7 @@ internal fun workflowOpenSchema(required: List<String> = emptyList()): Map<Strin
     "session_id" to stringSchema(),
     "current_step_id" to stringSchema(),
     "issue_key" to stringSchema(),
-    "repository_identity" to stringSchema(),
+    "repository_identity" to repositoryIdentitySchema,
     "governed_spec_path" to stringSchema(),
   ),
 )
@@ -90,12 +102,19 @@ internal fun goalStatsSchema(): Map<String, Any?> = objectSchema(
   ),
 )
 
-internal fun stringSchema(enum: List<String> = emptyList(), minLength: Int? = null): Map<String, Any?> = buildMap {
+internal fun stringSchema(
+  enum: List<String> = emptyList(),
+  minLength: Int? = null,
+  description: String? = null,
+  pattern: String? = null,
+): Map<String, Any?> = buildMap {
   put("type", "string")
   if (enum.isNotEmpty()) {
     put("enum", enum)
   }
   minLength?.let { put("minLength", it) }
+  description?.let { put("description", it) }
+  pattern?.let { put("pattern", it) }
 }
 
 internal fun arraySchema(items: Map<String, Any?>): Map<String, Any?> = mapOf(

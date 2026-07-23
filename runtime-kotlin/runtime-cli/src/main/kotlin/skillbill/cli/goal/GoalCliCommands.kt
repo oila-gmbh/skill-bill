@@ -19,6 +19,7 @@ import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
+import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunEvent
@@ -96,6 +97,12 @@ class GoalRunCommand(
       "$DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES). A subtask with no durable progress and no " +
       "file activity for this long is killed; active work is spared. Pass 0 to disable.",
   ).int().default(DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES)
+  private val planningBudgetMinutes by option(
+    "--planning-budget-minutes",
+    help = "Per-plan wall-clock budget for goal planning in minutes (default " +
+      "${DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes}). Planning writes no durable progress, so it is " +
+      "bounded by this budget rather than the progress-idle timeout. Pass 0 to disable.",
+  ).int().default(DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes.toInt())
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
@@ -159,25 +166,31 @@ class GoalRunCommand(
       ),
     )
     presenter.emitStartupProvenance()
-    val report = goalRunner.run(
-      GoalRunnerRunRequest(
-        issueKey = runIssueKey,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
-        invokedAgentId = invokedAgentId,
-        configuredAgentOverrideId = agentOverride,
-        dbPathOverride = state.dbOverride,
-        timeout = maxWallClockMinutes?.minutes,
-        progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
-        outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
-        eventSink = presenter.eventSink(),
-        codeReviewMode = parseCodeReviewMode(codeReviewMode),
-        parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
-        agentAddonSelection = hydratedSelection,
-      ),
-    )
+    val report = goalRunner.run(runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter))
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
   }
+
+  private fun runRequest(
+    runIssueKey: String,
+    invokedAgentId: String,
+    hydratedSelection: HydratedAgentAddonSelection,
+    presenter: GoalRunPresenter,
+  ): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = runIssueKey,
+    repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    invokedAgentId = invokedAgentId,
+    configuredAgentOverrideId = agentOverride,
+    dbPathOverride = state.dbOverride,
+    timeout = maxWallClockMinutes?.minutes,
+    progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
+    planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,
+    outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
+    eventSink = presenter.eventSink(),
+    codeReviewMode = parseCodeReviewMode(codeReviewMode),
+    parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
+    agentAddonSelection = hydratedSelection,
+  )
 }
 
 private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->

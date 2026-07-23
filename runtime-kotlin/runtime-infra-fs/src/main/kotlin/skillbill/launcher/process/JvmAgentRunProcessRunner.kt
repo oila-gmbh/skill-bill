@@ -312,6 +312,8 @@ private class ProcessWaitLoop(
   private var lastSnapshotInstant: Instant? = null
   private var lastActivityLabel: String? = null
   private var lastActivityInstant: Instant? = null
+  private var lastObservedOutputMillis: Long? = null
+  private var lastOutputNanos: Long? = null
 
   // SKILL-64 Subtask 3 (AC20-AC24): authoritative declared-progress tracking.
   private var declaredTracker = DeclaredProgressTracker(startNanos)
@@ -369,6 +371,7 @@ private class ProcessWaitLoop(
     pollDeclaredProgress(nowNanos)
     pollWorkflowProgress(nowNanos)
     pollFileActivity(nowNanos)
+    pollOutputActivity(nowNanos)
     pollStatusHeartbeat(nowNanos)
     // SKILL-64 Subtask 3 (AC20-AC23): when the worker has declared a progress
     // event, the deterministic taxonomy is authoritative. mtime/stdout/token
@@ -399,8 +402,7 @@ private class ProcessWaitLoop(
       // configured idle window is still honoured before any kill.
       GoalRunnerLivenessState.IDLE ->
         if (idleTimeoutNanos != null && nowNanos - declaredTracker.lastAdvanceNanos >= idleTimeoutNanos) {
-          val processLiveWithinWindow =
-            request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+          val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(idleSignals(idleTimeoutNanos, nowNanos))
           if (processLiveWithinWindow) {
             null
           } else {
@@ -424,8 +426,7 @@ private class ProcessWaitLoop(
       val graceActive = fileActivityWindowStartNanos?.let { windowStart ->
         nowNanos - windowStart < fileActivityGraceNanos
       } == true
-      val processLiveWithinWindow =
-        request.idlePolicy.extendIdleWindow(lastLiveHeartbeatNanos, idleTimeoutNanos, nowNanos)
+      val processLiveWithinWindow = request.idlePolicy.extendIdleWindow(idleSignals(idleTimeoutNanos, nowNanos))
       if (graceActive || processLiveWithinWindow) {
         null
       } else {
@@ -441,6 +442,13 @@ private class ProcessWaitLoop(
       null
     }
 
+  private fun idleSignals(idleTimeoutNanos: Long, nowNanos: Long): AgentRunIdleSignals = AgentRunIdleSignals(
+    lastLiveHeartbeatNanos = lastLiveHeartbeatNanos,
+    lastOutputNanos = lastOutputNanos,
+    idleTimeoutNanos = idleTimeoutNanos,
+    nowNanos = nowNanos,
+  )
+
   private fun pollWorkflowProgress(nowNanos: Long) {
     val progressToken = request.progressProbe.safeProgressToken()
     if (progressToken != lastProgressToken) {
@@ -449,6 +457,16 @@ private class ProcessWaitLoop(
       lastProgressInstant = Instant.now()
       fileActivityWindowStartNanos = null
       writeProgressLabel()
+    }
+  }
+
+  // The output drains stamp wall-clock millis from their own threads; translate each new
+  // observation onto this loop's monotonic clock so idle arithmetic stays monotonic.
+  private fun pollOutputActivity(nowNanos: Long) {
+    val observedMillis = outputTracker.lastObservedAt()?.toEpochMilli() ?: return
+    if (observedMillis != lastObservedOutputMillis) {
+      lastObservedOutputMillis = observedMillis
+      lastOutputNanos = nowNanos
     }
   }
 

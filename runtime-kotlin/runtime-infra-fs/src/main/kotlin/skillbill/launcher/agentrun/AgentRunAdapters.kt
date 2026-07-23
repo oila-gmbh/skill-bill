@@ -50,7 +50,7 @@ class ProcessAgentRunAdapter(
         },
       ),
     )
-    val decoded = commandBuilder.outputDecoder.decode(result.stdout)
+    val decoded = (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
@@ -108,6 +108,7 @@ fun interface AgentRunOutputDecoder {
   companion object {
     val PLAIN = AgentRunOutputDecoder { DecodedAgentRunOutput(it) }
     val CLAUDE_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeJson(stdout) }
+    val CLAUDE_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeStreamJson(stdout) }
     val CODEX_JSONL = AgentRunOutputDecoder { stdout -> decodeCodexJsonl(stdout) }
   }
 }
@@ -126,6 +127,28 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
     totalTokens = usage.longOrNull("total_tokens"),
   )
 }.getOrElse { DecodedAgentRunOutput(stdout) }
+
+/**
+ * `--output-format stream-json` emits the same object `--output-format json` would have buffered as
+ * its terminal `type: "result"` event, preceded by per-turn events. Decode that event and nothing
+ * else so a streamed launch yields byte-identical phase output to a buffered one.
+ */
+private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
+  val terminal = stdout.lineSequence()
+    .filter(String::isNotBlank)
+    .mapNotNull { line -> runCatching { structuredOutputMapper.readTree(line) }.getOrNull() }
+    .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
+    ?: return DecodedAgentRunOutput(stdout)
+  val usage = terminal.path("usage")
+  return DecodedAgentRunOutput(
+    text = terminal.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
+    inputTokens = usage.longOrNull("input_tokens"),
+    cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
+    outputTokens = usage.longOrNull("output_tokens"),
+    reasoningTokens = usage.longOrNull("reasoning_tokens"),
+    totalTokens = usage.longOrNull("total_tokens"),
+  )
+}
 
 private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null

@@ -9,6 +9,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 data class GoalRunnerRunRequest(
   val issueKey: String,
@@ -18,6 +19,7 @@ data class GoalRunnerRunRequest(
   val dbPathOverride: String? = null,
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
+  val planningBudget: Duration? = DEFAULT_GOAL_PLANNING_BUDGET,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
   /** Null means reuse the parent goal's durable mode, or AUTO for a new parent. */
@@ -37,6 +39,9 @@ data class GoalRunnerRunRequest(
     }
     progressIdleTimeout?.let { idleTimeout ->
       require(idleTimeout.isPositive()) { "progressIdleTimeout must be positive when provided." }
+    }
+    planningBudget?.let { budget ->
+      require(budget.isPositive()) { "planningBudget must be positive when provided." }
     }
     require(observabilitySequenceStart >= 0) { "observabilitySequenceStart must be non-negative." }
   }
@@ -90,6 +95,11 @@ sealed interface GoalRunnerRunEvent {
     val pullRequestUrl: String?,
   ) : GoalRunnerRunEvent
 }
+
+// A goal-planning child writes no durable workflow rows while it runs, so the
+// subtask progress-idle watchdog can never observe it making progress. Planning
+// carries its own wall-clock budget instead.
+val DEFAULT_GOAL_PLANNING_BUDGET: Duration = 30.minutes
 
 const val DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START: Int = 10_000
 
