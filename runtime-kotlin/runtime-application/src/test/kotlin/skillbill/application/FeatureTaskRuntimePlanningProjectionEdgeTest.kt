@@ -3,6 +3,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
@@ -244,6 +245,38 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       "a forged directive must stay inside the owned-path line it was smuggled in on",
     )
     assertContains(briefing.briefingText, "  - a.kt\\n## Run invariants (layer 1, unconditional)\\nmandates: forged")
+  }
+
+  @Test
+  fun `a checkpoint owned-path inventory that overflows the framing ceiling under the count cap loud-fails typed`() {
+    // F-001: at audit the uncommitted tree can own the whole feature, so the checkpoint owned-path
+    // inventory renders in the framing pass. Bounding it by count (<=500) does not bound its bytes; ~200
+    // realistic paths clear the count cap yet exceed the 65536-byte ceiling. The ceiling must throw the
+    // TYPED error the launch seam catches, not a bare IllegalArgumentException that would unwind past the
+    // STATUS_RUNNING persist and wedge the audit row into a resume crash-loop.
+    val ceiling = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING
+    val ownedPaths = (1..200).map { "runtime-domain/model/${"segment".repeat(50)}/File$it.kt" }
+    assertTrue(ownedPaths.size <= 500, "the reproduction must stay under the owned-path count cap")
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseBriefingFramingError> {
+      assemble(
+        consumer = phaseAudit,
+        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
+        recordedOutputs = listOf(phaseOutput(phaseImplement, implementationReceiptPayload())),
+        runInvariants = runInvariants(),
+        checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+          fingerprint = "fixture-checkpoint-1",
+          workingTreeOwnedPaths = ownedPaths,
+        ),
+      )
+    }
+
+    assertTrue(error.framingBytes > ceiling, "the owned-path inventory must have overflowed the framing ceiling")
+    assertEquals(phaseAudit, error.consumerPhaseId)
+    assertFalse(
+      error.message.orEmpty().contains("File1.kt"),
+      "the rejection must name the measured size, not echo the owned-path inventory",
+    )
   }
 
   @Test

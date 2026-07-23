@@ -17,6 +17,7 @@ import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -2230,6 +2231,14 @@ internal class FeatureTaskRuntimeRunLoop(
       // durably instead of unwinding out of a run that already persisted STATUS_RUNNING.
       return LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+      // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
+      // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
+      // persist and wedge the row with no blockedReason; block durably instead.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not fit its launch briefing under the byte ceiling: " +
           error.message,
       )
     } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {

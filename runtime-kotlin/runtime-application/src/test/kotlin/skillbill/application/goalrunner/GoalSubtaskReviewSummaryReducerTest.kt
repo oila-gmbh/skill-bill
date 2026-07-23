@@ -21,9 +21,9 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Major findings remain evidence but do not request changes`() {
+  fun `Major findings request changes for in-pass remediation but do not hard-block at cap`() {
     val output = mapOf(
-      "verdict" to FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue,
+      "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
         "findings" to listOf(mapOf("severity" to "major", "message" to "Follow-up risk")),
       ),
@@ -31,7 +31,9 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
+    // A Major reopens implement_fix so it is fixed in the same pass, but it is not an advance-blocking
+    // finding: the Blocker-based unresolved count stays 0, so a surviving Major moves on at cap.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
     assertEquals(0, outcome.unresolvedFindingCount)
     assertEquals(1, GoalSubtaskReviewSummaryReducer.fromOutput(output).size)
   }

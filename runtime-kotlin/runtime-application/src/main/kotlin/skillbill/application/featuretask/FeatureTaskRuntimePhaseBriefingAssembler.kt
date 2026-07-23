@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
@@ -96,7 +97,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         planningProjectionValidator = planningProjectionValidator,
       ),
     )
-    val briefingText = serialize(handoff, envelope)
+    val briefingText = serialize(handoff, envelope, workflowId)
     return FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = handoff.phaseId,
       specReference = handoff.runInvariants.specReference,
@@ -115,16 +116,26 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     )
   }
 
-  private fun serialize(handoff: FeatureTaskRuntimePhaseHandoff, envelope: FeatureTaskRuntimeHandoffEnvelope): String {
+  private fun serialize(
+    handoff: FeatureTaskRuntimePhaseHandoff,
+    envelope: FeatureTaskRuntimeHandoffEnvelope,
+    workflowId: String?,
+  ): String {
     // Framing = the briefing with empty projection bodies. The bodies themselves were already
-    // budget-checked by the validator, so only the framing needs its own ceiling.
+    // budget-checked by the validator, so only the framing needs its own ceiling. The resolved
+    // repository checkpoint renders here too and is bounded by owned-path count, not bytes, so an
+    // audit whose uncommitted tree owns the whole feature can overflow the ceiling with the count cap
+    // still satisfied. A bare require() would throw IllegalArgumentException past the launch handler
+    // that already persisted STATUS_RUNNING and wedge the row; a typed error is caught there instead.
     val framingBytes = renderBriefing(handoff, emptyEnvelope(envelope))
       .toByteArray(StandardCharsets.UTF_8).size
-    require(framingBytes <= FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING) {
-      "Feature-task-runtime per-phase briefing layer-1/framing is $framingBytes bytes, exceeding the " +
-        "$FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING-byte ceiling before any projection body is " +
-        "inlined; the governing contract (spec reference, acceptance criteria, mandates) is too large to fit a " +
-        "single phase briefing and must not be silently truncated."
+    if (framingBytes > FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING) {
+      throw InvalidFeatureTaskRuntimePhaseBriefingFramingError(
+        consumerPhaseId = handoff.phaseId,
+        workflowId = workflowId,
+        framingBytes = framingBytes,
+        ceilingBytes = FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING,
+      )
     }
     return renderBriefing(handoff, envelope)
   }

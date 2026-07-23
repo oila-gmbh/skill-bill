@@ -2022,6 +2022,33 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       "no audit briefing may be persisted from an over-limit repository scope",
     )
   }
+
+  @Test
+  fun `an owned-path inventory under the count cap but over the byte ceiling blocks instead of unwinding the run`() {
+    // F-001: the count cap (<=500) does not bound bytes. ~200 long but realistic paths clear the count
+    // cap yet render past the 65536-byte briefing framing ceiling. The framing throw is now typed and
+    // caught at the launch seam, so the audit phase blocks durably instead of unwinding past the
+    // STATUS_RUNNING persist and crash-looping on every resume.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.repositoryFingerprintValue = "child-fingerprint-1"
+    git.ownedPathsValue = (1..200).map { "runtime-domain/model/${"segment".repeat(50)}/Generated$it.kt" }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "ceiling")
+    assertTrue(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
+      "no audit briefing may be persisted when its framing overflows the byte ceiling",
+    )
+  }
 }
 
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {
@@ -2540,7 +2567,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 Major review finding advances without launching implement_fix`() {
+  fun `m1 Major review finding launches implement_fix then moves on at cap`() {
     val majorFindingOutput = reviewFindingsOutput(changesRequested = true)
       .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
     val harness = runnerHarness(
@@ -2552,9 +2579,12 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
+    // A Major reopens implement_fix so it is fixed in the same review pass; a Major that survives the
+    // bounded remediation is not advance-blocking, so the run moves on rather than looping or blocking.
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "implement_fix" })
-    assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" })
+    val launched = harness.launchedPromptPhaseOrder()
+    assertTrue(launched.any { it == "implement_fix" }, "a Major review finding must launch implement_fix")
+    assertTrue(launched.any { it == "audit" })
   }
 
   // (b)+(e) AC2/AC6/AC10: changes_requested spawns implement_fix carrying the findings, then re-reviews.

@@ -100,6 +100,14 @@ $defs:
     type: array
     maxItems: 128
     items: { $ref: "#/$defs/nonBlank" }
+  # A string list the Kotlin model requires to be non-empty (requireStringList / .ifEmpty{throw}).
+  # Kept as a separate $def so the empty-allowed `strings` uses stay empty-allowed; only the fields
+  # the model rejects when empty carry minItems:1, so a schema-valid projection can never pass the
+  # infra-fs gate and then throw in fromMap.
+  nonEmptyStrings:
+    allOf:
+      - { $ref: "#/$defs/strings" }
+      - { minItems: 1 }
   # Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors
   # review-context-schema.yaml's `path` $def so changed-path normalization is identical everywhere.
   repoPath:
@@ -110,8 +118,11 @@ $defs:
   criterionRef:
     type: string
     pattern: "^AC-[0-9]{3}$"
+  # Both uses (plan_task, task_commitment) are rejected by the model when empty (.ifEmpty{throw}),
+  # so the non-empty bound lives on the shared $def rather than per field.
   criterionRefs:
     type: array
+    minItems: 1
     maxItems: 128
     items: { $ref: "#/$defs/criterionRef" }
   taskId:
@@ -145,9 +156,9 @@ $defs:
     properties:
       projection_kind: { const: "preplanning_digest" }
       contract_version: { $ref: "#/$defs/contractVersion" }
-      affected_boundaries: { $ref: "#/$defs/strings" }
+      affected_boundaries: { $ref: "#/$defs/nonEmptyStrings" }
       patterns_and_decisions: { $ref: "#/$defs/strings" }
-      risks: { $ref: "#/$defs/strings" }
+      risks: { $ref: "#/$defs/nonEmptyStrings" }
       rollout:
         type: object
         additionalProperties: false
@@ -158,7 +169,7 @@ $defs:
             type: string
             enum: [none, simple_conditional, di_switch, legacy]
           notes: { $ref: "#/$defs/nonBlank" }
-      validation_strategy: { $ref: "#/$defs/strings" }
+      validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
       unresolved_questions: { $ref: "#/$defs/strings" }
       evidence_refs: { $ref: "#/$defs/strings" }
       # Governed co-resident of the goal-planning sweep's preplan produced_outputs, owned by
@@ -184,7 +195,7 @@ $defs:
         minItems: 1
         maxItems: 128
         items: { $ref: "#/$defs/plan_task" }
-      validation_strategy: { $ref: "#/$defs/strings" }
+      validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
       decomposition_subtask_count: { type: integer, minimum: 1 }
       decomposition_manifest_ref: { $ref: "#/$defs/nonBlank" }
 
@@ -203,7 +214,7 @@ $defs:
       description: { $ref: "#/$defs/compactSummary" }
       criterion_refs: { $ref: "#/$defs/criterionRefs" }
       target_paths_or_symbols: { $ref: "#/$defs/strings" }
-      test_obligations: { $ref: "#/$defs/strings" }
+      test_obligations: { $ref: "#/$defs/nonEmptyStrings" }
       constraints: { $ref: "#/$defs/strings" }
 
   plan_commitment:
@@ -232,7 +243,7 @@ $defs:
     properties:
       task_id: { $ref: "#/$defs/taskId" }
       criterion_refs: { $ref: "#/$defs/criterionRefs" }
-      test_obligations: { $ref: "#/$defs/strings" }
+      test_obligations: { $ref: "#/$defs/nonEmptyStrings" }
       constraints: { $ref: "#/$defs/strings" }
 
   implementation_receipt:
@@ -256,6 +267,7 @@ $defs:
       changed_paths:
         type: array
         uniqueItems: true
+        minItems: 1
         maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
       tests_added:

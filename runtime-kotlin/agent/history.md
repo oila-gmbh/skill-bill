@@ -1,3 +1,15 @@
+## [2026-07-23] SKILL-137 planning and implementation projections + remediation gate (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application}, orchestration/contracts
+- Schema/model parity: the planning-projections schema gained a `nonEmptyStrings` $def and `minItems:1` on exactly the fields the Kotlin model rejects when empty (affected_boundaries, risks, validation_strategy, test_obligations, criterionRefs, changed_paths), so a schema-valid projection can never clear the infra-fs gate and then throw in `fromMap`. reusable
+- Review remediation now uses two distinct severity gates: `requiresRemediation` (Blocker + Major) reopens `implement_fix` so Major findings are fixed in the same pass; `blocksAdvance` (Blocker only) drives the terminal loud block on cap exhaustion, so a surviving Major ships but a surviving Blocker still stops the run. reusable
+- `FeatureTaskRuntimeReviewVerdict` exposes `remediationFindings` (fix-pass scope) separately from `unresolvedFindings` (hard-block scope); prompt text and the goal review reducer route on Blocker-or-Major but count only Blocker for the durable unresolved/cap-block count.
+- GoalSubtaskReviewSummaryReducer: an itemised review reports its true Blocker count (0 for a Major-only review, routed to a fix pass by verdict but never hard-blocking); only a compact changes_requested summary with no itemised findings coerces to a conservative 1 so an un-itemised block is not silently advanced.
+- Carried audit gaps repaired: the handoff validator compares receipt-carried vs resolved repository checkpoint and refreshes repository-derived fields rather than silently auditing a different tree (AC-012); the briefing renders the resolved checkpoint and audit declares scoped comparison context (AC-011); the run loop builds the checkpoint from resolved branch state with goal-child-scoped normalized owned paths (AC-014).
+- Pattern: the AC-012 refresh keeps the projection's declared field set fixed (enforceDeclaredShape rejects new fields) by encoding the refresh inside the existing compact `repository_checkpoint` reference as `<resolved>+refreshed-from:<stale>` — one no-line-break token that still satisfies compact-reference rules. reusable
+- The AC-014 goal-child head ref is the run-owned branch from durable resolved-branch state, not a measured git HEAD (measuring HEAD broke the 'goal-continuation … without measuring git head' invariant); the goal-child baseline inventory reads from goal-subtask review state, not the resolved-branch record.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 16/16 implemented
+
 ## [2026-07-23] SKILL-137 handoff projection contracts and private-evidence boundary (subtask 1)
 Areas: runtime-kotlin/runtime-{domain,application,core,infra-fs}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
 - Phase handoff now crosses a four-part boundary: private evidence (complete validated phase output), consumer projection (exact prompt-visible envelope), repository-derived context, and phase-local instructions; ARCHITECTURE.md documents it.

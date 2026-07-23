@@ -168,6 +168,29 @@ class InvalidFeatureTaskRuntimeHandoffProjectionError(
   cause,
 )
 
+/**
+ * Surfaced when the non-projection framing of a phase briefing exceeds its byte ceiling before any
+ * projection body is inlined. The realistic driver is the audit repository checkpoint, whose owned-path
+ * inventory renders in the framing pass and is bounded by count, not bytes. A bare check would throw
+ * `IllegalArgumentException` past the launch handler that already persisted STATUS_RUNNING, wedging the
+ * row with no blocked reason and crash-looping on every resume; this typed error is caught at that seam
+ * and the phase blocks durably instead. The message names the measured size and the ceiling only, never
+ * the framing content it refused to deliver.
+ */
+class InvalidFeatureTaskRuntimePhaseBriefingFramingError(
+  val consumerPhaseId: String,
+  val workflowId: String?,
+  val framingBytes: Int,
+  val ceilingBytes: Int,
+) : ShellContentContractException(
+  "Feature-task-runtime phase '${consumerPhaseId.ifBlank { "<unknown>" }}' " +
+    "in workflow '${workflowId?.ifBlank { null } ?: "<unknown>"}' " +
+    "has a launch briefing whose layer-1/framing is $framingBytes bytes, over the $ceilingBytes-byte ceiling " +
+    "before any projection body is inlined; the governing contract plus resolved repository checkpoint is too " +
+    "large for a single phase briefing and must not be silently truncated. Narrow the run scope or commit " +
+    "unrelated working-tree changes before relaunching.",
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,

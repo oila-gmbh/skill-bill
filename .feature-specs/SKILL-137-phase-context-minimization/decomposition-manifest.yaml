@@ -9,18 +9,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-137-phase-context-minimization"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 1
   action: "resume"
 subtasks:
 - id: 1
   name: "Handoff projection contracts and private evidence boundary"
   spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_1_handoff-projection-contracts-and-private-evidence-boundary.md"
-  status: "complete"
+  status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260723-064104-b2rz"
+  workflow_id: "wftr-20260723-170048-nzva"
   blocked_reason: null
-  last_resumable_step: "commit_push"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Planning and implementation projections"
   spec_path: ".feature-specs/SKILL-137-phase-context-minimization/spec_subtask_2_planning-and-implementation-projections.md"
-  status: "in_progress"
+  status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260723-092523-bwo3"
+  workflow_id: null
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

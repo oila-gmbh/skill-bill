@@ -4,6 +4,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssemble
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
@@ -178,7 +179,18 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       derivedContextKeys = emptyList(),
     )
 
-    assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff) }
+    // F-001: the framing ceiling must throw a TYPED error the launch seam catches, not a bare
+    // IllegalArgumentException that would unwind past the STATUS_RUNNING persist and wedge the row.
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseBriefingFramingError> {
+      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    }
+    assertEquals("wftr-1", error.workflowId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, error.consumerPhaseId)
+    assertTrue(error.framingBytes > error.ceilingBytes, "the error must report the measured overflow")
+    assertFalse(
+      error.message.orEmpty().contains("x".repeat(64)),
+      "a framing rejection must name the measured size, never echo the contract content it refused to deliver",
+    )
   }
 
   @Test

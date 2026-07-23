@@ -290,17 +290,32 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `findings with only Major Minor or Nit or no findings derive approved`() {
+  fun `findings with only Minor or Nit or no findings derive approved`() {
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, FeatureTaskRuntimeReviewVerdict(emptyList()).verdict)
     val minorOnly = FeatureTaskRuntimeReviewVerdict(
       listOf(
-        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.NIT, "trailing space"),
       ),
     )
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, minorOnly.verdict)
     assertTrue(minorOnly.unresolvedFindings.isEmpty())
+    assertTrue(minorOnly.remediationFindings.isEmpty())
+  }
+
+  @Test
+  fun `a Major finding requests changes for remediation but is not advance-blocking`() {
+    val majorOnly = FeatureTaskRuntimeReviewVerdict(
+      listOf(
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
+      ),
+    )
+    // Major reopens implement_fix (changes_requested) and is carried into the fix pass, but it never
+    // hard-blocks at cap exhaustion, so unresolvedFindings (the Blocker-only advance gate) stays empty.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, majorOnly.verdict)
+    assertEquals(listOf("follow-up risk"), majorOnly.remediationFindings.map { it.message })
+    assertTrue(majorOnly.unresolvedFindings.isEmpty())
   }
 
   @Test
