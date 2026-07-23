@@ -33,6 +33,22 @@ class FeatureTaskRuntimeAuditSeveritySchemaValidatorTest {
     }
   }
 
+  @Test
+  fun `non blocking audit findings accept the compact gap vocabulary`() {
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(satisfiedWithGapShapedFindings, "audit")
+  }
+
+  @Test
+  fun `non blocking audit findings still require a severity`() {
+    val envelope = """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[""" +
+      """{"message":"Small cleanup remains."}]}}"""
+
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
+    }
+  }
+
   private fun auditGapEnvelope(severity: String): String =
     """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
       """"verdict":"gaps_found","produced_outputs":{"gaps":[""" +
@@ -44,4 +60,10 @@ class FeatureTaskRuntimeAuditSeveritySchemaValidatorTest {
       """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[""" +
       """{"acceptance_criterion_ref":"AC-128","message":"Small cleanup remains.","severity":"minor"},""" +
       """{"acceptance_criterion_ref":"AC-129","message":"Naming could improve.","severity":"nit"}]}}"""
+
+  private val satisfiedWithGapShapedFindings =
+    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[""" +
+      """{"criterion":"AC-128","file":"ReviewRunner.kt","issue":"Small cleanup remains.",""" +
+      """"fix":"Extract the helper.","severity":"minor"}]}}"""
 }

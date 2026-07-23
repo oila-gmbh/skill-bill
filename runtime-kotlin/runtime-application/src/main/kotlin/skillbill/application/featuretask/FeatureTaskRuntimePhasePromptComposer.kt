@@ -315,7 +315,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       "       \"fix\":\"Include rejected lanes in the aggregate\"}.\n" +
       "      Do not emit unmet_criteria, audit_repair_plan, gap IDs, repair-item IDs, dependency arrays,\n" +
       "      acceptance-criterion text, or repeated paths; the runtime derives its durable repair model.\n" +
-      "      Minor and nit entries go only in non_blocking_findings and NEVER trigger gaps_found.\n" +
+      "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
+      "      NEVER trigger gaps_found. Those entries use their own shape, not the gap shape:\n" +
+      "      severity (minor or nit) is required, acceptance_criterion_ref and message are expected.\n" +
+      "      Example: {\"acceptance_criterion_ref\":\"AC-004\",\n" +
+      "       \"message\":\"Naming could be clearer\",\"severity\":\"nit\"}.\n" +
       "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
       "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
       "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +

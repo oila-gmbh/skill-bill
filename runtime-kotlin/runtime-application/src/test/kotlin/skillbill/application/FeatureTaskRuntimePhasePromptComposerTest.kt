@@ -397,6 +397,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditPrompt, "blocker or major", true, "audit limits remediation gaps by severity")
     assertContains(auditPrompt, "non_blocking_findings", false, "audit preserves minor and nit findings")
     assertContains(auditPrompt, "NEVER trigger gaps_found", false, "non-blocking findings cannot reopen implementation")
+    assertContains(
+      auditPrompt,
+      "\"acceptance_criterion_ref\":\"AC-004\"",
+      false,
+      "audit spells out the non-blocking finding shape instead of leaving it to the gap example",
+    )
   }
 
   @Test

@@ -190,15 +190,24 @@ allOf:
               maxItems: 50
               items: { $ref: "#/$defs/compactAuditGap" }
             non_blocking_findings:
+              description: >
+                Advisory sink for Minor and Nit findings. The runtime never reads entry bodies, so
+                entries also accept the compact-gap vocabulary and tolerate extra keys instead of
+                failing the phase gate. `severity` stays constrained because a Blocker or Major
+                finding parked here would escape the gap ledger.
               type: array
               items:
                 type: object
-                additionalProperties: false
-                required: [acceptance_criterion_ref, message, severity]
+                required: [severity]
                 properties:
-                  acceptance_criterion_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
-                  message: { type: string, minLength: 1, pattern: ".*\\S.*" }
                   severity: { enum: [minor, nit] }
+                  acceptance_criterion_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  criterion: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  message: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  issue: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  fix: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  file: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  location: { type: string, minLength: 1, pattern: ".*\\S.*" }
   - if:
       properties:
         phase_id: { const: audit }
