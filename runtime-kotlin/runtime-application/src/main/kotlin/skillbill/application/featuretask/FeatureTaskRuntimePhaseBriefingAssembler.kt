@@ -19,26 +19,28 @@ import java.nio.charset.StandardCharsets
  * Per-phase allowlist of prompt-visible run invariants (AC-012). Run identity stays durable runtime
  * state on every briefing; this decides only what is *rendered* for a given phase.
  *
- * Identity and ceremony reach every phase. The acceptance contract, policy mandates, and review
- * policy reach the phases that act on them. Finalization phases (history, commit, PR) describe work
- * already settled by audit and validate, so re-injecting the full acceptance contract there only
- * invites a finalization agent to relitigate criteria it has no authority over.
+ * Identity, ceremony, and policy mandates reach every phase. The acceptance contract and review
+ * policy reach only the phases that act on them. Finalization phases (history, commit, PR) describe
+ * work already settled by audit and validate, so re-injecting the full acceptance contract there
+ * only invites a finalization agent to relitigate criteria it has no authority over.
+ *
+ * Policy mandates are deliberately not part of that withholding. They are free-form operator
+ * directives ("do not push to main", "PR targets develop") that govern exactly the irreversible
+ * outward-facing phases, and this allowlist is their only delivery path.
  */
 object FeatureTaskRuntimeRunInvariantPromptAllowlist {
-  private val IDENTITY_AND_CEREMONY: Set<FeatureTaskRuntimeRunInvariantPromptField> = setOf(
+  private val IDENTITY_CEREMONY_AND_POLICY: Set<FeatureTaskRuntimeRunInvariantPromptField> = setOf(
     FeatureTaskRuntimeRunInvariantPromptField.SPEC_REFERENCE,
     FeatureTaskRuntimeRunInvariantPromptField.FEATURE_SIZE,
     FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING,
+    FeatureTaskRuntimeRunInvariantPromptField.MANDATES_AND_OVERRIDES,
   )
 
   private val ACCEPTANCE_CONTRACT_PHASES: Set<FeatureTaskRuntimeRunInvariantPromptField> =
-    IDENTITY_AND_CEREMONY + setOf(
-      FeatureTaskRuntimeRunInvariantPromptField.ACCEPTANCE_CRITERIA,
-      FeatureTaskRuntimeRunInvariantPromptField.MANDATES_AND_OVERRIDES,
-    )
+    IDENTITY_CEREMONY_AND_POLICY + FeatureTaskRuntimeRunInvariantPromptField.ACCEPTANCE_CRITERIA
 
   private val FINALIZATION: Set<FeatureTaskRuntimeRunInvariantPromptField> =
-    IDENTITY_AND_CEREMONY + FeatureTaskRuntimeRunInvariantPromptField.FINALIZATION_CONTEXT
+    IDENTITY_CEREMONY_AND_POLICY + FeatureTaskRuntimeRunInvariantPromptField.FINALIZATION_CONTEXT
 
   private val FINALIZATION_PHASE_IDS: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,

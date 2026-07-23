@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
@@ -14,6 +15,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -1467,7 +1469,7 @@ internal class FeatureTaskRuntimeRunLoop(
           iteration,
           reason,
           observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
         ),
       )
@@ -2088,25 +2090,11 @@ internal class FeatureTaskRuntimeRunLoop(
     return state.outputFor(phaseId)?.takeIf { budgetCompleted }
   }
 
-  @Suppress("ReturnCount")
-  private fun launchAndCapture(
+  private fun prepareLaunch(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
-    priorSchemaFailure: String? = null,
-    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
-  ): LaunchResult {
-    val before = gitOperations.worktreeStatus(run.request.repoRoot)
-    if (!before.ok) {
-      return LaunchResult.infraFailure(
-        "Feature-task-runtime phase '${run.phaseId}' could not capture its before-file manifest: ${before.error}",
-      )
-    }
-    val beforeCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
-    if (!beforeCommit.ok) {
-      return LaunchResult.infraFailure(
-        "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
-      )
-    }
+    priorSchemaFailure: String?,
+  ): PreparedLaunch {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
@@ -2126,6 +2114,60 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, run.request.workflowId)
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = run.request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = isGoalContinuationRun(run.request),
+      parallelReviewAgent = run.request.parallelReviewAgent
+        ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
+      codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
+          run.request.runInvariants.codeReviewMode,
+          passNumber,
+        )
+      } ?: run.request.runInvariants.codeReviewMode,
+      reviewPassNumber = reviewPassNumber(run, state),
+      goalSubtaskReviewInput = run.goalReviewInput,
+      specSource = run.specSource,
+      priorSchemaFailure = priorSchemaFailure,
+      operatorBlockRetry = operatorBlockRetry
+        ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
+      specReference = run.request.runInvariants.specReference,
+      agentAddonSelection = run.request.agentAddonSelection,
+    )
+    return PreparedLaunch(briefing, prompt)
+  }
+
+  @Suppress("ReturnCount")
+  private fun launchAndCapture(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    priorSchemaFailure: String? = null,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
+  ): LaunchResult {
+    val before = gitOperations.worktreeStatus(run.request.repoRoot)
+    if (!before.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its before-file manifest: ${before.error}",
+      )
+    }
+    val beforeCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
+    if (!beforeCommit.ok) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
+      )
+    }
+    val prepared = try {
+      prepareLaunch(run, state, priorSchemaFailure)
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      // A projection rejection is static declaration/config drift, not agent output: block the phase
+      // durably instead of unwinding out of a run that already persisted STATUS_RUNNING.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
+      )
+    }
+    val briefing = prepared.briefing
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -2137,27 +2179,7 @@ internal class FeatureTaskRuntimeRunLoop(
           timeout = run.request.timeout,
           modelOverride = run.modelDirective?.model,
           effortOverride = run.modelDirective?.effort,
-          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(
-            issueKey = run.request.issueKey,
-            briefing = briefing,
-            suppressDecomposition = isGoalContinuationRun(run.request),
-            parallelReviewAgent = run.request.parallelReviewAgent
-              ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
-              skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
-                run.request.runInvariants.codeReviewMode,
-                passNumber,
-              )
-            } ?: run.request.runInvariants.codeReviewMode,
-            reviewPassNumber = reviewPassNumber(run, state),
-            goalSubtaskReviewInput = run.goalReviewInput,
-            specSource = run.specSource,
-            priorSchemaFailure = priorSchemaFailure,
-            operatorBlockRetry = operatorBlockRetry
-              ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-            specReference = run.request.runInvariants.specReference,
-            agentAddonSelection = run.request.agentAddonSelection,
-          ),
+          promptOverride = prepared.prompt,
         ),
       ),
     )
@@ -2246,6 +2268,11 @@ internal class FeatureTaskRuntimeRunLoop(
     val durableRecord: FeatureTaskRuntimePhaseRecord? = null,
   )
 
+  private data class PreparedLaunch(
+    val briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    val prompt: String,
+  )
+
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
@@ -2254,17 +2281,24 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class InfraFailure(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+      val disposition: FeatureTaskRuntimeFailureDisposition,
     ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition
+      get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
       fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
         Captured(stdout, fileManifest)
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
-        InfraFailure(reason, fileManifest)
+        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+
+      /** Static declaration or configuration drift: retrying without operator action reproduces it. */
+      fun projectionRejected(reason: String): LaunchResult =
+        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
     }
   }
 

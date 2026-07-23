@@ -180,7 +180,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   }
 
   @Test
-  fun `a finalization phase omits the acceptance contract while every working phase keeps it`() {
+  fun `a finalization phase omits the acceptance contract but still receives the operator mandates`() {
     val invariants = FeatureTaskRuntimeRunInvariants(
       specReference = ".feature-specs/SKILL-137/spec.md",
       acceptanceCriteria = listOf("AC-1: the acceptance contract text"),
@@ -209,7 +209,12 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         briefing.briefingText.contains("acceptance_criteria:"),
         "finalization phase '$phaseId' rendered the acceptance contract; the allowlist did not apply",
       )
-      assertFalse(briefing.briefingText.contains("the policy text"))
+      assertContains(
+        briefing.briefingText,
+        "the policy text",
+        message = "finalization phase '$phaseId' lost the operator mandates; " +
+          "the allowlist is their only delivery path",
+      )
       // Identity stays durable state on the briefing even when it is not prompt-rendered.
       assertEquals(invariants.acceptanceCriteria, briefing.acceptanceCriteria)
       assertContains(briefing.briefingText, "spec_reference:")

@@ -135,11 +135,21 @@ data class FeatureTaskRuntimeHandoffProjectionBudget(
 
   companion object {
     /**
-     * Sized so the widest declared consumer (three upstream receipts) still leaves room for layer-1
-     * under the serialized-briefing ceiling without any projection ever being truncated.
+     * Sized against recorded runtime phase outputs: across 239 durable outputs no phase other than
+     * `preplan` exceeded 20,844 UTF-8 bytes, so this leaves better than 3x headroom while a coarse
+     * whole-receipt projection is still the delivered shape. A rejection here means a phase output
+     * grew far beyond every observed size, not that an ordinary run outgrew its budget.
      */
     val PHASE_RECEIPT: FeatureTaskRuntimeHandoffProjectionBudget =
-      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 12_288, maxCollectionItems = 64)
+      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 65_536, maxCollectionItems = 64)
+
+    /**
+     * The preplanning digest is the one phase output that routinely runs an order of magnitude
+     * larger than the rest; the same 239 recorded outputs put its maximum at 131,901 UTF-8 bytes.
+     * Its single consumer (`plan`) therefore gets its own budget rather than forcing every edge up.
+     */
+    val PREPLAN_DIGEST_RECEIPT: FeatureTaskRuntimeHandoffProjectionBudget =
+      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 196_608, maxCollectionItems = 64)
 
     /** Add-on content is budgeted independently of phase receipts so neither can starve the other. */
     val ADDON_CONTENT: FeatureTaskRuntimeHandoffProjectionBudget =

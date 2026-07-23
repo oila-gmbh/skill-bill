@@ -34,9 +34,10 @@ class FeatureTaskRuntimeAddonBudgetTest {
   fun `oversized add-on content is rejected independently of the phase-receipt budget`() {
     val receiptBudget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT.maxUtf8Bytes
     val addonBudget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT.maxUtf8Bytes
-    // Sits above the add-on budget while the phase-receipt budget is a different, smaller number:
-    // neither budget can borrow the other's headroom.
+    // Sits above the add-on budget but still well under the phase-receipt budget, so a rejection
+    // here can only come from the add-on budget: neither budget borrows the other's headroom.
     val oversized = "a".repeat(addonBudget + 1)
+    assertTrue(oversized.length < receiptBudget, "the fixture must not also exceed the phase-receipt budget")
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor("implement", selection(oversized))

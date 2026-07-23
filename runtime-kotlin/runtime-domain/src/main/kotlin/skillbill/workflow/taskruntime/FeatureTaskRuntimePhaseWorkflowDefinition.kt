@@ -163,7 +163,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       projectionContractId = UPSTREAM_PHASE_RECEIPT_CONTRACT_ID,
       projectionContractVersion = UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION,
       promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+      budget = receiptBudgetFor(producingPhaseId),
       declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
       // Presence of a declared upstream output is already gated ahead of launch by the run loop's
@@ -174,6 +174,13 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       required = false,
     )
   }
+
+  private fun receiptBudgetFor(producingPhaseId: String): FeatureTaskRuntimeHandoffProjectionBudget =
+    if (producingPhaseId == PHASE_PREPLAN) {
+      FeatureTaskRuntimeHandoffProjectionBudget.PREPLAN_DIGEST_RECEIPT
+    } else {
+      FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT
+    }
 
   /**
    * Per-phase declarations: the typed projection set (one coarse receipt per edge in

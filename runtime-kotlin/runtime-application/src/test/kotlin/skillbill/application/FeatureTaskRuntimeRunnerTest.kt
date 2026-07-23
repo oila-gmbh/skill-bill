@@ -375,13 +375,9 @@ class FeatureTaskRuntimeRunnerTest {
       assertEquals(listOf("AC-1", "AC-2"), briefing.acceptanceCriteria, "criteria for $phaseId")
       assertContains(briefing.briefingText, "feature_size: SMALL")
       assertContains(briefing.briefingText, SPEC_REFERENCE)
-      // Identity and ceremony reach every phase; the policy mandates are allowlisted away from the
-      // finalization phases, which act on already-settled work.
-      if (phaseId in FINALIZATION_PHASE_IDS) {
-        assertFalse(briefing.briefingText.contains("mandate-X"), "mandates rendered for $phaseId")
-      } else {
-        assertContains(briefing.briefingText, "mandate-X")
-      }
+      // Identity, ceremony, and the policy mandates reach every phase, including the finalization
+      // phases the mandates most directly govern.
+      assertContains(briefing.briefingText, "mandate-X", message = "mandates missing for $phaseId")
     }
     assertTrue(briefings.getValue("plan").hasUpstreamReceipt("preplan"))
     assertEquals(PREPLAN_OUTPUT, briefings.getValue("plan").requireUpstreamReceipt("preplan"))

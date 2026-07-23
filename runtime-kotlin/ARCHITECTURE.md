@@ -760,9 +760,12 @@ briefing, but prompt rendering is selected per phase by
 `FeatureTaskRuntimeRunInvariantPromptAllowlist`.
 `FeatureTaskRuntimeRunInvariantPromptField` classifies each invariant as
 identity, acceptance-contract, policy, ceremony, review, add-on, or finalization.
-Identity and ceremony reach every phase; the acceptance contract and policy
-mandates are withheld from the finalization phases (`write_history`,
+Identity, ceremony, and policy mandates reach every phase; the acceptance
+contract is withheld from the finalization phases (`write_history`,
 `commit_push`, `pr`), which act on work audit and validate already settled.
+Policy mandates are not withheld: they are free-form operator directives that
+govern the irreversible outward-facing phases, and this allowlist is their only
+delivery path.
 Hydrated add-on content is scoped by the manifest-owned
 `feature_addon_usage.feature-task` consumer assignment, which is run-scoped:
 every phase of a feature-task run is that consumer, so there is no narrower
@@ -784,6 +787,24 @@ later. Those coarse projections are declared `required = false` because presence
 of a declared upstream output is already gated ahead of launch by the run loop's
 missing-upstream block; the validator's required path stays load-bearing for
 declarations that own their own presence contract.
+
+Because those coarse receipts carry a whole phase output, their budgets are sized
+against recorded runtime phase outputs rather than picked as round numbers: no
+phase other than `preplan` exceeded 20,844 UTF-8 bytes across 239 durable
+outputs, while `preplan` reached 131,901. Hence `PHASE_RECEIPT` (65,536 bytes)
+for every edge and `PREPLAN_DIGEST_RECEIPT` (196,608 bytes) for the single
+`preplan` -> `plan` edge. A rejection therefore means a phase output grew far
+beyond every observed size, not that an ordinary run outgrew its budget. Re-size
+them from the same measurement when the delivered shape narrows to named fields.
+
+When a projection is rejected anyway, `FeatureTaskRuntimeRunLoop` catches
+`InvalidFeatureTaskRuntimeHandoffProjectionError` at the launch seam and blocks
+the phase through the ordinary `blockAndPersistInPhase` path with a
+`needs_user_action` disposition. The rejection is static declaration or
+configuration drift rather than agent output, so retrying without operator action
+reproduces it; blocking durably keeps the phase row and the run's finalization
+consistent instead of unwinding out of a run that already persisted
+`STATUS_RUNNING`.
 
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
