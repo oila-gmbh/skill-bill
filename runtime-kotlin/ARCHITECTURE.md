@@ -492,6 +492,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
@@ -808,6 +809,44 @@ reproduces it; blocking durably keeps the phase row and the run's finalization
 consistent instead of unwinding out of a run that already persisted
 `STATUS_RUNNING`.
 
+### Producer-side enforcement (SKILL-140 Subtask 1)
+
+A bounded planning projection was validated only at its consumer's launch seam,
+where the producing phase is already settled `completed`. A malformed digest,
+plan, or receipt therefore blocked the *next* phase — with no fix loop able to
+reach the phase that actually wrote it — and the run wedged. The producer gate
+closes that gap: a completed phase that owns a projection must emit one its
+consumer can parse, checked at the producing phase's own schema gate so a
+violation re-enters that phase's bounded fix loop and blocks only at the existing
+cap.
+
+`FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor` is the
+single domain-owned routing map from producing phase id to the projection kind it
+owes (`preplan` -> `preplanning_digest`, `plan` -> `executable_plan`, `implement`
+-> `implementation_receipt`, and null for every other phase, including the derived
+`plan_commitment`, which no phase produces). `producerProjectionGateReason` in
+`FeatureTaskRuntimeRunnerPolicies` reads that map and, for a completed envelope
+whose phase owns a kind, calls the same `featureTaskRuntimePlanningProjectionFromEnvelope`
+with the same `planningProjectionValidator` port the launch seam uses — no
+projection rule is restated at the gate. `FeatureTaskRuntimePlanningProjectionEdgeTest`
+binds the two sides so any envelope the gate accepts the launch seam accepts for
+the corresponding consumer edge, and neither can be made stricter than the other.
+
+The gate runs in `settleValidatedOutput` only after `terminalBlockedReasonFrom`,
+so a blocked or failed envelope — whose `produced_outputs` carries blocking
+reasons, not a projection claim — settles through the terminal path and never
+reaches the gate. A `decompose`-mode plan is likewise exempt: it terminates the
+run at planning and hands the planning stopper a separately-contracted
+decomposition package (`featureTaskRuntimeIsDecompositionPackage`), which no
+consumer parses as an executable plan. The rejection reason names the phase, the
+expected projection kind, and the underlying validation failure (its source label
+plus reason), bounded by the existing `SCHEMA_GATE_DETAIL_MAX_CHARS` schema-gate
+detail truncation — no second truncation rule.
+
+Canonicalization, quarantine, and reconciliation of malformed durable projection
+records belong to later SKILL-140 subtasks; this subtask enforces the producer
+side only.
+
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
 Install request validation and pure install-plan construction live in
@@ -1071,6 +1110,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`

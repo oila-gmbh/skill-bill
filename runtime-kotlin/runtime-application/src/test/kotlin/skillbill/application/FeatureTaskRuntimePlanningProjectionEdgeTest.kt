@@ -3,6 +3,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
+import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
@@ -18,6 +19,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
@@ -444,6 +446,100 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       "- ${FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE}: read the repository",
     )
     assertContains(briefing.briefingText, "not any upstream receipt claim")
+  }
+
+  @Test
+  fun `every envelope the producer gate accepts is accepted by the launch-seam parse for its consumer edge`() {
+    // AC-004: the producer gate (producerProjectionGateReason) and the launch seam (the briefing
+    // assemble) both route through featureTaskRuntimePlanningProjectionFromEnvelope with the same
+    // validator, so what one accepts the other accepts. Each producing-phase envelope is driven through
+    // the real gate and the real consumer edge; both must accept, including the derived plan_commitment.
+    val validator = NoopFeatureTaskRuntimePlanningProjectionValidator
+    parityEdges.forEach { edge ->
+      assertNull(
+        producerProjectionGateReason(edge.producer, producerEnvelope(edge.payload), validator),
+        "the producer gate must accept the ${edge.producer} fixture",
+      )
+      // The launch seam accepts the same envelope for the corresponding consumer edge without throwing.
+      assemble(
+        consumer = edge.consumer,
+        declarations = listOf(edge.declaration),
+        recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
+        runInvariants = runInvariants(),
+        planningProjectionValidator = validator,
+      )
+    }
+  }
+
+  @Test
+  fun `the producer gate and the launch seam reject in lockstep so neither can be made stricter`() {
+    // Both sides are driven through the same validator instance and the same parse function, so the
+    // accept/reject decision is one decision. A rejecting validator must reject at BOTH the gate and the
+    // launch seam; if the gate could reject while the seam accepted (a stricter gate), this fails.
+    val rejecting = RejectingPlanningProjectionValidator
+    parityEdges.forEach { edge ->
+      val gateRejected = producerProjectionGateReason(edge.producer, producerEnvelope(edge.payload), rejecting) != null
+      val seamRejected = try {
+        assemble(
+          consumer = edge.consumer,
+          declarations = listOf(edge.declaration),
+          recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
+          runInvariants = runInvariants(),
+          planningProjectionValidator = rejecting,
+        )
+        false
+      } catch (_: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+        true
+      }
+      assertTrue(gateRejected, "the gate must reject the ${edge.producer} edge under a rejecting validator")
+      assertEquals(gateRejected, seamRejected, "gate and launch seam must agree on the ${edge.producer} edge")
+    }
+  }
+
+  private data class ParityEdge(
+    val producer: String,
+    val consumer: String,
+    val declaration: skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration,
+    val payload: String,
+  )
+
+  private val parityEdges: List<ParityEdge>
+    get() = listOf(
+      ParityEdge(
+        phasePreplan,
+        phasePlan,
+        FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan),
+        preplanDigestPayload(),
+      ),
+      ParityEdge(
+        phasePlan,
+        phaseImplement,
+        FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement),
+        executablePlanPayload(),
+      ),
+      // plan feeds audit's derived plan_commitment from the same executable_plan the producer gate reads.
+      ParityEdge(
+        phasePlan,
+        phaseAudit,
+        FeatureTaskRuntimePhaseWorkflowDefinition.planCommitmentDeclaration(phaseAudit),
+        executablePlanPayload(),
+      ),
+      ParityEdge(
+        phaseImplement,
+        phaseAudit,
+        FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit),
+        implementationReceiptPayload(),
+      ),
+    )
+
+  // The producer gate consumes the whole completed phase-output envelope; the edge fixtures carry only
+  // produced_outputs, so wrap them with the completed status the gate keys on.
+  @Suppress("UNCHECKED_CAST")
+  private fun producerEnvelope(payload: String): Map<String, Any?> {
+    val produced = requireNotNull(skillbill.contracts.JsonSupport.parseObjectOrNull(payload)) {
+      "fixture payload must be a JSON object"
+    }.let { skillbill.contracts.JsonSupport.jsonElementToValue(it) as Map<String, Any?> }
+    return mapOf("status" to "completed") + produced
   }
 
   @Suppress("LongParameterList") // one knob per assembleHandoff input a case varies

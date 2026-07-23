@@ -2,7 +2,7 @@
 
 ## Project Context
 
-skill-bill governs authoring, routing, validation, installation, and measurement of agent skills. It ships shared orchestration, tooling, telemetry, workflow state, and shells for review, quality checks, feature work, verification, and PR descriptions.
+skill-bill governs authoring, routing, validation, installation, and measurement of agent skills. It ships shared orchestration, tooling, telemetry, workflow state, and shells for review, quality checks, feature work, verification, and PRs.
 
 Non-negotiable contracts:
 
@@ -17,9 +17,9 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose mode runs the phase loop in-session; runtime mode launches the foreground `skill-bill feature-task` driver with durable state, telemetry, packs, add-ons, and native subagents.
+`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose runs the phase loop in-session; runtime launches the foreground `skill-bill feature-task` driver with durable state, telemetry, packs, add-ons, and native subagents.
 
-Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail behavior.
+Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail.
 
 ## Taxonomy
 
@@ -46,7 +46,7 @@ Generated files forbidden in source:
 - generated support pointers such as `shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation pointers, and add-on pointers
 - provider-specific `claude-agents/`, `codex-agents/`, `opencode-agents/`, and `junie-agents/` outputs
 
-Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered sources include `contract_version`; the parser still accepts older sources for gradual fixture migration.
+Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered sources include `contract_version`; the parser still accepts older sources for fixture migration.
 
 If a skill needs more authored guidance, add H2 sections to `content.md`. Do not add extra organization files such as `patterns.md`, `reference.md`, or `audit-rubrics.md` under `skills/<skill>/`.
 
@@ -54,13 +54,13 @@ Run `./install.sh` after changing source skills, renderer behavior, or support p
 
 ## Platform Packs
 
-Platform packs are the extension surface. Any maintained pack in this repo is valid when it follows the governed contract. Routing and install flows read pack manifests rather than hard-coded platform lists.
+Platform packs are the extension surface. Any maintained pack is valid when it follows the governed contract. Routing and install flows read pack manifests, not hard-coded platform lists.
 
 The canonical shape for `platform-packs/<slug>/platform.yaml` is `orchestration/contracts/platform-pack-schema.yaml` (Draft 2020-12 YAML-authored JSON Schema). Field additions, type changes, constraints, and enums land there first. `ShellContentLoader.buildPack` rejects malformed manifests through `InvalidManifestSchemaError`.
 
 The shell contract version is `1.2`. `SHELL_CONTRACT_VERSION` and the schema `contract_version.const` are pinned by `PlatformPackSchemaContractVersionTest`.
 
-Cross-field rules JSON Schema cannot express live in Kotlin and are documented under `x-coherence-checks`, including slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
+Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
 
 Per-repo customization:
 
@@ -73,10 +73,9 @@ Per-repo customization:
 Product versus extension surface:
 
 - horizontal `bill-*` skills under `skills/bill-*/` are protected product surfaces
-- shipped `kotlin` and `kmp` packs are removable; no paired `skills/<platform>/` pre-shell trees exist
-- platform packs under `platform-packs/<slug>/` are user-removable extension surfaces, including shipped `kotlin` and `kmp`
+- packs under `platform-packs/<slug>/` are user-removable extension surfaces, including shipped `kotlin` and `kmp`; no paired `skills/<platform>/` pre-shell trees exist
 - `.bill-shared` is protected on every axis
-- maintainers may remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
+- maintainers remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
 
 `kmp` adds platform-correctness, UI, and UX/accessibility to Kotlin's seven review areas. Quality checks route to `bill-kmp-code-check` without Kotlin fallback. `bill-feature-verify` remains pre-shell.
 
@@ -93,17 +92,19 @@ Every YAML under `orchestration/contracts/` is a runtime contract. New contract 
 
 Runtime contract schemas are internal implementation details and stay out of the desktop user-facing tree.
 
-Schema introductions and version bumps intentionally loud-fail legacy durable records. Operators recover by deleting or migrating affected workflow rows out of band. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
+Schema introductions and version bumps intentionally loud-fail legacy durable records; operators recover by deleting or migrating affected rows out of band. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
+
+A feature-task-runtime phase owning a bounded planning projection (`preplan`, `plan`, `implement`) is gated producer-side: a completed output failing its projection contract re-enters that phase's own bounded fix loop instead of blocking a consumer that cannot repair it. The gate and the consumer launch seam share one validation function and validator port; blocked/failed outputs and decompose plans bypass it.
 
 ## Add-ons
 
 Add-ons are pack-owned files, not standalone skills. Keep them flat in `platform-packs/<slug>/addons/`, use lowercase kebab-case names, and resolve them only after dominant-stack routing.
 
-Declare review/check add-on consumers in the owning pack manifest under `addon_usage`. Declare feature-task add-on consumers under manifest-owned `feature_addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; renderers emit governed add-on usage from manifest-owned declarations. Add-on changes need validator and routing-contract coverage.
+Declare review/check add-on consumers in the owning pack manifest under `addon_usage`, feature-task consumers under `feature_addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; renderers emit governed add-on usage from manifest declarations. Add-on changes need validator and routing-contract coverage.
 
 ## Internal Skills
 
-A base or platform-pack skill declaring `internal-for: <parent-skill-name>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar inside the parent's installed directory instead of being listed; the parent invokes it by reading that sibling file in-session. Full contract and worked examples: `docs/skill-source-generation.md`.
+A base or platform-pack skill declaring `internal-for: <parent>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar in the parent's installed directory instead of being listed; the parent reads that sibling file in-session. Full contract and worked examples: `docs/skill-source-generation.md`.
 
 ## Skill Authoring
 
@@ -120,7 +121,7 @@ For normal authoring use CLI reads and writes:
 - validate: `skill-bill validate --skill-name <skill-name>`
 - render preview: `skill-bill render --skill-name <skill-name>`
 
-`create-and-fill` is for one content-managed skill at a time. It is not for horizontal skills, pre-shell overrides, or platform-pack bootstrap flows.
+`create-and-fill` is for one content-managed skill at a time, not horizontal skills, pre-shell overrides, or platform-pack bootstrap flows.
 
 Supported scaffold `kind` values:
 
@@ -134,11 +135,11 @@ The scaffolder is atomic: validator, manifest-write, install, or generated-link 
 
 ## Adding Platforms
 
-For code review, create the pack root, add a conforming manifest and `content.md` files, register generated pointers through the manifest, update the README catalog, extend pack tests, and run validation.
+For code review: create the pack root, add a conforming manifest and `content.md` files, register generated pointers through the manifest, update the README catalog, extend pack tests, and run validation.
 
-For quality-check, register the manifest entry and ship the governed `content.md`. Every maintained pack, including `kmp`, routes directly to its own manifest-declared checker.
+For quality-check: register the manifest entry and ship the governed `content.md`. Every maintained pack, including `kmp`, routes directly to its own manifest-declared checker.
 
-For feature-task and feature-verify, keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
+For feature-task and feature-verify: keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
 
 ## Runtime Agent Behavior
 
@@ -153,21 +154,21 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 - `idlePolicy` — whether a confirmed-alive process heartbeat extends the idle window (`HEARTBEAT_EXTENDED`) or only DB token changes count (`DB_PROGRESS_ONLY`)
 - `usePtyStdio` — whether to use a PTY pair instead of separate stdout/stderr streams
 
-Each `AgentRunCommandBuilder` sets the right combination for its agent. `ProcessWaitLoop` calls the strategies without branching on agent identity. When a new agent needs different behavior, add a named strategy constant and set it in its command builder — do not add if/else inside the runner.
+Each `AgentRunCommandBuilder` sets the right combination for its agent; `ProcessWaitLoop` calls the strategies without branching on agent identity. When a new agent needs different behavior, add a named strategy constant and set it in its command builder — never if/else inside the runner.
 
 ## Writing Policy
 
-Write clear, direct, active prose. Prefer familiar words when precise; remove filler, stale phrases, vague praise, and repetition. State concrete facts, outcomes, failures, and next actions while preserving names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
+Write clear, direct, active prose. Remove filler, stale phrases, vague praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
 
-In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome and include only useful detail.
+In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
 
 ## Comments Policy
 
-Prefer clear names, small functions, and refactoring over comments. Comment only on a non-obvious *why* that code cannot express, such as an external constraint, subtle invariant, or workaround. Never explain merely *what* code does.
+Prefer clear names, small functions, and refactoring over comments. Comment only a non-obvious *why* code cannot express — an external constraint, subtle invariant, or workaround. Never explain *what* code does.
 
 ## Quality Checks
 
-Prefer routing through `bill-code-check`. If no platform checker exists, document the fallback explicitly.
+Prefer routing through `bill-code-check`. If no platform checker exists, document the fallback.
 
 Design bias:
 

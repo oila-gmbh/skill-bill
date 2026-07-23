@@ -1967,6 +1967,7 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.toArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap",
       "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",

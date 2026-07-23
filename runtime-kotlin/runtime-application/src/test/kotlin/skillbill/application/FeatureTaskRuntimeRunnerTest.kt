@@ -4396,6 +4396,8 @@ private val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
 """.trimIndent()
 
 // A schema-valid plan output carrying a top-level `verdict` wire string the transition function reads.
+// produced_outputs carries the declared executable_plan projection: a completed plan owes the shape
+// its consumer parses, and the producer gate rejects it otherwise (SKILL-140 Subtask 1).
 private fun verdictPlanOutput(verdict: String): String = """
   {
     "contract_version": "0.2",
@@ -4403,7 +4405,7 @@ private fun verdictPlanOutput(verdict: String): String = """
     "status": "completed",
     "summary": "Plan produced a validated output.",
     "verdict": "$verdict",
-    "produced_outputs": {"tasks": ["task-1"]}
+    "produced_outputs": ${validProducedOutputs("plan")}
   }
 """.trimIndent()
 

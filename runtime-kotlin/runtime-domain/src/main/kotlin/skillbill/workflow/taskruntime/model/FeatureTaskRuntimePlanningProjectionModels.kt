@@ -6,6 +6,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
  * Typed models for the four concrete bounded planning projections (preplanning digest, executable plan,
@@ -51,6 +52,24 @@ object FeatureTaskRuntimePlanningProjectionContract {
   const val PLAN_COMMITMENT_ID: String = "feature_task_runtime.plan_commitment"
   const val IMPLEMENTATION_RECEIPT_ID: String = "feature_task_runtime.implementation_receipt"
   val VERSION: String = FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+
+  /**
+   * The projection kind [phaseId] must emit when it completes, or null when the phase feeds no planning
+   * projection edge. Routing only: every field, type, budget, and cross-field rule stays inside
+   * [featureTaskRuntimePlanningProjectionFromEnvelope], so the producer gate, the launch-seam parse, and
+   * the parity test between them read one source and cannot diverge on what a phase owes.
+   *
+   * [FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT] is absent by construction: audit's commitment is
+   * derived from the executable plan through [FeatureTaskRuntimeExecutablePlan.toPlanCommitment], never
+   * produced by a phase, so gating a phase against it would demand a shape no producer emits.
+   */
+  fun producedProjectionKindFor(phaseId: String): FeatureTaskRuntimeProjectionKind? = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ->
+      FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
+    else -> null
+  }
 }
 
 // Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors the schema `repoPath`

@@ -1568,6 +1568,11 @@ internal class FeatureTaskRuntimeRunLoop(
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
       return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
+    // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
+    // claiming 'completed' owes the projection its consumer will parse.
+    producerProjectionGateReason(run.phaseId, outputMap, planningProjectionValidator)?.let { reason ->
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }

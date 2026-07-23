@@ -7,7 +7,9 @@ import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionModelsTest {
@@ -190,6 +192,50 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
     val commitment = plan.toPlanCommitment()
     assertEquals(listOf("task_commitments"), commitment.toProjectionFields().map { it.name })
     assertEquals("task-01", commitment.taskCommitments.single().taskId)
+  }
+
+  @Test
+  fun `the producing-phase mapping names the three producer kinds and nothing else`() {
+    assertEquals(
+      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST,
+      FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor("preplan"),
+    )
+    assertEquals(
+      FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+      FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor("plan"),
+    )
+    assertEquals(
+      FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+      FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor("implement"),
+    )
+    // plan_commitment is derived from the executable plan, never produced, so no phase maps to it.
+    listOf("audit", "implement_fix", "review", "validate", "write_history", "commit_push", "pr").forEach { phaseId ->
+      assertNull(
+        FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId),
+        "phase '$phaseId' produces no planning projection and must not be gated against one",
+      )
+    }
+  }
+
+  @Test
+  fun `a decompose package is distinguished from an executable plan that merely declares decompose mode`() {
+    // A decompose stop terminates at planning, so the package is never parsed as an executable plan;
+    // a projection carrying projection_kind stays under the producer gate whatever its mode.
+    assertTrue(
+      featureTaskRuntimeIsDecompositionPackage(
+        mapOf("produced_outputs" to mapOf("mode" to "decompose", "subtasks" to listOf<Any>())),
+      ),
+    )
+    assertFalse(
+      featureTaskRuntimeIsDecompositionPackage(
+        mapOf("produced_outputs" to mapOf("projection_kind" to "executable_plan", "mode" to "decompose")),
+      ),
+    )
+    assertFalse(
+      featureTaskRuntimeIsDecompositionPackage(mapOf("produced_outputs" to mapOf("mode" to "direct"))),
+    )
+    // A free-form plan output claiming neither must stay gated, or AC-001 has a hole.
+    assertFalse(featureTaskRuntimeIsDecompositionPackage(mapOf("produced_outputs" to mapOf("steps" to listOf("x")))))
   }
 
   private fun receipt(
