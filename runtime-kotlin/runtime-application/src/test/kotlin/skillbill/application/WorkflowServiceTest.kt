@@ -621,6 +621,103 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `decomposed parent lookup drops an abandoned row whose subtask lineage predates a manifest edit`() {
+    val workflows = InMemoryWorkflowStates()
+    val staleLineage = decompositionRuntime(status = "pending").copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Compatibility telemetry and end-to-end hardening",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_compatibility-telemetry.md",
+          status = "pending",
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-abandoned-stale",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(staleLineage, testDecompositionManifestValidator),
+        ),
+        workflowStatus = "abandoned",
+      ),
+    )
+    val currentManifest = staleLineage.copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Delegated review launch projections",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_delegated-review.md",
+          status = "pending",
+        ),
+        DecompositionSubtask(
+          id = 8,
+          name = "Compatibility telemetry and end-to-end hardening",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_8_compatibility-telemetry.md",
+          status = "pending",
+        ),
+      ),
+    )
+
+    val withoutComparison = workflows.findDecomposedParentWorkflow("SKILL-52.1", testDecompositionManifestValidator)
+    assertEquals("wfl-abandoned-stale", withoutComparison?.workflowId)
+
+    val withComparison = workflows.findDecomposedParentWorkflow(
+      "SKILL-52.1",
+      testDecompositionManifestValidator,
+      currentManifest,
+    )
+    assertEquals(null, withComparison)
+  }
+
+  @Test
+  fun `decomposed parent lookup keeps an abandoned row with real subtask progress even if lineage diverges`() {
+    val workflows = InMemoryWorkflowStates()
+    val progressedLineage = decompositionRuntime(status = "pending").copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Compatibility telemetry and end-to-end hardening",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_compatibility-telemetry.md",
+          status = "in_progress",
+          commitSha = "sha-partial",
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-abandoned-progressed",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(progressedLineage, testDecompositionManifestValidator),
+        ),
+        workflowStatus = "abandoned",
+      ),
+    )
+    val currentManifest = progressedLineage.copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Delegated review launch projections",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_delegated-review.md",
+          status = "pending",
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow(
+      "SKILL-52.1",
+      testDecompositionManifestValidator,
+      currentManifest,
+    )
+
+    assertEquals("wfl-abandoned-progressed", selected?.workflowId)
+  }
+
+  @Test
   fun `decomposed parent lookup rejects multiple active runtimes for same issue key`() {
     val workflows = InMemoryWorkflowStates()
     listOf("wfl-active-a", "wfl-active-b").forEach { workflowId ->
@@ -2319,14 +2416,18 @@ private val testGoalObservabilityEventValidator: GoalObservabilityEventValidator
     override fun validate(event: Map<String, Any?>, sourceLabel: String) = Unit
   }
 
-private fun workflowRecord(workflowId: String, artifactsPatch: Map<String, Any?>): WorkflowStateRecord {
+private fun workflowRecord(
+  workflowId: String,
+  artifactsPatch: Map<String, Any?>,
+  workflowStatus: String = "running",
+): WorkflowStateRecord {
   val definition = FeatureImplementWorkflowDefinition.definition
   val opened = testWorkflowEngine.openRecord(definition, workflowId, "fis-001", "assess")
   return testWorkflowEngine.updateRecord(
     definition,
     opened,
     skillbill.workflow.model.WorkflowUpdateInput(
-      workflowStatus = "running",
+      workflowStatus = workflowStatus,
       currentStepId = "plan",
       stepUpdates = null,
       artifactsPatch = artifactsPatch,

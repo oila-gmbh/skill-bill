@@ -34,12 +34,12 @@ internal class DecompositionWorkflowContinuation(
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int? = null,
   ): ContinuationStepResult {
+    val diskManifest = findProjectedManifestByIssueKey(issueKey)
     var parentRecord = unitOfWork.workflowStates
-      .findDecomposedParentWorkflow(issueKey, validator)
+      .findDecomposedParentWorkflow(issueKey, validator, diskManifest)
       ?.toSnapshot()
     var manifest = parentRecord?.decompositionRuntime(validator)
     if (parentRecord == null || manifest == null) {
-      val diskManifest = findProjectedManifestByIssueKey(issueKey)
       if (diskManifest != null) {
         parentRecord = bootstrapParentWorkflowFromManifest(diskManifest, unitOfWork)
         manifest = parentRecord.decompositionRuntime(validator)

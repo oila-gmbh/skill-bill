@@ -131,8 +131,8 @@ class WorkflowGoalRunnerManifestStore(
   private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator)
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
-    val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
+    val stored = loadFromWorkflowStore(issueKey, dbPathOverride, projected)
     if (shouldRefreshFromCompleteProjection(stored, projected)) {
       return saveWorkflowProjection(
         requireNotNull(stored).copy(manifest = requireNotNull(projected)),
@@ -146,7 +146,7 @@ class WorkflowGoalRunnerManifestStore(
 
   override fun readByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
-    val stored = loadFromWorkflowStore(issueKey, dbPathOverride)
+    val stored = loadFromWorkflowStore(issueKey, dbPathOverride, projected)
     return when {
       shouldRefreshFromCompleteProjection(stored, projected) -> requireNotNull(stored).copy(
         manifest = requireNotNull(projected),
@@ -546,18 +546,24 @@ class WorkflowGoalRunnerManifestStore(
     )
   }
 
-  private fun loadFromWorkflowStore(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =
-    database.read(dbPathOverride) { unitOfWork ->
-      val record = unitOfWork.workflowStates.findDecomposedParentWorkflow(issueKey, decompositionManifestValidator)
-        ?: return@read null
-      val snapshot = record.toSnapshot()
-      val manifest = snapshot.decompositionRuntime(decompositionManifestValidator) ?: return@read null
-      GoalRunnerManifestState(
-        parentWorkflowId = snapshot.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        manifest = manifest,
-      )
-    }
+  private fun loadFromWorkflowStore(
+    issueKey: String,
+    dbPathOverride: String?,
+    currentProjectedManifest: DecompositionManifest? = null,
+  ): GoalRunnerManifestState? = database.read(dbPathOverride) { unitOfWork ->
+    val record = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+      issueKey,
+      decompositionManifestValidator,
+      currentProjectedManifest,
+    ) ?: return@read null
+    val snapshot = record.toSnapshot()
+    val manifest = snapshot.decompositionRuntime(decompositionManifestValidator) ?: return@read null
+    GoalRunnerManifestState(
+      parentWorkflowId = snapshot.workflowId,
+      dbPath = unitOfWork.dbPath.toString(),
+      manifest = manifest,
+    )
+  }
 
   private fun importFromManifestProjection(
     manifest: DecompositionManifest,

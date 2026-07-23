@@ -22,6 +22,7 @@ internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
 internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
   issueKey: String,
   validator: DecompositionManifestValidator,
+  currentProjectedManifest: DecompositionManifest? = null,
 ): WorkflowStateRecord? {
   val normalizedIssueKey = issueKey.trim()
   val candidates = listFeatureImplementWorkflows(Int.MAX_VALUE).mapNotNull { row ->
@@ -33,7 +34,7 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
     } else {
       null
     }
-  }
+  }.filterNot { candidate -> candidate.isStaleAbandonedLineage(currentProjectedManifest) }
   val activeCandidates = candidates.filter { candidate -> candidate.manifest.isActiveGoalRuntime() }
   if (activeCandidates.size > 1) {
     error(
@@ -63,6 +64,20 @@ private data class DecomposedParentCandidate(
   val record: WorkflowStateRecord,
   val manifest: DecompositionManifest,
 )
+
+// An abandoned parent row whose stored subtask lineage no longer matches the current governed
+// manifest on disk, and which never recorded any real subtask progress, is dead bookkeeping from a
+// superseded manifest edit (e.g. a subtask inserted/renumbered after the row was created). It must
+// not shadow the current manifest for a fresh continuation lookup. A row still carrying real
+// progress (any subtask `hasStarted()`) is never treated as stale here, regardless of workflow
+// status, so genuine history is never discarded.
+private fun DecomposedParentCandidate.isStaleAbandonedLineage(
+  currentProjectedManifest: DecompositionManifest?,
+): Boolean {
+  if (currentProjectedManifest == null || record.workflowStatus != "abandoned") return false
+  if (manifest.subtasks.any { subtask -> subtask.hasStarted() }) return false
+  return manifest.subtasks.map { it.specPath } != currentProjectedManifest.subtasks.map { it.specPath }
+}
 
 internal fun DecompositionManifest.isActiveGoalRuntime(): Boolean = status !in setOf("complete", "skipped") &&
   subtasks.any { subtask -> subtask.status !in setOf("complete", "skipped") }
