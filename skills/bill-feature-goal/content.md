@@ -233,24 +233,37 @@ Keep live output enabled unless the user asks for quieter output.
 
 ## Watching Long Runs (orchestrator pattern)
 
-The user must see the goal progress, not wait in silence for a terminal result.
-Surfacing meaningful transitions inline as they arrive is a contract obligation
-of the invoking agent, not optional polish.
+The runtime owns live progress and writes it to the terminal. The invoking agent
+does not attach an observer to the progress stream and does not relay transitions
+into the conversation; the user reads the runtime's own output, and asks for
+status when they want a summary.
+
+### Required: print the terminal monitoring command
+
+Printing a copy-pasteable monitoring command is required, not optional. At launch,
+before reporting any subtask progress, emit a copyable block the user can paste
+into a separate terminal, with the real issue key already substituted — never
+placeholder text such as `<issue_key>`:
+
+```bash
+skill-bill goal watch SKILL-141 --interval-seconds 5
+skill-bill goal status SKILL-141 --diff-stat
+```
+
+State alongside it that both commands are read-only, mutate nothing, consume no
+model tokens, and can be run in a second terminal as often as the user likes
+while the goal continues — `watch` for a live feed, `status` for a single
+snapshot. Also state that the user can ask this session for status at any point;
+when they do, run `goal status` and report what it returns.
 
 Long goal runs may exceed a foreground command timeout. When that risk exists,
-run the driver detached and consume progress through read-only commands rather
-than holding the foreground call open:
+run `skill-bill goal <issue_key> --agent <agent>` detached (background) rather
+than holding the foreground call open, hand the user the block above, and report
+the terminal result when the run ends.
 
-- Run `skill-bill goal <issue_key> --agent <agent>` detached (background), then
-  poll progress with the read-only `skill-bill goal status <issue_key>` /
-  `skill-bill goal watch <issue_key>` commands, or consume the
-  `goal_event:` transition stream.
-- Do NOT relay raw per-tick `heartbeat` lines verbatim into the parent
-  assistant-visible transcript. Heartbeats are high-frequency liveness ticks;
-  surface only meaningful transitions to the user.
-- Prefer the transition-only `goal_event:` stream for machine consumption: it
-  emits one line per meaningful change, so you can track progress without
-  deduplicating heartbeats or scraping free-form text.
+The `goal_event:` transition stream below is the stable contract those read-only
+commands and any user-owned tooling consume. Heartbeats are high-frequency
+liveness ticks and are not progress reporting.
 
 ### `goal_event:` transition schema
 
@@ -272,14 +285,12 @@ sequence space, so consumers must not assume the two share numbering. A
 heartbeat. Phase/step values are sourced from the authoritative durable workflow
 store, never a stale local default.
 
-### Quiet / transition-only monitoring
+### Default output verbosity
 
-A quiet or transition-only monitor reports subtask start, phase transition,
-blocked/failed, completion, and sparse liveness events without appending every
-heartbeat to the foreground assistant-visible transcript. Debug/raw child stdout
-and stderr remain explicit opt-in via `--debug-child-output`; default output
-keeps raw child streams hidden and surfaces only compact progress, observability,
-and transition lines.
+Default terminal output reports subtask start, phase transition, blocked/failed,
+completion, and sparse liveness events. Debug/raw child stdout and stderr remain
+explicit opt-in via `--debug-child-output`; default output keeps raw child streams
+hidden and surfaces only compact progress, observability, and transition lines.
 
 During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, surface it loudly and immediately, do not continue the loop manually, and summarize the stopped subtask, reason, workflow id when present, and resumable step. On a clean finish, report the terminal per-subtask summary — complete, pending, and blocked counts and the final outcome — from the authoritative workflow state.
 
@@ -493,4 +504,4 @@ contract regardless of which agent runs it.
 
 ## Audit-first review and findings ledger
 
-Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. Blocker findings stop advancement, while non-blocker findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. A Blocker or Major finding reopens `implement_fix` so both are remediated in the same review pass; Minor and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. After the bounded remediation, only an unresolved Blocker stops advancement — a surviving Major moves on and is recorded in the ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

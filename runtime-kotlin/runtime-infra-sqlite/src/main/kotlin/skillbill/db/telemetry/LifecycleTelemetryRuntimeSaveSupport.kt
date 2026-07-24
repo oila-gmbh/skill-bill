@@ -87,6 +87,11 @@ private fun updateFeatureTaskRuntimeFinished(
       audit_new_gap_count = ?,
       audit_attempted_repair_item_count = ?,
       audit_resolved_repair_item_count = ?,
+      regeneration_activation_count = ?,
+      regeneration_attempt_count = ?,
+      regeneration_outcome_counts_json = ?,
+      crash_reconciliation_count = ?,
+      crash_reconciliation_reason_counts_json = ?,
       estimated_phase_tokens_json = ?,
       estimated_total_tokens = ?,
       finished_at = CURRENT_TIMESTAMP
@@ -108,6 +113,11 @@ private fun updateFeatureTaskRuntimeFinished(
       record.auditNewGapCount,
       record.auditAttemptedRepairItemCount,
       record.auditResolvedRepairItemCount,
+      record.regenerationActivationCount,
+      record.regenerationAttemptCount,
+      regenerationOutcomeCountsJson(record),
+      record.crashReconciliationCount,
+      crashReconciliationReasonCountsJson(record),
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
       record.sessionId,
@@ -115,6 +125,12 @@ private fun updateFeatureTaskRuntimeFinished(
     statement.executeUpdate()
   }
 }
+
+private fun regenerationOutcomeCountsJson(record: FeatureTaskRuntimeFinishedRecord): String? =
+  record.regenerationOutcomeCounts.takeIf { it.isNotEmpty() }?.let { JsonSupport.mapToJsonString(it) }
+
+private fun crashReconciliationReasonCountsJson(record: FeatureTaskRuntimeFinishedRecord): String? =
+  record.crashReconciliationReasonCounts.takeIf { it.isNotEmpty() }?.let { JsonSupport.mapToJsonString(it) }
 
 private fun insertFeatureTaskRuntimeFinished(
   connection: Connection,
@@ -130,8 +146,10 @@ private fun insertFeatureTaskRuntimeFinished(
       resolved_branch, review_fix_iteration_count, audit_gap_iteration_count,
       audit_first_pass_convergence, audit_recurring_gap_count, audit_new_gap_count,
       audit_attempted_repair_item_count, audit_resolved_repair_item_count,
+      regeneration_activation_count, regeneration_attempt_count, regeneration_outcome_counts_json,
+      crash_reconciliation_count, crash_reconciliation_reason_counts_json,
       estimated_phase_tokens_json, estimated_total_tokens, finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -149,6 +167,11 @@ private fun insertFeatureTaskRuntimeFinished(
       record.auditNewGapCount,
       record.auditAttemptedRepairItemCount,
       record.auditResolvedRepairItemCount,
+      record.regenerationActivationCount,
+      record.regenerationAttemptCount,
+      regenerationOutcomeCountsJson(record),
+      record.crashReconciliationCount,
+      crashReconciliationReasonCountsJson(record),
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
     )

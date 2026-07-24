@@ -5,6 +5,8 @@ import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -160,7 +162,12 @@ private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   JsonSupport.valueToJsonElement(value),
 )
 
-private object TestWorkflowGitOperations : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
+private object TestWorkflowGitOperations :
+  WorkflowGitOperations,
+  RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider {
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
+
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =

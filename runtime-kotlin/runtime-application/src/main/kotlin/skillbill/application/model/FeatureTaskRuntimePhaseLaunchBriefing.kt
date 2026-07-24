@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 
 /**
  * The typed, fully-assembled launch briefing for one phase: the three handoff layers as typed
@@ -15,7 +16,12 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val featureSize: String,
   val acceptanceCriteria: List<String>,
   val mandatesAndOverrides: List<String>,
-  val upstreamOutputsByPhaseId: Map<String, String>,
+  /**
+   * The validated projection set delivered to this phase. It replaces the former complete
+   * upstream-payload map: prompt composition reads only this envelope plus phase-specific
+   * directives, and complete phase output stays private evidence on the phase record.
+   */
+  val handoffEnvelope: FeatureTaskRuntimeHandoffEnvelope,
   val derivedContextKeys: List<String>,
   val briefingText: String,
   /** Wire value of the driving verdict for a backward-edge re-entry; null for a forward launch. */
@@ -49,7 +55,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     "feature_size" to featureSize,
     "acceptance_criteria" to acceptanceCriteria,
     "mandates_and_overrides" to mandatesAndOverrides,
-    "upstream_outputs_by_phase_id" to LinkedHashMap(upstreamOutputsByPhaseId),
+    "handoff_envelope" to handoffEnvelope.toEnvelopeMap(),
     "derived_context_keys" to derivedContextKeys,
     "briefing_text" to briefingText,
   ).let { base ->
@@ -66,14 +72,24 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   companion object {
     /** Strict decode of one persisted briefing map; loud-fails on any missing/malformed field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase launch briefing decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseLaunchBriefing =
-      FeatureTaskRuntimePhaseLaunchBriefing(
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseLaunchBriefing {
+      // A row still carrying the complete upstream payload map predates the projection boundary.
+      // Silently migrating it would deliver private evidence as if it were a validated projection,
+      // so the read seam rejects it and the operator recovers the row out of band.
+      if (raw.containsKey("upstream_outputs_by_phase_id")) {
+        schemaError(
+          "Feature-task-runtime briefing artifact carries the removed 'upstream_outputs_by_phase_id' payload map. " +
+            "Delivered handoffs are now validated projections under 'handoff_envelope'; this durable row must be " +
+            "migrated or deleted out of band rather than silently reinterpreted.",
+        )
+      }
+      return FeatureTaskRuntimePhaseLaunchBriefing(
         phaseId = raw.requireStringField("phase_id"),
         specReference = raw.requireStringField("spec_reference"),
         featureSize = raw.requireStringField("feature_size"),
         acceptanceCriteria = raw.requireStringListField("acceptance_criteria"),
         mandatesAndOverrides = raw.requireStringListField("mandates_and_overrides"),
-        upstreamOutputsByPhaseId = raw.requireStringMapField("upstream_outputs_by_phase_id"),
+        handoffEnvelope = raw.requireEnvelopeField("handoff_envelope"),
         derivedContextKeys = raw.requireStringListField("derived_context_keys"),
         briefingText = raw.requireStringField("briefing_text"),
         drivingVerdict = raw.optionalStringField("driving_verdict"),
@@ -81,9 +97,25 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         unresolvedAuditGapIds = raw.optionalStringListField("unresolved_audit_gap_ids"),
         durablyClosedCriterionRefs = raw.optionalStringListField("durably_closed_criterion_refs"),
       )
+    }
 
     // Single throw seam so each strict decoder stays within the throw-count budget.
     private fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
+
+    private fun Map<String, Any?>.requireEnvelopeField(key: String): FeatureTaskRuntimeHandoffEnvelope {
+      val rawValue = if (containsKey(key)) this[key] else schemaError(missingMessage(key, "object"))
+      val envelope = JsonSupport.anyToStringAnyMap(rawValue)
+        ?: schemaError("Feature-task-runtime briefing artifact field '$key' must decode to an object.")
+      return try {
+        FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(envelope)
+      } catch (error: IllegalArgumentException) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime briefing artifact field '$key' is not a valid handoff envelope: " +
+            "${error.message.orEmpty()}",
+          error,
+        )
+      }
+    }
 
     private fun Map<String, Any?>.requireStringField(key: String): String {
       val value = this[key] ?: schemaError("Feature-task-runtime briefing artifact map is missing field '$key'.")
@@ -111,18 +143,6 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
 
     private fun Map<String, Any?>.optionalStringListField(key: String): List<String> =
       if (containsKey(key)) requireStringListField(key) else emptyList()
-
-    private fun Map<String, Any?>.requireStringMapField(key: String): Map<String, String> {
-      val rawValue = if (containsKey(key)) this[key] else schemaError(missingMessage(key, "map"))
-      val map = JsonSupport.anyToStringAnyMap(rawValue)
-        ?: schemaError("Feature-task-runtime briefing artifact field '$key' must decode to a string-keyed map.")
-      return map.entries.associate { (mapKey, mapValue) ->
-        mapKey to (
-          mapValue as? String
-            ?: schemaError("Feature-task-runtime briefing artifact field '$key' must map to string values.")
-          )
-      }
-    }
 
     private fun missingMessage(key: String, kind: String): String =
       "Feature-task-runtime briefing artifact map is missing required $kind field '$key'."

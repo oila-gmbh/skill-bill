@@ -90,6 +90,18 @@ class RuntimeAdapterDependencyAllowlistTest {
     )
   }
 
+  @Test
+  fun `runtime-application declares no production dependency on runtime-infra-fs (SKILL-140 AC-005)`() {
+    // The real planning-projection validator wiring lives in runtime-application testFixtures (which may
+    // reach infra-fs); production application code depends on the domain port alone. This pins the module
+    // direction the real-validator integration suites rely on: infra-fs stays out of main source.
+    assertEquals(
+      false,
+      "runtime-infra-fs" in mainProjectDependencies("runtime-application"),
+      "runtime-application must not gain a production dependency on runtime-infra-fs.",
+    )
+  }
+
   private fun testFixturesProjectDependencies(moduleName: String): Set<String> {
     val buildFile = runtimeRoot.resolve("${moduleName.replace(':', '/')}/build.gradle.kts")
     val source = Files.readString(buildFile)

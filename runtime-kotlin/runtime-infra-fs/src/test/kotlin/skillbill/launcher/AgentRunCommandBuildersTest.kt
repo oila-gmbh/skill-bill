@@ -1,5 +1,6 @@
 package skillbill.launcher
 
+import skillbill.config.model.PhaseCompactionDirective
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
@@ -28,6 +29,24 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class AgentRunCommandBuildersTest {
+  @Test
+  fun `a compaction directive reaches the claude launch environment`() {
+    val command = ClaudeAgentRunCommandBuilder().build(
+      request(compaction = PhaseCompactionDirective(windowTokens = 400_000, triggerPct = 70)),
+    )
+
+    assertEquals("400000", command.environment["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
+    assertEquals("70", command.environment["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"])
+  }
+
+  @Test
+  fun `no compaction directive leaves the launch environment untouched`() {
+    val command = ClaudeAgentRunCommandBuilder().build(request())
+
+    assertFalse(command.environment.containsKey("CLAUDE_CODE_AUTO_COMPACT_WINDOW"))
+    assertFalse(command.environment.containsKey("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"))
+  }
+
   @Test
   fun `structured output decoders preserve provider token dimensions`() {
     val claude = AgentRunOutputDecoder.CLAUDE_JSON.decode(
@@ -317,12 +336,17 @@ class AgentRunCommandBuildersTest {
     assertNotNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
-  private fun request(model: String? = null, effort: String? = null): SkillRunRequest = SkillRunRequest(
+  private fun request(
+    model: String? = null,
+    effort: String? = null,
+    compaction: PhaseCompactionDirective? = null,
+  ): SkillRunRequest = SkillRunRequest(
     issueKey = "SKILL-113",
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
     promptOverride = "Phase: implement",
     modelOverride = model,
     effortOverride = effort,
+    compaction = compaction,
   )
 
   private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {

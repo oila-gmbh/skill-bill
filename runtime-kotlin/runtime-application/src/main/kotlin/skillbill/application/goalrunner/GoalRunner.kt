@@ -719,7 +719,11 @@ class GoalRunner(
         ),
       )
     }
-    val blocked = state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
+    val blocked = if (stoppedOutcome.reason == GoalRunnerStopReason.RECONCILED_RESUMABLE) {
+      state.manifest.withResumableSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
+    } else {
+      state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
+    }
     validationRetryIteration(blocked, stoppedOutcome, subtaskId, state, request)
       ?.let { retry -> return retry }
     val saved = manifestStore.save(state.copy(manifest = blocked), request.dbPathOverride)
@@ -1695,6 +1699,30 @@ private fun DecompositionManifest.withStoppedSubtask(
   },
 )
 
+// A crash-reconciled child keeps the subtask resumable (not blocked): status stays in_progress with a
+// resume intent at its recorded step, so `skill-bill goal <key>` resume continues without clearing.
+private fun DecompositionManifest.withResumableSubtask(
+  subtaskId: Int,
+  outcome: GoalRunnerReconciledOutcome.Stop,
+  knownWorkflowId: String? = outcome.workflowId,
+): DecompositionManifest = copy(
+  status = "in_progress",
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id == subtaskId) {
+      subtask.copy(
+        status = "in_progress",
+        workflowId = knownWorkflowId ?: subtask.workflowId,
+        commitSha = outcome.commitSha ?: subtask.commitSha,
+        blockedReason = null,
+        lastResumableStep = outcome.lastResumableStep,
+      )
+    } else {
+      subtask
+    }
+  },
+)
+
 private fun DecompositionManifest.withValidationQualityRetrySubtask(subtaskId: Int): DecompositionManifest = copy(
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
@@ -1884,6 +1912,7 @@ private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,
   GoalRunnerStopReason.INTERRUPTED,
+  GoalRunnerStopReason.RECONCILED_RESUMABLE,
   -> "resume_from_last_resumable_step"
   GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
   else -> "inspect_blocked_reason"

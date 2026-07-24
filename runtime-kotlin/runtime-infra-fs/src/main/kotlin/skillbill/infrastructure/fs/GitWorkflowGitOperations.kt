@@ -5,6 +5,8 @@ import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -30,11 +32,34 @@ class GitWorkflowGitOperations :
   WorkflowGitOperations by GitStandardWorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
+  RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     GitRuntimePhaseFileManifestOperations
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = GitRepositoryFingerprintOperations
+  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = GitRepositoryOwnedPathsOperations
+}
+
+/**
+ * Untracked entries and tracked worktree/index changes, both NUL-delimited. `ls-files --others` is the
+ * same command that writes the goal-child baseline, so the two inventories are directly comparable;
+ * `diff --name-only -z HEAD` covers tracked edits, which no untracked listing reports.
+ */
+private object GitRepositoryOwnedPathsOperations : RepositoryOwnedPathsGitOperations {
+  override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult {
+    val untracked = runGitCommand(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
+    if (!untracked.ok) return untracked
+    val tracked = runGitCommand(repoRoot, "diff", "--name-only", "-z", "HEAD")
+    // A repository with no commits has no HEAD to diff against; the untracked listing is the whole
+    // owned inventory there, so an unresolvable HEAD is not a failure.
+    val trackedValue = tracked.value.takeIf { tracked.ok }.orEmpty()
+    return WorkflowGitOperationResult(
+      status = "ok",
+      // Each -z listing terminates every entry with NUL, so the two blobs concatenate directly.
+      value = untracked.value.orEmpty() + trackedValue,
+    )
+  }
 }
 
 private object GitStandardWorkflowGitOperations : WorkflowGitOperations {

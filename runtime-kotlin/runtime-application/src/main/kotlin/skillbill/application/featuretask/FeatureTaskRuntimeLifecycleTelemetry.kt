@@ -1,7 +1,9 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
@@ -10,6 +12,12 @@ import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+
+private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
+  { FeatureTaskRuntimeRegenerationTelemetry() }
+
+private val emptyCrashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult =
+  { FeatureTaskRuntimeCrashReconciliationResult.NONE }
 
 /**
  * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
@@ -47,8 +55,10 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
+    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
     if (telemetrySessionId.isBlank()) {
       return
@@ -57,6 +67,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       val outcomes = phaseOutcomes()
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
+      val reconciliation = runCatching(crashReconciliation).getOrNull()
+        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -73,6 +86,11 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           auditNewGapCount = auditProgress?.newGapCount ?: 0,
           auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
           auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          regenerationActivationCount = regeneration.activationCount,
+          regenerationAttemptCount = regeneration.attemptCount,
+          regenerationOutcomeCounts = regeneration.outcomeCounts,
+          crashReconciliationCount = reconciliation.reconciledCount,
+          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),
@@ -93,8 +111,10 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
+    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
     if (telemetrySessionId.isBlank()) {
       return
@@ -111,6 +131,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
         .getOrDefault(emptyMap())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
+      val reconciliation = runCatching(crashReconciliation).getOrNull()
+        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -131,6 +154,11 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           auditNewGapCount = auditProgress?.newGapCount ?: 0,
           auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
           auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          regenerationActivationCount = regeneration.activationCount,
+          regenerationAttemptCount = regeneration.attemptCount,
+          regenerationOutcomeCounts = regeneration.outcomeCounts,
+          crashReconciliationCount = reconciliation.reconciledCount,
+          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),

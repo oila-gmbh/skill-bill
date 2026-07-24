@@ -16,6 +16,9 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
+import skillbill.workflow.NoopFeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -24,14 +27,17 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -39,6 +45,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -47,6 +54,8 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
 import java.time.Instant
 
@@ -56,10 +65,13 @@ import java.time.Instant
  * clock, never taken from agent-reported values.
  */
 @Inject
-@Suppress("TooManyFunctions") // cohesive durable read/write seam for per-phase records, briefings, and the ledger
+// cohesive durable read/write seam for per-phase records, briefings, ledger, and quarantine evidence
+@Suppress("TooManyFunctions", "LargeClass")
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+  private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -265,6 +277,58 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
+  /**
+   * SKILL-140: durably invalidates a quarantined producer's settled `completed` status so its rejected
+   * record is no longer selected by the handoff contract on this or any resumed run. The rejected
+   * payload is moved from `output_artifact` to `rejected_output` (retained as evidence but no longer a
+   * usable output) and the status returns to `running`, so hydration relaunches the producer and the
+   * regenerated higher-iteration output supersedes it. Only the settled status is touched; the rejected
+   * record's fields are never rewritten or migrated. The regeneration loop context (`loopId`,
+   * `edgeIteration`) is stamped onto the invalidated running record in this same transaction, so the
+   * per-edge cap watermark survives a crash that lands after this commit but before the LOOP_EDGE ledger
+   * write; resume reseeds the cap from the record rather than resetting it to zero (AC-003). Returns true
+   * when the workflow row exists.
+   */
+  internal fun invalidateQuarantinedProducerRecord(
+    workflowId: String,
+    producerPhaseId: String,
+    loopId: String,
+    edgeIteration: Int,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existingRecords = phaseRecordsFrom(artifacts)
+    val previous = existingRecords[producerPhaseId] ?: return@transaction true
+    if (previous.status != STATUS_COMPLETED) {
+      return@transaction true
+    }
+    val invalidated = previous.copy(
+      status = STATUS_RUNNING,
+      finishedAt = null,
+      outputArtifact = null,
+      rejectedOutput = previous.outputArtifact ?: previous.rejectedOutput,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
+    )
+    val updatedRecords = LinkedHashMap(existingRecords).apply { put(producerPhaseId, invalidated) }
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+      ),
+      WorkflowRowAdvance(
+        currentStepId = record.currentStepId,
+        workflowStatus = record.workflowStatus,
+        stepUpdates = stepUpdatesFrom(updatedRecords),
+      ),
+    )
+    true
+  }
+
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,
@@ -393,8 +457,10 @@ class FeatureTaskRuntimePhaseRecorder(
     }
 
   /**
-   * Persists the assembled per-phase launch briefing keyed by phase id; the latest briefing
-   * per phase replaces the prior one. Returns true when the workflow row exists and was updated.
+   * Persists the assembled per-phase launch briefing keyed by phase id, plus the delivered
+   * projection for that launch under its own artifact key; the latest entry per phase replaces the
+   * prior one. The envelope is schema-validated before it is written, so a violating envelope never
+   * becomes durable state. Returns true when the workflow row exists and was updated.
    */
   fun recordPhaseBriefing(
     workflowId: String,
@@ -403,12 +469,25 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
+    handoffEnvelopeValidator.validateEnvelope(briefing.handoffEnvelope.toEnvelopeMap(), workflowId)
     val artifacts = decodeArtifacts(record.artifactsJson)
-    val existingBriefings = phaseBriefingsFrom(artifacts)
-    val updatedBriefings = LinkedHashMap(existingBriefings).apply { put(briefing.phaseId, briefing) }
+    val updatedBriefings = LinkedHashMap(phaseBriefingsFrom(artifacts, ::validateEnvelopeWire))
+      .apply { put(briefing.phaseId, briefing) }
+    val existingDelivered = deliveredProjectionsFrom(artifacts, ::validateEnvelopeWire)
+    val delivered = FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = workflowId,
+      consumerPhaseId = briefing.phaseId,
+      // Each briefing write is one delivery to that consumer, so the iteration counts re-entries.
+      iteration = (existingDelivered[briefing.phaseId]?.iteration ?: 0) + 1,
+      envelope = briefing.handoffEnvelope,
+    )
+    val updatedDelivered = LinkedHashMap(existingDelivered)
+      .apply { put(briefing.phaseId, delivered) }
     val patch = mapOf(
       FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
         updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },
+      FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY to
+        updatedDelivered.mapValues { (_, value) -> value.toArtifactMap() },
     )
     persistPatch(unitOfWork.workflowStates, record, patch)
     true
@@ -424,8 +503,29 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Map<String, FeatureTaskRuntimePhaseLaunchBriefing>? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
-    phaseBriefingsFrom(decodeArtifacts(record.artifactsJson))
+    phaseBriefingsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
+      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
+    }
   }
+
+  /**
+   * Strict read of the delivered-projection tier keyed by consumer phase id. Separate from
+   * [loadPhaseBriefings] on purpose: this store holds only envelopes, so no read of it can return
+   * private phase evidence.
+   */
+  fun loadDeliveredProjections(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    deliveredProjectionsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
+      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
+    }
+  }
+
+  private fun validateEnvelopeWire(envelope: Map<String, Any?>) =
+    handoffEnvelopeValidator.validateEnvelope(envelope, workflowId = null)
 
   fun loadAuditRepairState(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditRepairState? =
     database.read(dbOverride) { unitOfWork ->
@@ -471,6 +571,61 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  /**
+   * Appends one quarantined durable record to the private, append-only evidence store. The runtime
+   * only ever grows this list; a prior entry is never mutated or removed by any runtime path (only
+   * out-of-band operator action may). The full wire record is validated against the canonical
+   * quarantine schema before persistence, so a malformed store fails loudly at the write seam.
+   * Returns true when the workflow row exists and was updated.
+   */
+  fun appendQuarantineEntry(
+    workflowId: String,
+    entry: FeatureTaskRuntimeQuarantineEntry,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existing = quarantineEntriesFrom(artifacts)
+    // Crash-replay idempotency: a resume that re-rejects the same producer record at the same
+    // regeneration attempt must not append a duplicate evidence entry. Append only genuinely new
+    // evidence; never mutate or remove a prior entry.
+    val alreadyRecorded = existing.any {
+      it.producingPhaseId == entry.producingPhaseId &&
+        it.producingIteration == entry.producingIteration &&
+        it.regenerationAttempt == entry.regenerationAttempt
+    }
+    if (alreadyRecorded) {
+      return@transaction true
+    }
+    val wire = featureTaskRuntimeQuarantineRecordToWire(existing + entry)
+    quarantineValidator.validateQuarantineRecord(wire, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY to wire),
+    )
+    true
+  }
+
+  /**
+   * Strict read of the private quarantine evidence store in insertion order. An absent key yields an
+   * empty list; a malformed record loud-fails. Returns null only when the workflow row is absent.
+   */
+  fun loadQuarantinedRecords(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeQuarantineEntry>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    quarantineEntriesFrom(decodeArtifacts(record.artifactsJson))
+  }
+
+  private fun quarantineEntriesFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimeQuarantineEntry> {
+    val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
+    return featureTaskRuntimeQuarantineEntriesFromWire(raw)
+  }
 
   /**
    * Persists the run-scoped resolved feature branch exactly once. Idempotent and non-divergent:

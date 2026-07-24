@@ -322,6 +322,19 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
 )
 
+/**
+ * Claude Code sizes its own auto-compaction trigger against the model's context window, so a phase
+ * on a 1M-context model never compacts at the few-hundred-thousand tokens a phase actually reaches.
+ * These variables re-point that trigger at the window the runtime chose for the phase.
+ */
+internal fun compactionEnvironment(request: SkillRunRequest): Map<String, String> =
+  request.compaction?.let { directive ->
+    mapOf(
+      "CLAUDE_CODE_AUTO_COMPACT_WINDOW" to directive.windowTokens.toString(),
+      "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" to directive.triggerPct.toString(),
+    )
+  }.orEmpty()
+
 internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, String> =
   request.goalContinuation?.let { context ->
     GoalContinuationEnvironment + buildMap {
@@ -375,7 +388,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
-      environment = goalContinuationEnvironment(request),
+      environment = goalContinuationEnvironment(request) + compactionEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = if (streaming) AgentRunIdlePolicy.OUTPUT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY,

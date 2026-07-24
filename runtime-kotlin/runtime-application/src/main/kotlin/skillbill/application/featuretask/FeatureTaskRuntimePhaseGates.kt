@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 
 @Inject
 class FeatureTaskRuntimePhaseGates(
@@ -10,4 +11,5 @@ class FeatureTaskRuntimePhaseGates(
   val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
   val gitOperations: WorkflowGitOperations,
   val specGate: FeatureTaskRuntimeSpecGate,
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 )

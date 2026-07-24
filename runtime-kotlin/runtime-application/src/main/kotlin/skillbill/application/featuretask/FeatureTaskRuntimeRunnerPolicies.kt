@@ -2,15 +2,24 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
 internal const val STATUS_RUNNING = "running"
 internal const val STATUS_COMPLETED = "completed"
 internal const val STATUS_BLOCKED = "blocked"
 internal const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 internal const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
+
+// The phase-output envelope's own status vocabulary, distinct from the durable phase-row status above.
+internal const val PHASE_OUTPUT_STATUS_COMPLETED = "completed"
 
 internal val NON_FILE_MUTATING_PHASES = setOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
@@ -32,7 +41,13 @@ internal fun transitionsFor(request: FeatureTaskRuntimeRunRequest): FeatureTaskR
   request.transitionsOverride ?: phasesFor(request).let { phases ->
     FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = phases,
-      backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges,
+      // Backward edges whose endpoints both survive the goal-continuation truncation. An edge naming a
+      // phase the resolved pipeline dropped would fail the declaration's endpoint invariant here,
+      // outside the runner's failure handling. A regeneration edge whose producer was truncated away
+      // therefore simply does not exist for this run: the launch seam finds no matching edge and
+      // blocks durably with an actionable reason instead of attempting an impossible re-entry.
+      backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+        .filter { it.fromPhaseId in phases && it.destinationPhaseId in phases },
       loopOnlyPhaseIds = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
         .filter { it in phases }.toSet(),
       // Gates whose endpoints both survive the goal-continuation truncation. A gate naming a phase
@@ -112,11 +127,68 @@ internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<S
   }
 }
 
-internal fun withSchemaGateDetail(policyReason: String, validationReason: String): String {
-  val bounded = if (validationReason.length <= SCHEMA_GATE_DETAIL_MAX_CHARS) {
+/**
+ * The one bound on validator-authored detail carried into an operator-facing reason. Every gate that
+ * embeds a validation failure goes through this, so a runaway validator message can never widen a
+ * blocked row or a retry prompt beyond the single agreed ceiling.
+ */
+internal fun boundedSchemaGateDetail(validationReason: String): String =
+  if (validationReason.length <= SCHEMA_GATE_DETAIL_MAX_CHARS) {
     validationReason
   } else {
     validationReason.take(SCHEMA_GATE_DETAIL_MAX_CHARS) + "… [truncated]"
   }
-  return "$policyReason Last schema-gate failure: $bounded"
+
+internal fun withSchemaGateDetail(policyReason: String, validationReason: String): String =
+  "$policyReason Last schema-gate failure: ${boundedSchemaGateDetail(validationReason)}"
+
+/**
+ * SKILL-140 producer gate: a phase that owns a bounded planning projection must emit one that its
+ * consumer can actually parse. Without this the contract was enforced only at the consumer's launch
+ * seam, where the producing phase is already settled `completed` — so a malformed digest/plan/receipt
+ * blocked the *next* phase with no fix loop able to reach the phase that wrote it, and the run wedged.
+ * Rejecting at the producer instead re-enters that phase's own bounded fix loop.
+ *
+ * No projection rule is restated here: acceptance is decided by the same
+ * [featureTaskRuntimePlanningProjectionFromEnvelope] and the same validator port the launch seam uses,
+ * which is what the parity test binds.
+ */
+internal fun producerProjectionGateReason(
+  phaseId: String,
+  outputMap: Map<String, Any?>,
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+): String? {
+  // Only a completed phase claims to have produced its projection. A blocked or failed envelope is
+  // settled through the terminal path, where produced_outputs carries blocking reasons, not a claim.
+  if (outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED) return null
+  val expectedKind = FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId)
+    ?: return null
+  // A decompose plan stops the run at planning and hands the planning stopper a decomposition package,
+  // which has its own contract and its own loud-fail path. It is not an executable plan and no phase
+  // downstream parses it as one. Only `plan` owns that stopper backstop, so the exemption is scoped to
+  // the executable-plan producer; a preplan/implement output merely shaped like a decompose package has
+  // no such backstop and must still face the gate, or it settles completed and wedges its consumer.
+  if (expectedKind == FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN &&
+    featureTaskRuntimeIsDecompositionPackage(outputMap)
+  ) {
+    return null
+  }
+  return try {
+    featureTaskRuntimePlanningProjectionFromEnvelope(
+      envelope = outputMap,
+      producingPhaseId = phaseId,
+      expectedKind = expectedKind,
+      schemaValidator = planningProjectionValidator,
+    )
+    null
+  } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+    // The offending field lives in the error's source label; the reason is the failure text. Composing
+    // both names the field (e.g. `rollout`, `deviations`) the diagnosis is actually about.
+    val failure = "${error.sourceLabel}: ${error.reason}"
+    "Phase '$phaseId' reported 'completed' but its produced_outputs is not a valid " +
+      "'${expectedKind.wireValue}' projection, which its consumer parses verbatim. Emit produced_outputs " +
+      "carrying projection_kind '${expectedKind.wireValue}' at contract_version " +
+      "'${FeatureTaskRuntimePlanningProjectionContract.VERSION}' with the declared fields. " +
+      "Projection validation failed: ${boundedSchemaGateDetail(failure)}"
+  }
 }

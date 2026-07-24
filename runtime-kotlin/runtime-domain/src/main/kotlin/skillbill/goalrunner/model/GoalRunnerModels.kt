@@ -12,6 +12,13 @@ enum class GoalRunnerTerminalStatus {
   BLOCKED,
   TIMEOUT,
   NO_TERMINAL_STORE_OUTCOME,
+
+  /**
+   * A non-terminal child row that crash reconciliation transitioned to the resumable pending state
+   * (killed child, expired lease, dead process). Not a failure: the goal parent reports the subtask
+   * resumable so `skill-bill goal <key>` resume continues without manual lease or row clearing.
+   */
+  RECONCILABLE,
 }
 
 enum class GoalRunnerStopReason {
@@ -23,6 +30,9 @@ enum class GoalRunnerStopReason {
   NO_TERMINAL_STORE_OUTCOME,
   PULL_REQUEST_FAILED,
   DEPENDENCIES_BLOCKED,
+
+  /** The child row was crash-reconciled to resumable; the goal halts but the subtask stays resumable. */
+  RECONCILED_RESUMABLE,
 }
 
 data class GoalRunnerLaunchFacts(

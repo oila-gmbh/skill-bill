@@ -229,6 +229,8 @@ private fun shouldPreserveCompletedSubtask(subtask: DecompositionSubtask, outcom
 
 private fun GoalRunnerStoredOutcome.toManifestStatus(): String = when (status) {
   GoalRunnerTerminalStatus.COMPLETE -> "complete"
+  // A crash-reconciled row is resumable, not blocked: keep the subtask in_progress so resume continues.
+  GoalRunnerTerminalStatus.RECONCILABLE -> "in_progress"
   GoalRunnerTerminalStatus.BLOCKED,
   GoalRunnerTerminalStatus.FAILED,
   GoalRunnerTerminalStatus.TIMEOUT,

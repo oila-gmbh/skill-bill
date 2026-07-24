@@ -9,6 +9,7 @@ import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -36,6 +37,8 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.SpecSource
@@ -297,6 +300,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       discovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
 
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
@@ -313,6 +317,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       discovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
 
     val resumed = initial.copy(
@@ -474,6 +479,37 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `a rejected planning projection stops the sweep durably instead of crashing the goal driver`() {
+    val fixtures = sharedSweepFixtures()
+    val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
+    val sweep = DefaultGoalPlanningSweep(
+      fixtures.checkpoint,
+      fixtures.outputValidator,
+      launcher,
+      fixtures.invariantsSource,
+      fixtures.manifestFileStore,
+      fakeContextDiscovery,
+      RejectingSweepPlanningProjectionValidator,
+    )
+
+    val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals("plan", stopped.lastResumableStep)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertTrue(stopped.blockedReason.contains("rejected a declared bounded projection at the launch seam"))
+    assertTrue(
+      stopped.blockedReason.contains("Migrate or delete"),
+      "the block must name the operator remedy for a non-conforming durable record",
+    )
+    assertEquals(
+      1,
+      launcher.requests.size,
+      "only the preplan launch may happen; the plan edge rejects before launching",
+    )
+  }
+
+  @Test
   fun `plan checkpoint failure resumes at plan after retaining the shared preplan`() {
     val harness = sweepHarness(planCheckpointThrows = true) { phase, _, _ -> validPhaseOutcome(phase) }
 
@@ -498,6 +534,7 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       fakeContextDiscovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -564,6 +601,7 @@ class GoalPlanningSweepTest {
       FakeInvariantsSource(),
       ThrowingManifestFileStore(),
       fakeContextDiscovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -743,7 +781,8 @@ private fun spawnBlockedOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
 
 private fun phasePayload(phaseId: String): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
-    """"status":"completed","summary":"s","produced_outputs":{"result":"$phaseId"}}"""
+    """"status":"completed","summary":"s","produced_outputs":""" +
+    (PlanningProjectionFixtures.producedOutputsOrNull(phaseId) ?: """{"result":"$phaseId"}""") + "}"
 
 private fun fencedPhasePayload(phaseId: String): String =
   "Here is the $phaseId output.\n```json\n" + phasePayload(phaseId) + "\n```\nLet me know if you need more."
@@ -1160,8 +1199,17 @@ private fun sweepHarness(
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
     contextDiscovery,
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
   )
   return SweepHarness(fixtures, launcher, sweep)
+}
+
+private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
+  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String): Unit =
+    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "additionalProperties: legacy shared preplan carries an undeclared field",
+    )
 }
 
 private val fakeContextDiscovery = GoalPlanningContextDiscovery {

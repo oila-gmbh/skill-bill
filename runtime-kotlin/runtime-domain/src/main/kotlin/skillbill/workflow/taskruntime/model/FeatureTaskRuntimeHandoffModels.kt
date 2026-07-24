@@ -146,6 +146,15 @@ data class FeatureTaskRuntimePhaseHandoff(
   val upstreamOutputs: FeatureTaskRuntimeResolvedUpstreamOutputs,
   val derivedContextKeys: List<String>,
   /**
+   * The static projection set for this phase. A resolved upstream output with no matching
+   * declaration is never delivered, so this list — not [upstreamOutputs] — is what a phase receives.
+   */
+  val projectionDeclarations: List<PhaseHandoffProjectionDeclaration> = emptyList(),
+  /** Freshly resolved repository checkpoint, present when a declaration's policy requires one. */
+  val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  /** Checkpoint recorded in durable state, compared against the resolved one under `must_match`. */
+  val expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  /**
    * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
    * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still
    * resolved by the contract, never selected by the re-entered agent.
@@ -168,18 +177,35 @@ data class FeatureTaskRuntimePhaseHandoff(
 )
 
 /**
- * Static, design-time declaration for a single phase. Both the consumed
- * upstream outputs and the derived context are fixed in the definition; there
- * is intentionally no API that lets a running agent add to or choose these.
+ * Static, design-time declaration for a single phase. Both the projection set and the derived
+ * context are fixed in the definition; there is intentionally no API that lets a running agent add
+ * to or choose these.
  */
 data class FeatureTaskRuntimePhaseDeclaration(
   val phaseId: String,
-  /** Producing-phase ids whose latest output this phase consumes. */
-  val consumedUpstreamPhaseIds: List<String>,
+  /** The sole dependency declaration: one typed projection per source this phase may receive. */
+  val projectionDeclarations: List<PhaseHandoffProjectionDeclaration>,
   /** Statically-declared derived-context keys (e.g. "diff" for `review`). */
   val derivedContextKeys: List<String>,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseDeclaration.phaseId must be non-blank." }
+    require(projectionDeclarations.all { it.consumerPhaseId == phaseId }) {
+      "FeatureTaskRuntimePhaseDeclaration '$phaseId' carries a projection declared for another consumer phase."
+    }
+    val names = projectionDeclarations.map { it.projectionName }
+    require(names.distinct().size == names.size) {
+      "FeatureTaskRuntimePhaseDeclaration '$phaseId' declares duplicate projection names: " +
+        "${names.groupingBy { it }.eachCount().filterValues { it > 1 }.keys}."
+    }
   }
+
+  /**
+   * Producing-phase ids this phase consumes, derived from the declared projections. Read-only: the
+   * projection list stays the single place a source can be added.
+   */
+  val consumedUpstreamPhaseIds: List<String>
+    get() = projectionDeclarations
+      .mapNotNull { (it.sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput)?.producingPhaseId }
+      .distinct()
 }

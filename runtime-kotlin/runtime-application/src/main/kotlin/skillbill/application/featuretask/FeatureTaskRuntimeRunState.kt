@@ -240,6 +240,17 @@ internal class FeatureTaskRuntimeRunState(
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
   }
 
+  // SKILL-140: a quarantined producer's rejected output is invalidated so no consumer re-consumes it.
+  // Unlike [reopenForReentry], the prior output is DROPPED from `outputs` (it is unprojectable
+  // evidence, not a usable prior result), so selectLatestOutputsByPhase cannot surface it before the
+  // producer regenerates. `nextIteration` still advances past the durable attempt watermark, so the
+  // regenerated output takes a strictly higher iteration and supersedes the rejected record.
+  fun invalidateProducerOutput(phaseId: String) {
+    completed.remove(phaseId)
+    outputs.removeAll { it.phaseId == phaseId }
+    fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
+  }
+
   // The 1-based same-phase fix-loop iteration relative to the current visit's budget baseline, so the
   // schema-retry budget counts only attempts within this visit, not backward-edge re-visits.
   fun fixLoopIterationFor(phaseId: String, absoluteIteration: Int): Int =
@@ -264,6 +275,29 @@ internal class FeatureTaskRuntimeRunState(
     return recentBlocks.firstOrNull()?.blockedReason == currentReason &&
       recentBlocks.getOrNull(1)?.blockedReason
         ?.startsWith("Goal-subtask review state or durable raw evidence is malformed: [SQLITE_BUSY]") == true
+  }
+
+  // A pre-quarantine build's launch-seam planning-projection rejection re-entered under the current
+  // build, which restarts the consumer's fix-loop budget. If that budget was already spent by the legacy
+  // attempts, the first re-entry blocked again and overwrote the reason with the generic fix-loop
+  // exhaustion text. Recognize that overwritten reason from the ledger — the prior block for this phase
+  // was the launch-seam rejection — so the phase re-enters and restarts its budget once more, reaching
+  // the live quarantine seam. Only a phase with a regeneration producer qualifies.
+  fun legacyLaunchSeamRejectionConsumedBudget(phaseId: String, currentReason: String): Boolean {
+    if (!currentReason.startsWith("Phase '$phaseId' exhausted the bounded fix loop") ||
+      phaseId !in FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER
+    ) {
+      return false
+    }
+    val recentBlocks = initialLedger
+      .filter { entry ->
+        entry.phaseId == phaseId && entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+      }
+      .sortedByDescending(FeatureTaskRuntimePhaseLedgerEntry::sequenceNumber)
+      .take(2)
+    return recentBlocks.firstOrNull()?.blockedReason == currentReason &&
+      recentBlocks.getOrNull(1)?.blockedReason
+        ?.contains("rejected an upstream bounded planning projection at the launch seam") == true
   }
 
   // Resume reconstruction of the per-visit budget baselines (see fixLoopBudgetBaseByPhase). For every

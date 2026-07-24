@@ -88,28 +88,46 @@ Do not ask the user to run this command manually. Keep the run in the foreground
 unless the user asks otherwise; pass `--monitor` to tee phase transitions to the
 terminal.
 
-### Live Observation
+### Progress Visibility
 
-The run is long-lived and the user must see it progress, not wait in silence for
-a terminal result. The invoking agent owns surfacing phase transitions in the
-conversation as they happen:
+The runtime owns live progress and writes it straight to the terminal. The
+invoking agent does not attach an observer to the progress stream and does not
+relay per-phase events into the conversation. `--monitor` gives the user the
+transitions directly, at no cost, without a paraphrasing layer between the
+runtime and what they read.
 
-- Always launch the driver with `--monitor` so the runtime tees its structured
-  per-phase progress.
-- When the run is executed in the background (for example because it can outlast
-  a single foreground shell window), attach a persistent, line-buffered observer
-  to the runtime's progress stream — tailing the run's output — filtered to phase
-  starts and completions, schema-gate results, retries, blocked phases,
-  non-validation failures, and run completion. Relay each event inline in plain
-  language as it arrives.
-- Surface a blocked or failed gate loudly and immediately; never narrate a
-  blocked run as if it were progressing normally. Validation findings are the
+#### Required: print the terminal monitoring command
+
+Printing a copy-pasteable monitoring command is required, not optional. As soon
+as the workflow id exists and before reporting any phase progress, emit a
+copyable block the user can paste into a separate terminal, with real values
+already substituted — never placeholder text such as `<workflow_id>`:
+
+```bash
+skill-bill feature-task status ft-run-01J8Z0-SKILL-141
+```
+
+State alongside it that the command is read-only, mutates nothing, consumes no
+model tokens, and can be run in a second terminal as often as the user likes
+while the run continues. Also state that the user can ask this session for status
+at any point; when they do, run the command and report what it returns.
+
+If the workflow id is not yet known, print the discovery command in the same
+block first:
+
+```bash
+skill-bill feature-task lookup SKILL-141 --repo-root .
+```
+
+Two obligations survive:
+
+- Report the terminal result. On a clean finish, report the per-phase summary. On
+  a blocked or failed gate, surface it loudly and immediately and stop — never
+  narrate a blocked run as if it were progressing. Validation findings are the
   exception: the runtime reopens `validate` for repair instead of persisting a
-  blocked phase. On completion, report the terminal per-phase summary.
-
-This is observation only: the agent reports what the runtime emits and never
-re-derives or re-orders the phase loop. The durable workflow state remains
-authoritative over any relayed line.
+  blocked phase.
+- Never re-derive or re-order the phase loop. The durable workflow state is
+  authoritative over any terminal line.
 
 The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the

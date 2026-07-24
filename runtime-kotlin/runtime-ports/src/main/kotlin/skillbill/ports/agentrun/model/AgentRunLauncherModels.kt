@@ -3,6 +3,7 @@
 package skillbill.ports.agentrun.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.config.model.PhaseCompactionDirective
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -34,6 +35,7 @@ data class SkillRunRequest(
   val streamOutputForLiveness: Boolean = false,
   val modelOverride: String? = null,
   val effortOverride: String? = null,
+  val compaction: PhaseCompactionDirective? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,

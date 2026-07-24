@@ -636,6 +636,7 @@ private fun twoItemRemediationOutput(): String = """
     "status": "completed",
     "summary": "Resumed remediation reconciled every carried repair item exactly once.",
     "produced_outputs": {
+      ${PlanningProjectionFixtures.RECEIPT_FIELDS}
       "changed_files":["src/FooTest.kt"],
       "reconciled_state":{"reconciled":true},
       "repair_item_results":[{

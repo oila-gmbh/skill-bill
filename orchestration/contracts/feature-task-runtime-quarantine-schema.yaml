@@ -1,0 +1,120 @@
+# Feature-task-runtime quarantine schema (canonical source of truth).
+#
+# This file describes the durable, append-only list of quarantined durable
+# records. When a launch seam rejects an upstream producer's record (a legacy
+# or drifted bounded planning projection), the runtime preserves the rejected
+# record here as PRIVATE evidence and re-enters the producing phase under a
+# bounded regeneration cap.
+#
+# Why this exists:
+#
+# - A quarantined record is retained for diagnostics but is NEVER delivered to
+#   any agent prompt and NEVER deleted by the runtime. It is not a handoff
+#   projection: no resolveUpstreamOutputs / briefing path reads this artifact.
+# - The store is append-only. Every rejection appends one entry; prior entries
+#   are never mutated or removed by any runtime path. Only out-of-band operator
+#   action may remove evidence.
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines the SHAPE of one quarantine entry and the list envelope:
+#   required fields, the pinned contract version, and strict
+#   `additionalProperties: false` at every object so an undeclared wire field
+#   fails loudly.
+# - Append-only ordering, prompt/briefing exclusion, and cap enforcement are
+#   runtime behaviors documented under `x-coherence-checks` below.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by
+#   `FEATURE_TASK_RUNTIME_QUARANTINE_CONTRACT_VERSION` in
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt`.
+# - The parity test `FeatureTaskRuntimeQuarantineSchemaContractVersionTest`
+#   fails the build if this file and that constant diverge.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-quarantine-schema.yaml"
+title: Feature-task-runtime quarantined records
+description: >-
+  The durable append-only list of quarantined durable records for one run. Each entry names the
+  producing and consuming phases, the producing iteration, the rejection class and detail, the
+  regeneration attempt at which it was quarantined, and the rejected record payload. This list is
+  private evidence: it is never delivered to any agent prompt and never deleted by the runtime.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - entries
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+    description: Pinned quarantine contract version; a mismatch is an unsupported-version rejection.
+  entries:
+    type: array
+    description: Append-only quarantine entries in insertion order. Prior entries are never mutated.
+    items:
+      $ref: "#/$defs/quarantine_entry"
+
+$defs:
+  quarantine_entry:
+    type: object
+    additionalProperties: false
+    required:
+      - producing_phase_id
+      - consuming_phase_id
+      - producing_iteration
+      - rejection_class
+      - rejection_detail
+      - regeneration_attempt
+      - quarantined_at_iteration
+      - rejected_record_payload
+    properties:
+      producing_phase_id:
+        type: string
+        minLength: 1
+        description: Phase whose durable record was rejected and will be regenerated.
+      consuming_phase_id:
+        type: string
+        minLength: 1
+        description: Phase whose launch seam rejected the producing phase's record.
+      producing_iteration:
+        type: integer
+        minimum: 1
+        description: Iteration of the producing phase output that was rejected.
+      rejection_class:
+        type: string
+        enum:
+          - planning_projection_schema
+          - handoff_envelope_schema
+        description: Typed class of the launch-seam rejection that triggered quarantine.
+      rejection_detail:
+        type: string
+        minLength: 1
+        description: Bounded validation-failure detail; schema locations only, never record bodies.
+      regeneration_attempt:
+        type: integer
+        minimum: 1
+        description: Per-producer regeneration attempt (edge iteration) at which this record was quarantined.
+      quarantined_at_iteration:
+        type: integer
+        minimum: 1
+        description: Consuming-phase attempt iteration at the moment of quarantine.
+      rejected_record_payload:
+        type: string
+        description: Verbatim rejected record payload, retained privately for diagnostics.
+
+x-coherence-checks:
+  - id: append-only-evidence
+    description: >-
+      Entries are appended in insertion order and never mutated or removed by any runtime path. The
+      recorder's append seam only grows the list; only out-of-band operator action may remove evidence.
+  - id: prompt-and-briefing-exclusion
+    description: >-
+      The quarantine artifact key is excluded from FeatureTaskRuntimeHandoffContract upstream
+      resolution, FeatureTaskRuntimePhaseBriefingAssembler, and FeatureTaskRuntimePhasePromptComposer.
+      No rejected_record_payload byte reaches any agent prompt.
+  - id: contract-version-parity
+    description: >-
+      contract_version.const equals FEATURE_TASK_RUNTIME_QUARANTINE_CONTRACT_VERSION, pinned by
+      FeatureTaskRuntimeQuarantineSchemaContractVersionTest.

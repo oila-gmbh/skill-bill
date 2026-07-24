@@ -47,6 +47,7 @@ import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.workflow.toCliMap
+import skillbill.config.model.CompactionSettings
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
@@ -220,6 +221,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           invokedAgentId = prepared.invokedAgentId,
           agentAssignment = prepared.agentAssignment,
           modelAssignment = prepared.modelAssignment,
+          compactionSettings = prepared.compactionSettings,
           environment = state.environment,
           dbPathOverride = state.dbOverride,
           repoRoot = prepared.repoRoot,
@@ -249,6 +251,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       perPhaseDirectives = parsePhaseModels(phaseModels),
       matrix = deps.configResolutionService.resolveExecutionMatrix(),
     )
+    val compactionSettings = deps.configResolutionService.resolveCompactionSettings()
     val resolvedAgentIds = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimeAgentResolver.resolve(phaseId, agentAssignment, invokedAgentId).resolvedAgentId
     }
@@ -277,7 +280,14 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         receivingAgents,
       )
     }
-    return PreparedRuntimeRun(repoRoot, invokedAgentId, agentAssignment, modelAssignment, hydratedSelection)
+    return PreparedRuntimeRun(
+      repoRoot,
+      invokedAgentId,
+      agentAssignment,
+      modelAssignment,
+      compactionSettings,
+      hydratedSelection,
+    )
   }
 
   protected fun resolveSpecPath(
@@ -925,6 +935,7 @@ private data class PreparedRuntimeRun(
   val invokedAgentId: String,
   val agentAssignment: FeatureTaskRuntimeAgentAssignment,
   val modelAssignment: FeatureTaskRuntimeModelAssignment,
+  val compactionSettings: CompactionSettings,
   val agentAddonSelection: HydratedAgentAddonSelection,
 )
 

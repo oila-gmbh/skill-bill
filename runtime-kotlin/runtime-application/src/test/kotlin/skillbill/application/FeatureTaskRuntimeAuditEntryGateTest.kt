@@ -448,8 +448,10 @@ private const val FRESH_IMPLEMENT_FIX_OUTPUT =
     """"produced_outputs":{"changed_files":["$FRESH_IMPLEMENT_FIX_MARKER"],""" +
     """"reconciled_state":{"reconciled":true}}}"""
 
-private const val PREPLAN_DIGEST_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
-private const val PLAN_STEPS_OUTPUT = """{"plan":"do-the-thing"}"""
+// preplan and plan feed the bounded planning projections, so their seeded records are full envelopes
+// carrying the declared projection body rather than bare produced_outputs fragments.
+private val PREPLAN_DIGEST_OUTPUT = validJsonOutput("preplan")
+private val PLAN_STEPS_OUTPUT = validJsonOutput("plan")
 private const val CLEAN_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_outputs":{"findings":[]}}"""
 
 // A review carrying an unresolved Blocker, so the verdict derives to changes_requested and the

@@ -170,7 +170,8 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   fun `the audit_gap backward edge reopens implement-through-audit without planning and without a cap`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val transitions = def.transitions
-    assertEquals(2, transitions.backwardEdges.size)
+    // Two remediation edges (review_fix, audit_gap) plus the three SKILL-140 regeneration edges.
+    assertEquals(5, transitions.backwardEdges.size)
     val edge = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
     assertEquals(def.PHASE_AUDIT, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT, edge.destinationPhaseId)

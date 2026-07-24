@@ -199,6 +199,17 @@ object GoalRunnerOutcomeReconciler {
       storedOutcome = storedOutcome,
       liveness = liveness,
     )
+    // A crash-reconciled child row routes away from the terminal NO_TERMINAL_STORE_OUTCOME block: the
+    // subtask is resumable at its recorded step, so the goal resumes without manual lease/row clearing.
+    GoalRunnerTerminalStatus.RECONCILABLE -> stop(
+      reason = GoalRunnerStopReason.RECONCILED_RESUMABLE,
+      blockedReason = storedOutcome.blockedReason.orEmpty().ifBlank {
+        "Subtask $subtaskId was interrupted by a crashed child and reconciled to a resumable state; " +
+          "resume the goal to continue from its last step."
+      },
+      storedOutcome = storedOutcome,
+      liveness = liveness,
+    )
   }
 
   private fun completeOutcome(subtaskId: Int, storedOutcome: GoalRunnerStoredOutcome): GoalRunnerReconciledOutcome {
