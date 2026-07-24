@@ -1,3 +1,13 @@
+## [2026-07-24] SKILL-140 real-validator run-loop tests and fixture parity (subtask 3)
+Areas: runtime-kotlin/runtime-application (tests/testFixtures), runtime-kotlin/runtime-core (architecture tests)
+- Run-loop integration tests exercise the producer gate, canonicalization, and phase advance through the real Draft 2020-12 `RealPlanningProjectionValidator`, not stubs: a contract-violating projection blocks only at the cap, a canonicalizable one advances with 0 fix attempts, and a conforming one advances directly. reusable
+- Phase-output fixtures were extracted into one shared `FeatureTaskRuntimePhaseOutputFixtures` corpus (the implement `changed_files` drift dropped); `PhaseOutputFixtureParityTest` fails the build with permanent-mutation checks if runner fixtures and the corpus diverge, so future phase-output edits can't silently fork. reusable
+- `PlanningProjectionNoopValidatorGuardTest` enumerates the permitted no-op-validator consumers, so a new caller can't silently bypass real projection validation. reusable
+- The AC-005 producer->consumer dependency direction is now an explicit named assertion in `RuntimeAdapterDependencyAllowlistTest` (the curated allowlist map already enforced it).
+- Placement note: these suites live in runtime-application test scope, not runtime-cli, because the internal run-loop harness/stubs and the `realPlanningProjectionValidator` testFixture are only reachable there. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 3: full ACs implemented (real-validator tests, fixture parity, Noop guard, AC-005 assertion)
+
 ## [2026-07-23] SKILL-140 canonicalize planning projections before validate (subtask 2)
 Areas: runtime-kotlin/runtime-domain
 - A deterministic, referential, idempotent canonicalizer normalizes planning-projection wire maps (lowercasing task ids and their matching `depends_on` references, trimming/normalizing summary and nonBlank trivia) and runs inside the single shared parse function immediately before strict schema validation, so both the producer gate and the launch seam absorb id/summary/whitespace trivia identically before the bounded fix loop ever sees a structural error. reusable
