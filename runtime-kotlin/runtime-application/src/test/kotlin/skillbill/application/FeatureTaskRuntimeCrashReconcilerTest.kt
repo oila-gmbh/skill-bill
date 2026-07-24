@@ -91,6 +91,28 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     }
   }
 
+  @Test
+  fun `an unexpected fault is counted under a distinct reason class and not as a reconciliation`() {
+    val repository = crashCandidateRepository()
+    val faultingSupervisor = object : FeatureTaskRuntimeWorkerSupervisor {
+      override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("h", "b", 1, "birth")
+      override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection =
+        error("probe blew up")
+      override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
+      override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
+      override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+      override fun pause(durationMillis: Long) = Unit
+    }
+    val reconciler =
+      FeatureTaskRuntimeCrashReconciler(RuntimeFakeDatabaseSessionFactory(repository), faultingSupervisor)
+
+    val result = reconciler.reconcile(null)
+
+    assertEquals(0, result.reconciledCount)
+    assertEquals(mapOf("reconcile_fault" to 1), result.reasonClassCounts)
+    assertEquals("running", repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID)?.workflowStatus)
+  }
+
   private fun crashCandidateRepository(): InMemoryRuntimeWorkflowRepository =
     InMemoryRuntimeWorkflowRepository().apply {
       saveFeatureTaskRuntimeWorkflow(

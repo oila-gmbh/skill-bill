@@ -1,3 +1,13 @@
+## [2026-07-24] SKILL-140 lease-based crash reconciliation for killed children (subtask 5)
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp, orchestration/contracts
+- A workflow row left non-terminal by a killed child (expired lease + dead process) self-heals to the typed resumable interrupted state on the next runner startup, so a crashed feature-task child no longer wedges the loop and resume continues from that phase; the goal parent treats such a row as resumable instead of emitting a terminal `NO_TERMINAL_STORE_OUTCOME`-class block. reusable
+- Reconciliation candidate selection and the state transition are one fenced write inside the lease machinery, so it is idempotent and safe under concurrent startup; rows with live leases or running processes are never touched. reusable
+- Liveness is read only through the existing injectable probe strategies on `AgentRunProcessRequest` (`FeatureTaskRuntimeWorkerSupervisor` liveness) — no agent-identity branching added to `ProcessWaitLoop` or the process runner, matching the injectable-strategy contract. reusable
+- Crash reconciliations are counted by reason class as text-free typed telemetry (`crash_reconciliation_count` / reason_counts in `telemetry-event-schema.yaml`), never recording row contents, consistent with the subtask 2/4 diagnostics discipline. reusable
+- Docs (AGENTS.md runtime-behavior section, runtime ARCHITECTURE.md) describe automatic crash reconciliation as the primary path; manual lease clearing is documented as corruption fallback only.
+Feature flag: N/A
+Acceptance criteria: subtask 5: 7/7 implemented (startup reconcile + resume, goal-parent resumable, live-lease/live-process safety, idempotent concurrent-safe write, injectable-probe liveness, reason-class telemetry, docs)
+
 ## [2026-07-24] SKILL-140 quarantine-and-regenerate legacy/drifted phase records (subtask 4)
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-sqlite
 - Schema introductions and version bumps no longer wedge the loop: a legacy/drifted upstream phase record is quarantined and its producing phase invalidated so it regenerates in-band, instead of blocking a consumer that cannot repair it. In-band recovery is primary; out-of-band surgery is the fallback. reusable

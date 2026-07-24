@@ -40,15 +40,19 @@ class FeatureTaskRuntimeCrashReconciler(
     var reconciledCount = 0
     candidates.forEach { candidate ->
       reconcileCandidate(candidate, dbOverride)?.let { reasonClass ->
-        reconciledCount++
         reasonClassCounts.merge(reasonClass, 1, Int::plus)
+        // The fault class counts toward telemetry visibility but not toward reconciled rows.
+        if (reasonClass != FAULT_REASON_CLASS) reconciledCount++
       }
     }
     return FeatureTaskRuntimeCrashReconciliationResult(reconciledCount, reasonClassCounts)
   }
 
-  // Returns the reason class when this candidate was reconciled by this pass, or null when it was
-  // alive, ambiguous, lost the fencing race, or errored. Never throws.
+  // Returns the reason class a candidate was reconciled under, the FAULT_REASON_CLASS sentinel when
+  // an unexpected fault interrupted it, or null when it was alive, ambiguous, or lost the fencing
+  // race. The store returns false for a lost race, so an exception reaching this catch is a genuine
+  // infrastructure or programming fault, surfaced as the fault class rather than masked as idle.
+  // Never throws: the pass runs unconditionally and must not block an otherwise healthy start.
   private fun reconcileCandidate(
     candidate: FeatureTaskRuntimeCrashReconciliationCandidate,
     dbOverride: String?,
@@ -57,8 +61,8 @@ class FeatureTaskRuntimeCrashReconciler(
       return@runCatching null
     }
     val reason = interruptionReason(candidate)
-    // The fenced reconcile write re-checks lease expiry inside its own transaction against `now`,
-    // so a lease extended between the scan and here (or another pass winning the race) returns false.
+    // The fenced reconcile write re-checks lease expiry inside the transaction against `now`, so a
+    // lease extended between the scan and here (or another pass winning the race) returns false.
     val reconciled = database.transaction(dbOverride) {
       it.workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
         workflowId = candidate.ownership.workflowId,
@@ -71,10 +75,14 @@ class FeatureTaskRuntimeCrashReconciler(
     if (reconciled) reason.wireValue else null
   }.getOrElse { error ->
     diagnostics.warning(
-      "Crash reconciliation skipped a candidate after an unexpected fault; the pass continues.",
+      "Crash reconciliation faulted on a candidate; the pass continues and the fault is counted.",
       error,
     )
-    null
+    FAULT_REASON_CLASS
+  }
+
+  private companion object {
+    const val FAULT_REASON_CLASS = "reconcile_fault"
   }
 
   // Recorded exit status is not durably persisted on the row today, so lease expiry is the only

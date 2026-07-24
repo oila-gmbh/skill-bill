@@ -202,14 +202,17 @@ private class FeatureTaskWorkflowStateStore(
     }
   }
 
+  // Composed inside the caller's UnitOfWork transaction (FeatureTaskRuntimeCrashReconciler and the
+  // goal-parent recoverAndPersistTerminalOutcome each run this under database.transaction); it must
+  // not open its own transaction, or the nested BEGIN IMMEDIATE would fail on real SQLite.
   override fun reconcileFeatureTaskRuntimeCrashedWorker(
     workflowId: String,
     ownerToken: String,
     generation: Long,
     interruptionReason: String,
     nowInstant: String,
-  ): Boolean = connection.inImmediateTransaction {
-    val leaseReleased = prepareStatement(
+  ): Boolean {
+    val leaseReleased = connection.prepareStatement(
       """
       DELETE FROM feature_task_runtime_worker_leases
       WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND expires_at < ?
@@ -222,8 +225,10 @@ private class FeatureTaskWorkflowStateStore(
       statement.setString(parameterIndex, nowInstant)
       statement.executeUpdate() == 1
     }
-    if (!leaseReleased) return@inImmediateTransaction false
-    val transitioned = prepareStatement(
+    if (!leaseReleased) return false
+    // A concurrent writer may have moved the row out of 'running' between the candidate scan and
+    // this write; that is a lost race, not a fault, so report no-op instead of asserting.
+    return connection.prepareStatement(
       """
       UPDATE feature_task_workflows
       SET workflow_status = 'pending', interruption_reason = ?, updated_at = CURRENT_TIMESTAMP
@@ -235,10 +240,6 @@ private class FeatureTaskWorkflowStateStore(
       statement.setString(parameterIndex, workflowId)
       statement.executeUpdate() == 1
     }
-    check(transitioned) {
-      "Crash reconciliation released the lease for '$workflowId' but its row was no longer running."
-    }
-    true
   }
 
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
