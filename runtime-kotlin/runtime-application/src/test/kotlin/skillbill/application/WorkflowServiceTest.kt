@@ -58,6 +58,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
@@ -89,6 +90,7 @@ import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -2845,6 +2847,36 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
     taskRuntime.values.toList().take(limit)
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = taskRuntime.values.lastOrNull()
+
+  private val workerOwnershipById = mutableMapOf<String, FeatureTaskRuntimeWorkerOwnership>()
+
+  fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
+    workerOwnershipById[ownership.workflowId] = ownership
+  }
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
+    workerOwnershipById[workflowId]
+
+  @Suppress("ReturnCount") // in-memory fake mirrors the guarded fenced write
+  override fun reconcileFeatureTaskRuntimeCrashedWorker(
+    workflowId: String,
+    ownerToken: String,
+    generation: Long,
+    interruptionReason: String,
+    nowInstant: String,
+  ): Boolean {
+    val current = workerOwnershipById[workflowId] ?: return false
+    if (current.ownerToken != ownerToken || current.generation != generation) return false
+    val leaseStillExpired = runCatching {
+      Instant.parse(current.expiresAt).isBefore(Instant.parse(nowInstant))
+    }.getOrDefault(false)
+    if (!leaseStillExpired) return false
+    val row = taskRuntime[workflowId] ?: return false
+    if (row.workflowStatus != "running") return false
+    workerOwnershipById.remove(workflowId)
+    taskRuntime[workflowId] = row.copy(workflowStatus = "pending")
+    return true
+  }
 }
 
 class DecompositionDiskBootstrapTest {

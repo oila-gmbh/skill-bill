@@ -373,6 +373,8 @@ object McpToolRegistry {
           "regeneration_activation_count" to integerSchema,
           "regeneration_attempt_count" to integerSchema,
           "regeneration_outcome_counts" to freeObjectSchema,
+          "crash_reconciliation_count" to integerSchema,
+          "crash_reconciliation_reason_counts" to freeObjectSchema,
           "last_incomplete_phase" to stringSchema(),
           "blocked_reason" to stringSchema(),
           "resolved_branch" to stringSchema(),

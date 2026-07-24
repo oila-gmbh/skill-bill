@@ -14,29 +14,9 @@ internal object DatabaseColumnMigrations {
     backfillReviewSessionIds(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
-    ensureColumn(connection, "quality_check_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
-    backfillBlankColumn(connection, "quality_check_sessions", "started_at", "CURRENT_TIMESTAMP")
-    ensureColumn(connection, "quality_check_sessions", "started_event_emitted_at", "TEXT")
-    ensureColumn(connection, "quality_check_sessions", "finished_at", "TEXT")
-    ensureColumn(connection, "quality_check_sessions", "finished_event_emitted_at", "TEXT")
-    ensureColumn(connection, "quality_check_sessions", "routed_skill", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "quality_check_sessions", "detected_stack", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "quality_check_sessions", "fallback", "INTEGER NOT NULL DEFAULT 0")
-    ensureColumn(connection, "quality_check_sessions", "fallback_reason", "TEXT")
-    ensureColumn(connection, "quality_check_sessions", "scope_type", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "quality_check_sessions", "initial_failure_count", "INTEGER NOT NULL DEFAULT 0")
-    ensureColumn(connection, "quality_check_sessions", "final_failure_count", "INTEGER")
-    ensureColumn(connection, "quality_check_sessions", "iterations", "INTEGER")
-    ensureColumn(connection, "quality_check_sessions", "result", "TEXT")
-    ensureColumn(connection, "quality_check_sessions", "failing_check_names", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "quality_check_sessions", "unsupported_reason", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(
-      connection = connection,
-      tableName = "quality_check_sessions",
-      columnName = "duplicate_terminal_finished_events",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
+    ensureQualityCheckSessionColumns(connection)
     ensureFeatureTaskRuntimeSessionColumns(connection)
+    ensureColumn(connection, "feature_task_workflows", "interruption_reason", "TEXT")
     // apply() is wired both as gated migration version 1 (which runs before version 3 creates
     // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
     // heal until the table exists so the early migration-1 pass is a no-op; the unconditional startup
@@ -300,6 +280,31 @@ internal object DatabaseColumnMigrations {
     ).forEach { sql -> connection.createStatement().use { it.execute(sql) } }
   }
 
+  private fun ensureQualityCheckSessionColumns(connection: Connection) {
+    ensureColumn(connection, "quality_check_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
+    backfillBlankColumn(connection, "quality_check_sessions", "started_at", "CURRENT_TIMESTAMP")
+    ensureColumn(connection, "quality_check_sessions", "started_event_emitted_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "finished_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "finished_event_emitted_at", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "routed_skill", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "detected_stack", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "fallback", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "quality_check_sessions", "fallback_reason", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "scope_type", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "initial_failure_count", "INTEGER NOT NULL DEFAULT 0")
+    ensureColumn(connection, "quality_check_sessions", "final_failure_count", "INTEGER")
+    ensureColumn(connection, "quality_check_sessions", "iterations", "INTEGER")
+    ensureColumn(connection, "quality_check_sessions", "result", "TEXT")
+    ensureColumn(connection, "quality_check_sessions", "failing_check_names", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "quality_check_sessions", "unsupported_reason", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(
+      connection = connection,
+      tableName = "quality_check_sessions",
+      columnName = "duplicate_terminal_finished_events",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
+  }
+
   private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {
     ensureColumn(connection, "feature_task_runtime_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
     backfillBlankColumn(connection, "feature_task_runtime_sessions", "started_at", "CURRENT_TIMESTAMP")
@@ -334,6 +339,13 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
     }
     ensureColumn(connection, "feature_task_runtime_sessions", "regeneration_outcome_counts_json", "TEXT")
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "crash_reconciliation_count",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
+    ensureColumn(connection, "feature_task_runtime_sessions", "crash_reconciliation_reason_counts_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
     ensureColumn(

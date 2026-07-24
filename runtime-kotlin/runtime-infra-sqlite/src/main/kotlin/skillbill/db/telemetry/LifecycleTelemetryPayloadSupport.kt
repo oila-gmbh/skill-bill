@@ -82,6 +82,11 @@ fun featureTaskRuntimeFinishedPayload(row: Map<String, Any?>, level: String): Ma
     put("regeneration_activation_count", row.intOrZero("regeneration_activation_count"))
     put("regeneration_attempt_count", row.intOrZero("regeneration_attempt_count"))
     put("regeneration_outcome_counts", parsePhaseOutcomes(row.stringOrEmpty("regeneration_outcome_counts_json")))
+    put("crash_reconciliation_count", row.intOrZero("crash_reconciliation_count"))
+    put(
+      "crash_reconciliation_reason_counts",
+      parsePhaseOutcomes(row.stringOrEmpty("crash_reconciliation_reason_counts_json")),
+    )
     put("last_incomplete_phase", row.stringOrEmpty("last_incomplete_phase"))
     put("blocked_reason", row.stringOrEmpty("blocked_reason"))
     put("duration_seconds", durationSeconds(row))

@@ -154,7 +154,7 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 - `idlePolicy` — whether a confirmed-alive process heartbeat extends the idle window (`HEARTBEAT_EXTENDED`) or only DB token changes count (`DB_PROGRESS_ONLY`)
 - `usePtyStdio` — whether to use a PTY pair instead of separate stdout/stderr streams
 
-Each `AgentRunCommandBuilder` sets the right combination for its agent; `ProcessWaitLoop` calls the strategies without branching on agent identity. When a new agent needs different behavior, add a named strategy constant and set it in its command builder — never if/else inside the runner.
+`ProcessWaitLoop` calls injected strategies with no agent-identity branching; new behavior adds a strategy constant in the command builder. Crash reconciliation uses the injectable `FeatureTaskRuntimeWorkerSupervisor`: a killed child's expired-lease row self-heals to resumable at startup.
 
 ## Writing Policy
 

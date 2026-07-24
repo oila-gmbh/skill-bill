@@ -905,6 +905,50 @@ class RuntimeArchitectureTest {
     )
   }
 
+  @Test
+  fun `crash reconciliation liveness stays behind the injectable supervisor and out of the process runner`() {
+    // AC-005 (SKILL-140 subtask 5): crash-reconciliation liveness goes only through the injectable
+    // FeatureTaskRuntimeWorkerSupervisor port. The agent process runner (ProcessWaitLoop) gains no
+    // agent-conditional branching or reconciliation coupling, and the reconciliation code never reaches
+    // into a concrete agent runner.
+    val reconciliationSources = sourceFiles().filter { file ->
+      file.relativePath.endsWith("featuretask/FeatureTaskRuntimeCrashReconciler.kt") ||
+        file.relativePath.endsWith("featuretask/FeatureTaskRuntimeWorkerCoordinator.kt") ||
+        file.relativePath.endsWith("goalrunner/GoalRunnerWorkflowStores.kt")
+    }
+    assertTrue(reconciliationSources.isNotEmpty(), "crash-reconciliation source scan must be non-vacuous.")
+    assertTrue(
+      reconciliationSources.any { file -> "FeatureTaskRuntimeWorkerSupervisor" in file.source },
+      "Crash reconciliation must reach liveness through the injectable FeatureTaskRuntimeWorkerSupervisor port.",
+    )
+    assertNoBannedSourceReferences(
+      files = reconciliationSources,
+      bannedReferences = listOf(
+        "skillbill.launcher.process",
+        "JvmAgentRunProcessRunner",
+        "AgentRunCommandBuilder",
+        "ProcessWaitLoop",
+      ),
+      description = "concrete agent-runner coupling in crash reconciliation",
+    )
+
+    val processRunner = sourceFiles().single { file ->
+      file.relativePath.endsWith("launcher/process/JvmAgentRunProcessRunner.kt")
+    }
+    val runnerCouplingToReconciliation = listOf(
+      "CrashReconcil",
+      "CrashLiveness",
+      "FeatureTaskRuntimeWorkerSupervisor",
+      "reconcileFeatureTaskRuntimeCrashedWorker",
+    ).filter { reference -> reference in processRunner.source }
+    assertEquals(
+      emptyList(),
+      runnerCouplingToReconciliation,
+      "The agent process runner (ProcessWaitLoop) must stay decoupled from crash reconciliation and the " +
+        "supervisor liveness port; agent-conditional branching belongs behind injectable strategies.",
+    )
+  }
+
   private fun installPortFunctionSignatures(sourceFile: SourceFile): List<InstallPortFunctionSignature> {
     val lines = sourceFile.source.lines()
     return lines.mapIndexedNotNull { index, line ->

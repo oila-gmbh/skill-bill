@@ -7,6 +7,7 @@ import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
+import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeDecompositionPlanner
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
@@ -55,7 +56,12 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
@@ -978,6 +984,32 @@ class FeatureTaskRuntimeRunnerTest {
     val harness = runnerHarness()
     val report = harness.runner.run(harness.request())
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+  }
+
+  @Test
+  fun `a killed child's expired-lease running row is reconciled at startup and resumes from its phase`() {
+    // AC-001: a child process that died mid-run leaves the workflow row non-terminal with an expired
+    // lease. The next startup reconciles it to the resumable pending state (HarnessDeadProcessSupervisor
+    // confirms the dead process) and the run resumes from its recorded phase instead of blocking as
+    // already-running.
+    val harness = runnerHarness()
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.repository.seedWorkerOwnership(expiredCrashedOwnership())
+
+    val rowBefore = requireNotNull(harness.repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    assertEquals("running", rowBefore.workflowStatus)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertContains(
+      requireNotNull(harness.repository.reconciledInterruptionReasons[WORKFLOW_ID]),
+      "lease_expired",
+    )
+    // The resume continued from implement; the reconciled row was not re-launched from earlier phases.
+    assertTrue(harness.launchOrder().none { it == "preplan" || it == "plan" || it == "implement" })
   }
 
   @Test
@@ -3748,6 +3780,22 @@ internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
 private val NON_FILE_MUTATING_PHASES = setOf("preplan", "plan")
 
+// A worker lease a killed child left behind, already expired relative to the startup reconcile pass.
+private fun expiredCrashedOwnership(): FeatureTaskRuntimeWorkerOwnership = FeatureTaskRuntimeWorkerOwnership(
+  workflowId = WORKFLOW_ID,
+  generation = 1,
+  ownerToken = "crashed-child-token",
+  hostIdentity = "harness-host",
+  bootIdentity = "harness-boot",
+  pid = 7,
+  processBirthToken = "harness-birth-7",
+  leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+  heartbeatAt = "2000-01-01T00:00:00Z",
+  expiresAt = "2000-01-01T00:00:30Z",
+  phaseId = "implement",
+  phaseAttempt = 1,
+)
+
 // A distinct invoking agent per phase so a captured launch request is
 // phase-attributable from its invokedAgentId.
 internal fun phaseAgent(phaseId: String): String = "agent-$phaseId"
@@ -4093,12 +4141,14 @@ private fun runnerHarnessRequest(
   eventSink = sink,
 )
 
+@Suppress("LongParameterList") // test factory; named overrides are clearer than a config bag here
 internal fun runnerHarness(
   launcher: RuntimeRecordingLauncher = defaultPhaseAwareLauncher(),
   validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
+  crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -4130,6 +4180,7 @@ internal fun runnerHarness(
       testSpecGate(specScratchStore, specStatusWriter),
       runtimeConfig.planningProjectionValidator,
     ),
+    FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
@@ -4208,6 +4259,9 @@ internal fun telemetryRunnerHarness(
       ),
       runtimeConfig.branchSetup.gitOperations,
     ),
+    // Telemetry harness validates event emission, not crash reconciliation; the no-op supervisor keeps
+    // the startup reconcile pass a harmless no-op so it never perturbs telemetry assertions.
+    FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
   )
   val request = FeatureTaskRuntimeRunRequest(
     issueKey = ISSUE_KEY,
@@ -5089,6 +5143,49 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
       workerOwnership = null
       true
     }
+  override fun findFeatureTaskRuntimeCrashReconciliationCandidates(
+    nowInstant: String,
+  ): List<skillbill.ports.persistence.model.FeatureTaskRuntimeCrashReconciliationCandidate> = synchronized(this) {
+    val ownership = workerOwnership ?: return@synchronized emptyList()
+    val row = taskRuntimeRows[ownership.workflowId] ?: return@synchronized emptyList()
+    if (row.workflowStatus != "running" || !leaseExpiredBefore(ownership.expiresAt, nowInstant)) {
+      return@synchronized emptyList()
+    }
+    listOf(
+      skillbill.ports.persistence.model.FeatureTaskRuntimeCrashReconciliationCandidate(
+        ownership = ownership,
+        currentStepId = row.currentStepId,
+        workflowStatus = row.workflowStatus,
+      ),
+    )
+  }
+
+  override fun reconcileFeatureTaskRuntimeCrashedWorker(
+    workflowId: String,
+    ownerToken: String,
+    generation: Long,
+    interruptionReason: String,
+    nowInstant: String,
+  ): Boolean = synchronized(this) {
+    val current = workerOwnership ?: return@synchronized false
+    if (current.workflowId != workflowId || current.ownerToken != ownerToken || current.generation != generation) {
+      return@synchronized false
+    }
+    if (!leaseExpiredBefore(current.expiresAt, nowInstant)) return@synchronized false
+    val row = taskRuntimeRows[workflowId] ?: return@synchronized false
+    if (row.workflowStatus != "running") return@synchronized false
+    workerOwnership = null
+    taskRuntimeRows[workflowId] = row.copy(workflowStatus = "pending")
+    reconciledInterruptionReasons[workflowId] = interruptionReason
+    true
+  }
+
+  val reconciledInterruptionReasons = linkedMapOf<String, String>()
+
+  private fun leaseExpiredBefore(expiresAt: String, nowInstant: String): Boolean =
+    runCatching { java.time.Instant.parse(expiresAt).isBefore(java.time.Instant.parse(nowInstant)) }
+      .getOrDefault(false)
+
   override fun saveFeatureTaskExecutionIdentity(
     identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
   ) = Unit
@@ -5161,6 +5258,25 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
 
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+}
+
+// Reports every inspected worker process as dead, so a seeded crashed row with an expired lease is a
+// confirmed crash-reconciliation candidate. Harness default: benign when no candidate is seeded.
+internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
+  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
+    FeatureTaskRuntimeProcessIdentity("harness-host", "harness-boot", 4321, "harness-birth-4321")
+
+  override fun inspect(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) =
+    FeatureTaskRuntimeProcessInspection.NotRunning
+
+  override fun terminateGracefully(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) =
+    true
+
+  override fun terminateForcibly(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) = true
+
+  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+
+  override fun pause(durationMillis: Long) = Unit
 }
 
 class InfraFailureReasonStderrSurfacingTest {

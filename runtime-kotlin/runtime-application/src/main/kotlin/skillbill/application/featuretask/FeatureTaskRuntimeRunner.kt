@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.stderrExcerpt
+import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePreparation
 import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
@@ -37,7 +38,7 @@ private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
  * state, resuming from persisted records and blocking loudly on missing upstreams or failures.
  */
 @Inject
-@Suppress("TooManyFunctions") // single orchestration seam: the bounded-cyclic phase state machine
+@Suppress("TooManyFunctions", "LongParameterList") // single orchestration seam; one cohesive constructor
 class FeatureTaskRuntimeRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -45,6 +46,7 @@ class FeatureTaskRuntimeRunner(
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val phaseGates: FeatureTaskRuntimePhaseGates,
+  private val crashReconciler: FeatureTaskRuntimeCrashReconciler,
 ) {
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
@@ -72,11 +74,16 @@ class FeatureTaskRuntimeRunner(
     )
   }
 
-  fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport =
-    when (val preparation = prepareRun(request)) {
+  fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
+    // Unconditional crash-reconciliation pass at startup: a killed child's row is transitioned to
+    // the resumable pending state before the resume point is resolved, so it is no longer classified
+    // as still-running. The pass is self-isolated and never blocks an otherwise healthy start.
+    val reconciliation = crashReconciler.reconcile(request.dbPathOverride)
+    return when (val preparation = prepareRun(request)) {
       is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
-      is FeatureTaskRuntimePreparation.Prepared -> executeRun(preparation.request)
+      is FeatureTaskRuntimePreparation.Prepared -> executeRun(preparation.request, reconciliation)
     }
+  }
 
   private fun prepareRun(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimePreparation =
     foreignModeWorkflowBlock(request)?.let(FeatureTaskRuntimePreparation::PreparationBlocked)
@@ -87,7 +94,10 @@ class FeatureTaskRuntimeRunner(
       ).prepare(request)
 
   @Suppress("LongMethod")
-  private fun executeRun(runRequest: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
+  private fun executeRun(
+    runRequest: FeatureTaskRuntimeRunRequest,
+    reconciliation: FeatureTaskRuntimeCrashReconciliationResult,
+  ): FeatureTaskRuntimeRunReport {
     val specSource = specSourceResolver.resolve(
       repoRoot = runRequest.repoRoot,
       specReference = runRequest.runInvariants.specReference,
@@ -167,6 +177,7 @@ class FeatureTaskRuntimeRunner(
         regenerationTelemetry,
         runRequest.dbPathOverride,
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
+        crashReconciliation = { reconciliation },
       )
     }.getOrThrow()
     val terminalReport =
@@ -182,6 +193,7 @@ class FeatureTaskRuntimeRunner(
       regenerationTelemetry,
       runRequest.dbPathOverride,
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
+      crashReconciliation = { reconciliation },
     )
     return terminalReport
   }

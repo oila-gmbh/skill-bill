@@ -17,6 +17,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
@@ -168,6 +169,77 @@ private class FeatureTaskWorkflowStateStore(
       statement.setLong(parameterIndex, generation)
       statement.executeUpdate() == 1
     }
+
+  override fun findFeatureTaskRuntimeCrashReconciliationCandidates(
+    nowInstant: String,
+  ): List<FeatureTaskRuntimeCrashReconciliationCandidate> = connection.prepareStatement(
+    """
+    SELECT workflows.workflow_id, workflows.current_step_id, workflows.workflow_status
+    FROM feature_task_workflows AS workflows
+    JOIN feature_task_runtime_worker_leases AS lease
+      ON lease.workflow_id = workflows.workflow_id
+    WHERE workflows.mode = 'runtime'
+      AND workflows.workflow_status = 'running'
+      AND lease.expires_at < ?
+    ORDER BY workflows.workflow_id
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, nowInstant)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) {
+          val workflowId = rows.getString("workflow_id")
+          val ownership = connection.featureTaskRuntimeWorkerOwnership(workflowId) ?: continue
+          add(
+            FeatureTaskRuntimeCrashReconciliationCandidate(
+              ownership = ownership,
+              currentStepId = rows.getString("current_step_id"),
+              workflowStatus = rows.getString("workflow_status"),
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  override fun reconcileFeatureTaskRuntimeCrashedWorker(
+    workflowId: String,
+    ownerToken: String,
+    generation: Long,
+    interruptionReason: String,
+    nowInstant: String,
+  ): Boolean = connection.inImmediateTransaction {
+    val leaseReleased = prepareStatement(
+      """
+      DELETE FROM feature_task_runtime_worker_leases
+      WHERE workflow_id = ? AND owner_token = ? AND generation = ? AND expires_at < ?
+      """.trimIndent(),
+    ).use { statement ->
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setString(parameterIndex++, ownerToken)
+      statement.setLong(parameterIndex++, generation)
+      statement.setString(parameterIndex, nowInstant)
+      statement.executeUpdate() == 1
+    }
+    if (!leaseReleased) return@inImmediateTransaction false
+    val transitioned = prepareStatement(
+      """
+      UPDATE feature_task_workflows
+      SET workflow_status = 'pending', interruption_reason = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE workflow_id = ? AND mode = 'runtime' AND workflow_status = 'running'
+      """.trimIndent(),
+    ).use { statement ->
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, interruptionReason)
+      statement.setString(parameterIndex, workflowId)
+      statement.executeUpdate() == 1
+    }
+    check(transitioned) {
+      "Crash reconciliation released the lease for '$workflowId' but its row was no longer running."
+    }
+    true
+  }
 
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     connection.prepareStatement(

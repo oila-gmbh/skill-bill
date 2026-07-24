@@ -75,6 +75,10 @@ data class FeatureTaskRuntimeFinishedRecord(
   val regenerationActivationCount: Int = 0,
   val regenerationAttemptCount: Int = 0,
   val regenerationOutcomeCounts: Map<String, Int> = emptyMap(),
+  // SKILL-140 subtask 5: per-run crash-reconciliation counters (AC-006). Reconciled-row count and the
+  // tally by reason class. Counts and class labels only; never carries row contents.
+  val crashReconciliationCount: Int = 0,
+  val crashReconciliationReasonCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
 )

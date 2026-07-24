@@ -282,6 +282,8 @@ internal object DatabaseSchema {
         regeneration_activation_count INTEGER NOT NULL DEFAULT 0,
         regeneration_attempt_count INTEGER NOT NULL DEFAULT 0,
         regeneration_outcome_counts_json TEXT,
+        crash_reconciliation_count INTEGER NOT NULL DEFAULT 0,
+        crash_reconciliation_reason_counts_json TEXT,
         duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
@@ -300,6 +302,7 @@ internal object DatabaseSchema {
         steps_json TEXT NOT NULL DEFAULT '',
         artifacts_json TEXT NOT NULL DEFAULT '',
         issue_key TEXT,
+        interruption_reason TEXT,
         started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         state_entered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

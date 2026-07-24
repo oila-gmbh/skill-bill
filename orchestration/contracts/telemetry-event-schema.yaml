@@ -262,6 +262,7 @@ $defs:
       - NO_TERMINAL_STORE_OUTCOME
       - PULL_REQUEST_FAILED
       - DEPENDENCIES_BLOCKED
+      - RECONCILED_RESUMABLE
   freeObjectShape:
     type: object
   reviewChildStep:
@@ -1106,6 +1107,17 @@ $defs:
         description: >-
           Per-run tally of regeneration outcome classes (for example regenerated, cap_exhausted,
           unattributable, producer_not_in_pipeline). Counts and class labels only.
+      crash_reconciliation_count:
+        type: integer
+        description: >-
+          How many orphaned non-terminal runtime rows the startup crash-reconciliation pass
+          transitioned to the resumable pending state this run. Counts only; no row contents.
+      crash_reconciliation_reason_counts:
+        type: object
+        additionalProperties: true
+        description: >-
+          Per-run tally of crash-reconciliation reason classes (for example lease_expired).
+          Counts and class labels only; never row contents.
       last_incomplete_phase:
         type: string
         description: >-

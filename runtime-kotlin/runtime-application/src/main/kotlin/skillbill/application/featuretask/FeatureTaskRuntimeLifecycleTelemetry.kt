@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunReport
@@ -14,6 +15,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgres
 
 private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
   { FeatureTaskRuntimeRegenerationTelemetry() }
+
+private val emptyCrashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult =
+  { FeatureTaskRuntimeCrashReconciliationResult.NONE }
 
 /**
  * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
@@ -54,6 +58,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
+    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
     if (telemetrySessionId.isBlank()) {
       return
@@ -63,6 +68,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
+      val reconciliation = runCatching(crashReconciliation).getOrNull()
+        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -82,6 +89,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           regenerationActivationCount = regeneration.activationCount,
           regenerationAttemptCount = regeneration.attemptCount,
           regenerationOutcomeCounts = regeneration.outcomeCounts,
+          crashReconciliationCount = reconciliation.reconciledCount,
+          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),
@@ -105,6 +114,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
+    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
     if (telemetrySessionId.isBlank()) {
       return
@@ -122,6 +132,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
+      val reconciliation = runCatching(crashReconciliation).getOrNull()
+        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -145,6 +157,8 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           regenerationActivationCount = regeneration.activationCount,
           regenerationAttemptCount = regeneration.attemptCount,
           regenerationOutcomeCounts = regeneration.outcomeCounts,
+          crashReconciliationCount = reconciliation.reconciledCount,
+          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),

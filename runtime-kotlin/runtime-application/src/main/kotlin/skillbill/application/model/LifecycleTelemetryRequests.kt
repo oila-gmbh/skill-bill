@@ -75,6 +75,11 @@ data class FeatureTaskRuntimeFinishedRequest(
   val regenerationActivationCount: Int = 0,
   val regenerationAttemptCount: Int = 0,
   val regenerationOutcomeCounts: Map<String, Int> = emptyMap(),
+  // SKILL-140 subtask 5: per-run crash-reconciliation counters (AC-006). How many orphaned runtime
+  // rows the startup pass transitioned to resumable, and the tally by reason class. Counts and class
+  // labels only; never carries row contents. Runtime-owned, never agent-self-reported.
+  val crashReconciliationCount: Int = 0,
+  val crashReconciliationReasonCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
 )
