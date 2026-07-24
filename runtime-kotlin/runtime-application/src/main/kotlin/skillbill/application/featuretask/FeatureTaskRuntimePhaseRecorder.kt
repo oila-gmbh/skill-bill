@@ -17,6 +17,8 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
+import skillbill.workflow.NoopFeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -31,6 +33,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
@@ -42,6 +45,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -50,6 +54,8 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
 import java.time.Instant
 
@@ -59,11 +65,13 @@ import java.time.Instant
  * clock, never taken from agent-reported values.
  */
 @Inject
-@Suppress("TooManyFunctions") // cohesive durable read/write seam for per-phase records, briefings, and the ledger
+// cohesive durable read/write seam for per-phase records, briefings, ledger, and quarantine evidence
+@Suppress("TooManyFunctions", "LargeClass")
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+  private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -268,6 +276,50 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  /**
+   * SKILL-140: durably invalidates a quarantined producer's settled `completed` status so its rejected
+   * record is no longer selected by the handoff contract on this or any resumed run. The rejected
+   * payload is moved from `output_artifact` to `rejected_output` (retained as evidence but no longer a
+   * usable output) and the status returns to `running`, so hydration relaunches the producer and the
+   * regenerated higher-iteration output supersedes it. Only the settled status is touched; the rejected
+   * record's fields are never rewritten or migrated. Returns true when the workflow row exists.
+   */
+  internal fun invalidateQuarantinedProducerRecord(
+    workflowId: String,
+    producerPhaseId: String,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existingRecords = phaseRecordsFrom(artifacts)
+    val previous = existingRecords[producerPhaseId] ?: return@transaction true
+    if (previous.status != STATUS_COMPLETED) {
+      return@transaction true
+    }
+    val invalidated = previous.copy(
+      status = STATUS_RUNNING,
+      finishedAt = null,
+      outputArtifact = null,
+      rejectedOutput = previous.outputArtifact ?: previous.rejectedOutput,
+    )
+    val updatedRecords = LinkedHashMap(existingRecords).apply { put(producerPhaseId, invalidated) }
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+      ),
+      WorkflowRowAdvance(
+        currentStepId = record.currentStepId,
+        workflowStatus = record.workflowStatus,
+        stepUpdates = stepUpdatesFrom(updatedRecords),
+      ),
+    )
+    true
+  }
 
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
@@ -511,6 +563,61 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  /**
+   * Appends one quarantined durable record to the private, append-only evidence store. The runtime
+   * only ever grows this list; a prior entry is never mutated or removed by any runtime path (only
+   * out-of-band operator action may). The full wire record is validated against the canonical
+   * quarantine schema before persistence, so a malformed store fails loudly at the write seam.
+   * Returns true when the workflow row exists and was updated.
+   */
+  fun appendQuarantineEntry(
+    workflowId: String,
+    entry: FeatureTaskRuntimeQuarantineEntry,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existing = quarantineEntriesFrom(artifacts)
+    // Crash-replay idempotency: a resume that re-rejects the same producer record at the same
+    // regeneration attempt must not append a duplicate evidence entry. Append only genuinely new
+    // evidence; never mutate or remove a prior entry.
+    val alreadyRecorded = existing.any {
+      it.producingPhaseId == entry.producingPhaseId &&
+        it.producingIteration == entry.producingIteration &&
+        it.regenerationAttempt == entry.regenerationAttempt
+    }
+    if (alreadyRecorded) {
+      return@transaction true
+    }
+    val wire = featureTaskRuntimeQuarantineRecordToWire(existing + entry)
+    quarantineValidator.validateQuarantineRecord(wire, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY to wire),
+    )
+    true
+  }
+
+  /**
+   * Strict read of the private quarantine evidence store in insertion order. An absent key yields an
+   * empty list; a malformed record loud-fails. Returns null only when the workflow row is absent.
+   */
+  fun loadQuarantinedRecords(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeQuarantineEntry>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    quarantineEntriesFrom(decodeArtifacts(record.artifactsJson))
+  }
+
+  private fun quarantineEntriesFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimeQuarantineEntry> {
+    val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
+    return featureTaskRuntimeQuarantineEntriesFromWire(raw)
+  }
 
   /**
    * Persists the run-scoped resolved feature branch exactly once. Idempotent and non-divergent:

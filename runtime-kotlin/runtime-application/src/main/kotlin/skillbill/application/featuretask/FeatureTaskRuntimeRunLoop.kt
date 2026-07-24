@@ -51,12 +51,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
@@ -109,6 +111,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
+
+  // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
+  // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
+  private var recordRejectionSettlementPending: Boolean = false
 
   private fun resumedReentry(): PendingReentry? {
     val (loopId, reentry) = state.latestInFlightReentry() ?: return null
@@ -221,6 +227,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return when {
       decomposed != null -> PhaseSettlement.stop()
+      recordRejectionSettlementPending -> {
+        // The launch quarantined an upstream record: settle this consumer with RECORD_REJECTED so the
+        // transition machinery re-enters the producer (or blocks at the regeneration cap). The consumer
+        // itself never settles completed — its durable record stays running and it re-runs after the
+        // producer regenerates.
+        recordRejectionSettlementPending = false
+        PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)
+      }
       reason != null -> {
         blockAt(phaseId, reason)
         PhaseSettlement.stop()
@@ -558,6 +572,14 @@ internal class FeatureTaskRuntimeRunLoop(
   ) {
     val reopenedSpan = spanBetween(destinationPhaseId, edge.fromPhaseId)
     reopenedSpan.forEach(state::reopenForReentry)
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
+      // Invalidate the quarantined producer's settled completion so its rejected record is no longer
+      // selected by the handoff contract; the regenerated higher-iteration output supersedes it. In
+      // memory the stale output is dropped from resolution; durably the record returns to running so a
+      // resume relaunches the producer rather than re-consuming the rejected record.
+      state.invalidateProducerOutput(destinationPhaseId)
+      recorder.invalidateQuarantinedProducerRecord(request.workflowId, destinationPhaseId, request.dbPathOverride)
+    }
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.unmetAuditCriteria(edge.fromPhaseId)
@@ -634,6 +656,13 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let { edge -> phaseId in spanBetween(edge.destinationPhaseId, edge.fromPhaseId) } == true
     }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
     val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
+    outcome.regenerationTargetPhaseId?.let {
+      // The launch seam quarantined an upstream record and requested regeneration. Do not record this
+      // consumer as completed; signal advance() to settle it with the RECORD_REJECTED verdict so the
+      // transition machinery re-enters the producer.
+      recordRejectionSettlementPending = true
+      return null
+    }
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
@@ -841,6 +870,9 @@ internal class FeatureTaskRuntimeRunLoop(
     unresolvedFindings: List<FeatureTaskRuntimeReviewFinding> = emptyList(),
     unmetCriteria: List<String> = emptyList(),
   ): String {
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
+      return regenerationCapExhaustionReason(loopId, edgeIteration)
+    }
     val findingsSuffix = if (unresolvedFindings.isEmpty()) {
       ""
     } else {
@@ -855,6 +887,24 @@ internal class FeatureTaskRuntimeRunLoop(
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
       findingsSuffix + criteriaSuffix
+  }
+
+  // SKILL-140: AC-004 cap-exhaustion reason for a regeneration loop, naming the quarantined record, the
+  // producing phase, and the attempt count. Shared by the in-run transition block and the pre-launch
+  // resume cap guard, so both surface the same actionable message.
+  private fun regenerationCapExhaustionReason(loopId: String, edgeIteration: Int): String {
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_LOOP_ID_BY_PRODUCER.entries
+      .firstOrNull { it.value == loopId }?.key
+    val latest = producer?.let { producing ->
+      recorder.loadQuarantinedRecords(request.workflowId, request.dbPathOverride)
+        .orEmpty()
+        .lastOrNull { it.producingPhaseId == producing }
+    }
+    val recordId = latest?.recordIdentifier() ?: producer?.let { "$it#<unknown-iteration>" } ?: "<unknown>"
+    return "Quarantine-and-regenerate loop '$loopId' exhausted its regeneration cap after $edgeIteration " +
+      "attempt(s): the quarantined record '$recordId' produced by phase '${producer ?: "<unknown>"}' still " +
+      "fails projection validation. The run blocks durably rather than regenerating past the cap; recover the " +
+      "record out of band by deleting or migrating the offending row."
   }
 
   private sealed interface PhaseSettlement {
@@ -1456,6 +1506,90 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectedOutput = rejectedOutput,
   )
 
+  /**
+   * SKILL-140: a consumer's launch seam rejected an upstream producer's durable record. Quarantine the
+   * rejected record as private evidence and settle the consumer with the RECORD_REJECTED verdict so the
+   * existing transition machinery re-enters the producing phase under its bounded regeneration cap. A
+   * record with no attributable producer, or whose producer the resolved pipeline dropped, blocks
+   * durably with an actionable reason instead of attempting an impossible re-entry.
+   */
+  private fun settleRecordRejection(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    rejection: RecordRejection,
+  ): PhaseOutcome {
+    val consumer = run.phaseId
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER[consumer]
+    val edge = producer?.let { candidate ->
+      transitions.backwardEdges.firstOrNull {
+        it.fromPhaseId == consumer && it.destinationPhaseId == candidate &&
+          it.triggeringVerdict == FeatureTaskRuntimeVerdict.RECORD_REJECTED
+      }
+    }
+    if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
+      return blockUnattributableRecordRejection(run, iteration, observability, rejection, producer)
+    }
+    val rejectedRecord = state.outputFor(producer)
+    val producingIteration =
+      (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
+    val rejectedPayload = rejectedRecord?.payload ?: state.recordFor(producer)?.outputArtifact ?: "<unavailable>"
+    val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
+    recorder.appendQuarantineEntry(
+      request.workflowId,
+      FeatureTaskRuntimeQuarantineEntry(
+        producingPhaseId = producer,
+        consumingPhaseId = consumer,
+        producingIteration = producingIteration,
+        rejectionClass = rejection.rejectionClass,
+        rejectionDetail = boundedRejectionDetail(rejection.rejectionDetail),
+        regenerationAttempt = regenerationAttempt,
+        quarantinedAtIteration = iteration.coerceAtLeast(1),
+        rejectedRecordPayload = rejectedPayload,
+      ),
+      request.dbPathOverride,
+    )
+    return PhaseOutcome.regenerateProducer(producer)
+  }
+
+  private fun blockUnattributableRecordRejection(
+    run: PhaseRun,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    rejection: RecordRejection,
+    producer: String?,
+  ): PhaseOutcome {
+    val detail = boundedRejectionDetail(rejection.rejectionDetail)
+    val reason = if (producer == null) {
+      "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
+        "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
+        "applies; the run blocks durably. Recover the record out of band by deleting or migrating the " +
+        "offending row. Detail: $detail"
+    } else {
+      "Feature-task-runtime phase '${run.phaseId}' rejected the durable record produced by '$producer', but " +
+        "'$producer' is absent from this run's resolved pipeline (a goal-continuation truncation dropped it), " +
+        "so it cannot be regenerated in-band; the run blocks durably. Recover the record out of band by " +
+        "deleting or migrating the offending row. Detail: $detail"
+    }
+    return blockAndPersistInPhase(
+      run,
+      iteration,
+      reason,
+      observability,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+  }
+
+  private fun boundedRejectionDetail(detail: String): String {
+    val trimmed = detail.trim().ifBlank { "no detail available" }
+    return if (trimmed.length <= RECORD_REJECTION_DETAIL_MAX_CHARS) {
+      trimmed
+    } else {
+      trimmed.take(RECORD_REJECTION_DETAIL_MAX_CHARS) + "…(truncated)"
+    }
+  }
+
   @Suppress("LongParameterList")
   private fun attemptOnce(
     run: PhaseRun,
@@ -1478,6 +1612,9 @@ internal class FeatureTaskRuntimeRunLoop(
           fileManifest = launch.fileManifest,
         ),
       )
+    }
+    launch.recordRejection?.let { rejection ->
+      return AttemptResult.settled(settleRecordRejection(run, state, iteration, observability, rejection))
     }
     val fileManifest = requireNotNull(launch.fileManifest)
     return gateOutput(
@@ -2162,6 +2299,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
     priorSchemaFailure: String?,
+    durablyClosedCriterionRefs: List<String>,
   ): PreparedLaunch {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
@@ -2171,11 +2309,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       auditRepairPlan = run.reentry?.auditRepairPlan,
       auditRepairState = run.reentry?.auditRepairState,
-      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-        durablyClosedCriterionRefs()
-      } else {
-        emptyList()
-      },
+      durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repositoryCheckpoint = resolveRepositoryCheckpoint(run),
       expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
@@ -2229,11 +2363,28 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
+    // Read the audit's own durably-closed criterion refs OUTSIDE the quarantine-guarded region: a
+    // drift here (audit_repair_state.satisfied_criterion_refs naming undeclared criteria) is audit's
+    // own state, not an upstream producer record, so re-running a producer cannot fix it. It keeps the
+    // first-occurrence durable block.
+    val durablyClosedCriterionRefs = try {
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        durablyClosedCriterionRefs()
+      } else {
+        emptyList()
+      }
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected its durable audit-repair state at the launch seam: " +
+          error.message,
+      )
+    }
     val prepared = try {
-      prepareLaunch(run, state, priorSchemaFailure)
+      prepareLaunch(run, state, priorSchemaFailure, durablyClosedCriterionRefs)
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
-      // A projection rejection is static declaration/config drift, not agent output: block the phase
-      // durably instead of unwinding out of a run that already persisted STATUS_RUNNING.
+      // A handoff-projection rejection is static declaration/config drift, not a legacy producer
+      // record: re-running the producer cannot fix a wrong declaration. Block the phase durably instead
+      // of unwinding out of a run that already persisted STATUS_RUNNING.
       return LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
           error.message,
@@ -2247,15 +2398,18 @@ internal class FeatureTaskRuntimeRunLoop(
           error.message,
       )
     } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-      // A producing phase is already settled completed by the time its projection is parsed, so an
-      // unhandled throw here would unwind past the handler that persisted STATUS_RUNNING and leave the
-      // row running with no blockedReason, crashing identically on every later resume. Block durably
-      // instead, naming the producing phase so the operator knows which record to migrate or delete.
-      return LaunchResult.projectionRejected(
-        "Feature-task-runtime phase '${run.phaseId}' rejected an upstream bounded planning projection at the " +
-          "launch seam (workflow '${run.request.workflowId}'): ${error.message}",
+      // A legacy or drifted upstream producer record failed bounded-projection validation. Rather than
+      // wedge the consumer on a record it cannot repair, quarantine the record as private evidence and
+      // re-enter the producing phase under a bounded regeneration cap.
+      return LaunchResult.recordRejected(
+        QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
+        error.message.orEmpty(),
       )
     } catch (error: InvalidWorkflowStateSchemaError) {
+      // A durable handoff/briefing artifact failed schema validation at the launch seam (a stale
+      // briefing row, a forbidden legacy field). This is corruption drift a producer re-run cannot
+      // reliably repair — the artifact's own contract says recover it out of band — so it keeps the
+      // first-occurrence durable block rather than entering the quarantine-and-regenerate edge.
       return LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
           error.message,
@@ -2367,6 +2521,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val prompt: String,
   )
 
+  // SKILL-140: a launch-seam rejection of an upstream producer's durable record, carrying only the
+  // typed class and bounded validation detail; producer attribution happens in the run loop.
+  private data class RecordRejection(val rejectionClass: String, val rejectionDetail: String)
+
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
@@ -2377,9 +2535,14 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
       val disposition: FeatureTaskRuntimeFailureDisposition,
     ) : LaunchResult
+    private data class RecordRejected(
+      val rejection: RecordRejection,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
       get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
@@ -2393,6 +2556,14 @@ internal class FeatureTaskRuntimeRunLoop(
       /** Static declaration or configuration drift: retrying without operator action reproduces it. */
       fun projectionRejected(reason: String): LaunchResult =
         InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
+
+      /**
+       * A durable upstream producer record was rejected at projection validation: the run quarantines
+       * it and re-enters the producer under a bounded regeneration cap rather than blocking on first
+       * occurrence.
+       */
+      fun recordRejected(rejectionClass: String, rejectionDetail: String): LaunchResult =
+        RecordRejected(RecordRejection(rejectionClass, rejectionDetail))
     }
   }
 
@@ -2426,13 +2597,21 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class Completed(val output: FeatureTaskRuntimePhaseOutput) : PhaseOutcome
     private data class Blocked(val reason: String) : PhaseOutcome
 
+    // SKILL-140: the consumer rejected an upstream producer's record and quarantined it; the run
+    // settles the consumer with the RECORD_REJECTED verdict so the existing transition machinery
+    // re-enters this producer under a bounded regeneration cap.
+    private data class RegenerateProducer(val producerPhaseId: String) : PhaseOutcome
+
     val completedOutput: FeatureTaskRuntimePhaseOutput? get() = (this as? Completed)?.output
 
     val blockedReason: String? get() = (this as? Blocked)?.reason
 
+    val regenerationTargetPhaseId: String? get() = (this as? RegenerateProducer)?.producerPhaseId
+
     companion object {
       fun completed(output: FeatureTaskRuntimePhaseOutput): PhaseOutcome = Completed(output)
       fun blocked(reason: String): PhaseOutcome = Blocked(reason)
+      fun regenerateProducer(producerPhaseId: String): PhaseOutcome = RegenerateProducer(producerPhaseId)
     }
   }
 
@@ -2449,6 +2628,10 @@ internal class FeatureTaskRuntimeRunLoop(
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
+
+// Bounds the schema-locations detail carried into a quarantine entry and a block reason. Schema
+// locations only, never record bodies, so this is a defensive ceiling rather than a content filter.
+private const val RECORD_REJECTION_DETAIL_MAX_CHARS = 2_000
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'

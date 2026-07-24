@@ -70,8 +70,23 @@ data class FeatureTaskRuntimeFinishedRequest(
   val auditNewGapCount: Int = 0,
   val auditAttemptedRepairItemCount: Int = 0,
   val auditResolvedRepairItemCount: Int = 0,
+  // SKILL-140: per-run quarantine-and-regenerate counters (AC-006). Counts and outcome classes only,
+  // sourced from the durable quarantine store and LOOP_EDGE ledger; never agent-self-reported.
+  val regenerationActivationCount: Int = 0,
+  val regenerationAttemptCount: Int = 0,
+  val regenerationOutcomeCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
+)
+
+/**
+ * SKILL-140: per-run quarantine-and-regenerate telemetry, sourced from durable state. Counts and
+ * outcome-class labels only; never carries record contents, prompts, plan bodies, or receipt bodies.
+ */
+data class FeatureTaskRuntimeRegenerationTelemetry(
+  val activationCount: Int = 0,
+  val attemptCount: Int = 0,
+  val outcomeCounts: Map<String, Int> = emptyMap(),
 )
 
 data class QualityCheckStartedRequest(

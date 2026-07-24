@@ -240,6 +240,17 @@ internal class FeatureTaskRuntimeRunState(
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
   }
 
+  // SKILL-140: a quarantined producer's rejected output is invalidated so no consumer re-consumes it.
+  // Unlike [reopenForReentry], the prior output is DROPPED from `outputs` (it is unprojectable
+  // evidence, not a usable prior result), so selectLatestOutputsByPhase cannot surface it before the
+  // producer regenerates. `nextIteration` still advances past the durable attempt watermark, so the
+  // regenerated output takes a strictly higher iteration and supersedes the rejected record.
+  fun invalidateProducerOutput(phaseId: String) {
+    completed.remove(phaseId)
+    outputs.removeAll { it.phaseId == phaseId }
+    fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
+  }
+
   // The 1-based same-phase fix-loop iteration relative to the current visit's budget baseline, so the
   // schema-retry budget counts only attempts within this visit, not backward-edge re-visits.
   fun fixLoopIterationFor(phaseId: String, absoluteIteration: Int): Int =

@@ -50,6 +50,7 @@ import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
@@ -179,6 +180,7 @@ import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
@@ -563,6 +565,14 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeHandoffEnvelopeValidator(
     adapter: FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter,
   ): FeatureTaskRuntimeHandoffEnvelopeValidator = adapter
+
+  // SKILL-140: the canonical quarantine schema gate. The recorder's append and read seams call this
+  // port so a malformed private-evidence store fails loudly rather than round-tripping silently.
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeQuarantineValidator(
+    adapter: FeatureTaskRuntimeQuarantineValidatorAdapter,
+  ): FeatureTaskRuntimeQuarantineValidator = adapter
 
   @Provides
   @JvmSynthetic

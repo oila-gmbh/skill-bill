@@ -41,7 +41,13 @@ internal fun transitionsFor(request: FeatureTaskRuntimeRunRequest): FeatureTaskR
   request.transitionsOverride ?: phasesFor(request).let { phases ->
     FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = phases,
-      backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges,
+      // Backward edges whose endpoints both survive the goal-continuation truncation. An edge naming a
+      // phase the resolved pipeline dropped would fail the declaration's endpoint invariant here,
+      // outside the runner's failure handling. A regeneration edge whose producer was truncated away
+      // therefore simply does not exist for this run: the launch seam finds no matching edge and
+      // blocks durably with an actionable reason instead of attempting an impossible re-entry.
+      backwardEdges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+        .filter { it.fromPhaseId in phases && it.destinationPhaseId in phases },
       loopOnlyPhaseIds = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
         .filter { it in phases }.toSet(),
       // Gates whose endpoints both survive the goal-continuation truncation. A gate naming a phase

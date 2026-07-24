@@ -92,7 +92,7 @@ Every YAML under `orchestration/contracts/` is a runtime contract. New contract 
 
 Runtime contract schemas are internal implementation details and stay out of the desktop user-facing tree.
 
-Schema introductions and version bumps intentionally loud-fail legacy durable records; operators recover by deleting or migrating affected rows out of band. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
+Schema introductions and version bumps loud-fail legacy records; the runtime quarantines and regenerates them in-band, out-of-band surgery the fallback. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
 
 A feature-task-runtime phase owning a bounded planning projection (`preplan`, `plan`, `implement`) is gated producer-side: a completed output failing its projection contract re-enters that phase's own bounded fix loop instead of blocking a consumer that cannot repair it. The gate and the consumer launch seam share one validation function and validator port; blocked/failed outputs and decompose plans bypass it.
 

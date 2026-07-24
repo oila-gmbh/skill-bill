@@ -216,6 +216,20 @@ class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
 )
 
 /**
+ * Surfaced when the durable feature-task-runtime quarantine record (the append-only list of
+ * rejected upstream records) fails the canonical quarantine schema. Keeps the private evidence
+ * store's parse seam loud so a malformed quarantine artifact never rounds trips silently.
+ */
+class InvalidFeatureTaskRuntimeQuarantineSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime quarantine record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when a feature-task-runtime path would enter a gated phase before its gating phase
  * settled with the required verdict — for example entering `review` before `audit` reached
  * `satisfied`. The message names the attempted phase, the gating phase, the required verdict, and

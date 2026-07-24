@@ -69,6 +69,12 @@ data class FeatureTaskRuntimeFinishedRecord(
   val auditNewGapCount: Int = 0,
   val auditAttemptedRepairItemCount: Int = 0,
   val auditResolvedRepairItemCount: Int = 0,
+  // SKILL-140: per-run quarantine-and-regenerate counters (AC-006). Counts only: how many times the
+  // launch seam quarantined an upstream record, how many regeneration attempts fired across all
+  // regeneration loops, and the outcome class tally. Never carries record contents.
+  val regenerationActivationCount: Int = 0,
+  val regenerationAttemptCount: Int = 0,
+  val regenerationOutcomeCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
 )

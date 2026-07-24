@@ -327,6 +327,13 @@ internal object DatabaseColumnMigrations {
     ).forEach { column ->
       ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
     }
+    listOf(
+      "regeneration_activation_count",
+      "regeneration_attempt_count",
+    ).forEach { column ->
+      ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
+    }
+    ensureColumn(connection, "feature_task_runtime_sessions", "regeneration_outcome_counts_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
     ensureColumn(

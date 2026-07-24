@@ -1945,6 +1945,13 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap",
+      // SKILL-140: durable append-only quarantine evidence store (private, prompt-invisible) and its
+      // domain-owned schema validator port (infra-fs adapter bound in DI).
+      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap",

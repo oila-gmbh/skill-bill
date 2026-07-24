@@ -1091,6 +1091,21 @@ $defs:
         type: integer
       audit_resolved_repair_item_count:
         type: integer
+      regeneration_activation_count:
+        type: integer
+        description: >-
+          How many times a launch seam quarantined an upstream record and activated the
+          quarantine-and-regenerate edge this run. Counts only; no record contents.
+      regeneration_attempt_count:
+        type: integer
+        description: >-
+          Total regeneration attempts (LOOP_EDGE fires) across all regeneration loops this run.
+      regeneration_outcome_counts:
+        type: object
+        additionalProperties: true
+        description: >-
+          Per-run tally of regeneration outcome classes (for example regenerated, cap_exhausted,
+          unattributable, producer_not_in_pipeline). Counts and class labels only.
       last_incomplete_phase:
         type: string
         description: >-

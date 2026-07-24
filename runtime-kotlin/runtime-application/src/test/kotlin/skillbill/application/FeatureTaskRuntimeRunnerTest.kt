@@ -4158,7 +4158,13 @@ internal class TelemetryRunnerHarness(
   val lifecycle: RecordingLifecycleTelemetryRepository,
   val request: FeatureTaskRuntimeRunRequest,
   val database: RuntimeFakeDatabaseSessionFactory,
-)
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+) {
+  fun seedPhase(phaseId: String, status: String, attemptCount: Int, agentId: String, outputArtifact: String?) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
+  }
+}
 
 internal fun telemetryRunnerHarness(
   launcher: RuntimeRecordingLauncher = RuntimeRecordingLauncher { request -> facts(defaultPhaseOutput(request)) },
@@ -4217,7 +4223,7 @@ internal fun telemetryRunnerHarness(
     dbPathOverride = runtimeConfig.dbPathOverride,
     repoRoot = runtimeConfig.repoRoot,
   )
-  return TelemetryRunnerHarness(runner, lifecycle, request, database)
+  return TelemetryRunnerHarness(runner, lifecycle, request, database, recorder)
 }
 
 private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner = FeatureTaskRuntimeDecompositionPlanner(

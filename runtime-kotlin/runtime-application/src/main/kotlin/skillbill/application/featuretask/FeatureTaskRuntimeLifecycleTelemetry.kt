@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
@@ -10,6 +11,9 @@ import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+
+private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
+  { FeatureTaskRuntimeRegenerationTelemetry() }
 
 /**
  * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
@@ -47,6 +51,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
@@ -57,6 +62,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       val outcomes = phaseOutcomes()
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -73,6 +79,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           auditNewGapCount = auditProgress?.newGapCount ?: 0,
           auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
           auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          regenerationActivationCount = regeneration.activationCount,
+          regenerationAttemptCount = regeneration.attemptCount,
+          regenerationOutcomeCounts = regeneration.outcomeCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),
@@ -93,6 +102,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
   ) {
@@ -111,6 +121,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
         .getOrDefault(emptyMap())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
       lifecycleTelemetryService.featureTaskRuntimeFinished(
         FeatureTaskRuntimeFinishedRequest(
           sessionId = telemetrySessionId,
@@ -131,6 +142,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           auditNewGapCount = auditProgress?.newGapCount ?: 0,
           auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
           auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          regenerationActivationCount = regeneration.activationCount,
+          regenerationAttemptCount = regeneration.attemptCount,
+          regenerationOutcomeCounts = regeneration.outcomeCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
         ),

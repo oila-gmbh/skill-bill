@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePreparation
+import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
@@ -19,6 +20,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -122,6 +124,7 @@ class FeatureTaskRuntimeRunner(
     val auditRepairProgress = {
       loadAuditRepairProgress(runRequest)
     }
+    val regenerationTelemetry = { loadRegenerationTelemetry(runRequest) }
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
@@ -161,6 +164,7 @@ class FeatureTaskRuntimeRunner(
         reviewFixIterationCount,
         auditGapIterationCount,
         auditRepairProgress,
+        regenerationTelemetry,
         runRequest.dbPathOverride,
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
       )
@@ -175,6 +179,7 @@ class FeatureTaskRuntimeRunner(
       reviewFixIterationCount,
       auditGapIterationCount,
       auditRepairProgress,
+      regenerationTelemetry,
       runRequest.dbPathOverride,
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
     )
@@ -258,6 +263,47 @@ class FeatureTaskRuntimeRunner(
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
       ?: 0
+
+  // SKILL-140: per-run quarantine-and-regenerate telemetry (AC-006), all sourced from the runtime's own
+  // durable state (quarantine store + LOOP_EDGE ledger + blocked records), never agent-self-reported.
+  // Activation = a distinct producer whose regeneration loop fired; attempt = each regeneration edge
+  // fire; outcome tally is derived from cap-exhaustion/attribution blocks. Counts and class labels only.
+  private fun loadRegenerationTelemetry(
+    request: FeatureTaskRuntimeRunRequest,
+  ): FeatureTaskRuntimeRegenerationTelemetry {
+    val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
+    val regenFires = ledger.filter {
+      it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
+        FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it.loopId.orEmpty())
+    }
+    val firedLoops = regenFires.mapNotNull { it.loopId }.toSet()
+    val blocked = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+      .orEmpty()
+      .values
+      .filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
+    val capExhaustedLoops = blocked
+      .mapNotNull { it.loopId }
+      .filter(FeatureTaskRuntimePhaseWorkflowDefinition::isRegenerationLoopId)
+      .toSet()
+    val unattributable = blocked.count {
+      (it.blockedReason ?: "").contains("cannot attribute to a producing phase")
+    }
+    val producerNotInPipeline = blocked.count {
+      (it.blockedReason ?: "").contains("absent from this run's resolved pipeline")
+    }
+    val regenerated = (firedLoops - capExhaustedLoops).size
+    val outcomeCounts = buildMap {
+      if (regenerated > 0) put("regenerated", regenerated)
+      if (capExhaustedLoops.isNotEmpty()) put("cap_exhausted", capExhaustedLoops.size)
+      if (unattributable > 0) put("unattributable", unattributable)
+      if (producerNotInPipeline > 0) put("producer_not_in_pipeline", producerNotInPipeline)
+    }
+    return FeatureTaskRuntimeRegenerationTelemetry(
+      activationCount = firedLoops.size,
+      attemptCount = regenFires.size,
+      outcomeCounts = outcomeCounts,
+    )
+  }
 
   // The Seam A ledger-derived finalizing agent for the single-spec completion-time `Agent:` line; the
   // spec gate invokes this lazily only when it decides to write (terminal, non-goal-continuation run).

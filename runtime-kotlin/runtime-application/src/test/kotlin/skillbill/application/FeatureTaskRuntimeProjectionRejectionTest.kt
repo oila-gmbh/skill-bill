@@ -102,11 +102,11 @@ class FeatureTaskRuntimeProjectionRejectionTest {
   }
 
   @Test
-  fun `a legacy free-form upstream record blocks the consumer durably instead of aborting the driver`() {
-    // F-002: the planning-projection parse seam threw an error type no run-loop catch site handled, so
-    // resuming a run whose durable plan output predates the bounded projection unwound past the
-    // handler that had already persisted STATUS_RUNNING, leaving the row running with no
-    // blockedReason and crashing identically on every later resume.
+  fun `a legacy free-form upstream record quarantines and regenerates the producer instead of blocking`() {
+    // SKILL-140 (AC-001, AC-002): a durable plan record predating the bounded projection (no
+    // projection_kind) is no longer a first-occurrence durable block. The launch seam quarantines it as
+    // private evidence and re-enters the plan phase; a subsequently valid plan advances the run with no
+    // operator action. Out-of-band row surgery is the corruption fallback, not the primary recovery.
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
@@ -125,19 +125,25 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "bounded planning projection")
-    assertContains(blocked.blockedReason, "plan#produced_outputs")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    // The plan phase regenerated, and the consumer advanced past it under the valid regenerated record.
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "plan" }, "the plan phase must regenerate")
     assertTrue(
-      harness.launchedPromptPhaseOrder().none { it == "implement" },
-      "the consumer must not launch against an unparseable upstream record",
+      harness.launchedPromptPhaseOrder().any { it == "implement" },
+      "the consumer advances after the producer regenerates a valid record",
     )
-
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals("blocked", record.status)
-    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
-    assertTrue(requireNotNull(record.blockedReason).isNotBlank())
+    // The rejected record survives as private quarantine evidence attributed to its producing phase.
+    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
+    assertEquals("implement", entry.consumingPhaseId)
+    assertContains(entry.rejectedRecordPayload, "free-form legacy body")
+    // Evidence is never delivered to any agent prompt.
+    assertTrue(
+      harness.launcher.requests.none {
+        requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
+      },
+      "quarantined evidence must never reach an agent prompt",
+    )
   }
 
   // A receipt sized like a real MEDIUM/LARGE feature: many changed paths plus populated test and

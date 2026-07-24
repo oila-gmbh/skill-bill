@@ -62,6 +62,23 @@ object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 }
 
+/**
+ * Runtime-side mirror of the quarantine schema's `contract_version`;
+ * `FeatureTaskRuntimeQuarantineSchemaContractVersionTest` fails the build if they diverge.
+ * Pins the durable append-only quarantined-record list the launch-seam quarantine-and-regenerate
+ * edge writes.
+ */
+const val FEATURE_TASK_RUNTIME_QUARANTINE_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeQuarantineSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-quarantine-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-quarantine-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-quarantine-schema.yaml"
+}
+
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {

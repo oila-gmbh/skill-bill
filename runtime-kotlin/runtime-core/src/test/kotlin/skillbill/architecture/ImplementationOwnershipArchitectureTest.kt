@@ -160,6 +160,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
       "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator",
+      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator",
       "skillbill.workflow.GoalObservabilityEventValidator",
       "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
       "skillbill.workflow.GoalProgressEventValidator",

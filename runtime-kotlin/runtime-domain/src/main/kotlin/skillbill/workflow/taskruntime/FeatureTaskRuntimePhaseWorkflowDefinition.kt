@@ -57,6 +57,38 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
   const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
 
+  // SKILL-140: per-producer regeneration loop ids. A launch seam that quarantines an upstream
+  // producer's rejected durable record re-enters that producer under its own bounded loop, so each
+  // producer's regeneration cap and telemetry count are tracked independently of the others.
+  const val PREPLAN_REGENERATION_LOOP_ID: String = "regenerate_preplan"
+  const val PLAN_REGENERATION_LOOP_ID: String = "regenerate_plan"
+  const val IMPLEMENT_REGENERATION_LOOP_ID: String = "regenerate_implement"
+
+  // The pinned per-edge regeneration cap: a quarantined producer is re-run at most this many times
+  // before the run blocks durably naming the quarantined record, producing phase, and attempt count.
+  const val MAX_RECORD_REGENERATION_ATTEMPTS: Int = 2
+
+  // The pinned consumer-phase -> (producing phase, regeneration loop id) mapping the launch seam and
+  // the backward edges share. Each consumer that parses exactly one bounded planning projection from a
+  // producer maps to that producer's regeneration edge. A consumer absent from this map has no
+  // attributable producer, so its rejection blocks durably rather than re-entering an impossible edge.
+  val REGENERATION_LOOP_ID_BY_PRODUCER: Map<String, String> = mapOf(
+    PHASE_PREPLAN to PREPLAN_REGENERATION_LOOP_ID,
+    PHASE_PLAN to PLAN_REGENERATION_LOOP_ID,
+    PHASE_IMPLEMENT to IMPLEMENT_REGENERATION_LOOP_ID,
+  )
+
+  // Consumer phase -> the producer whose bounded planning projection it parses at its launch seam.
+  val REGENERATION_PRODUCER_BY_CONSUMER: Map<String, String> = mapOf(
+    PHASE_PLAN to PHASE_PREPLAN,
+    PHASE_IMPLEMENT to PHASE_PLAN,
+    PHASE_AUDIT to PHASE_IMPLEMENT,
+  )
+
+  val REGENERATION_LOOP_IDS: Set<String> = REGENERATION_LOOP_ID_BY_PRODUCER.values.toSet()
+
+  fun isRegenerationLoopId(loopId: String): Boolean = loopId in REGENERATION_LOOP_IDS
+
   // Mutating phases reconcile the working tree to an intended target state. They are the phases the
   // idempotency contract governs: re-entering or resuming one must converge to target, treating an
   // already-applied change as a no-op rather than re-applying it. `implement` mutates from
@@ -349,6 +381,30 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = AUDIT_GAP_LOOP_ID,
           perEdgeCap = null,
+        ),
+        // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
+        // durable record at its launch seam re-enters that producer under a bounded cap; cap
+        // exhaustion blocks durably (BLOCK, the default), naming the quarantined record.
+        FeatureTaskRuntimeBackwardEdge(
+          fromPhaseId = PHASE_PLAN,
+          triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+          destinationPhaseId = PHASE_PREPLAN,
+          loopId = PREPLAN_REGENERATION_LOOP_ID,
+          perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+        ),
+        FeatureTaskRuntimeBackwardEdge(
+          fromPhaseId = PHASE_IMPLEMENT,
+          triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+          destinationPhaseId = PHASE_PLAN,
+          loopId = PLAN_REGENERATION_LOOP_ID,
+          perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+        ),
+        FeatureTaskRuntimeBackwardEdge(
+          fromPhaseId = PHASE_AUDIT,
+          triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+          destinationPhaseId = PHASE_IMPLEMENT,
+          loopId = IMPLEMENT_REGENERATION_LOOP_ID,
+          perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

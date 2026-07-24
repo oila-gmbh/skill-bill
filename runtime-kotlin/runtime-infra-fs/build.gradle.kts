@@ -355,6 +355,24 @@ val copyFeatureTaskRuntimePlanningProjectionsSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeQuarantineSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-quarantine-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeQuarantineSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeQuarantineSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeQuarantineSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-140: canonical quarantine schema is missing at $schemaPath."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -378,6 +396,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
+  dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
 }
 
 tasks.named("processTestResources") {
@@ -399,6 +418,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
+  dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
 }
 
 tasks.withType<Test>().configureEach {

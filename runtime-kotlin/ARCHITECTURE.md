@@ -470,6 +470,11 @@ runtime-ports
     - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+    - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
@@ -847,9 +852,49 @@ expected projection kind, and the underlying validation failure (its source labe
 plus reason), bounded by the existing `SCHEMA_GATE_DETAIL_MAX_CHARS` schema-gate
 detail truncation — no second truncation rule.
 
-Canonicalization, quarantine, and reconciliation of malformed durable projection
-records belong to later SKILL-140 subtasks; this subtask enforces the producer
-side only.
+### Quarantine-and-regenerate (SKILL-140 Subtask 4)
+
+Producer-side gating (Subtask 1) reduces launch-seam rejections to legacy and
+drift records — precisely the population an in-band recovery edge can repair.
+When `FeatureTaskRuntimeRunLoop.launchAndCapture` catches
+`InvalidFeatureTaskRuntimePlanningProjectionSchemaError` or an
+`InvalidWorkflowStateSchemaError` on an upstream handoff envelope, it no longer
+blocks on first occurrence. Instead the consumer settles with the synthetic
+`RECORD_REJECTED` verdict, which drives the existing
+`FeatureTaskRuntimeTransitionFunction` over a pinned consumer→producer
+regeneration edge (`plan`→`preplan`, `implement`→`plan`, `audit`→`implement`,
+each with its own `regenerate_*` loop id and the `MAX_RECORD_REGENERATION_ATTEMPTS`
+cap). No parallel state machine is introduced: the same loop-id, edge-iteration,
+watermark, and crash-resume machinery the review-fix and audit-gap loops use
+bounds regeneration, so a crash mid-regeneration resumes the same cap sequence
+without reset.
+
+Before the edge fires, the rejected record is appended to a durable, append-only
+quarantine store (`FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY`,
+validated by the canonical quarantine schema). That store is private evidence: it
+is never resolved into an upstream projection, so no rejected byte reaches an
+agent prompt or briefing, and no runtime path ever mutates or deletes an entry —
+only out-of-band operator action may. The producer's settled `completed` status
+is invalidated through the existing phase-record machinery (its rejected payload
+moves to `rejected_output`, its status returns to `running`), so the handoff
+contract's `selectLatestOutputsByPhase` no longer surfaces the rejected record and
+the regenerated higher-iteration output supersedes it on this or any resumed run.
+
+Cap exhaustion blocks durably with a reason naming the quarantined record, its
+producing phase, and the attempt count. A record the runtime cannot attribute to
+a producing phase, or whose producer a goal-continuation truncation dropped from
+the resolved pipeline, blocks durably with an actionable reason rather than
+attempting an impossible re-entry. Static declaration/config drift
+(`InvalidFeatureTaskRuntimeHandoffProjectionError`), briefing byte-ceiling
+overflow, and an audit's own `audit_repair_state` drift keep their
+first-occurrence durable block: re-running a producer cannot fix them.
+Out-of-band row deletion or migration is the corruption fallback for records the
+edge cannot regenerate. Per-run regeneration telemetry records activation counts,
+attempt counts, and outcome-class tallies on the `feature_task_runtime_finished`
+event — counts and class labels only, never record contents.
+
+Canonicalization and reconciliation of malformed durable projection records
+beyond this recovery edge belong to later SKILL-140 subtasks.
 
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
@@ -1092,6 +1137,11 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+- `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`

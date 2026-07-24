@@ -279,6 +279,9 @@ internal object DatabaseSchema {
         audit_new_gap_count INTEGER NOT NULL DEFAULT 0,
         audit_attempted_repair_item_count INTEGER NOT NULL DEFAULT 0,
         audit_resolved_repair_item_count INTEGER NOT NULL DEFAULT 0,
+        regeneration_activation_count INTEGER NOT NULL DEFAULT 0,
+        regeneration_attempt_count INTEGER NOT NULL DEFAULT 0,
+        regeneration_outcome_counts_json TEXT,
         duplicate_terminal_finished_events INTEGER NOT NULL DEFAULT 0,
         finished_at TEXT,
         finished_event_emitted_at TEXT
