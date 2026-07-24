@@ -1,7 +1,10 @@
 package skillbill.application
 
+import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -143,6 +146,158 @@ class FeatureTaskRuntimeProjectionRejectionTest {
         requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
       },
       "quarantined evidence must never reach an agent prompt",
+    )
+  }
+
+  @Test
+  fun `a legacy launch-seam projection-rejection block is re-entered and self-heals on resume`() {
+    // SKILL-140 (AC-003, AC-008, AC-010): a consumer phase durably blocked by a PRE-quarantine build's
+    // launch-seam planning-projection rejection (persisted needs_user_action) is stale, not terminal. On
+    // resume the phase re-enters, the live seam quarantines the offending upstream record and regenerates
+    // its producer, and the run advances with no reset and no operator surgery.
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    // The upstream implement record predates the bounded projection (free-form body, no projection_kind).
+    harness.seedPhase(
+      "implement",
+      "completed",
+      1,
+      phaseAgent("implement"),
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}""",
+    )
+    // The consumer was blocked by the pre-quarantine build with the exact legacy launch-seam reason, and
+    // those rejections already spent its fix-loop budget (attempt 4 > cap 3). Re-entry must restart the
+    // budget — the consumer never actually ran — so it reaches the live seam instead of re-blocking.
+    harness.seedBlockedPhase(
+      "audit",
+      4,
+      phaseAgent("audit"),
+      "Feature-task-runtime phase 'audit' rejected an upstream bounded planning projection at the launch " +
+        "seam (workflow '$WORKFLOW_ID'): implement#produced_outputs fails schema validation.",
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    // audit re-entered rather than re-surfacing the durable block, and the rejected producer regenerated.
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" }, "the blocked audit phase must re-enter")
+    assertTrue(
+      harness.launchedPromptPhaseOrder().any { it == "implement" },
+      "the rejected upstream producer regenerates",
+    )
+    // The rejected implement record survives as private quarantine evidence attributed to its producer.
+    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
+    assertEquals("audit", entry.consumingPhaseId)
+    assertContains(entry.rejectedRecordPayload, "free-form legacy body")
+    assertTrue(
+      harness.launcher.requests.none {
+        requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
+      },
+      "quarantined evidence must never reach an agent prompt",
+    )
+  }
+
+  @Test
+  fun `a legacy handoff-envelope launch-seam block stays durably blocked on resume`() {
+    // AC-014: only the planning-projection launch-seam rejection is re-enterable. A durable
+    // handoff-envelope rejection is corruption drift a producer re-run cannot repair, so it keeps its
+    // first-occurrence durable block and is never silently re-entered.
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), validJsonOutput("implement"))
+    harness.seedBlockedPhase(
+      "audit",
+      1,
+      phaseAgent("audit"),
+      "Feature-task-runtime phase 'audit' rejected a durable handoff envelope at the launch seam: " +
+        "stale briefing row.",
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "handoff envelope")
+    assertTrue(
+      harness.launchedPromptPhaseOrder().none { it == "audit" },
+      "a non-record-rejection block is never re-entered",
+    )
+  }
+
+  @Test
+  fun `a launch-seam block already overwritten with fix-loop exhaustion is recovered from the ledger`() {
+    // The production-observed state: a first re-entry of a legacy launch-seam block predated the budget
+    // restart, spent the already-exhausted fix-loop budget, and overwrote the reason with the generic
+    // exhaustion text. The ledger still shows the prior block was the launch-seam rejection, so the phase
+    // re-enters, restarts its budget, reaches the live seam, quarantines the record, and self-heals.
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    harness.seedPhase(
+      "implement",
+      "completed",
+      1,
+      phaseAgent("implement"),
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}""",
+    )
+    val launchSeamReason =
+      "Feature-task-runtime phase 'audit' rejected an upstream bounded planning projection at the launch " +
+        "seam (workflow '$WORKFLOW_ID'): implement#produced_outputs fails schema validation."
+    val exhaustionReason =
+      "Phase 'audit' exhausted the bounded fix loop after 3 attempts (cap=3); the run blocks rather than " +
+        "advancing on invalid output."
+    // The persisted phase record carries the exhaustion overwrite; the ledger still shows the original
+    // launch-seam rejection (older) followed by that exhaustion overwrite (newest).
+    harness.seedBlockedPhase(
+      "audit",
+      4,
+      phaseAgent("audit"),
+      exhaustionReason,
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+    listOf(3 to launchSeamReason, 4 to exhaustionReason).forEach { (attempt, reason) ->
+      harness.recorder.appendLedgerEntry(
+        FeatureTaskRuntimePhaseLedgerRequest(
+          workflowId = WORKFLOW_ID,
+          action = FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
+          phaseId = "audit",
+          attemptCount = attempt,
+          resolvedAgentId = phaseAgent("audit"),
+          blockedReason = reason,
+        ),
+      )
+    }
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" }, "the blocked audit phase must re-enter")
+    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    assertTrue(
+      quarantined.any { it.producingPhaseId == "implement" && it.consumingPhaseId == "audit" },
+      "the rejected implement record is quarantined once the phase reaches the live seam",
     )
   }
 

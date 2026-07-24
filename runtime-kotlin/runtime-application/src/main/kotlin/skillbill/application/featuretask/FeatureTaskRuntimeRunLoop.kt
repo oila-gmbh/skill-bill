@@ -1295,12 +1295,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
       val nextIteration = state.nextIteration(run.phaseId)
       val durable = state.recordFor(run.phaseId)
-      val retryReviewPreparation = isRetryableGoalReviewPreparation(run.phaseId, persistedReason) ||
-        state.legacyReviewPreparationRetryConsumedBudget(run.phaseId, persistedReason)
-      if (retryReviewPreparation) {
-        state.restartAttemptBudget(run.phaseId)
-      }
-      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation, persistedReason)) {
+      if (shouldRelaunchPersistedBlock(state, run.phaseId, durable, persistedReason)) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
@@ -1364,15 +1359,61 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
 
+  // A pre-quarantine build blocked a launch-seam planning-projection rejection with a terminal
+  // needs_user_action disposition; the current seam instead quarantines the upstream record and
+  // regenerates its producer. Such a legacy row is stale, not terminal: re-enter the phase so the live
+  // seam routes it through the quarantine-and-regenerate edge. Matches only that one legacy phrase, and
+  // only where a regeneration producer exists, so every other launch-seam block and any genuinely
+  // unmigratable record keeps its first-occurrence durable block.
+  private fun isReenterableLaunchSeamRecordRejection(phaseId: String, reason: String): Boolean =
+    reason.contains(LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION) &&
+      FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER.containsKey(phaseId)
+
+  // A launch-seam record rejection never ran the consumer, so its attempts are not real fix-loop output
+  // attempts. Re-enterable whether the block still carries the launch-seam reason or was already
+  // overwritten with the generic fix-loop-exhaustion text on a prior re-entry (recognized from the ledger).
+  private fun isReenterableRecordRejection(
+    state: FeatureTaskRuntimeRunState,
+    phaseId: String,
+    reason: String,
+  ): Boolean = isReenterableLaunchSeamRecordRejection(phaseId, reason) ||
+    state.legacyLaunchSeamRejectionConsumedBudget(phaseId, reason)
+
+  // Decides whether a phase with a persisted block relaunches instead of re-surfacing it, restarting the
+  // fix-loop budget for the re-enterable stale-block classes whose prior attempts were not real output
+  // attempts (goal-review preparation retries, launch-seam record rejections).
+  private fun shouldRelaunchPersistedBlock(
+    state: FeatureTaskRuntimeRunState,
+    phaseId: String,
+    durable: FeatureTaskRuntimePhaseRecord?,
+    persistedReason: String,
+  ): Boolean {
+    val retryReviewPreparation = isRetryableGoalReviewPreparation(phaseId, persistedReason) ||
+      state.legacyReviewPreparationRetryConsumedBudget(phaseId, persistedReason)
+    val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
+    if (retryReviewPreparation || reenterableRecordRejection) {
+      state.restartAttemptBudget(phaseId)
+    }
+    return shouldRetryPersistedBlock(
+      phaseId,
+      durable,
+      retryReviewPreparation,
+      reenterableRecordRejection,
+      persistedReason,
+    )
+  }
+
   private fun shouldRetryPersistedBlock(
     phaseId: String,
     durable: FeatureTaskRuntimePhaseRecord?,
     retryReviewPreparation: Boolean,
+    reenterableRecordRejection: Boolean,
     persistedReason: String,
   ): Boolean {
     val disposition = durable?.failureDisposition
     return when {
       retryReviewPreparation -> true
+      reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
@@ -2634,6 +2675,12 @@ internal class FeatureTaskRuntimeRunLoop(
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
+
+// The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
+// planning projection. The current seam quarantines the record and regenerates its producer instead,
+// so this phrase is emitted by no live path and only ever matches a legacy durable row.
+private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
+  "rejected an upstream bounded planning projection at the launch seam"
 
 // Bounds the schema-locations detail carried into a quarantine entry and a block reason. Schema
 // locations only, never record bodies, so this is a defensive ceiling rather than a content filter.
