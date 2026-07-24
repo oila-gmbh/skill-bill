@@ -336,6 +336,46 @@ class AgentRunCommandBuildersTest {
     assertNotNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
+  @Test
+  fun `claude builder forwards provider passthrough keys when review evidence broker is present`() {
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
+    )
+    val command = ClaudeAgentRunCommandBuilder().build(isolated)
+    assertTrue(
+      command.environmentPassthroughKeys.contains("ANTHROPIC_API_KEY"),
+      "Isolated claude review worker must forward Anthropic direct-auth key",
+    )
+    assertTrue(
+      command.environmentPassthroughKeys.contains("CLAUDE_CODE_USE_BEDROCK"),
+      "Isolated claude review worker must forward Bedrock provider selection key",
+    )
+    assertTrue(
+      command.environmentPassthroughKeys.contains("CLAUDE_CODE_USE_VERTEX"),
+      "Isolated claude review worker must forward Vertex provider selection key",
+    )
+    assertTrue(
+      command.environmentPassthroughKeys.contains("AWS_ACCESS_KEY_ID"),
+      "Isolated claude review worker must forward Bedrock credential key",
+    )
+    assertTrue(
+      command.environmentPassthroughKeys.contains("GOOGLE_APPLICATION_CREDENTIALS"),
+      "Isolated claude review worker must forward Vertex credential key",
+    )
+  }
+
+  @Test
+  fun `claude builder sets empty passthrough keys when review evidence broker is absent`() {
+    val command = ClaudeAgentRunCommandBuilder().build(request())
+    assertTrue(
+      command.environmentPassthroughKeys.isEmpty(),
+      "Non-isolated claude run must not passthrough provider keys",
+    )
+  }
+
   private fun request(
     model: String? = null,
     effort: String? = null,

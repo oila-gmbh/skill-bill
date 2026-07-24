@@ -13,6 +13,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
+import skillbill.application.workflow.findDecomposedParentOrCorruptFallback
 import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.isActiveGoalRuntime
@@ -572,48 +573,63 @@ class WorkflowGoalRunnerManifestStore(
     manifest: DecompositionManifest,
     dbPathOverride: String?,
   ): GoalRunnerManifestState? {
-    val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
     return database.transaction(dbPathOverride) { unitOfWork ->
-      val opened = engine.openRecord(
+      // The caller's discovery read runs in its own transaction, so a concurrent resume can insert
+      // the parent between that read and this write. Repeat the lookup inside the write transaction
+      // and reuse the row rather than minting a second parent id for the same issue key. The
+      // corrupt-fallback path mirrors bootstrapParentWorkflowFromManifest so both entry points
+      // reclaim the same row instead of minting a divergent parent id.
+      val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+        manifest.issueKey,
+        decompositionManifestValidator,
+        manifest,
+      )?.toSnapshot()
+      val base = existing ?: engine.openRecord(
         WorkflowFamily.IMPLEMENT.definition,
-        workflowId,
+        generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
         WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
         "plan",
       )
       val imported = engine.updateRecord(
         WorkflowFamily.IMPLEMENT.definition,
-        opened,
+        base,
         WorkflowUpdateInput(
-          workflowStatus = "abandoned",
+          workflowStatus = "paused",
           currentStepId = "plan",
-          stepUpdates = listOf(
-            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          ),
-          artifactsPatch = mapOf(
-            "plan" to mapOf("mode" to "decompose"),
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          ),
-          sessionId = opened.sessionId.orEmpty(),
+          stepUpdates = if (existing != null) {
+            null
+          } else {
+            listOf(
+              mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+            )
+          },
+          artifactsPatch = decompositionImportArtifactsPatch(manifest, reuse = existing != null),
+          sessionId = base.sessionId.orEmpty(),
         ),
       )
       WorkflowFamily.IMPLEMENT.saveRecord(
         unitOfWork.workflowStates,
         imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
       )
-      val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
+      val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
       GoalRunnerManifestState(
         parentWorkflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
         manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
       )
     }
+  }
+
+  private fun decompositionImportArtifactsPatch(manifest: DecompositionManifest, reuse: Boolean): Map<String, Any?> {
+    val runtimeEntry = DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+      manifest,
+      decompositionManifestValidator,
+      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+    )
+    return if (reuse) mapOf(runtimeEntry) else mapOf("plan" to mapOf("mode" to "decompose"), runtimeEntry)
   }
 
   private fun findProjectedManifest(repoRoot: Path, issueKey: String) =

@@ -168,6 +168,29 @@ class WorkflowStateSchemaViolationsTest {
     assertContains(error.message.orEmpty(), "rogue_step_field")
   }
 
+  @Test
+  fun `paused validates on the prose branch and loud-fails on the runtime and verify branches`() {
+    // SKILL-141 Subtask 1 AC-001: `paused` is the non-terminal parent status for a decomposed goal.
+    // It belongs to the prose parent row only; the other two branches must still reject it.
+    validator.validate(baseSnapshot().toMutableMap().apply { put("workflow_status", "paused") }, "bill-feature-task")
+
+    val runtimeError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(
+        baseTaskRuntimeSnapshot().toMutableMap().apply { put("workflow_status", "paused") },
+        "bill-feature-task",
+      )
+    }
+    assertContains(runtimeError.message.orEmpty(), "workflow_status")
+
+    val verifyError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(
+        baseVerifySnapshot().toMutableMap().apply { put("workflow_status", "paused") },
+        "bill-feature-verify",
+      )
+    }
+    assertContains(verifyError.message.orEmpty(), "workflow_status")
+  }
+
   private fun baseTaskRuntimeSnapshot(): Map<String, Any?> = linkedMapOf(
     "workflow_id" to "wftr-19700101-000000-aaaa",
     "session_id" to "",

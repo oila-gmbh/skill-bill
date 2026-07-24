@@ -12,6 +12,7 @@ import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -143,6 +144,40 @@ class WorkflowStateSchemaContractVersionTest {
       WORKFLOW_STATE_CONTRACT_VERSION,
       definition.contractVersion,
       "Reordering the feature-task-runtime phase pipeline must not move the contract version.",
+    )
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-001/AC-007: `paused` is the non-terminal resumable parent status. It is
+   * scoped to the featureImplement branch only, is excluded from `terminalStatuses`, and is a purely
+   * additive enum value — no existing record becomes invalid, so no contract-version bump.
+   */
+  @Test
+  fun `paused is a non-terminal status scoped to the featureImplement branch`() {
+    val schema = loadSchemaNode()
+    val defs = schema.path("\$defs")
+    val implementStatuses = defs.path("featureImplementBranch").path("properties")
+      .path("workflow_status").enumStrings()
+
+    assertTrue("paused" in implementStatuses, "featureImplementBranch.workflow_status must allow 'paused'.")
+    assertTrue(
+      "paused" in FeatureImplementWorkflowDefinition.definition.workflowStatuses,
+      "FeatureImplementWorkflowDefinition.workflowStatuses must allow 'paused'.",
+    )
+    assertFalse(
+      "paused" in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
+      "'paused' is resumable by design and must never be consulted as a terminal status.",
+    )
+    listOf("featureVerifyBranch", "featureTaskRuntimeBranch").forEach { branchName ->
+      assertFalse(
+        "paused" in defs.path(branchName).path("properties").path("workflow_status").enumStrings(),
+        "'paused' is scoped to the decomposed-goal parent row; $branchName must not accept it.",
+      )
+    }
+    assertEquals(
+      WORKFLOW_STATE_CONTRACT_VERSION,
+      FeatureImplementWorkflowDefinition.definition.contractVersion,
+      "Adding an enum value is additive; it must not move the workflow-state contract version.",
     )
   }
 

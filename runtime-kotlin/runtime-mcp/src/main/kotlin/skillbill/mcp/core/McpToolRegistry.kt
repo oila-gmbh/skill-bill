@@ -260,7 +260,7 @@ object McpToolRegistry {
       ),
       "feature_task_prose_workflow_resume" to workflowIdSchema(),
       "feature_task_prose_workflow_update" to workflowUpdateSchema(
-        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
         stepIdEnum = listOf(
           "assess",
           "create_branch",

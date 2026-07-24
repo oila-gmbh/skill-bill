@@ -9,7 +9,7 @@ object FeatureImplementWorkflowDefinition {
     workflowIdPrefix = "wfl",
     defaultSessionPrefix = "fis",
     contractVersion = "0.1",
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
     stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
     defaultInitialStepId = "assess",

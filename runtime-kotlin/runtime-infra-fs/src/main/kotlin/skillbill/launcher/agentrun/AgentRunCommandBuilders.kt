@@ -25,6 +25,13 @@ data class AgentRunCommand(
   val conversationIsolation: ConversationIsolation? = null,
   /** Overrides the builder's default decoder when this command selects a different output format. */
   val outputDecoder: AgentRunOutputDecoder? = null,
+  /**
+   * Additional parent-environment keys to pass through during an isolated launch
+   * (inheritEnvironment = false). Builders declare the keys their agent CLI needs from the ambient
+   * environment (provider credentials, endpoint overrides, proxy settings) so the infra runner does
+   * not need per-agent knowledge. Has no effect when inheritEnvironment is true.
+   */
+  val environmentPassthroughKeys: Set<String> = emptySet(),
 )
 
 interface AgentRunCommandBuilder {
@@ -322,6 +329,41 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
 )
 
+// Provider credentials and endpoint overrides the Claude CLI reads from the environment. Passed
+// through during isolated review launches so the delegated worker authenticates via the same
+// provider configuration as the parent process, regardless of what is on disk.
+private val PROXY_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+)
+
+private val CLAUDE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "CLAUDE_CODE_USE_BEDROCK",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+  "AWS_REGION",
+  "CLAUDE_CODE_USE_VERTEX",
+  "ANTHROPIC_VERTEX_PROJECT_ID",
+  "CLOUD_ML_REGION",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+) + PROXY_PASSTHROUGH_KEYS
+
+private val CODEX_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "CODEX_HOME",
+) + PROXY_PASSTHROUGH_KEYS
+
+private val JUNIE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = PROXY_PASSTHROUGH_KEYS
+
 /**
  * Claude Code sizes its own auto-compaction trigger against the model's context window, so a phase
  * on a 1M-context model never compacts at the few-hundred-thousand tokens a phase actually reaches.
@@ -393,6 +435,8 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       conversationIsolation = request.conversationIsolation,
       idlePolicy = if (streaming) AgentRunIdlePolicy.OUTPUT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY,
       outputDecoder = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.takeIf { streaming },
+      environmentPassthroughKeys =
+      if (request.reviewEvidenceBroker != null) CLAUDE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
   }
 }
@@ -453,6 +497,8 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = unstreamedLivenessPolicy(request),
+      environmentPassthroughKeys =
+      if (request.reviewEvidenceBroker != null) CODEX_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
   }
 }
@@ -486,6 +532,8 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = unstreamedLivenessPolicy(request),
+      environmentPassthroughKeys =
+      if (request.reviewEvidenceBroker != null) JUNIE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
   }
 }

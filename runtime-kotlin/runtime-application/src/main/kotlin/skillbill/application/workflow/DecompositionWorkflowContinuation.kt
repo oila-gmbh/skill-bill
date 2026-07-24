@@ -82,41 +82,63 @@ internal class DecompositionWorkflowContinuation(
     manifest: DecompositionManifest,
     unitOfWork: UnitOfWork,
   ): WorkflowStateSnapshot {
-    val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
-    val opened = engine.openRecord(
+    val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
+    // Single-scan lookup: reuse an existing valid parent or, when none is found, reclaim a parent
+    // whose decomposition artifact cannot be decoded (corrupt). Both alternatives are resolved in
+    // one table scan to avoid a second full materialisation inside the write lock.
+    val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+      manifest.issueKey,
+      validator,
+      manifest,
+    )?.toSnapshot()
+    val base = existing ?: engine.openRecord(
       WorkflowFamily.IMPLEMENT.definition,
-      workflowId,
+      generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
       WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
       "plan",
     )
     val imported = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
-      opened,
+      base,
       WorkflowUpdateInput(
-        workflowStatus = "abandoned",
+        workflowStatus = "paused",
         currentStepId = "plan",
-        stepUpdates = listOf(
-          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "plan" to mapOf("mode" to "decompose"),
-          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-            manifest,
-            validator,
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-          ),
-        ),
-        sessionId = opened.sessionId.orEmpty(),
+        stepUpdates = if (existing != null) {
+          null
+        } else {
+          listOf(
+            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          )
+        },
+        artifactsPatch = if (existing != null) {
+          mapOf(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+              manifest,
+              validator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          )
+        } else {
+          mapOf(
+            "plan" to mapOf("mode" to "decompose"),
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+              manifest,
+              validator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          )
+        },
+        sessionId = base.sessionId.orEmpty(),
       ),
     )
     WorkflowFamily.IMPLEMENT.saveRecord(
       unitOfWork.workflowStates,
-      imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
+      imported.toRecord().copy(issueKey = issueKey),
     )
-    return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
+    return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
   }
 
   private fun continueManifest(

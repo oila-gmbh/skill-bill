@@ -377,6 +377,36 @@ class WorkflowStateStoreTest {
     }
   }
 
+  /**
+   * SKILL-141 Subtask 1 AC-007: the paused decomposed-goal parent must survive a persistence
+   * round-trip under its own id and stay non-terminal — no finished timestamp is stamped, so a
+   * later resume still reads it as open work.
+   */
+  @Test
+  fun `paused parent workflow round-trips under the same id and is not stamped finished`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-paused").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val initialRow = workflowRow(
+        workflowId = "wfl-paused-parent",
+        sessionId = "fis-paused-parent",
+        workflowName = "bill-feature-task",
+        currentStepId = "plan",
+      ).copy(artifactsJson = """{"plan":{"mode":"decompose"}}""")
+
+      store.saveFeatureImplementWorkflow(initialRow)
+      store.saveFeatureImplementWorkflow(initialRow.copy(workflowStatus = "paused", finishedAt = null))
+
+      val saved = assertNotNull(store.getFeatureImplementWorkflow("wfl-paused-parent"))
+      assertEquals("wfl-paused-parent", saved.workflowId)
+      assertEquals("paused", saved.workflowStatus)
+      assertEquals("plan", saved.currentStepId)
+      assertEquals("""{"plan":{"mode":"decompose"}}""", saved.artifactsJson)
+      assertEquals(null, saved.finishedAt)
+    }
+  }
+
   @Test
   fun `workflow state entry starts at supplied start time and changes only on a status transition`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-workflow-state-entry").resolve("metrics.db")

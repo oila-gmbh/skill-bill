@@ -229,12 +229,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
 
   private fun buildProcess(request: AgentRunProcessRequest): ProcessBuilder = ProcessBuilder(request.command)
     .directory(request.workingDirectory.toFile())
-    .apply {
-      if (!request.inheritEnvironment) {
-        environment().clear()
-      }
-      environment().putAll(request.environment)
-    }
+    .also { configureLaunchEnvironment(it, request) }
 
   private fun startPtyProcess(request: AgentRunProcessRequest): ProcessStart {
     check(System.getProperty("os.name").lowercase().startsWith("linux")) {
@@ -977,3 +972,45 @@ private fun openPtyPair(): Pair<Int, String> {
 private const val PTY_PATH_BUF_SIZE = 256
 private const val NULL_BYTE: Byte = 0
 private const val BYTE_MASK = 0xFF
+
+internal fun configureLaunchEnvironment(builder: ProcessBuilder, request: AgentRunProcessRequest) {
+  if (!request.inheritEnvironment) {
+    val isolated = isolatedLaunchEnvironment(
+      builder.environment(),
+      request.environment,
+      request.environmentPassthroughKeys,
+    )
+    builder.environment().clear()
+    builder.environment().putAll(isolated)
+  } else {
+    builder.environment().putAll(request.environment)
+  }
+}
+
+internal fun isolatedLaunchEnvironment(
+  parentEnvironment: Map<String, String>,
+  overrides: Map<String, String>,
+  additionalPassthroughKeys: Set<String> = emptySet(),
+): Map<String, String> = parentEnvironment.filterKeys {
+  it in ISOLATED_LAUNCH_PASSTHROUGH_KEYS || it in additionalPassthroughKeys
+} + overrides
+
+// An isolated launch drops the caller's ambient session state, but the spawned agent still has to
+// be executable and still has to resolve the user's own installation: without these the worker has
+// no PATH to exec from and no home under which its registered native agents live, so every
+// delegated review lane fails preflight as if nothing were installed.
+private val ISOLATED_LAUNCH_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "HOME",
+  "PATH",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "TMPDIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "CLAUDE_CONFIG_DIR",
+  "CODEX_HOME",
+)

@@ -124,7 +124,7 @@ class McpStdioServerTest {
       tools.schemaFor("feature_verify_finished").properties().enumFor("audit_result"),
     )
     assertEquals(
-      listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+      listOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
       tools.schemaFor("feature_task_prose_workflow_update").properties().enumFor("workflow_status"),
     )
     assertEquals(

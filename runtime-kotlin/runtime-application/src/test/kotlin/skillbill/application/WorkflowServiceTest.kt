@@ -24,10 +24,13 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
+import skillbill.application.workflow.hasDecompositionPlan
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
+import skillbill.contracts.JsonSupport
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -97,6 +100,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -194,6 +199,42 @@ class WorkflowServiceTest {
       service.abandonFeatureTaskRuntime(opened.workflowId, "Try again."),
     )
     assertContains(repeated.error, "already terminal")
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-005: the new non-terminal parent status must not soften explicit operator
+   * abandonment. That path stays terminal with its reason artifact, and `paused` never enters the
+   * runtime family's vocabulary at all.
+   */
+  @Test
+  fun `explicit operator abandonment stays terminal and never resolves to the paused status`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-141",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-141/spec.md",
+      ),
+    )
+
+    val abandoned = assertIs<WorkflowUpdateResult.Ok>(
+      service.abandonFeatureTaskRuntime(opened.workflowId, "Operator abandoned the goal."),
+    )
+
+    assertEquals("abandoned", abandoned.acknowledgement.workflowStatus)
+    assertEquals(listOf("operator_abandonment"), abandoned.acknowledgement.updatedArtifactKeys)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
+    assertContains(saved.artifactsJson, "Operator abandoned the goal.")
+    assertTrue(saved.workflowStatus in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses)
+    assertFalse("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
+    assertIs<WorkflowUpdateResult.Error>(service.abandonFeatureTaskRuntime(opened.workflowId, "Again."))
   }
 
   @Test
@@ -720,6 +761,55 @@ class WorkflowServiceTest {
     assertEquals("wfl-abandoned-progressed", selected?.workflowId)
   }
 
+  /**
+   * SKILL-141 Subtask 1 AC-006: the stale-lineage GC targets `abandoned` bookkeeping rows only. A
+   * `paused` parent is live work interrupted mid-run, so it is reused even when the manifest on disk
+   * has since been re-numbered — discarding it would orphan its planning preparations.
+   */
+  @Test
+  fun `decomposed parent lookup reuses a paused row whose subtask lineage predates a manifest edit`() {
+    val workflows = InMemoryWorkflowStates()
+    val pausedLineage = decompositionRuntime(status = "pending").copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Compatibility telemetry and end-to-end hardening",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_compatibility-telemetry.md",
+          status = "pending",
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-paused-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(pausedLineage, testDecompositionManifestValidator),
+        ),
+        workflowStatus = "paused",
+      ),
+    )
+    val currentManifest = pausedLineage.copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Delegated review launch projections",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_delegated-review.md",
+          status = "pending",
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow(
+      "SKILL-52.1",
+      testDecompositionManifestValidator,
+      currentManifest,
+    )
+
+    assertEquals("wfl-paused-parent", selected?.workflowId)
+  }
+
   @Test
   fun `decomposed parent lookup rejects multiple active runtimes for same issue key`() {
     val workflows = InMemoryWorkflowStates()
@@ -799,6 +889,50 @@ class WorkflowServiceTest {
 
     assertEquals("blocked", state?.manifest?.status)
     assertEquals("wfl-child", state?.manifest?.subtasks?.single()?.workflowId)
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-002/AC-003/AC-004: reconstructing the parent from a checked-in manifest
+   * stamps the non-terminal `paused` status instead of `abandoned`, and a subsequent resume reuses
+   * the same parent id, so the `GoalPlanningIdentity` its planning preparations are keyed on holds.
+   */
+  @Test
+  fun `goal manifest store imports a paused parent and resume reuses its id and planning identity`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-paused-import")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-52.1-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "blocked"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+    )
+
+    val imported = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
+    val resumed = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
+
+    val parentRow = assertNotNull(workflows.getFeatureImplementWorkflow(imported.parentWorkflowId))
+    assertEquals("paused", parentRow.workflowStatus)
+    assertEquals(imported.parentWorkflowId, resumed.parentWorkflowId)
+    assertEquals(
+      1,
+      workflows.listFeatureImplementWorkflows(Int.MAX_VALUE).size,
+      "Resume must reuse the persisted parent row rather than minting a second one.",
+    )
+    assertEquals(
+      GoalPlanningIdentity(imported.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
+      GoalPlanningIdentity(resumed.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
+    )
   }
 
   @Test
@@ -2538,6 +2672,232 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     }
   }
 
+  /**
+   * SKILL-141: a hydrated planning projection that fails its consumer gate re-enters the plan
+   * phase's own bounded fix loop, which rewrites the child's plan record and step. That repair is
+   * documented behaviour, so resume must still recognise the import instead of bricking the child.
+   */
+  @Test
+  fun `resume accepts a child whose imported plan phase was repaired by its own fix loop`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(repairedPlanPhase(harness))
+
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val resumed = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertContains(resumed.artifactsJson, "repaired-plan-one")
+    assertEquals("implement", resumed.currentStepId)
+  }
+
+  @Test
+  fun `resume rejects a child whose import provenance no longer matches and names the divergence`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+      .toMutableMap()
+    val importArtifact = (artifacts["goal_planning_import"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    importArtifact["parent_goal_workflow_id"] = "wfl-some-other-parent"
+    artifacts["goal_planning_import"] = importArtifact
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.message.orEmpty(), "stored import provenance differs from the hydration request")
+  }
+
+  /**
+   * SKILL-141 F-009: resume must reject when the child carries no goal_planning_import artifact at
+   * all — the very first branch in firstDivergence returns "child carries no goal planning import
+   * artifact".
+   */
+  @Test
+  fun `resume rejects a child that carries no goal planning import artifact`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = parseChildArtifacts(child)
+    artifacts.remove("goal_planning_import")
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.message.orEmpty(), "child carries no goal planning import artifact")
+  }
+
+  /**
+   * SKILL-141 F-009: resume must reject when the parent's preparation checkpoints are no longer
+   * available (preparedMatches returns false).
+   */
+  @Test
+  fun `resume rejects a child when parent planning checkpoints are no longer available`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    // Evict the shared checkpoint so preparedMatches sees shared == null
+    harness.preparations.shared = null
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(
+      error.message.orEmpty(),
+      "parent planning checkpoints are missing or differ from the imported payload digests",
+    )
+  }
+
+  /**
+   * SKILL-141 F-009: resume must reject when the stored planning ledger prefix no longer matches
+   * the goal-planning-import contract (ledgerMatches returns false).
+   */
+  @Test
+  fun `resume rejects a child whose planning ledger prefix no longer matches the import`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = parseChildArtifacts(child)
+    val ledger = (artifacts["feature_task_runtime_phase_ledger"] as List<*>).toMutableList()
+    val firstEntry = (ledger[0] as Map<*, *>).toMutableMap()
+    firstEntry["action"] = "corrupt-action"
+    ledger[0] = firstEntry
+    artifacts["feature_task_runtime_phase_ledger"] = ledger
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.message.orEmpty(), "phase ledger no longer opens with the goal planning import prefix")
+  }
+
+  /**
+   * SKILL-141 F-009 / F-003: a completed plan phase record with a missing output_artifact must not
+   * be considered settled — resume must reject it so the import is not silently swallowed.
+   */
+  @Test
+  fun `resume rejects a child whose completed plan phase is missing its output artifact`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = mutatePhaseRecord(child, "plan") { it.also { m -> m.remove("output_artifact") } }
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.message.orEmpty(), "child planning phases are not settled as completed")
+  }
+
+  /**
+   * SKILL-141 F-009 / F-002: a plan phase that is `running` with a non-blank `rejected_output`
+   * is in the fix-loop and must be accepted as settled — the import identity is still intact.
+   */
+  @Test
+  fun `resume accepts a child whose plan phase is in the fix loop with output moved to rejected`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = mutatePhaseRecord(child, "plan") { planRecord ->
+      val output = planRecord.remove("output_artifact")
+      planRecord["rejected_output"] = output
+      planRecord["status"] = "running"
+      planRecord["finished_at"] = null
+      planRecord
+    }
+    // invalidateQuarantinedProducerRecord writes the record and its step from one record set, so the
+    // step must move to running with the record. Leaving it completed models state production cannot
+    // emit and would let this test pass against a stepsSettled that still demands completed.
+    val quarantinedStepsJson = child.stepsJson.replace(
+      "\"step_id\":\"plan\",\"status\":\"completed\"",
+      "\"step_id\":\"plan\",\"status\":\"running\"",
+    )
+    assertNotEquals(child.stepsJson, quarantinedStepsJson)
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(
+        artifactsJson = JsonSupport.mapToJsonString(artifacts),
+        stepsJson = quarantinedStepsJson,
+      ),
+    )
+
+    // Must not throw — a running record with rejected_output is considered settled
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val resumed = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertEquals("implement", resumed.currentStepId)
+  }
+
+  private fun parseChildArtifacts(child: WorkflowStateRecord): MutableMap<String, Any?> =
+    JsonSupport.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+      .toMutableMap()
+
+  private fun mutatePhaseRecord(
+    child: WorkflowStateRecord,
+    phaseId: String,
+    mutate: (MutableMap<String, Any?>) -> MutableMap<String, Any?>,
+  ): MutableMap<String, Any?> {
+    val artifacts = parseChildArtifacts(child)
+    val records = (artifacts["feature_task_runtime_phase_records"] as Map<*, *>)
+      .entries.associate { (k, v) -> k.toString() to v }.toMutableMap()
+    val phaseRecord = (records[phaseId] as Map<*, *>)
+      .entries.associate { (k, v) -> k.toString() to v }.toMutableMap()
+    records[phaseId] = mutate(phaseRecord)
+    artifacts["feature_task_runtime_phase_records"] = records
+    return artifacts
+  }
+
+  private fun repairedPlanPhase(harness: HydrationHarness): WorkflowStateRecord {
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+      .toMutableMap()
+    val records = (artifacts["feature_task_runtime_phase_records"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    val planRecord = (records["plan"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    planRecord["attempt_count"] = 3
+    planRecord["resolved_agent_id"] = "claude"
+    planRecord["duration_millis"] = 4200
+    planRecord["output_artifact"] = PLAN_ONE_PAYLOAD.replace("owned-plan-one", "repaired-plan-one")
+    records["plan"] = planRecord
+    artifacts["feature_task_runtime_phase_records"] = records
+    return child.copy(
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      stepsJson = child.stepsJson.replace(
+        "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":1",
+        "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":3",
+      ),
+    )
+  }
+
   @Test
   fun `standalone open never reads goal preparation at the hydration boundary`() {
     val preparations = RecordingPlanningPreparations(errorOnRead = true)
@@ -2977,6 +3337,317 @@ class DecompositionDiskBootstrapTest {
       workflows.listFeatureImplementWorkflows(Int.MAX_VALUE).size >= 2,
       "Expected parent bootstrap row and child subtask row in DB",
     )
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-002/AC-004: the disk bootstrap reconstructs an interrupted parent, so it
+   * must stamp the resumable `paused` status. Stamping `abandoned` made the row terminal and stale
+   * lineage, which orphaned the planning preparations keyed on that parent id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey bootstraps the parent as paused rather than abandoned`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-paused")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parent = assertNotNull(
+      workflows.findDecomposedParentWorkflow("SKILL-TEST", testDecompositionManifestValidator),
+      "Expected the bootstrapped parent to stay discoverable for a later resume",
+    )
+
+    assertEquals("paused", parent.workflowStatus)
+    assertFalse(
+      parent.workflowStatus in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
+      "A bootstrapped parent must not be terminal; it is interrupted work awaiting resume.",
+    )
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-004: when a pre-existing parent row has a corrupt decomposition artifact
+   * (findDecomposedParentWorkflow requires a valid decode and filters it out), the secondary
+   * issueKey+hasDecompositionPlan search must reclaim it so bootstrap does not mint a second orphaned id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey reuses existing parent when decomposition artifact is corrupt`() {
+    val repoRoot = Files.createTempDirectory("skillbill-corrupt-artifact-reuse")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    // Insert existing parent with a corrupt decomposition_runtime artifact. findDecomposedParentWorkflow
+    // requires a valid Map decode and silently excludes this row; the secondary issueKey+hasDecompositionPlan
+    // search must find it so no second parent id is minted.
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-corrupt-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parentRow = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-corrupt-parent"))
+    assertEquals("paused", parentRow.workflowStatus)
+    // No second parent should have been minted: only one row must carry both the
+    // decompose-mode plan artifact and the issue key (child subtask rows don't have it).
+    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    assertEquals(1, parentRows.size, "Bootstrap must reuse the existing parent, not mint a second one.")
+    assertEquals("wfl-corrupt-parent", parentRows.single().workflowId)
+    assertNotNull(
+      parentRows.single().toSnapshot().decompositionRuntime(testDecompositionManifestValidator),
+      "Reclaimed parent must carry a decodable decomposition_runtime artifact.",
+    )
+  }
+
+  /**
+   * SKILL-141 F-009 AC-004: two back-to-back calls for the same issue key must not mint a second
+   * parent row — the second call must find the row that the first call bootstrapped.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey is idempotent and does not mint a second parent row`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-idempotent")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parentRowsAfterFirst = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    assertEquals(1, parentRowsAfterFirst.size)
+    val firstParentId = parentRowsAfterFirst.single().workflowId
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parentRowsAfterSecond = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+
+    assertEquals(1, parentRowsAfterSecond.size, "Repeat call must not mint a second parent row")
+    assertEquals(
+      firstParentId,
+      parentRowsAfterSecond.single().workflowId,
+      "Repeat call must use the same parent workflowId",
+    )
+  }
+
+  /**
+   * SKILL-141 F-009: corrupt-fallback idempotency — two consecutive calls with a pre-existing corrupt
+   * parent must both operate on the same workflowId. First call reclaims via corrupt-fallback;
+   * second call finds the now-repaired row via the canonical finder. Neither call mints a fresh id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey is idempotent when starting from a corrupt parent row`() {
+    val repoRoot = Files.createTempDirectory("skillbill-corrupt-idempotent")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-corrupt-idempotent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    assertEquals(1, parentRows.size, "Two calls must not mint a second parent row")
+    assertEquals("wfl-corrupt-idempotent", parentRows.single().workflowId, "Both calls must reuse the original row")
+  }
+
+  /**
+   * SKILL-141 F-011 AC-007: an explicitly abandoned corrupt parent must NOT be reclaimed or
+   * resurrected to paused. The IMPLEMENT_TERMINAL_STATUSES gate must exclude it.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey does not reclaim an explicitly abandoned corrupt parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-abandoned-corrupt")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-abandoned-corrupt",
+        workflowStatus = "abandoned",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val abandonedRow = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-abandoned-corrupt"))
+    assertEquals("abandoned", abandonedRow.workflowStatus, "Operator-abandoned parent must stay abandoned")
   }
 
   @Test

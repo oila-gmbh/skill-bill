@@ -101,6 +101,10 @@ $defs:
           - failed
           - abandoned
           - blocked
+          # Non-terminal resumable state for a decomposed goal's parent row: a
+          # foreground driver killed mid-run must not stamp the parent
+          # `abandoned`, which is terminal and orphans planning preparations.
+          - paused
       current_step_id:
         type: string
         # Includes empty string to cover the rare case where a freshly

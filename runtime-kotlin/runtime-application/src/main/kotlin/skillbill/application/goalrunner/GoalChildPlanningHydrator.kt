@@ -63,11 +63,11 @@ internal class GoalChildPlanningHydrator(
     val request = requireNotNull(setup.planningHydration) {
       "Prepared goal child '${setup.subtaskId}' requires planning hydration."
     }
-    if (!importMatcher.matches(unitOfWork, existing, setup, request)) {
+    importMatcher.firstDivergence(unitOfWork, existing, setup, request)?.let { divergence ->
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         request.identity.parentGoalWorkflowId,
         setup.subtaskId,
-        "existing child planning import conflicts with request",
+        "existing child planning import conflicts with request: $divergence",
       )
     }
   }
@@ -204,15 +204,19 @@ private class PreparedPlanningPayloadValidator(
 private class GoalChildPlanningImportMatcher(
   private val payloadValidator: PreparedPlanningPayloadValidator,
 ) {
-  fun matches(
+  // The identity of an import is its provenance, the parent-side checkpoints it was taken from,
+  // and the append-only ledger prefix proving it happened. Live phase records and steps are not
+  // part of that identity: a planning projection that fails its consumer gate re-enters the phase's
+  // own bounded fix loop, which legitimately rewrites attempt counts, resolved agent, and output.
+  fun firstDivergence(
     unitOfWork: UnitOfWork,
     existing: WorkflowStateSnapshot,
     setup: GoalRunnerChildWorkflowSetup,
     request: GoalChildPlanningHydrationRequest,
-  ): Boolean {
+  ): String? {
     val artifacts = decodeArtifacts(existing.artifactsJson)
     val expected = artifacts[FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY] as? Map<*, *>
-      ?: return false
+      ?: return "child carries no goal planning import artifact"
     val shared = unitOfWork.goalPlanningPreparations.findSharedPreplan(request.identity)
     val plan = unitOfWork.goalPlanningPreparations.findSubtaskPlan(
       request.identity,
@@ -220,13 +224,17 @@ private class GoalChildPlanningImportMatcher(
       request.descriptor.governedSubSpecPath,
     )
     validateAvailablePayloads(shared, plan, setup.workflowId)
-    return listOf(
-      provenanceMatches(expected, request),
-      preparedMatches(shared, plan, expected, request),
-      recordsMatch(artifacts, expected, shared, plan),
-      ledgerMatches(artifacts),
-      stepsMatch(existing),
-    ).all { it }
+    return when {
+      !provenanceMatches(expected, request) ->
+        "stored import provenance differs from the hydration request"
+      !preparedMatches(shared, plan, expected, request) ->
+        "parent planning checkpoints are missing or differ from the imported payload digests"
+      !ledgerMatches(artifacts) ->
+        "phase ledger no longer opens with the goal planning import prefix"
+      !planningPhasesSettled(artifacts, existing) ->
+        "child planning phases are not settled as completed"
+      else -> null
+    }
   }
 
   private fun validateAvailablePayloads(
@@ -261,38 +269,29 @@ private class GoalChildPlanningImportMatcher(
     plan?.payloadSha256 == expected["plan_payload_sha256"],
   ).all { it }
 
-  private fun recordsMatch(
-    artifacts: Map<String, Any?>,
-    expected: Map<*, *>,
-    shared: SharedGoalPreplanCheckpoint?,
-    plan: GoalSubtaskPlanCheckpoint?,
-  ): Boolean {
-    val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as? Map<*, *>
-      ?: return false
-    val payloads = mapOf("preplan" to shared?.preplanPayload, "plan" to plan?.planPayload)
-    return PLANNING_PHASE_IDS.all { phaseId ->
-      val record = records[phaseId] as? Map<*, *> ?: return@all false
-      recordMatches(phaseId, record, payloads[phaseId], expected)
-    }
+  private fun planningPhasesSettled(artifacts: Map<String, Any?>, existing: WorkflowStateSnapshot): Boolean {
+    val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as? Map<*, *> ?: return false
+    val expected = artifacts[FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY] as? Map<*, *> ?: return false
+    val expectedStepStatuses = PLANNING_PHASE_IDS.mapNotNull { phaseId ->
+      settledStepStatus(records[phaseId] as? Map<*, *>, phaseId)?.let { phaseId to it }
+    }.toMap()
+    val preplanOutput = (records["preplan"] as? Map<*, *>)?.get("output_artifact") as? String ?: return false
+    return expectedStepStatuses.size == PLANNING_PHASE_IDS.size &&
+      sha256HexUtf8(preplanOutput) == expected["preplan_payload_sha256"] &&
+      stepsSettled(existing, expectedStepStatuses)
   }
 
-  private fun recordMatches(
-    phaseId: String,
-    record: Map<*, *>,
-    preparedPayload: String?,
-    expected: Map<*, *>,
-  ): Boolean {
-    val output = record["output_artifact"] as? String ?: return false
-    return listOf(
-      record["phase_id"] == phaseId,
-      record["status"] == "completed",
-      (record["attempt_count"] as? Number)?.toInt() == 1,
-      record["resolved_agent_id"] == "goal-planning-import",
-      output == preparedPayload,
-      sha256HexUtf8(output) == expected["${phaseId}_payload_sha256"],
-      (record["duration_millis"] as? Number)?.toLong() == 0L,
-      record["started_at"] == record["finished_at"],
-    ).all { it }
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom: a quarantined
+  // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
+  // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
+  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
+    if (record == null || record["phase_id"] != phaseId) return null
+    return when (record["status"]) {
+      "completed" -> "completed".takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
+      "running" -> "running"
+      "blocked" -> "blocked"
+      else -> null
+    }
   }
 
   private fun ledgerMatches(artifacts: Map<String, Any?>): Boolean {
@@ -311,11 +310,13 @@ private class GoalChildPlanningImportMatcher(
     }
   }
 
-  private fun stepsMatch(existing: WorkflowStateSnapshot): Boolean {
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom, which writes both
+  // the phase record and its step from one record set: a quarantined producer lands running/running,
+  // never running/completed. Accepting a status the recorder cannot emit would admit forged state.
+  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
-    return planningSteps.size == PLANNING_PHASE_IDS.size && planningSteps.all {
-      it.status == "completed" && it.attemptCount == 1
-    }
+    return planningSteps.size == PLANNING_PHASE_IDS.size &&
+      planningSteps.all { it.status == expected[it.stepId] }
   }
 }
 

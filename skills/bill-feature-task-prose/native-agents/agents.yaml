@@ -32,9 +32,10 @@ agents:
       4. Scan `agent/decisions.md` header lines in each likely boundary; open full entries only when titles look relevant.
       5. Discover codebase patterns: similar features referenced in the spec, build/runtime dependencies, reusable components.
          When `kmp` signals dominate, resolve governed add-ons only after stack routing settles on `kmp`. Start from `Selected add-ons: none`. Let the routed pack own add-on detection and selection, then scan the matching pack-owned add-on supporting files' `## Section index` headings first. If the add-on is split into topic files, open only the linked topic files whose cues match the work during pre-planning / pattern discovery.
-      6. Confirm `bill-code-check` can route this repo. If it cannot, pick the closest existing repo-native validation command.
+      6. Confirm `bill-code-check` can route this repo by inspecting its routing inputs — do not execute it, and do not run the validation command to see whether it works. Naming the command is the deliverable; running it belongs to validate. If it cannot route, pick the closest existing repo-native validation command.
       7. If rollout uses a feature flag, invoke `bill-feature-guard` via the Skill tool — DO NOT search the filesystem (no `find`, `grep -r`, etc.) to locate skill files; the Skill tool resolves skills by name. Apply it in the current agent context and choose a pattern: legacy | di_switch | simple_conditional. Record flag name and switch point.
       8. Do NOT produce a plan. Do NOT implement anything.
+      9. Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation. Compilation and test execution belong exclusively to the validate phase.
       
       Return exactly one RESULT: block as your final message, containing valid JSON with this shape:
       
@@ -87,6 +88,7 @@ agents:
       - If rollout uses a feature flag, every task states how it respects the flag strategy (pattern: {feature_flag_pattern}).
       - Reference design artifacts (mockups, screenshots, wireframes, API examples) by filename where relevant.
       - Do NOT implement anything.
+      - Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation. Compilation and test execution belong exclusively to the validate phase. A task's `tests` field describes tests to be written, never tests to be run here.
       - Do NOT expose a separate "codebase patterns" section; fold those findings into task descriptions.
       
       Decomposition rules:
@@ -184,7 +186,8 @@ agents:
       - If the plan has phases, pause between phases for a brief self-checkpoint.
       - When removing user-facing code, shared resources, or wiring: immediately clean up orphaned artifacts in the same task.
       - When changing agent-config or skill repositories: update adjacent catalogs and wiring in the same task.
-      - Test gate: before returning, verify unit tests were written if the plan included testable logic.
+      - Test gate: before returning, verify unit tests were written if the plan included testable logic. Writing them is required; running them is not your job.
+      - Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation, and no IDE or language-server build. Compilation and test execution belong exclusively to the validate phase. Reason about correctness by reading the code; report uncertainty in `notes_for_review` instead of resolving it with a build.
       - For MEDIUM/LARGE: before returning, perform a post-implementation self-compact — summarize files created/modified, feature-flag info, criteria-to-file mapping, and any plan deviations. Then re-read the saved spec to verify every criterion is mapped.
       - Do NOT commit or push. Do NOT open a PR. Those are the orchestrator's job.
       
@@ -217,6 +220,8 @@ agents:
       
       Test gate is relaxed: write tests only when the finding being fixed requires them (for example, a finding about missing regression coverage or a broken test). Do not treat the standard "write tests if the plan included testable logic" gate as mandatory in fix mode — the plan is not being re-executed here.
 
+      Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation, and no IDE or language-server build. Compilation and test execution belong exclusively to the validate phase. This is a prohibition on running tests, not on writing them: when a finding calls for regression coverage, still write the test — just leave executing it to validate. Verify each fix by reading the code, and record any residual doubt in `notes_for_review`.
+
       Comments are a last resort, not a habit: make each fix self-evident through naming and structure rather than an explanatory inline comment, and reserve sparse KDoc for genuinely non-obvious intent only.
 
       Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
@@ -243,6 +248,7 @@ agents:
       - SMALL: produce a quick confirmation per criterion. Read only the files mentioned in the implementation summary.
       - MEDIUM/LARGE: produce a full per-criterion report with evidence paths. Verify against actual code, not the summary.
       - Do NOT implement fixes. Do NOT edit files.
+      - Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation. Compilation and test execution belong exclusively to the validate phase. Audit by reading the code; a criterion you cannot confirm by reading is a gap to report, not a build to run.
       - If a criterion is partially satisfied, record it as a gap with `suggested_fix`.
       - On the initial audit, inspect every listed criterion once and report only concrete production defects.
       - On follow-up audits, verify only the carried unresolved gaps and the repair work performed for them in that round. Inspect the repaired symbols and only the directly necessary evidence needed to classify each carried gap as resolved or recurring.
