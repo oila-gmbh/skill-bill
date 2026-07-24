@@ -103,23 +103,34 @@ internal class DecompositionWorkflowContinuation(
       WorkflowUpdateInput(
         workflowStatus = "paused",
         currentStepId = "plan",
-        // Stamp all planning steps as completed on both the fresh-mint and reuse paths. A reclaimed
-        // row may have been killed mid-plan with the plan step still running, making currentStepId
-        // contradict the step rows; idempotent stamps reconcile both paths to a consistent state.
-        stepUpdates = listOf(
-          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "plan" to mapOf("mode" to "decompose"),
-          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-            manifest,
-            validator,
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-          ),
-        ),
+        stepUpdates = if (existing != null) {
+          null
+        } else {
+          listOf(
+            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+          )
+        },
+        artifactsPatch = if (existing != null) {
+          mapOf(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+              manifest,
+              validator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          )
+        } else {
+          mapOf(
+            "plan" to mapOf("mode" to "decompose"),
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+              manifest,
+              validator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          )
+        },
         sessionId = base.sessionId.orEmpty(),
       ),
     )

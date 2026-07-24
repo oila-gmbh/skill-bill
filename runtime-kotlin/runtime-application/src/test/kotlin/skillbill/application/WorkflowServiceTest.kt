@@ -3529,6 +3529,127 @@ class DecompositionDiskBootstrapTest {
     )
   }
 
+  /**
+   * SKILL-141 F-009: corrupt-fallback idempotency — two consecutive calls with a pre-existing corrupt
+   * parent must both operate on the same workflowId. First call reclaims via corrupt-fallback;
+   * second call finds the now-repaired row via the canonical finder. Neither call mints a fresh id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey is idempotent when starting from a corrupt parent row`() {
+    val repoRoot = Files.createTempDirectory("skillbill-corrupt-idempotent")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-corrupt-idempotent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    assertEquals(1, parentRows.size, "Two calls must not mint a second parent row")
+    assertEquals("wfl-corrupt-idempotent", parentRows.single().workflowId, "Both calls must reuse the original row")
+  }
+
+  /**
+   * SKILL-141 F-011 AC-007: an explicitly abandoned corrupt parent must NOT be reclaimed or
+   * resurrected to paused. The IMPLEMENT_TERMINAL_STATUSES gate must exclude it.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey does not reclaim an explicitly abandoned corrupt parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-abandoned-corrupt")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-abandoned-corrupt",
+        workflowStatus = "abandoned",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val abandonedRow = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-abandoned-corrupt"))
+    assertEquals("abandoned", abandonedRow.workflowStatus, "Operator-abandoned parent must stay abandoned")
+  }
+
   @Test
   fun `continueDecomposedParentByIssueKey returns UnknownWorkflow when disk has no manifest for issue key`() {
     val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-miss")

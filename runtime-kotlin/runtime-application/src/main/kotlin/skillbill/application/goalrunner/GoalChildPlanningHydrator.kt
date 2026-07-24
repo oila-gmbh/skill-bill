@@ -271,17 +271,25 @@ private class GoalChildPlanningImportMatcher(
 
   private fun planningPhasesSettled(artifacts: Map<String, Any?>, existing: WorkflowStateSnapshot): Boolean {
     val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as? Map<*, *> ?: return false
+    val expected = artifacts[FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY] as? Map<*, *> ?: return false
     val expectedStepStatuses = PLANNING_PHASE_IDS.mapNotNull { phaseId ->
       settledStepStatus(records[phaseId] as? Map<*, *>, phaseId)?.let { phaseId to it }
     }.toMap()
-    return expectedStepStatuses.size == PLANNING_PHASE_IDS.size && stepsSettled(existing, expectedStepStatuses)
+    val preplanOutput = (records["preplan"] as? Map<*, *>)?.get("output_artifact") as? String ?: return false
+    return expectedStepStatuses.size == PLANNING_PHASE_IDS.size &&
+      sha256HexUtf8(preplanOutput) == expected["preplan_payload_sha256"] &&
+      stepsSettled(existing, expectedStepStatuses)
   }
 
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom: a quarantined
+  // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
+  // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
   private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
     if (record == null || record["phase_id"] != phaseId) return null
     return when (record["status"]) {
       "completed" -> "completed".takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
-      "running" -> "running".takeIf { (record["rejected_output"] as? String)?.isNotBlank() == true }
+      "running" -> "running"
+      "blocked" -> "blocked"
       else -> null
     }
   }

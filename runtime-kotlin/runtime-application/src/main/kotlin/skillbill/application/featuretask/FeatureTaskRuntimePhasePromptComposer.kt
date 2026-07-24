@@ -334,7 +334,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
         "      changed files are at their intended target state. A status of \"completed\" with the\n" +
         "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
-        planningProjectionShapeExampleFor(phaseId) + remediation
+        (if (remediation.isEmpty()) planningProjectionShapeExampleFor(phaseId) else "") + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
@@ -640,7 +640,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "(projection_kind \"implementation_receipt\", contract_version " +
       "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
       "normalized changed_paths, " +
-      "tests_added, tests_updated, tests_executed with outcomes, deviations, unresolved_items, " +
+      "tests_added, tests_updated, deviations, unresolved_items, " +
       "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
       "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
       "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
@@ -665,9 +665,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
       "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-      "Run the repository validation gate relevant to the change. Fix validation findings at " +
-      "their root cause and rerun the gate until it passes; validation findings are repair work, " +
-      "not a reason to block the phase.",
+      "Run tests written during the implement phase, then run the repository validation gate " +
+      "relevant to the change. Fix validation findings at their root cause and rerun the gate " +
+      "until it passes; validation findings are repair work, not a reason to block the phase.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
       "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
       "runtime change. Emit a produced_outputs object containing history_result with whether " +

@@ -48,10 +48,13 @@ internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
     }
     .forEach { row ->
       val manifest = row.toSnapshot().decompositionRuntime(validator)
-      if (manifest != null) {
-        validCandidates += DecomposedParentCandidate(row, manifest)
-      } else if (row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES) {
-        corruptCandidates += row
+      when {
+        manifest != null &&
+          manifest.issueKey == normalizedIssueKey &&
+          row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+          validCandidates += DecomposedParentCandidate(row, manifest)
+        manifest == null && row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES ->
+          corruptCandidates += row
       }
     }
   val nonStale = validCandidates.filterNot { it.isStaleAbandonedLineage(currentProjectedManifest) }

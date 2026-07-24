@@ -13,6 +13,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
+import skillbill.application.workflow.findDecomposedParentOrCorruptFallback
 import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.isActiveGoalRuntime
@@ -575,8 +576,10 @@ class WorkflowGoalRunnerManifestStore(
     return database.transaction(dbPathOverride) { unitOfWork ->
       // The caller's discovery read runs in its own transaction, so a concurrent resume can insert
       // the parent between that read and this write. Repeat the lookup inside the write transaction
-      // and reuse the row rather than minting a second parent id for the same issue key.
-      val existing = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+      // and reuse the row rather than minting a second parent id for the same issue key. The
+      // corrupt-fallback path mirrors bootstrapParentWorkflowFromManifest so both entry points
+      // reclaim the same row instead of minting a divergent parent id.
+      val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
         manifest.issueKey,
         decompositionManifestValidator,
         manifest,
@@ -603,14 +606,7 @@ class WorkflowGoalRunnerManifestStore(
               mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
             )
           },
-          artifactsPatch = mapOf(
-            "plan" to mapOf("mode" to "decompose"),
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          ),
+          artifactsPatch = decompositionImportArtifactsPatch(manifest, reuse = existing != null),
           sessionId = base.sessionId.orEmpty(),
         ),
       )
@@ -625,6 +621,15 @@ class WorkflowGoalRunnerManifestStore(
         manifest = saved.decompositionRuntime(decompositionManifestValidator) ?: manifest,
       )
     }
+  }
+
+  private fun decompositionImportArtifactsPatch(manifest: DecompositionManifest, reuse: Boolean): Map<String, Any?> {
+    val runtimeEntry = DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+      manifest,
+      decompositionManifestValidator,
+      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+    )
+    return if (reuse) mapOf(runtimeEntry) else mapOf("plan" to mapOf("mode" to "decompose"), runtimeEntry)
   }
 
   private fun findProjectedManifest(repoRoot: Path, issueKey: String) =
