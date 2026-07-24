@@ -200,12 +200,16 @@ class FeatureImplementWorkflowRuntimeTest {
         sessionId = "",
       )
     val abandoned = pending.copy(workflowStatus = "abandoned")
+    val paused = pending.copy(workflowStatus = "paused")
 
     assertEquals(null, WorkflowEngine.validateUpdate(definition, pending))
     assertEquals(null, WorkflowEngine.validateUpdate(definition, abandoned))
+    assertEquals(null, WorkflowEngine.validateUpdate(definition, paused))
     assertEquals("recover", engine.resumeView(definition, completedAs("abandoned")).resumeMode)
+    // SKILL-141 Subtask 1 AC-003: `paused` is non-terminal, so it resumes rather than recovers.
+    assertEquals("resume", engine.resumeView(definition, completedAs("paused")).resumeMode)
     assertEquals(
-      "Invalid workflow_status 'canceled'. Allowed: pending, running, completed, failed, abandoned, blocked",
+      "Invalid workflow_status 'canceled'. Allowed: pending, running, completed, failed, abandoned, blocked, paused",
       WorkflowEngine.validateUpdate(definition, pending.copy(workflowStatus = "canceled")),
     )
   }

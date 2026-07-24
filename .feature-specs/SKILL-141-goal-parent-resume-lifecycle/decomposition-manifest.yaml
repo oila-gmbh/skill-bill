@@ -18,7 +18,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260724-172211-3wa8"
+  workflow_id: "wftr-20260724-182403-ieaw"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

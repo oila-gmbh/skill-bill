@@ -93,7 +93,7 @@ internal class DecompositionWorkflowContinuation(
       WorkflowFamily.IMPLEMENT.definition,
       opened,
       WorkflowUpdateInput(
-        workflowStatus = "abandoned",
+        workflowStatus = "paused",
         currentStepId = "plan",
         stepUpdates = listOf(
           mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),

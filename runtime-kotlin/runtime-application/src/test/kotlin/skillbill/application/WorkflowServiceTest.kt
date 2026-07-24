@@ -97,6 +97,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -194,6 +195,42 @@ class WorkflowServiceTest {
       service.abandonFeatureTaskRuntime(opened.workflowId, "Try again."),
     )
     assertContains(repeated.error, "already terminal")
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-005: the new non-terminal parent status must not soften explicit operator
+   * abandonment. That path stays terminal with its reason artifact, and `paused` never enters the
+   * runtime family's vocabulary at all.
+   */
+  @Test
+  fun `explicit operator abandonment stays terminal and never resolves to the paused status`() {
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val opened = assertIs<WorkflowOpenResult.Ok>(
+      service.openFeatureTask(
+        WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-141",
+        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+        governedSpecPath = ".feature-specs/SKILL-141/spec.md",
+      ),
+    )
+
+    val abandoned = assertIs<WorkflowUpdateResult.Ok>(
+      service.abandonFeatureTaskRuntime(opened.workflowId, "Operator abandoned the goal."),
+    )
+
+    assertEquals("abandoned", abandoned.acknowledgement.workflowStatus)
+    assertEquals(listOf("operator_abandonment"), abandoned.acknowledgement.updatedArtifactKeys)
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
+    assertContains(saved.artifactsJson, "Operator abandoned the goal.")
+    assertTrue(saved.workflowStatus in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses)
+    assertFalse("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
+    assertIs<WorkflowUpdateResult.Error>(service.abandonFeatureTaskRuntime(opened.workflowId, "Again."))
   }
 
   @Test
@@ -720,6 +757,55 @@ class WorkflowServiceTest {
     assertEquals("wfl-abandoned-progressed", selected?.workflowId)
   }
 
+  /**
+   * SKILL-141 Subtask 1 AC-006: the stale-lineage GC targets `abandoned` bookkeeping rows only. A
+   * `paused` parent is live work interrupted mid-run, so it is reused even when the manifest on disk
+   * has since been re-numbered — discarding it would orphan its planning preparations.
+   */
+  @Test
+  fun `decomposed parent lookup reuses a paused row whose subtask lineage predates a manifest edit`() {
+    val workflows = InMemoryWorkflowStates()
+    val pausedLineage = decompositionRuntime(status = "pending").copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Compatibility telemetry and end-to-end hardening",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_compatibility-telemetry.md",
+          status = "pending",
+        ),
+      ),
+    )
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-paused-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+            encodeDecompositionManifestMap(pausedLineage, testDecompositionManifestValidator),
+        ),
+        workflowStatus = "paused",
+      ),
+    )
+    val currentManifest = pausedLineage.copy(
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 7,
+          name = "Delegated review launch projections",
+          specPath = ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/spec_subtask_7_delegated-review.md",
+          status = "pending",
+        ),
+      ),
+    )
+
+    val selected = workflows.findDecomposedParentWorkflow(
+      "SKILL-52.1",
+      testDecompositionManifestValidator,
+      currentManifest,
+    )
+
+    assertEquals("wfl-paused-parent", selected?.workflowId)
+  }
+
   @Test
   fun `decomposed parent lookup rejects multiple active runtimes for same issue key`() {
     val workflows = InMemoryWorkflowStates()
@@ -799,6 +885,50 @@ class WorkflowServiceTest {
 
     assertEquals("blocked", state?.manifest?.status)
     assertEquals("wfl-child", state?.manifest?.subtasks?.single()?.workflowId)
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-002/AC-003/AC-004: reconstructing the parent from a checked-in manifest
+   * stamps the non-terminal `paused` status instead of `abandoned`, and a subsequent resume reuses
+   * the same parent id, so the `GoalPlanningIdentity` its planning preparations are keyed on holds.
+   */
+  @Test
+  fun `goal manifest store imports a paused parent and resume reuses its id and planning identity`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-paused-import")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-52.1-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "blocked"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+    )
+
+    val imported = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
+    val resumed = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
+
+    val parentRow = assertNotNull(workflows.getFeatureImplementWorkflow(imported.parentWorkflowId))
+    assertEquals("paused", parentRow.workflowStatus)
+    assertEquals(imported.parentWorkflowId, resumed.parentWorkflowId)
+    assertEquals(
+      1,
+      workflows.listFeatureImplementWorkflows(Int.MAX_VALUE).size,
+      "Resume must reuse the persisted parent row rather than minting a second one.",
+    )
+    assertEquals(
+      GoalPlanningIdentity(imported.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
+      GoalPlanningIdentity(resumed.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
+    )
   }
 
   @Test
@@ -2976,6 +3106,63 @@ class DecompositionDiskBootstrapTest {
     assertTrue(
       workflows.listFeatureImplementWorkflows(Int.MAX_VALUE).size >= 2,
       "Expected parent bootstrap row and child subtask row in DB",
+    )
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-002/AC-004: the disk bootstrap reconstructs an interrupted parent, so it
+   * must stamp the resumable `paused` status. Stamping `abandoned` made the row terminal and stale
+   * lineage, which orphaned the planning preparations keyed on that parent id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey bootstraps the parent as paused rather than abandoned`() {
+    val repoRoot = Files.createTempDirectory("skillbill-disk-bootstrap-paused")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+    val parent = assertNotNull(
+      workflows.findDecomposedParentWorkflow("SKILL-TEST", testDecompositionManifestValidator),
+      "Expected the bootstrapped parent to stay discoverable for a later resume",
+    )
+
+    assertEquals("paused", parent.workflowStatus)
+    assertFalse(
+      parent.workflowStatus in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
+      "A bootstrapped parent must not be terminal; it is interrupted work awaiting resume.",
     )
   }
 

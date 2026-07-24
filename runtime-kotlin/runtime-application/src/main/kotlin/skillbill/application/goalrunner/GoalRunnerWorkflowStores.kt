@@ -572,26 +572,37 @@ class WorkflowGoalRunnerManifestStore(
     manifest: DecompositionManifest,
     dbPathOverride: String?,
   ): GoalRunnerManifestState? {
-    val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
     return database.transaction(dbPathOverride) { unitOfWork ->
-      val opened = engine.openRecord(
+      // The caller's discovery read runs in its own transaction, so a concurrent resume can insert
+      // the parent between that read and this write. Repeat the lookup inside the write transaction
+      // and reuse the row rather than minting a second parent id for the same issue key.
+      val existing = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+        manifest.issueKey,
+        decompositionManifestValidator,
+        manifest,
+      )?.toSnapshot()
+      val base = existing ?: engine.openRecord(
         WorkflowFamily.IMPLEMENT.definition,
-        workflowId,
+        generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
         WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
         "plan",
       )
       val imported = engine.updateRecord(
         WorkflowFamily.IMPLEMENT.definition,
-        opened,
+        base,
         WorkflowUpdateInput(
-          workflowStatus = "abandoned",
+          workflowStatus = "paused",
           currentStepId = "plan",
-          stepUpdates = listOf(
-            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          ),
+          stepUpdates = if (existing != null) {
+            null
+          } else {
+            listOf(
+              mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+              mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+            )
+          },
           artifactsPatch = mapOf(
             "plan" to mapOf("mode" to "decompose"),
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
@@ -600,14 +611,14 @@ class WorkflowGoalRunnerManifestStore(
               DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
             ),
           ),
-          sessionId = opened.sessionId.orEmpty(),
+          sessionId = base.sessionId.orEmpty(),
         ),
       )
       WorkflowFamily.IMPLEMENT.saveRecord(
         unitOfWork.workflowStates,
         imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
       )
-      val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: imported
+      val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
       GoalRunnerManifestState(
         parentWorkflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
