@@ -32,6 +32,13 @@ data class AgentRunProcessRequest(
   val activityProbe: AgentRunActivityProbe = AgentRunActivityProbe.NONE,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
+  /**
+   * Additional parent-environment keys to pass through during an isolated launch
+   * (inheritEnvironment = false). Populated by the command builder for the active agent so each
+   * agent contributes its own credential and endpoint keys rather than hard-coding them in the
+   * infra layer. Has no effect when inheritEnvironment is true.
+   */
+  val environmentPassthroughKeys: Set<String> = emptySet(),
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,

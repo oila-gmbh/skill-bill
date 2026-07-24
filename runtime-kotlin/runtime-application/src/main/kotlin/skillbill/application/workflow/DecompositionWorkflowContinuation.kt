@@ -83,18 +83,14 @@ internal class DecompositionWorkflowContinuation(
     unitOfWork: UnitOfWork,
   ): WorkflowStateSnapshot {
     val issueKey = normalizeRequiredIssueKey(manifest.issueKey)
-    // Repeat the lookup inside the write transaction (concurrent-resume race), and also
-    // catch any pre-existing parent whose decomposition artifact cannot be decoded — the
-    // caller's findDecomposedParentWorkflow filters those out, so a secondary issueKey
-    // search here prevents minting a second orphaned parent id.
-    val existing = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+    // Single-scan lookup: reuse an existing valid parent or, when none is found, reclaim a parent
+    // whose decomposition artifact cannot be decoded (corrupt). Both alternatives are resolved in
+    // one table scan to avoid a second full materialisation inside the write lock.
+    val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
       manifest.issueKey,
       validator,
       manifest,
     )?.toSnapshot()
-      ?: unitOfWork.workflowStates.listFeatureImplementWorkflows(Int.MAX_VALUE)
-        .firstOrNull { row -> row.issueKey == issueKey && row.toSnapshot().hasDecompositionPlan() }
-        ?.toSnapshot()
     val base = existing ?: engine.openRecord(
       WorkflowFamily.IMPLEMENT.definition,
       generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
@@ -107,16 +103,15 @@ internal class DecompositionWorkflowContinuation(
       WorkflowUpdateInput(
         workflowStatus = "paused",
         currentStepId = "plan",
-        stepUpdates = if (existing != null) {
-          null
-        } else {
-          listOf(
-            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          )
-        },
+        // Stamp all planning steps as completed on both the fresh-mint and reuse paths. A reclaimed
+        // row may have been killed mid-plan with the plan step still running, making currentStepId
+        // contradict the step rows; idempotent stamps reconcile both paths to a consistent state.
+        stepUpdates = listOf(
+          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+        ),
         artifactsPatch = mapOf(
           "plan" to mapOf("mode" to "decompose"),
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(

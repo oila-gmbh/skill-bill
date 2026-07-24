@@ -470,15 +470,18 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
       "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
       "        \"tests_added\": [], \"tests_updated\": [],\n" +
-      "        \"tests_executed\": [ { \"name\": \"SomeTest\", \"outcome\": \"passed\" } ],\n" +
+      "        \"tests_executed\": [],\n" +
       "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
       "        \"unresolved_items\": [],\n" +
       "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
       "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
       "      ```\n" +
-      "      tests_executed.outcome is one of passed, failed, skipped. deviations may be []; each note\n" +
-      "      is a single line without backticks or pasted JSON/diff payloads."
+      "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
+      "      compile, or run tests here: write the tests the plan obligates and leave them unexecuted.\n" +
+      "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +
+      "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
+      "      payloads."
 
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
     "Required produced_outputs shape:\n```json\n{\n" +

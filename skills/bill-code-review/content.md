@@ -144,6 +144,12 @@ Rules:
   - [F-NNN] Severity | Confidence | file:line | description
   Severity: Blocker, Major, Minor, Nit. Confidence: High, Medium, Low.
 
+## No builds or test execution during review
+
+Review is a read-only phase. Neither the parent nor any specialist lane may build, compile, or run tests: no Gradle, Maven, npm, cargo, or `go` build/test invocation, no IDE or language-server build, and no running of the repository's validation command to confirm a finding. Compilation and test execution belong exclusively to the validate phase.
+
+Establish every finding by reading the code. When a finding's severity depends on runtime behaviour you cannot confirm by reading, report it at the severity the code supports and say what would settle it — do not resolve the question with a build. A lane that cannot compile the project is still expected to return its Risk Register.
+
 ## Review context budgets and accounting
 
 Use the schema-validated repository overrides when present; otherwise use the runtime defaults: 524288 parent-packet bytes, 65536 launch bytes per lane, 262144 cumulative evidence bytes per lane, 65536 bytes per evidence result and lane result, three expansions, 40 tool calls, and 24 model turns. Overrides must be positive and coherent and must remain visible in review metadata. A missing, dangling, stale, unreadable, or undeclared native worker stops all launches and reports the governed repair command; never widen access or substitute another worker.

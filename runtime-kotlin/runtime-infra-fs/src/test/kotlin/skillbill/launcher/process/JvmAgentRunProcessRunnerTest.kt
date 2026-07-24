@@ -3,6 +3,7 @@ package skillbill.launcher.process
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 class JvmAgentRunProcessRunnerTest {
@@ -62,6 +63,59 @@ class JvmAgentRunProcessRunnerTest {
 
     assertEquals("/tmp/sandbox-home", isolated["HOME"])
     assertEquals("/usr/bin", isolated["PATH"])
+  }
+
+  @Test
+  fun `isolated launch passes through additional keys declared by the command builder`() {
+    val parent = mapOf(
+      "HOME" to "/home/dev",
+      "PATH" to "/usr/bin",
+      "ANTHROPIC_API_KEY" to "sk-ant-ambient",
+      "SOME_AMBIENT_SECRET" to "should-be-stripped",
+    )
+
+    val isolated = isolatedLaunchEnvironment(
+      parent,
+      overrides = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1"),
+      additionalPassthroughKeys = setOf("ANTHROPIC_API_KEY"),
+    )
+
+    assertEquals("sk-ant-ambient", isolated["ANTHROPIC_API_KEY"])
+    assertEquals("/home/dev", isolated["HOME"])
+    assertNull(isolated["SOME_AMBIENT_SECRET"])
+  }
+
+  /**
+   * SKILL-141: configureLaunchEnvironment must apply isolation against the ProcessBuilder's own
+   * environment map — the actual seam that broke when the block was untested. This test exercises
+   * the ProcessBuilder seam directly rather than the pure-helper overload, so reverting the .apply
+   * block would cause this test to fail while keeping the helper tests green.
+   */
+  @Test
+  fun `configureLaunchEnvironment applies isolation to a real ProcessBuilder environment map`() {
+    val builder = ProcessBuilder("echo", "test")
+    builder.environment().clear()
+    builder.environment()["HOME"] = "/home/dev"
+    builder.environment()["PATH"] = "/usr/bin"
+    builder.environment()["ANTHROPIC_API_KEY"] = "sk-ant-ambient"
+    builder.environment()["SOME_AMBIENT_SECRET"] = "should-be-stripped"
+
+    configureLaunchEnvironment(
+      builder,
+      AgentRunProcessRequest(
+        command = listOf("echo"),
+        workingDirectory = Path.of("."),
+        environment = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1"),
+        inheritEnvironment = false,
+        environmentPassthroughKeys = setOf("ANTHROPIC_API_KEY"),
+      ),
+    )
+
+    assertEquals("/home/dev", builder.environment()["HOME"])
+    assertEquals("/usr/bin", builder.environment()["PATH"])
+    assertEquals("sk-ant-ambient", builder.environment()["ANTHROPIC_API_KEY"])
+    assertEquals("1", builder.environment()["SKILL_BILL_GOAL_CONTINUATION"])
+    assertNull(builder.environment()["SOME_AMBIENT_SECRET"])
   }
 }
 

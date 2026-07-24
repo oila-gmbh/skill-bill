@@ -39,6 +39,7 @@ class ProcessAgentRunAdapter(
         activityProbe = WorktreeActivityProbe(command.workingDirectory),
         environment = command.environment,
         inheritEnvironment = command.inheritEnvironment,
+        environmentPassthroughKeys = command.environmentPassthroughKeys,
         outputSink = request.outputSink,
         usePtyStdio = command.usePtyStdio,
         idlePolicy = command.idlePolicy,

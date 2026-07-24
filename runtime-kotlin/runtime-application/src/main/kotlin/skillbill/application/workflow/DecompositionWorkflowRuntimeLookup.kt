@@ -19,6 +19,62 @@ internal fun WorkflowStateSnapshot.decompositionRuntime(
 internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
   decodeArtifacts(artifactsJson)["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose"
 
+// Terminal statuses for feature-implement workflows — a reclaimed row carrying one of these
+// must not be treated as a live resumable parent.
+private val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
+
+/**
+ * Single-scan lookup that returns a valid parent (or the first non-terminal corrupt-manifest row as
+ * a fallback) without issuing a second full table scan when the primary lookup misses. This avoids
+ * materialising the table twice inside the caller's BEGIN IMMEDIATE write lock.
+ *
+ * Applies all guards from [findDecomposedParentWorkflow] for the valid candidate, and the same
+ * child-exclusion, terminal-status, and ambiguity guards for the corrupt fallback.
+ */
+internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
+  issueKey: String,
+  validator: DecompositionManifestValidator,
+  currentProjectedManifest: DecompositionManifest?,
+): WorkflowStateRecord? {
+  val normalizedIssueKey = issueKey.trim()
+  val validCandidates = mutableListOf<DecomposedParentCandidate>()
+  val corruptCandidates = mutableListOf<WorkflowStateRecord>()
+  listFeatureImplementWorkflows(Int.MAX_VALUE)
+    .filter { row ->
+      val snapshot = row.toSnapshot()
+      !snapshot.isGoalContinuationChildWorkflow() &&
+        snapshot.hasDecompositionPlan() &&
+        row.issueKey == normalizedIssueKey
+    }
+    .forEach { row ->
+      val manifest = row.toSnapshot().decompositionRuntime(validator)
+      if (manifest != null) {
+        validCandidates += DecomposedParentCandidate(row, manifest)
+      } else if (row.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES) {
+        corruptCandidates += row
+      }
+    }
+  val nonStale = validCandidates.filterNot { it.isStaleAbandonedLineage(currentProjectedManifest) }
+  val active = nonStale.filter { it.manifest.isActiveGoalRuntime() }
+  if (active.size > 1) {
+    error(
+      "Ambiguous decomposed parent workflows for '$normalizedIssueKey': " +
+        active.joinToString { it.record.workflowId } +
+        ". Pass an explicit workflow or manifest selector before continuing.",
+    )
+  }
+  val validRecord = (active.firstOrNull() ?: nonStale.firstOrNull())?.record
+  if (validRecord != null) return validRecord
+  if (corruptCandidates.size > 1) {
+    error(
+      "Ambiguous corrupt-manifest parent rows for '$normalizedIssueKey': " +
+        corruptCandidates.joinToString { it.workflowId } +
+        ". Operator intervention is required to resolve the duplicate parent rows.",
+    )
+  }
+  return corruptCandidates.firstOrNull()
+}
+
 internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
   issueKey: String,
   validator: DecompositionManifestValidator,

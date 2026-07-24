@@ -271,11 +271,19 @@ private class GoalChildPlanningImportMatcher(
 
   private fun planningPhasesSettled(artifacts: Map<String, Any?>, existing: WorkflowStateSnapshot): Boolean {
     val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as? Map<*, *> ?: return false
-    val recordsSettled = PLANNING_PHASE_IDS.all { phaseId ->
-      val record = records[phaseId] as? Map<*, *> ?: return@all false
-      record["phase_id"] == phaseId && record["status"] == "completed"
+    val expectedStepStatuses = PLANNING_PHASE_IDS.mapNotNull { phaseId ->
+      settledStepStatus(records[phaseId] as? Map<*, *>, phaseId)?.let { phaseId to it }
+    }.toMap()
+    return expectedStepStatuses.size == PLANNING_PHASE_IDS.size && stepsSettled(existing, expectedStepStatuses)
+  }
+
+  private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
+    if (record == null || record["phase_id"] != phaseId) return null
+    return when (record["status"]) {
+      "completed" -> "completed".takeIf { (record["output_artifact"] as? String)?.isNotBlank() == true }
+      "running" -> "running".takeIf { (record["rejected_output"] as? String)?.isNotBlank() == true }
+      else -> null
     }
-    return recordsSettled && stepsSettled(existing)
   }
 
   private fun ledgerMatches(artifacts: Map<String, Any?>): Boolean {
@@ -294,9 +302,13 @@ private class GoalChildPlanningImportMatcher(
     }
   }
 
-  private fun stepsSettled(existing: WorkflowStateSnapshot): Boolean {
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom, which writes both
+  // the phase record and its step from one record set: a quarantined producer lands running/running,
+  // never running/completed. Accepting a status the recorder cannot emit would admit forged state.
+  private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
-    return planningSteps.size == PLANNING_PHASE_IDS.size && planningSteps.all { it.status == "completed" }
+    return planningSteps.size == PLANNING_PHASE_IDS.size &&
+      planningSteps.all { it.status == expected[it.stepId] }
   }
 }
 
