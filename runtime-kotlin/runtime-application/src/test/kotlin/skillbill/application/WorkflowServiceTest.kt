@@ -24,6 +24,7 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
+import skillbill.application.workflow.hasDecompositionPlan
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
@@ -3164,6 +3165,78 @@ class DecompositionDiskBootstrapTest {
       parent.workflowStatus in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
       "A bootstrapped parent must not be terminal; it is interrupted work awaiting resume.",
     )
+  }
+
+  /**
+   * SKILL-141 Subtask 1 AC-004: when a pre-existing parent row has a corrupt decomposition artifact
+   * (findDecomposedParentWorkflow requires a valid decode and filters it out), the secondary
+   * issueKey+hasDecompositionPlan search must reclaim it so bootstrap does not mint a second orphaned id.
+   */
+  @Test
+  fun `continueDecomposedParentByIssueKey reuses existing parent when decomposition artifact is corrupt`() {
+    val repoRoot = Files.createTempDirectory("skillbill-corrupt-artifact-reuse")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-TEST-feature/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    val manifest = DecompositionManifest(
+      issueKey = "SKILL-TEST",
+      featureName = "test-feature",
+      parentSpecPath = ".feature-specs/SKILL-TEST-feature/spec.md",
+      status = "in_progress",
+      executionModel = DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK,
+      baseBranch = "main",
+      featureBranch = "",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "implement"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "first-subtask",
+          specPath = ".feature-specs/SKILL-TEST-feature/spec_subtask_1.md",
+          status = "pending",
+        ),
+      ),
+    )
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
+    )
+    val workflows = InMemoryWorkflowStates()
+    // Insert existing parent with a corrupt decomposition_runtime artifact. findDecomposedParentWorkflow
+    // requires a valid Map decode and silently excludes this row; the secondary issueKey+hasDecompositionPlan
+    // search must find it so no second parent id is minted.
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-corrupt-parent",
+        artifactsPatch = mapOf(
+          "plan" to mapOf("mode" to "decompose"),
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to "not-a-map",
+        ),
+      ).copy(issueKey = "SKILL-TEST"),
+    )
+    val db = FakeDatabaseSessionFactory(workflows)
+    val continuation = DecompositionWorkflowContinuation(
+      engine = testWorkflowEngine,
+      gitOperations = NoopWorkflowGitOperations,
+      validator = testDecompositionManifestValidator,
+      fileStore = TestDecompositionManifestFileStore,
+      repoRootProvider = { repoRoot },
+    )
+
+    db.transaction<ContinuationStepResult>(null) { unitOfWork ->
+      continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
+    }
+
+    // The reused parent row must still be present and stamped paused.
+    val parentRow = requireNotNull(
+      workflows.getFeatureImplementWorkflow("wfl-corrupt-parent"),
+      lazyMessage = { "Existing parent row must be preserved." },
+    )
+    assertEquals("paused", parentRow.workflowStatus)
+    // No second parent should have been minted: only one row must carry both the
+    // decompose-mode plan artifact and the issue key (child subtask rows don't have it).
+    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
+      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    assertEquals(1, parentRows.size, "Bootstrap must reuse the existing parent, not mint a second one.")
+    assertEquals("wfl-corrupt-parent", parentRows.single().workflowId)
   }
 
   @Test
