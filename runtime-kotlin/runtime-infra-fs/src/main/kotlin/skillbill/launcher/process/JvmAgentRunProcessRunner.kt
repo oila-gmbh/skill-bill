@@ -231,9 +231,12 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     .directory(request.workingDirectory.toFile())
     .apply {
       if (!request.inheritEnvironment) {
+        val isolated = isolatedLaunchEnvironment(environment(), request.environment)
         environment().clear()
+        environment().putAll(isolated)
+      } else {
+        environment().putAll(request.environment)
       }
-      environment().putAll(request.environment)
     }
 
   private fun startPtyProcess(request: AgentRunProcessRequest): ProcessStart {
@@ -977,3 +980,28 @@ private fun openPtyPair(): Pair<Int, String> {
 private const val PTY_PATH_BUF_SIZE = 256
 private const val NULL_BYTE: Byte = 0
 private const val BYTE_MASK = 0xFF
+
+internal fun isolatedLaunchEnvironment(
+  parentEnvironment: Map<String, String>,
+  overrides: Map<String, String>,
+): Map<String, String> = parentEnvironment.filterKeys { it in ISOLATED_LAUNCH_PASSTHROUGH_KEYS } + overrides
+
+// An isolated launch drops the caller's ambient session state, but the spawned agent still has to
+// be executable and still has to resolve the user's own installation: without these the worker has
+// no PATH to exec from and no home under which its registered native agents live, so every
+// delegated review lane fails preflight as if nothing were installed.
+private val ISOLATED_LAUNCH_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "HOME",
+  "PATH",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "LC_ALL",
+  "TMPDIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "CLAUDE_CONFIG_DIR",
+  "CODEX_HOME",
+)

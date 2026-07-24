@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Non-terminal parent status and parent-id reuse on resume"
   spec_path: ".feature-specs/SKILL-141-goal-parent-resume-lifecycle/spec_subtask_1_parent-workflow-non-terminal-status.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260724-184042-578i"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

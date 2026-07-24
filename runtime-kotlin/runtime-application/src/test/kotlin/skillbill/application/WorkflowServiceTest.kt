@@ -29,6 +29,8 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
+import skillbill.contracts.JsonSupport
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -2667,6 +2669,81 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       assertNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID), variant)
       assertNull(harness.workflows.executionIdentity(CHILD_ID), variant)
     }
+  }
+
+  /**
+   * SKILL-141: a hydrated planning projection that fails its consumer gate re-enters the plan
+   * phase's own bounded fix loop, which rewrites the child's plan record and step. That repair is
+   * documented behaviour, so resume must still recognise the import instead of bricking the child.
+   */
+  @Test
+  fun `resume accepts a child whose imported plan phase was repaired by its own fix loop`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(repairedPlanPhase(harness))
+
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val resumed = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertContains(resumed.artifactsJson, "repaired-plan-one")
+    assertEquals("implement", resumed.currentStepId)
+  }
+
+  @Test
+  fun `resume rejects a child whose import provenance no longer matches and names the divergence`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+      .toMutableMap()
+    val importArtifact = (artifacts["goal_planning_import"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    importArtifact["parent_goal_workflow_id"] = "wfl-some-other-parent"
+    artifacts["goal_planning_import"] = importArtifact
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    val error = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.message.orEmpty(), "stored import provenance differs from the hydration request")
+  }
+
+  private fun repairedPlanPhase(harness: HydrationHarness): WorkflowStateRecord {
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = JsonSupport.parseObjectOrNull(child.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+      .toMutableMap()
+    val records = (artifacts["feature_task_runtime_phase_records"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    val planRecord = (records["plan"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    planRecord["attempt_count"] = 3
+    planRecord["resolved_agent_id"] = "claude"
+    planRecord["duration_millis"] = 4200
+    planRecord["output_artifact"] = PLAN_ONE_PAYLOAD.replace("owned-plan-one", "repaired-plan-one")
+    records["plan"] = planRecord
+    artifacts["feature_task_runtime_phase_records"] = records
+    return child.copy(
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      stepsJson = child.stepsJson.replace(
+        "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":1",
+        "\"step_id\":\"plan\",\"status\":\"completed\",\"attempt_count\":3",
+      ),
+    )
   }
 
   @Test

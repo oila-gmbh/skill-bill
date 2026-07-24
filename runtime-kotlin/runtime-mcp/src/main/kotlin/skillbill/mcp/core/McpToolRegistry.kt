@@ -392,7 +392,7 @@ object McpToolRegistry {
       ),
       "feature_task_runtime_workflow_resume" to workflowIdSchema(),
       "feature_task_runtime_workflow_update" to workflowUpdateSchema(
-        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
+        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
         stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
       "goal_prose_started" to objectSchema(
