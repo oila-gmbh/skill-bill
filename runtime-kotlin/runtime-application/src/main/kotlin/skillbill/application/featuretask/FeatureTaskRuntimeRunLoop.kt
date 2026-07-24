@@ -578,7 +578,13 @@ internal class FeatureTaskRuntimeRunLoop(
       // memory the stale output is dropped from resolution; durably the record returns to running so a
       // resume relaunches the producer rather than re-consuming the rejected record.
       state.invalidateProducerOutput(destinationPhaseId)
-      recorder.invalidateQuarantinedProducerRecord(request.workflowId, destinationPhaseId, request.dbPathOverride)
+      recorder.invalidateQuarantinedProducerRecord(
+        request.workflowId,
+        destinationPhaseId,
+        loopId,
+        edgeIteration,
+        request.dbPathOverride,
+      )
     }
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {

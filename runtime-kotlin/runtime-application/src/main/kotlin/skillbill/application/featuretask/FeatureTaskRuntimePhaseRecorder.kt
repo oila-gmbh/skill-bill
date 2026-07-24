@@ -283,11 +283,17 @@ class FeatureTaskRuntimePhaseRecorder(
    * payload is moved from `output_artifact` to `rejected_output` (retained as evidence but no longer a
    * usable output) and the status returns to `running`, so hydration relaunches the producer and the
    * regenerated higher-iteration output supersedes it. Only the settled status is touched; the rejected
-   * record's fields are never rewritten or migrated. Returns true when the workflow row exists.
+   * record's fields are never rewritten or migrated. The regeneration loop context (`loopId`,
+   * `edgeIteration`) is stamped onto the invalidated running record in this same transaction, so the
+   * per-edge cap watermark survives a crash that lands after this commit but before the LOOP_EDGE ledger
+   * write; resume reseeds the cap from the record rather than resetting it to zero (AC-003). Returns true
+   * when the workflow row exists.
    */
   internal fun invalidateQuarantinedProducerRecord(
     workflowId: String,
     producerPhaseId: String,
+    loopId: String,
+    edgeIteration: Int,
     dbOverride: String? = null,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -303,6 +309,8 @@ class FeatureTaskRuntimePhaseRecorder(
       finishedAt = null,
       outputArtifact = null,
       rejectedOutput = previous.outputArtifact ?: previous.rejectedOutput,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
     )
     val updatedRecords = LinkedHashMap(existingRecords).apply { put(producerPhaseId, invalidated) }
     persistPatch(

@@ -1,3 +1,14 @@
+## [2026-07-24] SKILL-140 quarantine-and-regenerate legacy/drifted phase records (subtask 4)
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-sqlite
+- Schema introductions and version bumps no longer wedge the loop: a legacy/drifted upstream phase record is quarantined and its producing phase invalidated so it regenerates in-band, instead of blocking a consumer that cannot repair it. In-band recovery is primary; out-of-band surgery is the fallback. reusable
+- `feature-task-runtime-quarantine-schema.yaml` follows the full contract recipe (Draft 2020-12 YAML, `contract_version` const, `_CONTRACT_VERSION` constant + parity test, typed `InvalidFeatureTaskRuntimeQuarantineSchemaError`, classpath bundling via configuration-cache-friendly Copy task). reusable
+- Quarantine evidence is append-only, retrievable in insertion order, and crash-replay idempotent; the regeneration attempt cap survives a crash mid-regeneration (not reset on resume) so recovery stays bounded across resume. reusable
+- A rejected record whose producing phase the pipeline already dropped blocks durably with an actionable reason rather than looping — the drop-vs-regenerate boundary is explicit.
+- Regeneration telemetry records activation and attempt counts only, never record contents or prompt text (text-free typed events), matching the subtask-2 diagnostics discipline. reusable
+- The launch seam and producer gate share one validation function/validator port (established subtasks 1-3); this subtask adds the quarantine backward-edge and record invalidation without forking that seam.
+Feature flag: N/A
+Acceptance criteria: subtask 4: full ACs implemented (quarantine contract, evidence store, regeneration backward-edges, launch-seam wiring, producing-record invalidation, cross-resume cap, telemetry, real-validator suite, recovery-path docs)
+
 ## [2026-07-24] SKILL-140 real-validator run-loop tests and fixture parity (subtask 3)
 Areas: runtime-kotlin/runtime-application (tests/testFixtures), runtime-kotlin/runtime-core (architecture tests)
 - Run-loop integration tests exercise the producer gate, canonicalization, and phase advance through the real Draft 2020-12 `RealPlanningProjectionValidator`, not stubs: a contract-violating projection blocks only at the cap, a canonicalizable one advances with 0 fix attempts, and a conforming one advances directly. reusable

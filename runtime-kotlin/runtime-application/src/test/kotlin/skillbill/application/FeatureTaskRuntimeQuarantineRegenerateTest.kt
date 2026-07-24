@@ -24,8 +24,13 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
       """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
 
   // AC-003: a crash mid-regeneration resumes the same cap sequence without resetting the per-edge
-  // counter, mirroring the implement-fix crash test. The regeneration edge fires exactly once across
-  // both runs; the surviving ledger watermark is never reset or double-counted by the crash.
+  // counter, mirroring the implement-fix crash test (`crash mid-implement resume reconciles without
+  // resetting the per-edge cap`). Run 1 fires the edge once and the plan regeneration crashes; the
+  // durable plan record retains the regeneration loop context across the crash — the watermark a reset
+  // would drop. Run 2 heals and advances, and the edge is never re-minted at 1. (The record-stamping
+  // half of the fix, which seeds that watermark when a crash lands before the LOOP_EDGE ledger write,
+  // is isolated in `invalidating a quarantined producer stamps the regeneration watermark durably`;
+  // the at-cap terminal block is covered in FeatureTaskRuntimeTransitionFunctionTest.)
   @Test
   fun `a crash mid-regeneration resumes without resetting the regeneration cap`() {
     var planLaunches = 0
@@ -48,7 +53,14 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
 
     // Run 1: implement rejects the legacy plan, the regeneration edge fires (iteration 1), and the
     // plan regeneration crashes.
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val firstBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("plan", firstBlocked.lastIncompletePhase)
+    // The terminal blocked producer record retained the regeneration loop context across the crash —
+    // the watermark a reset would drop (AC-003). Without it the resume would reconstruct the per-edge
+    // counter to 0 and re-mint iteration 1.
+    val blockedPlan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PLAN_REGENERATION_LOOP_ID, blockedPlan.loopId)
+    assertEquals(1, blockedPlan.edgeIteration)
 
     // Run 2 (resume): the crash heals. The surviving watermark means the edge is NOT re-fired at 1;
     // plan regenerates a valid record and the consumer advances to completion.
@@ -66,6 +78,36 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
       regenerationEdges,
       "the regeneration edge fired once and its cap watermark survived the crash without reset",
     )
+  }
+
+  // AC-003 (F-001 isolation): the durable producer invalidation stamps the regeneration loop context
+  // onto the running record in the SAME transaction that clears its settled completion, so the per-edge
+  // cap watermark survives a crash landing after that commit but before the LOOP_EDGE ledger write.
+  // `FeatureTaskRuntimeRunState.edgeIterationByLoop` reseeds the cap from this record context on resume,
+  // so a reset to 0 (which would let the cap be exceeded) is impossible. Stamping is proven here rather
+  // than through the launch-time crash test, whose crash lands after the ledger write.
+  @Test
+  fun `invalidating a quarantined producer stamps the regeneration watermark durably`() {
+    val harness = runnerHarness()
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+
+    harness.recorder.invalidateQuarantinedProducerRecord(
+      WORKFLOW_ID,
+      "plan",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PLAN_REGENERATION_LOOP_ID,
+      edgeIteration = 1,
+    )
+
+    val plan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    assertEquals("running", plan.status, "the settled completion is cleared so the producer relaunches")
+    assertEquals(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PLAN_REGENERATION_LOOP_ID,
+      plan.loopId,
+      "the regeneration loop id is stamped durably, seeding the resume watermark before the ledger write",
+    )
+    assertEquals(1, plan.edgeIteration, "the per-edge iteration is stamped durably so the cap cannot reset")
+    assertEquals(legacyPlan, plan.rejectedOutput, "the rejected record is retained as evidence, not a usable output")
+    assertEquals(null, plan.outputArtifact, "the rejected payload is no longer selectable as the producer output")
   }
 
   // AC-005: a goal-continuation truncation dropped the producer, so the rejected record cannot be

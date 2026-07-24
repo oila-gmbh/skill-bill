@@ -63,12 +63,12 @@ subtasks:
 - id: 4
   name: "Durable-record quarantine and regenerate"
   spec_path: ".feature-specs/SKILL-140-runtime-stuck-state-hardening/spec_subtask_4_quarantine-and-regenerate.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260724-072521-5vub"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
