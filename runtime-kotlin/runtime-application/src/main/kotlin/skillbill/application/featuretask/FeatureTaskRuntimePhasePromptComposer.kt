@@ -4,12 +4,16 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 
 /**
@@ -50,13 +54,61 @@ object FeatureTaskRuntimePhasePromptComposer {
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
-      AgentAddonPromptFormatter.format(agentAddonSelection),
+      AgentAddonPromptFormatter.format(budgetedAddonsFor(briefing.phaseId, agentAddonSelection)),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
       outputContract(briefing),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
+
+  /**
+   * Applies the add-on content budget before hydrated content reaches the prompt.
+   *
+   * The declared consumer assignment is manifest-owned `feature_addon_usage.feature-task`, which
+   * scopes add-ons to a feature-task run as a whole — every phase of this composer's run is that
+   * consumer, so there is no narrower per-phase assignment to honor here. What this seam adds is the
+   * budget: it is deliberately separate from the per-projection phase-receipt budget, so neither can
+   * consume the other's headroom and an oversized add-on rejects with a typed error rather than
+   * silently inflating the briefing.
+   */
+  internal fun budgetedAddonsFor(
+    phaseId: String,
+    selection: HydratedAgentAddonSelection,
+  ): HydratedAgentAddonSelection {
+    val budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT
+    if (selection.entries.size > budget.maxCollectionItems) {
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = null,
+        consumerPhaseId = phaseId,
+        projectionName = ADDON_CONTENT_PROJECTION_NAME,
+        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
+        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "${selection.entries.size} hydrated add-ons exceed the ${budget.maxCollectionItems}-item " +
+          "add-on budget; the runtime rejects rather than dropping add-ons.",
+      )
+    }
+    val totalBytes = selection.entries.sumOf { it.content.toByteArray(Charsets.UTF_8).size }
+    if (totalBytes > budget.maxUtf8Bytes) {
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = null,
+        consumerPhaseId = phaseId,
+        projectionName = ADDON_CONTENT_PROJECTION_NAME,
+        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
+        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "hydrated add-on content is $totalBytes UTF-8 bytes against the ${budget.maxUtf8Bytes}-byte " +
+          "add-on budget, which is counted independently of the phase-receipt budget; the runtime rejects " +
+          "rather than truncating add-on content.",
+      )
+    }
+    return selection
+  }
+
+  internal const val ADDON_CONTENT_PROJECTION_NAME: String = "agent_addon_content"
+  private const val ADDON_CONTENT_CONTRACT_ID: String = "feature_task_runtime.agent_addon_content"
+  private const val ADDON_CONTENT_CONTRACT_VERSION: String = "0.1"
 
   private fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRuntimeOperatorBlockRetry?): String {
     if (retry == null) return ""
@@ -281,16 +333,21 @@ object FeatureTaskRuntimePhasePromptComposer {
       return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
         "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
         "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." + remediation
+        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
+        planningProjectionShapeExampleFor(phaseId) + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
     return when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      -> planningProjectionShapeExampleFor(phaseId)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
-          "      severity/message object; an explicit empty [] affirms no Blocker findings) AND/OR a\n" +
-          "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". Output carrying NEITHER signal\n" +
-          "      fails the schema gate loudly — a prose summary alone cannot advance the gate.\n" +
+          "      severity/message object; an explicit empty [] affirms no Blocker or Major findings) AND/OR a\n" +
+          "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". A Blocker or Major finding sets\n" +
+          "      \"changes_requested\" so it is fixed in this same review pass; Minor and Nit do not. Output\n" +
+          "      carrying NEITHER signal fails the schema gate loudly — a prose summary alone cannot advance.\n" +
           "      Each finding's \"severity\" MUST be exactly one of blocker, major, minor, nit, and its\n" +
           "      \"issue_category\" MUST be exactly one of " +
           ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
@@ -357,6 +414,71 @@ object FeatureTaskRuntimePhasePromptComposer {
         "never report a compact gap against a closed criterion. Doing " +
         "so fails the schema gate loudly."
     }
+
+  // The preplan, plan, and implement phases each emit a bounded planning projection that the NEXT
+  // phase's launch seam parses with additionalProperties:false against
+  // feature-task-runtime-planning-projections-schema.yaml. Naming the fields in prose (as the phase
+  // directive does) is not enough to hit the shape: the projection lives DIRECTLY on produced_outputs
+  // (never nested under a projection_kind-named key), rollout and each deviations entry are OBJECTS,
+  // and task_id is lowercase-kebab. An agent left to infer the shape emits a nested wrapper, a prose
+  // rollout string, a free-text deviation, or "T1" and is rejected at the seam. Each example mirrors
+  // PlanningProjectionFixtures so the guidance and the gate cannot drift.
+  private fun planningProjectionShapeExampleFor(phaseId: String): String = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN_PROJECTION_SHAPE
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN_PROJECTION_SHAPE
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT_PROJECTION_SHAPE
+    else -> ""
+  }
+
+  private val PREPLAN_PROJECTION_SHAPE: String =
+    "\n    - Required produced_outputs shape: emit these fields DIRECTLY on produced_outputs — do NOT\n" +
+      "      nest them under a \"preplanning_digest\" key — and \"rollout\" is an OBJECT, never a string:\n" +
+      "      ```json\n" +
+      "      { \"projection_kind\": \"preplanning_digest\",\n" +
+      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
+      "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
+      "        \"risks\": [\"<concrete risk>\"],\n" +
+      "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
+      "          \"notes\": \"<rollout note, or N/A>\" },\n" +
+      "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
+      "        \"unresolved_questions\": [], \"evidence_refs\": [] }\n" +
+      "      ```\n" +
+      "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Optional arrays may be\n" +
+      "      omitted or []; every listed string must be non-empty."
+
+  private val PLAN_PROJECTION_SHAPE: String =
+    "\n    - Required produced_outputs shape: emit these fields DIRECTLY on produced_outputs. Every\n" +
+      "      task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is REJECTED — use \"task-1\") and\n" +
+      "      criterion_refs use the AC-### form:\n" +
+      "      ```json\n" +
+      "      { \"projection_kind\": \"executable_plan\",\n" +
+      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
+      "        \"mode\": \"direct\",\n" +
+      "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
+      "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
+      "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +
+      "        \"validation_strategy\": [\"<how the plan is validated>\"] }\n" +
+      "      ```"
+
+  private val IMPLEMENT_PROJECTION_SHAPE: String =
+    "\n    - Required produced_outputs shape: emit the implementation_receipt fields DIRECTLY on\n" +
+      "      produced_outputs (the bounded claim audit consumes) alongside the reconciled_state report.\n" +
+      "      completed_task_ids reuse the plan's task_ids; changed_paths are repository-relative; every\n" +
+      "      deviations entry is an OBJECT { \"ref\", \"note\" }, never a free-text string:\n" +
+      "      ```json\n" +
+      "      { \"projection_kind\": \"implementation_receipt\",\n" +
+      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
+      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+      "        \"tests_added\": [], \"tests_updated\": [],\n" +
+      "        \"tests_executed\": [ { \"name\": \"SomeTest\", \"outcome\": \"passed\" } ],\n" +
+      "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
+      "        \"unresolved_items\": [],\n" +
+      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
+      "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
+      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
+      "      ```\n" +
+      "      tests_executed.outcome is one of passed, failed, skipped. deviations may be []; each note\n" +
+      "      is a single line without backticks or pasted JSON/diff payloads."
 
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
     "Required produced_outputs shape:\n```json\n{\n" +
@@ -492,31 +614,53 @@ object FeatureTaskRuntimePhasePromptComposer {
   private val phaseDirectives: Map<String, String> = mapOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
       "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
-      "repository files during this phase. Emit a " +
-      "schema-valid produced_outputs object containing the digest for the downstream plan phase.",
+      "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
+      "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
+      "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
+      "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
+      "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
+      "preplan envelope, a generic summary, or progress diagnostics.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
       "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
       "the upstream preplan digest as planning context. Do not modify repository files during " +
-      "this phase.",
+      "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
+      "projection_kind \"executable_plan\", contract_version " +
+      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
+      "stable ordered tasks " +
+      "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
+      "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
+      "generic producer notes; decomposition detail stays private to the preparation boundary.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
       "Reconcile the repository to the intended state the upstream plan output describes: make the " +
       "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-      "idempotency contract below. When the briefing carries audit_gaps, reuse its immutable initial " +
-      "preplan and plan outputs and change only what the latest listed gaps require; do not regenerate " +
-      "planning, expand scope, or disturb settled implementation.",
+      "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
+      "(projection_kind \"implementation_receipt\", contract_version " +
+      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
+      "normalized changed_paths, " +
+      "tests_added, tests_updated, tests_executed with outcomes, deviations, unresolved_items, " +
+      "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
+      "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
+      "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
+      "settled implementation.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-      "Address the carried review Blocker findings on the CURRENT working tree as incremental " +
-      "reconciliation: fix exactly those findings using the review findings, the latest implement " +
-      "output, and the intended state from the briefing. Do NOT re-apply the plan from scratch and do " +
-      "not expand scope beyond the findings. Treat any fix already present as a no-op. See the " +
-      "mutating-phase idempotency contract below.",
+      "Address the carried review Blocker AND Major findings on the CURRENT working tree as incremental " +
+      "reconciliation: fix every Blocker and Major finding using the review findings, the latest implement " +
+      "output, and the intended state from the briefing. Minor and Nit findings are recorded in the " +
+      "unaddressed-findings ledger and are NOT in scope for this pass. Do NOT re-apply the plan from " +
+      "scratch and do not expand scope beyond the Blocker and Major findings. Treat any fix already " +
+      "present as a no-op. See the mutating-phase idempotency contract below.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
       "Review the implemented changes at the encoded review scope against the acceptance criteria " +
       "and report defects with concrete file references.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
       "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
       "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
-      "test-only concerns as audit gaps.",
+      "test-only concerns as audit gaps. The upstream implementation receipt is a producer CLAIM, not " +
+      "evidence: read the repository itself at the resolved checkpoint in the briefing — the diff over its " +
+      "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
+      "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
+      "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
+      "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap.",
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
       "Run the repository validation gate relevant to the change. Fix validation findings at " +
       "their root cause and rerun the gate until it passes; validation findings are repair work, " +

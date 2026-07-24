@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.withBlockedSubtask
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
@@ -2709,8 +2710,11 @@ class GoalRunnerStatusAttributionTest {
 // recorder runs over an empty repository (every read returns null) and attribution falls through to
 // the subtask's recorded finalizing/participating agent — letting status attribution tests assert
 // source 2 without a database.
-private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder =
-  FeatureTaskRuntimePhaseRecorder(GoalTestEmptyDatabase, GoalTestNoopSnapshotValidator)
+private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
+  GoalTestEmptyDatabase,
+  GoalTestNoopSnapshotValidator,
+  AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+)
 
 // Seedable in-memory harness for the AC2 phase-ledger regression: opens a real runtime-mode workflow
 // row and records a finalized phase so GoalRunnerStatusService.resolveActiveAgent reads the agent
@@ -2719,7 +2723,11 @@ private class GoalStatusPhaseLedgerHarness {
   private val repository = GoalStatusSeedableWorkflowStateRepository()
   private val database = GoalStatusSeedableDatabase(repository)
   val recorder: FeatureTaskRuntimePhaseRecorder =
-    FeatureTaskRuntimePhaseRecorder(database, GoalTestNoopSnapshotValidator)
+    FeatureTaskRuntimePhaseRecorder(
+      database,
+      GoalTestNoopSnapshotValidator,
+      AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    )
 
   fun openRuntimeWorkflow(workflowId: String) {
     recorder.ensureWorkflowOpen(workflowId, sessionId = "goal-status-test")

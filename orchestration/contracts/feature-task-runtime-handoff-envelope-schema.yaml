@@ -1,0 +1,239 @@
+# Feature-task-runtime handoff-envelope schema (canonical source of truth).
+#
+# This file describes the durable, prompt-visible handoff envelope delivered to a
+# single feature-task-runtime phase. It replaces the generic
+# `upstream_outputs_by_phase_id` payload map: the envelope carries only named,
+# typed projections and compact references.
+#
+# Why this exists:
+#
+# - Complete validated phase output is PRIVATE EVIDENCE and stays in the durable
+#   phase record. What a consumer phase actually receives is the projection set
+#   declared for it by workflow-owned static configuration. This schema is the
+#   contract for that delivered projection, so a serialization or database round
+#   trip cannot substitute the private artifact for the delivered envelope.
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines the SHAPE of the envelope: required fields, enum values,
+#   the pinned contract version, and strict `additionalProperties: false` at every
+#   object so an undeclared wire field fails loudly.
+# - Per-declaration budgets (UTF-8 bytes and collection items), duplicate
+#   projection-name detection, undeclared-field detection, compact-reference
+#   authorization, and repository-checkpoint policy enforcement are cross-field
+#   rules JSON Schema cannot express. They live in
+#   `FeatureTaskRuntimeHandoffProjectionValidator` (`runtime-domain`) and are
+#   documented under `x-coherence-checks` below.
+#
+# Versioning rule:
+#
+# - `contract_version` is pinned by
+#   `FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION` in
+#   `runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt`.
+# - The parity test
+#   `FeatureTaskRuntimeHandoffEnvelopeSchemaContractVersionTest` fails the build
+#   if this file and that constant diverge.
+
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
+title: Feature-task-runtime handoff envelope
+description: >-
+  The validated projection set delivered to one feature-task-runtime phase. Carries named typed
+  projections and compact references only; it has no generic upstream-payload map, raw payload, raw
+  prompt, transcript, tool output, log, source body, diff body, or telemetry field.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - consumer_phase_id
+  - projections
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+    description: Pinned envelope contract version; a mismatch is an unsupported-version rejection.
+  consumer_phase_id:
+    type: string
+    minLength: 1
+    description: Id of the phase this envelope is delivered to.
+  projections:
+    type: array
+    description: Ordered named projections. Names are unique per envelope (see x-coherence-checks).
+    items:
+      $ref: "#/$defs/projection"
+  repository_checkpoint:
+    $ref: "#/$defs/repository_checkpoint"
+
+$defs:
+  repository_checkpoint:
+    type: object
+    additionalProperties: false
+    required:
+      - fingerprint
+    description: >-
+      Deterministic identification of the repository state the envelope was derived against. The
+      base/head pair is carried when known; the fingerprint is the equivalent digest every checkpoint
+      policy compares on.
+    properties:
+      fingerprint:
+        type: string
+        minLength: 1
+      base_ref:
+        type: string
+        minLength: 1
+      head_ref:
+        type: string
+        minLength: 1
+      working_tree_owned_paths:
+        type: array
+        items:
+          type: string
+          minLength: 1
+
+  projection:
+    type: object
+    additionalProperties: false
+    required:
+      - projection_name
+      - source_ref
+      - projection_contract_id
+      - projection_contract_version
+      - prompt_visibility
+      - fields
+    properties:
+      projection_name:
+        type: string
+        pattern: "^[a-z][a-z0-9_]*$"
+      source_ref:
+        type: string
+        minLength: 1
+        description: >-
+          Wire form of the single declared source: `upstream_phase_output:<phase_id>`,
+          `run_invariant_field:<field>`, `derived_ceremony_scaling`, or `addon_content:<slug>`.
+        pattern: "^(upstream_phase_output:.+|run_invariant_field:.+|addon_content:.+|derived_ceremony_scaling)$"
+      projection_contract_id:
+        type: string
+        minLength: 1
+      projection_contract_version:
+        type: string
+        minLength: 1
+      prompt_visibility:
+        type: string
+        enum:
+          - prompt_visible
+          - private_evidence_only
+      fields:
+        type: array
+        items:
+          $ref: "#/$defs/projection_field"
+
+  projection_field:
+    type: object
+    required:
+      - name
+      - kind
+    properties:
+      name:
+        type: string
+        pattern: "^[a-z][a-z0-9_]*$"
+        not:
+          enum:
+            - upstream_outputs_by_phase_id
+            - raw_payload
+            - payload
+            - raw_prompt
+            - prompt
+            - transcript
+            - tool_output
+            - log
+            - logs
+            - source_body
+            - diff_body
+            - telemetry
+      kind:
+        type: string
+        enum:
+          - text
+          - text_list
+          - compact_reference
+    oneOf:
+      - additionalProperties: false
+        required:
+          - name
+          - kind
+          - text
+        properties:
+          name: true
+          kind:
+            const: text
+          text:
+            type: string
+      - additionalProperties: false
+        required:
+          - name
+          - kind
+          - items
+        properties:
+          name: true
+          kind:
+            const: text_list
+          items:
+            type: array
+            items:
+              type: string
+      - additionalProperties: false
+        required:
+          - name
+          - kind
+          - reference_kind
+          - reference_value
+        properties:
+          name: true
+          kind:
+            const: compact_reference
+          reference_kind:
+            type: string
+            enum:
+              - private_evidence_artifact
+              - repository_path
+              - repository_checkpoint
+              - acceptance_criterion_ref
+              - repair_item_id
+          reference_value:
+            type: string
+            minLength: 1
+            maxLength: 512
+            description: Compact identifier only; newlines and embedded bodies are rejected by the validator.
+
+x-coherence-checks:
+  - id: unique-projection-names
+    description: >-
+      Projection names are unique within one envelope. Enforced by
+      FeatureTaskRuntimeHandoffEnvelope's construction invariant and by the validator's
+      DUPLICATE_PROJECTION_NAME rejection.
+  - id: declared-fields-only
+    description: >-
+      Every field name in a projection appears in the owning PhaseHandoffProjectionDeclaration's
+      declaredFieldNames. A field outside that list is an UNDECLARED_FIELD rejection; the projection
+      shape cannot be widened at runtime.
+  - id: per-projection-budgets
+    description: >-
+      Each projection's UTF-8 byte total and collection item total are counted before prompt
+      serialization and compared against its declaration's budget. Overflow is a BUDGET_OVERFLOW
+      rejection. The validator never truncates JSON, drops a required field, or substitutes the full
+      source artifact for an oversized projection.
+  - id: compact-reference-authorization
+    description: >-
+      A private_evidence_artifact reference is accepted only when the owning declaration sets
+      allowsPrivateArtifactReference, i.e. the consumer dereferences it through a runtime-owned
+      deterministic operation. Otherwise it is an INVALID_COMPACT_REFERENCE rejection. No compact
+      reference introduces arbitrary model-driven retrieval.
+  - id: repository-checkpoint-policy
+    description: >-
+      not_required ignores the checkpoint; must_match requires both a resolved and an expected
+      checkpoint with equal fingerprints; refresh_from_repository requires a freshly resolved
+      checkpoint. Any other combination is a CHECKPOINT_POLICY_VIOLATION rejection.
+  - id: contract-version-parity
+    description: >-
+      contract_version.const equals FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION, pinned by
+      FeatureTaskRuntimeHandoffEnvelopeSchemaContractVersionTest.

@@ -290,17 +290,32 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `findings with only Major Minor or Nit or no findings derive approved`() {
+  fun `findings with only Minor or Nit or no findings derive approved`() {
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, FeatureTaskRuntimeReviewVerdict(emptyList()).verdict)
     val minorOnly = FeatureTaskRuntimeReviewVerdict(
       listOf(
-        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.NIT, "trailing space"),
       ),
     )
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, minorOnly.verdict)
     assertTrue(minorOnly.unresolvedFindings.isEmpty())
+    assertTrue(minorOnly.remediationFindings.isEmpty())
+  }
+
+  @Test
+  fun `a Major finding requests changes for remediation but is not advance-blocking`() {
+    val majorOnly = FeatureTaskRuntimeReviewVerdict(
+      listOf(
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
+      ),
+    )
+    // Major reopens implement_fix (changes_requested) and is carried into the fix pass, but it never
+    // hard-blocks at cap exhaustion, so unresolvedFindings (the Blocker-only advance gate) stays empty.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, majorOnly.verdict)
+    assertEquals(listOf("follow-up risk"), majorOnly.remediationFindings.map { it.message })
+    assertTrue(majorOnly.unresolvedFindings.isEmpty())
   }
 
   @Test
@@ -487,5 +502,65 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     assertEquals(def.AUDIT_GAP_LOOP_ID, reentry.loopId)
     assertEquals(43, reentry.edgeIteration)
     assertTrue(def.PHASE_REVIEW !in shipped.spanBetween(edge.destinationPhaseId, edge.fromPhaseId))
+  }
+
+  // SKILL-140: quarantine-and-regenerate edges computed by the shared transition function.
+  @Test
+  fun `RECORD_REJECTED below cap re-enters the producer on its regeneration loop`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val cases = listOf(
+      Triple(def.PHASE_PLAN, def.PHASE_PREPLAN, def.PREPLAN_REGENERATION_LOOP_ID),
+      Triple(def.PHASE_IMPLEMENT, def.PHASE_PLAN, def.PLAN_REGENERATION_LOOP_ID),
+      Triple(def.PHASE_AUDIT, def.PHASE_IMPLEMENT, def.IMPLEMENT_REGENERATION_LOOP_ID),
+    )
+    cases.forEach { (consumer, producer, loopId) ->
+      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(consumer, FeatureTaskRuntimeVerdict.RECORD_REJECTED, edgeIterationCount = 0),
+      )
+      assertEquals(producer, next.phaseId, "consumer $consumer re-enters producer $producer")
+      assertEquals(loopId, next.loopId)
+      assertEquals(1, next.edgeIteration)
+    }
+  }
+
+  @Test
+  fun `RECORD_REJECTED at the regeneration cap blocks terminally naming the loop and edge iteration`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(
+      shippedTransition(
+        def.PHASE_IMPLEMENT,
+        FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+        edgeIterationCount = def.MAX_RECORD_REGENERATION_ATTEMPTS,
+      ),
+    )
+    assertEquals(def.PLAN_REGENERATION_LOOP_ID, block.loopId)
+    assertEquals(def.MAX_RECORD_REGENERATION_ATTEMPTS, block.edgeIteration)
+    assertEquals(FeatureTaskRuntimeVerdict.RECORD_REJECTED, block.unresolvedVerdict)
+  }
+
+  @Test
+  fun `a producer absent from the resolved pipeline yields no regeneration edge`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    // A truncated pipeline that dropped preplan cannot legally carry the plan->preplan edge, so the
+    // transition function computes no re-entry: RECORD_REJECTED at plan simply advances forward.
+    val truncated = FeatureTaskRuntimeTransitionDeclaration(
+      forwardPhaseIds = listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT),
+      backwardEdges = shipped.backwardEdges.filter {
+        it.fromPhaseId != def.PHASE_PLAN || it.destinationPhaseId != def.PHASE_PREPLAN
+      }.filter {
+        it.fromPhaseId in listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT) &&
+          it.destinationPhaseId in listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT)
+      },
+    )
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      FeatureTaskRuntimeTransitionFunction.nextTransition(
+        declaration = truncated,
+        currentPhaseId = def.PHASE_PLAN,
+        verdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+        edgeIterationCount = 0,
+      ),
+    )
+    assertEquals(def.PHASE_IMPLEMENT, next.phaseId, "no edge to a dropped producer; plain forward advance")
+    assertEquals(null, next.loopId)
   }
 }

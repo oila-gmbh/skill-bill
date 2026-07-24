@@ -1,6 +1,9 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.model.EnvironmentContext
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
@@ -105,6 +108,70 @@ class SQLiteDatabaseSessionFactoryTest {
       executor.shutdownNow()
     }
   }
+
+  @Test
+  fun `crash reconcile write composes inside a real database transaction without nesting`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-crash-reconcile")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val workflowId = "wfl-crash-reconcile"
+    // Seed the row and the expired worker lease exactly as production does: acquisition runs under
+    // read (the store method owns its own BEGIN IMMEDIATE), never inside an outer transaction.
+    database.transaction(dbPath.toString()) { it.workflowStates.saveFeatureTaskRuntimeWorkflow(runtimeRow(workflowId)) }
+    val updatedAt = database.read(dbPath.toString()) {
+      it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.updatedAt
+    }
+    val ownership = expiredOwnership(workflowId)
+    database.read(dbPath.toString()) { it.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, updatedAt) }
+
+    // The production reconciler and goal-parent both call the reconcile write inside
+    // database.transaction; assert that composition succeeds instead of raising a nested BEGIN.
+    val reconciled = database.transaction(dbPath.toString()) {
+      it.workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
+        workflowId = workflowId,
+        ownerToken = ownership.ownerToken,
+        generation = ownership.generation,
+        interruptionReason = "lease_expired: worker lease expired and process confirmed dead",
+        nowInstant = "2999-01-01T00:00:00Z",
+      )
+    }
+
+    assertTrue(reconciled)
+    database.read(dbPath.toString()) {
+      assertEquals("pending", it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus)
+      assertNull(it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId))
+    }
+  }
+
+  private fun runtimeRow(workflowId: String) = WorkflowStateRecord(
+    workflowId = workflowId,
+    sessionId = "ftr-crash-reconcile",
+    workflowName = "bill-feature-task-runtime",
+    contractVersion = "1.0",
+    workflowStatus = "running",
+    currentStepId = "implement",
+    stepsJson = "[]",
+    artifactsJson = "{}",
+    startedAt = null,
+    updatedAt = null,
+    finishedAt = null,
+    mode = FeatureTaskWorkflowMode.RUNTIME,
+  )
+
+  private fun expiredOwnership(workflowId: String) = FeatureTaskRuntimeWorkerOwnership(
+    workflowId = workflowId,
+    generation = 1,
+    ownerToken = "owner-token-crash0001",
+    hostIdentity = "host",
+    bootIdentity = "boot",
+    pid = 4242,
+    processBirthToken = "birth-4242",
+    leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+    heartbeatAt = "2000-01-01T00:00:00Z",
+    expiresAt = "2000-01-01T00:00:30Z",
+    phaseId = "implement",
+    phaseAttempt = 1,
+  )
 
   private fun workflowRecord(workflowId: String) = WorkflowStateRecord(
     workflowId = workflowId,

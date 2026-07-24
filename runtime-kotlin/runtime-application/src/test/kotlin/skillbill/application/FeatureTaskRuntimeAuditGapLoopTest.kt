@@ -185,8 +185,13 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `repository changes between audits allow recurring gaps to continue`() {
+    // Each audit iteration reads the fingerprint twice: once to refresh the receipt projection's
+    // repository checkpoint at launch (AC-012), then once for audit-gap progress detection. Both reads
+    // in an iteration observe the same repository, so the values are paired.
     val git = RecordingWorkflowGitOperations().apply {
-      repositoryFingerprintSequence.addAll(listOf("before-repair", "after-repair", "after-repair"))
+      repositoryFingerprintSequence.addAll(
+        listOf("before-repair", "before-repair", "after-repair", "after-repair", "after-repair", "after-repair"),
+      )
     }
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = 3),
@@ -195,7 +200,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals(3, git.repositoryFingerprintCalls)
+    assertEquals(6, git.repositoryFingerprintCalls)
     assertEquals(3, harness.launchedPromptPhaseOrder().count { it == "audit" })
     assertTrue(harness.launchedPromptPhaseOrder().any { it == "validate" })
   }

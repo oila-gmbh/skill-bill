@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
@@ -11,10 +12,14 @@ import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -26,6 +31,7 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
@@ -45,10 +51,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
@@ -89,6 +99,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
+  private val planningProjectionValidator get() = phaseGates.planningProjectionValidator
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
@@ -100,6 +111,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
+
+  // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
+  // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
+  private var recordRejectionSettlementPending: Boolean = false
 
   private fun resumedReentry(): PendingReentry? {
     val (loopId, reentry) = state.latestInFlightReentry() ?: return null
@@ -212,6 +227,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return when {
       decomposed != null -> PhaseSettlement.stop()
+      recordRejectionSettlementPending -> {
+        // The launch quarantined an upstream record: settle this consumer with RECORD_REJECTED so the
+        // transition machinery re-enters the producer (or blocks at the regeneration cap). The consumer
+        // itself never settles completed — its durable record stays running and it re-runs after the
+        // producer regenerates.
+        recordRejectionSettlementPending = false
+        PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)
+      }
       reason != null -> {
         blockAt(phaseId, reason)
         PhaseSettlement.stop()
@@ -549,6 +572,20 @@ internal class FeatureTaskRuntimeRunLoop(
   ) {
     val reopenedSpan = spanBetween(destinationPhaseId, edge.fromPhaseId)
     reopenedSpan.forEach(state::reopenForReentry)
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
+      // Invalidate the quarantined producer's settled completion so its rejected record is no longer
+      // selected by the handoff contract; the regenerated higher-iteration output supersedes it. In
+      // memory the stale output is dropped from resolution; durably the record returns to running so a
+      // resume relaunches the producer rather than re-consuming the rejected record.
+      state.invalidateProducerOutput(destinationPhaseId)
+      recorder.invalidateQuarantinedProducerRecord(
+        request.workflowId,
+        destinationPhaseId,
+        loopId,
+        edgeIteration,
+        request.dbPathOverride,
+      )
+    }
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
       state.unmetAuditCriteria(edge.fromPhaseId)
@@ -625,6 +662,13 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let { edge -> phaseId in spanBetween(edge.destinationPhaseId, edge.fromPhaseId) } == true
     }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
     val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
+    outcome.regenerationTargetPhaseId?.let {
+      // The launch seam quarantined an upstream record and requested regeneration. Do not record this
+      // consumer as completed; signal advance() to settle it with the RECORD_REJECTED verdict so the
+      // transition machinery re-enters the producer.
+      recordRejectionSettlementPending = true
+      return null
+    }
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
@@ -832,6 +876,9 @@ internal class FeatureTaskRuntimeRunLoop(
     unresolvedFindings: List<FeatureTaskRuntimeReviewFinding> = emptyList(),
     unmetCriteria: List<String> = emptyList(),
   ): String {
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
+      return regenerationCapExhaustionReason(loopId, edgeIteration)
+    }
     val findingsSuffix = if (unresolvedFindings.isEmpty()) {
       ""
     } else {
@@ -846,6 +893,24 @@ internal class FeatureTaskRuntimeRunLoop(
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
       findingsSuffix + criteriaSuffix
+  }
+
+  // SKILL-140: AC-004 cap-exhaustion reason for a regeneration loop, naming the quarantined record, the
+  // producing phase, and the attempt count. Shared by the in-run transition block and the pre-launch
+  // resume cap guard, so both surface the same actionable message.
+  private fun regenerationCapExhaustionReason(loopId: String, edgeIteration: Int): String {
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_LOOP_ID_BY_PRODUCER.entries
+      .firstOrNull { it.value == loopId }?.key
+    val latest = producer?.let { producing ->
+      recorder.loadQuarantinedRecords(request.workflowId, request.dbPathOverride)
+        .orEmpty()
+        .lastOrNull { it.producingPhaseId == producing }
+    }
+    val recordId = latest?.recordIdentifier() ?: producer?.let { "$it#<unknown-iteration>" } ?: "<unknown>"
+    return "Quarantine-and-regenerate loop '$loopId' exhausted its regeneration cap after $edgeIteration " +
+      "attempt(s): the quarantined record '$recordId' produced by phase '${producer ?: "<unknown>"}' still " +
+      "fails projection validation. The run blocks durably rather than regenerating past the cap; recover the " +
+      "record out of band by deleting or migrating the offending row."
   }
 
   private sealed interface PhaseSettlement {
@@ -892,9 +957,12 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = listOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+            ),
           ),
         )
       } else if (
@@ -902,8 +970,11 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
         declaration.copy(
-          consumedUpstreamPhaseIds = declaration.consumedUpstreamPhaseIds +
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
+            phaseId,
+            declaration.consumedUpstreamPhaseIds +
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          ),
         )
       } else {
         declaration
@@ -1224,12 +1295,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val persisted = state.persistedBlockedReason(run.phaseId)?.let { persistedReason ->
       val nextIteration = state.nextIteration(run.phaseId)
       val durable = state.recordFor(run.phaseId)
-      val retryReviewPreparation = isRetryableGoalReviewPreparation(run.phaseId, persistedReason) ||
-        state.legacyReviewPreparationRetryConsumedBudget(run.phaseId, persistedReason)
-      if (retryReviewPreparation) {
-        state.restartAttemptBudget(run.phaseId)
-      }
-      if (shouldRetryPersistedBlock(run.phaseId, durable, retryReviewPreparation, persistedReason)) {
+      if (shouldRelaunchPersistedBlock(state, run.phaseId, durable, persistedReason)) {
         return@let null
       }
       val reason = persistedReason.ifBlank {
@@ -1293,15 +1359,61 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
 
+  // A pre-quarantine build blocked a launch-seam planning-projection rejection with a terminal
+  // needs_user_action disposition; the current seam instead quarantines the upstream record and
+  // regenerates its producer. Such a legacy row is stale, not terminal: re-enter the phase so the live
+  // seam routes it through the quarantine-and-regenerate edge. Matches only that one legacy phrase, and
+  // only where a regeneration producer exists, so every other launch-seam block and any genuinely
+  // unmigratable record keeps its first-occurrence durable block.
+  private fun isReenterableLaunchSeamRecordRejection(phaseId: String, reason: String): Boolean =
+    reason.contains(LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION) &&
+      FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER.containsKey(phaseId)
+
+  // A launch-seam record rejection never ran the consumer, so its attempts are not real fix-loop output
+  // attempts. Re-enterable whether the block still carries the launch-seam reason or was already
+  // overwritten with the generic fix-loop-exhaustion text on a prior re-entry (recognized from the ledger).
+  private fun isReenterableRecordRejection(
+    state: FeatureTaskRuntimeRunState,
+    phaseId: String,
+    reason: String,
+  ): Boolean = isReenterableLaunchSeamRecordRejection(phaseId, reason) ||
+    state.legacyLaunchSeamRejectionConsumedBudget(phaseId, reason)
+
+  // Decides whether a phase with a persisted block relaunches instead of re-surfacing it, restarting the
+  // fix-loop budget for the re-enterable stale-block classes whose prior attempts were not real output
+  // attempts (goal-review preparation retries, launch-seam record rejections).
+  private fun shouldRelaunchPersistedBlock(
+    state: FeatureTaskRuntimeRunState,
+    phaseId: String,
+    durable: FeatureTaskRuntimePhaseRecord?,
+    persistedReason: String,
+  ): Boolean {
+    val retryReviewPreparation = isRetryableGoalReviewPreparation(phaseId, persistedReason) ||
+      state.legacyReviewPreparationRetryConsumedBudget(phaseId, persistedReason)
+    val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
+    if (retryReviewPreparation || reenterableRecordRejection) {
+      state.restartAttemptBudget(phaseId)
+    }
+    return shouldRetryPersistedBlock(
+      phaseId,
+      durable,
+      retryReviewPreparation,
+      reenterableRecordRejection,
+      persistedReason,
+    )
+  }
+
   private fun shouldRetryPersistedBlock(
     phaseId: String,
     durable: FeatureTaskRuntimePhaseRecord?,
     retryReviewPreparation: Boolean,
+    reenterableRecordRejection: Boolean,
     persistedReason: String,
   ): Boolean {
     val disposition = durable?.failureDisposition
     return when {
       retryReviewPreparation -> true
+      reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
@@ -1441,6 +1553,90 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectedOutput = rejectedOutput,
   )
 
+  /**
+   * SKILL-140: a consumer's launch seam rejected an upstream producer's durable record. Quarantine the
+   * rejected record as private evidence and settle the consumer with the RECORD_REJECTED verdict so the
+   * existing transition machinery re-enters the producing phase under its bounded regeneration cap. A
+   * record with no attributable producer, or whose producer the resolved pipeline dropped, blocks
+   * durably with an actionable reason instead of attempting an impossible re-entry.
+   */
+  private fun settleRecordRejection(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    rejection: RecordRejection,
+  ): PhaseOutcome {
+    val consumer = run.phaseId
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER[consumer]
+    val edge = producer?.let { candidate ->
+      transitions.backwardEdges.firstOrNull {
+        it.fromPhaseId == consumer && it.destinationPhaseId == candidate &&
+          it.triggeringVerdict == FeatureTaskRuntimeVerdict.RECORD_REJECTED
+      }
+    }
+    if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
+      return blockUnattributableRecordRejection(run, iteration, observability, rejection, producer)
+    }
+    val rejectedRecord = state.outputFor(producer)
+    val producingIteration =
+      (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
+    val rejectedPayload = rejectedRecord?.payload ?: state.recordFor(producer)?.outputArtifact ?: "<unavailable>"
+    val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
+    recorder.appendQuarantineEntry(
+      request.workflowId,
+      FeatureTaskRuntimeQuarantineEntry(
+        producingPhaseId = producer,
+        consumingPhaseId = consumer,
+        producingIteration = producingIteration,
+        rejectionClass = rejection.rejectionClass,
+        rejectionDetail = boundedRejectionDetail(rejection.rejectionDetail),
+        regenerationAttempt = regenerationAttempt,
+        quarantinedAtIteration = iteration.coerceAtLeast(1),
+        rejectedRecordPayload = rejectedPayload,
+      ),
+      request.dbPathOverride,
+    )
+    return PhaseOutcome.regenerateProducer(producer)
+  }
+
+  private fun blockUnattributableRecordRejection(
+    run: PhaseRun,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    rejection: RecordRejection,
+    producer: String?,
+  ): PhaseOutcome {
+    val detail = boundedRejectionDetail(rejection.rejectionDetail)
+    val reason = if (producer == null) {
+      "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
+        "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
+        "applies; the run blocks durably. Recover the record out of band by deleting or migrating the " +
+        "offending row. Detail: $detail"
+    } else {
+      "Feature-task-runtime phase '${run.phaseId}' rejected the durable record produced by '$producer', but " +
+        "'$producer' is absent from this run's resolved pipeline (a goal-continuation truncation dropped it), " +
+        "so it cannot be regenerated in-band; the run blocks durably. Recover the record out of band by " +
+        "deleting or migrating the offending row. Detail: $detail"
+    }
+    return blockAndPersistInPhase(
+      run,
+      iteration,
+      reason,
+      observability,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+  }
+
+  private fun boundedRejectionDetail(detail: String): String {
+    val trimmed = detail.trim().ifBlank { "no detail available" }
+    return if (trimmed.length <= RECORD_REJECTION_DETAIL_MAX_CHARS) {
+      trimmed
+    } else {
+      trimmed.take(RECORD_REJECTION_DETAIL_MAX_CHARS) + "…(truncated)"
+    }
+  }
+
   @Suppress("LongParameterList")
   private fun attemptOnce(
     run: PhaseRun,
@@ -1459,10 +1655,13 @@ internal class FeatureTaskRuntimeRunLoop(
           iteration,
           reason,
           observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
         ),
       )
+    }
+    launch.recordRejection?.let { rejection ->
+      return AttemptResult.settled(settleRecordRejection(run, state, iteration, observability, rejection))
     }
     val fileManifest = requireNotNull(launch.fileManifest)
     return gateOutput(
@@ -1553,6 +1752,11 @@ internal class FeatureTaskRuntimeRunLoop(
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
       return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
+    // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
+    // claiming 'completed' owes the projection its consumer will parse.
+    producerProjectionGateReason(run.phaseId, outputMap, planningProjectionValidator)?.let { reason ->
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
@@ -1564,6 +1768,90 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest,
       repositoryFingerprint,
     )
+  }
+
+  /**
+   * Resolves a repository checkpoint only when some declaration actually needs one, reusing the same
+   * `WorkflowGitOperations` fingerprint the audit-repair path already depends on. No new git port is
+   * introduced and the domain stays git-agnostic: the checkpoint arrives as a plain value.
+   */
+  private fun resolveRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
+    val needsCheckpoint = run.declaration.projectionDeclarations.any { projection ->
+      projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+    }
+    if (!needsCheckpoint) return null
+    val fingerprint = gitOperations.repositoryFingerprint(run.request.repoRoot)
+      .takeIf { it.ok }
+      ?.value
+      ?.takeIf(String::isNotBlank)
+      ?: return null
+    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    // On a goal child the review state, not the resolved branch, holds the immutable base and the
+    // baseline untracked inventory the parent captured for this subtask alone.
+    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val ownedPaths = checkpointOwnedPaths(
+      run,
+      goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+    ) ?: return null
+    return FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = fingerprint,
+      baseRef = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+      // The run-owned branch, not a measured HEAD: the durable pair is the same base/head scope review
+      // resolves, and measuring HEAD here would add a git read the commit-sha path deliberately avoids.
+      headRef = resolvedBranch?.branch?.takeIf(String::isNotBlank),
+      workingTreeOwnedPaths = ownedPaths,
+    )
+  }
+
+  /**
+   * Owned paths for the checkpoint scope. Subtracting the run's recorded baseline untracked inventory
+   * is what keeps a goal-child scoped to its own subtask: sibling subtasks share the tree, and every
+   * path they left behind is already in that baseline.
+   *
+   * Both sides of that subtraction come from the same NUL-delimited plumbing listing. `git status
+   * --porcelain` is deliberately not the source: it collapses a wholly-untracked directory to one
+   * `dir/` entry and C-quotes non-ASCII paths, so a sibling subtask's new directory would never match
+   * the `ls-files`-written baseline and would leak into the child's audit scope (AC-014).
+   *
+   * Returns null when the listing cannot be measured. An empty inventory is a real answer — the scope
+   * owns nothing — and an audit reading it concludes no work exists here, so an unmeasurable read must
+   * not be able to produce it. The caller drops the whole checkpoint, matching how an unmeasurable
+   * fingerprint already blocks the launch instead of degrading it.
+   *
+   * An inventory past [MAX_CHECKPOINT_OWNED_PATHS] is rejected as a typed projection failure rather
+   * than left to trip the briefing framing ceiling: that ceiling throws `IllegalArgumentException`,
+   * which the launch path does not catch, so it would unwind past the handler that already persisted
+   * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
+   * option — audit would read a silently narrowed scope as the complete one.
+   */
+  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String>? {
+    val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
+    if (!owned.ok) return null
+    val baseline = baselineUntrackedPaths.toSet()
+    val paths = owned.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .filterNot { it in baseline }
+      .distinct()
+      .sorted()
+    if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {
+      val declaration = run.declaration.projectionDeclarations.first { projection ->
+        projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
+      }
+      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        projectionName = declaration.projectionName,
+        projectionContractId = declaration.projectionContractId,
+        projectionContractVersion = declaration.projectionContractVersion,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
+          "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
+          "unrelated working-tree changes before relaunching",
+      )
+    }
+    return paths
   }
 
   private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
@@ -2054,6 +2342,55 @@ internal class FeatureTaskRuntimeRunLoop(
     return state.outputFor(phaseId)?.takeIf { budgetCompleted }
   }
 
+  private fun prepareLaunch(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    priorSchemaFailure: String?,
+    durablyClosedCriterionRefs: List<String>,
+  ): PreparedLaunch {
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = run.declaration,
+      runInvariants = run.request.runInvariants,
+      recordedOutputs = state.outputs(),
+      drivingVerdict = run.reentry?.drivingVerdict,
+      reentryGapCriteria = auditGapCriteriaFor(run, state),
+      auditRepairPlan = run.reentry?.auditRepairPlan,
+      auditRepairState = run.reentry?.auditRepairState,
+      durablyClosedCriterionRefs = durablyClosedCriterionRefs,
+      repositoryCheckpoint = resolveRepositoryCheckpoint(run),
+      expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
+        ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      run.request.workflowId,
+      planningProjectionValidator,
+    )
+    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = run.request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = isGoalContinuationRun(run.request),
+      parallelReviewAgent = run.request.parallelReviewAgent
+        ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
+      codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
+          run.request.runInvariants.codeReviewMode,
+          passNumber,
+        )
+      } ?: run.request.runInvariants.codeReviewMode,
+      reviewPassNumber = reviewPassNumber(run, state),
+      goalSubtaskReviewInput = run.goalReviewInput,
+      specSource = run.specSource,
+      priorSchemaFailure = priorSchemaFailure,
+      operatorBlockRetry = operatorBlockRetry
+        ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
+      specReference = run.request.runInvariants.specReference,
+      agentAddonSelection = run.request.agentAddonSelection,
+    )
+    return PreparedLaunch(briefing, prompt)
+  }
+
   @Suppress("ReturnCount")
   private fun launchAndCapture(
     run: PhaseRun,
@@ -2073,22 +2410,59 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
-    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = run.declaration,
-      runInvariants = run.request.runInvariants,
-      recordedOutputs = state.outputs(),
-      drivingVerdict = run.reentry?.drivingVerdict,
-      reentryGapCriteria = auditGapCriteriaFor(run, state),
-      auditRepairPlan = run.reentry?.auditRepairPlan,
-      auditRepairState = run.reentry?.auditRepairState,
-      durablyClosedCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+    // Read the audit's own durably-closed criterion refs OUTSIDE the quarantine-guarded region: a
+    // drift here (audit_repair_state.satisfied_criterion_refs naming undeclared criteria) is audit's
+    // own state, not an upstream producer record, so re-running a producer cannot fix it. It keeps the
+    // first-occurrence durable block.
+    val durablyClosedCriterionRefs = try {
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
         durablyClosedCriterionRefs()
       } else {
         emptyList()
-      },
-    )
-    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+      }
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected its durable audit-repair state at the launch seam: " +
+          error.message,
+      )
+    }
+    val prepared = try {
+      prepareLaunch(run, state, priorSchemaFailure, durablyClosedCriterionRefs)
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      // A handoff-projection rejection is static declaration/config drift, not a legacy producer
+      // record: re-running the producer cannot fix a wrong declaration. Block the phase durably instead
+      // of unwinding out of a run that already persisted STATUS_RUNNING.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+      // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
+      // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
+      // persist and wedge the row with no blockedReason; block durably instead.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not fit its launch briefing under the byte ceiling: " +
+          error.message,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      // A legacy or drifted upstream producer record failed bounded-projection validation. Rather than
+      // wedge the consumer on a record it cannot repair, quarantine the record as private evidence and
+      // re-enter the producing phase under a bounded regeneration cap.
+      return LaunchResult.recordRejected(
+        QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
+        error.message.orEmpty(),
+      )
+    } catch (error: InvalidWorkflowStateSchemaError) {
+      // A durable handoff/briefing artifact failed schema validation at the launch seam (a stale
+      // briefing row, a forbidden legacy field). This is corruption drift a producer re-run cannot
+      // reliably repair — the artifact's own contract says recover it out of band — so it keeps the
+      // first-occurrence durable block rather than entering the quarantine-and-regenerate edge.
+      return LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
+          error.message,
+      )
+    }
+    val briefing = prepared.briefing
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -2100,27 +2474,7 @@ internal class FeatureTaskRuntimeRunLoop(
           timeout = run.request.timeout,
           modelOverride = run.modelDirective?.model,
           effortOverride = run.modelDirective?.effort,
-          promptOverride = FeatureTaskRuntimePhasePromptComposer.compose(
-            issueKey = run.request.issueKey,
-            briefing = briefing,
-            suppressDecomposition = isGoalContinuationRun(run.request),
-            parallelReviewAgent = run.request.parallelReviewAgent
-              ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-            codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
-              skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
-                run.request.runInvariants.codeReviewMode,
-                passNumber,
-              )
-            } ?: run.request.runInvariants.codeReviewMode,
-            reviewPassNumber = reviewPassNumber(run, state),
-            goalSubtaskReviewInput = run.goalReviewInput,
-            specSource = run.specSource,
-            priorSchemaFailure = priorSchemaFailure,
-            operatorBlockRetry = operatorBlockRetry
-              ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-            specReference = run.request.runInvariants.specReference,
-            agentAddonSelection = run.request.agentAddonSelection,
-          ),
+          promptOverride = prepared.prompt,
         ),
       ),
     )
@@ -2209,6 +2563,15 @@ internal class FeatureTaskRuntimeRunLoop(
     val durableRecord: FeatureTaskRuntimePhaseRecord? = null,
   )
 
+  private data class PreparedLaunch(
+    val briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    val prompt: String,
+  )
+
+  // SKILL-140: a launch-seam rejection of an upstream producer's durable record, carrying only the
+  // typed class and bounded validation detail; producer attribution happens in the run loop.
+  private data class RecordRejection(val rejectionClass: String, val rejectionDetail: String)
+
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
@@ -2217,17 +2580,37 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class InfraFailure(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+      val disposition: FeatureTaskRuntimeFailureDisposition,
+    ) : LaunchResult
+    private data class RecordRejected(
+      val rejection: RecordRejection,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition
+      get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
       fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
         Captured(stdout, fileManifest)
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
-        InfraFailure(reason, fileManifest)
+        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+
+      /** Static declaration or configuration drift: retrying without operator action reproduces it. */
+      fun projectionRejected(reason: String): LaunchResult =
+        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
+
+      /**
+       * A durable upstream producer record was rejected at projection validation: the run quarantines
+       * it and re-enters the producer under a bounded regeneration cap rather than blocking on first
+       * occurrence.
+       */
+      fun recordRejected(rejectionClass: String, rejectionDetail: String): LaunchResult =
+        RecordRejected(RecordRejection(rejectionClass, rejectionDetail))
     }
   }
 
@@ -2261,13 +2644,21 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class Completed(val output: FeatureTaskRuntimePhaseOutput) : PhaseOutcome
     private data class Blocked(val reason: String) : PhaseOutcome
 
+    // SKILL-140: the consumer rejected an upstream producer's record and quarantined it; the run
+    // settles the consumer with the RECORD_REJECTED verdict so the existing transition machinery
+    // re-enters this producer under a bounded regeneration cap.
+    private data class RegenerateProducer(val producerPhaseId: String) : PhaseOutcome
+
     val completedOutput: FeatureTaskRuntimePhaseOutput? get() = (this as? Completed)?.output
 
     val blockedReason: String? get() = (this as? Blocked)?.reason
 
+    val regenerationTargetPhaseId: String? get() = (this as? RegenerateProducer)?.producerPhaseId
+
     companion object {
       fun completed(output: FeatureTaskRuntimePhaseOutput): PhaseOutcome = Completed(output)
       fun blocked(reason: String): PhaseOutcome = Blocked(reason)
+      fun regenerateProducer(producerPhaseId: String): PhaseOutcome = RegenerateProducer(producerPhaseId)
     }
   }
 
@@ -2284,6 +2675,23 @@ internal class FeatureTaskRuntimeRunLoop(
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
 private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
+
+// The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
+// planning projection. The current seam quarantines the record and regenerates its producer instead,
+// so this phrase is emitted by no live path and only ever matches a legacy durable row.
+private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
+  "rejected an upstream bounded planning projection at the launch seam"
+
+// Bounds the schema-locations detail carried into a quarantine entry and a block reason. Schema
+// locations only, never record bodies, so this is a defensive ceiling rather than a content filter.
+private const val RECORD_REJECTION_DETAIL_MAX_CHARS = 2_000
+
+// NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
+private const val OWNED_PATH_DELIMITER = '\u0000'
+
+// Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
+// inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
+private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 
 private const val FORWARD_DEFERRAL_PATTERN =
   "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +

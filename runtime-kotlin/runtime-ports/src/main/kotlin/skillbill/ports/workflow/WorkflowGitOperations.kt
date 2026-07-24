@@ -55,6 +55,32 @@ fun WorkflowGitOperations.repositoryFingerprint(repoRoot: Path): WorkflowGitOper
     ?.repositoryFingerprint(repoRoot)
     ?: error("WorkflowGitOperations must provide a repository fingerprint implementation.")
 
+/**
+ * SKILL-137: the working-tree paths a run owns, for the audit repository checkpoint.
+ *
+ * Deliberately NOT derived from `git status --porcelain`. Porcelain collapses a wholly-untracked
+ * directory to a single `dir/` entry and C-quotes non-ASCII paths, while the goal-child baseline this
+ * inventory is subtracted against is written with `ls-files --others --exclude-standard -z`. Comparing
+ * the two representations silently fails to match, leaking a sibling subtask's new directory into the
+ * child's audit scope (AC-014). Both sides therefore use the same NUL-delimited plumbing output.
+ */
+interface RepositoryOwnedPathsGitOperations {
+  /** NUL-delimited repository-relative paths: untracked entries plus tracked worktree/index changes. */
+  fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult
+}
+
+interface RepositoryOwnedPathsGitOperationsProvider {
+  val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations
+}
+
+// An empty listing means "this scope owns nothing", which an audit reads as "no work was done here".
+// A missing implementation must not be able to produce that answer, so it fails loudly exactly like
+// the fingerprint helper above rather than degrading into an indistinguishable clean-tree result.
+fun WorkflowGitOperations.repositoryOwnedPaths(repoRoot: Path): WorkflowGitOperationResult =
+  (this as? RepositoryOwnedPathsGitOperationsProvider)?.repositoryOwnedPathsOperations
+    ?.ownedPaths(repoRoot)
+    ?: error("WorkflowGitOperations must provide a repository owned-paths implementation.")
+
 interface RuntimePhaseFileManifestGitOperations {
   fun headCommit(repoRoot: Path): WorkflowGitOperationResult
 

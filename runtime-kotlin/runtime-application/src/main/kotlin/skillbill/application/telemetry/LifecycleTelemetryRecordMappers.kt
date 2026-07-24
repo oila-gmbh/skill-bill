@@ -83,6 +83,11 @@ fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedReco
   auditNewGapCount = auditNewGapCount,
   auditAttemptedRepairItemCount = auditAttemptedRepairItemCount,
   auditResolvedRepairItemCount = auditResolvedRepairItemCount,
+  regenerationActivationCount = regenerationActivationCount,
+  regenerationAttemptCount = regenerationAttemptCount,
+  regenerationOutcomeCounts = regenerationOutcomeCounts,
+  crashReconciliationCount = crashReconciliationCount,
+  crashReconciliationReasonCounts = crashReconciliationReasonCounts,
   estimatedPhaseTokenBreakdownJson = estimatedPhaseTokenBreakdownJson,
   estimatedTotalTokens = estimatedTotalTokens,
 )

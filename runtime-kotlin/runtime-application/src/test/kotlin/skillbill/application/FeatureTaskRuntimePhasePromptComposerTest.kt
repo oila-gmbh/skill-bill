@@ -1,10 +1,14 @@
+@file:Suppress("MaxLineLength")
+
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -12,11 +16,15 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhasePromptComposerTest {
@@ -32,6 +40,83 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "bill-code-review mode:delegated")
     assertContains(prompt, "parallel:claude")
     assertContains(prompt, "must not launch parallel review recursively")
+  }
+
+  @Test
+  fun `initial preplan prompt excludes review mode, commit-PR, and finalization mandate text`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
+    )
+
+    assertContains(prompt, "projection_kind \"preplanning_digest\"")
+    assertContains(prompt, "emit these fields DIRECTLY on produced_outputs", false, "preplan warns against nesting")
+    assertContains(prompt, "\"rollout\": { \"flag_required\": false", false, "preplan shows rollout as an object")
+    assertFalse(prompt.contains("bill-code-review mode:"), "review execution mode must not reach preplan")
+    assertFalse(prompt.contains("Review execution mode"), "review execution directive must not reach preplan")
+    assertFalse(
+      prompt.contains("commit_push") && prompt.contains("Stage and commit"),
+      "commit/PR instructions must not reach preplan",
+    )
+    assertFalse(prompt.contains("PR URL"), "PR finalization language must not reach preplan")
+    assertFalse(prompt.contains("boundary history"), "history finalization language must not reach preplan")
+  }
+
+  @Test
+  fun `plan prompt names exactly the executable-plan required fields`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+    )
+
+    assertContains(prompt, "projection_kind \"executable_plan\"")
+    assertContains(prompt, "mode")
+    assertContains(prompt, "task_id")
+    assertContains(prompt, "depends_on")
+    assertContains(prompt, "criterion_refs")
+    assertContains(prompt, "test_obligations")
+    assertContains(prompt, "validation_strategy")
+    assertContains(prompt, "^[a-z][a-z0-9-]*", false, "plan shows the task_id pattern")
+    assertContains(prompt, "\"task_id\": \"task-1\"", false, "plan shows a lowercase-kebab task_id example")
+  }
+
+  @Test
+  fun `implement prompt names the implementation-receipt required fields`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+    )
+
+    assertContains(prompt, "projection_kind \"implementation_receipt\"")
+    assertContains(prompt, "completed_task_ids")
+    assertContains(prompt, "changed_paths")
+    assertContains(prompt, "tests_executed")
+    assertContains(prompt, "reconciliation_evidence")
+    assertContains(prompt, "repository_checkpoint")
+    assertContains(
+      prompt,
+      "\"projection_kind\": \"implementation_receipt\"",
+      false,
+      "implement shows the flat receipt shape",
+    )
+    assertContains(
+      prompt,
+      "\"reconciliation_evidence\": { \"reconciled\": true",
+      false,
+      "implement shows the receipt evidence",
+    )
+    assertContains(
+      prompt,
+      "\"deviations\": [ { \"ref\": \"task-1\", \"note\"",
+      false,
+      "implement shows the deviation object item shape",
+    )
+    assertContains(
+      prompt,
+      "never a free-text string",
+      false,
+      "implement warns against string deviations",
+    )
   }
 
   @Test
@@ -193,7 +278,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("implement"))
 
     assertContains(prompt, "### from: plan")
-    assertContains(prompt, PLAN_OUTPUT)
+    // implement receives the bounded executable-plan projection, not plan's complete envelope.
+    assertContains(prompt, "Fixture task.")
+    assertTrue(!prompt.contains("Phase produced a validated output."))
   }
 
   @Test
@@ -590,12 +677,55 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
+
+  @Test
+  fun `preplan plan and implement embed a produced_outputs example that satisfies the projection gate`() {
+    // Anti-drift: the shape example each phase carries must itself parse as the bounded planning
+    // projection its downstream launch seam demands. If the example ever drifts from the schema, the
+    // guidance would teach the agent to emit output the gate rejects — the exact failure this fixes.
+    val cases = mapOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
+        FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
+        FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
+        FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+    )
+    cases.forEach { (phaseId, kind) ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      // The output contract mentions a ```json fence in prose, so take the LAST fenced block — the
+      // shape example this addendum appends — not the first.
+      val exampleJson = prompt.substringAfterLast("```json").substringBefore("```")
+      val produced = requireNotNull(
+        JsonSupport.anyToStringAnyMap(
+          JsonSupport.jsonElementToValue(
+            requireNotNull(JsonSupport.parseObjectOrNull(exampleJson)) { "no JSON example in the $phaseId prompt" },
+          ),
+        ),
+      ) { "the $phaseId example is not a JSON object" }
+      // Throws InvalidFeatureTaskRuntimePlanningProjectionSchemaError if the embedded example is not
+      // the flat, correctly-typed projection the seam parses (kind, contract_version, rollout object, etc.).
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = mapOf("produced_outputs" to produced),
+        producingPhaseId = phaseId,
+        expectedKind = kind,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      )
+    }
+  }
 }
 
 private const val ISSUE_KEY = "SKILL-66"
 private const val SPEC_REFERENCE = ".feature-specs/SKILL-66/spec.md"
-private const val PREPLAN_OUTPUT = """{"preplan_digest":"scope-boundaries-risks-rollout"}"""
-private const val PLAN_OUTPUT = """{"plan":"ordered-steps"}"""
+
+// preplan, plan, and implement feed bounded planning projections, so their seeded outputs are full
+// envelopes carrying the declared projection body rather than bare produced_outputs fragments.
+private val PREPLAN_OUTPUT = projectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
+private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
+
+private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
+  """{"contract_version":"0.3","phase_id":"$phaseId","status":"completed",""" +
+    """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 private fun briefingFor(
   phaseId: String,
@@ -612,8 +742,10 @@ private fun briefingFor(
     recordedOutputs = listOf(
       FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
       FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("implement", 1, """{"implement":"done"}"""),
+      FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
       FeatureTaskRuntimePhaseOutput("review", 1, """{"review":"ok"}"""),
     ),
+    // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
+    repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
   ),
 )

@@ -2,8 +2,10 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.stderrExcerpt
+import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePreparation
+import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
@@ -19,6 +21,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -35,7 +38,7 @@ private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
  * state, resuming from persisted records and blocking loudly on missing upstreams or failures.
  */
 @Inject
-@Suppress("TooManyFunctions") // single orchestration seam: the bounded-cyclic phase state machine
+@Suppress("TooManyFunctions", "LongParameterList") // single orchestration seam; one cohesive constructor
 class FeatureTaskRuntimeRunner(
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -43,6 +46,7 @@ class FeatureTaskRuntimeRunner(
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val phaseGates: FeatureTaskRuntimePhaseGates,
+  private val crashReconciler: FeatureTaskRuntimeCrashReconciler,
 ) {
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
@@ -70,11 +74,16 @@ class FeatureTaskRuntimeRunner(
     )
   }
 
-  fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport =
-    when (val preparation = prepareRun(request)) {
+  fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
+    // Unconditional crash-reconciliation pass at startup: a killed child's row is transitioned to
+    // the resumable pending state before the resume point is resolved, so it is no longer classified
+    // as still-running. The pass is self-isolated and never blocks an otherwise healthy start.
+    val reconciliation = crashReconciler.reconcile(request.dbPathOverride)
+    return when (val preparation = prepareRun(request)) {
       is FeatureTaskRuntimePreparation.PreparationBlocked -> preparation.report
-      is FeatureTaskRuntimePreparation.Prepared -> executeRun(preparation.request)
+      is FeatureTaskRuntimePreparation.Prepared -> executeRun(preparation.request, reconciliation)
     }
+  }
 
   private fun prepareRun(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimePreparation =
     foreignModeWorkflowBlock(request)?.let(FeatureTaskRuntimePreparation::PreparationBlocked)
@@ -85,7 +94,10 @@ class FeatureTaskRuntimeRunner(
       ).prepare(request)
 
   @Suppress("LongMethod")
-  private fun executeRun(runRequest: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
+  private fun executeRun(
+    runRequest: FeatureTaskRuntimeRunRequest,
+    reconciliation: FeatureTaskRuntimeCrashReconciliationResult,
+  ): FeatureTaskRuntimeRunReport {
     val specSource = specSourceResolver.resolve(
       repoRoot = runRequest.repoRoot,
       specReference = runRequest.runInvariants.specReference,
@@ -122,6 +134,7 @@ class FeatureTaskRuntimeRunner(
     val auditRepairProgress = {
       loadAuditRepairProgress(runRequest)
     }
+    val regenerationTelemetry = { loadRegenerationTelemetry(runRequest) }
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
@@ -161,8 +174,10 @@ class FeatureTaskRuntimeRunner(
         reviewFixIterationCount,
         auditGapIterationCount,
         auditRepairProgress,
+        regenerationTelemetry,
         runRequest.dbPathOverride,
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
+        crashReconciliation = { reconciliation },
       )
     }.getOrThrow()
     val terminalReport =
@@ -175,8 +190,10 @@ class FeatureTaskRuntimeRunner(
       reviewFixIterationCount,
       auditGapIterationCount,
       auditRepairProgress,
+      regenerationTelemetry,
       runRequest.dbPathOverride,
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
+      crashReconciliation = { reconciliation },
     )
     return terminalReport
   }
@@ -258,6 +275,47 @@ class FeatureTaskRuntimeRunner(
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
       ?: 0
+
+  // SKILL-140: per-run quarantine-and-regenerate telemetry (AC-006), all sourced from the runtime's own
+  // durable state (quarantine store + LOOP_EDGE ledger + blocked records), never agent-self-reported.
+  // Activation = a distinct producer whose regeneration loop fired; attempt = each regeneration edge
+  // fire; outcome tally is derived from cap-exhaustion/attribution blocks. Counts and class labels only.
+  private fun loadRegenerationTelemetry(
+    request: FeatureTaskRuntimeRunRequest,
+  ): FeatureTaskRuntimeRegenerationTelemetry {
+    val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
+    val regenFires = ledger.filter {
+      it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
+        FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it.loopId.orEmpty())
+    }
+    val firedLoops = regenFires.mapNotNull { it.loopId }.toSet()
+    val blocked = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+      .orEmpty()
+      .values
+      .filter { it.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED }
+    val capExhaustedLoops = blocked
+      .mapNotNull { it.loopId }
+      .filter(FeatureTaskRuntimePhaseWorkflowDefinition::isRegenerationLoopId)
+      .toSet()
+    val unattributable = blocked.count {
+      (it.blockedReason ?: "").contains("cannot attribute to a producing phase")
+    }
+    val producerNotInPipeline = blocked.count {
+      (it.blockedReason ?: "").contains("absent from this run's resolved pipeline")
+    }
+    val regenerated = (firedLoops - capExhaustedLoops).size
+    val outcomeCounts = buildMap {
+      if (regenerated > 0) put("regenerated", regenerated)
+      if (capExhaustedLoops.isNotEmpty()) put("cap_exhausted", capExhaustedLoops.size)
+      if (unattributable > 0) put("unattributable", unattributable)
+      if (producerNotInPipeline > 0) put("producer_not_in_pipeline", producerNotInPipeline)
+    }
+    return FeatureTaskRuntimeRegenerationTelemetry(
+      activationCount = firedLoops.size,
+      attemptCount = regenFires.size,
+      outcomeCounts = outcomeCounts,
+    )
+  }
 
   // The Seam A ledger-derived finalizing agent for the single-spec completion-time `Agent:` line; the
   // spec gate invokes this lazily only when it decides to write (terminal, non-goal-continuation run).

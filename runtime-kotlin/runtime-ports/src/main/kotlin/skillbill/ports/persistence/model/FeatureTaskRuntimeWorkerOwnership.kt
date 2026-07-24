@@ -23,6 +23,18 @@ enum class FeatureTaskRuntimeWorkerLeaseState(val wireValue: String) {
   TAKEOVER_RESERVED("takeover_reserved"),
 }
 
+/**
+ * A non-terminal runtime workflow row whose worker lease has expired: the raw material the
+ * crash reconciler inspects for liveness before transitioning to the resumable pending state.
+ * Carries the fenced [ownership] so liveness detection and the fenced reconcile write both ride
+ * the existing owner_token/generation machinery, plus the row's [currentStepId] the resume point.
+ */
+data class FeatureTaskRuntimeCrashReconciliationCandidate(
+  val ownership: FeatureTaskRuntimeWorkerOwnership,
+  val currentStepId: String,
+  val workflowStatus: String,
+)
+
 sealed interface FeatureTaskRuntimeWorkerAcquisition {
   data class Acquired(val ownership: FeatureTaskRuntimeWorkerOwnership) : FeatureTaskRuntimeWorkerAcquisition
   data class OrphanReclaimed(val ownership: FeatureTaskRuntimeWorkerOwnership) : FeatureTaskRuntimeWorkerAcquisition

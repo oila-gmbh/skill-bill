@@ -9,6 +9,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -52,6 +53,8 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -711,6 +714,7 @@ private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
     .contains(issueKey)
 
 @Inject
+@Suppress("LongParameterList") // one cohesive goal-runner outcome store; bundling would only hide it
 class WorkflowGoalRunnerOutcomeStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -720,6 +724,9 @@ class WorkflowGoalRunnerOutcomeStore(
   // commit_push under suppress_pr but omits the SHA. No-op default keeps artifact-only behavior.
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator = ReviewRawOutputFallbackValidator,
+  // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
+  // confirms a process dead, so a seam wired without a real supervisor never reconciles.
+  private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
 ) : GoalRunnerWorkflowOutcomeStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -872,8 +879,8 @@ class WorkflowGoalRunnerOutcomeStore(
   ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
     val resolved = resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
       gitOperations.headCommitSha(repoRoot).measuredCommitSha()
-    }
-    val recovered = resolved?.let { outcome ->
+    } ?: return@transaction crashReconcileToResumable(unitOfWork.workflowStates, workflowId, issueKey, subtaskId)
+    val recovered = resolved.let { outcome ->
       recoverResolvedCommitPushBlock(
         workflowStates = unitOfWork.workflowStates,
         identity = GoalSubtaskIdentity(workflowId, issueKey, subtaskId),
@@ -881,7 +888,7 @@ class WorkflowGoalRunnerOutcomeStore(
         outcome = outcome,
       ) ?: outcome
     }
-    recovered?.also { outcome ->
+    recovered.also { outcome ->
       persistMeasuredCompletion(unitOfWork.workflowStates, workflowId, issueKey, subtaskId, outcome)
     }
   }
@@ -970,6 +977,45 @@ class WorkflowGoalRunnerOutcomeStore(
         ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
         ?.let { continuation -> terminalOutcomeFor(snapshot, artifacts, continuation, measuredCommitSha) }
     }
+  }
+
+  // Goal-parent crash reconciliation (AC-002): a still-running goal-child row whose worker lease has
+  // expired and whose process the injected supervisor confirms dead is transitioned to the resumable
+  // pending state under owner_token/generation fencing, and reported RECONCILABLE so the parent
+  // resumes the subtask instead of blocking with NO_TERMINAL_STORE_OUTCOME. Ambiguous liveness, a
+  // live lease, or a lost fencing race all return null, leaving the existing terminal reasons intact.
+  @Suppress("ReturnCount") // guard-clause reconciliation: each early null is a distinct non-reconcilable case
+  private fun crashReconcileToResumable(
+    workflowStates: WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+  ): GoalRunnerStoredOutcome? {
+    val ownership = workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId) ?: return null
+    val row = workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) ?: return null
+    if (row.workflowStatus != "running") return null
+    val continuation = goalContinuation(decodeArtifacts(row.artifactsJson))
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+      ?: return null
+    val now = Instant.now()
+    if (!runCatching { Instant.parse(ownership.expiresAt).isBefore(now) }.getOrDefault(false)) return null
+    if (!FeatureTaskRuntimeCrashLiveness.isConfirmedDead(workerSupervisor.inspect(ownership))) return null
+    val reconciled = workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
+      workflowId = workflowId,
+      ownerToken = ownership.ownerToken,
+      generation = ownership.generation,
+      interruptionReason = "lease_expired: worker lease expired and process confirmed dead",
+      nowInstant = now.toString(),
+    )
+    if (!reconciled) return null
+    return GoalRunnerStoredOutcome(
+      status = GoalRunnerTerminalStatus.RECONCILABLE,
+      workflowId = workflowId,
+      commitSha = null,
+      blockedReason = null,
+      lastResumableStep = row.currentStepId.ifBlank { "preplan" },
+      suppressPr = continuation.suppressPr,
+    )
   }
 
   // Writing goal_continuation_outcome makes the verdict authoritative (read first by
@@ -1647,6 +1693,7 @@ private fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = wh
   GoalRunnerTerminalStatus.BLOCKED -> "blocked"
   GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
   GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
+  GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
 }
 
 private fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalStatus? = when (status) {

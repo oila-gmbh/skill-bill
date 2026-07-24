@@ -5,6 +5,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.toRecord
 import skillbill.application.learning.LearningService
 import skillbill.application.model.AddLearningInput
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.GoalFinishedRequest
@@ -25,8 +26,11 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.application.telemetry.toRecord
 import skillbill.application.workflow.WorkflowService
 import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.learnings.model.CreateLearningRequest
@@ -94,12 +98,22 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -431,7 +445,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -475,11 +489,81 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
+  fun `recording a briefing persists the delivered projection under its own artifact key`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+
+    assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
+
+    val artifacts = decodeArtifactsForTest(
+      requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+    assertTrue(artifacts.containsKey(FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY))
+    val delivered = requireNotNull(recorder.loadDeliveredProjections(workflowId))["implement"]
+    assertEquals(handoffBriefing().handoffEnvelope, requireNotNull(delivered).envelope)
+    assertEquals(1, delivered.iteration)
+
+    // A second delivery to the same consumer is a new iteration, not a silent overwrite of history.
+    assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
+    assertEquals(2, requireNotNull(recorder.loadDeliveredProjections(workflowId))["implement"]?.iteration)
+  }
+
+  @Test
+  fun `an unsupported envelope contract version is rejected at the briefing write seam`() {
+    val database = FakeDatabaseSessionFactory(workflows = InMemoryWorkflowStateRepository())
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      recorder.recordPhaseBriefing(
+        workflowId,
+        handoffBriefing(envelope = handoffEnvelope().copy(contractVersion = "9.9")),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID, error.failureKind)
+    assertEquals("implement", error.consumerPhaseId)
+  }
+
+  @Test
+  fun `an undeclared wire key on a durable envelope is rejected at the briefing read seam`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+    assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
+
+    corruptDurableEnvelope(workflowRepository, workflowId) { envelope ->
+      envelope + ("upstream_outputs_by_phase_id" to mapOf("plan" to "raw payload"))
+    }
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      recorder.loadPhaseBriefings(workflowId)
+    }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID, error.failureKind)
+  }
+
+  @Test
+  fun `an unsupported contract version on a durable envelope is rejected at the briefing read seam`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+    assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
+
+    corruptDurableEnvelope(workflowRepository, workflowId) { it + ("contract_version" to "9.9") }
+
+    assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> { recorder.loadPhaseBriefings(workflowId) }
+  }
+
+  @Test
   fun `operator blocked-phase retry is active only while retry is the latest phase transition`() {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
     val workflowId = (
       service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
         as WorkflowOpenResult.Ok
@@ -541,7 +625,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -583,7 +667,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -628,7 +712,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -654,7 +738,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -673,7 +757,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -716,7 +800,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -748,7 +832,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -773,7 +857,7 @@ class ApplicationPersistencePortTest {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter())
+    val recorder = testPhaseRecorder(database)
 
     val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
       as WorkflowOpenResult.Ok
@@ -2246,7 +2330,7 @@ private fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
     ),
     dbOverride = null,
   )
-  FeatureTaskRuntimePhaseRecorder(database, WorkflowSnapshotValidatorInfraAdapter()).recordRuntimePhase(
+  testPhaseRecorder(database).recordRuntimePhase(
     childWorkflowId,
     phaseId = "implement",
     status = "blocked",
@@ -2633,3 +2717,73 @@ private fun numberedFinding(number: Int, findingId: String): NumberedFinding = N
   location = "README.md:1",
   description = "Example finding",
 )
+
+private fun testPhaseRecorder(database: DatabaseSessionFactory) = FeatureTaskRuntimePhaseRecorder(
+  database,
+  WorkflowSnapshotValidatorInfraAdapter(),
+  FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
+)
+
+private fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (
+  testWorkflowService(database)
+    .openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-envelope", dbOverride = null)
+    as WorkflowOpenResult.Ok
+  ).workflowId
+
+private fun handoffEnvelope() = FeatureTaskRuntimeHandoffEnvelope(
+  consumerPhaseId = "implement",
+  projections = listOf(
+    FeatureTaskRuntimeHandoffProjection(
+      projectionName = "plan_receipt",
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput("plan"),
+      projectionContractId = "feature_task_runtime.upstream_phase_receipt",
+      projectionContractVersion = "0.1",
+      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+      fields = listOf(
+        FeatureTaskRuntimeHandoffProjectionField(
+          name = "phase_output_receipt",
+          value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+            kind = FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT,
+            value = "feature_task_runtime_phase_records/plan#1",
+          ),
+        ),
+      ),
+    ),
+  ),
+  repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+)
+
+private fun handoffBriefing(envelope: FeatureTaskRuntimeHandoffEnvelope = handoffEnvelope()) =
+  FeatureTaskRuntimePhaseLaunchBriefing(
+    phaseId = "implement",
+    specReference = ".feature-specs/SKILL-137/spec.md",
+    featureSize = "MEDIUM",
+    acceptanceCriteria = listOf("AC-003"),
+    mandatesAndOverrides = emptyList(),
+    handoffEnvelope = envelope,
+    derivedContextKeys = emptyList(),
+    briefingText = "phase: implement",
+  )
+
+private fun corruptDurableEnvelope(
+  workflowRepository: InMemoryWorkflowStateRepository,
+  workflowId: String,
+  corrupt: (Map<String, Any?>) -> Map<String, Any?>,
+) {
+  val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
+  val artifacts = decodeArtifactsForTest(record.artifactsJson).toMutableMap()
+
+  @Suppress("UNCHECKED_CAST")
+  val briefings = (artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] as Map<String, Any?>).toMutableMap()
+
+  @Suppress("UNCHECKED_CAST")
+  val briefing = (briefings.getValue("implement") as Map<String, Any?>).toMutableMap()
+
+  @Suppress("UNCHECKED_CAST")
+  briefing["handoff_envelope"] = corrupt(briefing.getValue("handoff_envelope") as Map<String, Any?>)
+  briefings["implement"] = briefing
+  artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = briefings
+  workflowRepository.saveFeatureTaskRuntimeWorkflow(
+    record.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+  )
+}

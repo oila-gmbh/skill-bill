@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
@@ -369,7 +370,11 @@ class FeatureTaskRuntimeStatusServiceTest {
   private fun statusHarness(): StatusHarness {
     val repository = StatusInMemoryWorkflowRepository()
     val database = StatusFakeDatabaseSessionFactory(repository)
-    val recorder = FeatureTaskRuntimePhaseRecorder(database, StatusNoopSnapshotValidator)
+    val recorder = FeatureTaskRuntimePhaseRecorder(
+      database,
+      StatusNoopSnapshotValidator,
+      AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    )
     val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
     val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)
     return StatusHarness(

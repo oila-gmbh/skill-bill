@@ -102,27 +102,35 @@ internal object GoalSubtaskReviewSummaryReducer {
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
+    // Blocker alone hard-blocks at cap exhaustion, so it drives the durable unresolved count. Blocker
+    // and Major both reopen implement_fix, so they drive the changes_requested routing verdict: a
+    // Major-only review still fixes those findings in the same pass rather than deferring them.
     val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" }
+    val remediable = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
     val hasStructuredFindings = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("findings") is List<*>
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      hasStructuredFindings && structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasStructuredFindings && remediable > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
       else -> FeatureTaskRuntimeVerdict.APPROVED
     }
+    // unresolvedFindingCount is the advance-blocking (Blocker) count that gates the terminal cap
+    // block, not the remediation-routing signal. An itemised review reports its true Blocker count
+    // (0 for a Major-only review, which routes to a fix pass via the verdict but never hard-blocks);
+    // only a compact changes_requested summary with no itemised findings coerces to a conservative 1
+    // so an un-itemised block is not silently advanced.
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
-      unresolvedFindingCount = if (
-        verdict == FeatureTaskRuntimeVerdict.APPROVED || verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
-      ) {
-        structuredUnresolved
-      } else {
-        structuredUnresolved.coerceAtLeast(1)
+      unresolvedFindingCount = when {
+        verdict == FeatureTaskRuntimeVerdict.APPROVED ||
+          verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER -> structuredUnresolved
+        hasStructuredFindings -> structuredUnresolved
+        else -> structuredUnresolved.coerceAtLeast(1)
       },
     )
   }

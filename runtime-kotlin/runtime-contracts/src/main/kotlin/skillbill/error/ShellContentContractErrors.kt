@@ -130,12 +130,102 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   cause,
 )
 
+/** Why a handoff projection was rejected before an agent was launched. */
+enum class FeatureTaskRuntimeHandoffProjectionFailureKind {
+  MISSING_REQUIRED_SOURCE,
+  MALFORMED_FIELD,
+  UNSUPPORTED_CONTRACT_VERSION,
+  UNDECLARED_FIELD,
+  DUPLICATE_PROJECTION_NAME,
+  BUDGET_OVERFLOW,
+  INVALID_COMPACT_REFERENCE,
+  CHECKPOINT_POLICY_VIOLATION,
+  SCHEMA_INVALID,
+}
+
+/**
+ * Surfaced when a declared handoff projection cannot be delivered. The message names the workflow
+ * (when known), the consumer phase, the projection, and its contract id/version, plus a short
+ * caller-supplied [reason]. Call sites pass a diagnosis, never payload or field content, so a
+ * rejection is actionable without echoing the private evidence it refused to project.
+ */
+@Suppress("LongParameterList") // each identifier is required by the actionable-message contract
+class InvalidFeatureTaskRuntimeHandoffProjectionError(
+  val workflowId: String?,
+  val consumerPhaseId: String,
+  val projectionName: String,
+  val projectionContractId: String,
+  val projectionContractVersion: String,
+  val failureKind: FeatureTaskRuntimeHandoffProjectionFailureKind,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime handoff projection '${projectionName.ifBlank { "<unknown>" }}' " +
+    "(contract ${projectionContractId.ifBlank { "<unknown>" }}@${projectionContractVersion.ifBlank { "<unknown>" }}) " +
+    "for consumer phase '${consumerPhaseId.ifBlank { "<unknown>" }}' " +
+    "in workflow '${workflowId?.ifBlank { null } ?: "<unknown>"}' " +
+    "was rejected [$failureKind]: $reason",
+  cause,
+)
+
+/**
+ * Surfaced when the non-projection framing of a phase briefing exceeds its byte ceiling before any
+ * projection body is inlined. The realistic driver is the audit repository checkpoint, whose owned-path
+ * inventory renders in the framing pass and is bounded by count, not bytes. A bare check would throw
+ * `IllegalArgumentException` past the launch handler that already persisted STATUS_RUNNING, wedging the
+ * row with no blocked reason and crash-looping on every resume; this typed error is caught at that seam
+ * and the phase blocks durably instead. The message names the measured size and the ceiling only, never
+ * the framing content it refused to deliver.
+ */
+class InvalidFeatureTaskRuntimePhaseBriefingFramingError(
+  val consumerPhaseId: String,
+  val workflowId: String?,
+  val framingBytes: Int,
+  val ceilingBytes: Int,
+) : ShellContentContractException(
+  "Feature-task-runtime phase '${consumerPhaseId.ifBlank { "<unknown>" }}' " +
+    "in workflow '${workflowId?.ifBlank { null } ?: "<unknown>"}' " +
+    "has a launch briefing whose layer-1/framing is $framingBytes bytes, over the $ceilingBytes-byte ceiling " +
+    "before any projection body is inlined; the governing contract plus resolved repository checkpoint is too " +
+    "large for a single phase briefing and must not be silently truncated. Narrow the run scope or commit " +
+    "unrelated working-tree changes before relaunching.",
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime audit repair plan '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
+ * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
+ * plan commitment, or implementation receipt) fails the canonical planning-projections schema.
+ * Mirrors [InvalidReviewContextSchemaError]; the dedicated subclass keeps the four concrete bounded
+ * projections distinguishable from the generic handoff envelope and audit repair plan in logs/tests.
+ */
+class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime planning projection '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
+ * Surfaced when the durable feature-task-runtime quarantine record (the append-only list of
+ * rejected upstream records) fails the canonical quarantine schema. Keeps the private evidence
+ * store's parse seam loud so a malformed quarantine artifact never rounds trips silently.
+ */
+class InvalidFeatureTaskRuntimeQuarantineSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime quarantine record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,
 )
 

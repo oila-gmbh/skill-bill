@@ -25,6 +25,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass") // cohesive SQLite workflow-store test suite
 class WorkflowStateStoreTest {
   @Test
   fun `feature task execution identity can be read exactly at adoption boundary`() {
@@ -61,6 +62,107 @@ class WorkflowStateStoreTest {
       assertEquals(null, store.getFeatureTaskRuntimeWorkflow(target.workflowId))
       assertNotNull(store.getFeatureTaskRuntimeWorkflow(siblingGoal.workflowId))
       assertNotNull(store.getFeatureTaskRuntimeWorkflow(standalone.workflowId))
+    }
+  }
+
+  @Test
+  fun `expired-lease non-terminal row is a crash-reconciliation candidate but live-lease and terminal are not`() {
+    val dbPath = Files.createTempDirectory("crash-reconcile-candidates").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      // Expired-lease running row: a candidate.
+      seedRunningRowWithLease(store, "wfl-expired", "owner-token-expired1", expiresAt = "2026-07-14T10:05:00Z")
+      // Live-lease running row: not a candidate.
+      seedRunningRowWithLease(store, "wfl-live", "owner-token-live00001", expiresAt = "2999-01-01T00:00:00Z")
+      // Terminal row with no lease: not a candidate.
+      store.saveFeatureTaskRuntimeWorkflow(
+        workflowRow("wfl-done", "ftr-done", "bill-feature-task-runtime", "implement", FeatureTaskWorkflowMode.RUNTIME)
+          .copy(workflowStatus = "completed"),
+      )
+
+      val candidates = store.findFeatureTaskRuntimeCrashReconciliationCandidates("2026-07-14T10:06:00Z")
+
+      assertEquals(listOf("wfl-expired"), candidates.map { it.ownership.workflowId })
+      assertEquals("implement", candidates.single().currentStepId)
+    }
+  }
+
+  @Test
+  fun `crash reconcile transitions the row to pending, releases the lease, and keeps phase and artifacts`() {
+    val dbPath = Files.createTempDirectory("crash-reconcile-write").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        "wfl-crash",
+        "ftr-crash",
+        "bill-feature-task-runtime",
+        "implement",
+        FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "running", artifactsJson = """{"phase_records":{"preplan":"done"}}""")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      val ownership = workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-crash0001")
+      assertTrue(store.acquireFeatureTaskRuntimeWorker(ownership, updatedAt))
+
+      val reconciled = store.reconcileFeatureTaskRuntimeCrashedWorker(
+        workflowId = row.workflowId,
+        ownerToken = ownership.ownerToken,
+        generation = ownership.generation,
+        interruptionReason = "lease_expired: worker lease expired and process confirmed dead",
+        nowInstant = "2026-07-14T10:06:00Z",
+      )
+
+      assertTrue(reconciled)
+      val after = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId))
+      assertEquals("pending", after.workflowStatus)
+      assertEquals("implement", after.currentStepId)
+      assertEquals(row.artifactsJson, after.artifactsJson)
+      assertEquals(null, store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId))
+      assertEquals(
+        "lease_expired: worker lease expired and process confirmed dead",
+        interruptionReasonOf(connection, row.workflowId),
+      )
+      // Idempotent: a second pass finds no candidate and changes nothing.
+      assertTrue(store.findFeatureTaskRuntimeCrashReconciliationCandidates("2026-07-14T10:06:00Z").isEmpty())
+    }
+  }
+
+  @Test
+  fun `crash reconcile is rejected when owner_token or generation fencing no longer matches`() {
+    val dbPath = Files.createTempDirectory("crash-reconcile-fencing").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      val row = workflowRow(
+        "wfl-fence",
+        "ftr-fence",
+        "bill-feature-task-runtime",
+        "implement",
+        FeatureTaskWorkflowMode.RUNTIME,
+      ).copy(workflowStatus = "running")
+      store.saveFeatureTaskRuntimeWorkflow(row)
+      val updatedAt = assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).updatedAt
+      val ownership = workerOwnership(row.workflowId, generation = 1, ownerToken = "owner-token-fence0001")
+      assertTrue(store.acquireFeatureTaskRuntimeWorker(ownership, updatedAt))
+
+      val wrongToken = store.reconcileFeatureTaskRuntimeCrashedWorker(
+        row.workflowId,
+        "owner-token-stale0001",
+        1,
+        "reason",
+        "2026-07-14T10:06:00Z",
+      )
+      val wrongGeneration = store.reconcileFeatureTaskRuntimeCrashedWorker(
+        row.workflowId,
+        ownership.ownerToken,
+        99,
+        "reason",
+        "2026-07-14T10:06:00Z",
+      )
+
+      assertEquals(false, wrongToken)
+      assertEquals(false, wrongGeneration)
+      assertEquals("running", assertNotNull(store.getFeatureTaskRuntimeWorkflow(row.workflowId)).workflowStatus)
+      assertEquals(ownership, store.getFeatureTaskRuntimeWorkerOwnership(row.workflowId))
     }
   }
 
@@ -646,6 +748,33 @@ class WorkflowStateStoreTest {
       assertEquals("Verify workflow runtime", verifySummary.specSummary)
     }
   }
+}
+
+private fun seedRunningRowWithLease(
+  store: WorkflowStateStore,
+  workflowId: String,
+  ownerToken: String,
+  expiresAt: String,
+) {
+  store.saveFeatureTaskRuntimeWorkflow(
+    workflowRow(
+      workflowId,
+      "ftr-$workflowId",
+      "bill-feature-task-runtime",
+      "implement",
+      FeatureTaskWorkflowMode.RUNTIME,
+    ).copy(workflowStatus = "running"),
+  )
+  val updatedAt = requireNotNull(store.getFeatureTaskRuntimeWorkflow(workflowId)).updatedAt
+  val ownership = workerOwnership(workflowId, generation = 1, ownerToken = ownerToken).copy(expiresAt = expiresAt)
+  check(store.acquireFeatureTaskRuntimeWorker(ownership, updatedAt))
+}
+
+private fun interruptionReasonOf(connection: Connection, workflowId: String): String? = connection.prepareStatement(
+  "SELECT interruption_reason FROM feature_task_workflows WHERE workflow_id = ?",
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.executeQuery().use { rows -> if (rows.next()) rows.getString("interruption_reason") else null }
 }
 
 private fun workerOwnership(

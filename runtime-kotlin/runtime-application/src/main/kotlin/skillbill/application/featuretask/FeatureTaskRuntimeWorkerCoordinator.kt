@@ -11,6 +11,22 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
+/**
+ * Confirmed-dead verdict for crash reconciliation, derived only from the injected supervisor's
+ * process inspection. Only [FeatureTaskRuntimeProcessInspection.NotRunning] is confirmed dead;
+ * [ExactLive] is alive, and OwnershipMismatch/Unsupported are ambiguous evidence that must never
+ * trigger reconciliation. This keeps liveness detection behind the injectable supervisor port with
+ * no agent-identity branching (AC-005).
+ */
+internal object FeatureTaskRuntimeCrashLiveness {
+  fun isConfirmedDead(inspection: FeatureTaskRuntimeProcessInspection): Boolean = when (inspection) {
+    FeatureTaskRuntimeProcessInspection.NotRunning -> true
+    FeatureTaskRuntimeProcessInspection.ExactLive -> false
+    is FeatureTaskRuntimeProcessInspection.OwnershipMismatch -> false
+    is FeatureTaskRuntimeProcessInspection.Unsupported -> false
+  }
+}
+
 @Inject
 class FeatureTaskRuntimeWorkerCoordinator(
   private val database: DatabaseSessionFactory,

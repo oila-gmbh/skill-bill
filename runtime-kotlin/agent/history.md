@@ -1,3 +1,81 @@
+## [2026-07-24] SKILL-140 lease-based crash reconciliation for killed children (subtask 5)
+Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp, orchestration/contracts
+- A workflow row left non-terminal by a killed child (expired lease + dead process) self-heals to the typed resumable interrupted state on the next runner startup, so a crashed feature-task child no longer wedges the loop and resume continues from that phase; the goal parent treats such a row as resumable instead of emitting a terminal `NO_TERMINAL_STORE_OUTCOME`-class block. reusable
+- Reconciliation candidate selection and the state transition are one fenced write inside the lease machinery, so it is idempotent and safe under concurrent startup; rows with live leases or running processes are never touched. reusable
+- Liveness is read only through the existing injectable probe strategies on `AgentRunProcessRequest` (`FeatureTaskRuntimeWorkerSupervisor` liveness) — no agent-identity branching added to `ProcessWaitLoop` or the process runner, matching the injectable-strategy contract. reusable
+- Crash reconciliations are counted by reason class as text-free typed telemetry (`crash_reconciliation_count` / reason_counts in `telemetry-event-schema.yaml`), never recording row contents, consistent with the subtask 2/4 diagnostics discipline. reusable
+- Docs (AGENTS.md runtime-behavior section, runtime ARCHITECTURE.md) describe automatic crash reconciliation as the primary path; manual lease clearing is documented as corruption fallback only.
+Feature flag: N/A
+Acceptance criteria: subtask 5: 7/7 implemented (startup reconcile + resume, goal-parent resumable, live-lease/live-process safety, idempotent concurrent-safe write, injectable-probe liveness, reason-class telemetry, docs)
+
+## [2026-07-24] SKILL-140 quarantine-and-regenerate legacy/drifted phase records (subtask 4)
+Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-contracts, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-sqlite
+- Schema introductions and version bumps no longer wedge the loop: a legacy/drifted upstream phase record is quarantined and its producing phase invalidated so it regenerates in-band, instead of blocking a consumer that cannot repair it. In-band recovery is primary; out-of-band surgery is the fallback. reusable
+- `feature-task-runtime-quarantine-schema.yaml` follows the full contract recipe (Draft 2020-12 YAML, `contract_version` const, `_CONTRACT_VERSION` constant + parity test, typed `InvalidFeatureTaskRuntimeQuarantineSchemaError`, classpath bundling via configuration-cache-friendly Copy task). reusable
+- Quarantine evidence is append-only, retrievable in insertion order, and crash-replay idempotent; the regeneration attempt cap survives a crash mid-regeneration (not reset on resume) so recovery stays bounded across resume. reusable
+- A rejected record whose producing phase the pipeline already dropped blocks durably with an actionable reason rather than looping — the drop-vs-regenerate boundary is explicit.
+- Regeneration telemetry records activation and attempt counts only, never record contents or prompt text (text-free typed events), matching the subtask-2 diagnostics discipline. reusable
+- The launch seam and producer gate share one validation function/validator port (established subtasks 1-3); this subtask adds the quarantine backward-edge and record invalidation without forking that seam.
+Feature flag: N/A
+Acceptance criteria: subtask 4: full ACs implemented (quarantine contract, evidence store, regeneration backward-edges, launch-seam wiring, producing-record invalidation, cross-resume cap, telemetry, real-validator suite, recovery-path docs)
+
+## [2026-07-24] SKILL-140 real-validator run-loop tests and fixture parity (subtask 3)
+Areas: runtime-kotlin/runtime-application (tests/testFixtures), runtime-kotlin/runtime-core (architecture tests)
+- Run-loop integration tests exercise the producer gate, canonicalization, and phase advance through the real Draft 2020-12 `RealPlanningProjectionValidator`, not stubs: a contract-violating projection blocks only at the cap, a canonicalizable one advances with 0 fix attempts, and a conforming one advances directly. reusable
+- Phase-output fixtures were extracted into one shared `FeatureTaskRuntimePhaseOutputFixtures` corpus (the implement `changed_files` drift dropped); `PhaseOutputFixtureParityTest` fails the build with permanent-mutation checks if runner fixtures and the corpus diverge, so future phase-output edits can't silently fork. reusable
+- `PlanningProjectionNoopValidatorGuardTest` enumerates the permitted no-op-validator consumers, so a new caller can't silently bypass real projection validation. reusable
+- The AC-005 producer->consumer dependency direction is now an explicit named assertion in `RuntimeAdapterDependencyAllowlistTest` (the curated allowlist map already enforced it).
+- Placement note: these suites live in runtime-application test scope, not runtime-cli, because the internal run-loop harness/stubs and the `realPlanningProjectionValidator` testFixture are only reachable there. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 3: full ACs implemented (real-validator tests, fixture parity, Noop guard, AC-005 assertion)
+
+## [2026-07-23] SKILL-140 canonicalize planning projections before validate (subtask 2)
+Areas: runtime-kotlin/runtime-domain
+- A deterministic, referential, idempotent canonicalizer normalizes planning-projection wire maps (lowercasing task ids and their matching `depends_on` references, trimming/normalizing summary and nonBlank trivia) and runs inside the single shared parse function immediately before strict schema validation, so both the producer gate and the launch seam absorb id/summary/whitespace trivia identically before the bounded fix loop ever sees a structural error. reusable
+- Canonicalization only repairs trivia: it never synthesizes missing fields, reorders/drops collection entries, or coerces types; structural violations (missing required fields, unknown keys, budget overflow, dependency cycles, empty-after-canonicalization ids) still reject with unchanged error typing, and the schema YAML patterns stay authoritative for post-canonicalization values.
+- Anti-paste protection survives normalization: a description with backticks/tabs is normalized and accepted, but a pasted JSON body or diff hunk still rejects on the anti-paste pattern.
+- Applied canonicalizations are recorded as bounded text-free typed diagnostics (no plan bodies or prompt text). reusable
+- Because canonicalization lives in the one shared function, gate and seam observe identical results; a parity test proves an envelope canonicalized at the gate parses identically at the seam, and an idempotence property test over the fixture corpus proves applying it twice is a no-op. reusable
+- Test placement note: real-schema acceptance/rejection tests live in runtime-infra-fs (runtime-domain cannot depend on the infra-fs schema adapter); runtime-application testFixtures gained `RealPlanningProjectionValidator` so the parity test reaches the real Draft 2020-12 adapter. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
+## [2026-07-23] SKILL-140 producer-side planning-projection gating (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application}, runtime-kotlin/ARCHITECTURE.md
+- A producing phase (`preplan`/`plan`/`implement`) that completes with `produced_outputs` failing its projection contract is now rejected producer-side and re-enters that phase's own bounded fix loop with the projection error in the retry context, instead of handing a broken projection to a consumer that cannot repair it; it blocks only at the existing cap. reusable
+- Domain-owned producing-phase-to-kind mapping (`preplan`->preplanning_digest, `plan`->executable_plan, `implement`->implementation_receipt) is the single source deciding which phase outputs are gated; the gate is a lookup, not per-phase branching. reusable
+- Gate sits in `settleValidatedOutput` after the terminal (blocked/failed) path, so blocked and failed outputs are never projection-gated; decompose-package plan outputs are exempt because they carry no consumer projection.
+- Producer gate and launch seam both call `featureTaskRuntimePlanningProjectionFromEnvelope` with the same validator port — no projection rule is restated at the gate; a parity test binds the real gate and the real launch-seam assemble to one function so accept/reject move in lockstep. reusable
+- Rejection reason names the phase, the expected `projection_kind`, and the underlying validation failure, reusing the existing schema-gate detail truncation (no new truncation path).
+- Rejection tests cover the two RDN-29 production shapes: `preplanning_digest.rollout` as an array not an object, and `implementation_receipt.deviations` entries as free-text strings not `{ref, note}` objects; also the implement-fix re-entry.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 6/6 implemented
+
+## [2026-07-23] SKILL-137 planning and implementation projections + remediation gate (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application}, orchestration/contracts
+- Schema/model parity: the planning-projections schema gained a `nonEmptyStrings` $def and `minItems:1` on exactly the fields the Kotlin model rejects when empty (affected_boundaries, risks, validation_strategy, test_obligations, criterionRefs, changed_paths), so a schema-valid projection can never clear the infra-fs gate and then throw in `fromMap`. reusable
+- Review remediation now uses two distinct severity gates: `requiresRemediation` (Blocker + Major) reopens `implement_fix` so Major findings are fixed in the same pass; `blocksAdvance` (Blocker only) drives the terminal loud block on cap exhaustion, so a surviving Major ships but a surviving Blocker still stops the run. reusable
+- `FeatureTaskRuntimeReviewVerdict` exposes `remediationFindings` (fix-pass scope) separately from `unresolvedFindings` (hard-block scope); prompt text and the goal review reducer route on Blocker-or-Major but count only Blocker for the durable unresolved/cap-block count.
+- GoalSubtaskReviewSummaryReducer: an itemised review reports its true Blocker count (0 for a Major-only review, routed to a fix pass by verdict but never hard-blocking); only a compact changes_requested summary with no itemised findings coerces to a conservative 1 so an un-itemised block is not silently advanced.
+- Carried audit gaps repaired: the handoff validator compares receipt-carried vs resolved repository checkpoint and refreshes repository-derived fields rather than silently auditing a different tree (AC-012); the briefing renders the resolved checkpoint and audit declares scoped comparison context (AC-011); the run loop builds the checkpoint from resolved branch state with goal-child-scoped normalized owned paths (AC-014).
+- Pattern: the AC-012 refresh keeps the projection's declared field set fixed (enforceDeclaredShape rejects new fields) by encoding the refresh inside the existing compact `repository_checkpoint` reference as `<resolved>+refreshed-from:<stale>` — one no-line-break token that still satisfies compact-reference rules. reusable
+- The AC-014 goal-child head ref is the run-owned branch from durable resolved-branch state, not a measured git HEAD (measuring HEAD broke the 'goal-continuation … without measuring git head' invariant); the goal-child baseline inventory reads from goal-subtask review state, not the resolved-branch record.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 16/16 implemented
+
+## [2026-07-23] SKILL-137 handoff projection contracts and private-evidence boundary (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application,core,infra-fs}, orchestration/contracts, runtime-kotlin/ARCHITECTURE.md
+- Phase handoff now crosses a four-part boundary: private evidence (complete validated phase output), consumer projection (exact prompt-visible envelope), repository-derived context, and phase-local instructions; ARCHITECTURE.md documents it.
+- `PhaseHandoffProjectionDeclaration` is static workflow-owned config naming consumer phase, source kind/identity, projection contract id/version, prompt visibility, UTF-8 byte and collection-item budgets, and checkpoint policy; an agent, phase output, resumed prompt, or caller cannot add a source, request private evidence, or widen a projection.
+- `orchestration/contracts/feature-task-runtime-handoff-envelope-schema.yaml` is a Draft 2020-12 contract following the runtime-contract recipe (version const + parity test `FeatureTaskRuntimeHandoffEnvelopeSchemaContractVersionTest` + typed `InvalidHandoffEnvelopeSchemaError` + classpath bundling); the envelope carries named typed projections and compact references only.
+- Forbidden in the prompt-visible envelope: `upstream_outputs_by_phase_id`, raw payload/prompt/transcript/tool-output/log/source-body/diff-body/telemetry; complete validated phase output is persisted as private evidence under its own durable `feature_task_runtime_delivered_projections` key, separate from the delivered projection.
+- Pattern: read-seam schema validation runs against the RAW handoff-envelope wire map, not the decoded envelope — `fromEnvelopeMap` discards undeclared keys and accepts any non-blank contract version, so validating after decode would miss both violations. reusable
+- Projection validation rejects missing required sources, malformed fields, unsupported versions, undeclared fields, duplicate projection names, budget overflow, invalid compact references, and checkpoint-policy violations before launch, each as a typed error naming workflow id, consumer phase, projection name, contract id/version, and an actionable reason without echoing sensitive bodies.
+- Budgets count UTF-8 bytes and collection items before prompt serialization and never truncate JSON, drop required fields, or substitute a full source artifact; checkpoint policies are `not_required` / `must_match` / `refresh_from_repository`, run identity stays durable while prompt-visible invariants are per-phase allowlists, and hydrated add-on content is budgeted independently of phase receipts.
+- `FeatureTaskRuntimeHandoffEnvelopeArtifactDecoders.kt` was split out of `FeatureTaskRuntimePhaseArtifactDecoders.kt` to stay under detekt's TooManyFunctions per-file threshold; `ImplementationOwnershipArchitectureTest.allowedCompositionImports` gained the new validator port. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 1: 15/15 implemented
+
 ## [2026-07-22] SKILL-129 durable accounting key and e2e verification (subtask 5)
 Areas: runtime-kotlin/runtime-{application,cli,core,infra-sqlite}, skills/bill-code-review-parallel
 - `ParallelCodeReviewRequest.reviewRunId` now flows through `ParallelReviewPreparationInput` into the compiled packet `reviewId`, so the durable `review_accounting` row is keyed by the same id `ReviewFinishedPayloadSupport.reviewFinishedPayload` resolves via `loadReviewAccounting`; it was previously always null.
