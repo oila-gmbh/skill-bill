@@ -17,6 +17,7 @@ import java.nio.file.Path
 import kotlin.io.path.name
 
 internal object ReviewSkillStructureValidator {
+  private const val MARKDOWN_HEADING_PREFIX_LENGTH = 3
   fun validate(pack: Path) {
     val violations = violations(pack)
     if (violations.isNotEmpty()) {
@@ -314,7 +315,9 @@ internal object ReviewSkillStructureValidator {
   ).filter { it !in allowedSeverities }.map { rating -> violation(file, "off-enum severity rating $rating") }
 
   private fun definesOwnSeverityVocabulary(content: String): Boolean {
-    val headings = Regex("(?m)^#{1,3} ").findAll(content).map { it.value.drop(3).trim() }.toList()
+    val headings = Regex("(?m)^#{1,3} ").findAll(content)
+      .map { it.value.drop(MARKDOWN_HEADING_PREFIX_LENGTH).trim() }
+      .toList()
     val hasSeverityHeading = headings.any { heading ->
       heading.contains("severity", ignoreCase = true) ||
         heading.contains("rating", ignoreCase = true) ||

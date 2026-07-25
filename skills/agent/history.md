@@ -1,3 +1,10 @@
+## [2026-07-25] SKILL-142 subtask 4 — lane severity calibration test infrastructure
+Areas: runtime-kotlin/runtime-infra-fs, skills/bill-code-review
+- Fixed `ReviewSkillStructureConformanceTest.kt` compilation: added YAMLMapper import, helper functions `manifest()` and `declaredAreas()` for manifest parsing, converted string-labeled blocks to kotlin.test assertions. All 9 tests pass.
+- Test infrastructure supports validator coverage that rejects specialists defining their own severity vocabulary or omitting consequence requirements — enforced against shared review rubric in `orchestration/review-orchestrator/review-skill-structure-standard.md`.
+Feature flag: N/A
+Acceptance criteria: 1/7 (AC#7) implemented
+
 ## [2026-06-23] SKILL-94 release-tooling (bill-release skill)
 Areas: skills/bill-release, runtime-kotlin/runtime-application, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp
 - New governed skill `bill-release` orchestrates the full release process: find prior stable tag via `git tag --sort=-version:refname`, categorize commits into New Features / Bug Fixes / Other using editorial judgment, draft changelog inline for user review, suggest semver bump per RELEASING.md, require explicit confirmation before `git tag` and again before `git push --tags`.

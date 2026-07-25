@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import skillbill.testing.repoRootFromTest
@@ -39,10 +40,14 @@ class ReviewSkillStructureConformanceTest {
     )
 
     val violations = structureViolations(pack)
-    assertTrue(violations.any { it.rule == "specialist defines own severity vocabulary" },
-      "Expected 'specialist defines own severity vocabulary' violation")
-    assertTrue(violations.any { it.path.fileName.toString() == "content.md" },
-      "Violation should identify the offending content file")
+    assertTrue(
+      violations.any { it.rule == "specialist defines own severity vocabulary" },
+      "Expected 'specialist defines own severity vocabulary' violation",
+    )
+    assertTrue(
+      violations.any { it.path.fileName.toString() == "content.md" },
+      "Violation should identify the offending content file",
+    )
   }
 
   @Test
@@ -56,10 +61,14 @@ class ReviewSkillStructureConformanceTest {
     )
 
     val violations = structureViolations(pack)
-    assertTrue(violations.any { it.rule == "missing canonical severity closer" },
-      "Expected 'missing canonical severity closer' violation")
-    assertTrue(violations.any { it.path.fileName.toString() == "content.md" },
-      "Violation should identify the offending content file")
+    assertTrue(
+      violations.any { it.rule == "missing canonical severity closer" },
+      "Expected 'missing canonical severity closer' violation",
+    )
+    assertTrue(
+      violations.any { it.path.fileName.toString() == "content.md" },
+      "Violation should identify the offending content file",
+    )
   }
 
   @Test
@@ -368,17 +377,13 @@ class ReviewSkillStructureConformanceTest {
       val declaredAreas = declaredAreas(manifest)
       val routingSignals = manifest["routing_signals"] as? Map<*, *> ?: return@forEach
 
-      "Assert pack ${pack.fileName} has unchanged declared area count" {
-        assertTrue(declaredAreas.isNotEmpty(), "Pack should have declared areas")
-      }
+      assertTrue(declaredAreas.isNotEmpty(), "Pack ${pack.fileName} should have declared areas")
 
-      "Assert pack ${pack.fileName} has unchanged routing signals" {
-        val strongSignals = (routingSignals["strong"] as? List<*)?.filterIsInstance<String>().orEmpty()
-        val tieBreakers = (routingSignals["tie_breakers"] as? List<*)?.filterIsInstance<String>().orEmpty()
+      val strongSignals = (routingSignals["strong"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+      val tieBreakers = (routingSignals["tie_breakers"] as? List<*>)?.filterIsInstance<String>().orEmpty()
 
-        assertTrue(strongSignals.isNotEmpty(), "Pack should have strong routing signals")
-        assertTrue(tieBreakers.isNotEmpty(), "Pack should have tie-breaker rules")
-      }
+      assertTrue(strongSignals.isNotEmpty(), "Pack ${pack.fileName} should have strong routing signals")
+      assertTrue(tieBreakers.isNotEmpty(), "Pack ${pack.fileName} should have tie-breaker rules")
     }
   }
 
@@ -401,23 +406,30 @@ class ReviewSkillStructureConformanceTest {
     val playbook = repoRoot.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
     val playbookContent = Files.readString(playbook)
 
-    "Assert admission gate text is byte-identical" {
-      val admissionGatePattern = Regex(
-        "(?m)^- Flag comments that only restate \\*\\*what\\*\\* the code does \\(paraphrasing adjacent code\\) as a maintainability finding — this is an explicit contract item, report it at \\`Minor\\`\\. Do not flag comments that explain \\*\\*why\\*\\*: a decision or non-obvious constraint the code cannot express is warranted and must be left alone",
-        RegexOption.MULTILINE,
-      )
+    val admissionGatePattern = Regex(
+      "(?m)^- Flag comments that only restate \\*\\*what\\*\\* the code does " +
+        "\\(paraphrasing adjacent code\\) as a maintainability finding — " +
+        "this is an explicit contract item, report it at \\`Minor\\`\\. " +
+        "Do not flag comments that explain \\*\\*why\\*\\*: a decision or " +
+        "non-obvious constraint the code cannot express is warranted " +
+        "and must be left alone",
+      RegexOption.MULTILINE,
+    )
 
-      val admissionGateMatch = admissionGatePattern.find(playbookContent)
-      assertTrue(admissionGateMatch != null, "SKILL-115 admission gate should exist in PLAYBOOK.md")
+    val admissionGateMatch = admissionGatePattern.find(playbookContent)
+    assertTrue(admissionGateMatch != null, "SKILL-115 admission gate should exist in PLAYBOOK.md")
 
-      val specialistContract = repoRoot.resolve("orchestration/review-orchestrator/specialist-contract.md")
-      val specialistContent = Files.readString(specialistContract)
+    val specialistContract = repoRoot.resolve("orchestration/review-orchestrator/specialist-contract.md")
+    val specialistContent = Files.readString(specialistContract)
 
-      val specialistMatch = admissionGatePattern.find(specialistContent)
-      assertTrue(specialistMatch != null, "SKILL-115 admission gate should exist in specialist-contract.md")
+    val specialistMatch = admissionGatePattern.find(specialistContent)
+    assertTrue(specialistMatch != null, "SKILL-115 admission gate should exist in specialist-contract.md")
 
-      assertEquals(admissionGateMatch?.value, specialistMatch?.value, "Admission gate wording should be identical across shared surfaces")
-    }
+    assertEquals(
+      admissionGateMatch.value,
+      specialistMatch.value,
+      "Admission gate wording should be identical across shared surfaces",
+    )
   }
 
   internal data class StructureViolation(val path: Path, val rule: String) {
@@ -750,3 +762,13 @@ private val missingConsequenceSpecialist = """
       - Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.
       - Reject weak credential handling.
 """.trimIndent()
+
+private fun manifest(pack: Path): Map<*, *>? {
+  val manifestFile = pack.resolve("platform.yaml")
+  if (!Files.isRegularFile(manifestFile)) return null
+  return YAMLMapper().readValue(Files.readString(manifestFile), Map::class.java)
+}
+
+private fun declaredAreas(manifest: Map<*, *>): List<String> {
+  return (manifest["declared_code_review_areas"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+}
