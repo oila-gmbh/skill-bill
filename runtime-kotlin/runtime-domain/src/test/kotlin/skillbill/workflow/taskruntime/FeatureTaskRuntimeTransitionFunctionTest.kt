@@ -8,6 +8,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
@@ -409,7 +410,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     currentPhaseId = currentPhaseId,
     verdict = verdict,
     edgeIterationCount = edgeIterationCount,
-    settledVerdictsByPhaseId = settledVerdicts,
+    context = FeatureTaskRuntimeTransitionContext(settledVerdictsByPhaseId = settledVerdicts),
   )
 
   @Test

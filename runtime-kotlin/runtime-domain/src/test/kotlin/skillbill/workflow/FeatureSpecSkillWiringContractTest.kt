@@ -165,8 +165,10 @@ class FeatureSpecSkillWiringContractTest {
     assertFalse(subtaskRunner.contains("bill-code-review mode:code_review_mode"))
     assertContains(goal, "selected mode is immutable for the parent and every child")
     assertContains(review, "`delegated` always runs the normal routed delegated path")
-    assertContains(review, "`inline`\nalways runs the complete routed review in the current agent context")
-    assertContains(review, "regardless\nof size or risk")
+    // Inline is a distinct, shallower depth tier (SKILL-142), no longer "the same review, run inline".
+    assertContains(review, "`inline` is the light tier: one agent in the current context")
+    assertContains(review, "never present it as equivalent to a delegated result")
+    assertContains(review, "explicit `inline` or `delegated` always overrides either rule")
     assertContains(review, "Do not pass `parallel:` into lane 2")
     assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
     assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")

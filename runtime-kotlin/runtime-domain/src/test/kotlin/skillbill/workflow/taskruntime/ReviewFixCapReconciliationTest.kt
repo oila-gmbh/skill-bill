@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,17 +21,18 @@ class ReviewFixCapReconciliationTest {
     edge.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
   }
 
-  private fun transitionAtCap(unresolvedBlockerPresent: Boolean) =
-    FeatureTaskRuntimeTransitionFunction.nextTransition(
-      declaration = transitions,
-      currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      edgeIterationCount = 1,
+  private fun transitionAtCap(unresolvedBlockerPresent: Boolean) = FeatureTaskRuntimeTransitionFunction.nextTransition(
+    declaration = transitions,
+    currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+    edgeIterationCount = 1,
+    context = FeatureTaskRuntimeTransitionContext(
       settledVerdictsByPhaseId = mapOf(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to FeatureTaskRuntimeVerdict.SATISFIED,
       ),
       unresolvedBlockerPresent = unresolvedBlockerPresent,
-    )
+    ),
+  )
 
   @Test
   fun `the review fix edge keeps its cap of one and its per-subtask scope`() {
@@ -73,7 +75,7 @@ class ReviewFixCapReconciliationTest {
       currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       edgeIterationCount = 0,
-      unresolvedBlockerPresent = true,
+      context = FeatureTaskRuntimeTransitionContext(unresolvedBlockerPresent = true),
     )
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(transition)
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)

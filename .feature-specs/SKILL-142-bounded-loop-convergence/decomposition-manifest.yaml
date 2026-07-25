@@ -72,7 +72,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260725-172600-dsgk"
   blocked_reason: null
-  last_resumable_step: "implement"
+  last_resumable_step: "write_history"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

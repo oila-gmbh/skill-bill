@@ -1,9 +1,9 @@
 package skillbill.scaffold
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.contracts.workflow.GoalSubtaskReviewStateSchemaPaths
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -35,7 +35,8 @@ class GoalSubtaskReviewStateContractVersionTest {
     assertEquals(
       GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
       contractVersionNode.asText(),
-      "Schema contract_version.const must equal GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION ($GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION).",
+      "Schema contract_version.const must equal " +
+        "GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION ($GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION).",
     )
   }
 

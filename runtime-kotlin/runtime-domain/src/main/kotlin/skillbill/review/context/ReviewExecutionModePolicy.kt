@@ -1,13 +1,9 @@
 package skillbill.review.context
 
+import skillbill.review.context.model.ResolvedReviewDepth
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.workflow.model.CodeReviewExecutionMode
-
-data class ResolvedReviewDepth(
-  val resolvedMode: ResolvedReviewExecutionMode,
-  val decidingRule: String,
-)
 
 object ReviewExecutionModePolicy {
   const val PASS_NUMBER_RULE: String = "auto_depth_by_pass_number"

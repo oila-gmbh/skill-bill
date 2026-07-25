@@ -1816,6 +1816,7 @@ private fun GoalRunnerTerminalStatus.toGoalContinuationWireStatus(): String = wh
   GoalRunnerTerminalStatus.TIMEOUT -> "timeout"
   GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME -> "no_terminal_store_outcome"
   GoalRunnerTerminalStatus.RECONCILABLE -> "reconcilable"
+  GoalRunnerTerminalStatus.PAUSED -> "paused"
 }
 
 private fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalStatus? = when (status) {
@@ -1823,6 +1824,7 @@ private fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalS
   "failed" -> GoalRunnerTerminalStatus.FAILED
   "blocked" -> GoalRunnerTerminalStatus.BLOCKED
   "timeout", "timed_out" -> GoalRunnerTerminalStatus.TIMEOUT
+  "paused" -> GoalRunnerTerminalStatus.PAUSED
   else -> null
 }
 

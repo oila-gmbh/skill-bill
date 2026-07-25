@@ -66,6 +66,14 @@ properties:
   operator_decision:
     type: string
     enum: [retry_fix, accept_and_advance, abandon_subtask]
+  operator_retry_rounds:
+    description: >
+      Count of operator-granted retry_fix rounds consumed inside the already-reserved pass. A
+      non-zero value means a granted remediation is in flight, so the carried-forward settlement
+      must re-run the review rather than replay the stale pass result the operator just overrode.
+      Reset to zero when the re-entered pass settles. Never re-reserves a consumed pass.
+    type: integer
+    minimum: 0
   resolved_tier:
     type: string
     enum: [auto, inline, delegated]
@@ -125,6 +133,13 @@ properties:
             additionalProperties: false
             required: [severity, label, text]
             properties:
+              finding_id:
+                description: >
+                  The id the review output carried for this finding (the F-XXX register id). The
+                  reserved remediation pass dispositions against these ids, so the disposition-to-
+                  finding correspondence that terminates the loop is verifiable at the parse seam.
+                type: string
+                minLength: 1
               severity:
                 type: string
                 enum: [blocker, major, minor, nit]

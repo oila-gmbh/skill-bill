@@ -9,11 +9,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
  * subsequent unresolved pass pauses again.
  */
 internal object FeatureTaskRuntimeOperatorRetryGrant {
-  fun active(
-    consumed: Boolean,
-    inSessionGrant: Boolean,
-    persistedDecision: GoalSubtaskOperatorDecision?,
-  ): Boolean =
+  fun active(consumed: Boolean, inSessionGrant: Boolean, persistedDecision: GoalSubtaskOperatorDecision?): Boolean =
     !consumed && (inSessionGrant || persistedDecision == GoalSubtaskOperatorDecision.RETRY_FIX)
 
   fun pausesOnUnresolvedBlocker(grantActive: Boolean, unresolvedBlockerPresent: Boolean): Boolean =

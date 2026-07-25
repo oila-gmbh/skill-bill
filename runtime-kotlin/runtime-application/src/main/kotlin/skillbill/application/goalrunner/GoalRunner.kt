@@ -788,7 +788,7 @@ class GoalRunner(
         launchDiagnostics, attemptDurationMillis, ledger, request,
       )
     }
-    val blocked = if (stoppedOutcome.reason == GoalRunnerStopReason.RECONCILED_RESUMABLE) {
+    val blocked = if (stoppedOutcome.reason in GoalRunnerStopReason.RESUMABLE_STOP_REASONS) {
       state.manifest.withResumableSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
     } else {
       state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
@@ -2070,6 +2070,7 @@ private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
   GoalRunnerStopReason.TIMEOUT,
   GoalRunnerStopReason.INTERRUPTED,
   GoalRunnerStopReason.RECONCILED_RESUMABLE,
+  GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
   -> "resume_from_last_resumable_step"
   GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
   else -> "inspect_blocked_reason"

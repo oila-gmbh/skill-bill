@@ -148,12 +148,15 @@ class WorkflowStateSchemaContractVersionTest {
   }
 
   /**
-   * SKILL-141 Subtask 1 AC-001/AC-007: `paused` is the non-terminal resumable parent status. It is
-   * scoped to the featureImplement branch only, is excluded from `terminalStatuses`, and is a purely
-   * additive enum value — no existing record becomes invalid, so no contract-version bump.
+   * SKILL-141 Subtask 1 AC-001/AC-007 plus SKILL-142 AC-014: `paused` is the non-terminal resumable
+   * status. SKILL-141 scoped it to the featureImplement parent row; SKILL-142 extends the same value
+   * to the featureTaskRuntime child, which pauses on an unresolved Blocker rather than forking a
+   * second pause mechanism. It stays excluded from `terminalStatuses` on both, stays rejected on
+   * featureVerify, and remains a purely additive enum value — no existing record becomes invalid, so
+   * no contract-version bump.
    */
   @Test
-  fun `paused is a non-terminal status scoped to the featureImplement branch`() {
+  fun `paused is a non-terminal status on the featureImplement and featureTaskRuntime branches`() {
     val schema = loadSchemaNode()
     val defs = schema.path("\$defs")
     val implementStatuses = defs.path("featureImplementBranch").path("properties")
@@ -168,12 +171,21 @@ class WorkflowStateSchemaContractVersionTest {
       "paused" in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
       "'paused' is resumable by design and must never be consulted as a terminal status.",
     )
-    listOf("featureVerifyBranch", "featureTaskRuntimeBranch").forEach { branchName ->
-      assertFalse(
-        "paused" in defs.path(branchName).path("properties").path("workflow_status").enumStrings(),
-        "'paused' is scoped to the decomposed-goal parent row; $branchName must not accept it.",
-      )
-    }
+    val runtimeStatuses = defs.path("featureTaskRuntimeBranch").path("properties")
+      .path("workflow_status").enumStrings()
+    assertTrue("paused" in runtimeStatuses, "featureTaskRuntimeBranch.workflow_status must allow 'paused'.")
+    assertTrue(
+      "paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses,
+      "FeatureTaskRuntimePhaseWorkflowDefinition.workflowStatuses must allow 'paused'.",
+    )
+    assertFalse(
+      "paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses,
+      "'paused' is resumable by design and must never be consulted as a terminal status.",
+    )
+    assertFalse(
+      "paused" in defs.path("featureVerifyBranch").path("properties").path("workflow_status").enumStrings(),
+      "'paused' has no meaning for feature-verify; featureVerifyBranch must not accept it.",
+    )
     assertEquals(
       WORKFLOW_STATE_CONTRACT_VERSION,
       FeatureImplementWorkflowDefinition.definition.contractVersion,

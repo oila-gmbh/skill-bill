@@ -33,7 +33,10 @@ class ReviewDepthAutoRuleTest {
   fun `auto without a pass number falls back to the size-and-risk eligibility rule`() {
     val escalated = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, risky)
     assertEquals(ResolvedReviewExecutionMode.DELEGATED, escalated.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:oversized_or_high_risk_or_layered", escalated.decidingRule)
+    assertEquals(
+      "${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:oversized_or_high_risk_or_layered",
+      escalated.decidingRule,
+    )
 
     val light = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, calm)
     assertEquals(ResolvedReviewExecutionMode.INLINE, light.resolvedMode)

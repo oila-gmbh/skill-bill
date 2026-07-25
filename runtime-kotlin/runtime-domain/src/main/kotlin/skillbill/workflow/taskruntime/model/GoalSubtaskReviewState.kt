@@ -25,6 +25,21 @@ enum class GoalSubtaskOperatorDecision(val wireValue: String) {
   }
 }
 
+/**
+ * How a recorded operator decision releases the pause. Every decision releases it — leaving a decided
+ * pause intact would re-pause the subtask identically and strand it on the operator's own choice.
+ */
+enum class GoalSubtaskPauseRelease {
+  /** One fresh, unbudgeted `implement_fix` iteration. */
+  RETRY_FIX,
+
+  /** Forward to `validate` with the unresolved Blockers accepted as-is. */
+  ADVANCE,
+
+  /** Terminal: the subtask is abandoned rather than repaired. */
+  ABANDON,
+}
+
 enum class GoalSubtaskBlockerDispositionVerdict(val wireValue: String) {
   RESOLVED("resolved"),
   UNRESOLVED("unresolved"),
@@ -44,8 +59,12 @@ data class GoalSubtaskBlockerDisposition(
 ) {
   init {
     require(findingId.isNotBlank()) { "GoalSubtaskBlockerDisposition.findingId must be non-blank." }
-    require(evidence.isNotEmpty()) { "GoalSubtaskBlockerDisposition.evidence must contain at least one evidence entry." }
-    require(evidence.all(String::isNotBlank)) { "GoalSubtaskBlockerDisposition.evidence must contain only non-blank strings." }
+    require(evidence.isNotEmpty()) {
+      "GoalSubtaskBlockerDisposition.evidence must contain at least one evidence entry."
+    }
+    require(evidence.all(String::isNotBlank)) {
+      "GoalSubtaskBlockerDisposition.evidence must contain only non-blank strings."
+    }
   }
 
   @OpenBoundaryMap("Blocker disposition at the durable workflow-artifact seam")
@@ -90,6 +109,13 @@ data class GoalSubtaskReviewCompactFinding(
   val severity: String,
   val label: String,
   val text: String,
+  /**
+   * The id the review output itself carried (the `F-XXX` register id). Persisted so the reserved
+   * remediation pass dispositions against the ids the agent actually saw rather than positional
+   * stand-ins the correspondence could not be verified against. Absent on records written before the
+   * id was captured, which fall back to the positional id.
+   */
+  val findingId: String? = null,
 ) {
   val isBlocker: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 
@@ -97,23 +123,25 @@ data class GoalSubtaskReviewCompactFinding(
     require(severity in setOf("blocker", "major", "minor", "nit")) { "Invalid review finding severity '$severity'." }
     require(label.isNotBlank()) { "GoalSubtaskReviewCompactFinding.label must be non-blank." }
     require(text.isNotBlank()) { "GoalSubtaskReviewCompactFinding.text must be non-blank." }
+    findingId?.let { require(it.isNotBlank()) { "GoalSubtaskReviewCompactFinding.findingId must be non-blank." } }
   }
 
   @OpenBoundaryMap("Compact goal-review finding at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "severity" to severity,
     "label" to label,
     "text" to text,
-  )
+  ).apply { findingId?.let { put("finding_id", it) } }
 
   companion object {
     @OpenBoundaryMap("Compact goal-review finding decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): GoalSubtaskReviewCompactFinding {
-      raw.requireOnlyReviewStateKeys(setOf("severity", "label", "text"), path)
+      raw.requireOnlyReviewStateKeys(setOf("severity", "label", "text", "finding_id"), path)
       return GoalSubtaskReviewCompactFinding(
         severity = raw.requireReviewStateString("severity", path),
         label = raw.requireReviewStateString("label", path),
         text = raw.requireReviewStateString("text", path),
+        findingId = raw.optionalReviewStateString("finding_id", path),
       )
     }
   }
@@ -308,6 +336,7 @@ data class GoalSubtaskReviewState(
   val emittedPassCount: Int = 0,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
   val operatorDecision: GoalSubtaskOperatorDecision? = null,
+  val operatorRetryRounds: Int = 0,
   val resolvedTier: CodeReviewExecutionMode? = null,
   val decidingRule: String? = null,
   val remediationBaseSha: String? = null,
@@ -315,7 +344,8 @@ data class GoalSubtaskReviewState(
 ) {
   init {
     require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) {
-      "Unsupported goal review state contract '$contractVersion'. Legacy 0.1 records are rejected and must be regenerated at 0.2."
+      "Unsupported goal review state contract '$contractVersion'. " +
+        "Legacy 0.1 records are rejected and must be regenerated at 0.2."
     }
     require(GIT_COMMIT_SHA.matches(reviewBaseSha)) {
       "Goal review base SHA must be a 40- or 64-character lowercase commit SHA."
@@ -354,13 +384,18 @@ data class GoalSubtaskReviewState(
             passResults.lastOrNull()?.blocksAdvance == true
           ),
     ) { "review_cap_reached requires unresolved Blocker findings on pass two." }
-    require(blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size) {
+    require(
+      blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size,
+    ) {
       "Each prior Blocker may carry exactly one disposition."
     }
     require(
       disposition != GoalSubtaskReviewDisposition.PAUSED ||
-        blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED },
-    ) { "paused requires at least one unresolved Blocker disposition." }
+        blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
+        passResults.lastOrNull()?.blocksAdvance == true,
+    ) {
+      "paused requires an unresolved Blocker disposition or a Blocker the remediation pass itself introduced."
+    }
     require(operatorDecision == null || disposition == GoalSubtaskReviewDisposition.PAUSED) {
       "An operator decision is only recorded against a paused subtask."
     }
@@ -371,7 +406,21 @@ data class GoalSubtaskReviewState(
   val reviewSkippedByUser: Boolean get() =
     passResults.lastOrNull()?.verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
 
+  /**
+   * An operator-granted retry round re-opens the already-consumed final pass rather than reserving a
+   * new one: the pass number is unchanged, so `GOAL_SUBTASK_REVIEW_MAX_PASSES` still holds and no
+   * consumed pass is re-reserved. Only the stale result and its pause are dropped, so the granted fix
+   * is genuinely re-reviewed instead of having the overridden verdict replayed at it.
+   */
   fun reserveNextPass(): GoalSubtaskReviewState = when {
+    retryReviewPending && reservedPassNumber == null && passResults.isNotEmpty() -> copy(
+      reservedPassNumber = completedPassCount,
+      completedPassCount = completedPassCount - 1,
+      passResults = passResults.dropLast(1),
+      emittedPassCount = emittedPassCount.coerceAtMost(completedPassCount - 1),
+      disposition = GoalSubtaskReviewDisposition.PENDING,
+      blockerDispositions = emptyList(),
+    )
     reviewCapReached -> this
     reviewSkippedByUser -> this
     reservedPassNumber != null -> this
@@ -387,12 +436,18 @@ data class GoalSubtaskReviewState(
   ): GoalSubtaskReviewState {
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
-    require(blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size) {
+    require(
+      blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size,
+    ) {
       "Each prior Blocker may carry exactly one disposition."
     }
     val disposedPass = blockerDispositions.isNotEmpty()
+    // A disposed pass is gated by BOTH its dispositions and its own findings: the remediation pass
+    // reviews diff(pre-fix -> post-fix) precisely so a defect the remediation itself introduced is
+    // caught, and short-circuiting on the dispositions alone would let that new Blocker through.
     val unresolvedBlocker = if (disposedPass) {
-      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED }
+      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
+        blocksAdvance(unresolvedFindingCount, findings)
     } else {
       blocksAdvance(unresolvedFindingCount, findings)
     }
@@ -420,6 +475,8 @@ data class GoalSubtaskReviewState(
       passResults = passResults + result,
       blockerDispositions = if (disposedPass) blockerDispositions else this.blockerDispositions,
       operatorDecision = if (paused) null else operatorDecision,
+      // The granted round has now been re-reviewed, so the carried-forward result is fresh again.
+      operatorRetryRounds = 0,
     )
   }
 
@@ -428,6 +485,22 @@ data class GoalSubtaskReviewState(
 
   val unresolvedBlockerDispositions: List<GoalSubtaskBlockerDisposition>
     get() = blockerDispositions.filter { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED }
+
+  /**
+   * The single production reader of `operator_decision`: every decision maps to a release, so no
+   * decision is write-only and none leaves the subtask re-pausing on its own answer.
+   */
+  val pauseRelease: GoalSubtaskPauseRelease?
+    get() = if (!pausedForOperatorDecision) {
+      null
+    } else {
+      when (operatorDecision) {
+        GoalSubtaskOperatorDecision.RETRY_FIX -> GoalSubtaskPauseRelease.RETRY_FIX
+        GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE -> GoalSubtaskPauseRelease.ADVANCE
+        GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> GoalSubtaskPauseRelease.ABANDON
+        null -> null
+      }
+    }
 
   /**
    * `retry_fix` grants one fresh `implement_fix` iteration per operator choice and is unbudgeted; it
@@ -440,6 +513,27 @@ data class GoalSubtaskReviewState(
     }
     return copy(operatorDecision = decision)
   }
+
+  /**
+   * Clears the durable decision so the grant is single-use across processes. Without this, every
+   * resume would read the same `retry_fix` back and re-grant an unbudgeted iteration, turning one
+   * operator choice into an unbounded loop.
+   */
+  fun consumeOperatorDecision(): GoalSubtaskReviewState = when (operatorDecision) {
+    null -> this
+    // A consumed retry_fix opens a remediation round inside the already-reserved pass. The round
+    // marks the carried-forward pass result stale so review re-runs instead of replaying it.
+    GoalSubtaskOperatorDecision.RETRY_FIX ->
+      copy(operatorDecision = null, operatorRetryRounds = operatorRetryRounds + 1)
+    else -> copy(operatorDecision = null)
+  }
+
+  /**
+   * A granted remediation is in flight, so the last recorded pass result no longer describes the
+   * tree. Replaying it would re-settle the verdict the operator just overrode and the fix would
+   * never be re-reviewed.
+   */
+  val retryReviewPending: Boolean get() = operatorRetryRounds > 0
 
   /**
    * The only disposition projection any goal-facing surface may read: pass number, per-finding
@@ -474,6 +568,7 @@ data class GoalSubtaskReviewState(
     reviewInputArtifact?.let { put("review_input_artifact", it) }
     reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }
     operatorDecision?.let { put("operator_decision", it.wireValue) }
+    if (operatorRetryRounds > 0) put("operator_retry_rounds", operatorRetryRounds)
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
     decidingRule?.let { put("deciding_rule", it) }
     remediationBaseSha?.let { put("remediation_base_sha", it) }
@@ -499,24 +594,13 @@ data class GoalSubtaskReviewState(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
           "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest", "pass_results",
-          "emitted_pass_count", "blocker_dispositions", "operator_decision", "resolved_tier", "deciding_rule",
+          "emitted_pass_count", "blocker_dispositions", "operator_decision", "operator_retry_rounds",
+          "resolved_tier", "deciding_rule",
           "remediation_base_sha",
         ),
         sourceLabel,
       )
       return try {
-        val passResults = raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
-          GoalSubtaskReviewPassResult.fromArtifactMap(
-            value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
-            "$sourceLabel.pass_results[$index]",
-          )
-        }
-        val blockerDispositions = raw.optionalReviewStateList("blocker_dispositions", sourceLabel)?.mapIndexed { index, value ->
-          GoalSubtaskBlockerDisposition.fromArtifactMap(
-            value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
-            "$sourceLabel.blocker_dispositions[$index]",
-          )
-        } ?: emptyList()
         GoalSubtaskReviewState(
           contractVersion = raw.requireReviewStateString("contract_version", sourceLabel),
           reviewBaseSha = raw.requireReviewStateString("review_base_sha", sourceLabel),
@@ -535,11 +619,25 @@ data class GoalSubtaskReviewState(
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
           reviewInputArtifact = raw.optionalReviewStateString("review_input_artifact", sourceLabel),
           reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
-          passResults = passResults,
+          passResults = raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
+            GoalSubtaskReviewPassResult.fromArtifactMap(
+              value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
+              "$sourceLabel.pass_results[$index]",
+            )
+          },
           emittedPassCount = raw.requireReviewStateInt("emitted_pass_count", sourceLabel),
-          blockerDispositions = blockerDispositions,
-          operatorDecision = raw.optionalReviewStateString("operator_decision", sourceLabel)?.let(GoalSubtaskOperatorDecision::fromWire),
-          resolvedTier = raw.optionalReviewStateString("resolved_tier", sourceLabel)?.let(CodeReviewExecutionMode::fromWire),
+          blockerDispositions = raw.optionalReviewStateList("blocker_dispositions", sourceLabel)
+            ?.mapIndexed { index, value ->
+              GoalSubtaskBlockerDisposition.fromArtifactMap(
+                value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
+                "$sourceLabel.blocker_dispositions[$index]",
+              )
+            }.orEmpty(),
+          operatorDecision = raw.optionalReviewStateString("operator_decision", sourceLabel)
+            ?.let(GoalSubtaskOperatorDecision::fromWire),
+          operatorRetryRounds = raw.optionalReviewStateInt("operator_retry_rounds", sourceLabel) ?: 0,
+          resolvedTier = raw.optionalReviewStateString("resolved_tier", sourceLabel)
+            ?.let(CodeReviewExecutionMode::fromWire),
           decidingRule = raw.optionalReviewStateString("deciding_rule", sourceLabel),
           remediationBaseSha = raw.optionalReviewStateString("remediation_base_sha", sourceLabel),
         )
@@ -551,51 +649,6 @@ data class GoalSubtaskReviewState(
     }
   }
 }
-
-private fun Map<String, Any?>.requireOnlyReviewStateKeys(allowed: Set<String>, sourceLabel: String) {
-  keys.forEach { key -> if (key !in allowed) reviewStateError("$sourceLabel.$key", "unknown field is not allowed.") }
-}
-
-private fun Map<String, Any?>.requireReviewStateString(key: String, sourceLabel: String): String =
-  (this[key] as? String)?.takeIf(String::isNotBlank)
-    ?: reviewStateError("$sourceLabel.$key", "must be a non-blank string.")
-
-private fun Map<String, Any?>.optionalReviewStateString(key: String, sourceLabel: String): String? =
-  when (val value = this[key]) {
-    null -> null
-    is String -> value.takeIf(String::isNotBlank)
-      ?: reviewStateError("$sourceLabel.$key", "must be a non-blank string.")
-    else -> reviewStateError("$sourceLabel.$key", "must be a string.")
-  }
-
-private fun Map<String, Any?>.requireReviewStateInt(key: String, sourceLabel: String): Int =
-  (this[key] as? Number)?.toInt()?.takeIf { value -> value.toDouble() == (this[key] as Number).toDouble() }
-    ?: reviewStateError("$sourceLabel.$key", "must be an integer.")
-
-private fun Map<String, Any?>.optionalReviewStateInt(key: String, sourceLabel: String): Int? =
-  if (key in this) requireReviewStateInt(key, sourceLabel) else null
-
-private fun Map<String, Any?>.requireReviewStateList(key: String, sourceLabel: String): List<*> =
-  this[key] as? List<*> ?: reviewStateError("$sourceLabel.$key", "must be a list.")
-
-private fun Map<String, Any?>.optionalReviewStateList(key: String, sourceLabel: String): List<*>? =
-  when (val value = this[key]) {
-    null -> null
-    is List<*> -> value
-    else -> reviewStateError("$sourceLabel.$key", "must be a list.")
-  }
-
-private fun Any?.asReviewStateMap(sourceLabel: String): Map<String, Any?> =
-  (this as? Map<*, *>)?.entries?.associate { (key, value) ->
-    val stringKey = key as? String ?: reviewStateError(sourceLabel, "map keys must be strings.")
-    stringKey to value
-  } ?: reviewStateError(sourceLabel, "must be an object.")
-
-private fun Any?.asGoalReviewArtifactMap(sourceLabel: String): Map<String, Any?> =
-  (this as? Map<*, *>)?.entries?.associate { (key, value) ->
-    val stringKey = key as? String ?: reviewStateError(sourceLabel, "map keys must be strings.")
-    stringKey to value
-  } ?: reviewStateError(sourceLabel, "must be an object.")
 
 private fun blocksAdvance(unresolvedFindingCount: Int, findings: List<GoalSubtaskReviewCompactFinding>): Boolean =
   unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::isBlocker))

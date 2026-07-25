@@ -36,10 +36,10 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
-- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`; callers must pass `mode:auto` explicitly to use eligibility-based selection.
+- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`; callers must pass `mode:auto` explicitly to have the depth resolved by rule.
 - It also accepts at most one governed caller context, `context:feature-remediation`. This context is valid only with `mode:inline` for a bounded feature-task re-review of the supplied remediation delta. Reject it with any other mode or scope.
 - Reject malformed, unknown, repeated, or conflicting `mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
-- `auto` preserves the selection rules below without changing thresholds, routing, risk classification, specialist selection, telemetry, add-ons, or output formatting.
+- `auto` preserves the selection rules below without changing routing, risk classification, specialist selection, telemetry, add-ons, or output formatting.
 - `inline` is authoritative as the light depth tier: one agent in the current context, no specialist workers, walking the routed areas as an explicit checklist once each at reduced depth under a bounded budget. It is not equivalent coverage to delegated, and the inline result says so. Do not spawn specialists, invent lane totals, refuse the request, or silently change it to another mode.
 - `context:feature-remediation` bounds pass two to the supplied remediation delta — the prior Blocker findings union the pre-fix-to-post-fix diff — rather than the full base-to-current delta. The immutable `review_base_sha` and baseline untracked inventory remain the authority for pass one only. The pass emits an evidenced `resolved`, `unresolved`, or `superseded` disposition for every prior Blocker. This context lowers depth and scope only; it does not weaken finding severity, evidence, admission, or approval rules.
 - `delegated` bypasses automatic inline selection but still performs normal stack routing and specialist selection. Launch the required delegated workers using `review-delegation.md`; if a worker cannot start, stop loudly. Never fall back to inline.
@@ -53,7 +53,9 @@ Each lane receives only its assignment, bounded rubric, immutable identifiers, a
 
 Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
-- Only `auto` uses inline eligibility. Treat an automatic scope as inline-eligible only when all of the following are true:
+- Only `auto` resolves depth, and it resolves through exactly one named rule, reported in review metadata alongside the resolved tier. `auto` never resolves silently, and an explicit `inline` or `delegated` always overrides either rule.
+- `auto_depth_by_pass_number` is authoritative wherever a review pass number exists, which is every review in the feature-task review sequence: pass one resolves to `delegated`, every later pass resolves to `inline`. The size-and-risk eligibility rule below does not apply there and must not be consulted.
+- `auto_depth_by_size_and_risk_eligibility` is the fallback for a standalone review that carries no pass number. Treat such a scope as inline-eligible only when all of the following are true:
   - one routed stack-specific review skill is sufficient
   - the diff contains at most 10 changed files and at most 400 changed lines (additions + deletions); if either threshold is exceeded, the diff is too large for inline
   - no mixed-stack or mixed KMP/backend layering requires multiple routed review layers

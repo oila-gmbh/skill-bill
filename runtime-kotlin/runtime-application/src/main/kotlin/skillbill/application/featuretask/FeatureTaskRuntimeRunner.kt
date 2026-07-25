@@ -23,6 +23,7 @@ import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -231,7 +232,10 @@ class FeatureTaskRuntimeRunner(
   private fun cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
     val goalBranch = request.goalContinuation?.goalBranch ?: return false
     val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-      ?.takeIf { it.reviewCapReached }
+      // A pause is as settled as a cap and rests on the same authority: it judged a specific delta.
+      // Once that delta changes the pause is stale too, and leaving it would wedge the subtask on a
+      // decision about findings the tree no longer carries.
+      ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
       ?: return false
     val judgedDigest = state.reviewedDeltaDigest ?: return true
     val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
@@ -386,7 +390,13 @@ private fun persistGoalContinuationOutcome(
           finalizingAgentId = terminal.finalizingAgentId,
           participatingAgentIds = terminal.participatingAgentIds,
         ),
-        workflowStatus = if (terminal.status == "complete") "completed" else "blocked",
+        // A paused subtask is non-terminal and must not be collapsed to blocked; collapsing it would
+        // destroy the resumable row the pause exists to create.
+        workflowStatus = when (terminal.status) {
+          "complete" -> "completed"
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+          else -> "blocked"
+        },
       ),
       dbOverride = request.dbPathOverride,
     )

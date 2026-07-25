@@ -4,6 +4,7 @@ import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
@@ -37,11 +38,10 @@ object FeatureTaskRuntimeTransitionFunction {
     currentPhaseId: String,
     verdict: FeatureTaskRuntimeVerdict,
     edgeIterationCount: Int,
-    settledVerdictsByPhaseId: Map<String, FeatureTaskRuntimeVerdict> = emptyMap(),
-    unresolvedBlockerPresent: Boolean = false,
+    context: FeatureTaskRuntimeTransitionContext = FeatureTaskRuntimeTransitionContext(),
   ): FeatureTaskRuntimeNextPhase =
-    computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount, unresolvedBlockerPresent)
-      .also { transition -> guardEntryGate(declaration, transition, settledVerdictsByPhaseId) }
+    computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount, context.unresolvedBlockerPresent)
+      .also { transition -> guardEntryGate(declaration, transition, context.settledVerdictsByPhaseId) }
 
   private fun guardEntryGate(
     declaration: FeatureTaskRuntimeTransitionDeclaration,
@@ -57,6 +57,28 @@ object FeatureTaskRuntimeTransitionFunction {
         observedVerdict = settledVerdictsByPhaseId[gate.requiredPhaseId]?.wireValue,
       )
     }
+  }
+
+  /**
+   * The single constructor for an unresolved-Blocker pause. Callers that detect the pause outside
+   * `computeTransition` route through this so the loop id, iteration count, and verdict cannot drift
+   * from the declared behavior — a fabricated pause would disagree with the declaration and make
+   * changing the declared behavior stop changing reachable behavior.
+   */
+  fun terminalPauseFor(
+    edge: FeatureTaskRuntimeBackwardEdge,
+    edgeIterationCount: Int,
+    verdict: FeatureTaskRuntimeVerdict,
+  ): FeatureTaskRuntimeNextPhase.TerminalPause {
+    require(edge.capExhaustionBehavior == FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER) {
+      "Only an ADVANCE_UNLESS_UNRESOLVED_BLOCKER edge may pause on an unresolved Blocker; " +
+        "'${edge.loopId}' declares ${edge.capExhaustionBehavior}."
+    }
+    return FeatureTaskRuntimeNextPhase.TerminalPause(
+      loopId = edge.loopId,
+      edgeIteration = edgeIterationCount,
+      unresolvedVerdict = verdict,
+    )
   }
 
   private fun computeTransition(
@@ -82,11 +104,7 @@ object FeatureTaskRuntimeTransitionFunction {
           FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE -> forwardTransition(declaration, currentPhaseId)
           FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER ->
             if (unresolvedBlockerPresent) {
-              FeatureTaskRuntimeNextPhase.TerminalPause(
-                loopId = edge.loopId,
-                edgeIteration = edgeIterationCount,
-                unresolvedVerdict = verdict,
-              )
+              terminalPauseFor(edge, edgeIterationCount, verdict)
             } else {
               forwardTransition(declaration, currentPhaseId)
             }

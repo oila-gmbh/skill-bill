@@ -263,6 +263,8 @@ $defs:
       - PULL_REQUEST_FAILED
       - DEPENDENCIES_BLOCKED
       - RECONCILED_RESUMABLE
+      # SKILL-142: the child paused for the bounded operator decision. Resumable, not stopped.
+      - AWAITING_OPERATOR_DECISION
   freeObjectShape:
     type: object
   reviewChildStep:

@@ -16,6 +16,7 @@ internal data class StructuredGoalReviewFinding(
   val issueCategory: String,
   val location: String,
   val compactLabel: String,
+  val findingId: String? = null,
 )
 
 internal data class GoalSubtaskReviewOutputOutcome(
@@ -46,6 +47,7 @@ internal object GoalSubtaskReviewSummaryReducer {
         severity = finding.severity,
         label = finding.compactLabel,
         text = sanitize(finding.message),
+        findingId = finding.findingId,
       )
     }.groupBy { finding -> finding.label.lowercase() }
       .values
@@ -74,6 +76,7 @@ internal object GoalSubtaskReviewSummaryReducer {
         location = sequenceOf(finding["location"], finding["artifact_ref"])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = labelFor(finding, message),
+        findingId = (finding["id"] as? String)?.trim()?.takeIf(String::isNotBlank),
       )
     }
   }
@@ -100,35 +103,39 @@ internal object GoalSubtaskReviewSummaryReducer {
 
   /**
    * Parse seam for the reserved remediation pass's per-Blocker dispositions. An entry without
-   * location-bearing evidence is rejected here rather than persisted unevidenced.
+   * location-bearing evidence is rejected here rather than persisted unevidenced, and — when the
+   * prior pass's Blocker ids are known — the emitted ids are cross-checked against them. Without
+   * that cross-check a single fabricated `resolved` entry would advance the child to validate with
+   * live unresolved Blockers, because any non-empty disposition list counts as a disposed pass.
    */
-  fun blockerDispositions(output: Map<String, Any?>): List<GoalSubtaskBlockerDisposition> {
-    val raw = output["produced_outputs"]
+  fun blockerDispositions(
+    output: Map<String, Any?>,
+    priorBlockerFindingIds: List<String> = emptyList(),
+  ): List<GoalSubtaskBlockerDisposition> {
+    val dispositions = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get("blocker_dispositions") as? List<*>
-      ?: return emptyList()
-    return raw.mapIndexed { index, entry ->
-      val path = "produced_outputs.blocker_dispositions[$index]"
-      val disposition = JsonSupport.anyToStringAnyMap(entry)
-        ?: reviewStateError(path, "must be an object.")
-      val evidence = (disposition["evidence"] as? List<*>)
-        ?.mapNotNull { it as? String }
-        ?.map(String::trim)
-        ?.filter(String::isNotBlank)
-        .orEmpty()
-      if (evidence.isEmpty()) {
-        reviewStateError("$path.evidence", "must cite the specific changed lines that settle the Blocker.")
-      }
-      GoalSubtaskBlockerDisposition(
-        findingId = (disposition["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank)
-          ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
-        verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
-          (disposition["verdict"] as? String)?.trim()
-            ?: reviewStateError("$path.verdict", "must be resolved, unresolved, or superseded."),
-        ),
-        evidence = evidence,
+      ?.get("blocker_dispositions")
+      ?.let { it as? List<*> }
+      ?.mapIndexed(::blockerDisposition)
+      .orEmpty()
+    if (priorBlockerFindingIds.isEmpty()) return dispositions
+    val expected = priorBlockerFindingIds.toSet()
+    val emitted = dispositions.map(GoalSubtaskBlockerDisposition::findingId).toSet()
+    (emitted - expected).sorted().takeIf { it.isNotEmpty() }?.let { unknown ->
+      reviewStateError(
+        "produced_outputs.blocker_dispositions",
+        "dispositions ${unknown.joinToString()} do not correspond to any Blocker the prior pass " +
+          "emitted (expected ${expected.sorted().joinToString()}).",
       )
     }
+    (expected - emitted).sorted().takeIf { it.isNotEmpty() }?.let { missing ->
+      reviewStateError(
+        "produced_outputs.blocker_dispositions",
+        "every prior Blocker requires exactly one evidenced disposition; " +
+          "${missing.joinToString()} ${if (missing.size == 1) "is" else "are"} undisposed.",
+      )
+    }
+    return dispositions
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
@@ -183,9 +190,6 @@ internal object GoalSubtaskReviewSummaryReducer {
     .filter(classOrSymbol::matches)
     .firstOrNull(String::isNotBlank)
 
-  private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int =
-    CompactFindingSeverity.from(finding.severity).ordinal
-
   private fun sanitize(message: String): String {
     val compact = message
       .replace(hunk, " ")
@@ -221,4 +225,30 @@ private enum class CompactFindingSeverity {
       else -> OTHER
     }
   }
+}
+
+private fun severityRank(finding: GoalSubtaskReviewCompactFinding): Int =
+  CompactFindingSeverity.from(finding.severity).ordinal
+
+private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDisposition {
+  val path = "produced_outputs.blocker_dispositions[$index]"
+  val disposition = JsonSupport.anyToStringAnyMap(entry)
+    ?: reviewStateError(path, "must be an object.")
+  val evidence = (disposition["evidence"] as? List<*>)
+    ?.mapNotNull { it as? String }
+    ?.map(String::trim)
+    ?.filter(String::isNotBlank)
+    .orEmpty()
+  if (evidence.isEmpty()) {
+    reviewStateError("$path.evidence", "must cite the specific changed lines that settle the Blocker.")
+  }
+  return GoalSubtaskBlockerDisposition(
+    findingId = (disposition["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank)
+      ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
+    verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
+      (disposition["verdict"] as? String)?.trim()
+        ?: reviewStateError("$path.verdict", "must be resolved, unresolved, or superseded."),
+    ),
+    evidence = evidence,
+  )
 }

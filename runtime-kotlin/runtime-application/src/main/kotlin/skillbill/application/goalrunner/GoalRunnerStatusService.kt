@@ -359,6 +359,8 @@ private fun GoalRunnerStoredOutcome.toManifestStatus(): String = when (status) {
   GoalRunnerTerminalStatus.COMPLETE -> "complete"
   // A crash-reconciled row is resumable, not blocked: keep the subtask in_progress so resume continues.
   GoalRunnerTerminalStatus.RECONCILABLE -> "in_progress"
+  // A paused child awaits the operator decision and stays resumable, so it is not blocked either.
+  GoalRunnerTerminalStatus.PAUSED -> "in_progress"
   GoalRunnerTerminalStatus.BLOCKED,
   GoalRunnerTerminalStatus.FAILED,
   GoalRunnerTerminalStatus.TIMEOUT,

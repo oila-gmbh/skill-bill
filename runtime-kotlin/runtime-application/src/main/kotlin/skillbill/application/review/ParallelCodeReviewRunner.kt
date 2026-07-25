@@ -51,6 +51,7 @@ import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
+import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewLaunchPlanPolicy
@@ -77,7 +78,8 @@ class ParallelCodeReviewRunner(
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
   private val database: DatabaseSessionFactory,
 ) {
-  fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+  fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    var request = originalRequest
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
     val agent2 = resolveAgent(request.agent2Id, "--agent2")
     if (agent1.id == agent2.id) {
@@ -91,7 +93,14 @@ class ParallelCodeReviewRunner(
     val detection = detectStack(evidence, request.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
-    val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    val lane1ResolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    // Pin lane 1's depth onto the request before either lane starts, so lane 2 inherits it and a
+    // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
+    request = request.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
+    val resolvedMode = ReviewExecutionModePolicy.resolve(
+      requested = request.lane2Tier,
+      eligibility = ReviewAutoEligibility(oversized = false, highRisk = false, layeredStack = false),
+    )
     val launchRequests = prepare(
       request,
       diffText,
@@ -102,24 +111,7 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
-    val providerNativeAssignments = launchRequests
-      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
-      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
-      .distinct()
-    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeAssignments.isNotEmpty()) {
-      nativeAgentPreflight.verify(
-        ReviewNativeAgentPreflightRequest(
-          repoRoot = request.repoRoot,
-          assignments = providerNativeAssignments,
-        ),
-      )
-    }
-    // Isolation and launch-boundary preflight only applies to workers this run will actually
-    // start in isolated conversations; inline mode runs everything in the parent's own session
-    // and must not be rejected for an agent that simply has no specialist isolation strategy.
-    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
-      delegatedReviewExecutionBroker.preflight(launchRequests)
-    }
+    preflightDelegatedWorkers(request, resolvedMode, launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }
     val outcomes = runLanes(
       request,
@@ -138,6 +130,32 @@ class ParallelCodeReviewRunner(
         }
       }
     }
+  }
+
+  /**
+   * Isolation and launch-boundary preflight only applies to workers this run will actually start in
+   * isolated conversations; inline mode runs everything in the parent's own session and must not be
+   * rejected for an agent that simply has no specialist isolation strategy.
+   */
+  private fun preflightDelegatedWorkers(
+    request: ParallelCodeReviewRequest,
+    resolvedMode: ResolvedReviewExecutionMode,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+  ) {
+    if (resolvedMode != ResolvedReviewExecutionMode.DELEGATED) return
+    val providerNativeAssignments = launchRequests
+      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
+      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
+      .distinct()
+    if (providerNativeAssignments.isNotEmpty()) {
+      nativeAgentPreflight.verify(
+        ReviewNativeAgentPreflightRequest(
+          repoRoot = request.repoRoot,
+          assignments = providerNativeAssignments,
+        ),
+      )
+    }
+    delegatedReviewExecutionBroker.preflight(launchRequests)
   }
 
   private fun resolvedMode(

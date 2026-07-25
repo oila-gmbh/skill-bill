@@ -492,6 +492,9 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
     - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
@@ -1159,6 +1162,9 @@ Categories:
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
 - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`

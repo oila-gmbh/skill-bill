@@ -13,6 +13,13 @@ const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
 
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
+/** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
+fun ResolvedReviewExecutionMode.toCodeReviewExecutionMode(): skillbill.workflow.model.CodeReviewExecutionMode =
+  when (this) {
+    ResolvedReviewExecutionMode.INLINE -> skillbill.workflow.model.CodeReviewExecutionMode.INLINE
+    ResolvedReviewExecutionMode.DELEGATED -> skillbill.workflow.model.CodeReviewExecutionMode.DELEGATED
+  }
+
 private val SHA256_HEX = Regex("[a-f0-9]{64}")
 
 data class ReviewRevision(val sessionId: String, val runRevision: Int) {
@@ -797,3 +804,9 @@ fun structuredString(value: String): String = buildString {
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray(StandardCharsets.UTF_8))
   .joinToString("") { byte -> "%02x".format(byte) }
+
+/** A resolved review depth together with the named rule that decided it, reported in review metadata. */
+data class ResolvedReviewDepth(
+  val resolvedMode: ResolvedReviewExecutionMode,
+  val decidingRule: String,
+)

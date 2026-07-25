@@ -21,13 +21,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -92,6 +90,26 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
+    // An operator-granted retry round re-opens the consumed final pass instead of carrying its stale
+    // result forward, so the fix the operator paid for is actually re-reviewed. The pass number is
+    // unchanged: no new pass is reserved.
+    val retryReopened = state.reserveNextPass()
+    if (state.retryReviewPending && retryReopened != state) {
+      // The raw results map is keyed by completed pass and is validated against passResults on every
+      // read, so dropping the re-opened pass's result in the same patch is what keeps the record
+      // decodable rather than leaving an orphaned entry behind.
+      val keptResults = rawReviewResultsFromArtifacts(artifacts, state)
+        .filterKeys { passNumber -> passNumber != state.completedPassCount.toString() }
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to retryReopened.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to keptResults,
+        ),
+      )
+      return@transaction GoalSubtaskReviewPassReserved(retryReopened)
+    }
     if (state.reviewCapReached || state.reviewSkippedByUser || state.completedPassCount >= 2) {
       return@transaction GoalSubtaskReviewPassCarryForward(state)
     }
@@ -123,7 +141,14 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     }
     val updated = state.copy(
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-      reviewedDeltaDigest = input.deltaDigest,
+      // The staleness check recomputes this digest from the immutable baseline, so only an
+      // immutable-baseline input may set it. A remediation-scoped digest could never match that
+      // recomputation, which would judge every capped subtask stale and reopen it on each resume.
+      reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
+        input.deltaDigest
+      } else {
+        state.reviewedDeltaDigest
+      },
     )
     savePatch(
       record,
@@ -137,44 +162,24 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   }
 
   /**
-   * Persists the depth `auto` resolved to and the named rule that decided it, so the durable review
-   * metadata never carries a silently-resolved tier.
+   * The single read-modify-write seam for the durable review state. Every per-field mutator routes
+   * through it so they cannot drift on transaction shape, missing-record handling, or the artifact
+   * key they patch. A transform that returns its input is a no-op write.
    */
-  fun recordResolvedReviewTier(
+  fun updateReviewState(
     workflowId: String,
-    resolvedTier: CodeReviewExecutionMode,
-    decidingRule: String,
     dbOverride: String? = null,
+    transform: (GoalSubtaskReviewState) -> GoalSubtaskReviewState,
   ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
     val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
-    val updated = state.copy(resolvedTier = resolvedTier, decidingRule = decidingRule)
-    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
-    updated
-  }
-
-  fun recordRemediationBaseSha(
-    workflowId: String,
-    remediationBaseSha: String,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-    val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
-    val updated = state.copy(remediationBaseSha = remediationBaseSha)
-    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
-    updated
-  }
-
-  /** The production entry point for the bounded operator decision surfaced by a resumable pause. */
-  fun recordOperatorDecision(
-    workflowId: String,
-    decision: GoalSubtaskOperatorDecision,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-    val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
-    val updated = state.applyOperatorDecision(decision)
-    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
+    val updated = transform(state)
+    if (updated == state) return@transaction state
+    savePatch(
+      record,
+      unitOfWork.workflowStates,
+      mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()),
+    )
     updated
   }
 
@@ -238,7 +243,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     // so the scope union the prompt states has a materialized input behind it.
     val remediationBaseline = state.remediationBaseSha
       ?.takeIf { state.reservedPassNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES }
-      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, emptyList()) }
+      // The baseline untracked inventory is the exclusion list, not a per-pass detail: dropping it
+      // would materialize every untracked file in the worktree into the pass-two input as an owned
+      // change. Only the base sha is rescoped.
+      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, state.baselineUntrackedPaths) }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
       remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
@@ -283,45 +291,34 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         rebuilt.error.ifBlank { request.failureMessage }
     }
     val input = requireNotNull(rebuilt.input)
-    return persistRecoveredGoalReviewInput(
-      request.workflowId,
-      request.state,
-      recoveredBaseline,
-      input,
-      request.execution.dbOverride,
-    )?.let { input }
-  }
-
-  private fun persistRecoveredGoalReviewInput(
-    workflowId: String,
-    current: GoalSubtaskReviewState,
-    baseline: GoalSubtaskReviewBaseline,
-    input: GoalSubtaskReviewInput,
-    dbOverride: String?,
-  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
-    check(latest == current && latest.canRecoverReviewBase()) {
-      "Goal-subtask review base can be recovered only before any review input or completed review pass exists."
+    // Persisting the recovered baseline and its input is the last step of recovery, not a separate
+    // seam: they must land in one transaction that re-reads the record and re-checks recoverability.
+    val persisted = database.transaction(request.execution.dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@transaction null
+      val latest = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
+      check(latest == request.state && latest.canRecoverReviewBase()) {
+        "Goal-subtask review base can be recovered only before any review input or completed review pass exists."
+      }
+      val replaced = latest.copy(
+        reviewBaseSha = recoveredBaseline.reviewBaseSha,
+        baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths.distinct().sorted(),
+        reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+      )
+      check(input.reviewBaseSha == replaced.reviewBaseSha) {
+        "Recovered goal-subtask review input does not match the replacement baseline."
+      }
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to replaced.toArtifactMap(),
+          GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
+        ),
+      )
+      replaced
     }
-    val replaced = latest.copy(
-      reviewBaseSha = baseline.reviewBaseSha,
-      baselineUntrackedPaths = baseline.baselineUntrackedPaths.distinct().sorted(),
-      reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-    )
-    check(input.reviewBaseSha == replaced.reviewBaseSha) {
-      "Recovered goal-subtask review input does not match the replacement baseline."
-    }
-    savePatch(
-      record,
-      unitOfWork.workflowStates,
-      mapOf(
-        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to replaced.toArtifactMap(),
-        GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
-      ),
-    )
-    replaced
+    return persisted?.let { input }
   }
 
   fun lastGoalReviewResult(workflowId: String, dbOverride: String? = null): String? =

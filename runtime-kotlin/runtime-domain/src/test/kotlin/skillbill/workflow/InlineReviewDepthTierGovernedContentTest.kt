@@ -67,7 +67,7 @@ class InlineReviewDepthTierGovernedContentTest {
   fun `auto resolves by pass number and an explicit tier always overrides it`() {
     assertTrue(codeReview.contains("pass one resolves to `delegated`"))
     assertTrue(codeReview.contains("every later pass resolves to `inline`"))
-    assertTrue(codeReview.contains("explicit `inline` or `delegated` always overrides it"))
+    assertTrue(codeReview.contains("explicit `inline` or `delegated` always overrides either rule"))
   }
 
   @Test

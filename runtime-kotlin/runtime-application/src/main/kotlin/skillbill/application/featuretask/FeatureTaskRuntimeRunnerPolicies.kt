@@ -13,6 +13,9 @@ internal const val STATUS_BLOCKED = "blocked"
 // SKILL-141's non-terminal resumable workflow status, consumed rather than forked: an unresolved
 // Blocker disposition pauses the child here instead of blocking it.
 internal const val STATUS_PAUSED = "paused"
+
+// The operator's abandon_subtask decision ends the subtask without repairing it.
+internal const val STATUS_ABANDONED = "abandoned"
 internal const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 internal const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
 

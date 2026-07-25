@@ -225,3 +225,13 @@ data class FeatureTaskRuntimeTransitionDeclaration(
     }
   }
 }
+
+/**
+ * Run-state the transition consults but does not own: what earlier phases settled at, and whether the
+ * review sequence is holding an unresolved Blocker. Both default to "nothing known", which is what a
+ * pure forward advance sees.
+ */
+data class FeatureTaskRuntimeTransitionContext(
+  val settledVerdictsByPhaseId: Map<String, FeatureTaskRuntimeVerdict> = emptyMap(),
+  val unresolvedBlockerPresent: Boolean = false,
+)

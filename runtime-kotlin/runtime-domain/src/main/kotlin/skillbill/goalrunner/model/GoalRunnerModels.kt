@@ -40,6 +40,18 @@ enum class GoalRunnerStopReason {
 
   /** The child row was crash-reconciled to resumable; the goal halts but the subtask stays resumable. */
   RECONCILED_RESUMABLE,
+
+  /**
+   * The child paused after the reserved remediation pass left an unresolved Blocker. The goal halts
+   * awaiting the bounded operator decision; the subtask stays resumable at its recorded step.
+   */
+  AWAITING_OPERATOR_DECISION,
+  ;
+
+  companion object {
+    /** Stop reasons that leave the subtask resumable rather than stopped. */
+    val RESUMABLE_STOP_REASONS = setOf(RECONCILED_RESUMABLE, AWAITING_OPERATOR_DECISION)
+  }
 }
 
 data class GoalRunnerLaunchFacts(

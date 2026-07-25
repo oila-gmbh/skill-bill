@@ -1312,30 +1312,26 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
   fun `a capped review holds on an unchanged delta and reopens once the reviewed delta changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-reopen")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     var reviewLaunches = 0
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "review" -> {
-            reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = reviewLaunches <= 2))
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
+      cappedReviewLauncher {
+        reviewLaunches += 1
+        reviewLaunches
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+    // SKILL-142: a cap exhausted with an unresolved Blocker disposition pauses for the bounded
+    // operator decision rather than blocking, and the pause is as authoritative on replay.
+    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
     )
-    assertContains(blocked.blockedReason, "exhausted its per-edge cap")
+    assertEquals("review", paused.pausedPhase)
     val cappedLaunches = reviewLaunches
 
-    val stillBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(stillBlocked.blockedReason, "exhausted its per-edge cap")
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
     assertEquals(
       cappedLaunches,
       reviewLaunches,
@@ -1374,22 +1370,17 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
   fun `a capped review recorded before the digest existed reopens once instead of wedging`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-legacy")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     var reviewLaunches = 0
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "review" -> {
-            reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = reviewLaunches <= 2))
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
+      cappedReviewLauncher {
+        reviewLaunches += 1
+        reviewLaunches
       },
     )
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
     )
     val cappedLaunches = reviewLaunches
@@ -1770,6 +1761,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `goal-continuation with payload commit sha completes without measuring git head`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-payload-sha")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
       .also { it.headCommitShaValue = "measured-head-should-not-be-used" }
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
 
@@ -1790,6 +1782,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = ISSUE_KEY,
           subtaskId = 5,
@@ -1869,6 +1862,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = ISSUE_KEY,
           subtaskId = 5,
@@ -1878,19 +1872,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "review" -> {
-            reviewLaunches += 1
-            when (reviewLaunches) {
-              1 -> facts(reviewFindingsOutput(changesRequested = true))
-              2 -> spawnFailedFacts()
-              else -> facts(reviewFindingsOutput(changesRequested = false))
-            }
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
+      launcher = crashingRemediationReviewLauncher {
+        reviewLaunches += 1
+        reviewLaunches
       },
     )
 
@@ -1909,15 +1893,17 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(2, resumed.completedPassCount)
     assertEquals(null, resumed.reservedPassNumber)
+    // SKILL-142: an explicit mode is an override on every pass, so a delegated run stays delegated on
+    // the remediation pass; only `auto` resolves the later pass to inline by pass number.
     assertEquals(
-      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
+      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.DELEGATED),
       resumed.passResults.map { it.executedMode },
     )
     val reviewPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
-    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
-    reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
+    reviewPrompts.forEach { prompt -> assertContains(prompt, "bill-code-review mode:delegated") }
+    assertContains(reviewPrompts.last(), "context:feature-remediation")
     assertTrue(
       harness.ledgerRows.isEmpty(),
       "the approving inline pass retracts the findings its fix loop addressed",
@@ -1928,6 +1914,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `goal review recovers an incompatible baseline before review evidence exists`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-review-recover")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     val recoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), listOf("preexisting.tmp"))
     git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
       status = "error",
@@ -2006,6 +1993,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `goal-continuation outcome struct carries finalizingAgentId and participatingAgentIds`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-attribution-struct")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
 
     val report = harness.runner.run(harness.request())
@@ -4171,6 +4159,47 @@ internal class RunnerHarness(
 private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 
 // Bundles the branch-setup-relevant test inputs so runnerHarness stays within the parameter budget.
+// The review_fix edge records HEAD as the pre-fix remediation base, so goal-continuation fixtures
+// model a repository that has commits.
+// Review returns a Blocker for the first two passes, then approves; every remediation pass carries the
+// evidenced disposition the parse seam requires for the prior pass's Blocker.
+private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
+  RuntimeRecordingLauncher { request ->
+    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    if (phaseId == "review") {
+      val launch = nextLaunch()
+      facts(
+        reviewFindingsOutput(
+          changesRequested = launch <= 2,
+          dispositionedBlockerIds = if (launch > 1) listOf("pass1-blocker-1") else emptyList(),
+        ),
+      )
+    } else {
+      facts(validJsonOutput(phaseId))
+    }
+  }
+
+// Pass one reports a Blocker, pass two dies mid-spawn, and the resumed pass approves while carrying the
+// evidenced disposition for pass one's Blocker.
+private fun crashingRemediationReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
+  RuntimeRecordingLauncher { request ->
+    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    if (phaseId != "review") return@RuntimeRecordingLauncher facts(validJsonOutput(phaseId))
+    when (nextLaunch()) {
+      1 -> facts(reviewFindingsOutput(changesRequested = true))
+      2 -> spawnFailedFacts()
+      else -> facts(
+        reviewFindingsOutput(changesRequested = false, dispositionedBlockerIds = listOf("pass1-blocker-1")),
+      )
+    }
+  }
+
+private const val COMMITTED_HEAD_SHA = "ffffffffffffffffffffffffffffffffffffffff"
+
+private fun committedRepoBranchSetup(): BranchSetupTestConfig = BranchSetupTestConfig(
+  gitOperations = RecordingWorkflowGitOperations().also { it.headCommitShaValue = COMMITTED_HEAD_SHA },
+)
+
 internal data class BranchSetupTestConfig(
   val gitOperations: RecordingWorkflowGitOperations = RecordingWorkflowGitOperations(),
   val specReference: String = SPEC_REFERENCE,
@@ -4550,11 +4579,20 @@ internal const val REVIEW_BLOCKER_MESSAGE = "Foo.kt leaks a connection in the er
 // A schema-valid review output whose findings drive the verdict: a Blocker finding => changes_requested
 // (the runtime classifies from findings, no top-level verdict needed), an empty findings list => the
 // run advances. The findings ride inside produced_outputs the way the runner reads them.
-internal fun reviewFindingsOutput(changesRequested: Boolean): String {
+internal fun reviewFindingsOutput(
+  changesRequested: Boolean,
+  dispositionedBlockerIds: List<String> = emptyList(),
+): String {
   val findings = if (changesRequested) {
     """{"severity": "blocker", "message": "$REVIEW_BLOCKER_MESSAGE"}"""
   } else {
     ""
+  }
+  // A remediation pass must disposition every Blocker the prior pass emitted, with evidence; the
+  // parse seam rejects an output that leaves one undisposed.
+  val dispositions = dispositionedBlockerIds.joinToString(", ") { findingId ->
+    """{"finding_id": "$findingId", "verdict": "${if (changesRequested) "unresolved" else "resolved"}", """ +
+      """"evidence": ["Foo.kt:42 in the remediation delta"]}"""
   }
   return """
     {
@@ -4562,7 +4600,7 @@ internal fun reviewFindingsOutput(changesRequested: Boolean): String {
       "phase_id": "review",
       "status": "completed",
       "summary": "Review produced a validated output.",
-      "produced_outputs": {"findings": [$findings]}
+      "produced_outputs": {"findings": [$findings], "blocker_dispositions": [$dispositions]}
     }
   """.trimIndent()
 }
@@ -4577,7 +4615,12 @@ private fun reviewFixLauncher(convergeOnReview: Int, onReviewLaunch: (Int) -> Un
     if (phaseId == "review") {
       reviewLaunches += 1
       onReviewLaunch(reviewLaunches)
-      facts(reviewFindingsOutput(changesRequested = reviewLaunches < convergeOnReview))
+      facts(
+        reviewFindingsOutput(
+          changesRequested = reviewLaunches < convergeOnReview,
+          dispositionedBlockerIds = if (reviewLaunches > 1) listOf("pass1-blocker-1") else emptyList(),
+        ),
+      )
     } else {
       facts(validJsonOutput(phaseId))
     }
@@ -5496,6 +5539,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = ISSUE_KEY,
           subtaskId = 5,

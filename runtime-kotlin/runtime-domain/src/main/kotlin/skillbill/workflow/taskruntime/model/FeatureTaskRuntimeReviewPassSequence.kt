@@ -10,10 +10,7 @@ object FeatureTaskRuntimeReviewPassSequence {
   fun modeForPass(pinnedMode: CodeReviewExecutionMode, passNumber: Int): CodeReviewExecutionMode =
     resolveForPass(pinnedMode, passNumber).resolvedTier
 
-  fun resolveForPass(
-    pinnedMode: CodeReviewExecutionMode,
-    passNumber: Int,
-  ): ReviewPassResolution {
+  fun resolveForPass(pinnedMode: CodeReviewExecutionMode, passNumber: Int): ReviewPassResolution {
     if (passNumber !in 1..GOAL_SUBTASK_REVIEW_MAX_PASSES) {
       throw InvalidGoalSubtaskReviewStateSchemaError(
         sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,

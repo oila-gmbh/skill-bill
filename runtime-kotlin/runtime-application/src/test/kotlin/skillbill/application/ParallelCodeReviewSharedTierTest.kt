@@ -13,18 +13,16 @@ import kotlin.test.assertFailsWith
  * light lane paired with a full-depth lane is rejected before either lane starts.
  */
 class ParallelCodeReviewSharedTierTest {
-  private fun request(
-    codeReviewMode: CodeReviewExecutionMode,
-    resolvedTier: CodeReviewExecutionMode?,
-  ) = ParallelCodeReviewRequest(
-    agent1Id = "claude",
-    agent2Id = "codex",
-    scope = ParallelReviewScope.BRANCH,
-    repoRoot = Path.of("."),
-    timeout = null,
-    codeReviewMode = codeReviewMode,
-    resolvedTier = resolvedTier,
-  )
+  private fun request(codeReviewMode: CodeReviewExecutionMode, resolvedTier: CodeReviewExecutionMode?) =
+    ParallelCodeReviewRequest(
+      agent1Id = "claude",
+      agent2Id = "codex",
+      scope = ParallelReviewScope.BRANCH,
+      repoRoot = Path.of("."),
+      timeout = null,
+      codeReviewMode = codeReviewMode,
+      resolvedTier = resolvedTier,
+    )
 
   @Test
   fun `lane 2 receives the same tier lane 1 resolved to`() {

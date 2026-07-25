@@ -1,3 +1,15 @@
+## [2026-07-25] SKILL-142 subtask 5 — Bounded inline remediation convergence
+Areas: runtime-application, runtime-domain, runtime-cli, runtime-infra-fs, orchestration contracts
+- Added a distinct bounded inline review tier for later remediation passes while preserving delegated review as the default full-depth path
+- Auto depth now resolves from pass number through a named rule, records the resolved tier and rule, and keeps parallel lanes on one shared tier
+- Remediation review is bounded to prior Blockers plus the pre-fix-to-post-fix delta; evidence-backed dispositions drive advance or resumable pause
+- Added durable operator decisions; `retry_fix` uses a reusable single-use grant that discounts one capped backward edge, survives resume, and is consumed when `review_fix` re-enters `implement_fix`
+- Reconciled the fixed edge cap with unresolved-Blocker semantics so cap exhaustion cannot advance a child that must pause
+- Goal-facing summaries stay sanitized while location evidence remains available through the findings command
+- Breaking changes/limitations: review-state contract version changed and legacy 0.1 records loud-fail; retry grants apply only to explicit `retry_fix` decisions
+Feature flag: N/A
+Acceptance criteria: 20/20 implemented
+
 ## [2026-07-25] SKILL-142 subtask 3 — Blocker-only reopen semantics
 Areas: skills/bill-feature-goal, runtime-domain, runtime-application
 - Rewrote reopen sentence in bill-feature-goal to state Blocker-only reopen without contradiction; removed mixed-signal language that suggested Major findings also trigger implement_fix

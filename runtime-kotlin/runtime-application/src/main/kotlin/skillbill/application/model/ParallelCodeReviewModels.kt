@@ -46,6 +46,13 @@ data class ParallelCodeReviewRequest(
    * can never be paired with a full-depth one.
    */
   val lane2Tier: CodeReviewExecutionMode get() = resolvedTier ?: codeReviewMode
+
+  /**
+   * Pins lane 1's resolved depth onto the request so lane 2 inherits it rather than re-resolving.
+   * The `init` check above is what rejects a mixed-tier pairing, and it runs before either lane
+   * starts because the pinned request is built before the lanes are launched.
+   */
+  fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
 }
 
 data class ParallelCodeReviewResult(
