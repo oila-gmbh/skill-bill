@@ -260,7 +260,9 @@ uses `authorization-bypass or data-exposure`, while `persistence` uses
 `data-loss, consistency, or durability failure`.
 
 The specialist contract limits severity vocabulary to `Blocker`, `Major`, and
-`Minor`. Existing packs can be migrated under the review-skill structure
+`Minor`. Scaffolded specialists inherit the calibrated consequence-based severity
+definition from the shared contract and must not define their own severity
+vocabulary. Existing packs can be migrated under the review-skill structure
 standard; this payload contract describes the newly scaffolded shape.
 
 ### Add-on

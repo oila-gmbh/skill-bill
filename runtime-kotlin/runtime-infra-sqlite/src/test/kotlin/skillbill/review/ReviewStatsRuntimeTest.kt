@@ -84,6 +84,92 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
+  fun `category severity cross tab returns Major and Blocker counts per lane`() {
+    val (_, connection) = tempDbConnection("review-category-severity-cross-tab")
+    connection.use {
+      TelemetryOutboxStore(connection).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "review_run_id" to "rvw-cross-tab",
+            "platform_slug" to "kotlin",
+            "scope_type" to "branch_diff",
+            "total_findings" to 4,
+            "accepted_findings" to 3,
+            "rejected_findings" to 1,
+            "unresolved_findings" to 0,
+            "accepted_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-001",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Blocker",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-002",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-003",
+                "issue_category" to "testing",
+                "severity" to "Major",
+                "confidence" to "Medium",
+                "outcome_type" to "finding_accepted",
+              ),
+            ),
+            "rejected_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-004",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Minor",
+                "confidence" to "Low",
+                "outcome_type" to "false_positive",
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val health = ReviewStatsRuntime.statsSnapshot(connection, reviewRunId = null).health
+
+      "Assert category severity cross tab contains expected data" {
+        assertEquals(3, health.issueCategoryCounts["behavior_correctness"])
+        assertEquals(1, health.issueCategoryCounts["testing"])
+      }
+
+      "Assert behavior_correctness lane has 1 Blocker and 2 Major findings" {
+        val behaviorCorrectnessSeverity = health.categorySeverityCounts["behavior_correctness"]
+        assertEquals(1, behaviorCorrectnessSeverity?.get("Blocker"), "behavior_correctness should have 1 Blocker")
+        assertEquals(2, behaviorCorrectnessSeverity?.get("Major"), "behavior_correctness should have 2 Major")
+        assertEquals(1, behaviorCorrectnessSeverity?.get("Minor"), "behavior_correctness should have 1 Minor")
+      }
+
+      "Assert testing lane has 1 Major finding" {
+        val testingSeverity = health.categorySeverityCounts["testing"]
+        assertEquals(1, testingSeverity?.get("Major"), "testing should have 1 Major")
+      }
+
+      "Assert per-lane Major to Blocker ratio is derivable" {
+        val behaviorCorrectnessSeverity = health.categorySeverityCounts["behavior_correctness"]
+        val majorCount = behaviorCorrectnessSeverity?.get("Major") ?: 0
+        val blockerCount = behaviorCorrectnessSeverity?.get("Blocker") ?: 0
+
+        assertEquals(2, majorCount)
+        assertEquals(1, blockerCount)
+
+        "Derive Major to Blocker ratio for behavior_correctness lane" {
+          val ratio = if (blockerCount > 0) majorCount.toDouble() / blockerCount else 0.0
+          assertEquals(2.0, ratio, "behavior_correctness Major-to-Blocker ratio should be 2:1")
+        }
+      }
+    }
+  }
+
+  @Test
   fun `statsSnapshot derives missing latest outcome counts from finding details`() {
     val (_, connection) = tempDbConnection("review-health-detail-outcomes")
     connection.use {
@@ -931,5 +1017,84 @@ private fun insertFeatureVerifySession(connection: java.sql.Connection) {
       )
       """.trimIndent(),
     )
+  }
+
+  @Test
+  fun `contract mapper emits category_severity_counts alongside existing stats fields`() {
+    val (_, connection) = tempDbConnection("review-contract-mapper-cross-tab")
+    connection.use {
+      TelemetryOutboxStore(connection).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "review_run_id" to "rvw-contract-mapper",
+            "platform_slug" to "kotlin",
+            "scope_type" to "branch_diff",
+            "total_findings" to 3,
+            "accepted_findings" to 2,
+            "rejected_findings" to 1,
+            "unresolved_findings" to 0,
+            "accepted_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-001",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Blocker",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-002",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+            ),
+            "rejected_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-003",
+                "issue_category" to "testing",
+                "severity" to "Major",
+                "confidence" to "Medium",
+                "outcome_type" to "false_positive",
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val snapshot = ReviewStatsRuntime.statsSnapshot(connection, reviewRunId = null)
+      val payload = snapshot.toPayload()
+
+      "Assert health payload contains all expected keys" {
+        val healthPayload = payload["health"] as? Map<*, *>
+        assertTrue(healthPayload != null, "Health payload should exist")
+      }
+
+      "Assert severity_counts key exists alongside existing fields" {
+        val healthPayload = payload["health"] as? Map<*, *>
+        assertTrue(healthPayload?.containsKey("severity_counts") ?: false, "severity_counts should exist")
+        assertTrue(healthPayload?.containsKey("issue_category_counts") ?: false, "issue_category_counts should exist")
+      }
+
+      "Assert category_severity_counts key is emitted" {
+        val healthPayload = payload["health"] as? Map<*, *>
+        assertTrue(healthPayload?.containsKey("category_severity_counts") ?: false, "category_severity_counts should be emitted")
+      }
+
+      "Assert category_severity_counts contains expected structure" {
+        val healthPayload = payload["health"] as? Map<*, *>
+        val categorySeverityCounts = healthPayload?.get("category_severity_counts") as? Map<*, *>
+
+        assertTrue(categorySeverityCounts != null, "category_severity_counts should be a map")
+
+        val behaviorCorrectnessSeverity = categorySeverityCounts?.get("behavior_correctness") as? Map<*, *>
+        assertEquals(1, behaviorCorrectnessSeverity?.get("Blocker"), "behavior_correctness Blocker count")
+        assertEquals(1, behaviorCorrectnessSeverity?.get("Major"), "behavior_correctness Major count")
+
+        val testingSeverity = categorySeverityCounts?.get("testing") as? Map<*, *>
+        assertEquals(1, testingSeverity?.get("Major"), "testing Major count")
+      }
+    }
   }
 }

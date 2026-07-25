@@ -19,6 +19,50 @@ class ReviewSkillStructureConformanceTest {
   }
 
   @Test
+  fun `specialist inheriting shared calibrated rubric with canonical closer validates with zero violations`() {
+    val root = Files.createTempDirectory("review-inheriting-")
+    val pack = root.resolve("platform-packs/fixture")
+    writeConformingFixture(pack)
+
+    val violations = structureViolations(pack)
+    assertEquals(emptyList(), violations, "Specialist with canonical closer should pass validation")
+  }
+
+  @Test
+  fun `specialist defining own severity vocabulary is rejected with named violation`() {
+    val root = Files.createTempDirectory("review-own-vocab-")
+    val pack = root.resolve("platform-packs/fixture")
+    writeConformingFixture(pack)
+    Files.writeString(
+      pack.resolve("code-review/bill-fixture-code-review-security/content.md"),
+      ownSeverityVocabularySpecialist,
+    )
+
+    val violations = structureViolations(pack)
+    assertTrue(violations.any { it.rule == "specialist defines own severity vocabulary" },
+      "Expected 'specialist defines own severity vocabulary' violation")
+    assertTrue(violations.any { it.path.fileName.toString() == "content.md" },
+      "Violation should identify the offending content file")
+  }
+
+  @Test
+  fun `specialist omitting consequence requirement is rejected with named violation`() {
+    val root = Files.createTempDirectory("review-missing-consequence-")
+    val pack = root.resolve("platform-packs/fixture")
+    writeConformingFixture(pack)
+    Files.writeString(
+      pack.resolve("code-review/bill-fixture-code-review-security/content.md"),
+      missingConsequenceSpecialist,
+    )
+
+    val violations = structureViolations(pack)
+    assertTrue(violations.any { it.rule == "missing canonical severity closer" },
+      "Expected 'missing canonical severity closer' violation")
+    assertTrue(violations.any { it.path.fileName.toString() == "content.md" },
+      "Violation should identify the offending content file")
+  }
+
+  @Test
   fun `severity vocabulary is closed in rating contexts without flagging incidental prose`() {
     val root = Files.createTempDirectory("review-severity-")
     val contentFile = root.resolve("content.md")
@@ -180,13 +224,25 @@ class ReviewSkillStructureConformanceTest {
       pack,
       "code-review/bill-fixture-code-review-security/content.md",
       misplacedSeverityCloser,
-      "canonical severity closer",
+      "missing canonical severity closer",
     )
     assertContentRuleViolation(
       pack,
       "code-review/bill-fixture-code-review-security/content.md",
       wrongAreaSeverityCloser,
-      "canonical severity closer",
+      "missing canonical severity closer",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review-security/content.md",
+      ownSeverityVocabularySpecialist,
+      "specialist defines own severity vocabulary",
+    )
+    assertContentRuleViolation(
+      pack,
+      "code-review/bill-fixture-code-review-security/content.md",
+      missingConsequenceSpecialist,
+      "missing canonical severity closer",
     )
     assertSpecialistRuleViolation(pack, "ui", fixtureSpecialist, "UI lane deferrals")
     assertSpecialistRuleViolation(pack, "ux-accessibility", fixtureSpecialist, "UX accessibility lane deferrals")
@@ -300,6 +356,68 @@ class ReviewSkillStructureConformanceTest {
     Regex("(?i)\\b$ratingContext\\b[^.\\n:|]{0,40}[:|]?\\s*$ratingValue\\b")
       .findAll(content)
       .forEach { match -> add(match.groupValues[1].replaceFirstChar(Char::uppercase)) }
+  }
+
+  @Test
+  fun `calibration changes content and validation only routing is unchanged`() {
+    val repoPacks = repoRootFromTest().resolve("platform-packs")
+    val packDirectories = Files.list(repoPacks).use { it.filter(Files::isDirectory).toList() }
+
+    packDirectories.forEach { pack ->
+      val manifest = manifest(pack) ?: return@forEach
+      val declaredAreas = declaredAreas(manifest)
+      val routingSignals = manifest["routing_signals"] as? Map<*, *> ?: return@forEach
+
+      "Assert pack ${pack.fileName} has unchanged declared area count" {
+        assertTrue(declaredAreas.isNotEmpty(), "Pack should have declared areas")
+      }
+
+      "Assert pack ${pack.fileName} has unchanged routing signals" {
+        val strongSignals = (routingSignals["strong"] as? List<*)?.filterIsInstance<String>().orEmpty()
+        val tieBreakers = (routingSignals["tie_breakers"] as? List<*)?.filterIsInstance<String>().orEmpty()
+
+        assertTrue(strongSignals.isNotEmpty(), "Pack should have strong routing signals")
+        assertTrue(tieBreakers.isNotEmpty(), "Pack should have tie-breaker rules")
+      }
+    }
+  }
+
+  @Test
+  fun `no lane was removed during calibration`() {
+    val repoPacks = repoRootFromTest().resolve("platform-packs")
+    val packDirectories = Files.list(repoPacks).use { it.filter(Files::isDirectory).toList() }
+
+    packDirectories.forEach { pack ->
+      val manifest = manifest(pack) ?: return@forEach
+      val declaredAreas = declaredAreas(manifest)
+
+      assertTrue(declaredAreas.isNotEmpty(), "Pack ${pack.fileName} should have at least one declared area")
+    }
+  }
+
+  @Test
+  fun `SKILL-115 admission gate wording is unchanged`() {
+    val repoRoot = repoRootFromTest()
+    val playbook = repoRoot.resolve("orchestration/review-orchestrator/PLAYBOOK.md")
+    val playbookContent = Files.readString(playbook)
+
+    "Assert admission gate text is byte-identical" {
+      val admissionGatePattern = Regex(
+        "(?m)^- Flag comments that only restate \\*\\*what\\*\\* the code does \\(paraphrasing adjacent code\\) as a maintainability finding — this is an explicit contract item, report it at \\`Minor\\`\\. Do not flag comments that explain \\*\\*why\\*\\*: a decision or non-obvious constraint the code cannot express is warranted and must be left alone",
+        RegexOption.MULTILINE,
+      )
+
+      val admissionGateMatch = admissionGatePattern.find(playbookContent)
+      assertTrue(admissionGateMatch != null, "SKILL-115 admission gate should exist in PLAYBOOK.md")
+
+      val specialistContract = repoRoot.resolve("orchestration/review-orchestrator/specialist-contract.md")
+      val specialistContent = Files.readString(specialistContract)
+
+      val specialistMatch = admissionGatePattern.find(specialistContent)
+      assertTrue(specialistMatch != null, "SKILL-115 admission gate should exist in specialist-contract.md")
+
+      assertEquals(admissionGateMatch?.value, specialistMatch?.value, "Admission gate wording should be identical across shared surfaces")
+    }
   }
 
   internal data class StructureViolation(val path: Path, val rule: String) {
@@ -574,4 +692,61 @@ private val organizationSidecar = """
       ## Planning
 
       Remember release dates and ownership.
+""".trimIndent()
+
+private val ownSeverityVocabularySpecialist = """
+      ---
+      name: bill-fixture-code-review-security
+      description: Fixture security review.
+      internal-for: bill-code-review
+      ---
+
+      ## Focus
+
+      Focus.
+
+      ## Ignore
+
+      Ignore.
+
+      ## Applicability
+
+      Applicable.
+
+      ## Project-Specific Rules
+
+      ### Failure Modes
+
+      - Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.
+
+      ### Severity Scale
+
+      Blocker means the change breaks correctness or safety. Major means the change materially worsens behavior for a demonstrated scenario. Minor observations are stylistic or pre-existing.
+""".trimIndent()
+
+private val missingConsequenceSpecialist = """
+      ---
+      name: bill-fixture-code-review-security
+      description: Fixture security review.
+      internal-for: bill-code-review
+      ---
+
+      ## Focus
+
+      Focus.
+
+      ## Ignore
+
+      Ignore.
+
+      ## Applicability
+
+      Applicable.
+
+      ## Project-Specific Rules
+
+      ### Failure Modes
+
+      - Verify `FixtureApi` boundaries and reject failure paths that violate its invariant.
+      - Reject weak credential handling.
 """.trimIndent()

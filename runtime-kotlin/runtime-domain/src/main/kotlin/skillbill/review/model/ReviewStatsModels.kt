@@ -50,6 +50,7 @@ data class ReviewHealthStats(
   val confidenceCounts: Map<String, Int>,
   val latestOutcomeCounts: Map<String, Int>,
   val issueCategoryCounts: Map<String, Int>,
+  val categorySeverityCounts: Map<String, Map<String, Int>>,
   val platformCounts: Map<String, Int>,
   val scopeCounts: Map<String, Int>,
   val sourceCounts: Map<String, Int>,

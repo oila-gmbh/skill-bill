@@ -183,7 +183,12 @@ internal object ReviewSkillStructureValidator {
         add(violation(file, "specialist H2 sequence"))
       }
       if (!projectRules.contains("### ")) add(violation(file, "specialist H3 grouping"))
-      if (!hasCanonicalSeverityCloser(area, content)) add(violation(file, "canonical severity closer"))
+      if (definesOwnSeverityVocabulary(content)) {
+        add(violation(file, "specialist defines own severity vocabulary"))
+      }
+      if (!hasCanonicalSeverityCloser(area, content)) {
+        add(violation(file, "missing canonical severity closer"))
+      }
       if (!projectRules.contains('`') ||
         !Regex("(?i)\\b(must|do not|never|require|reject|verify|preserve)\\b").containsMatchIn(projectRules) ||
         !Regex("(?i)failure|error|invariant|boundary").containsMatchIn(projectRules)
@@ -307,6 +312,20 @@ internal object ReviewSkillStructureValidator {
   private fun severityViolations(file: Path): List<ReviewSkillStructureViolation> = severityRatings(
     Files.readString(file),
   ).filter { it !in allowedSeverities }.map { rating -> violation(file, "off-enum severity rating $rating") }
+
+  private fun definesOwnSeverityVocabulary(content: String): Boolean {
+    val headings = Regex("(?m)^#{1,3} ").findAll(content).map { it.value.drop(3).trim() }.toList()
+    val hasSeverityHeading = headings.any { heading ->
+      heading.contains("severity", ignoreCase = true) ||
+        heading.contains("rating", ignoreCase = true) ||
+        heading.contains("scale", ignoreCase = true)
+    }
+    val hasLegendOrTable = Regex("(?i)(?:severity|rating)\\s+(?:legend|table|scale|key):").containsMatchIn(content)
+    val hasDefinitionProse = Regex(
+      "(?i)\\b(?:Blocker|Major|Minor)\\s+(?:means?|is defined as|refers to|indicates?|represents?)\\b",
+    ).containsMatchIn(content)
+    return hasSeverityHeading || hasLegendOrTable || hasDefinitionProse
+  }
 
   private fun severityRatings(content: String): Set<String> = buildSet {
     Regex("(?m)\\bSeverity (?:ratings?|scale):\\s*([^\\n]+)").findAll(content).forEach { match ->

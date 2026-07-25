@@ -50,6 +50,7 @@ fun buildReviewHealthStats(connection: Connection, reviewRunId: String?): Review
     confidenceCounts = aggregateFindingDetailCounts(includedPayloads, "confidence", reviewHealthConfidences),
     latestOutcomeCounts = aggregateLatestOutcomeCounts(includedPayloads),
     issueCategoryCounts = aggregateFindingDetailCounts(includedPayloads, "issue_category", emptyList()),
+    categorySeverityCounts = aggregateCategorySeverityCrossTab(includedPayloads),
     platformCounts = aggregatePayloadValueCounts(includedPayloads, "platform_slug", emptyList(), "unknown"),
     scopeCounts = aggregatePayloadValueCounts(includedPayloads, "scope_type", reviewHealthScopes, "unknown"),
     sourceCounts = countReviewHealthSources(includedPayloads, malformedRecords),
