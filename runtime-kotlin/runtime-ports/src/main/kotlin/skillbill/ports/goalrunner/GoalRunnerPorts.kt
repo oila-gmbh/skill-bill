@@ -24,6 +24,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
+import skillbill.ports.goalrunner.model.GoalRunnerAcceptance
 
 interface GoalRunnerManifestLookup {
   fun loadByIssueKey(
@@ -46,6 +47,16 @@ interface GoalRunnerManifestLookup {
 
 @Suppress("TooManyFunctions") // single cohesive boundary: manifest reads, saves, review policy, and acceptance
 interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
+  fun acceptSubtask(
+    state: GoalRunnerManifestState,
+    acceptance: GoalRunnerAcceptance,
+    dbPathOverride: String? = null,
+  ): GoalRunnerAcceptance = error("Goal runner manifest store must durably record subtask acceptance.")
+
+  fun completedSubtaskAcceptances(
+    state: GoalRunnerManifestState,
+    dbPathOverride: String? = null,
+  ): List<GoalRunnerAcceptance> = emptyList()
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
