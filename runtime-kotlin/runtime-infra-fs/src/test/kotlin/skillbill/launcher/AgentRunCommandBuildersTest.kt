@@ -377,11 +377,11 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `read-only phase selects heartbeat-extended idle policy for all builders`() {
+  fun `codex read-only phase requires durable progress without changing other providers`() {
     val readOnly = request().copy(readOnlyPhase = true)
 
     assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, ClaudeAgentRunCommandBuilder().build(readOnly).idlePolicy)
-    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, CodexAgentRunCommandBuilder().build(readOnly).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, CodexAgentRunCommandBuilder().build(readOnly).idlePolicy)
     assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, JunieAgentRunCommandBuilder().build(readOnly).idlePolicy)
   }
 

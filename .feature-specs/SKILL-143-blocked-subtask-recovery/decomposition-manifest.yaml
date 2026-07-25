@@ -3,24 +3,73 @@ contract_version: "0.5"
 issue_key: "SKILL-143"
 feature_name: "blocked-subtask-recovery"
 parent_spec_path: ".feature-specs/SKILL-143-blocked-subtask-recovery/spec.md"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-143-blocked-subtask-recovery"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "resume"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Implement bounded blocked-subtask recovery"
   spec_path: ".feature-specs/SKILL-143-blocked-subtask-recovery/spec_subtask_1_bounded_blocked_subtask_recovery.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260725-204218-qp2c"
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "Subtask 1 finished without a terminal workflow-store outcome: the\
+    \ child process exited with status 1 before its workflow row reached a terminal\
+    \ state (complete or durably blocked). A non-zero exit means the child errored\
+    \ out rather than stopping cleanly. Inspect the child workflow and its transcript\
+    \ to confirm, then resume from last_resumable_step. Child stderr (head+tail):\n\
+    Exception in thread \"main\" skillbill.error.MissingInstalledNativeAgentError:\
+    \ Native agent 'bill-kmp-code-review-platform-correctness' for provider 'codex'\
+    \ failed preflight at '/home/sermilion/.codex/agents/bill-kmp-code-review-platform-correctness.toml':\
+    \ recorded target is not the current installed generation. Repair with: skill-bill\
+    \ install apply\n\tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail(FileSystemReviewNativeAgentPreflight.kt:150)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail$default(FileSystemReviewNativeAgentPreflight.kt:144)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verifyEntry(FileSystemReviewNativeAgentPreflight.kt:86)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verify(FileSystemReviewNativeAgentPreflight.kt:77)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimePhaseGates.reviewNativeAgentPreflight(FeatureTaskRuntimePhaseGates.kt:39)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhase(FeatureTaskRuntimeRunLoop.kt:1336)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhaseFor(FeatureTaskRuntimeRunLoop.kt:777)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.advance(FeatureTaskRuntimeRunLoop.kt:238)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.drive(FeatureTaskRuntimeRunLoop.kt:211)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.executeRun(FeatureTaskRuntimeRunner.kt:172)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.run(FeatureTaskRuntimeRunner.kt:86)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun$lambda$0(FeatureTaskRuntimeCliCommands.kt:219)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator.runOwned(FeatureTaskRuntimeWorkerCoordinator.kt:39)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun(FeatureTaskRuntimeCliCommands.kt:218)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimeExplicitRunCommand.run(FeatureTaskRuntimeCliCommands.kt:473)\n\
+    \tat skillbill.cli.core.CliRuntime.run(CliRuntime.kt:25)\n\tat skillbill.cli.core.MainKt.main(Main.kt:12)\n\
+    \ [workflow_id=wftr-20260725-204218-qp2c, current_step=audit, latest_liveness=liveness=worker_output_summary\
+    \ phase=audit role=goal_runner_supervisor sequence=10005 at=2026-07-25T21:02:38.506447552Z\
+    \ activity=stdout_chars=0; stderr_chars=2196; exit_status=1; stderr_excerpt=Exception\
+    \ in thread \"main\" skillbill.error.MissingInstalledNativeAgentError: Native\
+    \ agent 'bill-kmp-code-review-platform-correctness' for provider 'codex' failed\
+    \ preflight at '/home/sermilion/.codex/agents/bill-kmp-code-review-platform-correctness.toml':\
+    \ recorded target is not the current installed generation. Repair with: skill-bill\
+    \ install apply\n\tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail(FileSystemReviewNativeAgentPreflight.kt:150)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail$default(FileSystemReviewNativeAgentPreflight.kt:144)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verifyEntry(FileSystemReviewNativeAgentPreflight.kt:86)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verify(FileSystemReviewNativeAgentPreflight.kt:77)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimePhaseGates.reviewNativeAgentPreflight(FeatureTaskRuntimePhaseGates.kt:39)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhase(FeatureTaskRuntimeRunLoop.kt:1336)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhaseFor(FeatureTaskRuntimeRunLoop.kt:777)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.advance(FeatureTaskRuntimeRunLoop.kt:238)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.drive(FeatureTaskRuntimeRunLoop.kt:211)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.executeRun(FeatureTaskRuntimeRunner.kt:172)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.run(FeatureTaskRuntimeRunner.kt:86)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun$lambda$0(FeatureTaskRuntimeCliCommands.kt:219)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator.runOwned(FeatureTaskRuntimeWorkerCoordinator.kt:39)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun(FeatureTaskRuntimeCliCommands.kt:218)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimeExplicitRunCommand.run(FeatureTaskRuntimeCliCommands.kt:473)\n\
+    \tat skillbill.cli.core.CliRuntime.run(CliRuntime.kt:25)\n\tat skillbill.cli.core.MainKt.main(Main.kt:12)\n\
+    , last_snapshot_at=2026-07-25 21:02:38, last_file_activity_at=2026-07-25T21:01:06.188298884Z,\
+    \ last_output_at=2026-07-25T21:02:38.145Z]"
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

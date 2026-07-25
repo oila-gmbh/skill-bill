@@ -500,7 +500,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
       environment = goalContinuationEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
-      idlePolicy = unstreamedLivenessPolicy(request),
+      idlePolicy = codexLivenessPolicy(request),
       environmentPassthroughKeys =
       if (request.reviewEvidenceBroker != null) CODEX_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
@@ -540,6 +540,12 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       if (request.reviewEvidenceBroker != null) JUNIE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
   }
+}
+
+private fun codexLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy = if (request.streamOutputForLiveness) {
+  AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+} else {
+  AgentRunIdlePolicy.DB_PROGRESS_ONLY
 }
 
 /**

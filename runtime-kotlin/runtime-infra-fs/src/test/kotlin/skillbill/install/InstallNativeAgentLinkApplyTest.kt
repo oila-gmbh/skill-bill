@@ -198,6 +198,29 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `preflight accepts installed native agents after source checkout is removed`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    val result = InstallOperations.applyInstall(plan)
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    Files.walk(fixture.repoRoot).use { paths ->
+      paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+    val reviewedRepo = Files.createTempDirectory("skillbill-reviewed-repo").also(tempDirs::add)
+
+    FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+      ReviewNativeAgentPreflightRequest(
+        repoRoot = reviewedRepo,
+        agentIds = listOf("codex"),
+        logicalNames = listOf("bill-code-review-worker"),
+      ),
+    )
+  }
+
+  @Test
   fun `apply removes inventory-recorded dangling baseline orchestrator links`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))

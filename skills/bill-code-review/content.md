@@ -8,7 +8,7 @@ description: Use when you want a generic code-review entry point that detects th
 ## Review mode argument
 
 Recognize at most one `mode:auto`, `mode:inline`, or `mode:delegated` argument.
-Omission means `mode:delegated`.
+Omission means `mode:inline`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
@@ -21,28 +21,28 @@ branch/PR scope, or no bounded remediation scope.
 review. Report the requested mode and the resolved depth in the normal review
 metadata.
 
-`delegated` is the full-depth review and the default. `delegated` always runs the normal routed delegated path
+`delegated` is the explicit full-depth review. `delegated` always runs the normal routed delegated path
 including specialist selection, launching one worker per routed area. Inability
 to launch a required native worker blocks loudly; it never degrades to inline.
 
-`inline` is the light tier: one agent in the current context, no specialist
-workers, no nested baseline orchestrator, under a bounded budget. Treat the
-routed areas as an explicit checklist and walk each one once at reduced depth.
+`inline` is the default light tier: one agent in the current context, no specialist
+workers, no nested baseline orchestrator, under a bounded budget. Build the
+checklist from every review area declared by the routed pack and every required
+baseline layer in its manifest composition. Walk every declared area once at
+reduced depth, including areas whose diff-signal lane would otherwise be empty;
+record `checked — no applicable signal` instead of silently dropping them.
 Its purpose is verification — confirm the change does what it claims and catch
 the defects a careful reader finds on one attentive pass. It is not an audit of
-every area in depth. Follow only the signals that appear,
-and do not build a case for a marginal finding to justify having looked. An
-inline result states the areas it walked and that specialist depth was not
-applied; never present it as equivalent to a delegated result.
+every area in depth. Signals focus the inspection within an area; they do not
+remove the area from inline coverage. Do not build a case for a marginal finding
+to justify having looked. An inline result lists every declared area with its
+checked status and states that specialist depth was not applied; never present
+it as equivalent to a delegated result.
 
-`auto` resolves depth by review pass number: pass one resolves to `delegated`,
-every later pass resolves to `inline`. This is the only rule auto applies when a
-review pass number exists. A standalone review invoked outside the feature-task
-review sequence carries no pass number; there `auto` falls back to the declared
-size-and-risk eligibility rule, which resolves to `delegated` when the diff is
-oversized, high-risk, or spans layered stacks and to `inline` otherwise. Both
-rules are named and reported in review metadata alongside the resolved depth. An
-explicit `inline` or `delegated` always overrides either rule.
+`auto` resolves to `inline` for every review pass and for standalone reviews,
+including oversized, high-risk, and layered-stack scopes. Preserve and report
+the applicable named auto rule for telemetry, but it never escalates to
+delegated execution. Only an explicit `delegated` selection launches workers.
 
 Depth is the only thing the light tier lowers. The severity vocabulary, the
 finding admission gate, the evidence and observable-consequence requirements, the

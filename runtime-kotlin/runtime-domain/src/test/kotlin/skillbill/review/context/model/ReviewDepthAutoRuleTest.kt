@@ -14,11 +14,11 @@ class ReviewDepthAutoRuleTest {
   private val calm = ReviewAutoEligibility(oversized = false, highRisk = false, layeredStack = false)
 
   @Test
-  fun `auto on pass one resolves delegated by the pass-number rule even when no signal escalates`() {
+  fun `auto on pass one resolves inline by the pass-number rule`() {
     val resolved = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, calm, reviewPassNumber = 1)
 
-    assertEquals(ResolvedReviewExecutionMode.DELEGATED, resolved.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:pass_one_delegated", resolved.decidingRule)
+    assertEquals(ResolvedReviewExecutionMode.INLINE, resolved.resolvedMode)
+    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:pass_1_inline", resolved.decidingRule)
   }
 
   @Test
@@ -26,21 +26,18 @@ class ReviewDepthAutoRuleTest {
     val resolved = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, risky, reviewPassNumber = 2)
 
     assertEquals(ResolvedReviewExecutionMode.INLINE, resolved.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:later_pass_inline", resolved.decidingRule)
+    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:pass_2_inline", resolved.decidingRule)
   }
 
   @Test
-  fun `auto without a pass number falls back to the size-and-risk eligibility rule`() {
+  fun `auto without a pass number remains inline regardless of eligibility`() {
     val escalated = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, risky)
-    assertEquals(ResolvedReviewExecutionMode.DELEGATED, escalated.resolvedMode)
-    assertEquals(
-      "${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:oversized_or_high_risk_or_layered",
-      escalated.decidingRule,
-    )
+    assertEquals(ResolvedReviewExecutionMode.INLINE, escalated.resolvedMode)
+    assertEquals("${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:inline_default", escalated.decidingRule)
 
     val light = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, calm)
     assertEquals(ResolvedReviewExecutionMode.INLINE, light.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:no_escalating_signal", light.decidingRule)
+    assertEquals("${ReviewExecutionModePolicy.ELIGIBILITY_RULE}:inline_default", light.decidingRule)
   }
 
   @Test

@@ -26,7 +26,7 @@ class InlineReviewDepthTierGovernedContentTest {
     assertTrue(codeReview.contains("two review depths, not two ways to execute the same"))
     assertTrue(codeReview.contains("no specialist workers"))
     assertTrue(codeReview.contains("bounded budget"))
-    assertTrue(codeReview.contains("explicit checklist"))
+    assertTrue(codeReview.contains("Walk every declared area"))
     assertTrue(codeReview.contains("reduced depth"))
   }
 
@@ -58,16 +58,15 @@ class InlineReviewDepthTierGovernedContentTest {
   }
 
   @Test
-  fun `delegated stays the full-depth default and loud-fails unlaunchable workers`() {
-    assertTrue(codeReview.contains("`delegated` is the full-depth review and the default."))
+  fun `inline is the default and explicit delegated loud-fails unlaunchable workers`() {
+    assertTrue(codeReview.contains("`inline` is the default light tier:"))
     assertTrue(codeReview.contains("blocks loudly; it never degrades to inline"))
   }
 
   @Test
-  fun `auto resolves by pass number and an explicit tier always overrides it`() {
-    assertTrue(codeReview.contains("pass one resolves to `delegated`"))
-    assertTrue(codeReview.contains("every later pass resolves to `inline`"))
-    assertTrue(codeReview.contains("explicit `inline` or `delegated` always overrides either rule"))
+  fun `auto always resolves inline and delegated remains explicit`() {
+    assertTrue(codeReview.contains("`auto` resolves to `inline` for every review pass"))
+    assertTrue(codeReview.contains("Only an explicit `delegated` selection launches workers"))
   }
 
   @Test

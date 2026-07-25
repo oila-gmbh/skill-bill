@@ -34,16 +34,11 @@ object ReviewExecutionModePolicy {
       ?: resolveAutoByEligibility(eligibility)
   }
 
-  private fun resolveAutoByPassNumber(passNumber: Int): ResolvedReviewDepth = if (passNumber <= 1) {
-    ResolvedReviewDepth(ResolvedReviewExecutionMode.DELEGATED, "$PASS_NUMBER_RULE:pass_one_delegated")
-  } else {
-    ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$PASS_NUMBER_RULE:later_pass_inline")
-  }
+  private fun resolveAutoByPassNumber(passNumber: Int): ResolvedReviewDepth =
+    ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$PASS_NUMBER_RULE:pass_${passNumber}_inline")
 
-  private fun resolveAutoByEligibility(eligibility: ReviewAutoEligibility): ResolvedReviewDepth =
-    if (eligibility.oversized || eligibility.highRisk || eligibility.layeredStack) {
-      ResolvedReviewDepth(ResolvedReviewExecutionMode.DELEGATED, "$ELIGIBILITY_RULE:oversized_or_high_risk_or_layered")
-    } else {
-      ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$ELIGIBILITY_RULE:no_escalating_signal")
-    }
+  private fun resolveAutoByEligibility(
+    @Suppress("UNUSED_PARAMETER") eligibility: ReviewAutoEligibility,
+  ): ResolvedReviewDepth =
+    ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$ELIGIBILITY_RULE:inline_default")
 }

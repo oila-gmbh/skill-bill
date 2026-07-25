@@ -148,7 +148,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   )
   protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: delegated (default), auto, or inline. " +
+    help = "Review execution mode: inline (default), auto, or delegated. " +
       "Supply at most once; a resumed workflow remains pinned to its original mode.",
   ).multiple()
   protected val operatorDecisions by option(
