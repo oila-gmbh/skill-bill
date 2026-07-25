@@ -106,14 +106,11 @@ internal object GoalSubtaskReviewSummaryReducer {
     // changes_requested routing verdict. Major, Minor, and Nit findings advance and are recorded in
     // the ledger without triggering a fix pass.
     val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" }
-    val remediable = findings.count { finding -> finding.severity == "blocker" }
-    val hasStructuredFindings = output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get("findings") is List<*>
+    val hasStructuredFindings = findings.isNotEmpty()
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      hasStructuredFindings && remediable > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasStructuredFindings && structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)

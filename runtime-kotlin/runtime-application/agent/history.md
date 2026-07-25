@@ -1,3 +1,14 @@
+## [2026-07-25] SKILL-142 subtask 3 — Blocker-only reopen semantics
+Areas: skills/bill-feature-goal, runtime-domain, runtime-application
+- Rewrote reopen sentence in bill-feature-goal to state Blocker-only reopen without contradiction; removed mixed-signal language that suggested Major findings also trigger implement_fix
+- Narrowed FeatureTaskRuntimeReviewVerdict.requiresRemediation to BLOCKER only; unchanged blocksAdvance semantics ensures only Blockers prevent advancement
+- GoalSubtaskReviewSummaryReducer now counts only Blockers for remediation; Major findings are recorded in the ledger without triggering a fix pass
+- Added parity test binding governed prose to runtime enum; prevents contradiction regression between skill content and runtime verdicts
+- Compact summaries remove location details while ledger preserves full finding context
+- Bounded-output regression test ensures path/line/hunk sanitization from goal-facing summaries
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-25] SKILL-142 subtask 2 — Planning projection gate parity
 Areas: runtime-application, runtime-infra-sqlite, runtime-ports
 - Added producer-side planning projection gate for preplan/plan phases; completed outputs now validate against the planning projection contract before being marked settled or checkpointed
