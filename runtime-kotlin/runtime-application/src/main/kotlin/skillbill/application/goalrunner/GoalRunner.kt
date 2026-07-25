@@ -434,7 +434,7 @@ class GoalRunner(
     )
   } ?: when (reconciled) {
     is GoalRunnerReconciledOutcome.Complete ->
-      completedIteration(state, subtaskId, reconciled, request, observability, ledger)
+      completedIteration(state, subtaskId, reconciled, request, observability, ledger, attemptStartMillis)
     is GoalRunnerReconciledOutcome.Stop ->
       stoppedIteration(
         state, subtaskId, reconciled, request, attempted, observability, ledger,
@@ -813,6 +813,9 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
   ) {
     val progress = safeProgress(workflowId, request)
+    val childLoopIterations = outcomeStore.childWorkflowLoopIterations(workflowId, request.dbPathOverride)
+    val reAttemptCause = reAttemptCauseFor(stoppedOutcome.reason, childLoopIterations)
+    val causingLoopEntry = causingLoopEntryFor(childLoopIterations)
     ledger.recordLedgerEntry(
       GoalRunnerLedgerContext(
         workflowId = workflowId,
@@ -829,29 +832,47 @@ class GoalRunner(
         recoverableJsonPresent = launchDiagnostics?.recoverableJsonPresent ?: false,
         nextSafeAction = launchDiagnostics?.nextSafeAction ?: stoppedOutcome.reason.nextSafeAction(),
         attemptDurationMillis = attemptDurationMillis,
+        reAttemptCause = reAttemptCause,
+        causingLoopEntry = causingLoopEntry,
       ),
     )
-    val childLoopIterations = outcomeStore.childWorkflowLoopIterations(workflowId, request.dbPathOverride)
     childLoopIterations.forEach { (loopId, edgeIteration) ->
       ledger.recordBackwardEdgeEntry(
         workflowId = workflowId,
         issueKey = state.manifest.issueKey,
         subtaskId = subtaskId,
         loopId = loopId,
+        edgeIteration = edgeIteration,
         progress = progress,
       )
-      pendingReAttemptCause[subtaskId] = "backward_edge"
-      pendingCausingLoopEntry[subtaskId] = "$loopId:$edgeIteration"
     }
-    if (stoppedOutcome.reason == GoalRunnerStopReason.RECONCILED_RESUMABLE) {
-      val regenerationLoopId = childLoopIterations.keys.firstOrNull { it.endsWith("_regeneration") }
-      if (regenerationLoopId != null) {
-        pendingReAttemptCause[subtaskId] = "regeneration"
-      } else {
-        pendingReAttemptCause[subtaskId] = "crash_resume"
-      }
+    if (reAttemptCause != null) pendingReAttemptCause[subtaskId] = reAttemptCause
+    causingLoopEntry?.let { pendingCausingLoopEntry[subtaskId] = it }
+  }
+
+  internal fun reAttemptCauseFor(
+    reason: GoalRunnerStopReason,
+    childLoopIterations: Map<String, Int>,
+  ): String? {
+    val hasRegeneration = childLoopIterations.keys.any {
+      FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it)
+    }
+    return when {
+      reason == GoalRunnerStopReason.RECONCILED_RESUMABLE && hasRegeneration -> "regeneration"
+      reason == GoalRunnerStopReason.RECONCILED_RESUMABLE -> "crash_resume"
+      childLoopIterations.isNotEmpty() -> "backward_edge"
+      else -> null
     }
   }
+
+  private fun causingLoopEntryFor(childLoopIterations: Map<String, Int>): String? =
+    childLoopIterations.entries
+      .sortedWith(compareBy({ loopReAttemptPriority(it.key) }, { it.key }))
+      .firstOrNull()
+      ?.let { (loopId, edgeIteration) -> "$loopId:$edgeIteration" }
+
+  private fun loopReAttemptPriority(loopId: String): Int =
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) 0 else 1
 
   private fun validationRetryIteration(
     blocked: DecompositionManifest,
@@ -928,6 +949,7 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
+    attemptStartMillis: Long? = null,
   ): GoalRunnerIterationResult {
     val completed = manifestStore.saveRuntimeState(
       state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
@@ -961,6 +983,7 @@ class GoalRunner(
         subtaskId = subtaskId,
         progress = safeProgress(reconciled.workflowId, request),
         finalReconciledResult = "complete commit=${reconciled.commitSha}",
+        attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it },
       ),
     )
     return GoalRunnerIterationResult(state = completed)

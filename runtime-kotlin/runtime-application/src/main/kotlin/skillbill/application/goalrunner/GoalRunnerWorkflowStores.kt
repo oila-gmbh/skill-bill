@@ -1819,14 +1819,18 @@ private class AttemptLedgerAccumulator {
 
   fun accumulate(entry: Map<*, *>) {
     val action = entry["action"]?.toString() ?: return
-    if (entry["stop_reason"] != null) blockedAttemptCount++
-    if (entry["diagnostic_class"]?.toString() == "supervisor_killed_confirmed_alive") supervisorKillCount++
-    if (action == "child_activation" || action == "resume") {
-      val step = entry["previous_step"]?.toString()?.takeIf(String::isNotBlank) ?: "initial_start"
-      phaseAttemptCounts.merge(step, 1, Int::plus)
+    if (entry["stop_reason"] != null) {
+      if (isBlockStopReason(entry["stop_reason"]?.toString())) blockedAttemptCount++
       entry["re_attempt_cause"]?.toString()?.takeIf(String::isNotBlank)?.let { cause ->
         reAttemptCauseCounts.merge(cause, 1, Int::plus)
       }
+    }
+    if (entry["diagnostic_class"]?.toString() == "supervisor_killed_confirmed_alive") supervisorKillCount++
+    if (action == "child_activation" || action == "resume") {
+      val step = entry["current_step"]?.toString()?.takeIf(String::isNotBlank)
+        ?: entry["previous_step"]?.toString()?.takeIf(String::isNotBlank)
+        ?: "initial_start"
+      phaseAttemptCounts.merge(step, 1, Int::plus)
     }
     if (action == "backward_edge_entry") accumulateBackwardEdge(entry)
   }
@@ -1838,6 +1842,9 @@ private class AttemptLedgerAccumulator {
     cumulativeFixIterations.merge("$subtaskId:$loopId", count, ::maxOf)
   }
 
+  private fun isBlockStopReason(stopReason: String?): Boolean =
+    stopReason != null && stopReason.lowercase() in BLOCK_STOP_REASONS
+
   fun toSummary() = GoalRunnerAttemptLedgerSummary(
     blockedAttemptCount = blockedAttemptCount,
     supervisorKillCount = supervisorKillCount,
@@ -1846,6 +1853,14 @@ private class AttemptLedgerAccumulator {
     reAttemptCauseCounts = reAttemptCauseCounts,
   )
 }
+
+private val BLOCK_STOP_REASONS: Set<String> = setOf(
+  "failed",
+  "blocked",
+  "policy_blocked",
+  "dependencies_blocked",
+  "pull_request_failed",
+)
 
 // Scans the attempt ledger for backward-edge entries and returns the highest cumulative_loop_count
 // for each "subtaskId:loopId" pair. Used to seed the recorder's cumulative counters on resume.

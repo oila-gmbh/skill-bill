@@ -88,10 +88,11 @@ internal class GoalRunnerLedgerRecorder(
     issueKey: String,
     subtaskId: Int,
     loopId: String,
+    edgeIteration: Int,
     progress: GoalRunnerWorkflowProgress?,
   ) {
     val key = "$subtaskId:$loopId"
-    val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + 1
+    val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + edgeIteration.coerceAtLeast(1)
     cumulativeBackwardEdgeCounts[key] = newCount
     recordLedgerEntry(
       GoalRunnerLedgerContext(

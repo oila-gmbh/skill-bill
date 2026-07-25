@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.MissingManifestError
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
@@ -18,12 +19,14 @@ class FileSystemDeclaredReviewSpecialists : DeclaredReviewSpecialistsPort {
         .toList()
     }
     return packDirs.flatMap { packDir ->
-      runCatching { loadPlatformManifest(packDir) }
-        .getOrNull()
-        ?.let { manifest ->
-          manifest.declaredCodeReviewAreas.map { area -> "bill-${manifest.slug}-code-review-$area" }
-        }
-        .orEmpty()
+      val manifest = try {
+        loadPlatformManifest(packDir)
+      } catch (_: MissingManifestError) {
+        null
+      }
+      manifest?.let { m ->
+        m.declaredCodeReviewAreas.map { area -> "bill-${m.slug}-code-review-$area" }
+      } ?: emptyList()
     }
   }
 }
