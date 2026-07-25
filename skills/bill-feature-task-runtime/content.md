@@ -158,8 +158,8 @@ evaluates that verdict — prose alone cannot advance past a Blocker finding.
   current working tree as incremental reconciliation (not a plan re-application),
   then re-runs `review`. This `review` → `implement_fix` → `review` cycle is
   capped at one remediation iteration via a durable per-edge counter with
-  PER_RUN scope: the counter resets when the parent resumes the child after an
-  interrupted run, so a fresh run can attempt the loop again. Goal status reports
+  PER_SUBTASK scope: the counter accumulates across parent resumes so repeated
+  resumes cannot multiply the one-iteration bound. Goal status reports
   cumulative iteration counts across all runs for the same subtask. The initial
   review may use the selected mode, while the only re-review is reserved before
   launch and always invokes
@@ -205,8 +205,8 @@ audit emits `satisfied` even if test coverage is absent or inadequate.
   emits an exact terminal result for every repair item; review or validation
   cannot substitute for executing carried work. This
   `audit` → `implement` → `audit` cycle has no fixed
-  iteration cap and uses PER_RUN counter scope: the iteration counter resets
-  when the parent resumes the child after an interrupted run. Goal status reports
+  iteration cap and uses PER_SUBTASK counter scope: the iteration counter
+  accumulates across parent resumes. Goal status reports
   cumulative iteration counts across all runs for the same subtask. The durable
   counter records progress and recovery state but never turns a valid `gaps_found`
   verdict into a permanent policy block. The first `satisfied` verdict advances

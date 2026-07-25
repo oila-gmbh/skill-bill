@@ -328,7 +328,7 @@ private class ProcessWaitLoop(
         progressIdleTimedOut = false,
         fileActivityGraceExhausted = false,
         wallClockTimedOut = false,
-        liveness = liveness("review_budget", "review_context_budget_exceeded", "killed"),
+        liveness = declaredLiveness("review_budget", "review_context_budget_exceeded", "killed", killLivenessState()),
       )
     }
     val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
@@ -336,7 +336,7 @@ private class ProcessWaitLoop(
       progressIdleTimedOut = false,
       fileActivityGraceExhausted = false,
       wallClockTimedOut = true,
-      liveness = liveness("watchdog", "wall_clock_timeout", "killed"),
+      liveness = declaredLiveness("watchdog", "wall_clock_timeout", "killed", killLivenessState()),
     )
     return when {
       process.waitFor(waitMillis, TimeUnit.MILLISECONDS) ->
@@ -430,7 +430,7 @@ private class ProcessWaitLoop(
           progressIdleTimedOut = true,
           fileActivityGraceExhausted = fileActivityWindowStartNanos != null,
           wallClockTimedOut = false,
-          liveness = liveness("watchdog", "progress_idle_timeout", "killed"),
+          liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", GoalRunnerLivenessState.IDLE),
         )
       }
     } else {
@@ -531,6 +531,14 @@ private class ProcessWaitLoop(
 
   private fun liveness(phase: String, reason: String, processState: String): AgentRunLivenessSnapshot =
     declaredLiveness(phase, reason, processState, livenessState = null)
+
+  private fun killLivenessState(): GoalRunnerLivenessState {
+    if (declaredTracker.activeOperationName != null) return GoalRunnerLivenessState.WORKING
+    val timeout = idleTimeoutNanos ?: return GoalRunnerLivenessState.IDLE
+    val lastOutput = lastOutputNanos ?: return GoalRunnerLivenessState.IDLE
+    return if (System.nanoTime() - lastOutput < timeout) GoalRunnerLivenessState.PROGRESSING
+    else GoalRunnerLivenessState.IDLE
+  }
 
   // SKILL-64 Subtask 3 (AC24): report the authoritative durable step from the
   // typed declared event when present, never a regex-parsed local label.

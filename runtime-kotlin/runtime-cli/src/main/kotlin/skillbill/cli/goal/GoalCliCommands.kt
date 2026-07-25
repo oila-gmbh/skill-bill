@@ -979,7 +979,6 @@ private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<Strin
 // detected invoking-agent context is available.
 private const val DEFAULT_GOAL_AGENT = "codex"
 private const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
-internal const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"

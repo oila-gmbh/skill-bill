@@ -266,13 +266,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `all backward edges declare PER_RUN capScope explicitly`() {
+  fun `all backward edges declare PER_SUBTASK capScope explicitly`() {
     val edges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+    assertEquals(5, edges.size, "expected exactly five declared backward edges: ${edges.map { it.loopId }}")
     edges.forEach { edge ->
       assertEquals(
-        FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
+        FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         edge.capScope,
-        "backward edge '${edge.loopId}' must explicitly declare PER_RUN capScope",
+        "backward edge '${edge.loopId}' must explicitly declare PER_SUBTASK capScope",
       )
     }
   }
