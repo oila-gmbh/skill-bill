@@ -27,6 +27,7 @@ internal fun producerProjectionGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  allowDecompositionPackage: Boolean = false,
 ): String? {
   // Only a completed phase claims to have produced its projection. A blocked or failed envelope is
   // settled through the terminal path, where produced_outputs carries blocking reasons, not a claim.
@@ -34,11 +35,12 @@ internal fun producerProjectionGateReason(
   val expectedKind = FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId)
     ?: return null
   // A decompose plan stops the run at planning and hands the planning stopper a decomposition package,
-  // which has its own contract and its own loud-fail path. It is not an executable plan and no phase
-  // downstream parses it as one. Only `plan` owns that stopper backstop, so the exemption is scoped to
-  // the executable-plan producer; a preplan/implement output merely shaped like a decompose package has
-  // no such backstop and must still face the gate, or it settles completed and wedges its consumer.
-  if (expectedKind == FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN &&
+  // which has its own contract and its own loud-fail path. That stopper exists only in the run loop, so
+  // the exemption is scoped to that seam through [allowDecompositionPackage]: on the goal planning sweep,
+  // the preparation write path and the hydrator there is no stopper, and a decompose-shaped payload must
+  // re-enter the producing phase's bounded fix loop rather than settle and wedge its consumer.
+  if (allowDecompositionPackage &&
+    expectedKind == FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN &&
     featureTaskRuntimeIsDecompositionPackage(outputMap)
   ) {
     return null

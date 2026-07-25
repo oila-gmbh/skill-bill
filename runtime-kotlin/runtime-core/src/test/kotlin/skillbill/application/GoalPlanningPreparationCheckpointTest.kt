@@ -114,6 +114,36 @@ class GoalPlanningPreparationCheckpointTest {
     assertNull(harness.readPlan())
   }
 
+  @Test
+  fun `a stored preplan failing its projection contract reads as regenerable rather than as a fatal read`() {
+    val harness = checkpointHarness()
+    // Written before the projection gate existed: schema-valid phase output, no bounded projection.
+    harness.storeRawShared(validShared(payload = payloadJson("preplan", producedOutputsJson = """{"notes":"legacy"}""")))
+
+    assertNull(harness.checkpoint.findSharedPreplan(identity(), harness.dbOverride))
+  }
+
+  @Test
+  fun `a stored subtask plan failing its projection contract reads as regenerable rather than as a fatal read`() {
+    val harness = checkpointHarness().withShared()
+    val legacyPlanProjection = """
+      {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
+      "tasks":[{"task_id":"task-1","description":"legacy","criterion_refs":["AC-001"],"test_obligations":[]}],
+      "validation_strategy":["focused gradle"]}
+    """.trimIndent().replace("\n", "")
+    harness.storeRawPlan(validPlan(payload = payloadJson("plan", producedOutputsJson = legacyPlanProjection)))
+
+    val recovered = harness.checkpoint.findSubtaskPlan(
+      identity(),
+      subtaskId = 1,
+      governedSubSpecPath = descriptor().governedSubSpecPath,
+      dbOverride = harness.dbOverride,
+    )
+
+    // Reported missing, so the sweep re-produces it under the gate instead of wedging the goal.
+    assertNull(recovered)
+  }
+
   private fun checkpointHarness(): CheckpointHarness {
     val tempDir = Files.createTempDirectory("goal-planning-checkpoint")
     val dbOverride = tempDir.resolve("metrics.db").toString()
@@ -134,6 +164,15 @@ class GoalPlanningPreparationCheckpointTest {
   ) {
     fun withShared(): CheckpointHarness = apply {
       checkpoint.checkpointSharedPreplan(validShared(), dbOverride)
+    }
+
+    // Bypasses the write gate to reproduce a record persisted before the gate existed.
+    fun storeRawShared(checkpoint: SharedGoalPreplanCheckpoint) {
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+    }
+
+    fun storeRawPlan(plan: GoalSubtaskPlanCheckpoint) {
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
     }
 
     fun readShared(): SharedGoalPreplanCheckpoint? =

@@ -2,6 +2,7 @@ package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.GoalPlanningPreparationValidator
+import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -49,9 +50,12 @@ class GoalPlanningPreparationCheckpoint(
     database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
   }
 
+  // A stored record whose projection no longer satisfies the gate is regenerable, not fatal: reporting it
+  // as missing lets the sweep re-produce it under the same gate and re-checkpoint it, where throwing here
+  // would wedge the goal terminally with no in-band repair. Structural drift still throws.
   fun findSharedPreplan(identity: GoalPlanningIdentity, dbOverride: String? = null): SharedGoalPreplanCheckpoint? =
     database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity) }
-      ?.also(::validateSharedPreplan)
+      ?.takeIf { sharedPreplanProjectionRejection(it) == null }
 
   fun findSubtaskPlan(
     identity: GoalPlanningIdentity,
@@ -61,8 +65,8 @@ class GoalPlanningPreparationCheckpoint(
     dbOverride: String? = null,
   ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
     it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
-  }?.also { plan ->
-    validateSubtaskPlan(plan)
+  }?.let { plan ->
+    val projectionRejection = subtaskPlanProjectionRejection(plan)
     if (
       expectedDescriptor != null &&
       plan.manifestOrder != expectedDescriptor.manifestOrder
@@ -83,6 +87,7 @@ class GoalPlanningPreparationCheckpoint(
         "stored governed sub-spec hash differs from the current governed sub-spec",
       )
     }
+    plan.takeIf { projectionRejection == null }
   }
 
   fun recoveryProgress(
@@ -119,21 +124,47 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+    val (label, envelope) = sharedPreplanEnvelope(checkpoint)
+    requireValidPlanningProjection(envelope, "preplan", label, planningProjectionValidator)
+  }
+
+  fun validateSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+    val (label, envelope) = subtaskPlanEnvelope(checkpoint)
+    requireValidPlanningProjection(envelope, "plan", label, planningProjectionValidator)
+  }
+
+  /** Null when the stored shared preplan satisfies the projection gate; the bounded reason otherwise. */
+  fun sharedPreplanProjectionRejection(checkpoint: SharedGoalPreplanCheckpoint): String? {
+    val (_, envelope) = sharedPreplanEnvelope(checkpoint)
+    return producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
+  }
+
+  /** Null when the stored subtask plan satisfies the projection gate; the bounded reason otherwise. */
+  fun subtaskPlanProjectionRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? {
+    val (_, envelope) = subtaskPlanEnvelope(checkpoint)
+    return producerProjectionGateReason("plan", envelope, planningProjectionValidator)
+  }
+
+  private fun sharedPreplanEnvelope(
+    checkpoint: SharedGoalPreplanCheckpoint,
+  ): Pair<String, Map<String, Any?>> {
     val label = checkpoint.identity.parentGoalWorkflowId
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.preplanPayload, "preplan")
     envelope.requirePrepared(label)
     requireHash(checkpoint.payloadSha256, checkpoint.preplanPayload, label)
-    requireValidPlanningProjection(envelope, "preplan", label, planningProjectionValidator)
+    return label to envelope
   }
 
-  fun validateSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+  private fun subtaskPlanEnvelope(
+    checkpoint: GoalSubtaskPlanCheckpoint,
+  ): Pair<String, Map<String, Any?>> {
     val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.planPayload, "plan")
     envelope.requirePrepared(label)
     requireHash(checkpoint.payloadSha256, checkpoint.planPayload, label)
-    requireValidPlanningProjection(envelope, "plan", label, planningProjectionValidator)
+    return label to envelope
   }
 
   private fun requireHash(expected: String, payload: String, label: String) {

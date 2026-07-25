@@ -553,6 +553,35 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
+  fun `the decompose exemption is scoped to the run-loop seam that owns the planning stopper`() {
+    // AC-001: only the run loop backs a decomposition package with a planning stopper. On the goal-side
+    // producer paths there is no stopper, so a decompose-shaped plan must face the gate and re-enter the
+    // producing phase's bounded fix loop instead of being checkpointed and hydrated.
+    val validator = realPlanningProjectionValidator
+    val envelope = producerEnvelope(decompositionPackagePayload())
+
+    assertNull(
+      producerProjectionGateReason(phasePlan, envelope, validator, allowDecompositionPackage = true),
+      "the run-loop plan gate keeps the decomposition exemption",
+    )
+    assertNotNull(
+      producerProjectionGateReason(phasePlan, envelope, validator),
+      "every other producer seam must gate a decompose-shaped plan",
+    )
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+      requireValidPlanningProjection(envelope, phasePlan, "goal-1#1", validator)
+    }
+  }
+
+  private fun decompositionPackagePayload(): String = """
+    {"produced_outputs":{
+      "mode":"decompose",
+      "decomposition_subtask_count":2,
+      "decomposition_manifest_ref":"decomposition_manifest_ref_value"
+    }}
+  """.trimIndent()
+
+  @Test
   fun `every envelope the shared gate accepts is accepted by the goal-side producer seam`() {
     parityEdges.forEach { edge ->
       requireValidPlanningProjection(

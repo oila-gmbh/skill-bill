@@ -1765,7 +1765,12 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
     // claiming 'completed' owes the projection its consumer will parse.
-    producerProjectionGateReason(run.phaseId, outputMap, planningProjectionValidator)?.let { reason ->
+    producerProjectionGateReason(
+      run.phaseId,
+      outputMap,
+      planningProjectionValidator,
+      allowDecompositionPackage = true,
+    )?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->

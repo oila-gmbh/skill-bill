@@ -233,7 +233,7 @@ private class GoalChildPlanningImportMatcher(
       request.descriptor.subtaskId,
       request.descriptor.governedSubSpecPath,
     )
-    validateAvailablePayloads(shared, plan, setup.workflowId)
+    validateAvailablePayloads(shared, plan, setup, request)
     return when {
       !provenanceMatches(expected, request) ->
         "stored import provenance differs from the hydration request"
@@ -247,16 +247,40 @@ private class GoalChildPlanningImportMatcher(
     }
   }
 
+  // The child has already imported these records, so regenerating them would conflict with the import
+  // this matcher exists to protect. A projection rejection here is therefore terminal — but it stops with
+  // the offending record and its projection failure named, not with a generic read-failure reason.
   private fun validateAvailablePayloads(
     shared: SharedGoalPreplanCheckpoint?,
     plan: GoalSubtaskPlanCheckpoint?,
-    workflowId: String,
+    setup: GoalRunnerChildWorkflowSetup,
+    request: GoalChildPlanningHydrationRequest,
   ) {
     shared?.let {
-      payloadValidator.requireValid("preplan", it.preplanPayload, it.payloadSha256, workflowId)
+      requireImportedPayloadValid("preplan", it.preplanPayload, it.payloadSha256, setup, request)
     }
     plan?.let {
-      payloadValidator.requireValid("plan", it.planPayload, it.payloadSha256, workflowId)
+      requireImportedPayloadValid("plan", it.planPayload, it.payloadSha256, setup, request)
+    }
+  }
+
+  private fun requireImportedPayloadValid(
+    phaseId: String,
+    payload: String,
+    digest: String,
+    setup: GoalRunnerChildWorkflowSetup,
+    request: GoalChildPlanningHydrationRequest,
+  ) {
+    try {
+      payloadValidator.requireValid(phaseId, payload, digest, setup.workflowId)
+    } catch (error: InvalidGoalPlanningPreparationSchemaError) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        request.identity.parentGoalWorkflowId,
+        setup.subtaskId,
+        "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
+          "imported by this child and cannot be regenerated in band; it fails its projection contract: " +
+          "${error.message.orEmpty()}",
+      )
     }
   }
 
