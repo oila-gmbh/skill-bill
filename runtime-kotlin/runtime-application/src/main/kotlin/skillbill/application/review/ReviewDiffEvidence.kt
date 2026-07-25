@@ -22,11 +22,12 @@ internal data class ReviewDiffEvidence(
      * valid state rather than a contract violation. The authoritative review still uses [parse],
      * which loud-fails on the same input.
      */
-    fun parseAttributable(diff: String): ReviewDiffEvidence? = if (diffRecords(diff).isEmpty()) null else parse(diff)
+    fun parseAttributable(diff: String): ReviewDiffEvidence? =
+      diffRecords(diff).takeIf { it.isNotEmpty() }?.let { runCatching { parse(it.joinToString("\n")) }.getOrNull() }
 
     fun parse(diff: String): ReviewDiffEvidence {
       val normalized = diff.replace("\r\n", "\n")
-      val records = diffRecords(diff)
+      val records = diffRecords(normalized)
       require(records.isNotEmpty()) { "The authoritative review diff contains no attributable diff records." }
       val hunks = mutableListOf<ReviewChangedHunk>()
       val files = records.map { record ->

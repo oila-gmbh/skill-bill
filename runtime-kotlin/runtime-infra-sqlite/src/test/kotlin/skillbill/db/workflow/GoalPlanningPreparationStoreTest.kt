@@ -451,7 +451,7 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
-  fun `replacing a shared preplan overwrites the payload and keeps the plans it governs`() {
+  fun `replacing a shared preplan overwrites the payload and discards governed plans for provenance safety`() {
     val dbPath = tempDb()
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
@@ -463,9 +463,10 @@ class GoalPlanningPreparationStoreTest {
       )
 
       assertEquals("regenerated-preplan", store.findSharedPreplan(identity())?.preplanPayload)
-      assertNotNull(
+      assertNull(
         store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath),
-        "the cascade must not take plans the sweep was not asked to reproduce",
+        "subtask plans must be discarded when their governing shared preplan is replaced; " +
+          "leaving rows whose provenance can never match would cause unrecoverable conflicts",
       )
     }
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->

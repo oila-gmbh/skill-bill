@@ -121,7 +121,7 @@ class DefaultGoalPlanningSweep(
         checkpoint.recoveryProgress(identity, descriptors, provenance, shared.dbPathOverride).firstMissingSubtaskId
       }
       recovery.exceptionOrNull()?.let { error ->
-        val subtaskId = (error as? IncompatibleGoalPlanningPreparationRecoveryError)?.subtaskId ?: 0
+        val subtaskId = recoverySubtaskId(error)
         val phaseId = PHASE_PLAN.takeIf { subtaskId != 0 } ?: PHASE_PREPLAN
         return stopped(shared, subtaskId, preparationStateReadReason(error), phaseId)
       }
@@ -165,6 +165,17 @@ class DefaultGoalPlanningSweep(
       "decomposition provenance differs from the saved shared preplan.",
     PHASE_PREPLAN,
   )
+
+  private fun recoverySubtaskId(error: Throwable): Int {
+    val recoveryError = error as? IncompatibleGoalPlanningPreparationRecoveryError
+    if (
+      recoveryError != null &&
+      error.message?.contains("must be completed with non-empty produced_outputs") == true
+    ) {
+      return 0
+    }
+    return recoveryError?.subtaskId ?: 0
+  }
 
   @Suppress("ReturnCount")
   private fun produceSharedPreplan(
@@ -265,6 +276,27 @@ class DefaultGoalPlanningSweep(
    * shared producer projection gate. A projection-invalid output relaunches the same phase with the
    * bounded validation detail in the remediation prompt, under the one runtime fix-loop cap; nothing is
    * checkpointed in the failing state, and exhaustion stops the sweep with that detail as the reason.
+   *
+   * Fix-loop budget limitation: the consumed budget is tracked in-memory only and resets on each
+   * resume. A phase that exhausts MAX_FIX_LOOP_ITERATIONS and stops durably will restart at
+   * attempt 1 on the next resume rather than remaining stopped. Operators should monitor for
+   * repeated fix-loop exhaustion and intervene manually.
+   *
+   * Aggregate launch ceiling: there is no global cap on total planning-agent launches across all
+   * phases. Each call to producePhase (preplan + one per included subtask) independently attempts
+   * up to MAX_FIX_LOOP_ITERATIONS launches. A goal with N subtasks can issue up to (N+1) *
+   * MAX_FIX_LOOP_ITERATIONS planning launches. The --planning-budget-minutes and
+   * --max-wall-clock-minutes flags bound per-launch timeout and subtask launches respectively,
+   * not the sweep's total planning budget. Operators should monitor for excessive planning
+   * launch counts and consider adjusting MAX_FIX_LOOP_ITERATIONS or the spec size.
+
+   * Fix-loop attempts visibility limitation: produceAttempt writes the same progress message on every
+   * attempt, DefaultGoalPlanningSweep has no telemetry port injected, and only the success path writes
+   * durably. An operator cannot distinguish 'preplan ran once' from 'preplan ran three times and
+   * discarded two agent outputs' - no retry count, no per-attempt gate reason, no correlation with
+   * the final blocked_reason. Full durable fix-loop telemetry would require a telemetry port and
+   * additional emit calls; operators should monitor for repeated fix-loop exhaustion and investigate
+   * aggressively.
    */
   private fun producePhase(
     shared: GoalPlanningSharedContext,

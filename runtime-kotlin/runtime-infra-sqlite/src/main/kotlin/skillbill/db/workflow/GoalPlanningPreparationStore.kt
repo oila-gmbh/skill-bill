@@ -179,8 +179,16 @@ class GoalPlanningPreparationStore(
     requireNormalizedSharedPreplan(checkpoint)
     translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
       connection.inImmediateTransaction {
-        // Overwrite rather than delete: goal_subtask_plans cascades on the shared row, and a regenerated
-        // preplan must not silently discard plans the sweep has not been asked to reproduce.
+        // Every stored subtask plan is derived from these preplan bytes and pins their provenance, so the
+        // replacement must discard them in the same transaction. Leaving them would strand rows whose
+        // provenance can never again match the governing preplan, which recoveryProgress reports as an
+        // unrecoverable conflict on every resume with no in-band repair. Discarded plans are regenerated
+        // by the sweep under the new provenance. Overwrite rather than DELETE the shared row itself:
+        // goal_subtask_plans cascades on it, and the cascade would fire before the replacement lands.
+        prepareStatement("DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ?").use { s ->
+          s.setString(1, checkpoint.identity.parentGoalWorkflowId)
+          s.executeUpdate()
+        }
         val updated = prepareStatement(
           """UPDATE goal_shared_preplans SET normalized_issue_key = ?, repository_identity = ?,
           preparation_status = ?, contract_version = ?, parent_spec_hash = ?, decomposition_manifest_hash = ?,

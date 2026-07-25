@@ -278,8 +278,9 @@ private class GoalChildPlanningImportMatcher(
         request.identity.parentGoalWorkflowId,
         setup.subtaskId,
         "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
-          "imported by this child and cannot be regenerated in band; it fails its projection contract: " +
-          "${error.message.orEmpty()}",
+          "imported by this child and the stored version now fails its projection contract. " +
+          "This occurs when the shared preplan or subtask plan was regenerated after the child was hydrated, " +
+          "making the previously-imported bytes stale. Projection failure: ${error.message.orEmpty()}",
         error,
       )
     }

@@ -377,7 +377,9 @@ class GoalRunner(
       )
     }
     val reviewBaseline = requireNotNull(baselineCapture.baseline)
-    val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+    val prepared = runCatching {
+      prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+    }.getOrElse { error -> return blockedOnRecoveryError(state, subtaskId, error, request) }
     val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
@@ -470,6 +472,28 @@ class GoalRunner(
       )
       emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
     }
+  }
+
+  private fun blockedOnRecoveryError(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    error: Throwable,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerIterationResult {
+    val (targetSubtaskId, reason, _) = when (error) {
+      is skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError ->
+        Triple(
+          error.subtaskId,
+          "Goal-subtask planning import conflicts with the stored shared preplan or subtask plan. " +
+            "This occurs when a shared preplan was regenerated after the child was hydrated, " +
+            "making the previously-imported planning bytes stale. " +
+            "Recovery requires hard reset: 'skill-bill goal reset ${state.manifest.issueKey} --hard --yes'. " +
+            "Planning failure: ${error.message.orEmpty()}",
+          "preplan",
+        )
+      else -> throw error
+    }
+    return blockedReviewBaselineIteration(state, targetSubtaskId, reason, request)
   }
 
   private fun launchSubtaskWithWorkerResult(

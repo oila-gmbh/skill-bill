@@ -5,6 +5,8 @@ import skillbill.application.featuretask.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
@@ -26,6 +28,7 @@ class GoalPlanningPreparationCheckpoint(
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   private val envelopeValidator = envelopeValidator
+  private val phaseOutputValidator = phaseOutputValidator
   private val gate =
     GoalPlanningPreparationProjectionGate(envelopeValidator, phaseOutputValidator, planningProjectionValidator)
   private val preparationValidator =
@@ -116,7 +119,7 @@ class GoalPlanningPreparationCheckpoint(
       expectedDescriptor != null &&
       plan.manifestOrder != expectedDescriptor.manifestOrder
     ) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
         subtaskId,
         "stored manifest order differs from the authoritative decomposition manifest",
@@ -126,7 +129,7 @@ class GoalPlanningPreparationCheckpoint(
       expectedDescriptor != null &&
       plan.subSpecHash != expectedDescriptor.subSpecHash
     ) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
         subtaskId,
         "stored governed sub-spec hash differs from the current governed sub-spec",
@@ -151,10 +154,22 @@ class GoalPlanningPreparationCheckpoint(
         dbOverride,
       )?.also { plan ->
         if (plan.provenance != expectedProvenance) {
-          throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
             identity.parentGoalWorkflowId,
             descriptor.subtaskId,
             "stored plan provenance differs from the governing shared preplan",
+          )
+        }
+        val parsed = skillbill.contracts.JsonSupport.parseObjectOrNull(plan.planPayload)
+          ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+          ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+        val status = parsed?.get("status")?.toString()
+        val produced = parsed?.get("produced_outputs") as? Map<*, *>
+        if (status != "completed" || produced?.isEmpty() != false) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            identity.parentGoalWorkflowId,
+            descriptor.subtaskId,
+            "stored plan payload has status '$status' but must be completed with non-empty produced_outputs",
           )
         }
       }
@@ -180,31 +195,47 @@ internal class GoalPlanningPreparationProjectionGate(
 ) {
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     val (label, envelope) = sharedPreplanEnvelope(checkpoint)
+    envelope.requirePrepared(label)
     requireValidPlanningProjection(envelope, "preplan", label, planningProjectionValidator)
   }
 
   fun validateSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     val (label, envelope) = subtaskPlanEnvelope(checkpoint)
+    envelope.requirePrepared(label)
     requireValidPlanningProjection(envelope, "plan", label, planningProjectionValidator)
   }
 
-  /** Null when the stored shared preplan satisfies the projection gate; the bounded reason otherwise. */
-  fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? {
+  /**
+   * Null when the stored shared preplan satisfies the projection gate; the bounded reason otherwise.
+   *
+   * An envelope, digest, or phase-output failure is reported as a rejection rather than thrown: on a read
+   * seam every one of those means the same thing operationally — the stored bytes cannot be handed to a
+   * consumer — and the in-band recovery for all of them is the same regeneration. Throwing instead would
+   * block every existing goal on the first contract bump with no path that can repair the record.
+   */
+  fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? = rejectionOf {
     val (_, envelope) = sharedPreplanEnvelope(checkpoint)
-    return producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
+    producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
   }
 
   /** Null when the stored subtask plan satisfies the projection gate; the bounded reason otherwise. */
-  fun subtaskPlanRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? {
+  fun subtaskPlanRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? = rejectionOf {
     val (_, envelope) = subtaskPlanEnvelope(checkpoint)
-    return producerProjectionGateReason("plan", envelope, planningProjectionValidator)
+    producerProjectionGateReason("plan", envelope, planningProjectionValidator)
+  }
+
+  private fun rejectionOf(compute: () -> String?): String? = try {
+    compute()
+  } catch (error: InvalidGoalPlanningPreparationSchemaError) {
+    "stored record failed its durable contract: ${error.message.orEmpty()}"
+  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    "stored record failed its durable contract: ${error.message.orEmpty()}"
   }
 
   private fun sharedPreplanEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = checkpoint.identity.parentGoalWorkflowId
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.preplanPayload, "preplan")
-    envelope.requirePrepared(label)
     requireHash(checkpoint.payloadSha256, checkpoint.preplanPayload, label)
     return label to envelope
   }
@@ -213,7 +244,6 @@ internal class GoalPlanningPreparationProjectionGate(
     val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.planPayload, "plan")
-    envelope.requirePrepared(label)
     requireHash(checkpoint.payloadSha256, checkpoint.planPayload, label)
     return label to envelope
   }
@@ -231,11 +261,9 @@ internal class GoalPlanningPreparationProjectionGate(
   // A stored record the gate rejects — or one whose bounded envelope no longer parses at all — is
   // regenerable rather than immutable: the replacement is already gate-valid, so keeping the old bytes
   // would only wedge the goal.
-  fun sharedPreplanIsRegenerable(stored: SharedGoalPreplanCheckpoint): Boolean =
-    runCatching { sharedPreplanRejection(stored) != null }.getOrDefault(true)
+  fun sharedPreplanIsRegenerable(stored: SharedGoalPreplanCheckpoint): Boolean = sharedPreplanRejection(stored) != null
 
-  fun subtaskPlanIsRegenerable(stored: GoalSubtaskPlanCheckpoint): Boolean =
-    runCatching { subtaskPlanRejection(stored) != null }.getOrDefault(true)
+  fun subtaskPlanIsRegenerable(stored: GoalSubtaskPlanCheckpoint): Boolean = subtaskPlanRejection(stored) != null
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {
