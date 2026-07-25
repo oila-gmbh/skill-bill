@@ -246,6 +246,19 @@ class FeatureTaskRuntimePhaseOrderViolationError(
     "'${observedVerdict ?: "<no completed verdict>"}'; the run fails loudly rather than silently advancing.",
 )
 
+/**
+ * Surfaced when an operator decision cannot be applied — the subtask is not paused, carries no
+ * durable review state, or the choice could not be persisted. Loud-failing here keeps a rejected
+ * `retry_fix` from silently driving the loop as if the operator had never chosen.
+ */
+class FeatureTaskRuntimeOperatorDecisionRejectedError(
+  val workflowId: String,
+  val decision: String,
+  val reason: String,
+) : ShellContentContractException(
+  "Operator decision '$decision' was rejected for workflow '$workflowId': $reason",
+)
+
 class InvalidFeatureTaskExecutionIdentitySchemaError(
   val sourceLabel: String,
   val reason: String,

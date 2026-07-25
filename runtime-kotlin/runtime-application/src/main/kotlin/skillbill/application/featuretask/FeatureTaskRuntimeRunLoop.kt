@@ -55,7 +55,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -106,6 +110,8 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private var resolvedBranch: String? = null
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
+  private var paused: FeatureTaskRuntimeRunReport.Paused? = null
+  private var operatorGrantedFixIteration: Boolean = false
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
     .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
@@ -437,7 +443,7 @@ internal class FeatureTaskRuntimeRunLoop(
         declaration = transitions,
         currentPhaseId = phaseId,
         verdict = effectiveVerdict,
-        edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
+        edgeIterationCount = edge?.let { effectiveEdgeIterationCount(it) } ?: 0,
         settledVerdictsByPhaseId = state.settledVerdictsByPhaseId(),
         unresolvedBlockerPresent = unresolvedBlockerDispositionPresent(),
       )
@@ -470,9 +476,10 @@ internal class FeatureTaskRuntimeRunLoop(
         phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
           (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
           state.unresolvedReviewFindings(phaseId).isNotEmpty() &&
-          !goalReviewStateOrNull()?.blockerDispositions.isNullOrEmpty() -> {
-          // A disposed remediation pass pauses on its unresolved Blocker instead of hard-blocking;
-          // the cap-exhaustion block below stays the path for an undisposed pass only.
+          unresolvedBlockerDispositionPresent() -> {
+          // Only a surviving unresolved Blocker disposition pauses. A disposed pass whose Blockers all
+          // resolved or were superseded takes the forward transition to validate even if the review
+          // output still lists findings; the cap-exhaustion block below stays the undisposed path.
           pauseOnUnresolvedBlocker(
             phaseId,
             FeatureTaskRuntimeNextPhase.TerminalPause(
@@ -487,7 +494,8 @@ internal class FeatureTaskRuntimeRunLoop(
         }
         phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
           (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
-          state.unresolvedReviewFindings(phaseId).isNotEmpty() -> {
+          state.unresolvedReviewFindings(phaseId).isNotEmpty() &&
+          goalReviewStateOrNull()?.blockerDispositions.isNullOrEmpty() -> {
           val reviewLoopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
           blockOnCapExhaustion(
             phaseId,
@@ -546,10 +554,32 @@ internal class FeatureTaskRuntimeRunLoop(
       return true
     }
     val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
-    return when {
+    val established = when {
       !status.ok -> blockCheckpoint(precedingPhaseId, branch, status.error)
       status.value.isBlank() -> true
       else -> commitCheckpoint(precedingPhaseId, branch)
+    }
+    if (established) {
+      recordRemediationBaseSha()
+    }
+    return established
+  }
+
+  /**
+   * The checkpoint commit has just captured the pre-fix tree, so HEAD here IS the pre-fix tree. The
+   * reserved remediation pass reviews diff(this sha -> post-fix HEAD), which is what materializes a
+   * defect the remediation itself introduces instead of leaving it to be caught incidentally.
+   */
+  private fun recordRemediationBaseSha() {
+    if (!isGoalContinuationRun(request)) return
+    val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+    if (!head.ok || head.value.isBlank()) return
+    runCatching {
+      goalContinuationRecorder.recordRemediationBaseSha(
+        workflowId = request.workflowId,
+        remediationBaseSha = head.value.trim(),
+        dbOverride = request.dbPathOverride,
+      )
     }
   }
 
@@ -785,7 +815,9 @@ internal class FeatureTaskRuntimeRunLoop(
   fun report(): FeatureTaskRuntimeRunReport {
     val branch = resolvedBranch
       ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
-    return decomposed ?: blocked?.let { report ->
+    return decomposed ?: paused?.let { report ->
+      if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
+    } ?: blocked?.let { report ->
       if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
     } ?: FeatureTaskRuntimeRunReport.Completed(
       issueKey = request.issueKey,
@@ -892,6 +924,43 @@ internal class FeatureTaskRuntimeRunLoop(
     blockAt(phaseId, reason)
   }
 
+  /**
+   * An operator-granted `retry_fix` is unbudgeted: it discounts one consumed `review_fix` iteration so
+   * the granted re-entry is not refused by a cap the operator has already overridden. `perEdgeCap`
+   * itself is unchanged; only this one granted iteration is exempt from its accounting.
+   */
+  private fun effectiveEdgeIterationCount(edge: FeatureTaskRuntimeBackwardEdge): Int {
+    val consumed = state.edgeIterationCount(edge.loopId)
+    val granted = operatorGrantedFixIteration &&
+      edge.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+    return if (granted) (consumed - 1).coerceAtLeast(0) else consumed
+  }
+
+  private fun persistResolvedReviewTier(run: PhaseRun, resolution: ReviewPassResolution) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(request)) {
+      return
+    }
+    goalContinuationRecorder.recordResolvedReviewTier(
+      workflowId = request.workflowId,
+      resolvedTier = resolution.resolvedTier,
+      decidingRule = resolution.decidingRule,
+      dbOverride = request.dbPathOverride,
+    )
+  }
+
+  /**
+   * The pass-two prompt must key one disposition per Blocker the prior pass emitted, so the ids it
+   * dispositions against are minted here from the durable pass-one result rather than invented by the
+   * agent. Empty for pass one, which has no prior pass to dispose.
+   */
+  private fun priorBlockerFindingIds(passNumber: Int?): List<String> {
+    if (passNumber != 2) return emptyList()
+    val priorPass = goalReviewStateOrNull()?.passResults?.firstOrNull { it.passNumber == 1 } ?: return emptyList()
+    return priorPass.findings
+      .filter { it.severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY }
+      .mapIndexed { index, _ -> "pass1-blocker-${index + 1}" }
+  }
+
   private fun goalReviewStateOrNull(): GoalSubtaskReviewState? =
     if (!isGoalContinuationRun(request)) {
       null
@@ -926,11 +995,14 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
+    // STATUS_PAUSED, not STATUS_BLOCKED: workflowStatusFor maps a blocked phase request back to a
+    // blocked workflow row, which would overwrite the paused row written immediately above and turn a
+    // resumable pause into a terminal block.
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = request.workflowId,
         phaseId = phaseId,
-        status = STATUS_BLOCKED,
+        status = STATUS_PAUSED,
         attemptCount = state.nextIteration(phaseId),
         resolvedAgentId = resolvedAgent.resolvedAgentId,
         finished = false,
@@ -941,7 +1013,45 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
       dbOverride = request.dbPathOverride,
     )
-    blockAt(phaseId, reason)
+    pauseAt(phaseId, reason, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
+  }
+
+  private fun pauseAt(phaseId: String, reason: String, resumableStep: String) {
+    paused = FeatureTaskRuntimeRunReport.Paused(
+      issueKey = request.issueKey,
+      workflowId = request.workflowId,
+      featureSize = request.runInvariants.featureSize.name,
+      pausedPhase = phaseId,
+      pauseReason = reason,
+      resumableStep = resumableStep,
+      completedPhaseIds = state.completedPhaseIds(),
+      resolvedBranch = resolvedBranch,
+    )
+  }
+
+  /**
+   * The operator-decision entry point. `retry_fix` grants one fresh `implement_fix` iteration that is
+   * exempt from the `review_fix` per-edge cap accounting — the operator choice is the bound, not the
+   * cap — while `accept_and_advance` releases the subtask forward to `validate` and `abandon_subtask`
+   * takes the existing abandon path.
+   */
+  internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
+    val reviewState = goalReviewStateOrNull()
+      ?: return "No goal-subtask review state is present to apply an operator decision to."
+    if (!reviewState.pausedForOperatorDecision) {
+      return "The subtask is not paused; an operator decision is only accepted while it is paused."
+    }
+    goalContinuationRecorder.recordOperatorDecision(
+      workflowId = request.workflowId,
+      decision = decision,
+      dbOverride = request.dbPathOverride,
+    ) ?: return "The operator decision could not be persisted onto the durable review state."
+    when (decision) {
+      GoalSubtaskOperatorDecision.RETRY_FIX -> operatorGrantedFixIteration = true
+      GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE -> operatorGrantedFixIteration = false
+      GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> operatorGrantedFixIteration = false
+    }
+    return null
   }
 
   private fun remediationCheckpointMessage(branch: String): String =
@@ -2464,20 +2574,23 @@ internal class FeatureTaskRuntimeRunLoop(
       planningProjectionValidator,
     )
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    val passNumber = reviewPassNumber(run, state)
+    val depthResolution = passNumber?.let { pass ->
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)
+    }
+    depthResolution?.let { resolution -> persistResolvedReviewTier(run, resolution) }
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       issueKey = run.request.issueKey,
       briefing = briefing,
       suppressDecomposition = isGoalContinuationRun(run.request),
       parallelReviewAgent = run.request.parallelReviewAgent
         ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
-      codeReviewMode = reviewPassNumber(run, state)?.let { passNumber ->
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence.modeForPass(
-          run.request.runInvariants.codeReviewMode,
-          passNumber,
-        )
-      } ?: run.request.runInvariants.codeReviewMode,
-      reviewPassNumber = reviewPassNumber(run, state),
+      codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
+      reviewPassNumber = passNumber,
       goalSubtaskReviewInput = run.goalReviewInput,
+      resolvedReviewTier = depthResolution?.resolvedTier,
+      reviewDecidingRule = depthResolution?.decidingRule,
+      priorBlockerFindingIds = priorBlockerFindingIds(passNumber),
       specSource = run.specSource,
       priorSchemaFailure = priorSchemaFailure,
       operatorBlockRetry = operatorBlockRetry

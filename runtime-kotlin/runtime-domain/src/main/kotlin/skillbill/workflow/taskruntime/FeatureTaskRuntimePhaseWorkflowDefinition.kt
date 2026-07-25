@@ -107,7 +107,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     defaultSessionPrefix = "ftr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
     workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
-    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
+    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped", "paused"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
     defaultInitialStepId = PHASE_PREPLAN,
     stepIds =

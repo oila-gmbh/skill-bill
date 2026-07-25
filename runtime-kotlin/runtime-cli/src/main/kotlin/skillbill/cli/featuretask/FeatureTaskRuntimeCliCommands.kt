@@ -61,6 +61,7 @@ import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -150,6 +151,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     help = "Review execution mode: delegated (default), auto, or inline. " +
       "Supply at most once; a resumed workflow remains pinned to its original mode.",
   ).multiple()
+  protected val operatorDecisions by option(
+    "--operator-decision",
+    help = "Release a subtask paused on an unresolved Blocker: " +
+      "${GoalSubtaskOperatorDecision.entries.joinToString { it.wireValue }}. Supply at most once.",
+  ).multiple()
   protected val suppressPr by option(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
@@ -230,6 +236,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
+          operatorDecision = requestedOperatorDecision(),
           agentAddonSelection = prepared.agentAddonSelection,
           eventSink = runtimeRunEventSink(state, monitor),
         ),
@@ -344,6 +351,22 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
       },
     )
+  }
+
+  private fun requestedOperatorDecision(): GoalSubtaskOperatorDecision? {
+    if (operatorDecisions.size > 1) {
+      throw UsageError(
+        "Conflicting --operator-decision values '${operatorDecisions.joinToString(", ")}' are not allowed; " +
+          "supply exactly one decision.",
+      )
+    }
+    return operatorDecisions.singleOrNull()?.let { raw ->
+      GoalSubtaskOperatorDecision.entries.firstOrNull { it.wireValue == raw }
+        ?: throw UsageError(
+          "Unknown operator decision '$raw'. Allowed: " +
+            "${GoalSubtaskOperatorDecision.entries.joinToString { it.wireValue }}.",
+        )
+    }
   }
 
   private fun requestedCodeReviewMode(): CodeReviewExecutionMode? {
@@ -1017,6 +1040,17 @@ private fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> 
     "resolved_branch" to resolvedBranch,
     "last_incomplete_phase" to lastIncompletePhase,
     "blocked_reason" to blockedReason,
+    "completed_phases" to completedPhaseIds,
+  ).withSubtaskOutcome(subtaskOutcome)
+  is FeatureTaskRuntimeRunReport.Paused -> linkedMapOf(
+    "status" to "paused",
+    "issue_key" to issueKey,
+    "workflow_id" to workflowId,
+    "feature_size" to featureSize,
+    "resolved_branch" to resolvedBranch,
+    "paused_phase" to pausedPhase,
+    "pause_reason" to pauseReason,
+    "resumable_step" to resumableStep,
     "completed_phases" to completedPhaseIds,
   ).withSubtaskOutcome(subtaskOutcome)
   is FeatureTaskRuntimeRunReport.Decomposed -> linkedMapOf(

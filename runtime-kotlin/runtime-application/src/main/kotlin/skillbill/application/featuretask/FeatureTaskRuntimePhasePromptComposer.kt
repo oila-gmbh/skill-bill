@@ -36,6 +36,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
     resolvedReviewTier: CodeReviewExecutionMode? = null,
     reviewDecidingRule: String? = null,
+    priorBlockerFindingIds: List<String> = emptyList(),
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
@@ -45,7 +46,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing, reviewPassNumber),
+      ceremonyDirective(briefing, reviewPassNumber, resolvedReviewTier ?: codeReviewMode),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(
@@ -63,7 +64,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
-      outputContract(briefing),
+      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -246,7 +247,11 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
+  private fun ceremonyDirective(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    resolvedTier: CodeReviewExecutionMode,
+  ): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
@@ -257,8 +262,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta from " +
-          "its immutable base, including committed, staged, unstaged, and owned untracked changes."
+        // The mode token is derived, never hardcoded: rendering mode:inline under a pinned delegated
+        // run would emit a mode/context pairing the governed skill rejects.
+        "Apply bill-code-review mode:${remediationModeToken(resolvedTier)} context:feature-remediation, " +
+          "bounded to the remediation delta: the prior pass's Blocker findings union " +
+          "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
@@ -281,7 +289,18 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  // context:feature-remediation is valid only with mode:inline, so a run pinned to delegated still
+  // renders inline for the reserved pass rather than emitting a pairing the governed skill rejects.
+  private fun remediationModeToken(resolvedTier: CodeReviewExecutionMode): String =
+    CodeReviewExecutionMode.INLINE.wireValue.takeIf {
+      resolvedTier != CodeReviewExecutionMode.INLINE
+    } ?: resolvedTier.wireValue
+
+  private fun outputContract(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+  ): String {
     val phaseId = briefing.phaseId
     return """
     ## Required final output (validated schema gate)
@@ -298,13 +317,50 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${producedOutputsAddendum(briefing)}
+      validation results)${producedOutputsAddendum(briefing)}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
     """.trimIndent()
+  }
+
+  /**
+   * The only seam that instructs the reserved remediation pass to emit
+   * `produced_outputs.blocker_dispositions`. Without it the producer key is never written and the
+   * disposition path — the terminating signal for the bounded remediation loop — is unreachable in
+   * production. The prior pass's Blocker finding ids are supplied so the agent keys its entries
+   * against real ids instead of inventing them, and a disposition is required for every one of them.
+   * Empty for pass one and for every non-review phase, so those prompts stay byte-for-byte unchanged.
+   */
+  private fun dispositionAddendum(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+  ): String {
+    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || reviewPassNumber != 2) {
+      return ""
+    }
+    if (priorBlockerFindingIds.isEmpty()) {
+      return "\n    - The prior review pass emitted no Blocker, so no disposition is required: emit\n" +
+        "      produced_outputs.blocker_dispositions as an explicit []."
+    }
+    val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
+      "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
+        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
+    }
+    return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
+      "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
+      "      emitted — these ids, all of them, no more and no fewer:\n" +
+      "      ${priorBlockerFindingIds.joinToString()}.\n" +
+      "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
+      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
+      "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
+      "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
+      "      ```json\n" +
+      "      { \"blocker_dispositions\": $example }\n" +
+      "      ```"
   }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
@@ -557,7 +613,10 @@ object FeatureTaskRuntimePhasePromptComposer {
         "${resolvedReviewTier?.wireValue ?: codeReviewMode.wireValue} " +
         "and the second lane must not launch parallel review recursively."
     }.orEmpty()
-    val materializedScope = goalSubtaskReviewInput?.let { input ->
+    val remediationPass = reviewPassNumber == 2
+    // The immutable-base framing is pass one's authority only. Emitting it on pass two would contradict
+    // the remediation-delta bound stated in the same prompt.
+    val materializedScope = goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
       """
       ## Immutable-base review scope
       Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
@@ -569,10 +628,15 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
-    val remediationContext = if (reviewPassNumber == 2) {
+    val remediationContext = if (remediationPass) {
+      val materialized = goalSubtaskReviewInput?.let { input ->
+        "\nThe materialized remediation delta below runs from pre-fix tree `${input.reviewBaseSha}` to " +
+          "post-fix HEAD `${input.currentHeadSha}`; treat it as authoritative and do not rediscover or " +
+          "replace its scope.\n\n${input.reviewText}"
+      }.orEmpty()
       """
       ## Reserved remediation pass (pass two)
-      This is the reserved inline remediation pass under context:feature-remediation. Scope is strictly the prior Blocker findings union diff(pre-fix tree -> post-fix tree). Do not re-review the full base-to-current delta. A defect introduced by the remediation itself must still be caught.
+      This is the reserved remediation pass under context:feature-remediation. Scope is strictly the prior Blocker findings union diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
       """.trimIndent()
     } else {
       ""

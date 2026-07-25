@@ -22,9 +22,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -115,8 +118,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
-    check(state.reviewBaseSha == input.reviewBaseSha) {
-      "Goal-subtask review input does not match the durable review baseline."
+    check(input.reviewBaseSha == state.reviewBaseSha || input.reviewBaseSha == state.remediationBaseSha) {
+      "Goal-subtask review input does not match the durable review baseline or its recorded remediation base."
     }
     val updated = state.copy(
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
@@ -130,6 +133,48 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
       ),
     )
+    updated
+  }
+
+  /**
+   * Persists the depth `auto` resolved to and the named rule that decided it, so the durable review
+   * metadata never carries a silently-resolved tier.
+   */
+  fun recordResolvedReviewTier(
+    workflowId: String,
+    resolvedTier: CodeReviewExecutionMode,
+    decidingRule: String,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
+    val updated = state.copy(resolvedTier = resolvedTier, decidingRule = decidingRule)
+    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
+    updated
+  }
+
+  fun recordRemediationBaseSha(
+    workflowId: String,
+    remediationBaseSha: String,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
+    val updated = state.copy(remediationBaseSha = remediationBaseSha)
+    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
+    updated
+  }
+
+  /** The production entry point for the bounded operator decision surfaced by a resumable pause. */
+  fun recordOperatorDecision(
+    workflowId: String,
+    decision: GoalSubtaskOperatorDecision,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val state = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
+    val updated = state.applyOperatorDecision(decision)
+    savePatch(record, unitOfWork.workflowStates, mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap()))
     updated
   }
 
@@ -188,9 +233,15 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       state to continuation
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation) = durable
+    // Pass one is unchanged: the immutable review_base_sha and baseline untracked inventory stay its
+    // sole authority. Only the reserved remediation pass is rescoped, to diff(pre-fix tree -> HEAD),
+    // so the scope union the prompt states has a materialized input behind it.
+    val remediationBaseline = state.remediationBaseSha
+      ?.takeIf { state.reservedPassNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES }
+      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, emptyList()) }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
       continuation.goalBranch,
     )
     val input = if (result.ok) {

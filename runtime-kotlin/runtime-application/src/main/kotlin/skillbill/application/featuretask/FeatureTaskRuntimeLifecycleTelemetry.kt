@@ -179,12 +179,14 @@ class FeatureTaskRuntimeLifecycleTelemetry(
   private fun completionStatusOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
     is FeatureTaskRuntimeRunReport.Completed -> "completed"
     is FeatureTaskRuntimeRunReport.Blocked -> "blocked"
+    is FeatureTaskRuntimeRunReport.Paused -> "paused"
     is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
   }
 
   private fun completedPhaseIdsOf(report: FeatureTaskRuntimeRunReport): List<String> = when (report) {
     is FeatureTaskRuntimeRunReport.Completed -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Blocked -> report.completedPhaseIds
+    is FeatureTaskRuntimeRunReport.Paused -> report.completedPhaseIds
     is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
   }
 
@@ -192,6 +194,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     when (report) {
       is FeatureTaskRuntimeRunReport.Completed -> "completed"
       is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
+      is FeatureTaskRuntimeRunReport.Paused -> report.pausedPhase
       is FeatureTaskRuntimeRunReport.Blocked ->
         report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
     }
@@ -205,6 +208,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       category = "runtime",
       fallback = "Feature-task-runtime blocked without a specific reason.",
     )
-    is FeatureTaskRuntimeRunReport.Completed, is FeatureTaskRuntimeRunReport.Decomposed -> ""
+    is FeatureTaskRuntimeRunReport.Paused,
+    is FeatureTaskRuntimeRunReport.Completed,
+    is FeatureTaskRuntimeRunReport.Decomposed,
+    -> ""
   }
 }

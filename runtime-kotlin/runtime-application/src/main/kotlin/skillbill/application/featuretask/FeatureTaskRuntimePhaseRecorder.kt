@@ -33,6 +33,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -905,10 +906,12 @@ class FeatureTaskRuntimeDecomposeTerminalRecorder(
     }
 }
 
-// Coarse workflow-row status mirrors the phase transition: a blocked phase blocks the row, the
-// final phase completing completes it, every other transition keeps it running. The per-phase
-// records map remains the detailed source of truth.
+// Coarse workflow-row status mirrors the phase transition: a paused phase leaves the row on the
+// non-terminal resumable status, a blocked phase blocks the row, the final phase completing completes
+// it, every other transition keeps it running. The per-phase records map remains the detailed source
+// of truth.
 private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
+  request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> "paused"
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"

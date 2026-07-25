@@ -310,6 +310,7 @@ data class GoalSubtaskReviewState(
   val operatorDecision: GoalSubtaskOperatorDecision? = null,
   val resolvedTier: CodeReviewExecutionMode? = null,
   val decidingRule: String? = null,
+  val remediationBaseSha: String? = null,
   val contractVersion: String = GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
 ) {
   init {
@@ -318,6 +319,11 @@ data class GoalSubtaskReviewState(
     }
     require(GIT_COMMIT_SHA.matches(reviewBaseSha)) {
       "Goal review base SHA must be a 40- or 64-character lowercase commit SHA."
+    }
+    remediationBaseSha?.let { sha ->
+      require(GIT_COMMIT_SHA.matches(sha)) {
+        "Goal remediation base SHA must be a 40- or 64-character lowercase commit SHA."
+      }
     }
     require(baselineUntrackedPaths.all(String::isNotBlank)) { "Baseline untracked paths must be non-blank." }
     require(baselineUntrackedPaths == baselineUntrackedPaths.distinct().sorted()) {
@@ -470,6 +476,7 @@ data class GoalSubtaskReviewState(
     operatorDecision?.let { put("operator_decision", it.wireValue) }
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
     decidingRule?.let { put("deciding_rule", it) }
+    remediationBaseSha?.let { put("remediation_base_sha", it) }
   }
 
   companion object {
@@ -493,6 +500,7 @@ data class GoalSubtaskReviewState(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
           "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest", "pass_results",
           "emitted_pass_count", "blocker_dispositions", "operator_decision", "resolved_tier", "deciding_rule",
+          "remediation_base_sha",
         ),
         sourceLabel,
       )
@@ -533,6 +541,7 @@ data class GoalSubtaskReviewState(
           operatorDecision = raw.optionalReviewStateString("operator_decision", sourceLabel)?.let(GoalSubtaskOperatorDecision::fromWire),
           resolvedTier = raw.optionalReviewStateString("resolved_tier", sourceLabel)?.let(CodeReviewExecutionMode::fromWire),
           decidingRule = raw.optionalReviewStateString("deciding_rule", sourceLabel),
+          remediationBaseSha = raw.optionalReviewStateString("remediation_base_sha", sourceLabel),
         )
       } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
         throw error

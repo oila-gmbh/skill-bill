@@ -19,6 +19,13 @@ enum class GoalRunnerTerminalStatus {
    * resumable so `skill-bill goal <key>` resume continues without manual lease or row clearing.
    */
   RECONCILABLE,
+
+  /**
+   * A non-terminal child waiting on the bounded operator decision after the reserved remediation pass
+   * left an unresolved Blocker. Not a failure and not blocked: the persisted review state, baseline,
+   * and consumed pass count survive, so resume continues from the recorded resumable step.
+   */
+  PAUSED,
 }
 
 enum class GoalRunnerStopReason {

@@ -72,6 +72,14 @@ properties:
   deciding_rule:
     type: string
     minLength: 1
+  remediation_base_sha:
+    description: >
+      Pre-fix tree sha recorded at the implement_fix entry checkpoint. The reserved remediation pass
+      reviews diff(this sha -> current HEAD) rather than the immutable base-to-current delta, so a
+      defect the remediation itself introduced is materialized in the pass input. Absent until the
+      first implement_fix re-entry; review_base_sha remains the sole authority for pass one.
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
   review_input_artifact:
     type: string
     minLength: 1

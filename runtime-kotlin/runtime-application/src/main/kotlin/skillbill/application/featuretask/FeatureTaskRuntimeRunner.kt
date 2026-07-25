@@ -11,6 +11,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -162,6 +163,11 @@ class FeatureTaskRuntimeRunner(
           phaseTokenAccumulator,
         ),
       )
+      runRequest.operatorDecision?.let { decision ->
+        loop.applyOperatorDecision(decision)?.let { rejection ->
+          throw FeatureTaskRuntimeOperatorDecisionRejectedError(runRequest.workflowId, decision.wireValue, rejection)
+        }
+      }
       loop.drive()
       loop.report()
     }.onFailure { error ->
@@ -388,6 +394,7 @@ private fun persistGoalContinuationOutcome(
   return when {
     report is FeatureTaskRuntimeRunReport.Completed && outcome != null -> report.copy(subtaskOutcome = outcome)
     report is FeatureTaskRuntimeRunReport.Blocked && outcome != null -> report.copy(subtaskOutcome = outcome)
+    report is FeatureTaskRuntimeRunReport.Paused && outcome != null -> report.copy(subtaskOutcome = outcome)
     else -> report
   }
 }
@@ -409,6 +416,17 @@ private fun goalContinuationOutcomeFor(
     workflowId = request.workflowId,
     blockedReason = report.blockedReason,
     lastResumableStep = report.lastIncompletePhase,
+  )
+  // Resumable, not blocked: the goal runner must treat the subtask as awaiting an operator decision
+  // rather than terminating it.
+  is FeatureTaskRuntimeRunReport.Paused -> FeatureTaskRuntimeSubtaskOutcome(
+    issueKey = context.parentIssueKey,
+    subtaskId = context.subtaskId,
+    status = "paused",
+    commitSha = null,
+    workflowId = request.workflowId,
+    blockedReason = report.pauseReason,
+    lastResumableStep = report.resumableStep,
   )
   is FeatureTaskRuntimeRunReport.Decomposed -> null
 }

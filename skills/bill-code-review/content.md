@@ -36,8 +36,13 @@ inline result states the areas it walked and that specialist depth was not
 applied; never present it as equivalent to a delegated result.
 
 `auto` resolves depth by review pass number: pass one resolves to `delegated`,
-every later pass resolves to `inline`. This is the only rule auto applies. An
-explicit `inline` or `delegated` always overrides it.
+every later pass resolves to `inline`. This is the only rule auto applies when a
+review pass number exists. A standalone review invoked outside the feature-task
+review sequence carries no pass number; there `auto` falls back to the declared
+size-and-risk eligibility rule, which resolves to `delegated` when the diff is
+oversized, high-risk, or spans layered stacks and to `inline` otherwise. Both
+rules are named and reported in review metadata alongside the resolved depth. An
+explicit `inline` or `delegated` always overrides either rule.
 
 Depth is the only thing the light tier lowers. The severity vocabulary, the
 finding admission gate, the evidence and observable-consequence requirements, the

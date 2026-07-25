@@ -145,14 +145,16 @@ class ParallelCodeReviewRunner(
     diffText: String,
     manifests: List<PlatformManifest>,
     maxLaneLaunchBytes: Long,
-  ) = ReviewExecutionModePolicy.resolve(
-    request.codeReviewMode,
-    ReviewAutoEligibility(
+  ) = ReviewExecutionModePolicy.resolveWithRule(
+    // A pinned resolvedTier is lane 1's already-decided depth; honoring it here is what makes both
+    // lanes share one tier instead of each re-resolving auto independently.
+    requested = request.resolvedTier ?: request.codeReviewMode,
+    eligibility = ReviewAutoEligibility(
       oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
       highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
       layeredStack = manifests.any { it.codeReviewComposition != null },
     ),
-  )
+  ).resolvedMode
 
   private fun runLanes(
     request: ParallelCodeReviewRequest,
@@ -540,8 +542,13 @@ class ParallelCodeReviewRunner(
     require(launchRequests.isNotEmpty()) { "Inline review selected no resolved assignments for '$agentId'." }
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
     val prompt = buildString {
-      appendLine("Run one complete bill-code-review mode:inline parent review.")
+      appendLine("Run one bill-code-review mode:inline parent review at the light depth tier.")
       appendLine("Resolved execution mode: inline")
+      appendLine(
+        "Depth: reduced. Walk the routed areas below as an explicit checklist, once each, under a " +
+          "bounded budget. This is not equivalent coverage to a delegated review and must not be " +
+          "presented as one; state that specialist depth was not applied.",
+      )
       appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision
@@ -559,7 +566,13 @@ class ParallelCodeReviewRunner(
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
-      appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
+      appendLine(
+        "Cover each routed rubric above once at reduced depth in this agent context and do not launch " +
+          "specialists. Follow only the signals that appear; do not build a case for a marginal finding. " +
+          "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
+          "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
+          "inherited unchanged.",
+      )
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
           "path=<JSON string> | line=<positive integer> | description' lines.",
