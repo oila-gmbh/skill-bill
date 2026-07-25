@@ -325,6 +325,17 @@ private class FeatureTaskWorkflowStateStore(
     "goal_child",
   )
 
+  override fun countGoalChildIdentities(normalizedIssueKey: String): Int = connection.prepareStatement(
+    """
+    SELECT COUNT(*) AS child_count
+    FROM feature_task_execution_identities
+    WHERE normalized_issue_key = ? AND route_scope = 'goal_child'
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, normalizedIssueKey)
+    statement.executeQuery().use { rows -> if (rows.next()) rows.getInt("child_count") else 0 }
+  }
+
   private fun findFeatureTaskCandidates(
     normalizedIssueKey: String,
     repositoryIdentity: String,

@@ -4,12 +4,16 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.agentAttributionFromPhaseState
+import skillbill.application.model.GoalRunnerAcceptRequest
+import skillbill.application.model.GoalRunnerAcceptResult
+import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
+import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
@@ -19,6 +23,7 @@ import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -27,8 +32,12 @@ import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import java.nio.file.Path
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 @Inject
+@Suppress("TooManyFunctions") // single cohesive boundary: status projection, reset, accept, and reconciliation
 class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
@@ -43,7 +52,12 @@ class GoalRunnerStatusService(
           issueKey = loadedState.manifest.issueKey,
           dbPathOverride = request.dbPathOverride,
         )
-        val manifest = loadedState.manifest.reconciledWithTerminalOutcomes(request, authoritativeOutcomes)
+        val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
+        val manifest = loadedState.manifest.reconciledWithTerminalOutcomes(
+          request.dbPathOverride,
+          authoritativeOutcomes,
+          acceptances,
+        )
         val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
           subtask.id == manifest.currentSubtaskIntent.subtaskId
         }
@@ -80,10 +94,21 @@ class GoalRunnerStatusService(
             cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
             findingsInScope = ledgerSummary?.findingsInScope,
+            outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
           ),
         )
       }
   }
+
+  private fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =
+    values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId).map { acceptance ->
+      GoalRunnerAcceptedSubtask(
+        subtaskId = acceptance.subtaskId,
+        commitSha = acceptance.commitSha,
+        reason = acceptance.reason,
+        acceptedAt = acceptance.acceptedAt,
+      )
+    }
 
   // SKILL-103 AC1: active_agent is sourced solely from persisted run state, never from the status
   // caller's resolution chain (--agent / SKILL_BILL_AGENT / detected / default). In order: the
@@ -162,12 +187,90 @@ class GoalRunnerStatusService(
     )
   }
 
+  // The runtime cannot observe work an operator finished by hand after a child blocked. Without a
+  // durable acceptance the goal keeps re-deriving that subtask as unstarted and proposes running it
+  // again, so this is the supported alternative to hand-editing the manifest projection.
+  fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
+    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+      ?: return rejected(request, "No prepared goal exists for '${request.issueKey}'.")
+    val repoRoot = request.repoRoot
+      ?: return rejected(request, "A repository root is required to verify the accepted commit.")
+    val resolvedSha = when (val evidence = acceptanceEvidence(request, loaded.manifest, repoRoot)) {
+      is GoalRunnerAcceptanceEvidence.Rejected -> return rejected(request, evidence.reason)
+      is GoalRunnerAcceptanceEvidence.Resolved -> evidence.commitSha
+    }
+    val acceptance = GoalRunnerOutOfBandAcceptance(
+      subtaskId = request.subtaskId,
+      commitSha = resolvedSha,
+      reason = request.reason,
+      acceptedAt = OffsetDateTime.now(ZoneOffset.UTC).toString(),
+    )
+    manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance, request.dbPathOverride)
+    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot) ?: loaded
+    val reconciled = refreshed.manifest.reconciledWithTerminalOutcomes(
+      request.dbPathOverride,
+      outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
+      manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId, request.dbPathOverride),
+    )
+    val saved = manifestStore.save(refreshed.copy(manifest = reconciled), request.dbPathOverride)
+    return GoalRunnerAcceptResult.Accepted(
+      issueKey = saved.manifest.issueKey,
+      parentWorkflowId = saved.parentWorkflowId,
+      subtaskId = acceptance.subtaskId,
+      commitSha = acceptance.commitSha,
+      reason = acceptance.reason,
+      acceptedAt = acceptance.acceptedAt,
+      after = saved.manifest.toResetSnapshot(),
+    )
+  }
+
+  private fun rejected(request: GoalRunnerAcceptRequest, reason: String): GoalRunnerAcceptResult.Rejected =
+    GoalRunnerAcceptResult.Rejected(request.issueKey, reason)
+
+  private fun acceptanceEvidence(
+    request: GoalRunnerAcceptRequest,
+    manifest: DecompositionManifest,
+    repoRoot: Path,
+  ): GoalRunnerAcceptanceEvidence {
+    val subtask = manifest.subtasks.firstOrNull { it.id == request.subtaskId }
+      ?: return GoalRunnerAcceptanceEvidence.Rejected("Subtask ${request.subtaskId} is not part of this goal.")
+    if (subtask.status == "complete") {
+      return GoalRunnerAcceptanceEvidence.Rejected("Subtask ${request.subtaskId} is already complete.")
+    }
+    unsatisfiedDependency(manifest, subtask)?.let { dependencyId ->
+      return GoalRunnerAcceptanceEvidence.Rejected(
+        "Subtask ${request.subtaskId} depends on subtask $dependencyId, which is not complete or skipped.",
+      )
+    }
+    val resolved = gitOperations.resolveCommit(repoRoot, request.commitSha)
+    val resolvedSha = resolved.value.trim()
+    return if (resolved.ok && resolvedSha.isNotBlank()) {
+      GoalRunnerAcceptanceEvidence.Resolved(resolvedSha)
+    } else {
+      GoalRunnerAcceptanceEvidence.Rejected(
+        resolved.error.takeIf(String::isNotBlank)
+          ?: "Commit '${request.commitSha}' could not be resolved in this repository.",
+      )
+    }
+  }
+
+  private fun unsatisfiedDependency(manifest: DecompositionManifest, subtask: DecompositionSubtask): Int? {
+    val subtasksById = manifest.subtasks.associateBy(DecompositionSubtask::id)
+    return subtask.dependencies.firstOrNull { dependency ->
+      val dependencySubtask = subtasksById[dependency.subtaskId]
+      val satisfied = dependencySubtask?.status in setOf("complete", "skipped") ||
+        (dependency.optional && dependency.skipped)
+      !satisfied
+    }?.subtaskId
+  }
+
   private fun DecompositionManifest.reconciledWithTerminalOutcomes(
-    request: GoalRunnerStatusRequest,
+    dbPathOverride: String?,
     authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
+    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   ): DecompositionManifest {
     val reconciledSubtasks = subtasks.map { subtask ->
-      reconciledSubtask(subtask, request, authoritativeOutcomes)
+      reconciledSubtask(subtask, dbPathOverride, authoritativeOutcomes, acceptances)
     }
     return copy(subtasks = reconciledSubtasks)
       .withParentStatus()
@@ -176,17 +279,30 @@ class GoalRunnerStatusService(
 
   private fun DecompositionManifest.reconciledSubtask(
     subtask: DecompositionSubtask,
-    request: GoalRunnerStatusRequest,
+    dbPathOverride: String?,
     authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
+    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   ): DecompositionSubtask {
     val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
     val outcome = workflowId?.let { id ->
-      preferredTerminalOutcome(subtask, id, request, authoritativeOutcomes)
+      preferredTerminalOutcome(subtask, id, dbPathOverride, authoritativeOutcomes)
     }
+    // Runtime evidence wins: an acceptance only speaks for a subtask the runtime never carried to
+    // completion itself, so it can never downgrade or overwrite a genuine COMPLETE outcome.
+    acceptances[subtask.id]
+      ?.takeIf { outcome?.status != GoalRunnerTerminalStatus.COMPLETE }
+      ?.let { acceptance ->
+        return subtask.copy(
+          status = "complete",
+          commitSha = acceptance.commitSha,
+          blockedReason = null,
+          lastResumableStep = null,
+        )
+      }
     val staleRetryOutcome = workflowId != null &&
       outcome?.workflowId == workflowId &&
       outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
-      outcomeStore.progress(workflowId, request.dbPathOverride)?.workflowStatus == "running"
+      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus == "running"
     return if (staleRetryOutcome) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
@@ -208,7 +324,7 @@ class GoalRunnerStatusService(
   private fun DecompositionManifest.preferredTerminalOutcome(
     subtask: DecompositionSubtask,
     workflowId: String,
-    request: GoalRunnerStatusRequest,
+    dbPathOverride: String?,
     authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
   ): GoalRunnerStoredOutcome? = authoritativeOutcomes[subtask.id]
     ?.takeIf { outcome -> canApplyAuthoritativeOutcome(subtask, workflowId, outcome) }
@@ -216,7 +332,7 @@ class GoalRunnerStatusService(
       workflowId = workflowId,
       issueKey = issueKey,
       subtaskId = subtask.id,
-      dbPathOverride = request.dbPathOverride,
+      dbPathOverride = dbPathOverride,
     )
 }
 

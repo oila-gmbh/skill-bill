@@ -13,6 +13,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
@@ -38,6 +39,7 @@ interface GoalRunnerManifestLookup {
   ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
 }
 
+@Suppress("TooManyFunctions") // single cohesive boundary: manifest reads, saves, review policy, and acceptance
 interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   fun planningStatus(
     parentWorkflowId: String,
@@ -83,6 +85,18 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     codeReviewMode = persistReviewMode(parentWorkflowId, policy.codeReviewMode, dbPathOverride),
     parallelReviewAgent = policy.parallelReviewAgent,
   )
+
+  fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String? = null,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
+
+  fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String? = null,
+  ): GoalRunnerOutOfBandAcceptance =
+    error("Goal runner manifest store must durably persist out-of-band subtask acceptance.")
 }
 
 // Terminal-outcome resolution split into a strictly read-only query and an explicit

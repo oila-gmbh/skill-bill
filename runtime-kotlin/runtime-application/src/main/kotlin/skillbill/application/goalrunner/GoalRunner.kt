@@ -840,22 +840,21 @@ class GoalRunner(
     )
     childLoopIterations.forEach { (loopId, edgeIteration) ->
       ledger.recordBackwardEdgeEntry(
-        workflowId = workflowId,
-        issueKey = state.manifest.issueKey,
-        subtaskId = subtaskId,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
-        progress = progress,
+        GoalRunnerBackwardEdge(
+          workflowId = workflowId,
+          issueKey = state.manifest.issueKey,
+          subtaskId = subtaskId,
+          loopId = loopId,
+          edgeIteration = edgeIteration,
+          progress = progress,
+        ),
       )
     }
     if (reAttemptCause != null) pendingReAttemptCause[subtaskId] = reAttemptCause
     causingLoopEntry?.let { pendingCausingLoopEntry[subtaskId] = it }
   }
 
-  internal fun reAttemptCauseFor(
-    reason: GoalRunnerStopReason,
-    childLoopIterations: Map<String, Int>,
-  ): String? {
+  internal fun reAttemptCauseFor(reason: GoalRunnerStopReason, childLoopIterations: Map<String, Int>): String? {
     val hasRegeneration = childLoopIterations.keys.any {
       FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it)
     }
@@ -867,11 +866,10 @@ class GoalRunner(
     }
   }
 
-  private fun causingLoopEntryFor(childLoopIterations: Map<String, Int>): String? =
-    childLoopIterations.entries
-      .sortedWith(compareBy({ loopReAttemptPriority(it.key) }, { it.key }))
-      .firstOrNull()
-      ?.let { (loopId, edgeIteration) -> "$loopId:$edgeIteration" }
+  private fun causingLoopEntryFor(childLoopIterations: Map<String, Int>): String? = childLoopIterations.entries
+    .sortedWith(compareBy({ loopReAttemptPriority(it.key) }, { it.key }))
+    .firstOrNull()
+    ?.let { (loopId, edgeIteration) -> "$loopId:$edgeIteration" }
 
   private fun loopReAttemptPriority(loopId: String): Int =
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) 0 else 1

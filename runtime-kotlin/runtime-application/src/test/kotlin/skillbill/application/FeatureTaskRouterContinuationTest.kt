@@ -24,7 +24,11 @@ class FeatureTaskRouterContinuationTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
-    val lookup = FeatureTaskContinuationLookupService(database, testWorkflowSnapshotValidator)
+    val lookup = FeatureTaskContinuationLookupService(
+      database,
+      testWorkflowSnapshotValidator,
+      testDecompositionManifestValidator,
+    )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
         kind = WorkflowFamilyKind.TASK_PROSE,

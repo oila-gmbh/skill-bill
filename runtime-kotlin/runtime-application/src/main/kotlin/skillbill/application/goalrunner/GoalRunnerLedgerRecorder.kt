@@ -83,25 +83,18 @@ internal class GoalRunnerLedgerRecorder(
       }
   }
 
-  fun recordBackwardEdgeEntry(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    loopId: String,
-    edgeIteration: Int,
-    progress: GoalRunnerWorkflowProgress?,
-  ) {
-    val key = "$subtaskId:$loopId"
-    val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + edgeIteration.coerceAtLeast(1)
+  fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
+    val key = "${edge.subtaskId}:${edge.loopId}"
+    val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + edge.edgeIteration.coerceAtLeast(1)
     cumulativeBackwardEdgeCounts[key] = newCount
     recordLedgerEntry(
       GoalRunnerLedgerContext(
-        workflowId = workflowId,
+        workflowId = edge.workflowId,
         action = GoalAttemptLedgerAction.BACKWARD_EDGE_ENTRY,
-        issueKey = issueKey,
-        subtaskId = subtaskId,
-        progress = progress,
-        loopId = loopId,
+        issueKey = edge.issueKey,
+        subtaskId = edge.subtaskId,
+        progress = edge.progress,
+        loopId = edge.loopId,
         cumulativeLoopCount = newCount,
       ),
     )
@@ -189,6 +182,15 @@ internal class GoalRunnerLedgerRecorder(
     else -> "exited_${facts.exitStatus ?: "unknown"}"
   }
 }
+
+internal data class GoalRunnerBackwardEdge(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val loopId: String,
+  val edgeIteration: Int,
+  val progress: GoalRunnerWorkflowProgress?,
+)
 
 internal data class GoalRunnerLedgerContext(
   val workflowId: String?,

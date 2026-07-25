@@ -27,6 +27,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimeModelAssignment
@@ -484,7 +485,22 @@ private fun FeatureTaskContinuationLookupResult.toCliPayload(): Map<String, Any?
     mapOf("result" to "ambiguous", "candidates" to candidates.map { it.toMap() })
   is FeatureTaskContinuationLookupResult.TerminalOnly ->
     mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMap() })
+  is FeatureTaskContinuationLookupResult.GoalContinuation ->
+    mapOf("result" to "goal_continuation", "goal" to candidate.toMap())
 }
+
+private fun GoalContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
+  "parent_workflow_id" to parentWorkflowId,
+  "issue_key" to issueKey,
+  "status" to status,
+  "current_subtask_id" to currentSubtaskId,
+  "current_action" to currentAction,
+  "complete_count" to completeCount,
+  "pending_count" to pendingCount,
+  "blocked_count" to blockedCount,
+  "updated_at" to updatedAt,
+  "summary" to summary,
+)
 
 private fun FeatureTaskContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
   "workflow_id" to workflowId,

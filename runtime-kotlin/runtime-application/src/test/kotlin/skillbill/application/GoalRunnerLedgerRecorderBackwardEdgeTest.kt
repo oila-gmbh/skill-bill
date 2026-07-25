@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.goalrunner.GoalRunnerBackwardEdge
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.model.GoalRunnerRunRequest
 import java.nio.file.Path
@@ -7,16 +8,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class GoalRunnerLedgerRecorderBackwardEdgeTest {
-  private fun recorder(outcomes: RecordingOutcomeStore): GoalRunnerLedgerRecorder =
-    GoalRunnerLedgerRecorder(
-      outcomes,
-      GoalRunnerRunRequest(
-        issueKey = "SKILL-142",
-        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-        invokedAgentId = "claude",
-        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
-      ),
-    )
+  private fun recorder(outcomes: RecordingOutcomeStore): GoalRunnerLedgerRecorder = GoalRunnerLedgerRecorder(
+    outcomes,
+    GoalRunnerRunRequest(
+      issueKey = "SKILL-142",
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+      invokedAgentId = "claude",
+      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+    ),
+  )
 
   @Test
   fun `backward edge cumulative count advances by the child edge iteration not one`() {
@@ -24,12 +24,14 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
     val recorder = recorder(outcomes)
 
     recorder.recordBackwardEdgeEntry(
-      workflowId = "wfl-1",
-      issueKey = "SKILL-142",
-      subtaskId = 1,
-      loopId = "regenerate_plan",
-      edgeIteration = 2,
-      progress = null,
+      GoalRunnerBackwardEdge(
+        workflowId = "wfl-1",
+        issueKey = "SKILL-142",
+        subtaskId = 1,
+        loopId = "regenerate_plan",
+        edgeIteration = 2,
+        progress = null,
+      ),
     )
 
     val entry = outcomes.attemptLedgerRecords.single().entry
@@ -45,8 +47,9 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
     val outcomes = RecordingOutcomeStore()
     val recorder = recorder(outcomes)
 
-    recorder.recordBackwardEdgeEntry("wfl-1", "SKILL-142", 1, "review_fix", 1, null)
-    recorder.recordBackwardEdgeEntry("wfl-1", "SKILL-142", 1, "review_fix", 1, null)
+    val edge = GoalRunnerBackwardEdge("wfl-1", "SKILL-142", 1, "review_fix", 1, null)
+    recorder.recordBackwardEdgeEntry(edge)
+    recorder.recordBackwardEdgeEntry(edge)
 
     val counts = outcomes.attemptLedgerRecords.map { it.entry.cumulativeLoopCount }
     assertEquals(listOf(1, 2), counts)
@@ -62,12 +65,14 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
     val recorder = recorder(outcomes)
 
     recorder.recordBackwardEdgeEntry(
-      workflowId = "wfl-1",
-      issueKey = "SKILL-142",
-      subtaskId = 1,
-      loopId = "regenerate_plan",
-      edgeIteration = 2,
-      progress = null,
+      GoalRunnerBackwardEdge(
+        workflowId = "wfl-1",
+        issueKey = "SKILL-142",
+        subtaskId = 1,
+        loopId = "regenerate_plan",
+        edgeIteration = 2,
+        progress = null,
+      ),
     )
 
     val entry = outcomes.attemptLedgerRecords.single().entry

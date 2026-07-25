@@ -4,6 +4,7 @@ package skillbill.mcp.core
 
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
@@ -389,7 +390,22 @@ private fun FeatureTaskContinuationLookupResult.toMcpPayload(): Map<String, Any?
     mapOf("result" to "ambiguous", "candidates" to candidates.map { it.toMcpPayload() })
   is FeatureTaskContinuationLookupResult.TerminalOnly ->
     mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMcpPayload() })
+  is FeatureTaskContinuationLookupResult.GoalContinuation ->
+    mapOf("result" to "goal_continuation", "goal" to candidate.toMcpPayload())
 }
+
+private fun GoalContinuationCandidate.toMcpPayload(): Map<String, Any?> = mapOf(
+  "parent_workflow_id" to parentWorkflowId,
+  "issue_key" to issueKey,
+  "status" to status,
+  "current_subtask_id" to currentSubtaskId,
+  "current_action" to currentAction,
+  "complete_count" to completeCount,
+  "pending_count" to pendingCount,
+  "blocked_count" to blockedCount,
+  "updated_at" to updatedAt,
+  "summary" to summary,
+)
 
 private fun FeatureTaskContinuationCandidate.toMcpPayload(): Map<String, Any?> = mapOf(
   "workflow_id" to workflowId,

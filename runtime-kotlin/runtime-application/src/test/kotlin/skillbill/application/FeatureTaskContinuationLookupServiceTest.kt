@@ -1,14 +1,23 @@
 package skillbill.application
 
+import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.WorkflowUpdateInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -177,6 +186,65 @@ class FeatureTaskContinuationLookupServiceTest {
     assertEquals(opened.workflowId, resumable.candidate.workflowId)
   }
 
+  @Test
+  fun `lookup surfaces a prepared goal that owns durable state instead of reporting no match`() {
+    val fixture = fixture()
+    fixture.saveGoalParent(workflowStatus = "paused", manifestStatus = "in_progress")
+
+    val goal = assertIs<FeatureTaskContinuationLookupResult.GoalContinuation>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+
+    assertEquals("wfl-goal-parent", goal.candidate.parentWorkflowId)
+    assertEquals("paused", goal.candidate.status)
+    assertEquals(1, goal.candidate.currentSubtaskId)
+    assertEquals(1, goal.candidate.pendingCount)
+  }
+
+  @Test
+  fun `lookup reports a running goal so a second run is never started against the same state`() {
+    val fixture = fixture()
+    fixture.saveGoalParent(workflowStatus = "running", manifestStatus = "in_progress")
+
+    val goal = assertIs<FeatureTaskContinuationLookupResult.GoalContinuation>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+
+    assertEquals("running", goal.candidate.status)
+  }
+
+  @Test
+  fun `lookup keeps a completed goal out of continuation`() {
+    val fixture = fixture()
+    fixture.saveGoalParent(workflowStatus = "paused", manifestStatus = "complete")
+
+    assertIs<FeatureTaskContinuationLookupResult.NoMatch>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+  }
+
+  @Test
+  fun `lookup isolates a goal bound to another repository by its children`() {
+    val fixture = fixture()
+    fixture.saveGoalParent(workflowStatus = "paused", manifestStatus = "in_progress")
+    assertIs<WorkflowOpenResult.Ok>(
+      fixture.service.openFeatureTask(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-120",
+        repositoryIdentity = REPOSITORY_B,
+        governedSpecPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
+        routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+      ),
+    )
+
+    assertIs<FeatureTaskContinuationLookupResult.NoMatch>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+    assertIs<FeatureTaskContinuationLookupResult.GoalContinuation>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_B),
+    )
+  }
+
   private fun fixture(): Fixture {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
@@ -189,7 +257,11 @@ class FeatureTaskContinuationLookupServiceTest {
     return Fixture(
       states = states,
       service = service,
-      lookup = FeatureTaskContinuationLookupService(database, testWorkflowSnapshotValidator),
+      lookup = FeatureTaskContinuationLookupService(
+        database,
+        testWorkflowSnapshotValidator,
+        testDecompositionManifestValidator,
+      ),
     )
   }
 
@@ -198,6 +270,46 @@ class FeatureTaskContinuationLookupServiceTest {
     val service: WorkflowService,
     val lookup: FeatureTaskContinuationLookupService,
   ) {
+    fun saveGoalParent(workflowStatus: String, manifestStatus: String) {
+      val manifest = DecompositionManifest(
+        issueKey = "SKILL-120",
+        featureName = "goal-continuation",
+        parentSpecPath = ".feature-specs/SKILL-120-goal/spec.md",
+        status = manifestStatus,
+        baseBranch = "main",
+        featureBranch = "feat/SKILL-120-goal",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
+        subtasks = listOf(
+          DecompositionSubtask(
+            id = 1,
+            name = "first",
+            specPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
+            status = if (manifestStatus == "complete") "complete" else "pending",
+          ),
+        ),
+      )
+      val definition = FeatureImplementWorkflowDefinition.definition
+      val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+      val opened = engine.openRecord(definition, "wfl-goal-parent", "fis-goal", "assess")
+      states.saveFeatureImplementWorkflow(
+        engine.updateRecord(
+          definition,
+          opened,
+          WorkflowUpdateInput(
+            workflowStatus = workflowStatus,
+            currentStepId = "plan",
+            stepUpdates = null,
+            artifactsPatch = mapOf(
+              "plan" to mapOf("mode" to "decompose"),
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+                encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+            ),
+            sessionId = "fis-goal",
+          ),
+        ).toRecord().copy(issueKey = "SKILL-120"),
+      )
+    }
+
     fun open(repositoryIdentity: String): WorkflowOpenResult.Ok = assertIs(
       service.openFeatureTask(
         kind = WorkflowFamilyKind.TASK_RUNTIME,

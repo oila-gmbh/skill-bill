@@ -5,6 +5,7 @@ import skillbill.application.decomposition.asStringAnyMapOrNull
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.DecompositionManifestValidator
@@ -118,6 +119,47 @@ private fun DecompositionManifest.sameRuntimeIdentity(other: DecompositionManife
   issueKey == other.issueKey &&
     parentSpecPath == other.parentSpecPath &&
     subtasks.map { it.specPath } == other.subtasks.map { it.specPath }
+
+private val GOAL_TERMINAL_MANIFEST_STATUSES: Set<String> = setOf("complete", "skipped")
+
+/**
+ * Resolves the goal parent that owns durable state for [issueKey] in [repositoryIdentity], or null
+ * when there is none. Goal parents carry no execution identity, so repository scoping is inferred
+ * from the goal's children: children in this repository bind the goal here, and a goal with no
+ * children anywhere has not launched yet and is treated as belonging to the asking repository.
+ */
+internal fun WorkflowStateRepository.goalContinuationFor(
+  issueKey: String,
+  repositoryIdentity: String,
+  validator: DecompositionManifestValidator,
+): GoalContinuationCandidate? {
+  val record = findDecomposedParentWorkflow(issueKey, validator)
+    ?.takeIf { it.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES }
+    ?: return null
+  val manifest = record.toSnapshot().decompositionRuntime(validator)
+    ?.takeIf { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES }
+    ?: return null
+  val boundToThisRepository = findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity).isNotEmpty() ||
+    countGoalChildIdentities(issueKey) == 0
+  if (!boundToThisRepository) return null
+  val running = record.workflowStatus == "running"
+  return GoalContinuationCandidate(
+    parentWorkflowId = record.workflowId,
+    issueKey = manifest.issueKey,
+    status = record.workflowStatus,
+    currentSubtaskId = manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
+    currentAction = manifest.currentSubtaskIntent.action,
+    completeCount = manifest.subtasks.count { it.status == "complete" },
+    pendingCount = manifest.subtasks.count { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES },
+    blockedCount = manifest.subtasks.count { it.status == "blocked" },
+    updatedAt = record.updatedAt,
+    summary = if (running) {
+      "A goal run for '${manifest.issueKey}' is already in progress; check it before starting another."
+    } else {
+      "A prepared goal for '${manifest.issueKey}' owns durable state; continue it instead of starting new work."
+    },
+  )
+}
 
 private data class DecomposedParentCandidate(
   val record: WorkflowStateRecord,

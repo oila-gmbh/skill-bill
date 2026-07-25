@@ -31,8 +31,16 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(feature, "Before discovering or preparing governed artifacts, perform the read-only")
     assertContains(feature, "The workflow database and immutable execution identity are authoritative")
-    assertContains(feature, "Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only`")
+    assertContains(
+      feature,
+      "Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation`",
+    )
     assertContains(feature, "Only `no_match` may continue below")
+    // A goal-orchestrated feature must route to continuation, never to fresh preparation, and must
+    // never repair durable state by hand-editing the projection.
+    assertContains(feature, "`goal_continuation` means a prepared goal for this issue already owns durable state")
+    assertContains(feature, "skill-bill goal accept <issue-key> --subtask <id> --commit <sha> --reason <text>")
+    assertContains(feature, "Do not edit `decomposition-manifest.yaml` to force progress.")
     assertContains(feature, "workflow-id:<id>")
     assertContains(task, "use continuation mode")
     assertContains(task, "Never open a replacement row or mutate state during lookup")

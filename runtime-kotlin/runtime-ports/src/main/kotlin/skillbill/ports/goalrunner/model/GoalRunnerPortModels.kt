@@ -151,6 +151,27 @@ data class GoalRunnerAttemptLedgerSummary(
   val findingsInScope: Int? = null,
 )
 
+/**
+ * Operator-recorded evidence that a subtask's work landed outside the runtime — a blocked or
+ * abandoned child whose implementation was finished by hand on the feature branch. The runtime
+ * cannot observe that work, so without a durable acceptance every later status read re-derives the
+ * subtask as unstarted and the goal proposes running it again. This record is DB-authoritative and
+ * lives on the goal parent workflow; the manifest projection stays derived, never hand-edited.
+ */
+data class GoalRunnerOutOfBandAcceptance(
+  val subtaskId: Int,
+  val commitSha: String,
+  val reason: String,
+  val acceptedAt: String,
+) {
+  init {
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(commitSha.isNotBlank()) { "commitSha is required." }
+    require(reason.isNotBlank()) { "reason is required." }
+    require(acceptedAt.isNotBlank()) { "acceptedAt is required." }
+  }
+}
+
 data class GoalPullRequestRequest(
   val repoRoot: Path,
   val issueKey: String,

@@ -45,6 +45,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
@@ -105,6 +106,7 @@ import java.time.format.DateTimeFormatter
 private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
+private const val GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY = "goal_out_of_band_acceptances"
 
 private data class SavedGoalChildWorkflow(
   val state: GoalRunnerManifestState,
@@ -509,6 +511,49 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
+  override fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String?,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read emptyMap()
+    outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
+  }
+
+  override fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String?,
+  ): GoalRunnerOutOfBandAcceptance = database.transaction(dbPathOverride) { unitOfWork ->
+    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+    val existing = outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
+    val merged = existing + (acceptance.subtaskId to acceptance)
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY to merged.values
+            .sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
+            .map { entry ->
+              linkedMapOf(
+                "subtask_id" to entry.subtaskId,
+                "commit_sha" to entry.commitSha,
+                "reason" to entry.reason,
+                "accepted_at" to entry.acceptedAt,
+              )
+            },
+        ),
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+    acceptance
+  }
+
   private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
     return database.transaction(dbPathOverride) { unitOfWork -> saveWorkflowProjectionInTransaction(unitOfWork, state) }
   }
@@ -693,6 +738,27 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
   }
   val agentAddonSelection = decodeGoalAgentAddonSelection(policy["agent_addon_selection"])
   return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent, agentAddonSelection)
+}
+
+private fun outOfBandAcceptancesFromArtifacts(artifacts: Map<String, Any?>): Map<Int, GoalRunnerOutOfBandAcceptance> {
+  val raw = artifacts[GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY] ?: return emptyMap()
+  val entries = raw as? List<*>
+    ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' must be a list.")
+  return entries.associate { element ->
+    val entry = JsonSupport.anyToStringAnyMap(element)
+      ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' entries must be maps.")
+    val acceptance = GoalRunnerOutOfBandAcceptance(
+      subtaskId = (entry["subtask_id"] as? Number)?.toInt()
+        ?: error("Goal acceptance artifact entry is missing a numeric subtask_id."),
+      commitSha = entry["commit_sha"] as? String
+        ?: error("Goal acceptance artifact entry is missing commit_sha."),
+      reason = entry["reason"] as? String
+        ?: error("Goal acceptance artifact entry is missing reason."),
+      acceptedAt = entry["accepted_at"] as? String
+        ?: error("Goal acceptance artifact entry is missing accepted_at."),
+    )
+    acceptance.subtaskId to acceptance
+  }
 }
 
 private fun decodeGoalAgentAddonSelection(raw: Any?): skillbill.agentaddon.model.AgentAddonSelection {

@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLiveness
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
+import skillbill.application.workflow.goalContinuationFor
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -11,6 +12,7 @@ import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
@@ -20,6 +22,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 class FeatureTaskContinuationLookupService(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
 ) {
   private val engine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -88,7 +91,20 @@ class FeatureTaskContinuationLookupService(
           ),
       )
     } ?: validated
-    classify(selected.map { it.second })
+    val classified = classify(selected.map { it.second })
+    // A goal parent can only be surfaced when the caller did not pin a specific feature-task
+    // workflow, and only once no feature-task row answers the lookup.
+    if (classified != FeatureTaskContinuationLookupResult.NoMatch ||
+      workflowId != null ||
+      routeScope != FeatureTaskRouteScope.STANDALONE
+    ) {
+      return@read classified
+    }
+    unitOfWork.workflowStates.goalContinuationFor(
+      normalizedIssueKey,
+      repositoryIdentity,
+      decompositionManifestValidator,
+    )?.let(FeatureTaskContinuationLookupResult::GoalContinuation) ?: classified
   }
 
   private fun project(

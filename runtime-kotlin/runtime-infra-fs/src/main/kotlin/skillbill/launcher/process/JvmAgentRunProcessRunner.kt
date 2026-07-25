@@ -536,8 +536,11 @@ private class ProcessWaitLoop(
     if (declaredTracker.activeOperationName != null) return GoalRunnerLivenessState.WORKING
     val timeout = idleTimeoutNanos ?: return GoalRunnerLivenessState.IDLE
     val lastOutput = lastOutputNanos ?: return GoalRunnerLivenessState.IDLE
-    return if (System.nanoTime() - lastOutput < timeout) GoalRunnerLivenessState.PROGRESSING
-    else GoalRunnerLivenessState.IDLE
+    return if (System.nanoTime() - lastOutput < timeout) {
+      GoalRunnerLivenessState.PROGRESSING
+    } else {
+      GoalRunnerLivenessState.IDLE
+    }
   }
 
   // SKILL-64 Subtask 3 (AC24): report the authoritative durable step from the

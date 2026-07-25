@@ -272,6 +272,19 @@ data class GoalRunnerStatusProjection(
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
+  val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+)
+
+/**
+ * A subtask an operator recorded as landed outside the runtime. The git-tracked manifest projection
+ * deliberately omits commit SHAs to keep that file churn-free, so this read-only status surface is
+ * where a human sees which commit an accepted subtask actually points at.
+ */
+data class GoalRunnerAcceptedSubtask(
+  val subtaskId: Int,
+  val commitSha: String,
+  val reason: String,
+  val acceptedAt: String,
 )
 
 data class GoalRunnerStatusProjectionExtras(
@@ -294,6 +307,7 @@ data class GoalRunnerStatusProjectionExtras(
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
+  val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
 )
 
 object GoalRunnerStatusProjector {
@@ -337,6 +351,7 @@ object GoalRunnerStatusProjector {
       cumulativeFixIterations = extras.cumulativeFixIterations,
       reAttemptCauseCounts = extras.reAttemptCauseCounts,
       findingsInScope = extras.findingsInScope,
+      outOfBandAcceptances = extras.outOfBandAcceptances,
     )
   }
 

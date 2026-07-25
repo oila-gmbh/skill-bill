@@ -3161,6 +3161,10 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     }
     .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
 
+  override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count { identity ->
+    identity.normalizedIssueKey == normalizedIssueKey && identity.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+  }
+
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean {
     val rows = if (workflowId in implement) implement else taskRuntime
     val existing = rows[workflowId] ?: return false

@@ -16,6 +16,7 @@ import java.nio.file.Path
 private const val HASH_RADIX_HEX: Int = 16
 private const val NOOP_REVIEW_BASE_SHA_LENGTH: Int = 40
 
+@Suppress("TooManyFunctions") // single cohesive boundary: the git reads and writes a workflow phase needs
 interface WorkflowGitOperations {
   fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String? = null): WorkflowGitOperationResult
 
@@ -28,6 +29,14 @@ interface WorkflowGitOperations {
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
+
+  // Resolves an operator-supplied revision to a full commit SHA, or errors when it names no commit
+  // in this repository. Default is a refusal so a store that cannot measure git never silently
+  // accepts unverifiable evidence.
+  fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot resolve commit '$revision'.",
+  )
 
   fun validateBranchBase(repoRoot: Path, branch: String, expectedBaseBranch: String): WorkflowGitOperationResult
 
