@@ -8,6 +8,7 @@ import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
+import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.phaseRecordsFrom
