@@ -46,11 +46,50 @@ sealed interface FeatureTaskRuntimeNextPhase {
       }
     }
   }
+
+  /**
+   * A bounded edge reached its cap while an unresolved Blocker disposition remains: the subtask
+   * pauses on SKILL-141's non-terminal resumable status and waits for a bounded operator decision
+   * over retry_fix, accept_and_advance, and abandon_subtask. Unlike [TerminalBlock] this is not a
+   * terminal state; the persisted review state resumes it.
+   */
+  data class TerminalPause(
+    val loopId: String,
+    val edgeIteration: Int,
+    val unresolvedVerdict: FeatureTaskRuntimeVerdict,
+  ) : FeatureTaskRuntimeNextPhase {
+    init {
+      require(loopId.isNotBlank()) { "FeatureTaskRuntimeNextPhase.TerminalPause.loopId must be non-blank." }
+      require(edgeIteration >= 1) {
+        "FeatureTaskRuntimeNextPhase.TerminalPause.edgeIteration must be >= 1, was $edgeIteration."
+      }
+    }
+  }
 }
 
 enum class FeatureTaskRuntimeCapExhaustionBehavior {
   BLOCK,
   ADVANCE,
+
+  /**
+   * Cap exhaustion is no longer the terminating signal for this edge; the Blocker disposition is.
+   * With no unresolved Blocker the run advances exactly as [ADVANCE]; with one it pauses resumably.
+   * This is what keeps a child from both advancing on cap exhaustion and pausing on an unresolved
+   * Blocker.
+   */
+  ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
+}
+
+/**
+ * Whether the per-edge cap counter resets across parent-level resumes (PER_RUN) or accumulates
+ * across all runs for the same subtask (PER_SUBTASK, the default). All current backward edges use
+ * PER_SUBTASK: the cap counter is seeded from durable phase records on resume so repeated resumes
+ * cannot multiply a bound the contract presents as fixed; the cumulative count is surfaced
+ * separately for observability. PER_RUN is reserved for a resume that should start a fresh window.
+ */
+enum class FeatureTaskRuntimeBackwardEdgeCapScope {
+  PER_RUN,
+  PER_SUBTASK,
 }
 
 /**
@@ -66,6 +105,7 @@ data class FeatureTaskRuntimeBackwardEdge(
   val perEdgeCap: Int?,
   val capExhaustionBehavior: FeatureTaskRuntimeCapExhaustionBehavior =
     FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
+  val capScope: FeatureTaskRuntimeBackwardEdgeCapScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
 ) {
   init {
     require(fromPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.fromPhaseId must be non-blank." }
@@ -185,3 +225,13 @@ data class FeatureTaskRuntimeTransitionDeclaration(
     }
   }
 }
+
+/**
+ * Run-state the transition consults but does not own: what earlier phases settled at, and whether the
+ * review sequence is holding an unresolved Blocker. Both default to "nothing known", which is what a
+ * pure forward advance sees.
+ */
+data class FeatureTaskRuntimeTransitionContext(
+  val settledVerdictsByPhaseId: Map<String, FeatureTaskRuntimeVerdict> = emptyMap(),
+  val unresolvedBlockerPresent: Boolean = false,
+)

@@ -34,6 +34,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
     reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
+    resolvedReviewTier: CodeReviewExecutionMode? = null,
+    reviewDecidingRule: String? = null,
+    priorBlockerFindingIds: List<String> = emptyList(),
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
@@ -43,14 +46,19 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing, reviewPassNumber),
+      ceremonyDirective(briefing, reviewPassNumber, resolvedReviewTier ?: codeReviewMode),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(
         briefing.phaseId,
-        codeReviewMode,
-        parallelReviewAgent,
-        goalSubtaskReviewInput,
+        ReviewExecutionDirectiveInputs(
+          codeReviewMode = codeReviewMode,
+          parallelReviewAgent = parallelReviewAgent,
+          goalSubtaskReviewInput = goalSubtaskReviewInput,
+          reviewPassNumber = reviewPassNumber,
+          resolvedReviewTier = resolvedReviewTier,
+          reviewDecidingRule = reviewDecidingRule,
+        ),
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
@@ -58,7 +66,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
-      outputContract(briefing),
+      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -241,7 +249,11 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
+  private fun ceremonyDirective(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    resolvedTier: CodeReviewExecutionMode,
+  ): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
@@ -252,8 +264,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta from " +
-          "its immutable base, including committed, staged, unstaged, and owned untracked changes."
+        // The mode token is derived, never hardcoded: rendering mode:inline under a pinned delegated
+        // run would emit a mode/context pairing the governed skill rejects.
+        "Apply bill-code-review mode:${remediationModeToken(resolvedTier)} context:feature-remediation, " +
+          "bounded to the remediation delta: the prior pass's Blocker findings union " +
+          "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and report concrete file references."
@@ -276,7 +291,18 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  // context:feature-remediation is valid only with mode:inline, so a run pinned to delegated still
+  // renders inline for the reserved pass rather than emitting a pairing the governed skill rejects.
+  private fun remediationModeToken(resolvedTier: CodeReviewExecutionMode): String =
+    CodeReviewExecutionMode.INLINE.wireValue.takeIf {
+      resolvedTier != CodeReviewExecutionMode.INLINE
+    } ?: resolvedTier.wireValue
+
+  private fun outputContract(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+  ): String {
     val phaseId = briefing.phaseId
     return """
     ## Required final output (validated schema gate)
@@ -293,13 +319,52 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${producedOutputsAddendum(briefing)}
+      validation results)${producedOutputsAddendum(
+      briefing,
+    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
     """.trimIndent()
+  }
+
+  /**
+   * The only seam that instructs the reserved remediation pass to emit
+   * `produced_outputs.blocker_dispositions`. Without it the producer key is never written and the
+   * disposition path — the terminating signal for the bounded remediation loop — is unreachable in
+   * production. The prior pass's Blocker finding ids are supplied so the agent keys its entries
+   * against real ids instead of inventing them, and a disposition is required for every one of them.
+   * Empty for pass one and for every non-review phase, so those prompts stay byte-for-byte unchanged.
+   */
+  private fun dispositionAddendum(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+  ): String {
+    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || reviewPassNumber != 2) {
+      return ""
+    }
+    if (priorBlockerFindingIds.isEmpty()) {
+      return "\n    - The prior review pass emitted no Blocker, so no disposition is required: emit\n" +
+        "      produced_outputs.blocker_dispositions as an explicit []."
+    }
+    val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
+      "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
+        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
+    }
+    return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
+      "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
+      "      emitted — these ids, all of them, no more and no fewer:\n" +
+      "      ${priorBlockerFindingIds.joinToString()}.\n" +
+      "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
+      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
+      "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
+      "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
+      "      ```json\n" +
+      "      { \"blocker_dispositions\": $example }\n" +
+      "      ```"
   }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
@@ -334,7 +399,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
         "      changed files are at their intended target state. A status of \"completed\" with the\n" +
         "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
-        (if (remediation.isEmpty()) planningProjectionShapeExampleFor(phaseId) else "") + remediation
+        planningProjectionShapeExampleFor(phaseId) + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
@@ -483,11 +548,25 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
       "      payloads."
 
+  // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
+  // consumer parses, not a replacement for it. Presenting them under their own "Required
+  // produced_outputs shape" heading made the phase emit only those two keys and fail the receipt gate
+  // on every attempt until the loop cap.
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
-    "Required produced_outputs shape:\n```json\n{\n" +
-      "  \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
-      "  \"repair_item_results\": ${repairItemResultsJson(repairItemIds)}\n" +
-      "}\n```"
+    "\n      Required produced_outputs shape: the SAME implementation_receipt object, carrying the two\n" +
+      "      remediation fields alongside its own. They are co-residents, NOT a replacement shape:\n" +
+      "      projection_kind, contract_version, and every other receipt field stay REQUIRED here:\n" +
+      "      ```json\n" +
+      "      { \"projection_kind\": \"implementation_receipt\",\n" +
+      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
+      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+      "        \"tests_added\": [], \"tests_updated\": [], \"tests_executed\": [],\n" +
+      "        \"deviations\": [], \"unresolved_items\": [],\n" +
+      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
+      "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
+      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
+      "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
+      "      ```"
 
   private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
     prefix = "[",
@@ -500,187 +579,4 @@ object FeatureTaskRuntimePhasePromptComposer {
       "\"result_evidence\": { \"observation\": \"fix_verified\", " +
       "\"artifact_ref\": \"src/main/Example.kt:Example\", \"check_ref\": \"ExampleTest\" } }"
   }
-
-  // Emitted only for mutating phases (see [FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase]):
-  // implement and implement_fix. The directive is empty for every other phase so their prompts stay
-  // byte-for-byte unchanged.
-  private fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
-      return ""
-    }
-    return """
-      ## Mutating-phase idempotency contract
-      You are given intended-state plan inputs (the target the repository should reach) plus the
-      CURRENT working tree, which may already carry some or all of those changes from a prior
-      attempt that was interrupted mid-edit. Converge the tree to the target state; treat any change
-      that is already applied as a no-op and NEVER blindly re-apply it (no duplicated edits, appended
-      blocks, or re-created files). This phase may be re-entered or resumed after a crash, so it must
-      be safe to run again: reconciling to target, not re-applying from scratch. Before finishing,
-      verify every changed file is at its intended state and report that reconciled end-state in
-      produced_outputs (see the reconciliation report in the required output below).
-    """.trimIndent()
-  }
-
-  private fun reviewExecutionDirective(
-    phaseId: String,
-    codeReviewMode: CodeReviewExecutionMode,
-    parallelReviewAgent: String?,
-    goalSubtaskReviewInput: GoalSubtaskReviewInput?,
-  ): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      return ""
-    }
-    val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
-      " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
-        "and the second lane must not launch parallel review recursively."
-    }.orEmpty()
-    val materializedScope = goalSubtaskReviewInput?.let { input ->
-      """
-
-      ## Immutable-base review scope
-      Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
-      It includes committed, staged, unstaged, and owned untracked changes below.
-      Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
-      If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
-      never select a branch scope.
-
-      ${input.reviewText}
-      """.trimIndent()
-    }.orEmpty()
-    return """
-      ## Review execution mode
-      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
-      mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
-      AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
-      inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
-      cannot start.$parallel$materializedScope
-    """.trimIndent()
-  }
-
-  // Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
-  // (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
-  // explicit enumeration and exclude the whole `.feature-specs/{KEY}/` tree. For local mode (default)
-  // the section is empty, leaving the commit prompt byte-for-byte unchanged (AC6).
-  private fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH || specSource != SpecSource.LINEAR) {
-      return ""
-    }
-    return """
-      ## Linear-mode commit exclusion
-      This feature's spec_source is `linear`: the local spec scratch is NOT committed. Stage every
-      changed path by explicit enumeration and never run `git add -A` / `git add .`. Exclude the
-      entire `.feature-specs/$issueKey/` directory from staging — the parent spec, every subtask
-      spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
-      or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
-      Linear when a later resume or verify needs it.
-    """.trimIndent()
-  }
-
-  // Emits only for the commit phase of a local-mode run when a spec reference is known: the runtime
-  // updates the spec file with the run's completion status just before launching commit_push, so the
-  // agent must include it in the staged files. Empty for linear mode (spec is excluded from the commit
-  // there) and for all other phases, leaving those prompts byte-for-byte unchanged.
-  private fun specCommitInclusionDirective(phaseId: String, specReference: String?, specSource: SpecSource): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-      specSource != SpecSource.LOCAL ||
-      specReference.isNullOrBlank()
-    ) {
-      return ""
-    }
-    return """
-      ## Spec file — stage with this commit
-      The runtime updated `$specReference` with the run's completion status just before this
-      phase was launched. Stage it together with the other changed files.
-    """.trimIndent()
-  }
-
-  private fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): String {
-    if (!suppressDecomposition || phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) {
-      return ""
-    }
-    return """
-      ## Goal-continuation planning constraint
-      This run is already executing one governed decomposed subtask. Do not propose or emit a new
-      decomposition package in the plan phase. Produce an implementable single-subtask plan for the
-      current spec; `produced_outputs.mode` must not be "decompose".
-      Never include installer, uninstall, or install-sync commands in the plan: do not plan to run
-      `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
-      equivalent install refresh inside a goal-continuation child. The plan phase defines how future
-      acceptance work will be implemented and validated; it does not require that work to have already
-      happened. Never block planning merely because a later implementation or validation action is not
-      yet complete. A blocked plan requires a genuinely missing input or an irreconcilable constraint
-      that prevents an implementable plan from being produced.
-    """.trimIndent()
-  }
-
-  // One imperative task directive per phase; the briefing carries the spec-specific scope.
-  private val phaseDirectives: Map<String, String> = mapOf(
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
-      "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
-      "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
-      "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
-      "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
-      "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
-      "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
-      "preplan envelope, a generic summary, or progress diagnostics.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
-      "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
-      "the upstream preplan digest as planning context. Do not modify repository files during " +
-      "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
-      "projection_kind \"executable_plan\", contract_version " +
-      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
-      "stable ordered tasks " +
-      "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
-      "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
-      "generic producer notes; decomposition detail stays private to the preparation boundary.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
-      "Reconcile the repository to the intended state the upstream plan output describes: make the " +
-      "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-      "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
-      "(projection_kind \"implementation_receipt\", contract_version " +
-      "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
-      "normalized changed_paths, " +
-      "tests_added, tests_updated, deviations, unresolved_items, " +
-      "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
-      "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-      "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-      "settled implementation.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-      "Address the carried review Blocker AND Major findings on the CURRENT working tree as incremental " +
-      "reconciliation: fix every Blocker and Major finding using the review findings, the latest implement " +
-      "output, and the intended state from the briefing. Minor and Nit findings are recorded in the " +
-      "unaddressed-findings ledger and are NOT in scope for this pass. Do NOT re-apply the plan from " +
-      "scratch and do not expand scope beyond the Blocker and Major findings. Treat any fix already " +
-      "present as a no-op. See the mutating-phase idempotency contract below.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
-      "Review the implemented changes at the encoded review scope against the acceptance criteria " +
-      "and report defects with concrete file references.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
-      "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
-      "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
-      "test-only concerns as audit gaps. The upstream implementation receipt is a producer CLAIM, not " +
-      "evidence: read the repository itself at the resolved checkpoint in the briefing — the diff over its " +
-      "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
-      "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
-      "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
-      "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-      "Run tests written during the implement phase, then run the repository validation gate " +
-      "relevant to the change. Fix validation findings at their root cause and rerun the gate " +
-      "until it passes; validation findings are repair work, not a reason to block the phase.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
-      "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
-      "runtime change. Emit a produced_outputs object containing history_result with whether " +
-      "history was written or skipped and the affected path when written.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
-      "Stage and commit the implemented, reviewed, audited, validated, and history-updated " +
-      "changes on the resolved feature branch, then push the branch. Stage by explicit enumerated " +
-      "path; never run `git add -A` or `git add .`. Emit commit_push_result " +
-      "with the commit SHA, branch name, and pushed status. If goal-continuation suppresses PR, " +
-      "this successful phase is the terminal success signal for the goal subtask.",
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
-      "Invoke bill-pr-description, honor any repo-native PR template, create or reuse the open " +
-      "pull request for the branch idempotently, and emit pr_result with the PR URL/number, " +
-      "title, and whether a new PR was created.",
-  )
 }

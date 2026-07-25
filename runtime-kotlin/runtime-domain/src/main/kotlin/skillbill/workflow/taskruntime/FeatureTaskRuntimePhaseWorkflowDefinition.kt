@@ -5,6 +5,7 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
@@ -105,8 +106,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
-    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
+    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
+    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped", "paused"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
     defaultInitialStepId = PHASE_PREPLAN,
     stepIds =
@@ -348,9 +349,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * unbounded because each new audit verdict is the authority on whether implementation is complete.
    *
    * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span, bounded at one
-   * review->fix iteration; an `approved` verdict or exhaustion of that remediation budget advances to
-   * `validate`. That span structurally excludes `audit`, so no review outcome can reopen an audit
-   * repair plan.
+   * review->fix iteration under `PER_SUBTASK` cap scope. Cap exhaustion is not the terminating
+   * signal; the Blocker disposition is. With every prior Blocker `resolved` or `superseded` the child
+   * advances to `validate`; with any Blocker still `unresolved` it pauses resumably for a bounded
+   * operator decision instead of advancing. That span structurally excludes `audit`, so no review
+   * outcome can reopen an audit repair plan.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
    * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
@@ -373,7 +376,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -381,6 +385,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = AUDIT_GAP_LOOP_ID,
           perEdgeCap = null,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
         // durable record at its launch seam re-enters that producer under a bounded cap; cap
@@ -391,6 +396,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_PREPLAN,
           loopId = PREPLAN_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_IMPLEMENT,
@@ -398,6 +404,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_PLAN,
           loopId = PLAN_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -405,6 +412,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = IMPLEMENT_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

@@ -440,8 +440,10 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 }
 
+// SKILL-142 AC-012: the reserved pass is bounded to the remediation delta, not the subtask's
+// complete delta, so the marker tracks the bounding clause the directive now carries.
 private const val PASS_TWO_REMEDIATION_SCOPE =
-  "Apply bill-code-review mode:inline context:feature-remediation to the subtask's complete delta"
+  "context:feature-remediation, bounded to the remediation delta"
 private const val FRESH_IMPLEMENT_FIX_MARKER = "fresh-migration-resume-fix"
 private const val FRESH_IMPLEMENT_FIX_OUTPUT =
   """{"contract_version":"0.1","phase_id":"implement_fix","status":"completed","summary":"fix",""" +

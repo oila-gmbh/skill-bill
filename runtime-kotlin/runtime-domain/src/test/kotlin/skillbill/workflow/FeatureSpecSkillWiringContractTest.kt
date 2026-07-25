@@ -1,5 +1,6 @@
 package skillbill.workflow
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -31,8 +32,16 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(feature, "Before discovering or preparing governed artifacts, perform the read-only")
     assertContains(feature, "The workflow database and immutable execution identity are authoritative")
-    assertContains(feature, "Handle `resumable`, `already_running`, `ambiguous`, and `terminal_only`")
+    assertContains(
+      feature,
+      "Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation`",
+    )
     assertContains(feature, "Only `no_match` may continue below")
+    // A goal-orchestrated feature must route to continuation, never to fresh preparation, and must
+    // never repair durable state by hand-editing the projection.
+    assertContains(feature, "`goal_continuation` means a prepared goal for this issue already owns durable state")
+    assertContains(feature, "skill-bill goal accept <issue-key> --subtask <id> --commit <sha> --reason <text>")
+    assertContains(feature, "Do not edit `decomposition-manifest.yaml` to force progress.")
     assertContains(feature, "workflow-id:<id>")
     assertContains(task, "use continuation mode")
     assertContains(task, "Never open a replacement row or mutate state during lookup")
@@ -156,8 +165,10 @@ class FeatureSpecSkillWiringContractTest {
     assertFalse(subtaskRunner.contains("bill-code-review mode:code_review_mode"))
     assertContains(goal, "selected mode is immutable for the parent and every child")
     assertContains(review, "`delegated` always runs the normal routed delegated path")
-    assertContains(review, "`inline`\nalways runs the complete routed review in the current agent context")
-    assertContains(review, "regardless\nof size or risk")
+    // Inline is a distinct, shallower depth tier (SKILL-142), no longer "the same review, run inline".
+    assertContains(review, "`inline` is the light tier: one agent in the current context")
+    assertContains(review, "never present it as equivalent to a delegated result")
+    assertContains(review, "explicit `inline` or `delegated` always overrides either rule")
     assertContains(review, "Do not pass `parallel:` into lane 2")
     assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
     assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")
@@ -262,6 +273,41 @@ class FeatureSpecSkillWiringContractTest {
         "$path must not route location-bearing evidence into telemetry",
       )
     }
+  }
+
+  @Test
+  fun `goal reopen prose agrees with runtime Blocker-only advancement semantics`() {
+    val goalContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+
+    // The governed prose must state that only an unresolved Blocker reopens implement_fix
+    assertContains(
+      goalContent,
+      "Only an unresolved Blocker finding reopens `implement_fix`",
+      ignoreCase = false,
+      message = "goal content must state Blocker-only reopen semantics",
+    )
+
+    // The prose must not claim that Major reopens the loop
+    assertFalse(
+      goalContent.contains("Major finding reopens") ||
+        goalContent.contains("Major findings reopen") ||
+        goalContent.contains("Blocker or Major finding reopens"),
+      "goal content must not claim Major reopens implement_fix",
+    )
+
+    // The runtime side: derive the set of severities that require remediation
+    val runtimeRemediationSeverities = FeatureTaskRuntimeReviewSeverity.entries
+      .filter { it.requiresRemediation }
+      .map { it.name }
+      .toSet()
+
+    // The prose must claim exactly the same set (only BLOCKER)
+    // Since we already asserted "Only an unresolved Blocker finding reopens", this confirms parity
+    assertEquals(
+      setOf("BLOCKER"),
+      runtimeRemediationSeverities,
+      "runtime requiresRemediation must be Blocker-only",
+    )
   }
 }
 

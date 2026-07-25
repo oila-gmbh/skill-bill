@@ -153,6 +153,9 @@ enum class GoalAttemptLedgerAction(val wireValue: String) {
   INTERRUPTION("interruption"),
   FINAL_RECONCILED_OUTCOME("final_reconciled_outcome"),
   DIAGNOSTIC_INSPECTION("diagnostic_inspection"),
+
+  /** A backward edge was taken for a subtask; records the loop id and the running cumulative count. */
+  BACKWARD_EDGE_ENTRY("backward_edge_entry"),
   ;
 
   companion object {
@@ -184,6 +187,12 @@ data class GoalAttemptLedgerEntry(
   val exitStatus: Int? = null,
   val recoverableJsonPresent: Boolean? = null,
   val nextSafeAction: String? = null,
+  val loopId: String? = null,
+  val cumulativeLoopCount: Int? = null,
+  val attemptDurationMillis: Long? = null,
+  val causingLoopEntry: String? = null,
+  val reAttemptCause: String? = null,
+  val findingsInScope: Int? = null,
 ) {
   init {
     require(sequenceNumber >= 0) { "GoalAttemptLedgerEntry.sequenceNumber must be non-negative." }
@@ -212,6 +221,12 @@ data class GoalAttemptLedgerEntry(
       "exit_status" to exitStatus,
       "recoverable_json_present" to recoverableJsonPresent,
       "next_safe_action" to nextSafeAction,
+      "loop_id" to loopId,
+      "cumulative_loop_count" to cumulativeLoopCount,
+      "attempt_duration_millis" to attemptDurationMillis,
+      "causing_loop_entry" to causingLoopEntry,
+      "re_attempt_cause" to reAttemptCause,
+      "findings_in_scope" to findingsInScope,
     )
     return linkedMapOf<String, Any?>(
       "action" to action.wireValue,

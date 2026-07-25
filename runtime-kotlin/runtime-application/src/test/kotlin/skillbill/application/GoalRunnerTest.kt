@@ -11,6 +11,8 @@ import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
+import skillbill.application.model.GoalRunnerAcceptRequest
+import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerEventSink
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerRunEvent
@@ -42,6 +44,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
@@ -1584,6 +1587,137 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
+  fun `accept records a blocked subtask that landed out of band and advances the goal`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2).copy(
+        status = "blocked",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
+        subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+          if (subtask.id == 1) {
+            subtask.copy(status = "blocked", blockedReason = "session limit", lastResumableStep = "implement")
+          } else {
+            subtask
+          }
+        },
+      ),
+    )
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      gitOperations = AcceptGitOperations(),
+    )
+
+    val result = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "finished by hand after the runtime blocked",
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    val accepted = assertIs<GoalRunnerAcceptResult.Accepted>(result)
+    assertEquals("abc1234abc1234abc1234abc1234abc1234abcd", accepted.commitSha)
+    assertEquals(listOf("wfl-parent"), store.acceptedParentWorkflowIds)
+    val subtaskOne = store.manifest.subtasks.first { it.id == 1 }
+    assertEquals("complete", subtaskOne.status)
+    assertEquals("abc1234abc1234abc1234abc1234abc1234abcd", subtaskOne.commitSha)
+    assertNull(subtaskOne.blockedReason)
+    assertEquals(CurrentSubtaskIntent(subtaskId = 2, action = "start"), store.manifest.currentSubtaskIntent)
+  }
+
+  @Test
+  fun `accept rejects a commit that does not resolve in the repository`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      gitOperations = AcceptGitOperations(),
+    )
+
+    val result = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "deadbee",
+        reason = "landed by hand",
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    assertIs<GoalRunnerAcceptResult.Rejected>(result)
+    assertEquals(emptyList(), store.acceptedParentWorkflowIds)
+    assertEquals("pending", store.manifest.subtasks.single().status)
+  }
+
+  @Test
+  fun `accept rejects a subtask whose dependency is not satisfied`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      gitOperations = AcceptGitOperations(),
+    )
+
+    val result = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 2,
+        commitSha = "abc1234",
+        reason = "landed by hand",
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    assertIs<GoalRunnerAcceptResult.Rejected>(result)
+    assertEquals(emptyList(), store.acceptedParentWorkflowIds)
+  }
+
+  @Test
+  fun `status reconciliation keeps an accepted subtask complete across later reads`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2).copy(
+        subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+          if (subtask.id == 1) subtask.copy(status = "blocked", blockedReason = "session limit") else subtask
+        },
+      ),
+    )
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      gitOperations = AcceptGitOperations(),
+    )
+    service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "landed by hand",
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    val projection = service.status(
+      GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "claude", repoRoot = Path.of(".")),
+    )
+
+    requireNotNull(projection)
+    assertEquals(1, projection.completeCount)
+    assertEquals(2, projection.currentSubtaskId)
+    // The git-tracked manifest deliberately omits commit SHAs, so status is the only place a human
+    // can see which commit an accepted subtask points at.
+    val accepted = projection.outOfBandAcceptances.single()
+    assertEquals(1, accepted.subtaskId)
+    assertEquals("abc1234abc1234abc1234abc1234abc1234abcd", accepted.commitSha)
+    assertEquals("landed by hand", accepted.reason)
+  }
+
+  @Test
   fun `soft reset preserves child identity and resumable step`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
@@ -1707,6 +1841,9 @@ internal class InMemoryGoalManifestStore(
   var runtimeStateSaveCount: Int = 0
     private set
   val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
+  val acceptedParentWorkflowIds: MutableList<String> = mutableListOf()
+  var acceptances: Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
+    private set
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     GoalRunnerManifestState(
@@ -1744,6 +1881,21 @@ internal class InMemoryGoalManifestStore(
   ): GoalRunnerManifestState {
     newChildWorkflowSetups += setup
     return save(state, dbPathOverride)
+  }
+
+  override fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String?,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = acceptances
+
+  override fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String?,
+  ): GoalRunnerOutOfBandAcceptance {
+    acceptedParentWorkflowIds += parentWorkflowId
+    acceptances = acceptances + (acceptance.subtaskId to acceptance)
+    return acceptance
   }
 
   fun mutate(block: (DecompositionManifest) -> DecompositionManifest) {
@@ -2355,6 +2507,17 @@ private class FixedBranchGitOperations(
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
 
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
+}
+
+private class AcceptGitOperations(
+  private val resolvable: Map<String, String> = mapOf("abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd"),
+) : WorkflowGitOperations by StatusDiffGitOperations {
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+    resolvable[revision.trim()]?.let { WorkflowGitOperationResult(status = "ok", value = it) }
+      ?: WorkflowGitOperationResult(
+        status = "error",
+        error = "Revision '$revision' does not name a commit in this repository.",
+      )
 }
 
 private object StatusDiffGitOperations : WorkflowGitOperations {

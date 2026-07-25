@@ -29,10 +29,26 @@ interface NormalizedGoalPlanningPreparationRepository {
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
     error("Shared goal preplan checkpointing is not implemented by this repository.")
 
+  /**
+   * Atomically replaces the exact shared preplan observed by the caller. A concurrent writer changing the
+   * stored payload after the caller's gate decision must fail the compare-and-replace instead of being deleted.
+   */
+  fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String): Unit =
+    error("Shared goal preplan replacement is not implemented by this repository.")
+
   fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan checkpointing is not implemented by this repository.")
+
+  /**
+   * Overwrites a stored subtask plan the producer projection gate rejects, so a regeneration lands instead of
+   * wedging on the immutable guard. Provenance parity with the governing shared preplan is still enforced.
+   * The caller decides regenerability from a prior read, so this is not atomic against a concurrent writer;
+   * only the single-writer goal planning sweep may call it.
+   */
+  fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
+    error("Goal subtask plan replacement is not implemented by this repository.")
 
   fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
@@ -81,8 +97,10 @@ interface GoalPlanningPreparationRepository :
 
 private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoalPlanningPreparationRepository {
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) = Unit
+  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String) = Unit
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
+  override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
   override fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
     subtaskId: Int,

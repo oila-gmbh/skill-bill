@@ -328,7 +328,7 @@ private class ProcessWaitLoop(
         progressIdleTimedOut = false,
         fileActivityGraceExhausted = false,
         wallClockTimedOut = false,
-        liveness = liveness("review_budget", "review_context_budget_exceeded", "killed"),
+        liveness = declaredLiveness("review_budget", "review_context_budget_exceeded", "killed", killLivenessState()),
       )
     }
     val waitMillis = waitMillisBeforeNextPoll() ?: return ProcessWait(
@@ -336,7 +336,7 @@ private class ProcessWaitLoop(
       progressIdleTimedOut = false,
       fileActivityGraceExhausted = false,
       wallClockTimedOut = true,
-      liveness = liveness("watchdog", "wall_clock_timeout", "killed"),
+      liveness = declaredLiveness("watchdog", "wall_clock_timeout", "killed", killLivenessState()),
     )
     return when {
       process.waitFor(waitMillis, TimeUnit.MILLISECONDS) ->
@@ -430,7 +430,7 @@ private class ProcessWaitLoop(
           progressIdleTimedOut = true,
           fileActivityGraceExhausted = fileActivityWindowStartNanos != null,
           wallClockTimedOut = false,
-          liveness = liveness("watchdog", "progress_idle_timeout", "killed"),
+          liveness = declaredLiveness("watchdog", "progress_idle_timeout", "killed", GoalRunnerLivenessState.IDLE),
         )
       }
     } else {
@@ -478,16 +478,13 @@ private class ProcessWaitLoop(
   }
 
   private fun pollStatusHeartbeat(nowNanos: Long) {
-    if (nowNanos - lastStatusHeartbeatNanos < statusHeartbeatNanos) {
-      return
-    }
-    lastStatusHeartbeatNanos = nowNanos
     val alive = process.isAlive
-    lifecycleEmitter.emitHeartbeat(alive)
-    // Track in-memory so idle-wait paths can extend the idle window without a DB
-    // round-trip. SQLite contention from the child MCP server can silently null
-    // out the DB-backed signals; process.isAlive never can.
+    // Track in-memory on every poll so HEARTBEAT_EXTENDED can extend the idle window at any poll
+    // frequency — SQLite contention can silently null out DB-backed signals; process.isAlive never can.
     if (alive) lastLiveHeartbeatNanos = nowNanos
+    if (nowNanos - lastStatusHeartbeatNanos < statusHeartbeatNanos) return
+    lastStatusHeartbeatNanos = nowNanos
+    lifecycleEmitter.emitHeartbeat(alive)
     request.progressProbe.safeProgressLabel()?.takeIf(String::isNotBlank)?.let { label ->
       lastProgressLabel = label
     }
@@ -534,6 +531,17 @@ private class ProcessWaitLoop(
 
   private fun liveness(phase: String, reason: String, processState: String): AgentRunLivenessSnapshot =
     declaredLiveness(phase, reason, processState, livenessState = null)
+
+  private fun killLivenessState(): GoalRunnerLivenessState {
+    if (declaredTracker.activeOperationName != null) return GoalRunnerLivenessState.WORKING
+    val timeout = idleTimeoutNanos ?: return GoalRunnerLivenessState.IDLE
+    val lastOutput = lastOutputNanos ?: return GoalRunnerLivenessState.IDLE
+    return if (System.nanoTime() - lastOutput < timeout) {
+      GoalRunnerLivenessState.PROGRESSING
+    } else {
+      GoalRunnerLivenessState.IDLE
+    }
+  }
 
   // SKILL-64 Subtask 3 (AC24): report the authoritative durable step from the
   // typed declared event when present, never a regex-parsed local label.

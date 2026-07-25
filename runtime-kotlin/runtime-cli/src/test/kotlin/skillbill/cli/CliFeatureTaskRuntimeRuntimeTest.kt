@@ -1476,8 +1476,16 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       val reviewPrompt = launcher.requests
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .single { it.contains("Phase: review") }
-      val forwardedMode = if (expectedMode == "omitted") "delegated" else expectedMode
+      // SKILL-142: `auto` never reaches the review skill unresolved — pass one resolves to delegated by
+      // the named pass-number rule, and the prompt carries that resolved tier.
+      val forwardedMode = when (expectedMode) {
+        "omitted", "auto" -> "delegated"
+        else -> expectedMode
+      }
       assertContains(reviewPrompt, "bill-code-review mode:$forwardedMode")
+      if (expectedMode == "auto") {
+        assertContains(reviewPrompt, "auto_depth_by_pass_number")
+      }
     }
   }
 

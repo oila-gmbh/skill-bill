@@ -21,7 +21,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Major findings request changes for in-pass remediation but do not hard-block at cap`() {
+  fun `Major findings advance and do not request changes`() {
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
@@ -31,9 +31,9 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    // A Major reopens implement_fix so it is fixed in the same pass, but it is not an advance-blocking
-    // finding: the Blocker-based unresolved count stays 0, so a surviving Major moves on at cap.
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    // Only Blocker reopens implement_fix. Major advances and is recorded in the ledger without
+    // triggering a fix pass, so the verdict is APPROVED and the unresolved count stays 0.
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
     assertEquals(0, outcome.unresolvedFindingCount)
     assertEquals(1, GoalSubtaskReviewSummaryReducer.fromOutput(output).size)
   }
@@ -200,6 +200,26 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
+  fun `Blocker plus Major findings request changes with one unresolved count`() {
+    val output = mapOf(
+      "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf("severity" to "blocker", "message" to "Data loss"),
+          mapOf("severity" to "major", "message" to "Follow-up risk"),
+        ),
+      ),
+    )
+
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
+
+    // Only Blocker reopens implement_fix, so the verdict is CHANGES_REQUESTED with one unresolved.
+    // Major is recorded in the ledger but does not trigger a fix pass.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    assertEquals(1, outcome.unresolvedFindingCount)
+  }
+
+  @Test
   fun `compact summaries fall back when locations and diff markers consume all finding text`() {
     val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
       mapOf(
@@ -212,5 +232,59 @@ class GoalSubtaskReviewSummaryReducerTest {
     )
 
     assertEquals("Review finding", summary.single().text)
+  }
+
+  @Test
+  fun `compact summaries remove location details while ledger preserves them`() {
+    // A finding message containing a path, a line reference, and a diff hunk is sanitized out of
+    // the compact goal-facing summary. The same finding's location survives in the UnaddressedFinding
+    // ledger row, so location-bearing evidence is retrievable through `skill-bill goal findings`.
+    val output = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "severity" to "major",
+            "message" to "src/main/kotlin/OrderService.kt:42 @@ -1,2 +1,2 @@ OrderService misses validation",
+            "issue_category" to "behavior_correctness",
+            "location" to "src/main/kotlin/OrderService.kt:42",
+          ),
+          mapOf(
+            "severity" to "blocker",
+            "message" to "CheckoutService.kt:17 data leak in submit method",
+            "issue_category" to "security_privacy",
+            "location" to "CheckoutService.kt:17",
+          ),
+        ),
+      ),
+    )
+
+    // Compact summary strips all location-bearing details
+    val summary = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    assertEquals(2, summary.size)
+    val rendered = summary.joinToString(" ") { "${it.label} ${it.text}" }
+
+    assertFalse("src/" in rendered, "compact summary must not contain path")
+    assertFalse(Regex(":\\d+").containsMatchIn(rendered), "compact summary must not contain line reference")
+    assertFalse("@@" in rendered, "compact summary must not contain diff hunk")
+    assertTrue(rendered.contains("OrderService"), "compact summary must retain class name")
+    assertTrue(rendered.contains("CheckoutService"), "compact summary must retain class name")
+
+    // Ledger preserves full location-bearing evidence
+    val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output,
+      issueKey = "SKILL-142",
+      subtaskId = 1,
+      workflowId = "wf-1",
+      reviewPassNumber = 1,
+    )
+    assertEquals(2, ledger.size)
+
+    val majorFinding = ledger.first { it.severity == "major" }
+    assertEquals("src/main/kotlin/OrderService.kt:42", majorFinding.location)
+    assertEquals("behavior_correctness", majorFinding.issueCategory)
+
+    val blockerFinding = ledger.first { it.severity == "blocker" }
+    assertEquals("CheckoutService.kt:17", blockerFinding.location)
+    assertEquals("security_privacy", blockerFinding.issueCategory)
   }
 }

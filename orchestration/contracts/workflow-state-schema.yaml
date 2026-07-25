@@ -59,6 +59,9 @@ $defs:
       - failed
       - blocked
       - skipped
+      # SKILL-142: a feature-task-runtime step pauses non-terminally awaiting the operator
+      # decision. Per-definition `stepStatuses` remains the narrower authority.
+      - paused
   # Shared shape for every entry in the `steps[]` array. Pinned via
   # `additionalProperties: false` so unknown fields loud-fail at the
   # parse seam.
@@ -181,6 +184,9 @@ $defs:
           - failed
           - abandoned
           - blocked
+          # SKILL-142: the child pauses non-terminally when the reserved remediation pass
+          # leaves an unresolved Blocker, awaiting the bounded operator decision.
+          - paused
       current_step_id:
         type: string
         # See note above on the empty-string allowance.

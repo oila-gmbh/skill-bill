@@ -32,6 +32,7 @@ import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
+import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
@@ -233,7 +234,7 @@ class WorkflowServiceTest {
     val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
     assertContains(saved.artifactsJson, "Operator abandoned the goal.")
     assertTrue(saved.workflowStatus in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses)
-    assertFalse("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
+    assertTrue("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
     assertIs<WorkflowUpdateResult.Error>(service.abandonFeatureTaskRuntime(opened.workflowId, "Again."))
   }
 
@@ -883,6 +884,7 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
       phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     val state = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -916,6 +918,7 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
       phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     val imported = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
@@ -968,6 +971,7 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
       phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     val refreshed = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -1005,6 +1009,7 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
       phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     val error = assertFailsWith<IllegalStateException> {
@@ -1168,6 +1173,7 @@ class WorkflowGoalStatusProjectionTest {
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestFileStore = TestDecompositionManifestFileStore,
         phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
       ),
       outcomeStore = WorkflowGoalRunnerOutcomeStore(
         database = database,
@@ -2631,6 +2637,26 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
   }
 
   @Test
+  fun `hydrated preplan and plan record goal-planning-hydrated provenance at attempt 1`() {
+    // AC-007: preplan and plan execute once at the parent and are hydrated into the child. The producer
+    // gate added on the goal side must not introduce a path that re-executes settled planning.
+    val harness = hydrationHarness()
+
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    listOf("preplan", "plan").forEach { phaseId ->
+      assertContains(child.artifactsJson, """"phase_id":"$phaseId"""")
+      assertContains(child.stepsJson, """"step_id":"$phaseId","status":"completed","attempt_count":1""")
+    }
+    assertEquals(
+      4,
+      Regex(""""execution_origin":"goal-planning-hydrated"""").findAll(child.artifactsJson).count(),
+      "both planning phase records and both ledger prefix entries carry the hydrated origin",
+    )
+  }
+
+  @Test
   fun `hydration committed before implementation resumes directly at implement`() {
     val harness = hydrationHarness()
     harness.store.saveNewChildWorkflow(harness.state, harness.setup)
@@ -2670,6 +2696,22 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       assertNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID), variant)
       assertNull(harness.workflows.executionIdentity(CHILD_ID), variant)
     }
+  }
+
+  @Test
+  fun `hydrating a projection-invalid stored plan loud-fails before any child artifact is written`() {
+    // AC-004: the hydrator runs the shared producer gate, so an import carrying the SKILL-141 escape
+    // shape is refused here rather than deferred to implement's launch seam. The digest matches, so the
+    // rejection can only come from the projection gate.
+    val harness = hydrationHarness(variant = "projection_invalid")
+
+    val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+      harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    }
+
+    assertContains(error.reason, "test_obligations")
+    assertNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    assertNull(harness.workflows.executionIdentity(CHILD_ID))
   }
 
   /**
@@ -2939,6 +2981,10 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       when (variant) {
         "corrupt" -> it.copy(planPayload = it.planPayload + "corrupt")
         "conflict" -> it.copy(provenance = it.provenance.copy(parentSpecHash = "f".repeat(64)))
+        "projection_invalid" -> it.copy(
+          planPayload = EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD,
+          payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD),
+        )
         else -> it
       }
     }
@@ -2961,6 +3007,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
       phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     fun setupFor(id: Int): GoalRunnerChildWorkflowSetup {
@@ -2987,22 +3034,37 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     const val CHILD_ID = "wfl-child-1"
     val REPOSITORY_IDENTITY = "repo-root-realpath-v1:${Path.of("").toAbsolutePath().normalize()}"
+
+    // Hydration payloads carry real bounded projections: the hydrator now runs the shared producer
+    // projection gate, so a placeholder produced_outputs would be rejected before any child artifact.
     val PREPLAN_PAYLOAD = """
       {
         "contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"shared",
-        "produced_outputs":{"digest":"shared-preplan"}
+        "produced_outputs":{"projection_kind":"preplanning_digest","contract_version":"0.1",
+        "affected_boundaries":["runtime-application/goalrunner"],"risks":["hydration drift"],
+        "rollout":{"flag_required":false,"notes":"no flag needed"},
+        "validation_strategy":["focused gradle"],"evidence_refs":["shared-preplan"]}
       }
     """.trimIndent()
-    val PLAN_ONE_PAYLOAD = """
+
+    // The SKILL-141 escape shape: a settled plan whose only task carries no test obligations.
+    val EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD = """
       {
-        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"one",
-        "produced_outputs":{"plan":"owned-plan-one"}
+        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"no obligations",
+        "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
+        "tasks":[{"task_id":"task-1","description":"no obligations","criterion_refs":["AC-001"],
+        "test_obligations":[]}],"validation_strategy":["focused gradle"]}
       }
     """.trimIndent()
-    val PLAN_TWO_PAYLOAD = """
+    val PLAN_ONE_PAYLOAD = planPayload("owned-plan-one")
+    val PLAN_TWO_PAYLOAD = planPayload("owned-plan-two")
+
+    fun planPayload(description: String): String = """
       {
-        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"two",
-        "produced_outputs":{"plan":"owned-plan-two"}
+        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"$description",
+        "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
+        "tasks":[{"task_id":"task-1","description":"$description","criterion_refs":["AC-001"],
+        "test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}
       }
     """.trimIndent()
 
@@ -3160,6 +3222,10 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
       } ?: false
     }
     .map { row -> FeatureTaskWorkflowCandidate(identities[row.workflowId], row) }
+
+  override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count { identity ->
+    identity.normalizedIssueKey == normalizedIssueKey && identity.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+  }
 
   override fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean {
     val rows = if (workflowId in implement) implement else taskRuntime

@@ -433,7 +433,11 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       environment = goalContinuationEnvironment(request) + compactionEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
-      idlePolicy = if (streaming) AgentRunIdlePolicy.OUTPUT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+      idlePolicy = when {
+        streaming -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+        else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
+      },
       outputDecoder = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.takeIf { streaming },
       environmentPassthroughKeys =
       if (request.reviewEvidenceBroker != null) CLAUDE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
@@ -541,10 +545,15 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
 /**
  * Fallback for a builder that cannot honor [SkillRunRequest.streamOutputForLiveness]. Such a launch
  * can never satisfy a durable-progress watchdog, so process liveness stands in and its wall-clock
- * budget remains the real bound.
+ * budget remains the real bound. A read-only phase also qualifies for heartbeat extension because it
+ * produces no durable workflow rows by construction.
  */
 private fun unstreamedLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy =
-  if (request.streamOutputForLiveness) AgentRunIdlePolicy.HEARTBEAT_EXTENDED else AgentRunIdlePolicy.DB_PROGRESS_ONLY
+  if (request.streamOutputForLiveness || request.readOnlyPhase) {
+    AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+  } else {
+    AgentRunIdlePolicy.DB_PROGRESS_ONLY
+  }
 
 internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
@@ -571,6 +580,7 @@ internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAge
     workingDirectory = request.repoRoot,
     timeout = request.timeout,
     environment = goalContinuationEnvironment(request),
+    idlePolicy = unstreamedLivenessPolicy(request),
   )
 }
 

@@ -20,7 +20,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - Include the user-visible or externally observable consequence for each finding
 - Report `Minor` findings, or `Medium`/`Low` confidence findings, only when they tie to an explicit contract violation, user-visible bug, regression risk, quality gate failure, or persisted learning
 - Always report evidence-backed `Blocker` and `Major` findings. Do not suppress concrete correctness, security, persistence, lifecycle, testing, accessibility, or contract defects because they fall outside the low-value reporting threshold
-- Severity: `Blocker | Major | Minor`
+- Severity is defined by observable consequence. Use `behavior_correctness` as the calibration reference: `Blocker` means the change breaks correctness or safety; `Major` means the change materially worsens behavior for a demonstrated scenario. Stylistic, speculative, or pre-existing observations are `Minor`, `Nit`, or suppressed by the SKILL-115 admission gate. The closed rating enum is `Blocker`, `Major`, `Minor`.
 - Confidence: `High | Medium | Low`
 - Keep each specialist review pass to at most 7 findings
 - Include a minimal concrete fix for each finding
@@ -81,3 +81,24 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Confidence must be one of: `High`, `Medium`, `Low`
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
+
+## Lane-Specific Consequence Examples
+
+The lanes with the widest observed Major-to-Blocker spread benefit from
+explicit examples distinguishing a material defect from an observation:
+
+- **ux-accessibility** (observed 38:1 Major-to-Blocker spread):
+  - Material defect (Major): A change that removes semantic markup, breaks
+    keyboard navigation flow, or drops an ARIA relationship such that a
+    demonstrated assistive-technology user cannot complete the task.
+  - Observation (Minor/Nit or admission-gate suppressed): Missing or
+    suboptimal ARIA labels where the control remains operable, or color-contrast
+    findings below the AAA threshold without a demonstrated user failure.
+
+- **data_persistence** (observed 20:1 Major-to-Blocker spread):
+  - Material defect (Major): A change that introduces lost-update windows,
+    violates isolation guarantees under a demonstrated concurrent scenario, or
+    drops durability constraints such that committed data may be lost.
+  - Observation (Minor/Nit or admission-gate suppressed): Cosmetic query-plan
+    concerns where correctness and durability guarantees hold, or logging that
+    mentions persistence without a concrete failure mode.

@@ -62,6 +62,7 @@ private object GitRepositoryOwnedPathsOperations : RepositoryOwnedPathsGitOperat
   }
 }
 
+@Suppress("TooManyFunctions") // mirrors the WorkflowGitOperations boundary one-for-one
 private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
     val normalizedBranch = branch.trim()
@@ -117,6 +118,22 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   }
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
+
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult {
+    val normalized = revision.trim()
+    if (normalized.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "A commit revision is required.")
+    }
+    val resolved = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", "$normalized^{commit}")
+    return if (resolved.ok && !resolved.value.isNullOrBlank()) {
+      resolved
+    } else {
+      WorkflowGitOperationResult(
+        status = "error",
+        error = "Revision '$normalized' does not name a commit in this repository.",
+      )
+    }
+  }
 
   override fun validateBranchBase(
     repoRoot: Path,

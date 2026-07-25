@@ -12,7 +12,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
+import skillbill.application.goalrunner.DurableGoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
+import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
@@ -54,6 +56,7 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
+import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
@@ -123,6 +126,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalPullRequestPort
+import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
@@ -142,6 +146,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
@@ -345,6 +350,11 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder): GoalPlanningAttemptRecorder =
+    recorder
+
+  @Provides
+  @JvmSynthetic
   internal fun goalPlanningContextDiscovery(
     adapter: FileSystemGoalPlanningContextDiscovery,
   ): GoalPlanningContextDiscovery = adapter
@@ -381,6 +391,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun declaredReviewSpecialistsPort(
+    adapter: FileSystemDeclaredReviewSpecialists,
+  ): DeclaredReviewSpecialistsPort = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore): GoalRunnerManifestStore = adapter
 
   @Provides
@@ -388,6 +404,11 @@ abstract class RuntimeComponent(
   internal fun goalRunnerWorkflowOutcomeStore(
     adapter: WorkflowGoalRunnerOutcomeStore,
   ): GoalRunnerWorkflowOutcomeStore = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalRunnerAttemptLedgerStore(adapter: WorkflowGoalRunnerOutcomeStore): GoalRunnerAttemptLedgerStore =
+    adapter
 
   @Provides
   @JvmSynthetic

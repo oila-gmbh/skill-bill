@@ -123,6 +123,7 @@ data class GoalRunnerLedgerSequenceWatermarks(
   val maxLedgerSequence: Int? = null,
   val maxAccountingSequence: Int? = null,
   val maxProgressSequence: Int? = null,
+  val backwardEdgeCounts: Map<String, Int> = emptyMap(),
 )
 
 data class GoalObservabilityProgressEvent(
@@ -135,6 +136,41 @@ data class GoalObservabilityProgressEvent(
   val sequenceNumber: Int,
   val timestamp: String,
 )
+
+/**
+ * Aggregated operator metrics derived from scanning all child workflow attempt ledgers for an issue.
+ * Populated by [GoalRunnerWorkflowOutcomeStore.readAttemptLedgerSummary] and threaded into the
+ * status projection for the CLI operator surface (AC-011).
+ */
+data class GoalRunnerAttemptLedgerSummary(
+  val blockedAttemptCount: Int = 0,
+  val supervisorKillCount: Int = 0,
+  val phaseAttemptCounts: Map<String, Int> = emptyMap(),
+  val cumulativeFixIterations: Map<String, Int> = emptyMap(),
+  val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
+)
+
+/**
+ * Operator-recorded evidence that a subtask's work landed outside the runtime — a blocked or
+ * abandoned child whose implementation was finished by hand on the feature branch. The runtime
+ * cannot observe that work, so without a durable acceptance every later status read re-derives the
+ * subtask as unstarted and the goal proposes running it again. This record is DB-authoritative and
+ * lives on the goal parent workflow; the manifest projection stays derived, never hand-edited.
+ */
+data class GoalRunnerOutOfBandAcceptance(
+  val subtaskId: Int,
+  val commitSha: String,
+  val reason: String,
+  val acceptedAt: String,
+) {
+  init {
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(commitSha.isNotBlank()) { "commitSha is required." }
+    require(reason.isNotBlank()) { "reason is required." }
+    require(acceptedAt.isNotBlank()) { "acceptedAt is required." }
+  }
+}
 
 data class GoalPullRequestRequest(
   val repoRoot: Path,

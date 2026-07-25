@@ -625,6 +625,7 @@ private fun FeatureTaskRuntimeRunReport.terminalObservation(fallbackCommitSha: S
   val outcome = when (this) {
     is FeatureTaskRuntimeRunReport.Completed -> subtaskOutcome
     is FeatureTaskRuntimeRunReport.Blocked -> subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Paused -> subtaskOutcome
     is FeatureTaskRuntimeRunReport.Decomposed -> null
   }
   return if (outcome != null) {
@@ -641,6 +642,8 @@ private fun FeatureTaskRuntimeRunReport.terminalObservation(fallbackCommitSha: S
         TerminalObservation("complete", null, fallbackCommitSha, workflowId, "commit_push")
       is FeatureTaskRuntimeRunReport.Blocked ->
         TerminalObservation("blocked", blockedReason, null, workflowId, lastIncompletePhase)
+      is FeatureTaskRuntimeRunReport.Paused ->
+        TerminalObservation("paused", pauseReason, null, workflowId, resumableStep)
       is FeatureTaskRuntimeRunReport.Decomposed ->
         TerminalObservation("failed", reason, null, workflowId, "plan")
     }
@@ -972,6 +975,7 @@ private fun authoritativeTerminalOutcome(
   val subtaskOutcome = when (report) {
     is FeatureTaskRuntimeRunReport.Completed -> report.subtaskOutcome
     is FeatureTaskRuntimeRunReport.Blocked -> report.subtaskOutcome
+    is FeatureTaskRuntimeRunReport.Paused -> report.subtaskOutcome
     is FeatureTaskRuntimeRunReport.Decomposed -> null
   }
   if (subtaskOutcome != null) {

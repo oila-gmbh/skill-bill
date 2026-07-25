@@ -33,6 +33,33 @@ with this canonical area consequence:
 | `ui` | `user-visible interaction or rendering failure` |
 | `ux-accessibility` | `accessibility or task-completion failure` |
 
+Specialist content inherits the calibrated severity definition from the shared
+contract and must not define, restate, or extend the severity vocabulary. The
+canonical per-area consequence closer above is the required consequence
+expression; every specialist uses it verbatim without introducing local
+severity definitions, legends, or tables.
+
+### Lane-Specific Consequence Examples
+
+The lanes with the widest observed Major-to-Blocker spread benefit from
+explicit examples distinguishing a material defect from an observation:
+
+- **ux-accessibility** (observed 38:1 Major-to-Blocker spread):
+  - Material defect (Major): A change that removes semantic markup, breaks
+    keyboard navigation flow, or drops an ARIA relationship such that a
+    demonstrated assistive-technology user cannot complete the task.
+  - Observation (Minor/Nit or admission-gate suppressed): Missing or
+    suboptimal ARIA labels where the control remains operable, or color-contrast
+    findings below the AAA threshold without a demonstrated user failure.
+
+- **data_persistence** (observed 20:1 Major-to-Blocker spread):
+  - Material defect (Major): A change that introduces lost-update windows,
+    violates isolation guarantees under a demonstrated concurrent scenario, or
+    drops durability constraints such that committed data may be lost.
+  - Observation (Minor/Nit or admission-gate suppressed): Cosmetic query-plan
+    concerns where correctness and durability guarantees hold, or logging that
+    mentions persistence without a concrete failure mode.
+
 Severity-anchored ratings use the closed enum `Blocker`, `Major`, and `Minor`;
 incidental prose that is not assigning a rating is outside that rule.
 

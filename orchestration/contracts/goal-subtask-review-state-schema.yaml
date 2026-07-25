@@ -4,8 +4,8 @@ title: "Goal subtask review state"
 description: >
   Durable, child-owned review state for one decomposed feature-task runtime
   subtask. It pins the local review baseline, selected execution mode, pass
-  accounting, compact safe summaries, and the references to full review input
-  and result artifacts.
+  accounting, compact safe summaries, per-Blocker disposition evidence, and the
+  references to full review input and result artifacts.
 type: object
 additionalProperties: false
 required:
@@ -20,7 +20,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   review_base_sha:
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
@@ -44,7 +44,50 @@ properties:
     maximum: 2
   disposition:
     type: string
-    enum: [pending, review_cap_reached]
+    enum: [pending, paused, review_cap_reached]
+  blocker_dispositions:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [finding_id, verdict, evidence]
+      properties:
+        finding_id:
+          type: string
+          minLength: 1
+        verdict:
+          type: string
+          enum: [resolved, unresolved, superseded]
+        evidence:
+          type: array
+          items:
+            type: string
+            minLength: 1
+  operator_decision:
+    type: string
+    enum: [retry_fix, accept_and_advance, abandon_subtask]
+  operator_retry_rounds:
+    description: >
+      Count of operator-granted retry_fix rounds consumed inside the already-reserved pass. A
+      non-zero value means a granted remediation is in flight, so the carried-forward settlement
+      must re-run the review rather than replay the stale pass result the operator just overrode.
+      Reset to zero when the re-entered pass settles. Never re-reserves a consumed pass.
+    type: integer
+    minimum: 0
+  resolved_tier:
+    type: string
+    enum: [auto, inline, delegated]
+  deciding_rule:
+    type: string
+    minLength: 1
+  remediation_base_sha:
+    description: >
+      Pre-fix tree sha recorded at the implement_fix entry checkpoint. The reserved remediation pass
+      reviews diff(this sha -> current HEAD) rather than the immutable base-to-current delta, so a
+      defect the remediation itself introduced is materialized in the pass input. Absent until the
+      first implement_fix re-entry; review_base_sha remains the sole authority for pass one.
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
   review_input_artifact:
     type: string
     minLength: 1
@@ -90,6 +133,13 @@ properties:
             additionalProperties: false
             required: [severity, label, text]
             properties:
+              finding_id:
+                description: >
+                  The id the review output carried for this finding (the F-XXX register id). The
+                  reserved remediation pass dispositions against these ids, so the disposition-to-
+                  finding correspondence that terminates the loop is verifiable at the parse seam.
+                type: string
+                minLength: 1
               severity:
                 type: string
                 enum: [blocker, major, minor, nit]

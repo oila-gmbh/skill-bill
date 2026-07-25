@@ -33,6 +33,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -51,6 +52,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -344,6 +346,7 @@ class FeatureTaskRuntimePhaseRecorder(
         verdict = completion.verdict,
         unresolvedFindingCount = completion.unresolvedFindingCount,
         findings = completion.findings,
+        blockerDispositions = completion.blockerDispositions,
       )
       val passNumber = completedState.completedPassCount.toString()
       val existingRecords = phaseRecordsFrom(artifacts)
@@ -822,6 +825,7 @@ internal data class GoalReviewPhaseCompletionRequest(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val rawReviewResult: String,
+  val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
 )
 
 // How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping
@@ -850,6 +854,9 @@ private data class WorkflowRowAdvance(
 private fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
   fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+    // A paused record is resumable, not finished: it keeps its paused step status even though the
+    // pause is recorded with a finished timestamp.
+    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
     record.finishedAt != null -> "completed"
     record.status == "running" || record.status == "completed" -> record.status
     else -> throw InvalidWorkflowStateSchemaError(
@@ -902,10 +909,12 @@ class FeatureTaskRuntimeDecomposeTerminalRecorder(
     }
 }
 
-// Coarse workflow-row status mirrors the phase transition: a blocked phase blocks the row, the
-// final phase completing completes it, every other transition keeps it running. The per-phase
-// records map remains the detailed source of truth.
+// Coarse workflow-row status mirrors the phase transition: a paused phase leaves the row on the
+// non-terminal resumable status, a blocked phase blocks the row, the final phase completing completes
+// it, every other transition keeps it running. The per-phase records map remains the detailed source
+// of truth.
 private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
+  request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> "paused"
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"

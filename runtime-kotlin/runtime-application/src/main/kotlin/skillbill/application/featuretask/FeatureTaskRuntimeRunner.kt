@@ -11,6 +11,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -22,6 +23,7 @@ import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -162,6 +164,11 @@ class FeatureTaskRuntimeRunner(
           phaseTokenAccumulator,
         ),
       )
+      runRequest.operatorDecision?.let { decision ->
+        loop.applyOperatorDecision(decision)?.let { rejection ->
+          throw FeatureTaskRuntimeOperatorDecisionRejectedError(runRequest.workflowId, decision.wireValue, rejection)
+        }
+      }
       loop.drive()
       loop.report()
     }.onFailure { error ->
@@ -225,7 +232,10 @@ class FeatureTaskRuntimeRunner(
   private fun cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
     val goalBranch = request.goalContinuation?.goalBranch ?: return false
     val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-      ?.takeIf { it.reviewCapReached }
+      // A pause is as settled as a cap and rests on the same authority: it judged a specific delta.
+      // Once that delta changes the pause is stale too, and leaving it would wedge the subtask on a
+      // decision about findings the tree no longer carries.
+      ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
       ?: return false
     val judgedDigest = state.reviewedDeltaDigest ?: return true
     val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
@@ -380,7 +390,13 @@ private fun persistGoalContinuationOutcome(
           finalizingAgentId = terminal.finalizingAgentId,
           participatingAgentIds = terminal.participatingAgentIds,
         ),
-        workflowStatus = if (terminal.status == "complete") "completed" else "blocked",
+        // A paused subtask is non-terminal and must not be collapsed to blocked; collapsing it would
+        // destroy the resumable row the pause exists to create.
+        workflowStatus = when (terminal.status) {
+          "complete" -> "completed"
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+          else -> "blocked"
+        },
       ),
       dbOverride = request.dbPathOverride,
     )
@@ -388,6 +404,7 @@ private fun persistGoalContinuationOutcome(
   return when {
     report is FeatureTaskRuntimeRunReport.Completed && outcome != null -> report.copy(subtaskOutcome = outcome)
     report is FeatureTaskRuntimeRunReport.Blocked && outcome != null -> report.copy(subtaskOutcome = outcome)
+    report is FeatureTaskRuntimeRunReport.Paused && outcome != null -> report.copy(subtaskOutcome = outcome)
     else -> report
   }
 }
@@ -409,6 +426,17 @@ private fun goalContinuationOutcomeFor(
     workflowId = request.workflowId,
     blockedReason = report.blockedReason,
     lastResumableStep = report.lastIncompletePhase,
+  )
+  // Resumable, not blocked: the goal runner must treat the subtask as awaiting an operator decision
+  // rather than terminating it.
+  is FeatureTaskRuntimeRunReport.Paused -> FeatureTaskRuntimeSubtaskOutcome(
+    issueKey = context.parentIssueKey,
+    subtaskId = context.subtaskId,
+    status = "paused",
+    commitSha = null,
+    workflowId = request.workflowId,
+    blockedReason = report.pauseReason,
+    lastResumableStep = report.resumableStep,
   )
   is FeatureTaskRuntimeRunReport.Decomposed -> null
 }

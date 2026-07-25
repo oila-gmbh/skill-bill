@@ -20,6 +20,8 @@ import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
+import skillbill.application.model.GoalRunnerAcceptRequest
+import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunEvent
@@ -31,6 +33,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.contracts.system.RuntimeProvenanceContract
+import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.install.model.InstallAgent
@@ -50,6 +53,7 @@ class GoalRunSubcommands(
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
   val reset: GoalResetCommand,
+  val accept: GoalAcceptCommand,
   val findings: GoalFindingsCommand,
 )
 
@@ -119,6 +123,7 @@ class GoalRunCommand(
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
       goalRunSubcommands.reset,
+      goalRunSubcommands.accept,
       goalRunSubcommands.findings,
     )
   }
@@ -433,6 +438,38 @@ class GoalResetCommand(
     )
     val payload = result.toGoalResetCliMap(issueKey, hard)
     state.completeText(goalResetText(payload), payload, exitCode = payload.goalResetExitCode())
+  }
+}
+
+@Inject
+class GoalAcceptCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "accept",
+  "Record that a subtask's work landed outside the runtime, so the goal advances past it.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val subtaskId by option("--subtask", help = "Subtask id whose work already landed.")
+    .int()
+    .required()
+  private val commit by option("--commit", help = "Commit that carries the landed work.").required()
+  private val reason by option("--reason", help = "Why this subtask was completed outside the runtime.").required()
+  private val repoRoot by option("--repo-root", help = "Repository root used to verify the commit.")
+
+  override fun run() {
+    val result = goalRunnerStatusService.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        commitSha = commit,
+        reason = reason,
+        dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    val payload = result.toGoalAcceptCliMap()
+    state.completeText(goalAcceptText(payload), payload, exitCode = payload.goalResetExitCode())
   }
 }
 
@@ -781,6 +818,8 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
+    putGoalLedgerCliEntries(it)
+    it.outOfBandAcceptances.toGoalAcceptanceCliList()?.let { list -> put("out_of_band_acceptances", list) }
   }
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -793,6 +832,28 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "active_agent" to null,
   "latest_liveness_signal" to null,
 )
+
+private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
+  if (projection.blockedAttemptCount > 0) put("blocked_attempt_count", projection.blockedAttemptCount)
+  if (projection.supervisorKillCount > 0) put("supervisor_kill_count", projection.supervisorKillCount)
+  if (projection.phaseAttemptCounts.isNotEmpty()) put("phase_attempt_counts", projection.phaseAttemptCounts)
+  if (projection.cumulativeFixIterations.isNotEmpty()) {
+    put("cumulative_fix_iterations", projection.cumulativeFixIterations)
+  }
+  if (projection.reAttemptCauseCounts.isNotEmpty()) put("re_attempt_causes", projection.reAttemptCauseCounts)
+  projection.findingsInScope?.let { count -> put("findings_in_scope", count) }
+}
+
+private fun List<GoalRunnerAcceptedSubtask>.toGoalAcceptanceCliList(): List<Map<String, Any?>>? = takeIf {
+  it.isNotEmpty()
+}?.map { acceptance ->
+  linkedMapOf(
+    "subtask_id" to acceptance.subtaskId,
+    "commit_sha" to acceptance.commitSha,
+    "reason" to acceptance.reason,
+    "accepted_at" to acceptance.acceptedAt,
+  )
+}
 
 private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
@@ -818,6 +879,7 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
         "liveness=${event["liveness_class"]} sequence=${event["sequence_number"]}",
     )
   }
+  appendOperatorSurfaceLines(payload)
   appendDiffStatusLines(payload)
 }
 
@@ -850,6 +912,31 @@ private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
     )
   }
   appendDiffStatusLines(refresh, watchIndex = refresh["refresh_index"]?.toString())
+}
+
+private fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
+  val blockedAttemptCount = (payload["blocked_attempt_count"] as? Number)?.toInt() ?: 0
+  val supervisorKillCount = (payload["supervisor_kill_count"] as? Number)?.toInt() ?: 0
+  if (blockedAttemptCount > 0 || supervisorKillCount > 0) {
+    appendLine("blocked_attempts: $blockedAttemptCount supervisor_kills: $supervisorKillCount")
+  }
+  (payload["phase_attempt_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { counts ->
+    appendLine("phase_attempts: ${counts.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  }
+  (payload["cumulative_fix_iterations"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { iters ->
+    appendLine("fix_iterations: ${iters.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  }
+  (payload["re_attempt_causes"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { causes ->
+    appendLine("re_attempt_causes: ${causes.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  }
+  (payload["findings_in_scope"] as? Number)?.toInt()?.let { appendLine("findings_in_scope: $it") }
+  (payload["out_of_band_acceptances"] as? List<*>)?.takeIf(List<*>::isNotEmpty)?.forEach { raw ->
+    val acceptance = raw as? Map<*, *> ?: return@forEach
+    appendLine(
+      "accepted_out_of_band: subtask=${acceptance["subtask_id"]} commit=${acceptance["commit_sha"]} " +
+        "at=${acceptance["accepted_at"]} reason=${acceptance["reason"]}",
+    )
+  }
 }
 
 private fun StringBuilder.appendDiffStatusLines(payload: Map<*, *>, watchIndex: String? = null) {
@@ -922,6 +1009,38 @@ private fun resetSnapshotMap(snapshot: skillbill.application.model.GoalRunnerRes
       )
     },
   )
+
+private fun GoalRunnerAcceptResult.toGoalAcceptCliMap(): Map<String, Any?> = when (this) {
+  is GoalRunnerAcceptResult.Accepted -> linkedMapOf(
+    "status" to "ok",
+    "issue_key" to issueKey,
+    "parent_workflow_id" to parentWorkflowId,
+    "subtask_id" to subtaskId,
+    "commit_sha" to commitSha,
+    "reason" to reason,
+    "accepted_at" to acceptedAt,
+    "after" to resetSnapshotMap(after),
+  )
+  is GoalRunnerAcceptResult.Rejected -> linkedMapOf(
+    "status" to "rejected",
+    "issue_key" to issueKey,
+    "reason" to reason,
+  )
+}
+
+private fun goalAcceptText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  appendLine("reason: ${payload["reason"]}")
+  payload["subtask_id"]?.let { appendLine("accepted_subtask: $it") }
+  payload["commit_sha"]?.let { appendLine("commit_sha: $it") }
+  payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
+  (payload["after"] as? Map<*, *>)?.let { after ->
+    appendLine("after: status=${after["status"]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine("after_subtasks:")
+    appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
+  }
+}
 
 private fun goalResetText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")

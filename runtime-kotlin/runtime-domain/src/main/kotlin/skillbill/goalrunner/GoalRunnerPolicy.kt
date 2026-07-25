@@ -210,6 +210,17 @@ object GoalRunnerOutcomeReconciler {
       storedOutcome = storedOutcome,
       liveness = liveness,
     )
+    // A paused child is awaiting the bounded operator decision, not blocked: the persisted review
+    // state, baseline, and consumed pass count survive so resume continues from the recorded step.
+    GoalRunnerTerminalStatus.PAUSED -> stop(
+      reason = GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
+      blockedReason = storedOutcome.blockedReason.orEmpty().ifBlank {
+        "Subtask $subtaskId paused with an unresolved Blocker after its reserved remediation pass; " +
+          "choose retry_fix, accept_and_advance, or abandon_subtask, then resume the goal."
+      },
+      storedOutcome = storedOutcome,
+      liveness = liveness,
+    )
   }
 
   private fun completeOutcome(subtaskId: Int, storedOutcome: GoalRunnerStoredOutcome): GoalRunnerReconciledOutcome {

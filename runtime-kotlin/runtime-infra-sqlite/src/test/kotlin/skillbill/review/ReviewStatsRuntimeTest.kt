@@ -84,6 +84,71 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
+  fun categorySeverityCrossTabReturnsMajorAndBlocker() {
+    val (_, connection) = tempDbConnection("review-category-severity-cross-tab")
+    connection.use {
+      TelemetryOutboxStore(connection).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "review_run_id" to "rvw-cross-tab",
+            "platform_slug" to "kotlin",
+            "scope_type" to "branch_diff",
+            "total_findings" to 4,
+            "accepted_findings" to 3,
+            "rejected_findings" to 1,
+            "unresolved_findings" to 0,
+            "accepted_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-001",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Blocker",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-002",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-003",
+                "issue_category" to "testing",
+                "severity" to "Major",
+                "confidence" to "Medium",
+                "outcome_type" to "finding_accepted",
+              ),
+            ),
+            "rejected_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-004",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "Low",
+                "outcome_type" to "false_positive",
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val health = ReviewStatsRuntime.statsSnapshot(connection, reviewRunId = null).health
+
+      assertEquals(3, health.issueCategoryCounts["behavior_correctness"])
+      assertEquals(1, health.issueCategoryCounts["testing"])
+
+      val behaviorCorrectnessSeverity = health.categorySeverityCounts["behavior_correctness"]
+      assertEquals(1, behaviorCorrectnessSeverity?.get("Blocker"))
+      assertEquals(2, behaviorCorrectnessSeverity?.get("Major"))
+
+      val testingSeverity = health.categorySeverityCounts["testing"]
+      assertEquals(1, testingSeverity?.get("Major"))
+    }
+  }
+
+  @Test
   fun `statsSnapshot derives missing latest outcome counts from finding details`() {
     val (_, connection) = tempDbConnection("review-health-detail-outcomes")
     connection.use {
@@ -931,5 +996,63 @@ private fun insertFeatureVerifySession(connection: java.sql.Connection) {
       )
       """.trimIndent(),
     )
+  }
+
+  @Test
+  fun mapperEmitsSeverityCounts() {
+    val (_, connection) = tempDbConnection("review-contract-mapper-cross-tab")
+    connection.use {
+      TelemetryOutboxStore(connection).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "review_run_id" to "rvw-contract-mapper",
+            "platform_slug" to "kotlin",
+            "scope_type" to "branch_diff",
+            "total_findings" to 3,
+            "accepted_findings" to 2,
+            "rejected_findings" to 1,
+            "unresolved_findings" to 0,
+            "accepted_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-001",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Blocker",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+              mapOf(
+                "finding_id" to "F-002",
+                "issue_category" to "behavior_correctness",
+                "severity" to "Major",
+                "confidence" to "High",
+                "outcome_type" to "fix_applied",
+              ),
+            ),
+            "rejected_finding_details" to listOf(
+              mapOf(
+                "finding_id" to "F-003",
+                "issue_category" to "testing",
+                "severity" to "Major",
+                "confidence" to "Medium",
+                "outcome_type" to "false_positive",
+              ),
+            ),
+          ),
+        ),
+      )
+
+      val health = ReviewStatsRuntime.statsSnapshot(connection, reviewRunId = null).health
+
+      val categorySeverityCounts = health.categorySeverityCounts
+      assertTrue(categorySeverityCounts.isNotEmpty())
+
+      val behaviorCorrectnessSeverity = categorySeverityCounts["behavior_correctness"]
+      assertEquals(1, behaviorCorrectnessSeverity?.get("Blocker"))
+      assertEquals(1, behaviorCorrectnessSeverity?.get("Major"))
+
+      val testingSeverity = categorySeverityCounts["testing"]
+      assertEquals(1, testingSeverity?.get("Major"))
+    }
   }
 }

@@ -19,6 +19,13 @@ enum class GoalRunnerTerminalStatus {
    * resumable so `skill-bill goal <key>` resume continues without manual lease or row clearing.
    */
   RECONCILABLE,
+
+  /**
+   * A non-terminal child waiting on the bounded operator decision after the reserved remediation pass
+   * left an unresolved Blocker. Not a failure and not blocked: the persisted review state, baseline,
+   * and consumed pass count survive, so resume continues from the recorded resumable step.
+   */
+  PAUSED,
 }
 
 enum class GoalRunnerStopReason {
@@ -33,6 +40,18 @@ enum class GoalRunnerStopReason {
 
   /** The child row was crash-reconciled to resumable; the goal halts but the subtask stays resumable. */
   RECONCILED_RESUMABLE,
+
+  /**
+   * The child paused after the reserved remediation pass left an unresolved Blocker. The goal halts
+   * awaiting the bounded operator decision; the subtask stays resumable at its recorded step.
+   */
+  AWAITING_OPERATOR_DECISION,
+  ;
+
+  companion object {
+    /** Stop reasons that leave the subtask resumable rather than stopped. */
+    val RESUMABLE_STOP_REASONS = setOf(RECONCILED_RESUMABLE, AWAITING_OPERATOR_DECISION)
+  }
 }
 
 data class GoalRunnerLaunchFacts(
@@ -45,6 +64,14 @@ data class GoalRunnerLaunchFacts(
 ) {
   companion object {
     const val STDERR_EXCERPT_MAX_CHARS: Int = 3_000
+
+    /**
+     * Diagnostic class emitted when the supervisor killed a child whose last known liveness state
+     * was [GoalRunnerLivenessState.WORKING] or [GoalRunnerLivenessState.PROGRESSING]. A kill at
+     * this state is unexpected and warrants a separate diagnostic so telemetry can surface it
+     * distinct from ordinary idle-timeout or unresponsive kills.
+     */
+    const val DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL = "supervisor_killed_confirmed_alive"
   }
 }
 
@@ -129,6 +156,9 @@ data class GoalRunnerLivenessSnapshot(
   val lastFileActivityAt: String? = null,
   val lastFileActivityLabel: String? = null,
   val lastOutputAt: String? = null,
+  val livenessState: GoalRunnerLivenessState? = null,
+  /** True when the process was classified alive (WORKING or PROGRESSING) at the moment of capture. */
+  val aliveAtKill: Boolean = false,
 )
 
 data class GoalRunnerSupervisionEvent(
@@ -255,6 +285,25 @@ data class GoalRunnerStatusProjection(
   val latestObservabilityEvent: Map<String, Any?>? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
+  val blockedAttemptCount: Int = 0,
+  val supervisorKillCount: Int = 0,
+  val phaseAttemptCounts: Map<String, Int> = emptyMap(),
+  val cumulativeFixIterations: Map<String, Int> = emptyMap(),
+  val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
+  val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+)
+
+/**
+ * A subtask an operator recorded as landed outside the runtime. The git-tracked manifest projection
+ * deliberately omits commit SHAs to keep that file churn-free, so this read-only status surface is
+ * where a human sees which commit an accepted subtask actually points at.
+ */
+data class GoalRunnerAcceptedSubtask(
+  val subtaskId: Int,
+  val commitSha: String,
+  val reason: String,
+  val acceptedAt: String,
 )
 
 data class GoalRunnerStatusProjectionExtras(
@@ -271,6 +320,13 @@ data class GoalRunnerStatusProjectionExtras(
   val latestObservabilityEvent: Map<String, Any?>? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
+  val blockedAttemptCount: Int = 0,
+  val supervisorKillCount: Int = 0,
+  val phaseAttemptCounts: Map<String, Int> = emptyMap(),
+  val cumulativeFixIterations: Map<String, Int> = emptyMap(),
+  val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
+  val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
 )
 
 object GoalRunnerStatusProjector {
@@ -308,6 +364,13 @@ object GoalRunnerStatusProjector {
       latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleBlockSignal },
       requestedDiffStat = extras.requestedDiffStat,
       selectedDiffHunks = extras.selectedDiffHunks,
+      blockedAttemptCount = extras.blockedAttemptCount,
+      supervisorKillCount = extras.supervisorKillCount,
+      phaseAttemptCounts = extras.phaseAttemptCounts,
+      cumulativeFixIterations = extras.cumulativeFixIterations,
+      reAttemptCauseCounts = extras.reAttemptCauseCounts,
+      findingsInScope = extras.findingsInScope,
+      outOfBandAcceptances = extras.outOfBandAcceptances,
     )
   }
 

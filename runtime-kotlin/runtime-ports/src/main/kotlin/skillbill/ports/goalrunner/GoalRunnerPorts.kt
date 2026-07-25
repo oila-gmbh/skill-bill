@@ -8,10 +8,12 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
@@ -37,6 +39,7 @@ interface GoalRunnerManifestLookup {
   ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
 }
 
+@Suppress("TooManyFunctions") // single cohesive boundary: manifest reads, saves, review policy, and acceptance
 interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   fun planningStatus(
     parentWorkflowId: String,
@@ -82,6 +85,18 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     codeReviewMode = persistReviewMode(parentWorkflowId, policy.codeReviewMode, dbPathOverride),
     parallelReviewAgent = policy.parallelReviewAgent,
   )
+
+  fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String? = null,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
+
+  fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String? = null,
+  ): GoalRunnerOutOfBandAcceptance =
+    error("Goal runner manifest store must durably persist out-of-band subtask acceptance.")
 }
 
 // Terminal-outcome resolution split into a strictly read-only query and an explicit
@@ -130,6 +145,7 @@ interface GoalRunnerReviewOutcomeStore {
   fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean = false
 }
 
+@Suppress("TooManyFunctions") // single cohesive outcome boundary: terminal, review, ledger, and loop-phase reads
 interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalRunnerReviewOutcomeStore {
 
   fun authoritativeOutcomes(issueKey: String, dbPathOverride: String? = null): Map<Int, GoalRunnerStoredOutcome> =
@@ -184,7 +200,24 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
   // its monotonic counters from these so a resume run does not restart at 0 and
   // emit duplicate, non-monotonic sequences into the append-only ledger.
   fun ledgerSequenceWatermarks(issueKey: String, dbPathOverride: String? = null): GoalRunnerLedgerSequenceWatermarks
+
+  // SKILL-142 (AC-008): loop iteration counts aggregated from the child workflow's durable phase
+  // records. Returns a map of loopId → max edgeIteration observed across all phase records that
+  // carry a backward-edge context. Used by the parent ledger recorder to account for edges
+  // completed and edges still in progress within a single child run, beyond the stop-position
+  // inference that only catches loop-only-phase stops.
+  fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int> = emptyMap()
 }
+
+// SKILL-142 (AC-011): narrow read-only port for aggregated operator metrics from the attempt ledger.
+// Kept separate from [GoalRunnerWorkflowOutcomeStore] to stay within the interface function-count
+// budget. Default no-op so test fakes and non-FS adapters opt in only when needed.
+interface GoalRunnerAttemptLedgerStore {
+  fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String? = null): GoalRunnerAttemptLedgerSummary =
+    GoalRunnerAttemptLedgerSummary()
+}
+
+object NoopGoalRunnerAttemptLedgerStore : GoalRunnerAttemptLedgerStore
 
 fun interface GoalRunnerSubtaskLauncher {
   fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome

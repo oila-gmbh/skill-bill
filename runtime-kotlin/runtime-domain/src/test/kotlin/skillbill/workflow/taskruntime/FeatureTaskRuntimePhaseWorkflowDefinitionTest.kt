@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -154,7 +155,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertEquals(1, edge.perEdgeCap)
-    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, edge.capExhaustionBehavior)
+    assertEquals(
+      FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
+      edge.capExhaustionBehavior,
+    )
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds
@@ -164,6 +168,30 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_REVIEW),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
     )
+  }
+
+  @Test
+  fun `the three record-regeneration edges keep their caps and cap-exhaustion behavior`() {
+    // AC-006: the producer-side projection gate reduces how often these edges fire; it must not remove,
+    // re-cap, or reroute any of them. They stay the recovery path for genuine drift.
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val expected = mapOf(
+      def.PREPLAN_REGENERATION_LOOP_ID to (def.PHASE_PLAN to def.PHASE_PREPLAN),
+      def.PLAN_REGENERATION_LOOP_ID to (def.PHASE_IMPLEMENT to def.PHASE_PLAN),
+      def.IMPLEMENT_REGENERATION_LOOP_ID to (def.PHASE_AUDIT to def.PHASE_IMPLEMENT),
+    )
+
+    assertEquals(setOf("regenerate_preplan", "regenerate_plan", "regenerate_implement"), def.REGENERATION_LOOP_IDS)
+    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
+    expected.forEach { (loopId, endpoints) ->
+      val edge = def.transitions.backwardEdges.single { it.loopId == loopId }
+      assertEquals(endpoints.first, edge.fromPhaseId)
+      assertEquals(endpoints.second, edge.destinationPhaseId)
+      assertEquals(def.MAX_RECORD_REGENERATION_ATTEMPTS, edge.perEdgeCap)
+      assertEquals(FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK, edge.capScope)
+      assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
+      assertEquals(FeatureTaskRuntimeVerdict.RECORD_REJECTED, edge.triggeringVerdict)
+    }
   }
 
   @Test
@@ -262,6 +290,19 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
       definition.completedTerminalSummaryArtifact,
     )
+  }
+
+  @Test
+  fun `all backward edges declare PER_SUBTASK capScope explicitly`() {
+    val edges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+    assertEquals(5, edges.size, "expected exactly five declared backward edges: ${edges.map { it.loopId }}")
+    edges.forEach { edge ->
+      assertEquals(
+        FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
+        edge.capScope,
+        "backward edge '${edge.loopId}' must explicitly declare PER_SUBTASK capScope",
+      )
+    }
   }
 
   private fun dependenciesOf(phaseId: String): List<String> = definition.requiredArtifactsByStep.getValue(phaseId)

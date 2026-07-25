@@ -21,6 +21,7 @@ import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
+import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerSelection
@@ -66,6 +67,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -89,9 +91,13 @@ class GoalRunner(
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
   private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, timing, diagnostics)
   private val validationQualityRetries: MutableMap<Int, Int> = mutableMapOf()
+  private val pendingReAttemptCause: MutableMap<Int, String> = mutableMapOf()
+  private val pendingCausingLoopEntry: MutableMap<Int, String> = mutableMapOf()
 
   fun run(request: GoalRunnerRunRequest): GoalRunnerRunReport {
     validationQualityRetries.clear()
+    pendingReAttemptCause.clear()
+    pendingCausingLoopEntry.clear()
     val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
     return when (val preparation = prepareRun(state, request)) {
@@ -371,48 +377,71 @@ class GoalRunner(
       )
     }
     val reviewBaseline = requireNotNull(baselineCapture.baseline)
-    val prepared = prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+    val prepared = runCatching {
+      prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+    }.getOrElse { error -> return blockedOnRecoveryError(state, subtaskId, error, request) }
     val attemptedState = prepared.state
     attempted += subtaskId
     emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
-    val launchReconciliation = launchAndReconcileSubtask(
+    val attemptStartMillis = clock.millis()
+    val (launchReconciliation, workerRequestResult) = launchSubtaskWithWorkerResult(
       attemptedState,
       subtaskId,
       request,
       prepared.openWithAssignedId,
       reviewBaseline,
     )
-    val workerRequestResult = workerRequestHandler.handle(
-      state = launchReconciliation.refreshed,
-      launchOutcome = launchReconciliation.launchOutcome,
-      subtaskId = subtaskId,
-      request = request,
-    )
     val refreshed = workerRequestResult.state
     val reconciled = launchReconciliation.reconciled
-    recordPostLaunchState(refreshed, subtaskId, selection, launchReconciliation, request, observability, ledger)
-    return workerRequestResult.operatorConfirmationStop?.let { stop ->
-      stoppedIteration(refreshed, subtaskId, stop, request, attempted, observability, ledger)
-    } ?: when (reconciled) {
-      is GoalRunnerReconciledOutcome.Complete -> completedIteration(
-        refreshed,
-        subtaskId,
-        reconciled,
-        request,
-        observability,
-        ledger,
+    val reAttemptCause = pendingReAttemptCause.remove(subtaskId)
+    val causingLoopEntry = pendingCausingLoopEntry.remove(subtaskId)
+    recordPostLaunchState(
+      refreshed,
+      subtaskId,
+      selection,
+      launchReconciliation,
+      request,
+      observability,
+      ledger,
+      reAttemptCause,
+      causingLoopEntry,
+    )
+    return dispatchWorkerResult(
+      refreshed, subtaskId, reconciled, workerRequestResult, launchReconciliation,
+      request, attempted, observability, ledger, attemptStartMillis,
+    )
+  }
+
+  private fun dispatchWorkerResult(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    reconciled: GoalRunnerReconciledOutcome,
+    workerRequestResult: GoalRunnerWorkerRequestHandlingResult,
+    launchReconciliation: GoalRunnerLaunchReconciliation,
+    request: GoalRunnerRunRequest,
+    attempted: MutableList<Int>,
+    observability: GoalRunnerObservabilityEmitter,
+    ledger: GoalRunnerLedgerRecorder,
+    attemptStartMillis: Long?,
+  ): GoalRunnerIterationResult = workerRequestResult.operatorConfirmationStop?.let { stop ->
+    stoppedIteration(
+      state,
+      subtaskId,
+      stop,
+      request,
+      attempted,
+      observability,
+      ledger,
+      attemptStartMillis = attemptStartMillis,
+    )
+  } ?: when (reconciled) {
+    is GoalRunnerReconciledOutcome.Complete ->
+      completedIteration(state, subtaskId, reconciled, request, observability, ledger, attemptStartMillis)
+    is GoalRunnerReconciledOutcome.Stop ->
+      stoppedIteration(
+        state, subtaskId, reconciled, request, attempted, observability, ledger,
+        launchReconciliation.diagnostics, attemptStartMillis = attemptStartMillis,
       )
-      is GoalRunnerReconciledOutcome.Stop -> stoppedIteration(
-        refreshed,
-        subtaskId,
-        reconciled,
-        request,
-        attempted,
-        observability,
-        ledger,
-        launchReconciliation.diagnostics,
-      )
-    }
   }
 
   private fun recordPostLaunchState(
@@ -423,16 +452,65 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
+    reAttemptCause: String? = null,
+    causingLoopEntry: String? = null,
   ) {
     refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
       recordLaunchObservabilityLedgerAndAccounting(
-        LaunchRecordingContext(workflowId, refreshed, subtaskId, selection, reconciliation),
+        LaunchRecordingContext(
+          workflowId,
+          refreshed,
+          subtaskId,
+          selection,
+          reconciliation,
+          reAttemptCause,
+          causingLoopEntry,
+        ),
         safeProgress(workflowId, request),
         observability,
         ledger,
       )
       emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
     }
+  }
+
+  private fun blockedOnRecoveryError(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    error: Throwable,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerIterationResult {
+    val (targetSubtaskId, reason, _) = when (error) {
+      is skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError ->
+        Triple(
+          error.subtaskId,
+          "Goal-subtask planning import conflicts with the stored shared preplan or subtask plan. " +
+            "This occurs when a shared preplan was regenerated after the child was hydrated, " +
+            "making the previously-imported planning bytes stale. " +
+            "Recovery requires hard reset: 'skill-bill goal reset ${state.manifest.issueKey} --hard --yes'. " +
+            "Planning failure: ${error.message.orEmpty()}",
+          "preplan",
+        )
+      else -> throw error
+    }
+    return blockedReviewBaselineIteration(state, targetSubtaskId, reason, request)
+  }
+
+  private fun launchSubtaskWithWorkerResult(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+    assignedWorkflowId: String?,
+    reviewBaseline: GoalSubtaskReviewBaseline,
+  ): Pair<GoalRunnerLaunchReconciliation, GoalRunnerWorkerRequestHandlingResult> {
+    val launchReconciliation = launchAndReconcileSubtask(state, subtaskId, request, assignedWorkflowId, reviewBaseline)
+    val workerRequestResult = workerRequestHandler.handle(
+      state = launchReconciliation.refreshed,
+      launchOutcome = launchReconciliation.launchOutcome,
+      subtaskId = subtaskId,
+      request = request,
+    )
+    return Pair(launchReconciliation, workerRequestResult)
   }
 
   private fun launchAndReconcileSubtask(
@@ -699,27 +777,18 @@ class GoalRunner(
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
     launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
+    attemptStartMillis: Long? = null,
   ): GoalRunnerIterationResult {
     val knownWorkflowId = state.manifest.knownWorkflowId(subtaskId, reconciled)
     val stoppedOutcome = markChildWorkflowBlockedIfNeeded(reconciled, knownWorkflowId, request)
+    val attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it }
     knownWorkflowId?.let { workflowId ->
-      ledger.recordLedgerEntry(
-        GoalRunnerLedgerContext(
-          workflowId = workflowId,
-          action = stoppedOutcome.reason.toLedgerAction(),
-          issueKey = state.manifest.issueKey,
-          subtaskId = subtaskId,
-          progress = safeProgress(workflowId, request),
-          blockedReason = stoppedOutcome.blockedReason,
-          finalReconciledResult = stoppedOutcome.reason.name.lowercase(),
-          stopReason = stoppedOutcome.reason.name.lowercase(),
-          diagnosticClass = launchDiagnostics?.diagnosticClass ?: stoppedOutcome.reason.toDiagnosticClass(),
-          recoverableJsonPresent = launchDiagnostics?.recoverableJsonPresent ?: false,
-          nextSafeAction = launchDiagnostics?.nextSafeAction ?: stoppedOutcome.reason.nextSafeAction(),
-        ),
+      recordStoppedLedgerEntries(
+        workflowId, state, subtaskId, stoppedOutcome, reconciled,
+        launchDiagnostics, attemptDurationMillis, ledger, request,
       )
     }
-    val blocked = if (stoppedOutcome.reason == GoalRunnerStopReason.RECONCILED_RESUMABLE) {
+    val blocked = if (stoppedOutcome.reason in GoalRunnerStopReason.RESUMABLE_STOP_REASONS) {
       state.manifest.withResumableSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
     } else {
       state.manifest.withStoppedSubtask(subtaskId, stoppedOutcome, knownWorkflowId)
@@ -755,6 +824,79 @@ class GoalRunner(
       ),
     )
   }
+
+  private fun recordStoppedLedgerEntries(
+    workflowId: String,
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
+    reconciled: GoalRunnerReconciledOutcome.Stop,
+    launchDiagnostics: GoalRunnerLaunchDiagnostics?,
+    attemptDurationMillis: Long?,
+    ledger: GoalRunnerLedgerRecorder,
+    request: GoalRunnerRunRequest,
+  ) {
+    val progress = safeProgress(workflowId, request)
+    val childLoopIterations = outcomeStore.childWorkflowLoopIterations(workflowId, request.dbPathOverride)
+    val reAttemptCause = reAttemptCauseFor(stoppedOutcome.reason, childLoopIterations)
+    val causingLoopEntry = causingLoopEntryFor(childLoopIterations)
+    ledger.recordLedgerEntry(
+      GoalRunnerLedgerContext(
+        workflowId = workflowId,
+        action = stoppedOutcome.reason.toLedgerAction(),
+        issueKey = state.manifest.issueKey,
+        subtaskId = subtaskId,
+        progress = progress,
+        blockedReason = stoppedOutcome.blockedReason,
+        finalReconciledResult = stoppedOutcome.reason.name.lowercase(),
+        stopReason = stoppedOutcome.reason.name.lowercase(),
+        diagnosticClass = launchDiagnostics?.diagnosticClass
+          ?: confirmedAliveKillDiagnosticClass(reconciled.liveness)
+          ?: stoppedOutcome.reason.toDiagnosticClass(),
+        recoverableJsonPresent = launchDiagnostics?.recoverableJsonPresent ?: false,
+        nextSafeAction = launchDiagnostics?.nextSafeAction ?: stoppedOutcome.reason.nextSafeAction(),
+        attemptDurationMillis = attemptDurationMillis,
+        reAttemptCause = reAttemptCause,
+        causingLoopEntry = causingLoopEntry,
+        findingsInScope = resolveFindingsLedger(state.manifest.issueKey, request.dbPathOverride)
+          ?.findings?.count { it.subtaskId == subtaskId },
+      ),
+    )
+    childLoopIterations.forEach { (loopId, edgeIteration) ->
+      ledger.recordBackwardEdgeEntry(
+        GoalRunnerBackwardEdge(
+          workflowId = workflowId,
+          issueKey = state.manifest.issueKey,
+          subtaskId = subtaskId,
+          loopId = loopId,
+          edgeIteration = edgeIteration,
+          progress = progress,
+        ),
+      )
+    }
+    if (reAttemptCause != null) pendingReAttemptCause[subtaskId] = reAttemptCause
+    causingLoopEntry?.let { pendingCausingLoopEntry[subtaskId] = it }
+  }
+
+  internal fun reAttemptCauseFor(reason: GoalRunnerStopReason, childLoopIterations: Map<String, Int>): String? {
+    val hasRegeneration = childLoopIterations.keys.any {
+      FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(it)
+    }
+    return when {
+      reason == GoalRunnerStopReason.RECONCILED_RESUMABLE && hasRegeneration -> "regeneration"
+      reason == GoalRunnerStopReason.RECONCILED_RESUMABLE -> "crash_resume"
+      childLoopIterations.isNotEmpty() -> "backward_edge"
+      else -> null
+    }
+  }
+
+  private fun causingLoopEntryFor(childLoopIterations: Map<String, Int>): String? = childLoopIterations.entries
+    .sortedWith(compareBy({ loopReAttemptPriority(it.key) }, { it.key }))
+    .firstOrNull()
+    ?.let { (loopId, edgeIteration) -> "$loopId:$edgeIteration" }
+
+  private fun loopReAttemptPriority(loopId: String): Int =
+    if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) 0 else 1
 
   private fun validationRetryIteration(
     blocked: DecompositionManifest,
@@ -831,6 +973,7 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     observability: GoalRunnerObservabilityEmitter,
     ledger: GoalRunnerLedgerRecorder,
+    attemptStartMillis: Long? = null,
   ): GoalRunnerIterationResult {
     val completed = manifestStore.saveRuntimeState(
       state.copy(manifest = state.manifest.withCompletedSubtask(subtaskId, reconciled)),
@@ -864,6 +1007,7 @@ class GoalRunner(
         subtaskId = subtaskId,
         progress = safeProgress(reconciled.workflowId, request),
         finalReconciledResult = "complete commit=${reconciled.commitSha}",
+        attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it },
       ),
     )
     return GoalRunnerIterationResult(state = completed)
@@ -1200,6 +1344,7 @@ internal class GoalRunnerLaunchReconciler(
       watermarkSeed = progressWatermark,
       diagnostics = diagnostics,
     )
+    val goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline)
     return GoalRunnerSubtaskLaunchRequest(
       invokedAgentId = request.invokedAgentId,
       configuredAgentOverrideId = request.configuredAgentOverrideId,
@@ -1214,7 +1359,9 @@ internal class GoalRunnerLaunchReconciler(
         declaredProgressProbe = declaredProgressProbe(tickReader),
         progressEmitter = progressEmitter,
         outputSink = request.outputSink,
-        goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline),
+        readOnlyPhase = goalContinuation?.lastResumableStep ==
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        goalContinuation = goalContinuation,
       ),
     )
   }
@@ -1623,6 +1770,9 @@ private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLau
           lastFileActivityAt = snapshot.lastFileActivityAt,
           lastFileActivityLabel = snapshot.lastFileActivityLabel,
           lastOutputAt = snapshot.lastOutputAt,
+          livenessState = snapshot.livenessState,
+          aliveAtKill = snapshot.livenessState == GoalRunnerLivenessState.WORKING ||
+            snapshot.livenessState == GoalRunnerLivenessState.PROGRESSING,
         )
       },
     )
@@ -1854,6 +2004,8 @@ private data class LaunchRecordingContext(
   val subtaskId: Int,
   val selection: GoalRunnerSelection.Run,
   val launchReconciliation: GoalRunnerLaunchReconciliation,
+  val reAttemptCause: String? = null,
+  val causingLoopEntry: String? = null,
 )
 
 private fun recordLaunchObservabilityLedgerAndAccounting(
@@ -1888,6 +2040,8 @@ private fun recordLaunchObservabilityLedgerAndAccounting(
       }?.let { "child_process_failed" },
       recoverableJsonPresent = null,
       nextSafeAction = "read_terminal_workflow_state",
+      reAttemptCause = context.reAttemptCause,
+      causingLoopEntry = context.causingLoopEntry,
     ),
   )
   ledger.recordAccounting(
@@ -1908,11 +2062,15 @@ private fun GoalRunnerStopReason.toDiagnosticClass(): String = when (this) {
   else -> name.lowercase()
 }
 
+private fun confirmedAliveKillDiagnosticClass(liveness: GoalRunnerLivenessSnapshot?): String? =
+  if (liveness?.aliveAtKill == true) GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL else null
+
 private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,
   GoalRunnerStopReason.INTERRUPTED,
   GoalRunnerStopReason.RECONCILED_RESUMABLE,
+  GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
   -> "resume_from_last_resumable_step"
   GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
   else -> "inspect_blocked_reason"

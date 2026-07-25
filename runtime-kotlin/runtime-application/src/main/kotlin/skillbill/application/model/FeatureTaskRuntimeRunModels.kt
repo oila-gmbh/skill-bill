@@ -8,6 +8,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -35,6 +36,11 @@ data class FeatureTaskRuntimeRunRequest(
   val requestedCodeReviewMode: CodeReviewExecutionMode? = null,
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
+  /**
+   * Releases a subtask paused on an unresolved Blocker disposition. Applied once before the loop
+   * drives; null on every run that is not resuming such a pause.
+   */
+  val operatorDecision: GoalSubtaskOperatorDecision? = null,
   /** Already identity-verified selection; workers never discover or reparse add-on sources. */
   val agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   val eventSink: FeatureTaskRuntimeRunEventSink = FeatureTaskRuntimeRunEventSink.NONE,
@@ -118,6 +124,30 @@ sealed interface FeatureTaskRuntimeRunReport {
       require(blockedReason.isNotBlank()) {
         "FeatureTaskRuntimeRunReport.Blocked.blockedReason must be non-blank."
       }
+    }
+  }
+
+  /**
+   * Non-terminal and resumable, distinct from [Blocked]: the subtask is waiting on the bounded
+   * operator decision over `retry_fix`, `accept_and_advance`, and `abandon_subtask`. The persisted
+   * review state, `review_base_sha`, baseline untracked inventory, and consumed pass count survive
+   * intact, so resume never re-reserves a consumed pass.
+   */
+  data class Paused(
+    override val issueKey: String,
+    override val workflowId: String,
+    override val featureSize: String,
+    val pausedPhase: String,
+    val pauseReason: String,
+    val resumableStep: String,
+    val completedPhaseIds: List<String>,
+    override val resolvedBranch: String?,
+    val subtaskOutcome: FeatureTaskRuntimeSubtaskOutcome? = null,
+  ) : FeatureTaskRuntimeRunReport {
+    init {
+      require(pausedPhase.isNotBlank()) { "FeatureTaskRuntimeRunReport.Paused.pausedPhase must be non-blank." }
+      require(pauseReason.isNotBlank()) { "FeatureTaskRuntimeRunReport.Paused.pauseReason must be non-blank." }
+      require(resumableStep.isNotBlank()) { "FeatureTaskRuntimeRunReport.Paused.resumableStep must be non-blank." }
     }
   }
 

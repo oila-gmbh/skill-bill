@@ -157,9 +157,12 @@ evaluates that verdict — prose alone cannot advance past a Blocker finding.
   `implement_fix` phase, which addresses the carried review findings on the
   current working tree as incremental reconciliation (not a plan re-application),
   then re-runs `review`. This `review` → `implement_fix` → `review` cycle is
-  capped at one remediation iteration via a durable per-edge counter: the
-  initial review may use the selected mode, while the only re-review is reserved
-  before launch and always invokes
+  capped at one remediation iteration via a durable per-edge counter with
+  PER_SUBTASK scope: the counter accumulates across parent resumes so repeated
+  resumes cannot multiply the one-iteration bound. Goal status reports
+  cumulative iteration counts across all runs for the same subtask. The initial
+  review may use the selected mode, while the only re-review is reserved before
+  launch and always invokes
   `bill-code-review mode:inline context:feature-remediation` against only
   the staged, unstaged, and untracked remediation delta since the checkpoint
   created before `implement_fix`, never the full feature-branch diff. The first
@@ -202,9 +205,12 @@ audit emits `satisfied` even if test coverage is absent or inadequate.
   emits an exact terminal result for every repair item; review or validation
   cannot substitute for executing carried work. This
   `audit` → `implement` → `audit` cycle has no fixed
-  iteration cap. Its durable counter records progress and recovery state but
-  never turns a valid `gaps_found` verdict into a permanent policy block. The
-  first `satisfied` verdict advances the run to `review`.
+  iteration cap and uses PER_SUBTASK counter scope: the iteration counter
+  accumulates across parent resumes. Goal status reports
+  cumulative iteration counts across all runs for the same subtask. The durable
+  counter records progress and recovery state but never turns a valid `gaps_found`
+  verdict into a permanent policy block. The first `satisfied` verdict advances
+  the run to `review`.
 
 The re-entered `implement` is idempotent: it reconciles the working tree toward
 the original plan without double-applying, and a crash mid-loopback resumes at the

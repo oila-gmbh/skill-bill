@@ -51,10 +51,13 @@ import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
+import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -75,7 +78,8 @@ class ParallelCodeReviewRunner(
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
   private val database: DatabaseSessionFactory,
 ) {
-  fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+  fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    var request = originalRequest
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
     val agent2 = resolveAgent(request.agent2Id, "--agent2")
     if (agent1.id == agent2.id) {
@@ -89,7 +93,14 @@ class ParallelCodeReviewRunner(
     val detection = detectStack(evidence, request.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
-    val resolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    val lane1ResolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    // Pin lane 1's depth onto the request before either lane starts, so lane 2 inherits it and a
+    // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
+    request = request.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
+    val resolvedMode = ReviewExecutionModePolicy.resolve(
+      requested = request.lane2Tier,
+      eligibility = ReviewAutoEligibility(oversized = false, highRisk = false, layeredStack = false),
+    )
     val launchRequests = prepare(
       request,
       diffText,
@@ -100,24 +111,7 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
-    val providerNativeAssignments = launchRequests
-      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
-      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
-      .distinct()
-    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED && providerNativeAssignments.isNotEmpty()) {
-      nativeAgentPreflight.verify(
-        ReviewNativeAgentPreflightRequest(
-          repoRoot = request.repoRoot,
-          assignments = providerNativeAssignments,
-        ),
-      )
-    }
-    // Isolation and launch-boundary preflight only applies to workers this run will actually
-    // start in isolated conversations; inline mode runs everything in the parent's own session
-    // and must not be rejected for an agent that simply has no specialist isolation strategy.
-    if (resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
-      delegatedReviewExecutionBroker.preflight(launchRequests)
-    }
+    preflightDelegatedWorkers(request, resolvedMode, launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }
     val outcomes = runLanes(
       request,
@@ -138,19 +132,47 @@ class ParallelCodeReviewRunner(
     }
   }
 
+  /**
+   * Isolation and launch-boundary preflight only applies to workers this run will actually start in
+   * isolated conversations; inline mode runs everything in the parent's own session and must not be
+   * rejected for an agent that simply has no specialist isolation strategy.
+   */
+  private fun preflightDelegatedWorkers(
+    request: ParallelCodeReviewRequest,
+    resolvedMode: ResolvedReviewExecutionMode,
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+  ) {
+    if (resolvedMode != ResolvedReviewExecutionMode.DELEGATED) return
+    val providerNativeAssignments = launchRequests
+      .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
+      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
+      .distinct()
+    if (providerNativeAssignments.isNotEmpty()) {
+      nativeAgentPreflight.verify(
+        ReviewNativeAgentPreflightRequest(
+          repoRoot = request.repoRoot,
+          assignments = providerNativeAssignments,
+        ),
+      )
+    }
+    delegatedReviewExecutionBroker.preflight(launchRequests)
+  }
+
   private fun resolvedMode(
     request: ParallelCodeReviewRequest,
     diffText: String,
     manifests: List<PlatformManifest>,
     maxLaneLaunchBytes: Long,
-  ) = ReviewExecutionModePolicy.resolve(
-    request.codeReviewMode,
-    ReviewAutoEligibility(
+  ) = ReviewExecutionModePolicy.resolveWithRule(
+    // A pinned resolvedTier is lane 1's already-decided depth; honoring it here is what makes both
+    // lanes share one tier instead of each re-resolving auto independently.
+    requested = request.resolvedTier ?: request.codeReviewMode,
+    eligibility = ReviewAutoEligibility(
       oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
       highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
       layeredStack = manifests.any { it.codeReviewComposition != null },
     ),
-  )
+  ).resolvedMode
 
   private fun runLanes(
     request: ParallelCodeReviewRequest,
@@ -160,7 +182,6 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
   ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
-    val manifest = routedManifests.firstOrNull()
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
@@ -369,53 +390,12 @@ class ParallelCodeReviewRunner(
     }
     if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList(), emptyMap())
 
-    val changedFiles = evidence.files.filterNot { RoutingSignalPathMatcher.isIgnored(it.path) }
-
-    val signalOwners = manifests.flatMap { manifest ->
-      manifest.routingSignals.path.distinct().map { it to manifest.slug }
-    }.groupBy({ it.first }, { it.second })
-    val routedSlugs = linkedSetOf<String>()
-    val ownedPathsBySlug = mutableMapOf<String, MutableSet<String>>()
-    changedFiles.forEach { changed ->
-      // Path evidence is near-authoritative (a .kt file is a Kotlin file); content signals are
-      // broad, language-agnostic tokens ("class ", "import ") that legitimately appear in most
-      // stacks' source, so they may only break ties among equally-path-scored manifests and must
-      // never let a manifest with no path match at all outrank one with a real path match.
-      val scores = manifests.associateWith { manifest ->
-        val pathScore = manifest.routingSignals.path.distinct().sumOf { signal ->
-          if (!RoutingSignalPathMatcher.matches(changed.path, signal)) {
-            0
-          } else if (signalOwners.getValue(signal).size == 1) {
-            UNIQUE_PATH_SIGNAL_SCORE
-          } else {
-            1
-          }
-        }
-        val contentScore = manifest.routingSignals.content.distinct().count { signal ->
-          changed.changedContent.contains(signal, ignoreCase = true)
-        } * CONTENT_SIGNAL_SCORE
-        pathScore to contentScore
-      }.filterValues { (pathScore, contentScore) -> pathScore > 0 || contentScore > 0 }
-      val best = scores.values.maxWithOrNull(compareBy({ it.first }, { it.second })) ?: return@forEach
-      val winners = scores.filterValues { it == best }.keys.toMutableList()
-      if (winners.size > 1) {
-        // With only shared signals, prefer a baseline pack over a composed root. A root wins
-        // naturally as soon as one of its manifest-owned KMP/Android/etc. signals matches.
-        val composedRoots = winners.filter { it.codeReviewComposition != null }.toSet()
-        val baselineSlugs = composedRoots.flatMap { root ->
-          root.codeReviewComposition!!.baselineLayers.map { it.platform }
-        }.toSet()
-        if (baselineSlugs.any { slug -> winners.any { it.slug == slug } }) {
-          winners.removeAll(composedRoots)
-        }
-      }
-      winners.forEach { winner ->
-        routedSlugs += winner.slug
-        ownedPathsBySlug.getOrPut(winner.slug) { mutableSetOf() } += changed.path
-      }
-    }
-    val routed = manifests.filter { it.slug in routedSlugs }
-    return StackDetection(routed, manifests, ownedPathsBySlug)
+    val routing = ReviewStackRouting.route(
+      manifests,
+      evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) },
+    )
+    val routed = manifests.filter { it.slug in routing.routedSlugs }
+    return StackDetection(routed, manifests, routing.ownedPathsBySlug)
   }
 
   private fun launchResolvedLane(
@@ -580,8 +560,13 @@ class ParallelCodeReviewRunner(
     require(launchRequests.isNotEmpty()) { "Inline review selected no resolved assignments for '$agentId'." }
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
     val prompt = buildString {
-      appendLine("Run one complete bill-code-review mode:inline parent review.")
+      appendLine("Run one bill-code-review mode:inline parent review at the light depth tier.")
       appendLine("Resolved execution mode: inline")
+      appendLine(
+        "Depth: reduced. Walk the routed areas below as an explicit checklist, once each, under a " +
+          "bounded budget. This is not equivalent coverage to a delegated review and must not be " +
+          "presented as one; state that specialist depth was not applied.",
+      )
       appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision
@@ -599,7 +584,13 @@ class ParallelCodeReviewRunner(
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
-      appendLine("Apply every signal-relevant routed rubric in this agent context and do not launch specialists.")
+      appendLine(
+        "Cover each routed rubric above once at reduced depth in this agent context and do not launch " +
+          "specialists. Follow only the signals that appear; do not build a case for a marginal finding. " +
+          "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
+          "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
+          "inherited unchanged.",
+      )
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
           "path=<JSON string> | line=<positive integer> | description' lines.",
@@ -724,8 +715,6 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
-    const val UNIQUE_PATH_SIGNAL_SCORE = 10
-    const val CONTENT_SIGNAL_SCORE = 20
     val HIGH_RISK_SIGNAL = Regex(
       "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
     )

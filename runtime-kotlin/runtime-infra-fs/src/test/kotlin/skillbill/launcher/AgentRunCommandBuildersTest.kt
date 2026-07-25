@@ -376,6 +376,33 @@ class AgentRunCommandBuildersTest {
     )
   }
 
+  @Test
+  fun `read-only phase selects heartbeat-extended idle policy for all builders`() {
+    val readOnly = request().copy(readOnlyPhase = true)
+
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, ClaudeAgentRunCommandBuilder().build(readOnly).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, CodexAgentRunCommandBuilder().build(readOnly).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, JunieAgentRunCommandBuilder().build(readOnly).idlePolicy)
+  }
+
+  @Test
+  fun `read-only phase does not override output-extended when claude streams`() {
+    val streamingReadOnly = request().copy(streamOutputForLiveness = true, readOnlyPhase = true)
+
+    assertEquals(
+      AgentRunIdlePolicy.OUTPUT_EXTENDED,
+      ClaudeAgentRunCommandBuilder().build(streamingReadOnly).idlePolicy,
+      "streaming takes precedence over read-only for claude",
+    )
+  }
+
+  @Test
+  fun `non-read-only non-streaming phases keep db-progress-only idle policy`() {
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, ClaudeAgentRunCommandBuilder().build(request()).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, CodexAgentRunCommandBuilder().build(request()).idlePolicy)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, JunieAgentRunCommandBuilder().build(request()).idlePolicy)
+  }
+
   private fun request(
     model: String? = null,
     effort: String? = null,

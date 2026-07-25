@@ -57,6 +57,21 @@ fun countReviewHealthSources(payloads: List<ReviewHealthPayload>, malformedRecor
   return counts.toMap()
 }
 
+fun aggregateCategorySeverityCrossTab(payloads: List<ReviewHealthPayload>): Map<String, Map<String, Int>> {
+  val crossTab = mutableMapOf<String, MutableMap<String, Int>>()
+  payloads.forEach { payload ->
+    reviewFindingDetails(payload.payload).forEach { detail ->
+      val category = detail["issue_category"]?.toString().orEmpty()
+      val severity = normalizeFindingDetailValue("severity", detail["severity"]?.toString().orEmpty())
+      if (category.isNotBlank() && severity.isNotBlank()) {
+        crossTab.getOrPut(category) { mutableMapOf() }[severity] =
+          crossTab.getValue(category).getOrDefault(severity, 0) + 1
+      }
+    }
+  }
+  return crossTab.mapValues { it.value.toMap() }
+}
+
 private fun addOutcomeCount(counts: MutableMap<String, Int>, key: String, count: Int) {
   if (key in counts) {
     counts[key] = counts.getValue(key) + count

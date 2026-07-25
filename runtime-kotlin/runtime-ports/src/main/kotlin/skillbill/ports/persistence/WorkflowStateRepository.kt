@@ -22,6 +22,7 @@ interface WorkflowStateRepository :
   FeatureVerifyWorkflowStateRepository,
   FeatureTaskRuntimeWorkflowStateRepository
 
+@Suppress("TooManyFunctions") // single cohesive boundary: feature-task identity, candidate scans, and claim
 interface FeatureTaskWorkflowStateRepository {
   fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
 
@@ -38,6 +39,11 @@ interface FeatureTaskWorkflowStateRepository {
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> =
     error("Goal-child feature-task lookup is not implemented by this persistence adapter.")
+
+  // Goal parents carry no execution identity, so a goal that has not launched a child yet has no
+  // repository binding to match. This count distinguishes that case from a goal whose children all
+  // belong to a different repository.
+  fun countGoalChildIdentities(normalizedIssueKey: String): Int = 0
 
   fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")

@@ -8,19 +8,57 @@ import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class GoalPlanningPreparationValidatorTest {
-  private val validator = GoalPlanningPreparationValidator(FeatureTaskRuntimePhaseOutputValidatorAdapter())
+  // The real projection validator, not a stand-in: the write path must reject exactly what the
+  // consumer launch seam rejects, and a weaker validator here would prove nothing about that.
+  private val validator = GoalPlanningPreparationValidator(
+    FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+    FeatureTaskRuntimePlanningProjectionValidatorAdapter(),
+  )
 
   @Test
   fun `a valid preplan and plan pair is accepted`() {
     validator.validate(validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1))
+  }
+
+  @Test
+  fun `a projection-valid pair still checkpoints unchanged after the producer gate is added`() {
+    // Acceptance side of AC-004: the gate narrows nothing that was already valid.
+    validator.validate(validRecord(parentGoalWorkflowId = "goal-2", subtaskId = 3))
+  }
+
+  @Test
+  fun `a plan payload whose tasks carry empty test_obligations is rejected at write time`() {
+    // The SKILL-141 escape observed on wftr-20260724-184042-578i: `plan` settled completed with
+    // tasks[].test_obligations empty, which only the consumer's launch seam would have caught.
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+      planPayload = payloadJson(phaseId = "plan", producedOutputsJson = planProjectionJson(testObligations = "[]")),
+    )
+
+    val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
+    assertEquals("plan_payload", error.fieldPath)
+    assertTrue(
+      error.reason.contains("test_obligations"),
+      "the rejection must name the offending field so the fix loop can act on it: ${error.reason}",
+    )
+  }
+
+  @Test
+  fun `a preplan payload that is not a valid preplanning digest is rejected at write time`() {
+    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
+      preplanPayload = payloadJson(phaseId = "preplan", producedOutputsJson = """{"mode":"implement"}"""),
+    )
+
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
   }
 
   @Test
@@ -53,7 +91,7 @@ class GoalPlanningPreparationValidatorTest {
   @Test
   fun `a payload with empty produced_outputs is rejected`() {
     val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
-      planPayload = payloadJson(phaseId = "plan", producedOutputs = emptyMap<String, Any?>()),
+      planPayload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"),
     )
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
@@ -120,13 +158,27 @@ class GoalPlanningPreparationValidatorTest {
     phaseId: String,
     contractVersion: String = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
     status: String = "completed",
-    producedOutputs: Map<String, Any?> = mapOf("mode" to "implement"),
-  ): String {
-    val outputs = producedOutputs.entries.joinToString(",") { (key, value) ->
-      "\"$key\":\"$value\""
-    }
-    return """
-    {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s","produced_outputs":{$outputs}}
-    """.trimIndent()
-  }
+    producedOutputsJson: String = defaultProjectionJson(phaseId),
+  ): String = """
+    {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s",
+    "produced_outputs":$producedOutputsJson}
+  """.trimIndent().replace("\n", "")
+
+  private fun defaultProjectionJson(phaseId: String): String =
+    if (phaseId == "preplan") preplanProjectionJson() else planProjectionJson()
+
+  private fun preplanProjectionJson(): String = """
+    {"projection_kind":"preplanning_digest","contract_version":"0.1",
+    "affected_boundaries":["runtime-application/goalrunner"],
+    "risks":["producer may omit test obligations"],
+    "rollout":{"flag_required":false,"notes":"no flag needed"},
+    "validation_strategy":["focused gradle"]}
+  """.trimIndent().replace("\n", "")
+
+  private fun planProjectionJson(testObligations: String = """["parity"]"""): String = """
+    {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
+    "tasks":[{"task_id":"task-1","description":"add the producer gate","criterion_refs":["AC-001"],
+    "test_obligations":$testObligations}],
+    "validation_strategy":["focused gradle"]}
+  """.trimIndent().replace("\n", "")
 }

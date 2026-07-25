@@ -86,6 +86,7 @@ private fun ReviewHealthStats.toPayload(): Map<String, Any?> = linkedMapOf(
   "confidence_counts" to confidenceCounts,
   "latest_outcome_counts" to latestOutcomeCounts,
   "issue_category_counts" to issueCategoryCounts,
+  "category_severity_counts" to categorySeverityCounts,
   "platform_counts" to platformCounts,
   "scope_counts" to scopeCounts,
   "source_counts" to sourceCounts,

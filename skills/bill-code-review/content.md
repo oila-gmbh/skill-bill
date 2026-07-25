@@ -17,23 +17,49 @@ with `mode:inline` when a governed feature-task caller supplies the exact
 remediation delta since its checkpoint. Reject it with another mode, a full
 branch/PR scope, or no bounded remediation scope.
 
-Explicit `auto` applies the shell contract's eligibility decision. `inline`
-always runs the complete routed review in the current agent context, regardless
-of size or risk, without spawning specialists or fabricating lane totals.
-`delegated` always runs the normal routed delegated path,
-including specialist selection; inability to launch required workers blocks
-loudly and never falls back to inline. Report both requested mode and resolved
-execution mode in the normal review metadata.
+`delegated` and `inline` are two review depths, not two ways to execute the same
+review. Report the requested mode and the resolved depth in the normal review
+metadata.
 
-`context:feature-remediation` bounds the feature workflow's reserved later
-inline review pass. Review the bounded remediation delta in this
-session, apply every signal-relevant baseline and specialist rubric, and treat
-high-risk signals as required coverage rather than grounds to refuse or
-delegate. Finding severity, evidence, and approval rules remain unchanged.
+`delegated` is the full-depth review and the default. `delegated` always runs the normal routed delegated path
+including specialist selection, launching one worker per routed area. Inability
+to launch a required native worker blocks loudly; it never degrades to inline.
 
-When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels.
+`inline` is the light tier: one agent in the current context, no specialist
+workers, no nested baseline orchestrator, under a bounded budget. Treat the
+routed areas as an explicit checklist and walk each one once at reduced depth.
+Its purpose is verification — confirm the change does what it claims and catch
+the defects a careful reader finds on one attentive pass. It is not an audit of
+every area in depth. Follow only the signals that appear,
+and do not build a case for a marginal finding to justify having looked. An
+inline result states the areas it walked and that specialist depth was not
+applied; never present it as equivalent to a delegated result.
 
-Lane 1 is the normal routed stack-specific review, run in this session through its standard flow: it recursively flattens required baseline composition into direct specialist assignments and launches the resulting non-empty lanes. It never launches a nested baseline orchestrator. "In this session" only distinguishes it from lane 2; it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full and independently applies the same flattened planning contract. Do not pass `parallel:` into lane 2. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
+`auto` resolves depth by review pass number: pass one resolves to `delegated`,
+every later pass resolves to `inline`. This is the only rule auto applies when a
+review pass number exists. A standalone review invoked outside the feature-task
+review sequence carries no pass number; there `auto` falls back to the declared
+size-and-risk eligibility rule, which resolves to `delegated` when the diff is
+oversized, high-risk, or spans layered stacks and to `inline` otherwise. Both
+rules are named and reported in review metadata alongside the resolved depth. An
+explicit `inline` or `delegated` always overrides either rule.
+
+Depth is the only thing the light tier lowers. The severity vocabulary, the
+finding admission gate, the evidence and observable-consequence requirements, the
+F-XXX risk register format, and telemetry are inherited unchanged and are never
+restated per tier.
+
+With `context:feature-remediation`, the pass is bounded to the supplied
+remediation delta rather than the full base-to-current delta, and verification is
+its primary output. For every Blocker the prior pass emitted, state `resolved`,
+`unresolved`, or `superseded`, and cite the specific changed lines that settle it.
+A disposition without that evidence is not admissible. Review the remediation
+delta itself for defects the fix introduced; do not re-search the code the prior
+pass already covered.
+
+When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels. Both lanes share the resolved depth; reject a pairing that would run one lane light and the other full before either lane starts.
+
+Lane 1 is the routed stack-specific review, run in this session at the resolved depth. At delegated depth it recursively flattens required baseline composition into direct specialist assignments and launches the resulting non-empty lanes; at inline depth it runs the single-agent light pass and launches no specialists. It never launches a nested baseline orchestrator. "In this session" only distinguishes it from lane 2; at delegated depth it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full and independently applies the same flattened planning contract. Do not pass `parallel:` into lane 2. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
 
 When the argument is absent, consult the repo-local config fallback (next section) before falling through to normal shell behaviour.
 
