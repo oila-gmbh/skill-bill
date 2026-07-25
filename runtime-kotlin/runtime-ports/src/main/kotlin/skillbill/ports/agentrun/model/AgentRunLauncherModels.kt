@@ -33,6 +33,12 @@ data class SkillRunRequest(
    * prove liveness. A builder that cannot stream must keep the idle watchdog off its own launch.
    */
   val streamOutputForLiveness: Boolean = false,
+  /**
+   * True when the phase produces no durable workflow rows and no file activity by construction (e.g.
+   * the review phase). Builders use this to select HEARTBEAT_EXTENDED so the process runner does not
+   * idle-kill a healthy agent whose only liveness signal is a live heartbeat.
+   */
+  val readOnlyPhase: Boolean = false,
   val modelOverride: String? = null,
   val effortOverride: String? = null,
   val compaction: PhaseCompactionDirective? = null,

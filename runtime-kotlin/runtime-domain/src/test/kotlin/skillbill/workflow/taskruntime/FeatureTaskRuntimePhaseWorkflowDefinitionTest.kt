@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -262,6 +263,18 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
       definition.completedTerminalSummaryArtifact,
     )
+  }
+
+  @Test
+  fun `all backward edges declare PER_RUN capScope explicitly`() {
+    val edges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
+    edges.forEach { edge ->
+      assertEquals(
+        FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
+        edge.capScope,
+        "backward edge '${edge.loopId}' must explicitly declare PER_RUN capScope",
+      )
+    }
   }
 
   private fun dependenciesOf(phaseId: String): List<String> = definition.requiredArtifactsByStep.getValue(phaseId)

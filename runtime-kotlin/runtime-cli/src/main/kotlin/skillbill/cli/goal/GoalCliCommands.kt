@@ -781,6 +781,10 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
+    if (it.blockedAttemptCount > 0) put("blocked_attempt_count", it.blockedAttemptCount)
+    if (it.supervisorKillCount > 0) put("supervisor_kill_count", it.supervisorKillCount)
+    if (it.phaseAttemptCounts.isNotEmpty()) put("phase_attempt_counts", it.phaseAttemptCounts)
+    if (it.cumulativeFixIterations.isNotEmpty()) put("cumulative_fix_iterations", it.cumulativeFixIterations)
   }
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -818,6 +822,7 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
         "liveness=${event["liveness_class"]} sequence=${event["sequence_number"]}",
     )
   }
+  appendOperatorSurfaceLines(payload)
   appendDiffStatusLines(payload)
 }
 
@@ -850,6 +855,20 @@ private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
     )
   }
   appendDiffStatusLines(refresh, watchIndex = refresh["refresh_index"]?.toString())
+}
+
+private fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
+  val blockedAttemptCount = (payload["blocked_attempt_count"] as? Number)?.toInt() ?: 0
+  val supervisorKillCount = (payload["supervisor_kill_count"] as? Number)?.toInt() ?: 0
+  if (blockedAttemptCount > 0 || supervisorKillCount > 0) {
+    appendLine("blocked_attempts: $blockedAttemptCount supervisor_kills: $supervisorKillCount")
+  }
+  (payload["phase_attempt_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { counts ->
+    appendLine("phase_attempts: ${counts.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  }
+  (payload["cumulative_fix_iterations"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { iters ->
+    appendLine("fix_iterations: ${iters.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  }
 }
 
 private fun StringBuilder.appendDiffStatusLines(payload: Map<*, *>, watchIndex: String? = null) {
@@ -956,6 +975,7 @@ private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<Strin
 // detected invoking-agent context is available.
 private const val DEFAULT_GOAL_AGENT = "codex"
 private const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
+internal const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
 private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"

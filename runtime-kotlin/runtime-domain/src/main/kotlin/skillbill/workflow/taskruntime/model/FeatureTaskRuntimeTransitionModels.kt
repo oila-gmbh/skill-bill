@@ -54,6 +54,18 @@ enum class FeatureTaskRuntimeCapExhaustionBehavior {
 }
 
 /**
+ * Whether the per-edge cap counter resets across parent-level resumes (PER_RUN, the default) or
+ * accumulates across all runs for the same subtask (PER_SUBTASK). All current backward edges use
+ * PER_RUN: a resume starts a fresh edge-iteration window so the child can attempt the loop again
+ * after an interrupted run. PER_SUBTASK is reserved for cases where the contract must hold across
+ * the full subtask lifetime regardless of how many times the parent relaunched the child.
+ */
+enum class FeatureTaskRuntimeBackwardEdgeCapScope {
+  PER_RUN,
+  PER_SUBTASK,
+}
+
+/**
  * One declared backward edge: when [fromPhaseId] settles with [triggeringVerdict], the run re-enters
  * [destinationPhaseId]. [perEdgeCap] bounds re-entries when present; `null` allows reconciliation to
  * continue until the triggering verdict clears. [loopId] names the loop for durable accounting.
@@ -66,6 +78,7 @@ data class FeatureTaskRuntimeBackwardEdge(
   val perEdgeCap: Int?,
   val capExhaustionBehavior: FeatureTaskRuntimeCapExhaustionBehavior =
     FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
+  val capScope: FeatureTaskRuntimeBackwardEdgeCapScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
 ) {
   init {
     require(fromPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.fromPhaseId must be non-blank." }

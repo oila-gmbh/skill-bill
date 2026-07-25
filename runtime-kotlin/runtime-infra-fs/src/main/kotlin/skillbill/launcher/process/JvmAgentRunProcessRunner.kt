@@ -478,16 +478,13 @@ private class ProcessWaitLoop(
   }
 
   private fun pollStatusHeartbeat(nowNanos: Long) {
-    if (nowNanos - lastStatusHeartbeatNanos < statusHeartbeatNanos) {
-      return
-    }
-    lastStatusHeartbeatNanos = nowNanos
     val alive = process.isAlive
-    lifecycleEmitter.emitHeartbeat(alive)
-    // Track in-memory so idle-wait paths can extend the idle window without a DB
-    // round-trip. SQLite contention from the child MCP server can silently null
-    // out the DB-backed signals; process.isAlive never can.
+    // Track in-memory on every poll so HEARTBEAT_EXTENDED can extend the idle window at any poll
+    // frequency — SQLite contention can silently null out DB-backed signals; process.isAlive never can.
     if (alive) lastLiveHeartbeatNanos = nowNanos
+    if (nowNanos - lastStatusHeartbeatNanos < statusHeartbeatNanos) return
+    lastStatusHeartbeatNanos = nowNanos
+    lifecycleEmitter.emitHeartbeat(alive)
     request.progressProbe.safeProgressLabel()?.takeIf(String::isNotBlank)?.let { label ->
       lastProgressLabel = label
     }

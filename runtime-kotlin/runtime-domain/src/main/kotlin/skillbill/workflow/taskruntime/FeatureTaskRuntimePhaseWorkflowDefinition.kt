@@ -5,6 +5,7 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
@@ -374,6 +375,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
           capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -381,6 +383,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = AUDIT_GAP_LOOP_ID,
           perEdgeCap = null,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
         ),
         // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
         // durable record at its launch seam re-enters that producer under a bounded cap; cap
@@ -391,6 +394,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_PREPLAN,
           loopId = PREPLAN_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_IMPLEMENT,
@@ -398,6 +402,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_PLAN,
           loopId = PLAN_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -405,6 +410,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT,
           loopId = IMPLEMENT_REGENERATION_LOOP_ID,
           perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
+          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),

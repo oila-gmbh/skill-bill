@@ -292,9 +292,11 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
 
 ## Acceptance Criteria
 
-### Unit 1 — Producer-side planning projection gate parity
+Criteria 1–5 are unit 1 (subtask 2); 6–8 unit 2 (subtask 3); 9–12 unit 3
+(subtask 4); 13–21 unit 4 (subtask 5); 22–28 unit 5 (subtask 1); 29–30 apply to
+every unit.
 
-1. Every phase owning a bounded planning projection validates its completed output
+1. Unit 1 — Producer-side planning projection gate parity. Every phase owning a bounded planning projection validates its completed output
    against the **planning projection contract** producer-side, before that output
    is marked settled, checkpointed as a goal planning preparation, or hydrated into
    a child. The producer gate and the consumer launch seam call one shared
@@ -315,9 +317,7 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
    remain as the recovery path for genuine drift, unchanged in cap and behavior.
    Unit 1 reduces how often they fire; it does not remove them.
 
-### Unit 2 — Blocker-only reopen
-
-6. Only an unresolved Blocker reopens `implement_fix`. Major, Minor, and Nit
+6. Unit 2 — Blocker-only reopen. Only an unresolved Blocker reopens `implement_fix`. Major, Minor, and Nit
    advance and are recorded in the goal-wide unaddressed-findings ledger.
    `skills/bill-feature-goal/content.md` states this without contradiction, and no
    governed surface still claims Major reopens the loop.
@@ -328,9 +328,7 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
    Majors in the ledger and zero `implement_fix` iterations consumed. A pass
    emitting one Blocker plus several Majors consumes exactly one iteration.
 
-### Unit 3 — Lane severity calibration
-
-9. The shared review contract defines severity in terms of observable consequence,
+9. Unit 3 — Lane severity calibration. The shared review contract defines severity in terms of observable consequence,
    with `behavior_correctness` as the calibration reference: Blocker means the
    change breaks correctness or safety; Major means the change materially worsens
    behavior for a demonstrated scenario; stylistic, speculative, or pre-existing
@@ -348,9 +346,7 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
     supports a per-category Major/Blocker ratio query so calibration can be
     re-evaluated against future runs.
 
-### Unit 4 — Inline as a bounded light tier; remediation pass bounded to its delta
-
-13. `inline` is redefined as a distinct depth tier, not a topology variant of
+13. Unit 4 — Inline as a bounded light tier. `inline` is redefined as a distinct depth tier, not a topology variant of
     delegated. It is one agent, no specialist workers, covering the routed areas as
     an explicit checklist at reduced depth, under a bounded budget. The governed
     text drops "the complete routed review … regardless of size or risk" and drops
@@ -402,9 +398,7 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
     pre-`validate` Blocker gate are reconciled so a child cannot both advance on cap
     exhaustion and pause on an unresolved Blocker.
 
-### Unit 5 — Review-phase liveness, preflight, and loop accounting
-
-22. A read-only phase that produces no file activity and no durable workflow
+22. Unit 5 — Review-phase liveness. A read-only phase that produces no file activity and no durable workflow
     progress by construction — `review` in either depth tier — runs
     under an idle policy whose window cannot be shorter than that phase's expected
     duration. A confirmed-alive child heartbeat extends the window
@@ -444,9 +438,7 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
     minutes; that gap is the acceptance bar. Output stays within the bounded-output
     contract — counts and phase identity only, no paths or raw child output.
 
-### All units
-
-29. Goal-facing output obeys the bounded-output contract: subtask id, pass,
+29. All units — bounded output. Goal-facing output obeys the bounded-output contract: subtask id, pass,
     per-finding verdict, counts, severity, and class/symbol-or-sanitized-stem label
     only. No path, line number, diff hunk, or raw child output reaches
     `goal_event:`, status, watch, telemetry, or PR surfaces. Location-bearing
@@ -565,22 +557,107 @@ exists in durable artifacts (`supervision_event`, `blocked_reason`,
   long attempt without re-running it.
 - Focused Gradle tests for changed modules, then the full repository gates.
 
-## Open Questions
+## Resolved Decisions
 
-1. Operator decision vocabulary at the pause — minimum is likely `retry_fix`,
-   `accept_and_advance`, `abandon_subtask`. Does `retry_fix` grant a fresh
-   `implement_fix` iteration, and is that budgeted or operator-granted each time?
-2. Should `superseded` distinguish "the finding no longer applies because the code
-   was removed" from "the finding was wrong"? The second is a quality signal worth
-   feeding back into the admission gate.
-3. Should the remediation pass disposition cover Major findings at all, or strictly
-   Blockers? Strictly Blockers is cheapest and matches advancement semantics, but
-   leaves Majors unverified in the ledger.
-4. Should `attempt_count` distinguish a backward-edge regeneration from a
-   crash/resume re-attempt on an operator surface? Today they are
-   indistinguishable in `goal status`, which is why unit 1's symptom initially read
-   as review churn. Possibly a separate observability issue rather than unit 1
-   scope.
+1. **Operator decision vocabulary at the pause** — `retry_fix`,
+   `accept_and_advance`, `abandon_subtask`. `retry_fix` grants one fresh
+   `implement_fix` iteration each time the operator chooses it, and is
+   operator-granted and unbudgeted: the human is the bound, so no cap can silently
+   multiply across resumes. Lands in subtask 5.
+2. **`superseded` granularity** — not split in this change. `superseded` stays one
+   disposition value. Distinguishing "the code was removed" from "the finding was
+   wrong" is a quality signal worth feeding back into the admission gate, but it is
+   a separate concern from bounding the loop.
+3. **Remediation pass disposition scope** — strictly Blockers. This is cheapest and
+   matches the Blocker-only advancement semantics unit 2 codifies. Majors remain in
+   the unaddressed-findings ledger, unverified. Lands in subtask 5.
+4. **`attempt_count` distinguishing regeneration from crash/resume re-attempt** —
+   folded into unit 5 (subtask 1). It is the same durable field and the same
+   operator surface as the per-attempt attribution that unit already owns.
+
+## Subtask Mapping
+
+Units are ordered for execution by payoff and dependency, so subtask numbering does
+not follow unit numbering:
+
+| subtask | unit | title | depends on | status |
+|---|---|---|---|---|
+| 1 | 5 | Review-phase liveness, preflight, and loop accounting | — | **complete** |
+| 2 | 1 | Producer-side planning projection gate parity | — | pending |
+| 3 | 2 | Blocker-only reopen | — | pending |
+| 4 | 3 | Per-lane severity calibration | — | pending |
+| 5 | 4 | Inline as a bounded light tier; remediation pass bounded to its delta | 3 (required), 1 (soft) | in progress |
+
+Unit 5 lands first: it carries the largest measured wall-clock payoff and blocks
+nothing. Unit 4 lands last — SKILL-141 has landed (merge `e586cb43`), and it also
+builds on unit 2's Blocker-only semantics.
+
+## Completed Work
+
+### Subtask 1 — Review-phase liveness, preflight, and loop accounting (complete)
+
+Key deliverables:
+
+- `readOnlyPhase: Boolean` on `SkillRunRequest`; `FeatureTaskRuntimeRunLoop` sets it
+  true when `run.phaseId == PHASE_REVIEW`, selecting `HEARTBEAT_EXTENDED` idle policy
+  via the existing named-strategy mechanism.
+- `READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES` replaces the fixed 10-minute window
+  for review-phase launches.
+- `lastLiveHeartbeatNanos` updated on every `pollStatusHeartbeat` poll (not only every
+  90s) so short idle timeouts in tests see the heartbeat.
+- `GoalRunnerAttemptLedgerStore` port + `GoalRunnerAttemptLedgerSummary` data class
+  exposing `blockedAttemptCount`, `supervisorKillCount`, `phaseAttemptCounts`, and
+  `cumulativeFixIterations`; `WorkflowGoalRunnerOutcomeStore` implements both ports.
+- `GoalRunner` reads `GoalRunnerAttemptLedgerStore` and surfaces counts on the
+  operator-facing status output.
+- `AgentRunCommandBuilders` reads `readOnlyPhase` and wires `HEARTBEAT_EXTENDED`.
+- `bill-code-review/content.md` updated so `delegated` and `inline` descriptions
+  match the strings asserted by `FeatureSpecSkillWiringContractTest`.
+- `DeclaredReviewSpecialistsPort` (new port) + `FileSystemDeclaredReviewSpecialists`
+  (infra-fs implementation) reads platform pack manifests statically and computes
+  specialist skill names (`bill-<slug>-code-review-<area>`) before routing.
+- `FeatureTaskRuntimePhaseGates.reviewNativeAgentPreflight()` calls native-worker
+  preflight before phase entry using declared specialists; verifies both the invoked
+  agent and `parallelReviewAgent` (when present); no-ops only when no specialists are
+  declared.
+- `FeatureTaskRuntimeRunLoop.runPhase()` calls `reviewNativeAgentPreflight` for
+  `PHASE_REVIEW` after the budget-settle early-exit checks and before `preLaunchBlock`.
+- `RuntimeComponent` wires `FileSystemDeclaredReviewSpecialists` as
+  `DeclaredReviewSpecialistsPort` via kotlin-inject `@Provides`.
+- `GoalRunnerLivenessSnapshot` carries `aliveAtKill: Boolean` set at snapshot
+  construction in the adapter layer; `confirmedAliveKillDiagnosticClass` reads it
+  directly instead of checking liveness states that no kill path can carry.
+- `GoalRunnerWorkflowOutcomeStore` gains `childWorkflowLoopIterations` (reads child
+  durable phase records to return `loopId → max edgeIteration`); used by
+  `recordStoppedLedgerEntries` to account for edges completed within a single child run
+  beyond what stop-position inference alone could see.
+- `GoalRunnerLedgerContext.causingLoopEntry` and `GoalRunnerLedgerContext.reAttemptCause`
+  are now populated: threaded through `LaunchRecordingContext` and set from
+  `pendingCausingLoopEntry` / `pendingReAttemptCause` maps on `GoalRunner`.
+- `reAttemptCauseCounts: Map<String, Int>` added to `GoalRunnerAttemptLedgerSummary`,
+  `GoalRunnerStatusProjectionExtras`, and `GoalRunnerStatusProjection`; accumulated by
+  `AttemptLedgerAccumulator` from the `re_attempt_cause` ledger field; regeneration
+  edges labeled `"regeneration"` instead of `"crash_resume"` when child phase records
+  carry a regeneration loop id.
+- `goalContinuationCommand` passes `idlePolicy = unstreamedLivenessPolicy(request)` so
+  goal-continuation child review runs also benefit from the heartbeat-extended window;
+  `readOnlyPhase` on the `SkillRunRequest` is set by inspecting `goalContinuation` before
+  constructing it.
+- All 5 backward edges in `FeatureTaskRuntimePhaseWorkflowDefinition` declare
+  `capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_RUN` explicitly; a parity
+  test in `FeatureTaskRuntimePhaseWorkflowDefinitionTest` asserts all edges carry it.
+- Governed prose for `review_fix` and the `audit` → `implement` → `audit` loop both
+  state PER_RUN scope explicitly with the counter-reset and cumulative-reporting
+  semantics.
+- All four repository validation gates pass.
+
+### Prior Work On This Branch
+
+Commit `c6f4b1c7 feat(SKILL-142): define inline review as a bounded light tier`
+is already on `feat/SKILL-142-inline-review-depth-tier` and touches
+`skills/bill-code-review/content.md`. Unit 4 (subtask 5) is therefore **in
+progress, not greenfield**: audit that commit against criteria 13–21, keep what
+already satisfies them, and implement only the remainder.
 
 ## Telemetry Caveat
 

@@ -1086,3 +1086,49 @@ class PtyStdioLaunchTest {
     )
   }
 }
+
+/**
+ * SKILL-142 Subtask 1 (Task 4): confirms that a read-only phase (HEARTBEAT_EXTENDED policy) is not
+ * idle-killed while alive, and that a non-live process is still killed by the idle timeout under
+ * DB_PROGRESS_ONLY — proving the policy selection matters and is not a no-op.
+ */
+class ReadOnlyPhaseLivenessTest {
+  @Test
+  fun `read-only phase alive process is not idle-killed when it emits no durable progress`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 0.4"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 5.seconds,
+        progressIdleTimeout = 100.milliseconds,
+        progressProbe = AgentRunProgressProbe { null },
+        idlePolicy = AgentRunIdlePolicy.HEARTBEAT_EXTENDED,
+      ),
+    )
+
+    assertFalse(
+      result.timedOut,
+      "a live read-only phase process must not be idle-killed; liveness=${result.liveness}",
+    )
+    assertEquals(0, result.exitStatus)
+  }
+
+  @Test
+  fun `a process producing no durable progress and no heartbeat extension is killed by the idle timeout`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 5"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 10.seconds,
+        progressIdleTimeout = 100.milliseconds,
+        progressProbe = AgentRunProgressProbe { null },
+        idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
+      ),
+    )
+
+    assertTrue(
+      result.timedOut,
+      "a process with no durable progress must be killed under DB_PROGRESS_ONLY",
+    )
+  }
+}

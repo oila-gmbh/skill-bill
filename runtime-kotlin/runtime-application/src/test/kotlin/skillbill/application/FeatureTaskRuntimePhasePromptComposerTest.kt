@@ -683,16 +683,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     // Anti-drift: the shape example each phase carries must itself parse as the bounded planning
     // projection its downstream launch seam demands. If the example ever drifts from the schema, the
     // guidance would teach the agent to emit output the gate rejects — the exact failure this fixes.
-    val cases = mapOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
-        FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
-        FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
-        FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
-    )
-    cases.forEach { (phaseId, kind) ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+    projectionExampleCases().forEach { (phaseId, kind, briefing) ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
       // The output contract mentions a ```json fence in prose, so take the LAST fenced block — the
       // shape example this addendum appends — not the first.
       val exampleJson = prompt.substringAfterLast("```json").substringBefore("```")
@@ -726,6 +718,25 @@ private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.
 private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
   """{"contract_version":"0.3","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
+
+// The last case is the audit_gap re-entry: it used to REPLACE implement's example with a repair-only
+// object under its own "Required produced_outputs shape" heading, so the phase emitted exactly that,
+// lost projection_kind, and burned its whole fix loop against the receipt gate.
+private fun projectionExampleCases() = listOf(
+  Triple(preplanPhase, FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST, briefingFor(preplanPhase)),
+  Triple(planPhase, FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN, briefingFor(planPhase)),
+  Triple(implementPhase, receiptKind, briefingFor(implementPhase)),
+  Triple(
+    implementPhase,
+    receiptKind,
+    briefingFor(implementPhase).copy(auditRepairItemIds = listOf("ac-004-gap-2-item-1")),
+  ),
+)
+
+private val preplanPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
+private val planPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+private val implementPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
 
 private fun briefingFor(
   phaseId: String,

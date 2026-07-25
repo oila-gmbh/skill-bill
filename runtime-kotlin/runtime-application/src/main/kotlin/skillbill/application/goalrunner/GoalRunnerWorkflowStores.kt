@@ -10,6 +10,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -34,10 +35,12 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
@@ -730,7 +733,7 @@ private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
     .contains(issueKey)
 
 @Inject
-@Suppress("LongParameterList") // one cohesive goal-runner outcome store; bundling would only hide it
+@Suppress("LongParameterList", "LargeClass") // one cohesive goal-runner outcome store; bundling would only hide it
 class WorkflowGoalRunnerOutcomeStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -743,7 +746,7 @@ class WorkflowGoalRunnerOutcomeStore(
   // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-) : GoalRunnerWorkflowOutcomeStore {
+) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
@@ -1298,6 +1301,7 @@ class WorkflowGoalRunnerOutcomeStore(
     var maxLedger: Int? = null
     var maxAccounting: Int? = null
     var maxProgress: Int? = null
+    val backwardEdgeCounts = mutableMapOf<String, Int>()
     listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).forEach { family ->
       family.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
         val artifacts = decodeArtifacts(snapshot.artifactsJson)
@@ -1307,14 +1311,48 @@ class WorkflowGoalRunnerOutcomeStore(
         maxLedger = maxHistorySequence(artifacts, GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY, maxLedger)
         maxAccounting = maxHistorySequence(artifacts, GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY, maxAccounting)
         maxProgress = maxHistorySequence(artifacts, GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY, maxProgress)
+        backwardEdgeCountsFromLedger(artifacts).forEach { (key, count) ->
+          backwardEdgeCounts.merge(key, count, ::maxOf)
+        }
       }
     }
     GoalRunnerLedgerSequenceWatermarks(
       maxLedgerSequence = maxLedger,
       maxAccountingSequence = maxAccounting,
       maxProgressSequence = maxProgress,
+      backwardEdgeCounts = backwardEdgeCounts,
     )
   }
+
+  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> =
+    database.read(dbPathOverride) { unitOfWork ->
+      val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId) ?: return@read emptyMap()
+      val record = family.get(unitOfWork.workflowStates, workflowId) ?: return@read emptyMap()
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val result = mutableMapOf<String, Int>()
+      phaseRecordsFrom(artifacts).values.forEach { phaseRecord ->
+        val loopId = phaseRecord.loopId ?: return@forEach
+        val edgeIteration = phaseRecord.edgeIteration ?: return@forEach
+        result.merge(loopId, edgeIteration, ::maxOf)
+      }
+      result
+    }
+
+  override fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String?): GoalRunnerAttemptLedgerSummary =
+    database.read(dbPathOverride) { unitOfWork ->
+      val normalizedIssueKey = issueKey.trim()
+      val acc = AttemptLedgerAccumulator()
+      listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).forEach { family ->
+        family.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
+          val artifacts = decodeArtifacts(snapshot.artifactsJson)
+          if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) return@forEach
+          (artifacts[GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY] as? List<*>).orEmpty().forEach { item ->
+            (item as? Map<*, *>)?.let(acc::accumulate)
+          }
+        }
+      }
+      acc.toSummary()
+    }
 
   private fun loadContinuationCandidates(
     workflowStates: WorkflowStateRepository,
@@ -1770,6 +1808,60 @@ private fun maxHistorySequence(artifacts: Map<String, Any?>, historyKey: String,
     }
   }
   return max
+}
+
+private class AttemptLedgerAccumulator {
+  var blockedAttemptCount = 0
+  var supervisorKillCount = 0
+  val phaseAttemptCounts = mutableMapOf<String, Int>()
+  val cumulativeFixIterations = mutableMapOf<String, Int>()
+  val reAttemptCauseCounts = mutableMapOf<String, Int>()
+
+  fun accumulate(entry: Map<*, *>) {
+    val action = entry["action"]?.toString() ?: return
+    if (entry["stop_reason"] != null) blockedAttemptCount++
+    if (entry["diagnostic_class"]?.toString() == "supervisor_killed_confirmed_alive") supervisorKillCount++
+    if (action == "child_activation" || action == "resume") {
+      val step = entry["previous_step"]?.toString()?.takeIf(String::isNotBlank) ?: "initial_start"
+      phaseAttemptCounts.merge(step, 1, Int::plus)
+      entry["re_attempt_cause"]?.toString()?.takeIf(String::isNotBlank)?.let { cause ->
+        reAttemptCauseCounts.merge(cause, 1, Int::plus)
+      }
+    }
+    if (action == "backward_edge_entry") accumulateBackwardEdge(entry)
+  }
+
+  private fun accumulateBackwardEdge(entry: Map<*, *>) {
+    val subtaskId = entry["subtask_id"].asGoalRunnerIntOrNull() ?: return
+    val loopId = entry["loop_id"]?.toString()?.takeIf(String::isNotBlank) ?: return
+    val count = entry["cumulative_loop_count"].asGoalRunnerIntOrNull() ?: return
+    cumulativeFixIterations.merge("$subtaskId:$loopId", count, ::maxOf)
+  }
+
+  fun toSummary() = GoalRunnerAttemptLedgerSummary(
+    blockedAttemptCount = blockedAttemptCount,
+    supervisorKillCount = supervisorKillCount,
+    phaseAttemptCounts = phaseAttemptCounts,
+    cumulativeFixIterations = cumulativeFixIterations,
+    reAttemptCauseCounts = reAttemptCauseCounts,
+  )
+}
+
+// Scans the attempt ledger for backward-edge entries and returns the highest cumulative_loop_count
+// for each "subtaskId:loopId" pair. Used to seed the recorder's cumulative counters on resume.
+private fun backwardEdgeCountsFromLedger(artifacts: Map<String, Any?>): Map<String, Int> {
+  val entries = (artifacts[GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY] as? List<*>).orEmpty()
+  val counts = mutableMapOf<String, Int>()
+  entries.forEach { item ->
+    val entry = item as? Map<*, *> ?: return@forEach
+    if (entry["action"]?.toString() != "backward_edge_entry") return@forEach
+    val subtaskId = entry["subtask_id"].asGoalRunnerIntOrNull() ?: return@forEach
+    val loopId = entry["loop_id"]?.toString()?.takeIf(String::isNotBlank) ?: return@forEach
+    val count = entry["cumulative_loop_count"].asGoalRunnerIntOrNull() ?: return@forEach
+    val key = "$subtaskId:$loopId"
+    counts.merge(key, count, ::maxOf)
+  }
+  return counts
 }
 
 // SKILL-87: accept BOTH ISO-8601 (declared/observed progress-event timestamps) AND the SQLite

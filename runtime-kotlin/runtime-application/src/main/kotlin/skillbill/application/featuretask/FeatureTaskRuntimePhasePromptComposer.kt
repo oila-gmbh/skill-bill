@@ -334,7 +334,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
         "      changed files are at their intended target state. A status of \"completed\" with the\n" +
         "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
-        (if (remediation.isEmpty()) planningProjectionShapeExampleFor(phaseId) else "") + remediation
+        planningProjectionShapeExampleFor(phaseId) + remediation
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
@@ -483,11 +483,25 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
       "      payloads."
 
+  // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
+  // consumer parses, not a replacement for it. Presenting them under their own "Required
+  // produced_outputs shape" heading made the phase emit only those two keys and fail the receipt gate
+  // on every attempt until the loop cap.
   private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
-    "Required produced_outputs shape:\n```json\n{\n" +
-      "  \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
-      "  \"repair_item_results\": ${repairItemResultsJson(repairItemIds)}\n" +
-      "}\n```"
+    "\n      Required produced_outputs shape: the SAME implementation_receipt object, carrying the two\n" +
+      "      remediation fields alongside its own. They are co-residents, NOT a replacement shape:\n" +
+      "      projection_kind, contract_version, and every other receipt field stay REQUIRED here:\n" +
+      "      ```json\n" +
+      "      { \"projection_kind\": \"implementation_receipt\",\n" +
+      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
+      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+      "        \"tests_added\": [], \"tests_updated\": [], \"tests_executed\": [],\n" +
+      "        \"deviations\": [], \"unresolved_items\": [],\n" +
+      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
+      "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
+      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
+      "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
+      "      ```"
 
   private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
     prefix = "[",

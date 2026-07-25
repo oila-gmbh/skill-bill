@@ -15,8 +15,10 @@ import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -32,6 +34,7 @@ class GoalRunnerStatusService(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  private val attemptLedgerStore: GoalRunnerAttemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -51,6 +54,9 @@ class GoalRunnerStatusService(
         val planningBlock = currentSubtask?.takeIf { subtask ->
           subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
         }
+        val ledgerSummary = runCatching {
+          attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
+        }.getOrNull()
         GoalRunnerStatusProjector.project(
           manifest = manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
@@ -68,6 +74,11 @@ class GoalRunnerStatusService(
             latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
             requestedDiffStat = request.requestedDiffStat(),
             selectedDiffHunks = request.requestedSelectedDiffHunks(),
+            blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
+            supervisorKillCount = ledgerSummary?.supervisorKillCount ?: 0,
+            phaseAttemptCounts = ledgerSummary?.phaseAttemptCounts ?: emptyMap(),
+            cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
+            reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
           ),
         )
       }

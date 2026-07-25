@@ -123,6 +123,7 @@ data class GoalRunnerLedgerSequenceWatermarks(
   val maxLedgerSequence: Int? = null,
   val maxAccountingSequence: Int? = null,
   val maxProgressSequence: Int? = null,
+  val backwardEdgeCounts: Map<String, Int> = emptyMap(),
 )
 
 data class GoalObservabilityProgressEvent(
@@ -134,6 +135,19 @@ data class GoalObservabilityProgressEvent(
   val activitySummary: String,
   val sequenceNumber: Int,
   val timestamp: String,
+)
+
+/**
+ * Aggregated operator metrics derived from scanning all child workflow attempt ledgers for an issue.
+ * Populated by [GoalRunnerWorkflowOutcomeStore.readAttemptLedgerSummary] and threaded into the
+ * status projection for the CLI operator surface (AC-011).
+ */
+data class GoalRunnerAttemptLedgerSummary(
+  val blockedAttemptCount: Int = 0,
+  val supervisorKillCount: Int = 0,
+  val phaseAttemptCounts: Map<String, Int> = emptyMap(),
+  val cumulativeFixIterations: Map<String, Int> = emptyMap(),
+  val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
 )
 
 data class GoalPullRequestRequest(

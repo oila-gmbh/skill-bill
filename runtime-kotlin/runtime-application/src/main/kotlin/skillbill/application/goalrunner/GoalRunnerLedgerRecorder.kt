@@ -41,6 +41,11 @@ internal class GoalRunnerLedgerRecorder(
   private var accountingSequence: Int = watermarks?.maxAccountingSequence?.let { it + 1 } ?: 0
   private var ledgerSequence: Int = watermarks?.maxLedgerSequence?.let { it + 1 } ?: 0
 
+  // Cumulative backward-edge counts keyed by "subtaskId:loopId". Seeded from persisted watermarks
+  // so a resume continues each loop's count rather than restarting from 0.
+  private val cumulativeBackwardEdgeCounts: MutableMap<String, Int> =
+    watermarks?.backwardEdgeCounts?.toMutableMap() ?: mutableMapOf()
+
   fun recordAccounting(workflowId: String, subtaskId: Int, phase: String, launchOutcome: AgentRunLaunchOutcome) {
     val facts = launchOutcome as? AgentRunLaunchFacts
     val accounting = GoalSessionAccountingParser.parse(
@@ -78,6 +83,29 @@ internal class GoalRunnerLedgerRecorder(
       }
   }
 
+  fun recordBackwardEdgeEntry(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    loopId: String,
+    progress: GoalRunnerWorkflowProgress?,
+  ) {
+    val key = "$subtaskId:$loopId"
+    val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + 1
+    cumulativeBackwardEdgeCounts[key] = newCount
+    recordLedgerEntry(
+      GoalRunnerLedgerContext(
+        workflowId = workflowId,
+        action = GoalAttemptLedgerAction.BACKWARD_EDGE_ENTRY,
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        progress = progress,
+        loopId = loopId,
+        cumulativeLoopCount = newCount,
+      ),
+    )
+  }
+
   fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
     val targetWorkflowId = context.workflowId?.takeIf(String::isNotBlank) ?: return
     val facts = context.launchOutcome as? AgentRunLaunchFacts
@@ -106,6 +134,11 @@ internal class GoalRunnerLedgerRecorder(
       exitStatus = facts?.exitStatus,
       recoverableJsonPresent = context.recoverableJsonPresent,
       nextSafeAction = context.nextSafeAction?.takeIf(String::isNotBlank),
+      loopId = context.loopId?.takeIf(String::isNotBlank),
+      cumulativeLoopCount = context.cumulativeLoopCount,
+      attemptDurationMillis = context.attemptDurationMillis,
+      causingLoopEntry = context.causingLoopEntry?.takeIf(String::isNotBlank),
+      reAttemptCause = context.reAttemptCause?.takeIf(String::isNotBlank),
     )
     runCatching {
       outcomeStore.recordAttemptLedgerEntry(
@@ -168,4 +201,9 @@ internal data class GoalRunnerLedgerContext(
   val diagnosticClass: String? = null,
   val recoverableJsonPresent: Boolean? = null,
   val nextSafeAction: String? = null,
+  val loopId: String? = null,
+  val cumulativeLoopCount: Int? = null,
+  val attemptDurationMillis: Long? = null,
+  val causingLoopEntry: String? = null,
+  val reAttemptCause: String? = null,
 )

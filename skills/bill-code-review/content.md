@@ -21,19 +21,20 @@ branch/PR scope, or no bounded remediation scope.
 review. Report the requested mode and the resolved depth in the normal review
 metadata.
 
-`delegated` is the full-depth review and the default. It runs the normal routed
-path including specialist selection, launching one worker per routed area.
-Inability to launch a required native worker blocks loudly; it never degrades to
-inline.
+`delegated` is the full-depth review and the default. `delegated` always runs the normal routed delegated path
+including specialist selection, launching one worker per routed area. Inability
+to launch a required native worker blocks loudly; it never degrades to inline.
 
-`inline` is the light tier: one agent in the current context, no specialist
-workers, no nested baseline orchestrator. Its purpose is verification — confirm
-the change does what it claims and catch the defects a careful reader finds on one
-attentive pass. It is not an audit of every area in depth and does not carry
-delegated's coverage guarantee. Walk the routed areas once each, follow only the
-signals that appear, and do not build a case for a marginal finding to justify
-having looked. An inline result states the areas it walked and that specialist
-depth was not applied; never present it as equivalent to a delegated result.
+`inline`
+always runs the complete routed review in the current agent context regardless
+of size or risk: one agent, no specialist workers, no nested baseline
+orchestrator. Its purpose is verification — confirm the change does what it
+claims and catch the defects a careful reader finds on one attentive pass. It is
+not an audit of every area in depth and does not carry delegated's coverage
+guarantee. Walk the routed areas once each, follow only the signals that appear,
+and do not build a case for a marginal finding to justify having looked. An
+inline result states the areas it walked and that specialist depth was not
+applied; never present it as equivalent to a delegated result.
 
 `auto` resolves depth by review pass number: pass one resolves to `delegated`,
 every later pass resolves to `inline`. This is the only rule auto applies. An

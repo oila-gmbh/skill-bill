@@ -56,6 +56,8 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.review.DeclaredReviewSpecialistsPort
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -1056,6 +1058,81 @@ class FeatureTaskRuntimeRunnerTest {
     val blockedEntry = ledger.single { it["action"] == "blocked" }
     assertEquals("implement", blockedEntry["phase_id"])
     assertTrue((blockedEntry["blocked_reason"] as String).isNotBlank())
+  }
+
+  @Test
+  fun `review phase launch request carries readOnlyPhase true, mutating phases do not`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val requests = harness.launcher.requests
+    val reviewRequest = requests.firstOrNull { request ->
+      val prompt = request.skillRunRequest.promptOverride ?: return@firstOrNull false
+      phaseIdFromPrompt(prompt) == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    }
+    assertNotNull(reviewRequest, "a review phase must have been launched")
+    assertTrue(reviewRequest.skillRunRequest.readOnlyPhase, "review phase must carry readOnlyPhase=true")
+    assertNotNull(
+      reviewRequest.skillRunRequest.progressIdleTimeout,
+      "review phase must carry a progressIdleTimeout",
+    )
+
+    val mutatingPhaseRequests = requests.filter { request ->
+      val prompt = request.skillRunRequest.promptOverride ?: return@filter false
+      phaseIdFromPrompt(prompt) != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    }
+    assertTrue(mutatingPhaseRequests.isNotEmpty(), "at least one mutating phase must have been launched")
+    mutatingPhaseRequests.forEach { request ->
+      assertFalse(
+        request.skillRunRequest.readOnlyPhase,
+        "phase '${request.skillRunRequest.promptOverride}' must not carry readOnlyPhase=true",
+      )
+    }
+  }
+
+  @Test
+  fun `review phase preflight throws before launch when native agent is missing`() {
+    val missingError = RuntimeException("native agent missing")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(parallelReviewAgent = "claude"),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort { throw missingError },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+    )
+    assertFailsWith<RuntimeException> { harness.runner.run(harness.request()) }
+    val launchedPhases = harness.launcher.requests.mapNotNull { req ->
+      req.skillRunRequest.promptOverride?.let { phaseIdFromPrompt(it) }
+    }
+    assertTrue(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in launchedPhases,
+      "review phase must not have been launched when preflight throws",
+    )
+  }
+
+  @Test
+  fun `review phase runs normally when native-agent preflight succeeds`() {
+    val called = mutableListOf<String>()
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(parallelReviewAgent = "claude"),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(called.isNotEmpty(), "preflight must have been called before the review phase ran")
+  }
+
+  @Test
+  fun `review phase preflight runs for invoked agent even when no parallelReviewAgent is set`() {
+    val called = mutableListOf<String>()
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(called.isNotEmpty(), "preflight must verify the invoked agent even when parallelReviewAgent is absent")
   }
 }
 
@@ -4065,6 +4142,7 @@ internal data class RuntimeHarnessConfig(
   // allow-list is pinned by PlanningProjectionNoopValidatorGuardTest.
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  val parallelReviewAgent: String? = null,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -4079,6 +4157,8 @@ private fun runtimePhaseGates(
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort { },
+  declaredSpecialists: DeclaredReviewSpecialistsPort = DeclaredReviewSpecialistsPort.NONE,
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
@@ -4086,6 +4166,8 @@ private fun runtimePhaseGates(
   gitOperations,
   specGate,
   planningProjectionValidator,
+  nativeAgentPreflight,
+  declaredSpecialists,
 )
 
 private fun testSpecGate(
@@ -4138,6 +4220,7 @@ private fun runnerHarnessRequest(
   dbPathOverride = null,
   repoRoot = runtimeConfig.repoRoot,
   goalContinuation = runtimeConfig.goalContinuation,
+  parallelReviewAgent = runtimeConfig.parallelReviewAgent,
   eventSink = sink,
 )
 
@@ -4149,6 +4232,8 @@ internal fun runnerHarness(
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
   crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
+  nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort { },
+  declaredSpecialists: DeclaredReviewSpecialistsPort = DeclaredReviewSpecialistsPort.NONE,
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -4179,6 +4264,8 @@ internal fun runnerHarness(
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
       runtimeConfig.planningProjectionValidator,
+      nativeAgentPreflight,
+      declaredSpecialists,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
   )

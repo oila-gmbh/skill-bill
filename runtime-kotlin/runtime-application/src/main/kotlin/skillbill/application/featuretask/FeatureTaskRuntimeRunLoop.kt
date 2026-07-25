@@ -63,6 +63,7 @@ import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import kotlin.time.Duration.Companion.minutes
 
 internal data class FeatureTaskRuntimeRunLoopDependencies(
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -1000,6 +1001,9 @@ internal class FeatureTaskRuntimeRunLoop(
     completedReviewBudgetOutput
       ?.let { output -> settleCompletedReviewBudget(run, state, observability, output) }
       ?.let { return it }
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+      phaseGates.reviewNativeAgentPreflight(request)
+    }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
@@ -2466,6 +2470,7 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val briefing = prepared.briefing
+    val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -2479,6 +2484,8 @@ internal class FeatureTaskRuntimeRunLoop(
           effortOverride = run.modelDirective?.effort,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
+          readOnlyPhase = isReviewPhase,
+          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes.takeIf { isReviewPhase },
         ),
       ),
     )
@@ -2674,6 +2681,11 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 }
+
+// The review phase produces no durable workflow rows and no file activity by construction. Its inner
+// phase launch therefore gets a longer idle-timeout budget so the supervisor does not kill a healthy
+// read-only run whose only liveness signal is a live heartbeat.
+private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 
 // Stands in for a repository fingerprint that could not be computed. Comparing it against itself
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.

@@ -275,6 +275,93 @@ class GoalRunnerLedgerTest {
     assertContains(requireNotNull(failedEntry.blockedReason), "review failed")
   }
 
+  @Test
+  fun `confirmed-alive kill emits supervisor-killed-confirmed-alive diagnostic class`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(timedOut = true).copy(
+        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+          phase = "review",
+          reason = "idle_timeout",
+          processState = "confirmed_alive",
+          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING,
+        ),
+      )
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
+    assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
+
+    val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
+    assertEquals(
+      skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      timeoutEntry.diagnosticClass,
+      "a kill of a confirmed-alive process must emit the distinct supervisor_killed_confirmed_alive class",
+    )
+  }
+
+  @Test
+  fun `progressing state also qualifies as confirmed-alive and emits the distinct diagnostic class`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(timedOut = true).copy(
+        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+          phase = "implement",
+          reason = "idle_timeout",
+          processState = "progressing",
+          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING,
+        ),
+      )
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
+    assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
+
+    val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
+    assertEquals(
+      skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      timeoutEntry.diagnosticClass,
+      "a kill of a PROGRESSING process must also emit the supervisor_killed_confirmed_alive class",
+    )
+  }
+
+  @Test
+  fun `non-confirmed-alive timeout keeps the standard child-process-failed diagnostic class`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(timedOut = true).copy(
+        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+          phase = "preplan",
+          reason = "idle_timeout",
+          processState = "idle",
+          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE,
+        ),
+      )
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
+    assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
+
+    val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
+    assertEquals(
+      "child_process_failed",
+      timeoutEntry.diagnosticClass,
+      "an idle process timeout must keep the standard child_process_failed diagnostic class",
+    )
+  }
+
   private fun ledgerActions(outcomes: RecordingOutcomeStore): List<String> =
     outcomes.attemptLedgerRecords.map { it.entry.action.wireValue }
 
