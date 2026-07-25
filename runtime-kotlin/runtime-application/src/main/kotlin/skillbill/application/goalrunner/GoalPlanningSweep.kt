@@ -98,7 +98,9 @@ class DefaultGoalPlanningSweep(
     val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
       return preSweepStopped(request, sharedContextReason(error))
     }
-    val activeSubtasks = state.manifest.subtasks.filter { it.id in includedSubtaskIds(shared.planningPacket) }
+    val activeSubtasks = state.manifest.subtasks.filter {
+      it.id in GoalPlanningSharedContextPacket.includedSubtaskIds(shared.planningPacket)
+    }
     val currentProvenance = currentProvenance(shared)
     val provenance = recoverableProvenance(existingShared, currentProvenance, shared)
       ?: return incompatibleProvenance(shared)
@@ -151,7 +153,8 @@ class DefaultGoalPlanningSweep(
         it.phaseOutputContractId == current.phaseOutputContractId &&
         savedParentSpec != null &&
         sha256HexUtf8(savedParentSpec) == it.parentSpecHash &&
-        canonicalPlanningSpec(savedParentSpec) == canonicalPlanningSpec(shared.parentSpec)
+        GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
+        GoalPlanningSpecCanonicalization.canonical(shared.parentSpec)
     }
   }
 
@@ -183,7 +186,7 @@ class DefaultGoalPlanningSweep(
       provenance = provenance,
       payloadSha256 = sha256HexUtf8(preplanPayload),
       preplanPayload = preplanPayload,
-    ).also { checkpoint.checkpointSharedPreplan(it, shared.dbPathOverride) }
+    ).also { checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
   }
 
   private fun producePlan(
@@ -219,7 +222,7 @@ class DefaultGoalPlanningSweep(
       payloadSha256 = sha256HexUtf8(planPayload),
       planPayload = planPayload,
     )
-    return runCatching { checkpoint.checkpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
+    return runCatching { checkpoint.recheckpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
       onSuccess = { null },
       onFailure = { error -> stopped(shared, subtask.id, persistenceReason(subtask, error), PHASE_PLAN) },
     )
@@ -233,11 +236,13 @@ class DefaultGoalPlanningSweep(
     val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
     val governedPath = shared.repoRoot.relativize(path).joinToString("/")
     val identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity)
-    val recovered = checkpoint.findSubtaskPlan(
+    // Reads the stored record directly: a governed sub-spec that no longer exists on disk can only recover its
+    // hash from what was persisted, and that recovery must not depend on the stored plan's projection verdict.
+    val recovered = checkpoint.findStoredSubtaskPlan(
       identity,
       subtask.id,
       governedPath,
-      dbOverride = shared.dbPathOverride,
+      shared.dbPathOverride,
     )
     val subSpecHash = if (manifestFileStore.isRegularFile(path)) {
       sha256HexUtf8(manifestFileStore.readText(path))
@@ -415,24 +420,26 @@ class DefaultGoalPlanningSweep(
     val parentSpec = manifestFileStore.readText(resolvedParentSpecPath)
     val decomposition = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
     val parentSpecHash = sha256HexUtf8(parentSpec)
-    val decompositionManifestHash = immutableDecompositionHash(state.manifest)
+    val decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(state.manifest)
     val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"
     val planningPacket = recoveredPacket ?: contextDiscovery.discover(canonicalRepository).let { discovered ->
       val packet = linkedMapOf<String, Any?>(
-        "packet_version" to SHARED_CONTEXT_PACKET_VERSION,
+        "packet_version" to GoalPlanningSharedContextPacket.VERSION,
         "repository_identity" to repositoryIdentity,
         "normalized_issue_key" to state.manifest.issueKey.trim().uppercase(),
         "parent_spec_path" to parentSpecGoverningPath,
-        "parent_spec" to parentSpec.take(MAX_GOVERNED_CONTEXT_CHARS),
-        "decomposition_manifest" to decomposition.take(MAX_GOVERNED_CONTEXT_CHARS),
+        "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+        "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
         "platform_packs" to discovered.platformPacks,
         "boundary_memory" to discovered.boundaryMemory,
-        "validation_guidance" to discovered.validationGuidance.take(MAX_GOVERNED_CONTEXT_CHARS),
-        "ordered_subtasks" to planningSubtasks(state.manifest.subtasks),
+        "validation_guidance" to discovered.validationGuidance.take(
+          GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
+        ),
+        "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
       )
-      packet + ("integrity_sha256" to packetDigest(packet))
+      packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
     }
-    validatePlanningPacket(
+    GoalPlanningSharedContextPacket.validate(
       packet = planningPacket,
       repositoryIdentity = repositoryIdentity,
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
@@ -541,175 +548,6 @@ class DefaultGoalPlanningSweep(
       ?.get(SHARED_CONTEXT_FIELD)
       ?.let(JsonSupport::anyToStringAnyMap)
 
-  private fun validatePlanningPacket(
-    packet: Map<String, Any?>,
-    repositoryIdentity: String,
-    normalizedIssueKey: String,
-    parentSpecPath: String,
-    subtasks: List<DecompositionSubtask>,
-  ) {
-    require(packet.keys == SHARED_CONTEXT_PACKET_FIELDS) { "shared context packet fields are invalid" }
-    require(packet["packet_version"] == SHARED_CONTEXT_PACKET_VERSION) { "shared context packet version is invalid" }
-    require(packet["repository_identity"] == repositoryIdentity) { "shared context repository identity is invalid" }
-    require(packet["normalized_issue_key"] == normalizedIssueKey) { "shared context issue key is invalid" }
-    require(packet["parent_spec_path"] == parentSpecPath) { "shared context parent spec path is invalid" }
-    require(packet["parent_spec"] is String) { "shared context parent spec is invalid" }
-    require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
-      "shared context decomposition manifest is malformed"
-    }
-    require(isStringMap(packet["platform_packs"])) { "shared context platform packs are invalid" }
-    require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }
-    require(packet["validation_guidance"] is String) { "shared context validation guidance is invalid" }
-    val packetSubtasks = normalizedPlanningSubtasks(packet["ordered_subtasks"])
-    val expectedSubtasks = normalizedPlanningSubtasks(planningSubtasks(subtasks))
-    val recoveredTopology = packetSubtasks.map { it - "planning_disposition" }
-    val expectedTopology = expectedSubtasks.map { it - "planning_disposition" }
-    require(recoveredTopology == expectedTopology) {
-      "shared context ordered subtasks are invalid"
-    }
-    require(JsonSupport.mapToJsonString(packet).length <= MAX_SHARED_CONTEXT_PACKET_CHARS) {
-      "shared context packet exceeds the size limit"
-    }
-    require(packet["integrity_sha256"] == packetDigest(packet - "integrity_sha256")) {
-      "shared context packet integrity is invalid"
-    }
-  }
-
-  private fun planningSubtasks(subtasks: List<DecompositionSubtask>): List<Map<String, Any?>> =
-    subtasks.map { subtask ->
-      linkedMapOf(
-        "id" to subtask.id,
-        "name" to subtask.name,
-        "spec_path" to subtask.specPath,
-        "planning_disposition" to if (isExplicitlySkipped(subtask)) "skipped" else "included",
-        "dependencies" to subtask.dependencies.map { dependency ->
-          linkedMapOf(
-            "subtask_id" to dependency.subtaskId,
-            "optional" to dependency.optional,
-            "skipped" to dependency.skipped,
-          )
-        },
-      )
-    }
-
-  private fun includedSubtaskIds(packet: Map<String, Any?>): Set<Int> =
-    normalizedPlanningSubtasks(packet["ordered_subtasks"])
-      .mapNotNull { subtask -> (subtask["id"] as Int).takeIf { subtask["planning_disposition"] == "included" } }
-      .toSet()
-
-  private fun normalizedPlanningSubtasks(value: Any?): List<Map<String, Any?>> {
-    val entries = value as? List<*> ?: error("shared context ordered subtasks must be a list")
-    return entries.map { entry ->
-      val subtask = entry as? Map<*, *> ?: error("shared context ordered subtask must be an object")
-      require(subtask.keys == PLANNING_SUBTASK_FIELDS) { "shared context ordered subtask fields are invalid" }
-      val id = (subtask["id"] as? Number)?.toInt()
-        ?: error("shared context ordered subtask id is invalid")
-      val name = subtask["name"] as? String
-        ?: error("shared context ordered subtask name is invalid")
-      val specPath = subtask["spec_path"] as? String
-        ?: error("shared context ordered subtask spec path is invalid")
-      val disposition = subtask["planning_disposition"] as? String
-        ?: error("shared context ordered subtask planning disposition is invalid")
-      require(disposition in PLANNING_DISPOSITIONS) {
-        "shared context ordered subtask planning disposition is invalid"
-      }
-      linkedMapOf(
-        "id" to id,
-        "name" to name,
-        "spec_path" to specPath,
-        "planning_disposition" to disposition,
-        "dependencies" to normalizedDependencies(subtask["dependencies"]),
-      )
-    }
-  }
-
-  private fun normalizedDependencies(value: Any?): List<Map<String, Any?>> {
-    val dependencies = value as? List<*> ?: error("shared context subtask dependencies must be a list")
-    return dependencies.map { entry ->
-      val dependency = entry as? Map<*, *> ?: error("shared context subtask dependency must be an object")
-      require(dependency.keys == PLANNING_DEPENDENCY_FIELDS) {
-        "shared context subtask dependency fields are invalid"
-      }
-      linkedMapOf(
-        "subtask_id" to (
-          (dependency["subtask_id"] as? Number)?.toInt()
-            ?: error("shared context dependency subtask id is invalid")
-          ),
-        "optional" to (
-          dependency["optional"] as? Boolean
-            ?: error("shared context dependency optional flag is invalid")
-          ),
-        "skipped" to (
-          dependency["skipped"] as? Boolean
-            ?: error("shared context dependency skipped flag is invalid")
-          ),
-      )
-    }
-  }
-
-  private fun isStringMap(value: Any?): Boolean =
-    value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
-
-  private fun packetDigest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
-
-  private fun canonicalPlanningSpec(spec: String): String {
-    val lines = spec.lines()
-    if (lines.firstOrNull() != FRONTMATTER_FENCE) return spec
-    val closingFenceIndex = lines.indexOfFirstFrom(1) { it == FRONTMATTER_FENCE }
-    if (closingFenceIndex < 0) return spec
-    val frontmatter = lines.subList(1, closingFenceIndex)
-    val withoutStatus = frontmatter.filterNot { STATUS_FRONTMATTER_LINE.matches(it) }
-    if (withoutStatus.size == frontmatter.size) return spec
-    val body = lines.drop(closingFenceIndex + 1)
-    return if (withoutStatus.all(String::isBlank)) {
-      body.dropWhileAtMostOne(String::isBlank).joinToString("\n")
-    } else {
-      (listOf(FRONTMATTER_FENCE) + withoutStatus + FRONTMATTER_FENCE + body).joinToString("\n")
-    }
-  }
-
-  private fun <T> List<T>.indexOfFirstFrom(startIndex: Int, predicate: (T) -> Boolean): Int {
-    for (index in startIndex until size) {
-      if (predicate(this[index])) return index
-    }
-    return -1
-  }
-
-  private fun <T> List<T>.dropWhileAtMostOne(predicate: (T) -> Boolean): List<T> =
-    if (firstOrNull()?.let(predicate) == true) drop(1) else this
-
-  private fun immutableDecompositionHash(manifest: skillbill.workflow.model.DecompositionManifest): String {
-    val immutable = linkedMapOf<String, Any?>(
-      "contract_version" to manifest.contractVersion,
-      "issue_key" to manifest.issueKey,
-      "feature_name" to manifest.featureName,
-      "parent_spec_path" to manifest.parentSpecPath,
-      "spec_source" to manifest.specSource.wireValue,
-      "execution_model" to manifest.executionModel.wireValue,
-      "base_branch" to manifest.baseBranch,
-      "feature_branch" to manifest.featureBranch,
-      "stack_branches" to manifest.stackBranches.map {
-        linkedMapOf("subtask_id" to it.subtaskId, "branch" to it.branch, "base_branch" to it.baseBranch)
-      },
-      "subtasks" to manifest.subtasks.map { subtask ->
-        linkedMapOf(
-          "id" to subtask.id,
-          "name" to subtask.name,
-          "spec_path" to subtask.specPath,
-          "linear_issue_id" to subtask.linearIssueId,
-          "dependencies" to subtask.dependencies.map { dependency ->
-            linkedMapOf(
-              "subtask_id" to dependency.subtaskId,
-              "optional" to dependency.optional,
-              "skipped" to dependency.skipped,
-            )
-          },
-        )
-      },
-    )
-    return sha256HexUtf8(JsonSupport.mapToJsonString(immutable))
-  }
-
   private fun stopped(
     shared: GoalPlanningSharedContext,
     subtaskId: Int,
@@ -736,8 +574,6 @@ class DefaultGoalPlanningSweep(
   private fun persistenceReason(subtask: DecompositionSubtask, error: Throwable): String =
     "Goal planning subtask '${subtask.id}' plan could not be checkpointed: ${error.message.orEmpty()}"
 
-  private fun isExplicitlySkipped(subtask: DecompositionSubtask): Boolean = subtask.status == "skipped"
-
   private fun resolvedGovernedPath(canonicalRepository: Path, governingPath: String): Path {
     val lexical = lexicalPath(canonicalRepository, governingPath)
     return runCatching { lexical.toRealPath() }.getOrElse { lexical }
@@ -759,26 +595,5 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
-    const val SHARED_CONTEXT_PACKET_VERSION = "0.1"
-    const val FRONTMATTER_FENCE = "---"
-    const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
-    const val MAX_SHARED_CONTEXT_PACKET_CHARS = 524_288
-    val SHARED_CONTEXT_PACKET_FIELDS = setOf(
-      "packet_version",
-      "repository_identity",
-      "normalized_issue_key",
-      "parent_spec_path",
-      "parent_spec",
-      "decomposition_manifest",
-      "platform_packs",
-      "boundary_memory",
-      "validation_guidance",
-      "ordered_subtasks",
-      "integrity_sha256",
-    )
-    val PLANNING_SUBTASK_FIELDS = setOf("id", "name", "spec_path", "planning_disposition", "dependencies")
-    val PLANNING_DEPENDENCY_FIELDS = setOf("subtask_id", "optional", "skipped")
-    val PLANNING_DISPOSITIONS = setOf("included", "skipped")
-    val STATUS_FRONTMATTER_LINE = Regex("^status\\s*:.*$")
   }
 }

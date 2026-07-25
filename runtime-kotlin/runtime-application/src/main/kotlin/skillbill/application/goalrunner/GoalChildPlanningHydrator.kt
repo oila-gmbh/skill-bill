@@ -280,6 +280,7 @@ private class GoalChildPlanningImportMatcher(
         "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
           "imported by this child and cannot be regenerated in band; it fails its projection contract: " +
           "${error.message.orEmpty()}",
+        error,
       )
     }
   }

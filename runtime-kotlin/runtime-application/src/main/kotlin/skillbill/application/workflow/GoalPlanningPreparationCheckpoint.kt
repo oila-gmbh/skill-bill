@@ -21,11 +21,13 @@ import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 @Inject
 class GoalPlanningPreparationCheckpoint(
   private val database: DatabaseSessionFactory,
-  private val envelopeValidator: GoalPlanningPreparationEnvelopeValidator,
+  envelopeValidator: GoalPlanningPreparationEnvelopeValidator,
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
-  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
-  private val phaseOutputValidator = phaseOutputValidator
+  private val envelopeValidator = envelopeValidator
+  private val gate =
+    GoalPlanningPreparationProjectionGate(envelopeValidator, phaseOutputValidator, planningProjectionValidator)
   private val preparationValidator =
     GoalPlanningPreparationValidator(phaseOutputValidator, planningProjectionValidator)
 
@@ -41,13 +43,56 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
-    validateSharedPreplan(checkpoint)
+    gate.validateSharedPreplan(checkpoint)
     database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
   }
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
-    validateSubtaskPlan(checkpoint)
+    gate.validateSubtaskPlan(checkpoint)
     database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
+  }
+
+  /**
+   * Checkpoints a regenerated shared preplan, overwriting a stored record the projection gate rejects so the
+   * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
+   */
+  fun recheckpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
+    gate.validateSharedPreplan(checkpoint)
+    val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(checkpoint.identity) }
+    if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
+      database.read(dbOverride) { it.goalPlanningPreparations.replaceSharedPreplan(checkpoint) }
+    } else {
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+    }
+  }
+
+  /**
+   * Checkpoints a regenerated subtask plan, overwriting a stored record the projection gate rejects so the
+   * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
+   */
+  fun recheckpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
+    gate.validateSubtaskPlan(checkpoint)
+    val stored = findStoredSubtaskPlan(
+      checkpoint.identity,
+      checkpoint.subtaskId,
+      checkpoint.governedSubSpecPath,
+      dbOverride,
+    )
+    if (stored != null && gate.subtaskPlanIsRegenerable(stored)) {
+      database.read(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(checkpoint) }
+    } else {
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
+    }
+  }
+
+  /** The stored subtask plan as persisted, independent of the projection verdict. */
+  fun findStoredSubtaskPlan(
+    identity: GoalPlanningIdentity,
+    subtaskId: Int,
+    governedSubSpecPath: String,
+    dbOverride: String? = null,
+  ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
+    it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
   }
 
   // A stored record whose projection no longer satisfies the gate is regenerable, not fatal: reporting it
@@ -55,7 +100,7 @@ class GoalPlanningPreparationCheckpoint(
   // would wedge the goal terminally with no in-band repair. Structural drift still throws.
   fun findSharedPreplan(identity: GoalPlanningIdentity, dbOverride: String? = null): SharedGoalPreplanCheckpoint? =
     database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(identity) }
-      ?.takeIf { sharedPreplanProjectionRejection(it) == null }
+      ?.takeIf { gate.sharedPreplanRejection(it) == null }
 
   fun findSubtaskPlan(
     identity: GoalPlanningIdentity,
@@ -66,7 +111,7 @@ class GoalPlanningPreparationCheckpoint(
   ): GoalSubtaskPlanCheckpoint? = database.read(dbOverride) {
     it.goalPlanningPreparations.findSubtaskPlan(identity, subtaskId, governedSubSpecPath)
   }?.let { plan ->
-    val projectionRejection = subtaskPlanProjectionRejection(plan)
+    val projectionRejection = gate.subtaskPlanRejection(plan)
     if (
       expectedDescriptor != null &&
       plan.manifestOrder != expectedDescriptor.manifestOrder
@@ -122,7 +167,17 @@ class GoalPlanningPreparationCheckpoint(
       firstMissingSubtaskId = orderedDescriptors.firstOrNull { it.subtaskId !in preparedIds }?.subtaskId,
     )
   }
+}
 
+/**
+ * The one producer-side projection gate for durable goal planning records. Both the write seam and the
+ * recovery read seam route through it, so a record can never be admitted by one and refused by the other.
+ */
+internal class GoalPlanningPreparationProjectionGate(
+  private val envelopeValidator: GoalPlanningPreparationEnvelopeValidator,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+) {
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     val (label, envelope) = sharedPreplanEnvelope(checkpoint)
     requireValidPlanningProjection(envelope, "preplan", label, planningProjectionValidator)
@@ -134,20 +189,18 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   /** Null when the stored shared preplan satisfies the projection gate; the bounded reason otherwise. */
-  fun sharedPreplanProjectionRejection(checkpoint: SharedGoalPreplanCheckpoint): String? {
+  fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? {
     val (_, envelope) = sharedPreplanEnvelope(checkpoint)
     return producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
   }
 
   /** Null when the stored subtask plan satisfies the projection gate; the bounded reason otherwise. */
-  fun subtaskPlanProjectionRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? {
+  fun subtaskPlanRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? {
     val (_, envelope) = subtaskPlanEnvelope(checkpoint)
     return producerProjectionGateReason("plan", envelope, planningProjectionValidator)
   }
 
-  private fun sharedPreplanEnvelope(
-    checkpoint: SharedGoalPreplanCheckpoint,
-  ): Pair<String, Map<String, Any?>> {
+  private fun sharedPreplanEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = checkpoint.identity.parentGoalWorkflowId
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.preplanPayload, "preplan")
@@ -156,9 +209,7 @@ class GoalPlanningPreparationCheckpoint(
     return label to envelope
   }
 
-  private fun subtaskPlanEnvelope(
-    checkpoint: GoalSubtaskPlanCheckpoint,
-  ): Pair<String, Map<String, Any?>> {
+  private fun subtaskPlanEnvelope(checkpoint: GoalSubtaskPlanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
     val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.planPayload, "plan")
@@ -176,6 +227,15 @@ class GoalPlanningPreparationCheckpoint(
       )
     }
   }
+
+  // A stored record the gate rejects — or one whose bounded envelope no longer parses at all — is
+  // regenerable rather than immutable: the replacement is already gate-valid, so keeping the old bytes
+  // would only wedge the goal.
+  fun sharedPreplanIsRegenerable(stored: SharedGoalPreplanCheckpoint): Boolean =
+    runCatching { sharedPreplanRejection(stored) != null }.getOrDefault(true)
+
+  fun subtaskPlanIsRegenerable(stored: GoalSubtaskPlanCheckpoint): Boolean =
+    runCatching { subtaskPlanRejection(stored) != null }.getOrDefault(true)
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {

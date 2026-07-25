@@ -160,24 +160,7 @@ class GoalPlanningPreparationStore(
     requireNormalizedSharedPreplan(checkpoint)
     translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
       connection.inImmediateTransaction {
-        val inserted = prepareStatement(
-          """INSERT INTO goal_shared_preplans (parent_goal_workflow_id, normalized_issue_key, repository_identity,
-          preparation_status, contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
-          planning_contract_version, phase_output_contract_id, phase_output_contract_version, payload_sha256,
-          preplan_payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(parent_goal_workflow_id) DO NOTHING""",
-        ).use { s ->
-          val values = listOf(
-            checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
-            checkpoint.identity.repositoryIdentity, checkpoint.preparationStatus.wireValue, checkpoint.contractVersion,
-            checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
-            checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
-            checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-            checkpoint.payloadSha256, checkpoint.preplanPayload,
-          )
-          values.forEachIndexed { i, value -> s.setString(i + 1, value) }
-          s.executeUpdate() > 0
-        }
+        val inserted = insertSharedPreplanRow(checkpoint)
         if (!inserted) {
           val stored = findSharedPreplan(checkpoint.identity)
           if (stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
@@ -188,6 +171,35 @@ class GoalPlanningPreparationStore(
             )
           }
         }
+      }
+    }
+  }
+
+  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+    requireNormalizedSharedPreplan(checkpoint)
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
+      connection.inImmediateTransaction {
+        // Overwrite rather than delete: goal_subtask_plans cascades on the shared row, and a regenerated
+        // preplan must not silently discard plans the sweep has not been asked to reproduce.
+        val updated = prepareStatement(
+          """UPDATE goal_shared_preplans SET normalized_issue_key = ?, repository_identity = ?,
+          preparation_status = ?, contract_version = ?, parent_spec_hash = ?, decomposition_manifest_hash = ?,
+          planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
+          phase_output_contract_version = ?, payload_sha256 = ?, preplan_payload_json = ?
+          WHERE parent_goal_workflow_id = ?""",
+        ).use { s ->
+          val values = listOf(
+            checkpoint.identity.normalizedIssueKey, checkpoint.identity.repositoryIdentity,
+            checkpoint.preparationStatus.wireValue, checkpoint.contractVersion,
+            checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
+            checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
+            checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
+            checkpoint.payloadSha256, checkpoint.preplanPayload, checkpoint.identity.parentGoalWorkflowId,
+          )
+          values.forEachIndexed { i, value -> s.setString(i + 1, value) }
+          s.executeUpdate() > 0
+        }
+        if (!updated) insertSharedPreplanRow(checkpoint)
       }
     }
   }
@@ -218,31 +230,7 @@ class GoalPlanningPreparationStore(
             "subtask plan provenance must exactly match the governing shared preplan",
           )
         }
-        val inserted = prepareStatement(
-          """INSERT INTO goal_subtask_plans
-          (parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
-          manifest_order, governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
-          decomposition_manifest_hash, planning_contract_id, planning_contract_version, phase_output_contract_id,
-          phase_output_contract_version, payload_sha256, plan_payload_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(parent_goal_workflow_id, subtask_id) DO NOTHING""",
-        ).use { s ->
-          val values = listOf(
-            checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
-            checkpoint.identity.repositoryIdentity, checkpoint.subtaskId, checkpoint.manifestOrder,
-            checkpoint.governedSubSpecPath, checkpoint.subSpecHash, checkpoint.preparationStatus.wireValue,
-            checkpoint.contractVersion,
-            checkpoint.provenance.parentSpecHash,
-            checkpoint.provenance.decompositionManifestHash,
-            checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
-            checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-            checkpoint.payloadSha256, checkpoint.planPayload,
-          )
-          values.forEachIndexed { i, value ->
-            if (value is Int) s.setInt(i + 1, value) else s.setString(i + 1, value.toString())
-          }
-          s.executeUpdate() > 0
-        }
+        val inserted = insertSubtaskPlanRow(checkpoint)
         val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId, checkpoint.governedSubSpecPath)
         if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
           throw IncompatibleGoalPlanningPreparationRecoveryError(
@@ -251,6 +239,34 @@ class GoalPlanningPreparationStore(
             "subtask plan checkpoint is immutable",
           )
         }
+      }
+    }
+  }
+
+  override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+    requireNormalizedSubtaskPlan(checkpoint)
+    translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, checkpoint.subtaskId) {
+      connection.inImmediateTransaction {
+        val shared = findSharedPreplan(checkpoint.identity) ?: throw InvalidGoalPlanningPreparationSchemaError(
+          "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
+          "parent_goal_workflow_id",
+          "shared preplan must be checkpointed first",
+        )
+        if (shared.provenance != checkpoint.provenance) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            checkpoint.identity.parentGoalWorkflowId,
+            checkpoint.subtaskId,
+            "subtask plan provenance must exactly match the governing shared preplan",
+          )
+        }
+        prepareStatement(
+          "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
+        ).use { s ->
+          s.setString(1, checkpoint.identity.parentGoalWorkflowId)
+          s.setInt(2, checkpoint.subtaskId)
+          s.executeUpdate()
+        }
+        insertSubtaskPlanRow(checkpoint)
       }
     }
   }
@@ -443,6 +459,51 @@ class GoalPlanningPreparationStore(
   private companion object {
     const val LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION = "0.1"
   }
+}
+
+private fun Connection.insertSharedPreplanRow(checkpoint: SharedGoalPreplanCheckpoint): Boolean = prepareStatement(
+  """INSERT INTO goal_shared_preplans (parent_goal_workflow_id, normalized_issue_key, repository_identity,
+  preparation_status, contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
+  planning_contract_version, phase_output_contract_id, phase_output_contract_version, payload_sha256,
+  preplan_payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(parent_goal_workflow_id) DO NOTHING""",
+).use { s ->
+  val values = listOf(
+    checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
+    checkpoint.identity.repositoryIdentity, checkpoint.preparationStatus.wireValue, checkpoint.contractVersion,
+    checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
+    checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
+    checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
+    checkpoint.payloadSha256, checkpoint.preplanPayload,
+  )
+  values.forEachIndexed { i, value -> s.setString(i + 1, value) }
+  s.executeUpdate() > 0
+}
+
+private fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoint): Boolean = prepareStatement(
+  """INSERT INTO goal_subtask_plans
+  (parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
+  manifest_order, governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
+  decomposition_manifest_hash, planning_contract_id, planning_contract_version, phase_output_contract_id,
+  phase_output_contract_version, payload_sha256, plan_payload_json)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(parent_goal_workflow_id, subtask_id) DO NOTHING""",
+).use { s ->
+  val values = listOf(
+    checkpoint.identity.parentGoalWorkflowId, checkpoint.identity.normalizedIssueKey,
+    checkpoint.identity.repositoryIdentity, checkpoint.subtaskId, checkpoint.manifestOrder,
+    checkpoint.governedSubSpecPath, checkpoint.subSpecHash, checkpoint.preparationStatus.wireValue,
+    checkpoint.contractVersion,
+    checkpoint.provenance.parentSpecHash,
+    checkpoint.provenance.decompositionManifestHash,
+    checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
+    checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
+    checkpoint.payloadSha256, checkpoint.planPayload,
+  )
+  values.forEachIndexed { i, value ->
+    if (value is Int) s.setInt(i + 1, value) else s.setString(i + 1, value.toString())
+  }
+  s.executeUpdate() > 0
 }
 
 private fun incompatibleLoadedVersionReason(loaded: String): String = "loaded contract_version '$loaded' is not '0.1'."

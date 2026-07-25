@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-142"
 feature_name: "bounded-loop-convergence"
 parent_spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec.md"
-status: "in_progress"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-142-inline-review-depth-tier"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 2
-  action: "resume"
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Review-phase liveness, preflight, and loop accounting"
@@ -28,12 +28,36 @@ subtasks:
 - id: 2
   name: "Producer-side planning projection gate parity"
   spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec_subtask_2_planning_projection_gate_parity.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260725-141427-vhr8"
-  blocked_reason: null
-  last_resumable_step: null
+  blocked_reason: "Subtask 2 finished without a terminal workflow-store outcome: the\
+    \ child process exited with status 1 before its workflow row reached a terminal\
+    \ state (complete or durably blocked). A non-zero exit means the child errored\
+    \ out rather than stopping cleanly. Inspect the child workflow and its transcript\
+    \ to confirm, then resume from last_resumable_step. Child stderr (head+tail):\n\
+    Exception in thread \"main\" skillbill.error.MissingInstalledNativeAgentError:\
+    \ Native agent 'bill-go-code-review-api-contracts' for provider 'claude' failed\
+    \ preflight at '/home/sermilion/.claude-glm/agents/bill-go-code-review-api-contracts.md':\
+    \ recorded target is not the current installed generation. Repair with: skill-bill\
+    \ install apply\n\tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail(FileSystemReviewNativeAgentPreflight.kt:150)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.fail$default(FileSystemReviewNativeAgentPreflight.kt:144)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verifyEntry(FileSystemReviewNativeAgentPreflight.kt:86)\n\
+    \tat skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight.verify(FileSystemReviewNativeAgentPreflight.kt:77)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimePhaseGates.reviewNativeAgentPreflight(FeatureTaskRuntimePhaseGates.kt:30)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhase(FeatureTaskRuntimeRunLoop.kt:1005)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.runPhaseFor(FeatureTaskRuntimeRunLoop.kt:666)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.advance(FeatureTaskRuntimeRunLoop.kt:227)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunLoop.drive(FeatureTaskRuntimeRunLoop.kt:200)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.executeRun(FeatureTaskRuntimeRunner.kt:165)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeRunner.run(FeatureTaskRuntimeRunner.kt:84)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun$lambda$0(FeatureTaskRuntimeCliCommands.kt:213)\n\
+    \tat skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator.runOwned(FeatureTaskRuntimeWorkerCoordinator.kt:39)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimePhaseAgentCommand.executeRuntimeRun(FeatureTaskRuntimeCliCommands.kt:212)\n\
+    \tat skillbill.cli.featuretask.FeatureTaskRuntimeExplicitRunCommand.run(FeatureTaskRuntimeCliCommands.kt:450)\n\
+    \tat skillbill.cli.core.CliRuntime.run(CliRuntime.kt:25)\n\tat skillbill.cli.core.MainKt.main(Main.kt:12)\n"
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

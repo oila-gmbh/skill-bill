@@ -450,6 +450,91 @@ class GoalPlanningPreparationStoreTest {
     }
   }
 
+  @Test
+  fun `replacing a shared preplan overwrites the payload and keeps the plans it governs`() {
+    val dbPath = tempDb()
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+
+      store.replaceSharedPreplan(
+        sharedCheckpoint().copy(payloadSha256 = "9".repeat(64), preplanPayload = "regenerated-preplan"),
+      )
+
+      assertEquals("regenerated-preplan", store.findSharedPreplan(identity())?.preplanPayload)
+      assertNotNull(
+        store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath),
+        "the cascade must not take plans the sweep was not asked to reproduce",
+      )
+    }
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        "regenerated-preplan",
+        GoalPlanningPreparationStore(connection).findSharedPreplan(identity())?.preplanPayload,
+      )
+    }
+  }
+
+  @Test
+  fun `replacing a shared preplan with no stored row inserts it`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+
+      store.replaceSharedPreplan(sharedCheckpoint())
+
+      assertEquals("preplan-payload", store.findSharedPreplan(identity())?.preplanPayload)
+    }
+  }
+
+  @Test
+  fun `replacing a subtask plan overwrites the payload and leaves its siblings alone`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+
+      store.replaceSubtaskPlan(
+        planCheckpoint(1, 0).copy(payloadSha256 = "9".repeat(64), planPayload = "regenerated-plan"),
+      )
+
+      assertEquals(
+        "regenerated-plan",
+        store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.planPayload,
+      )
+      assertEquals("plan-2", store.findSubtaskPlan(identity(), 2, descriptor(2, 1).governedSubSpecPath)?.planPayload)
+    }
+  }
+
+  @Test
+  fun `replacing a subtask plan still enforces provenance parity with the governing shared preplan`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      val drifted = planCheckpoint(1, 0).copy(
+        provenance = provenance().copy(parentSpecHash = "f".repeat(64)),
+        planPayload = "regenerated-plan",
+      )
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> { store.replaceSubtaskPlan(drifted) }
+      assertEquals(
+        "plan-1",
+        store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.planPayload,
+      )
+    }
+  }
+
+  @Test
+  fun `replacing a subtask plan before its shared preplan is checkpointed fails loudly`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.replaceSubtaskPlan(planCheckpoint(1, 0)) }
+    }
+  }
+
   private fun tempDb(): Path =
     Files.createTempDirectory("runtime-kotlin-goal-planning-preparation").resolve("metrics.db")
 

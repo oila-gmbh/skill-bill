@@ -3046,6 +3046,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "validation_strategy":["focused gradle"],"evidence_refs":["shared-preplan"]}
       }
     """.trimIndent()
+
     // The SKILL-141 escape shape: a settled plan whose only task carries no test obligations.
     val EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD = """
       {

@@ -56,6 +56,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
+@Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
   @Test
   fun `prepared sweep reports absent hydration context for a sibling added after preparation`() {
@@ -481,7 +482,33 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `a rejected planning projection stops the sweep durably instead of crashing the goal driver`() {
+    // The launch seam owns rejection only for a preplan that was already settled under a laxer contract:
+    // run one checkpoints it, run two resumes under a validator that refuses it. The producer gate cannot
+    // pre-empt that — nothing is produced in run two — so an unhandled throw here would crash the goal
+    // driver with no Stopped outcome and crash identically on every resume.
     val fixtures = sharedSweepFixtures()
+    val settledPreplan = DefaultGoalPlanningSweep(
+      fixtures.checkpoint,
+      fixtures.outputValidator,
+      SweepPlanningLauncher { phase, _, _ ->
+        if (phase == "plan") {
+          launchFacts(
+            stdout = "",
+          )
+        } else {
+          validPhaseOutcome(phase)
+        }
+      },
+      fixtures.invariantsSource,
+      fixtures.manifestFileStore,
+      fakeContextDiscovery,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
+    )
+    assertIs<GoalPlanningSweepOutcome.Stopped>(
+      settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
+    )
+    assertEquals(0, fixtures.preparedCount(), "run one must settle the shared preplan and no plan")
+
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
@@ -504,9 +531,9 @@ class GoalPlanningSweepTest {
       "the block must name the operator remedy for a non-conforming durable record",
     )
     assertEquals(
-      1,
+      0,
       launcher.requests.size,
-      "only the preplan launch may happen; the plan edge rejects before launching",
+      "the settled preplan is not re-produced and the plan edge rejects before launching",
     )
   }
 
@@ -1054,6 +1081,14 @@ private class InMemoryPreparationRepository(
     }
   }
 
+  override fun replaceSharedPreplan(checkpoint: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint) {
+    sharedPreplan = checkpoint
+  }
+
+  override fun replaceSubtaskPlan(checkpoint: skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint) {
+    plans[checkpoint.subtaskId] = checkpoint
+  }
+
   fun corruptPlanProvenance(subtaskId: Int) {
     val plan = requireNotNull(plans[subtaskId])
     plans[subtaskId] = plan.copy(provenance = plan.provenance.copy(parentSpecHash = "stale-parent-spec-hash"))
@@ -1263,6 +1298,7 @@ private class SweepHarness(
   val manifestFileStore: CountingManifestFileStore get() = fixtures.manifestFileStore
 }
 
+@Suppress("LongParameterList") // one defaulted knob per sweep collaborator a case varies
 private fun sweepHarness(
   markPreparedThrows: Boolean = false,
   planCheckpointThrows: Boolean = false,
