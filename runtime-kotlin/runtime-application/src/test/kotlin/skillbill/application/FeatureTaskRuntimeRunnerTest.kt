@@ -2726,7 +2726,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 Major review finding launches implement_fix then moves on at cap`() {
+  fun `m1 Major review finding advances without launching implement_fix`() {
     val majorFindingOutput = reviewFindingsOutput(changesRequested = true)
       .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
     val harness = runnerHarness(
@@ -2738,11 +2738,11 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    // A Major reopens implement_fix so it is fixed in the same review pass; a Major that survives the
-    // bounded remediation is not advance-blocking, so the run moves on rather than looping or blocking.
+    // Only Blocker reopens implement_fix. Major findings advance to validate without triggering a fix
+    // pass, so implement_fix is never launched and the run completes directly after review.
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertTrue(launched.any { it == "implement_fix" }, "a Major review finding must launch implement_fix")
+    assertFalse(launched.any { it == "implement_fix" }, "Major findings must not launch implement_fix")
     assertTrue(launched.any { it == "audit" })
   }
 

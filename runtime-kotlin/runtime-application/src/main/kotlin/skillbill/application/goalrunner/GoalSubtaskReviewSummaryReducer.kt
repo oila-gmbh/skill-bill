@@ -102,11 +102,11 @@ internal object GoalSubtaskReviewSummaryReducer {
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
-    // Blocker alone hard-blocks at cap exhaustion, so it drives the durable unresolved count. Blocker
-    // and Major both reopen implement_fix, so they drive the changes_requested routing verdict: a
-    // Major-only review still fixes those findings in the same pass rather than deferring them.
+    // Only Blocker reopens implement_fix, so it drives both the durable unresolved count and the
+    // changes_requested routing verdict. Major, Minor, and Nit findings advance and are recorded in
+    // the ledger without triggering a fix pass.
     val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" }
-    val remediable = findings.count { finding -> finding.severity == "blocker" || finding.severity == "major" }
+    val remediable = findings.count { finding -> finding.severity == "blocker" }
     val hasStructuredFindings = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("findings") is List<*>

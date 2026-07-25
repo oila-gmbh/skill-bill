@@ -1,5 +1,6 @@
 package skillbill.workflow
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -270,6 +271,41 @@ class FeatureSpecSkillWiringContractTest {
         "$path must not route location-bearing evidence into telemetry",
       )
     }
+  }
+
+  @Test
+  fun `goal reopen prose agrees with runtime Blocker-only advancement semantics`() {
+    val goalContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+
+    // The governed prose must state that only an unresolved Blocker reopens implement_fix
+    assertContains(
+      goalContent,
+      "Only an unresolved Blocker finding reopens `implement_fix`",
+      ignoreCase = false,
+      message = "goal content must state Blocker-only reopen semantics",
+    )
+
+    // The prose must not claim that Major reopens the loop
+    assertFalse(
+      goalContent.contains("Major finding reopens") ||
+        goalContent.contains("Major findings reopen") ||
+        goalContent.contains("Blocker or Major finding reopens"),
+      "goal content must not claim Major reopens implement_fix",
+    )
+
+    // The runtime side: derive the set of severities that require remediation
+    val runtimeRemediationSeverities = FeatureTaskRuntimeReviewSeverity.entries
+      .filter { it.requiresRemediation }
+      .map { it.name }
+      .toSet()
+
+    // The prose must claim exactly the same set (only BLOCKER)
+    // Since we already asserted "Only an unresolved Blocker finding reopens", this confirms parity
+    assertEquals(
+      setOf("BLOCKER"),
+      runtimeRemediationSeverities,
+      "runtime requiresRemediation must be Blocker-only",
+    )
   }
 }
 

@@ -3,19 +3,18 @@ package skillbill.workflow.taskruntime.model
 /**
  * Pure domain models for the structured review verdict that drives the `review_fix` backward edge. A
  * review emits a [FeatureTaskRuntimeReviewVerdict]: its findings classify the run as
- * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any Blocker or Major that still needs remediation) or
+ * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any unresolved Blocker) or
  * [FeatureTaskRuntimeVerdict.APPROVED]. The classification is a pure function of the findings — prose
  * alone cannot advance past a remediable finding — and the findings are carried into the
  * `implement_fix` briefing. No raw maps live in the model: the runner decodes wire output into these
  * types.
  *
  * Two severity gates are deliberately distinct. [FeatureTaskRuntimeReviewSeverity.requiresRemediation]
- * (Blocker + Major) drives the backward edge and the set of findings a fix pass must clear: a review
- * with only Major findings still reopens `implement_fix` so those are fixed in the same pass rather
- * than deferred to the unaddressed-findings ledger. [FeatureTaskRuntimeReviewSeverity.blocksAdvance]
- * (Blocker only) drives the terminal loud block on cap exhaustion: after the bounded remediation the
- * run moves on with a surviving Major but still stops on a surviving Blocker, so a real breakage is
- * never shipped.
+ * (Blocker only) drives the backward edge and the set of findings a fix pass must clear: only a
+ * surviving Blocker reopens `implement_fix`. [FeatureTaskRuntimeReviewSeverity.blocksAdvance]
+ * (Blocker only) drives the terminal loud block on cap exhaustion: the run moves on with surviving
+ * Major, Minor, or Nit findings but still stops on a surviving Blocker, so a real breakage is never
+ * shipped.
  */
 
 /**
@@ -37,11 +36,11 @@ enum class FeatureTaskRuntimeReviewSeverity(val wireValue: String) {
     get() = this == BLOCKER
 
   /**
-   * Whether a finding of this severity must be remediated in the same review pass. Blocker and Major
-   * both reopen `implement_fix`; Minor and Nit are recorded in the ledger and never reopen the loop.
+   * Whether a finding of this severity must be remediated in the same review pass. Only a Blocker
+   * reopens `implement_fix`; Major, Minor, and Nit are recorded in the ledger and never reopen the loop.
    */
   val requiresRemediation: Boolean
-    get() = this == BLOCKER || this == MAJOR
+    get() = this == BLOCKER
 
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeReviewSeverity =
@@ -67,9 +66,9 @@ data class FeatureTaskRuntimeReviewFinding(
  * The structured verdict a `review` phase emits: the full ordered finding list. [verdict] is derived
  * purely from the findings ([FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] when any finding
  * [FeatureTaskRuntimeReviewFinding.severity] requires remediation, else
- * [FeatureTaskRuntimeVerdict.APPROVED]). [remediationFindings] are the Blocker and Major findings a
- * fix pass must clear; [unresolvedFindings] are the Blocker-only findings carried into the loud block
- * on cap exhaustion.
+ * [FeatureTaskRuntimeVerdict.APPROVED]). [remediationFindings] are the Blocker-only findings a fix
+ * pass must clear; [unresolvedFindings] are the Blocker-only findings carried into the loud block on
+ * cap exhaustion.
  */
 data class FeatureTaskRuntimeReviewVerdict(
   val findings: List<FeatureTaskRuntimeReviewFinding>,
