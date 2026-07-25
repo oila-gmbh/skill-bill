@@ -271,6 +271,7 @@ data class GoalRunnerStatusProjection(
   val phaseAttemptCounts: Map<String, Int> = emptyMap(),
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
 )
 
 data class GoalRunnerStatusProjectionExtras(
@@ -292,6 +293,7 @@ data class GoalRunnerStatusProjectionExtras(
   val phaseAttemptCounts: Map<String, Int> = emptyMap(),
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
 )
 
 object GoalRunnerStatusProjector {
@@ -334,6 +336,7 @@ object GoalRunnerStatusProjector {
       phaseAttemptCounts = extras.phaseAttemptCounts,
       cumulativeFixIterations = extras.cumulativeFixIterations,
       reAttemptCauseCounts = extras.reAttemptCauseCounts,
+      findingsInScope = extras.findingsInScope,
     )
   }
 

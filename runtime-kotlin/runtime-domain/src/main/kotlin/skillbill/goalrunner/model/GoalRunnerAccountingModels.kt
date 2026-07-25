@@ -192,6 +192,7 @@ data class GoalAttemptLedgerEntry(
   val attemptDurationMillis: Long? = null,
   val causingLoopEntry: String? = null,
   val reAttemptCause: String? = null,
+  val findingsInScope: Int? = null,
 ) {
   init {
     require(sequenceNumber >= 0) { "GoalAttemptLedgerEntry.sequenceNumber must be non-negative." }
@@ -225,6 +226,7 @@ data class GoalAttemptLedgerEntry(
       "attempt_duration_millis" to attemptDurationMillis,
       "causing_loop_entry" to causingLoopEntry,
       "re_attempt_cause" to reAttemptCause,
+      "findings_in_scope" to findingsInScope,
     )
     return linkedMapOf<String, Any?>(
       "action" to action.wireValue,

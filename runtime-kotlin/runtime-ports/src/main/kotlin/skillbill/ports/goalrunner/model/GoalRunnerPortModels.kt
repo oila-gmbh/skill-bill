@@ -148,6 +148,7 @@ data class GoalRunnerAttemptLedgerSummary(
   val phaseAttemptCounts: Map<String, Int> = emptyMap(),
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
 )
 
 data class GoalPullRequestRequest(

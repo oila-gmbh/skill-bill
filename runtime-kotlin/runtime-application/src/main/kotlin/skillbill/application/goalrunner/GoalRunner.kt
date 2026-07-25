@@ -834,6 +834,8 @@ class GoalRunner(
         attemptDurationMillis = attemptDurationMillis,
         reAttemptCause = reAttemptCause,
         causingLoopEntry = causingLoopEntry,
+        findingsInScope = resolveFindingsLedger(state.manifest.issueKey, request.dbPathOverride)
+          ?.findings?.count { it.subtaskId == subtaskId },
       ),
     )
     childLoopIterations.forEach { (loopId, edgeIteration) ->

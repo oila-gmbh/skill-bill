@@ -786,6 +786,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     if (it.phaseAttemptCounts.isNotEmpty()) put("phase_attempt_counts", it.phaseAttemptCounts)
     if (it.cumulativeFixIterations.isNotEmpty()) put("cumulative_fix_iterations", it.cumulativeFixIterations)
     if (it.reAttemptCauseCounts.isNotEmpty()) put("re_attempt_causes", it.reAttemptCauseCounts)
+    it.findingsInScope?.let { count -> put("findings_in_scope", count) }
   }
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -873,6 +874,7 @@ private fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
   (payload["re_attempt_causes"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { causes ->
     appendLine("re_attempt_causes: ${causes.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
   }
+  (payload["findings_in_scope"] as? Number)?.toInt()?.let { appendLine("findings_in_scope: $it") }
 }
 
 private fun StringBuilder.appendDiffStatusLines(payload: Map<*, *>, watchIndex: String? = null) {

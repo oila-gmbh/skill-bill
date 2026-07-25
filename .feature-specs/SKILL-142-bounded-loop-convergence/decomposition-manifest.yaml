@@ -3,30 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-142"
 feature_name: "bounded-loop-convergence"
 parent_spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec.md"
-status: "blocked"
+status: "pending"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-142-inline-review-depth-tier"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "blocked"
+  action: "start"
 subtasks:
 - id: 1
   name: "Review-phase liveness, preflight, and loop accounting"
   spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec_subtask_1_review_liveness_preflight_accounting.md"
-  status: "blocked"
+  status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260725-002343-d1qb"
-  blocked_reason: "Phase 'implement' exhausted the bounded fix loop after 3 attempts\
-    \ (cap=3); the run blocks rather than advancing on invalid output. Last schema-gate\
-    \ failure: Phase 'implement' reported 'completed' but its produced_outputs is\
-    \ not a valid 'implementation_receipt' projection, which its consumer parses verbatim.\
-    \ Emit produced_outputs carrying projection_kind 'implementation_receipt' at contract_version\
-    \ '0.1' with the declared fields. Projection validation failed: implement#produced_outputs:\
-    \ produced_outputs.projection_kind is missing; a bounded projection requires it."
-  last_resumable_step: "implement"
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

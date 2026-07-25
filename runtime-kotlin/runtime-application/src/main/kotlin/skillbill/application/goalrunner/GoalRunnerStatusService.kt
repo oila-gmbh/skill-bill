@@ -79,6 +79,7 @@ class GoalRunnerStatusService(
             phaseAttemptCounts = ledgerSummary?.phaseAttemptCounts ?: emptyMap(),
             cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
+            findingsInScope = ledgerSummary?.findingsInScope,
           ),
         )
       }

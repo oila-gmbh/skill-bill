@@ -140,6 +140,7 @@ internal class GoalRunnerLedgerRecorder(
       attemptDurationMillis = context.attemptDurationMillis,
       causingLoopEntry = context.causingLoopEntry?.takeIf(String::isNotBlank),
       reAttemptCause = context.reAttemptCause?.takeIf(String::isNotBlank),
+      findingsInScope = context.findingsInScope,
     )
     runCatching {
       outcomeStore.recordAttemptLedgerEntry(
@@ -207,4 +208,5 @@ internal data class GoalRunnerLedgerContext(
   val attemptDurationMillis: Long? = null,
   val causingLoopEntry: String? = null,
   val reAttemptCause: String? = null,
+  val findingsInScope: Int? = null,
 )

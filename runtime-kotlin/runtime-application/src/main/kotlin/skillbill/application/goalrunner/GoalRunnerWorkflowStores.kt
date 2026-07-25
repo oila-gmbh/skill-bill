@@ -1816,6 +1816,7 @@ private class AttemptLedgerAccumulator {
   val phaseAttemptCounts = mutableMapOf<String, Int>()
   val cumulativeFixIterations = mutableMapOf<String, Int>()
   val reAttemptCauseCounts = mutableMapOf<String, Int>()
+  var findingsInScope: Int? = null
 
   fun accumulate(entry: Map<*, *>) {
     val action = entry["action"]?.toString() ?: return
@@ -1824,6 +1825,7 @@ private class AttemptLedgerAccumulator {
       entry["re_attempt_cause"]?.toString()?.takeIf(String::isNotBlank)?.let { cause ->
         reAttemptCauseCounts.merge(cause, 1, Int::plus)
       }
+      entry["findings_in_scope"].asGoalRunnerIntOrNull()?.let { findingsInScope = it }
     }
     if (entry["diagnostic_class"]?.toString() == "supervisor_killed_confirmed_alive") supervisorKillCount++
     if (action == "child_activation" || action == "resume") {
@@ -1851,6 +1853,7 @@ private class AttemptLedgerAccumulator {
     phaseAttemptCounts = phaseAttemptCounts,
     cumulativeFixIterations = cumulativeFixIterations,
     reAttemptCauseCounts = reAttemptCauseCounts,
+    findingsInScope = findingsInScope,
   )
 }
 
