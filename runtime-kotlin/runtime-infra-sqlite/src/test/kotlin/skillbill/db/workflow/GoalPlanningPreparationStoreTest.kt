@@ -460,6 +460,7 @@ class GoalPlanningPreparationStoreTest {
 
       store.replaceSharedPreplan(
         sharedCheckpoint().copy(payloadSha256 = "9".repeat(64), preplanPayload = "regenerated-preplan"),
+        sharedCheckpoint().payloadSha256,
       )
 
       assertEquals("regenerated-preplan", store.findSharedPreplan(identity())?.preplanPayload)
@@ -478,13 +479,37 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
-  fun `replacing a shared preplan with no stored row inserts it`() {
+  fun `replacing a shared preplan with no stored row fails the compare and replace`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)
 
-      store.replaceSharedPreplan(sharedCheckpoint())
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.replaceSharedPreplan(sharedCheckpoint(), sharedCheckpoint().payloadSha256)
+      }
+
+      assertNull(store.findSharedPreplan(identity()))
+    }
+  }
+
+  @Test
+  fun `replacing a shared preplan rejects a stale observed payload without discarding plans`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.replaceSharedPreplan(
+          sharedCheckpoint().copy(payloadSha256 = "9".repeat(64), preplanPayload = "regenerated-preplan"),
+          "8".repeat(64),
+        )
+      }
 
       assertEquals("preplan-payload", store.findSharedPreplan(identity())?.preplanPayload)
+      assertEquals(
+        "plan-1",
+        store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.planPayload,
+      )
     }
   }
 

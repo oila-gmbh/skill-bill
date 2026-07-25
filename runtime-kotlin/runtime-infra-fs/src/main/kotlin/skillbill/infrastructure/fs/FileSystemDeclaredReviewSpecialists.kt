@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingManifestError
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.review.plan.ReviewStackRouting
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
@@ -15,7 +16,16 @@ class FileSystemDeclaredReviewSpecialists : DeclaredReviewSpecialistsPort {
     if (changedPaths.isEmpty()) return emptyList()
     val manifests = discoverManifests(repoRoot)
     if (manifests.isEmpty()) return emptyList()
-    val routedSlugs = ReviewStackRouting.routeByPath(manifests, changedPaths).routedSlugs
+    val changedFiles = changedPaths.map { relativePath ->
+      val path = repoRoot.resolve(relativePath).normalize()
+      val content = if (path.startsWith(repoRoot.normalize()) && Files.isRegularFile(path)) {
+        Files.readString(path)
+      } else {
+        ""
+      }
+      ReviewRoutingChangedFile(relativePath, content)
+    }
+    val routedSlugs = ReviewStackRouting.route(manifests, changedFiles).routedSlugs
     return manifests
       .filter { it.slug in routedSlugs }
       .flatMap { manifest ->

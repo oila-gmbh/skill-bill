@@ -8,6 +8,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.boundedSchemaGateDetail
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.application.model.GoalPlanningAttemptRecord
 import skillbill.application.model.GoalPlanningPhaseProduction
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
@@ -25,7 +26,9 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
@@ -37,12 +40,16 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.GoalProgressEvent
+import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.time.Duration
 
 fun interface GoalPlanningSweep {
@@ -80,6 +87,7 @@ class DefaultGoalPlanningSweep(
   private val manifestFileStore: DecompositionManifestFileStore,
   private val contextDiscovery: GoalPlanningContextDiscovery,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  private val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -290,13 +298,9 @@ class DefaultGoalPlanningSweep(
    * not the sweep's total planning budget. Operators should monitor for excessive planning
    * launch counts and consider adjusting MAX_FIX_LOOP_ITERATIONS or the spec size.
 
-   * Fix-loop attempts visibility limitation: produceAttempt writes the same progress message on every
-   * attempt, DefaultGoalPlanningSweep has no telemetry port injected, and only the success path writes
-   * durably. An operator cannot distinguish 'preplan ran once' from 'preplan ran three times and
-   * discarded two agent outputs' - no retry count, no per-attempt gate reason, no correlation with
-   * the final blocked_reason. Full durable fix-loop telemetry would require a telemetry port and
-   * additional emit calls; operators should monitor for repeated fix-loop exhaustion and investigate
-   * aggressively.
+   * Every attempt records a durable completion event on the parent workflow, including its phase,
+   * subtask, ordinal, and success/failure outcome. Resume therefore preserves the consumed attempt
+   * evidence even though the bounded retry counter remains scoped to one sweep run.
    */
   private fun producePhase(
     shared: GoalPlanningSharedContext,
@@ -308,7 +312,8 @@ class DefaultGoalPlanningSweep(
     finalizePayload: (String) -> String = { it },
   ): GoalPlanningPhaseProduction {
     var priorSchemaFailure: String? = null
-    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) {
+    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) { attemptIndex ->
+      val attempt = attemptIndex + 1
       val production = produceAttempt(
         shared,
         request,
@@ -318,14 +323,41 @@ class DefaultGoalPlanningSweep(
         recordedOutputs,
         priorSchemaFailure,
       )
-      if (production is GoalPlanningPhaseProduction.Stopped) return production
+      if (production is GoalPlanningPhaseProduction.Stopped) {
+        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+        return production
+      }
       val payload = finalizePayload((production as GoalPlanningPhaseProduction.Captured).payload)
       val gateReason = projectionGateReason(payload, phaseId)
-        ?: return GoalPlanningPhaseProduction.Captured(payload)
+      if (gateReason == null) {
+        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
+        return GoalPlanningPhaseProduction.Captured(payload)
+      }
+      recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
       priorSchemaFailure = gateReason
     }
     return GoalPlanningPhaseProduction.Stopped(
       stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, priorSchemaFailure.orEmpty()), phaseId),
+    )
+  }
+
+  private fun recordPlanningAttempt(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    outcome: GoalProgressOutcome,
+  ) {
+    planningAttemptRecorder.record(
+      GoalPlanningAttemptRecord(
+        shared.parentWorkflowId,
+        shared.issueKey,
+        shared.dbPathOverride,
+        phaseId,
+        subtask?.id ?: 0,
+        attempt,
+        outcome,
+      ),
     )
   }
 
@@ -627,5 +659,49 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
+  }
+}
+
+fun interface GoalPlanningAttemptRecorder {
+  fun record(attempt: GoalPlanningAttemptRecord)
+
+  companion object {
+    val NONE: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder {}
+  }
+}
+
+@Inject
+class DurableGoalPlanningAttemptRecorder(
+  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+) : GoalPlanningAttemptRecorder {
+  private val nextSequenceByWorkflow = mutableMapOf<String, Int>()
+
+  @Synchronized
+  override fun record(attempt: GoalPlanningAttemptRecord) {
+    outcomeStore.recordProgressEvent(
+      GoalRunnerProgressEventRecordRequest(
+        workflowId = attempt.parentWorkflowId,
+        event = GoalProgressEvent(
+          eventKind = GoalProgressEventKind.OPERATION_COMPLETED,
+          workflowId = attempt.parentWorkflowId,
+          workflowPhase = "goal_planning",
+          processAlive = true,
+          sequenceNumber = nextSequenceByWorkflow.getOrPut(attempt.parentWorkflowId) {
+            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey, attempt.dbPathOverride)
+              .maxProgressSequence
+              ?.plus(1)
+              ?: 0
+          },
+          timestamp = Instant.now().toString(),
+          stepId = attempt.phaseId,
+          operationName = "${attempt.phaseId}:${attempt.subtaskId}:attempt:${attempt.attempt}",
+          operationKind = "planning_projection_attempt",
+          expectedLong = true,
+          outcome = attempt.outcome,
+        ),
+      ),
+      attempt.dbPathOverride,
+    )
+    nextSequenceByWorkflow[attempt.parentWorkflowId] = nextSequenceByWorkflow.getValue(attempt.parentWorkflowId) + 1
   }
 }

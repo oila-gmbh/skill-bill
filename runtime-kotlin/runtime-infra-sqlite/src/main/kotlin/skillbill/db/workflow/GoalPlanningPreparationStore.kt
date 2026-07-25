@@ -175,8 +175,9 @@ class GoalPlanningPreparationStore(
     }
   }
 
-  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String) {
     requireNormalizedSharedPreplan(checkpoint)
+    require(expectedPayloadSha256.isNotBlank()) { "expectedPayloadSha256 is required." }
     translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
       connection.inImmediateTransaction {
         // Every stored subtask plan is derived from these preplan bytes and pins their provenance, so the
@@ -185,16 +186,12 @@ class GoalPlanningPreparationStore(
         // unrecoverable conflict on every resume with no in-band repair. Discarded plans are regenerated
         // by the sweep under the new provenance. Overwrite rather than DELETE the shared row itself:
         // goal_subtask_plans cascades on it, and the cascade would fire before the replacement lands.
-        prepareStatement("DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ?").use { s ->
-          s.setString(1, checkpoint.identity.parentGoalWorkflowId)
-          s.executeUpdate()
-        }
         val updated = prepareStatement(
           """UPDATE goal_shared_preplans SET normalized_issue_key = ?, repository_identity = ?,
           preparation_status = ?, contract_version = ?, parent_spec_hash = ?, decomposition_manifest_hash = ?,
           planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
           phase_output_contract_version = ?, payload_sha256 = ?, preplan_payload_json = ?
-          WHERE parent_goal_workflow_id = ?""",
+          WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?""",
         ).use { s ->
           val values = listOf(
             checkpoint.identity.normalizedIssueKey, checkpoint.identity.repositoryIdentity,
@@ -203,11 +200,22 @@ class GoalPlanningPreparationStore(
             checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
             checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
             checkpoint.payloadSha256, checkpoint.preplanPayload, checkpoint.identity.parentGoalWorkflowId,
+            expectedPayloadSha256,
           )
           values.forEachIndexed { i, value -> s.setString(i + 1, value) }
           s.executeUpdate() > 0
         }
-        if (!updated) insertSharedPreplanRow(checkpoint)
+        if (!updated) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            checkpoint.identity.parentGoalWorkflowId,
+            0,
+            "shared preplan changed after it was validated for regeneration",
+          )
+        }
+        prepareStatement("DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ?").use { s ->
+          s.setString(1, checkpoint.identity.parentGoalWorkflowId)
+          s.executeUpdate()
+        }
       }
     }
   }

@@ -12,7 +12,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
+import skillbill.application.goalrunner.DurableGoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
+import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
@@ -345,6 +347,11 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder): GoalPlanningAttemptRecorder =
+    recorder
 
   @Provides
   @JvmSynthetic

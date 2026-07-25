@@ -63,7 +63,9 @@ class GoalPlanningPreparationCheckpoint(
     gate.validateSharedPreplan(checkpoint)
     val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(checkpoint.identity) }
     if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
-      database.read(dbOverride) { it.goalPlanningPreparations.replaceSharedPreplan(checkpoint) }
+      database.read(dbOverride) {
+        it.goalPlanningPreparations.replaceSharedPreplan(checkpoint, stored.payloadSha256)
+      }
     } else {
       database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
     }

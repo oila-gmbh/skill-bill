@@ -12,13 +12,7 @@ import skillbill.scaffold.model.PlatformManifest
  * then demand specialists for packs the review never launches.
  */
 object ReviewStackRouting {
-  /**
-   * Path-only routing for callers that have not read file contents. Content signals are broad,
-   * language-agnostic tokens that break ties among equally path-scored manifests. Dropping them
-   * can route differently than full routing when path signals tie: the composed-root tie-break
-   * may resolve without the content signals that full routing observes. Use this only when
-   * reading file contents is unavailable; otherwise prefer [route] for accuracy.
-   */
+  /** Path-only routing for genuinely unavailable content, such as a deleted file. */
   fun routeByPath(manifests: List<PlatformManifest>, paths: List<String>): ReviewStackRoutingResult =
     route(manifests, paths.map { ReviewRoutingChangedFile(it, "") })
 

@@ -30,11 +30,10 @@ interface NormalizedGoalPlanningPreparationRepository {
     error("Shared goal preplan checkpointing is not implemented by this repository.")
 
   /**
-   * Overwrites a stored shared preplan the producer projection gate rejects, so a regeneration lands instead
-   * of wedging on the immutable guard. The caller decides regenerability from a prior read, so this is not
-   * atomic against a concurrent writer; only the single-writer goal planning sweep may call it.
+   * Atomically replaces the exact shared preplan observed by the caller. A concurrent writer changing the
+   * stored payload after the caller's gate decision must fail the compare-and-replace instead of being deleted.
    */
-  fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
+  fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String): Unit =
     error("Shared goal preplan replacement is not implemented by this repository.")
 
   fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
@@ -98,7 +97,7 @@ interface GoalPlanningPreparationRepository :
 
 private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoalPlanningPreparationRepository {
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) = Unit
-  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) = Unit
+  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String) = Unit
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit

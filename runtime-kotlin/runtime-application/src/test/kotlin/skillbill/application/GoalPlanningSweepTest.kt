@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
+import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
@@ -798,6 +799,37 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `planning projection retries are recorded with durable attempt outcomes`() {
+    val attempts = mutableListOf<String>()
+    var launchCount = 0
+    val harness = sweepHarness(
+      planningProjectionValidator = realPlanningProjectionValidator,
+      planningAttemptRecorder = GoalPlanningAttemptRecorder { record ->
+        attempts += "${record.phaseId}:${record.subtaskId}:${record.attempt}:${record.outcome.wireValue}"
+      },
+    ) { phase, _, _ ->
+      launchCount += 1
+      if (phase == "plan" && launchCount == 2) {
+        launchFacts(stdout = emptyTestObligationsPlanPayload())
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
+    assertEquals(
+      listOf(
+        "preplan:0:1:succeeded",
+        "plan:1:1:failed",
+        "plan:1:2:succeeded",
+      ),
+      attempts,
+    )
+  }
+
+  @Test
   fun `a plan child that never emits a valid projection stops at the fix-loop cap with nothing checkpointed`() {
     var planAttempts = 0
     val harness = sweepHarness(planningProjectionValidator = realPlanningProjectionValidator) { phase, _, _ ->
@@ -1081,7 +1113,10 @@ private class InMemoryPreparationRepository(
     }
   }
 
-  override fun replaceSharedPreplan(checkpoint: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint) {
+  override fun replaceSharedPreplan(
+    checkpoint: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+  ) {
     sharedPreplan = checkpoint
   }
 
@@ -1306,6 +1341,7 @@ private fun sweepHarness(
   contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1322,6 +1358,7 @@ private fun sweepHarness(
     fixtures.manifestFileStore,
     contextDiscovery,
     planningProjectionValidator,
+    planningAttemptRecorder,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }

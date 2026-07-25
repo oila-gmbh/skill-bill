@@ -66,6 +66,28 @@ class FileSystemDeclaredReviewSpecialistsTest {
     assertEquals(emptyList(), FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, emptyList()))
   }
 
+  @Test
+  fun `preflight reads changed content to break overlapping path signal ties`() {
+    val repoRoot = Files.createTempDirectory("declared-specialists-content")
+    val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    writePack(packsRoot, "kotlin", listOf(".kt", "*.kt"), listOf("architecture"))
+    writePack(
+      packsRoot,
+      "kmp",
+      listOf(".kt", "*.kt"),
+      listOf("platform-correctness"),
+      contentSignals = listOf("expect class"),
+    )
+    val source = repoRoot.resolve("src/commonMain/kotlin/Shared.kt")
+    Files.createDirectories(source.parent)
+    Files.writeString(source, "expect class Shared")
+
+    val specialists = FileSystemDeclaredReviewSpecialists()
+      .routedSpecialists(repoRoot, listOf("src/commonMain/kotlin/Shared.kt"))
+
+    assertEquals(listOf("bill-kmp-code-review-platform-correctness"), specialists)
+  }
+
   private fun repoWithPacks(): Path {
     val repoRoot = Files.createTempDirectory("declared-specialists-routed")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
@@ -74,7 +96,13 @@ class FileSystemDeclaredReviewSpecialistsTest {
     return repoRoot
   }
 
-  private fun writePack(packsRoot: Path, slug: String, pathSignals: List<String>, areas: List<String>) {
+  private fun writePack(
+    packsRoot: Path,
+    slug: String,
+    pathSignals: List<String>,
+    areas: List<String>,
+    contentSignals: List<String> = emptyList(),
+  ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
       packDir.resolve("platform.yaml"),
@@ -87,7 +115,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
         pathSignals.forEach { appendLine("    - \"$it\"") }
         appendLine("  tie_breakers: []")
         appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
-        appendLine("  content: []")
+        appendLine("  content: [${contentSignals.joinToString(", ") { "\"$it\"" }}]")
         appendLine("declared_code_review_areas:")
         areas.forEach { appendLine("  - $it") }
         appendLine("declared_files:")
