@@ -409,6 +409,14 @@ class GoalResetCommand(
     "--preserve-planning",
     help = "Delete incompatible child workflows while preserving immutable goal planning checkpoints.",
   ).flag(default = false)
+  private val subtaskId by option(
+    "--subtask",
+    help = "Selected subtask ID for scoped incompatible-child recovery.",
+  ).int()
+  private val deleteChildWorkflow by option(
+    "--delete-child-workflow",
+    help = "Explicitly delete the selected subtask's incompatible terminal child workflow.",
+  ).flag(default = false)
   private val confirmIssueKey by option(
     "--confirm-issue-key",
     help = "Confirmation gate for --hard. Must match the issue key.",
@@ -416,6 +424,17 @@ class GoalResetCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
 
   override fun run() {
+    if ((subtaskId != null) != deleteChildWorkflow) {
+      throw UsageError("--subtask ID and --delete-child-workflow must be supplied together.")
+    }
+    if (subtaskId != null && requireNotNull(subtaskId) <= 0) {
+      throw UsageError("--subtask must be a positive integer.")
+    }
+    if (deleteChildWorkflow && (hard || preservePlanning)) {
+      throw UsageError(
+        "--subtask ID --delete-child-workflow is incompatible with --hard and --preserve-planning.",
+      )
+    }
     if (preservePlanning && !hard) {
       throw UsageError(
         "--preserve-planning only applies to a hard reset; a soft reset never deletes child workflows. " +
@@ -432,6 +451,8 @@ class GoalResetCommand(
         issueKey = issueKey,
         hard = hard,
         preservePlanning = preservePlanning,
+        subtaskId = subtaskId,
+        deleteChildWorkflow = deleteChildWorkflow,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
       ),
@@ -979,12 +1000,20 @@ private fun String.goalCliToken(): String = replace("\\", "\\\\")
 
 private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boolean): Map<String, Any?> = this?.let {
   linkedMapOf(
-    "status" to "ok",
+    "status" to if (it.recovery?.recoveryCommand == null) "ok" else "recovery_required",
     "issue_key" to it.issueKey,
     "mode" to it.mode,
     "parent_workflow_id" to it.parentWorkflowId,
     "before" to resetSnapshotMap(it.before),
     "after" to resetSnapshotMap(it.after),
+    "recovery" to it.recovery?.let { recovery ->
+      linkedMapOf(
+        "subtask_id" to recovery.subtaskId,
+        "workflow_id" to recovery.workflowId,
+        "classification" to recovery.classification,
+        "command" to recovery.recoveryCommand,
+      )
+    },
   )
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -1056,6 +1085,13 @@ private fun goalResetText(payload: Map<String, Any?>): String = buildString {
     appendGoalResetSubtaskLines(this, before["subtasks"] as? List<*>)
     appendLine("after_subtasks:")
     appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
+  }
+  (payload["recovery"] as? Map<*, *>)?.let { recovery ->
+    appendLine(
+      "recovery: subtask=${recovery["subtask_id"]}; workflow_id=${recovery["workflow_id"]}; " +
+        "classification=${recovery["classification"]}",
+    )
+    recovery["command"]?.let { appendLine("recovery_command: $it") }
   }
 }
 

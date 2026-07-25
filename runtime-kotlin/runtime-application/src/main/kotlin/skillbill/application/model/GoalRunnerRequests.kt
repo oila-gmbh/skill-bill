@@ -142,12 +142,22 @@ data class GoalRunnerResetRequest(
   val issueKey: String,
   val hard: Boolean,
   val preservePlanning: Boolean = false,
+  val subtaskId: Int? = null,
+  val deleteChildWorkflow: Boolean = false,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(!preservePlanning || hard) { "preservePlanning requires a hard reset." }
+    require((subtaskId != null) == deleteChildWorkflow) {
+      "subtaskId and deleteChildWorkflow must be supplied together."
+    }
+    require(subtaskId == null || subtaskId > 0) { "subtaskId must be positive." }
+    require(!deleteChildWorkflow || !hard) { "Scoped child deletion is incompatible with a hard reset." }
+    require(!deleteChildWorkflow || !preservePlanning) {
+      "Scoped child deletion preserves planning intrinsically and cannot use preservePlanning."
+    }
   }
 }
 
@@ -157,6 +167,14 @@ data class GoalRunnerResetResult(
   val parentWorkflowId: String,
   val before: GoalRunnerResetSnapshot,
   val after: GoalRunnerResetSnapshot,
+  val recovery: GoalRunnerChildRecoveryDiagnostic? = null,
+)
+
+data class GoalRunnerChildRecoveryDiagnostic(
+  val subtaskId: Int,
+  val workflowId: String,
+  val classification: String,
+  val recoveryCommand: String?,
 )
 
 data class GoalRunnerAcceptRequest(

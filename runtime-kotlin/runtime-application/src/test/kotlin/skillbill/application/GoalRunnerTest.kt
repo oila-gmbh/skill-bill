@@ -1789,6 +1789,81 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
+  fun `scoped recovery resets only selected terminal child`() {
+    val original = manifest(subtaskCount = 2).copy(
+      status = "blocked",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "blocked"),
+      subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+        when (subtask.id) {
+          1 -> subtask.copy(status = "complete", commitSha = "full-commit-1")
+          else -> subtask.copy(
+            status = "blocked",
+            workflowId = "wfl-stale",
+            blockedReason = "terminal child",
+            lastResumableStep = "implement",
+          )
+        }
+      },
+    )
+    val store = InMemoryGoalManifestStore(original)
+    val outcomes = RecordingOutcomeStore().apply {
+      progresses["wfl-stale"] = GoalRunnerWorkflowProgress(
+        workflowId = "wfl-stale",
+        workflowStatus = "failed",
+        currentStepId = "implement",
+        progressToken = "terminal",
+      )
+    }
+
+    val reset = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+      GoalRunnerResetRequest(
+        issueKey = "SKILL-56",
+        hard = false,
+        subtaskId = 2,
+        deleteChildWorkflow = true,
+      ),
+    )
+
+    requireNotNull(reset)
+    assertEquals("scoped_child_recovery", reset.mode)
+    assertEquals(original.subtasks.first(), store.manifest.subtasks.first())
+    assertEquals("pending", store.manifest.subtasks.last().status)
+    assertNull(store.manifest.subtasks.last().workflowId)
+    assertEquals(null, outcomes.lastReconcileRequest, "selector validation must not mutate through reconciliation")
+  }
+
+  @Test
+  fun `scoped recovery rejects resumable child without mutation`() {
+    val original = manifest(subtaskCount = 1)
+      .copy(status = "blocked", currentSubtaskIntent = CurrentSubtaskIntent(1, "blocked"))
+      .withBlockedSubtask(1, workflowId = "wfl-resumable", reason = "paused")
+    val store = InMemoryGoalManifestStore(original)
+    val outcomes = RecordingOutcomeStore().apply {
+      progresses["wfl-resumable"] = GoalRunnerWorkflowProgress(
+        workflowId = "wfl-resumable",
+        workflowStatus = "paused",
+        currentStepId = "implement",
+        progressToken = "resumable",
+      )
+    }
+
+    assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+        GoalRunnerResetRequest(
+          issueKey = "SKILL-56",
+          hard = false,
+          subtaskId = 1,
+          deleteChildWorkflow = true,
+        ),
+      )
+    }
+
+    assertEquals(original, store.manifest)
+    assertEquals(0, store.saveCount)
+    assertEquals(null, outcomes.lastReconcileRequest)
+  }
+
+  @Test
   fun `hard reset deletes goal planning preparation before saving pending projection`() {
     val database = GoalTestPlanningDatabase()
     val store = InMemoryGoalManifestStore(
@@ -1872,6 +1947,34 @@ internal class InMemoryGoalManifestStore(
   ): GoalRunnerManifestState {
     hardReset?.invoke(state, dbPathOverride)
     return save(state, dbPathOverride)
+  }
+
+  override fun deleteIncompatibleChildWorkflow(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    workflowId: String,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    val recovered = state.copy(
+      manifest = state.manifest.copy(
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId, "start"),
+        subtasks = state.manifest.subtasks.map { subtask ->
+          if (subtask.id == subtaskId && subtask.workflowId == workflowId) {
+            subtask.copy(
+              status = "pending",
+              branch = null,
+              commitSha = null,
+              workflowId = null,
+              blockedReason = null,
+              lastResumableStep = null,
+            )
+          } else {
+            subtask
+          }
+        },
+      ),
+    )
+    return save(recovered, dbPathOverride)
   }
 
   override fun saveNewChildWorkflow(

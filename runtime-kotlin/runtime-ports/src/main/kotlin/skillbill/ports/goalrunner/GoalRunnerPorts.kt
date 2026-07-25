@@ -37,6 +37,11 @@ interface GoalRunnerManifestLookup {
     dbPathOverride: String? = null,
     repoRoot: Path? = null,
   ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+
+  fun loadDurableByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+  ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, null)
 }
 
 @Suppress("TooManyFunctions") // single cohesive boundary: manifest reads, saves, review policy, and acceptance
@@ -59,6 +64,14 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     dbPathOverride: String? = null,
     preservePlanning: Boolean = false,
   ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist hard reset state.")
+
+  fun deleteIncompatibleChildWorkflow(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    workflowId: String,
+    dbPathOverride: String? = null,
+  ): GoalRunnerManifestState =
+    error("Goal runner manifest store must atomically delete a selected incompatible child workflow.")
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

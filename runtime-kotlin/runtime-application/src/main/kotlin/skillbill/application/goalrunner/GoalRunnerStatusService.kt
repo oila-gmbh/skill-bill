@@ -7,6 +7,7 @@ import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerAcceptanceEvidence
+import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
@@ -161,8 +162,15 @@ class GoalRunnerStatusService(
   }
 
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val loaded = if (request.deleteChildWorkflow) {
+      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+    } else {
+      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    }
       ?: return null
+    if (request.deleteChildWorkflow) {
+      return deleteIncompatibleChildWorkflow(request, loaded)
+    }
     outcomeStore.reconcileAuthoritativeOutcomes(
       issueKey = loaded.manifest.issueKey,
       activeWorkflowIds = emptySet(),
@@ -178,12 +186,67 @@ class GoalRunnerStatusService(
     } else {
       manifestStore.save(resetState, request.dbPathOverride)
     }
+    val staleChild = if (!request.hard) {
+      saved.manifest.subtasks.firstNotNullOfOrNull { subtask ->
+        val workflowId = subtask.workflowId?.takeIf(String::isNotBlank) ?: return@firstNotNullOfOrNull null
+        val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
+        classification.takeIf { it == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL }?.let {
+          GoalRunnerChildRecoveryDiagnostic(
+            subtaskId = subtask.id,
+            workflowId = workflowId,
+            classification = it.wireValue,
+            recoveryCommand = scopedChildRecoveryCommand(saved.manifest.issueKey, subtask.id),
+          )
+        }
+      }
+    } else {
+      null
+    }
     return GoalRunnerResetResult(
       issueKey = saved.manifest.issueKey,
       mode = if (request.hard) "hard" else "soft",
       parentWorkflowId = saved.parentWorkflowId,
       before = before,
       after = saved.manifest.toResetSnapshot(),
+      recovery = staleChild,
+    )
+  }
+
+  private fun deleteIncompatibleChildWorkflow(
+    request: GoalRunnerResetRequest,
+    authoritativeState: skillbill.ports.goalrunner.model.GoalRunnerManifestState,
+  ): GoalRunnerResetResult {
+    val subtaskId = requireNotNull(request.subtaskId)
+    val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
+      ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
+    require(selected.status == "blocked") {
+      "Subtask '$subtaskId' is '${selected.status}'; scoped child deletion requires a blocked subtask."
+    }
+    val workflowId = selected.workflowId?.takeIf(String::isNotBlank)
+      ?: error("Subtask '$subtaskId' has no durable child workflow to delete.")
+    val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
+    require(classification == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL) {
+      "Child workflow '$workflowId' is ${classification.wireValue}; scoped deletion requires an incompatible " +
+        "terminal child."
+    }
+    val saved = manifestStore.deleteIncompatibleChildWorkflow(
+      authoritativeState,
+      subtaskId,
+      workflowId,
+      request.dbPathOverride,
+    )
+    return GoalRunnerResetResult(
+      issueKey = saved.manifest.issueKey,
+      mode = "scoped_child_recovery",
+      parentWorkflowId = saved.parentWorkflowId,
+      before = authoritativeState.manifest.toResetSnapshot(),
+      after = saved.manifest.toResetSnapshot(),
+      recovery = GoalRunnerChildRecoveryDiagnostic(
+        subtaskId = subtaskId,
+        workflowId = workflowId,
+        classification = classification.wireValue,
+        recoveryCommand = null,
+      ),
     )
   }
 

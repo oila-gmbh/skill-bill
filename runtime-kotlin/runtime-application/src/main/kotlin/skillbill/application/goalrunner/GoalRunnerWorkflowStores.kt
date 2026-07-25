@@ -73,6 +73,7 @@ import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -172,6 +173,9 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
+  override fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerManifestState? =
+    loadFromWorkflowStore(issueKey, dbPathOverride, currentProjectedManifest = null)
+
   private fun shouldRefreshFromCompleteProjection(
     stored: GoalRunnerManifestState?,
     projected: DecompositionManifest?,
@@ -203,6 +207,54 @@ class WorkflowGoalRunnerManifestStore(
       if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
       saveWorkflowProjectionInTransaction(unitOfWork, state)
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.projectionArtifactsJson,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.state
+  }
+
+  override fun deleteIncompatibleChildWorkflow(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    workflowId: String,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      val selected = state.manifest.subtasks.singleOrNull { it.id == subtaskId }
+        ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
+      require(selected.workflowId == workflowId) {
+        "Selected subtask '$subtaskId' does not own child workflow '$workflowId'."
+      }
+      val deleted = unitOfWork.workflowStates.deleteGoalChildWorkflow(
+        state.parentWorkflowId,
+        subtaskId,
+        workflowId,
+      )
+      require(deleted == 1) {
+        "Child workflow '$workflowId' is absent, compatible, or not owned by subtask '$subtaskId'."
+      }
+      val recoveredManifest = state.manifest.copy(
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "start"),
+        subtasks = state.manifest.subtasks.map { subtask ->
+          if (subtask.id != subtaskId) {
+            subtask
+          } else {
+            subtask.copy(
+              status = "pending",
+              branch = null,
+              commitSha = null,
+              workflowId = null,
+              blockedReason = null,
+              lastResumableStep = null,
+            )
+          }
+        },
+      ).withParentStatus()
+      saveWorkflowProjectionInTransaction(unitOfWork, state.copy(manifest = recoveredManifest))
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       Path.of("").toAbsolutePath(),

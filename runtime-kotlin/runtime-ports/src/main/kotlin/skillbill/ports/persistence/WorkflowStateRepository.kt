@@ -90,6 +90,12 @@ interface FeatureTaskWorkflowStateRepository {
 interface GoalChildWorkflowStateRepository {
   fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
     error("Goal-child workflow deletion is not implemented by this persistence adapter.")
+
+  fun deleteGoalChildWorkflow(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
+  ): Int = error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
 }
 
 interface FeatureTaskRuntimeWorkerRepository {

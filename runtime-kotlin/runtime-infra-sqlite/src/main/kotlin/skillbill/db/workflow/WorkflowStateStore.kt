@@ -307,6 +307,28 @@ private class FeatureTaskWorkflowStateStore(
     statement.executeUpdate()
   }
 
+  override fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int =
+    connection.prepareStatement(
+      """
+        DELETE FROM feature_task_workflows
+        WHERE workflow_id = ?
+          AND workflow_status IN ('blocked', 'failed', 'abandoned', 'completed')
+          AND EXISTS (
+            SELECT 1
+            FROM feature_task_execution_identities AS identities
+            WHERE identities.workflow_id = feature_task_workflows.workflow_id
+              AND identities.route_scope = 'goal_child'
+          )
+          AND json_extract(artifacts_json, '$.goal_continuation.parent_workflow_id') = ?
+          AND json_extract(artifacts_json, '$.goal_continuation.subtask_id') = ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.setString(2, parentWorkflowId)
+      statement.setInt(3, subtaskId)
+      statement.executeUpdate()
+    }
+
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,
     repositoryIdentity: String,
