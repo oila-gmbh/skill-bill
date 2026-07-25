@@ -12,7 +12,6 @@ import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.normalizeRequiredIssueKey
-import skillbill.ports.goalrunner.model.GoalRunnerAcceptance
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentOrCorruptFallback
@@ -199,40 +198,6 @@ class WorkflowGoalRunnerManifestStore(
   override fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
     saveWorkflowProjection(state, dbPathOverride).state
 
-  override fun acceptSubtask(
-    state: GoalRunnerManifestState,
-    acceptance: GoalRunnerAcceptance,
-    dbPathOverride: String?,
-  ): GoalRunnerAcceptance {
-    database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-        ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-      val records = completedSubtaskAcceptances(decodeArtifacts(parent.artifactsJson))
-        .filterNot { it.subtaskId == acceptance.subtaskId } + acceptance
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        parent,
-        WorkflowUpdateInput(
-          workflowStatus = parent.workflowStatus,
-          currentStepId = parent.currentStepId,
-          artifactsPatch = mapOf(GOAL_ACCEPTANCES_ARTIFACT_KEY to records.map(GoalRunnerAcceptance::toArtifactMap)),
-          sessionId = parent.sessionId.orEmpty(),
-        ),
-      )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-    }
-    return acceptance
-  }
-
-  override fun completedSubtaskAcceptances(
-    state: GoalRunnerManifestState,
-    dbPathOverride: String?,
-  ): List<GoalRunnerAcceptance> = database.read(dbPathOverride) { unitOfWork ->
-    WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-      ?.let { completedSubtaskAcceptances(decodeArtifacts(it.artifactsJson)) }
-      .orEmpty()
-  }
-
   override fun saveHardReset(
     state: GoalRunnerManifestState,
     dbPathOverride: String?,
@@ -241,8 +206,7 @@ class WorkflowGoalRunnerManifestStore(
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
-      val withoutAcceptances = clearGoalAcceptances(unitOfWork, state.parentWorkflowId)
-      saveWorkflowProjectionInTransaction(unitOfWork, state.copy(parentWorkflowId = withoutAcceptances.workflowId))
+      saveWorkflowProjectionInTransaction(unitOfWork, state)
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       Path.of("").toAbsolutePath(),
@@ -251,23 +215,6 @@ class WorkflowGoalRunnerManifestStore(
       decompositionManifestFileStore,
     )
     return saved.state
-  }
-
-  private fun clearGoalAcceptances(unitOfWork: UnitOfWork, parentWorkflowId: String): WorkflowStateSnapshot {
-    val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
-      ?: error("Unknown decomposed parent workflow '$parentWorkflowId'.")
-    val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
-      parent,
-      WorkflowUpdateInput(
-        workflowStatus = parent.workflowStatus,
-        currentStepId = parent.currentStepId,
-        artifactsPatch = mapOf(GOAL_ACCEPTANCES_ARTIFACT_KEY to emptyList<Map<String, Any?>>()),
-        sessionId = parent.sessionId.orEmpty(),
-      ),
-    )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-    return updated
   }
 
   override fun deleteIncompatibleChildWorkflow(
@@ -2265,20 +2212,3 @@ private fun Any?.asGoalRunnerIntOrNull(): Int? = when (this) {
   is String -> toIntOrNull()
   else -> null
 }
-
-private const val GOAL_ACCEPTANCES_ARTIFACT_KEY = "goal_completed_subtask_acceptances"
-
-private fun GoalRunnerAcceptance.toArtifactMap(): Map<String, Any?> = linkedMapOf(
-  "subtask_id" to subtaskId,
-  "commit_sha" to commitSha,
-  "reason" to reason,
-)
-
-private fun completedSubtaskAcceptances(artifacts: Map<String, Any?>): List<GoalRunnerAcceptance> =
-  (artifacts[GOAL_ACCEPTANCES_ARTIFACT_KEY] as? List<*>).orEmpty().mapNotNull { raw ->
-    val item = raw as? Map<*, *> ?: return@mapNotNull null
-    val subtaskId = item["subtask_id"].asGoalRunnerIntOrNull() ?: return@mapNotNull null
-    val commitSha = item["commit_sha"]?.toString()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-    val reason = item["reason"]?.toString()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-    GoalRunnerAcceptance(subtaskId, commitSha, reason)
-  }.sortedBy(GoalRunnerAcceptance::subtaskId)

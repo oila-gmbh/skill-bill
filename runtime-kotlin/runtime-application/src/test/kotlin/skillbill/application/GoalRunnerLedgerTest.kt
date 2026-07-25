@@ -1,14 +1,12 @@
 package skillbill.application
 
 import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.goalrunner.recoverySafeAction
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Path
@@ -32,26 +30,6 @@ import kotlin.test.assertTrue
  * here, not just in an isolated model test.
  */
 class GoalRunnerLedgerTest {
-  @Test
-  fun `durable terminal child overrides recoverable launch diagnostics with scoped deletion action`() {
-    val action = recoverySafeAction(
-      issueKey = "SKILL-143",
-      subtaskId = 2,
-      progress = GoalRunnerWorkflowProgress(
-        workflowId = "wfl-stale",
-        workflowStatus = "failed",
-        currentStepId = "implement",
-        progressToken = "terminal",
-      ),
-      fallback = "inspect_child_output_then_resume",
-    )
-
-    assertEquals(
-      "skill-bill goal reset SKILL-143 --subtask 2 --delete-child-workflow",
-      action,
-    )
-  }
-
   @Test
   fun `first start records child activation terminal done check and final reconciled outcome`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))

@@ -8,8 +8,6 @@ import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
-import skillbill.application.model.GoalRunnerAcceptRequest
-import skillbill.ports.goalrunner.model.GoalRunnerAcceptance
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
@@ -181,11 +179,6 @@ class GoalRunnerStatusService(
     )
     val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
     val before = latest.manifest.toResetSnapshot()
-    val discardedAcceptances = if (request.hard) {
-      manifestStore.completedSubtaskAcceptances(latest, request.dbPathOverride)
-    } else {
-      emptyList()
-    }
     val resetManifest = latest.manifest.resetManifest(request.hard)
     val resetState = latest.copy(manifest = resetManifest)
     val saved = if (request.hard) {
@@ -216,27 +209,6 @@ class GoalRunnerStatusService(
       before = before,
       after = saved.manifest.toResetSnapshot(),
       recovery = staleChild,
-      discardedAcceptances = discardedAcceptances,
-    )
-  }
-
-  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptance> {
-    val state = manifestStore.loadDurableByIssueKey(issueKey, dbPathOverride) ?: return emptyList()
-    return manifestStore.completedSubtaskAcceptances(state, dbPathOverride)
-  }
-
-  fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptance? {
-    val state = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) ?: return null
-    val selected = state.manifest.subtasks.singleOrNull { it.id == request.subtaskId }
-      ?: error("Unknown or ambiguous goal subtask '${request.subtaskId}'.")
-    require(selected.status == "complete") { "Subtask '${request.subtaskId}' must be complete before acceptance." }
-    require(selected.commitSha == request.commitSha) {
-      "Acceptance commit '${request.commitSha}' does not match completed subtask commit '${selected.commitSha}'."
-    }
-    return manifestStore.acceptSubtask(
-      state,
-      GoalRunnerAcceptance(request.subtaskId, request.commitSha, request.reason),
-      request.dbPathOverride,
     )
   }
 

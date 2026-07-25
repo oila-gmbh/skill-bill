@@ -1,7 +1,5 @@
 package skillbill.application.model
 
-import skillbill.ports.goalrunner.model.GoalRunnerAcceptance
-
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -170,23 +168,7 @@ data class GoalRunnerResetResult(
   val before: GoalRunnerResetSnapshot,
   val after: GoalRunnerResetSnapshot,
   val recovery: GoalRunnerChildRecoveryDiagnostic? = null,
-  val discardedAcceptances: List<GoalRunnerAcceptance> = emptyList(),
 )
-
-data class GoalRunnerAcceptRequest(
-  val issueKey: String,
-  val subtaskId: Int,
-  val commitSha: String,
-  val reason: String,
-  val dbPathOverride: String? = null,
-) {
-  init {
-    require(issueKey.isNotBlank())
-    require(subtaskId > 0)
-    require(commitSha.isNotBlank())
-    require(reason.isNotBlank())
-  }
-}
 
 data class GoalRunnerChildRecoveryDiagnostic(
   val subtaskId: Int,
