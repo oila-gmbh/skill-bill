@@ -2,8 +2,11 @@ package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
+import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.boundedSchemaGateDetail
+import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.GoalPlanningPhaseProduction
 import skillbill.application.model.GoalPlanningSweepOutcome
@@ -167,11 +170,14 @@ class DefaultGoalPlanningSweep(
     provenance: GoalPlanningContractProvenance,
   ): Result<SharedGoalPreplanCheckpoint> = runCatching {
     val runInvariants = invariantsSource.read(shared.parentSpecPath)
-    val preplanProduction = producePhase(shared, request, null, runInvariants, PHASE_PREPLAN, emptyList())
+    // The bytes actually checkpointed are the enriched ones, so enrichment is the finalizer the
+    // producer gate runs on. Gating the raw child stdout would let an enrichment that invalidates the
+    // projection settle unchecked.
+    val preplanProduction = producePhase(shared, request, null, runInvariants, PHASE_PREPLAN, emptyList()) { raw ->
+      enrichPreplan(raw, shared.planningPacket).also { outputValidator.validatePhaseOutputText(it, PHASE_PREPLAN) }
+    }
     if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
-    val rawPreplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
-    val preplanPayload = enrichPreplan(rawPreplanPayload, shared.planningPacket)
-    outputValidator.validatePhaseOutputText(preplanPayload, PHASE_PREPLAN)
+    val preplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
     SharedGoalPreplanCheckpoint(
       identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
       provenance = provenance,
@@ -249,6 +255,12 @@ class DefaultGoalPlanningSweep(
     )
   }
 
+  /**
+   * Produces one planning phase and gates the exact payload bytes that will be checkpointed through the
+   * shared producer projection gate. A projection-invalid output relaunches the same phase with the
+   * bounded validation detail in the remediation prompt, under the one runtime fix-loop cap; nothing is
+   * checkpointed in the failing state, and exhaustion stops the sweep with that detail as the reason.
+   */
   private fun producePhase(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
@@ -256,13 +268,59 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    finalizePayload: (String) -> String = { it },
+  ): GoalPlanningPhaseProduction {
+    var priorSchemaFailure: String? = null
+    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) {
+      val production = produceAttempt(
+        shared,
+        request,
+        subtask,
+        runInvariants,
+        phaseId,
+        recordedOutputs,
+        priorSchemaFailure,
+      )
+      if (production is GoalPlanningPhaseProduction.Stopped) return production
+      val payload = finalizePayload((production as GoalPlanningPhaseProduction.Captured).payload)
+      val gateReason = projectionGateReason(payload, phaseId)
+        ?: return GoalPlanningPhaseProduction.Captured(payload)
+      priorSchemaFailure = gateReason
+    }
+    return GoalPlanningPhaseProduction.Stopped(
+      stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, priorSchemaFailure.orEmpty()), phaseId),
+    )
+  }
+
+  private fun projectionGateReason(payload: String, phaseId: String): String? {
+    val envelope = JsonSupport.parseObjectOrNull(payload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return "Goal planning '$phaseId' payload is not a JSON object."
+    return producerProjectionGateReason(phaseId, envelope, planningProjectionValidator)
+      ?.let(::boundedSchemaGateDetail)
+  }
+
+  private fun fixLoopExhaustedReason(phaseId: String, lastFailure: String): String =
+    "Goal planning '$phaseId' produced a projection-invalid output on every attempt " +
+      "(cap=${FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS}); nothing was checkpointed. " +
+      "Last projection failure: $lastFailure"
+
+  private fun produceAttempt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
   ): GoalPlanningPhaseProduction {
     val currentSubtaskId = subtask?.id ?: 0
     // A recovered shared preplan is already settled by the time its bounded projection is parsed here,
     // so an unhandled rejection would crash the goal driver with no Stopped outcome, no blocked_reason
     // and no closed telemetry segment, then crash identically on every resume. Block durably instead.
     val prompt = runCatching {
-      composePlanningPrompt(shared, request, subtask, runInvariants, phaseId, recordedOutputs)
+      composePlanningPrompt(shared, request, subtask, runInvariants, phaseId, recordedOutputs, priorSchemaFailure)
     }
       .getOrElse { error ->
         if (error !is InvalidFeatureTaskRuntimePlanningProjectionSchemaError &&
@@ -322,6 +380,7 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
   ): String {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
@@ -339,6 +398,7 @@ class DefaultGoalPlanningSweep(
       specSource = shared.specSource,
       specReference = runInvariants.specReference,
       agentAddonSelection = request.agentAddonSelection,
+      priorSchemaFailure = priorSchemaFailure,
     )
     return GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)
   }

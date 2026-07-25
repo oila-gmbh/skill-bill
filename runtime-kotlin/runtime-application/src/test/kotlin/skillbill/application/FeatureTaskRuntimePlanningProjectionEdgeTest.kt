@@ -4,8 +4,10 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.producerProjectionGateReason
+import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -19,6 +21,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -526,6 +529,83 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     assertContains(briefing.briefingText, "task-2 [depends: t1]")
     assertFalse(briefing.briefingText.contains("Task_2"), "no pre-canonical id may survive to the consumer")
   }
+
+  @Test
+  fun `a rejecting validator port rejects on every goal-side producer path as well as the launch seam`() {
+    // AC-002 extended to the goal producers. The sweep gate, the goal planning preparation write
+    // validator, and the child hydrator all reach their decision through requireValidPlanningProjection,
+    // which delegates to the same producerProjectionGateReason and the same injected port. Driving both
+    // with one rejecting port proves no goal-side path holds a second, weaker validator.
+    val rejecting = RejectingPlanningProjectionValidator
+    parityEdges.forEach { edge ->
+      val envelope = producerEnvelope(edge.payload)
+      assertNotNull(
+        producerProjectionGateReason(edge.producer, envelope, rejecting),
+        "the shared gate must reject the ${edge.producer} edge",
+      )
+      val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError>(
+        "the goal-side seam must reject the ${edge.producer} edge through the typed preparation error",
+      ) {
+        requireValidPlanningProjection(envelope, edge.producer, "goal-1#1", rejecting)
+      }
+      assertContains(error.reason, "additionalProperties")
+    }
+  }
+
+  @Test
+  fun `every envelope the shared gate accepts is accepted by the goal-side producer seam`() {
+    parityEdges.forEach { edge ->
+      requireValidPlanningProjection(
+        producerEnvelope(edge.payload),
+        edge.producer,
+        "goal-1#1",
+        realPlanningProjectionValidator,
+      )
+    }
+  }
+
+  @Test
+  fun `a plan with empty test_obligations is rejected producer-side and never reaches implement's launch seam`() {
+    // The exact SKILL-141 escape observed on wftr-20260724-184042-578i. Rejected producer-side, it
+    // re-enters plan's own bounded fix loop with the offending path named; because it never settles, the
+    // same payload cannot be reached at implement's consumer edge either.
+    val validator = realPlanningProjectionValidator
+    val payload = emptyTestObligationsPlanPayload()
+
+    val gateReason = assertNotNull(
+      producerProjectionGateReason(phasePlan, producerEnvelope(payload), validator),
+      "the producer gate must reject an executable plan whose task carries no test obligations",
+    )
+    assertContains(gateReason, "test_obligations")
+
+    // Rejection at the consumer edge too: the payload is refused wherever it is parsed, so no path
+    // exists on which it settles at plan and is then handed to implement.
+    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      assemble(
+        consumer = phaseImplement,
+        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
+        recordedOutputs = listOf(phaseOutput(phasePlan, payload)),
+        runInvariants = runInvariants(),
+        planningProjectionValidator = validator,
+      )
+    }
+
+    // And it cannot be written as a goal planning preparation, so no hydration can import it.
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+      requireValidPlanningProjection(producerEnvelope(payload), phasePlan, "goal-1#1", validator)
+    }
+  }
+
+  private fun emptyTestObligationsPlanPayload(): String = """
+    {"produced_outputs":{
+      "projection_kind":"executable_plan",
+      "contract_version":"0.1",
+      "mode":"direct",
+      "tasks":[{"task_id":"task-1","description":"add contract","criterion_refs":["AC-005"],
+      "test_obligations":[]}],
+      "validation_strategy":["focused gradle"]
+    }}
+  """.trimIndent()
 
   private fun canonicalizablePlanPayload(): String = """
     {"produced_outputs":{

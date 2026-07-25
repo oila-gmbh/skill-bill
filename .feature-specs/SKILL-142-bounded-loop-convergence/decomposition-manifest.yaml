@@ -10,7 +10,7 @@ feature_branch: "feat/SKILL-142-inline-review-depth-tier"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 2
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Review-phase liveness, preflight, and loop accounting"
@@ -31,7 +31,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260725-141427-vhr8"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

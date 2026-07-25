@@ -54,7 +54,9 @@ import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -160,7 +162,6 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
   ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
-    val manifest = routedManifests.firstOrNull()
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
@@ -369,53 +370,12 @@ class ParallelCodeReviewRunner(
     }
     if (manifests.isEmpty()) return StackDetection(emptyList(), emptyList(), emptyMap())
 
-    val changedFiles = evidence.files.filterNot { RoutingSignalPathMatcher.isIgnored(it.path) }
-
-    val signalOwners = manifests.flatMap { manifest ->
-      manifest.routingSignals.path.distinct().map { it to manifest.slug }
-    }.groupBy({ it.first }, { it.second })
-    val routedSlugs = linkedSetOf<String>()
-    val ownedPathsBySlug = mutableMapOf<String, MutableSet<String>>()
-    changedFiles.forEach { changed ->
-      // Path evidence is near-authoritative (a .kt file is a Kotlin file); content signals are
-      // broad, language-agnostic tokens ("class ", "import ") that legitimately appear in most
-      // stacks' source, so they may only break ties among equally-path-scored manifests and must
-      // never let a manifest with no path match at all outrank one with a real path match.
-      val scores = manifests.associateWith { manifest ->
-        val pathScore = manifest.routingSignals.path.distinct().sumOf { signal ->
-          if (!RoutingSignalPathMatcher.matches(changed.path, signal)) {
-            0
-          } else if (signalOwners.getValue(signal).size == 1) {
-            UNIQUE_PATH_SIGNAL_SCORE
-          } else {
-            1
-          }
-        }
-        val contentScore = manifest.routingSignals.content.distinct().count { signal ->
-          changed.changedContent.contains(signal, ignoreCase = true)
-        } * CONTENT_SIGNAL_SCORE
-        pathScore to contentScore
-      }.filterValues { (pathScore, contentScore) -> pathScore > 0 || contentScore > 0 }
-      val best = scores.values.maxWithOrNull(compareBy({ it.first }, { it.second })) ?: return@forEach
-      val winners = scores.filterValues { it == best }.keys.toMutableList()
-      if (winners.size > 1) {
-        // With only shared signals, prefer a baseline pack over a composed root. A root wins
-        // naturally as soon as one of its manifest-owned KMP/Android/etc. signals matches.
-        val composedRoots = winners.filter { it.codeReviewComposition != null }.toSet()
-        val baselineSlugs = composedRoots.flatMap { root ->
-          root.codeReviewComposition!!.baselineLayers.map { it.platform }
-        }.toSet()
-        if (baselineSlugs.any { slug -> winners.any { it.slug == slug } }) {
-          winners.removeAll(composedRoots)
-        }
-      }
-      winners.forEach { winner ->
-        routedSlugs += winner.slug
-        ownedPathsBySlug.getOrPut(winner.slug) { mutableSetOf() } += changed.path
-      }
-    }
-    val routed = manifests.filter { it.slug in routedSlugs }
-    return StackDetection(routed, manifests, ownedPathsBySlug)
+    val routing = ReviewStackRouting.route(
+      manifests,
+      evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) },
+    )
+    val routed = manifests.filter { it.slug in routing.routedSlugs }
+    return StackDetection(routed, manifests, routing.ownedPathsBySlug)
   }
 
   private fun launchResolvedLane(
@@ -724,8 +684,6 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
-    const val UNIQUE_PATH_SIGNAL_SCORE = 10
-    const val CONTENT_SIGNAL_SCORE = 20
     val HIGH_RISK_SIGNAL = Regex(
       "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
     )

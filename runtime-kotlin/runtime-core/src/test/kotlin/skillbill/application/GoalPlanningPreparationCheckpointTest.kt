@@ -6,6 +6,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
@@ -83,7 +84,7 @@ class GoalPlanningPreparationCheckpointTest {
   @Test
   fun `plan payload with empty produced outputs is rejected and nothing is stored`() {
     val harness = checkpointHarness().withShared()
-    val plan = validPlan(payload = payloadJson(phaseId = "plan", producedOutputs = emptyMap()))
+    val plan = validPlan(payload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"))
 
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
@@ -121,6 +122,7 @@ class GoalPlanningPreparationCheckpointTest {
       database = database,
       envelopeValidator = GoalPlanningPreparationEnvelopeValidatorAdapter(),
       phaseOutputValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
+      planningProjectionValidator = FeatureTaskRuntimePlanningProjectionValidatorAdapter(),
     )
     return CheckpointHarness(checkpoint, database, dbOverride)
   }
@@ -181,16 +183,31 @@ class GoalPlanningPreparationCheckpointTest {
       )
     }
 
+    // The checkpoint write path now runs the shared producer projection gate, so a prepared payload
+    // must carry the real bounded projection its phase owns.
     fun payloadJson(
       phaseId: String,
       contractVersion: String = FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
       status: String = "completed",
-      producedOutputs: Map<String, Any?> = mapOf("mode" to "implement"),
-    ): String {
-      val outputs = producedOutputs.entries.joinToString(",") { (key, value) -> "\"$key\":\"$value\"" }
-      return """
-      {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s","produced_outputs":{$outputs}}
-      """.trimIndent()
+      producedOutputsJson: String = projectionJson(phaseId),
+    ): String = """
+      {"contract_version":"$contractVersion","phase_id":"$phaseId","status":"$status","summary":"s",
+      "produced_outputs":$producedOutputsJson}
+    """.trimIndent().replace("\n", "")
+
+    fun projectionJson(phaseId: String): String = if (phaseId == "preplan") {
+      """
+      {"projection_kind":"preplanning_digest","contract_version":"0.1",
+      "affected_boundaries":["runtime-application/workflow"],"risks":["producer may omit obligations"],
+      "rollout":{"flag_required":false,"notes":"no flag needed"},
+      "validation_strategy":["focused gradle"]}
+      """.trimIndent().replace("\n", "")
+    } else {
+      """
+      {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
+      "tasks":[{"task_id":"task-1","description":"checkpoint a prepared plan","criterion_refs":["AC-001"],
+      "test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}
+      """.trimIndent().replace("\n", "")
     }
   }
 }

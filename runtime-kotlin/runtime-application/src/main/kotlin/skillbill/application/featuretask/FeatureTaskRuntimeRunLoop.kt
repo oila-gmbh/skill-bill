@@ -1001,12 +1001,16 @@ internal class FeatureTaskRuntimeRunLoop(
     completedReviewBudgetOutput
       ?.let { output -> settleCompletedReviewBudget(run, state, observability, output) }
       ?.let { return it }
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      phaseGates.reviewNativeAgentPreflight(request)
-    }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
-      is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      is GoalReviewRunReady -> {
+        // Preflight reads the established review scope rather than rebuilding it, so the gate and
+        // the review it guards can never disagree about which packs this delta routes to.
+        if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+          phaseGates.reviewNativeAgentPreflight(request, prepared.run.goalReviewInput)
+        }
+        runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      }
       GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
         run = run,
         state = state,

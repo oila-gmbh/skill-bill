@@ -1096,9 +1096,12 @@ class FeatureTaskRuntimeRunnerTest {
     val missingError = RuntimeException("native agent missing")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(parallelReviewAgent = "claude"),
+      runtimeConfig = RuntimeHarnessConfig(
+        parallelReviewAgent = "claude",
+        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
+      ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { throw missingError },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
     )
     assertFailsWith<RuntimeException> { harness.runner.run(harness.request()) }
     val launchedPhases = harness.launcher.requests.mapNotNull { req ->
@@ -1115,9 +1118,12 @@ class FeatureTaskRuntimeRunnerTest {
     val called = mutableListOf<String>()
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(parallelReviewAgent = "claude"),
+      runtimeConfig = RuntimeHarnessConfig(
+        parallelReviewAgent = "claude",
+        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
+      ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertTrue(called.isNotEmpty(), "preflight must have been called before the review phase ran")
@@ -1128,13 +1134,57 @@ class FeatureTaskRuntimeRunnerTest {
     val called = mutableListOf<String>()
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
+      ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { listOf("bill-kotlin-code-review-architecture") },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertTrue(called.isNotEmpty(), "preflight must verify the invoked agent even when parallelReviewAgent is absent")
   }
+
+  @Test
+  fun `review phase preflight stands down when the review delta routes to no pack`() {
+    val called = mutableListOf<String>()
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, paths ->
+        if (paths.any { it.endsWith(".kt") }) listOf("bill-kotlin-code-review-architecture") else emptyList()
+      },
+    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(
+      called.isEmpty(),
+      "an empty review delta routes to no pack and must not demand a native worker",
+    )
+  }
 }
+
+private fun gitWithRoutableReviewDelta(): RecordingWorkflowGitOperations {
+  val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+  repeat(REVIEW_DELTA_REUSE_COUNT) {
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = "0".repeat(40),
+        trackedDelta = buildString {
+          appendLine("diff --git a/Routed.kt b/Routed.kt")
+          appendLine("--- a/Routed.kt")
+          appendLine("+++ b/Routed.kt")
+          appendLine("@@ -1 +1 @@")
+          appendLine("+val routed = 1")
+        },
+        ownedUntrackedPatches = "",
+      ),
+    )
+  }
+  return git
+}
+
+private const val REVIEW_DELTA_REUSE_COUNT = 8
 
 // Runtime-owned lifecycle telemetry (started/finished/error) of the runner, split from
 // FeatureTaskRuntimeRunnerTest so each class stays within its size budget while sharing the same

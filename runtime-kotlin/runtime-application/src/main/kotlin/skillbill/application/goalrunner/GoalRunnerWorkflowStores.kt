@@ -66,6 +66,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
@@ -120,6 +121,7 @@ class WorkflowGoalRunnerManifestStore(
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) : GoalRunnerManifestStore {
   override fun planningStatus(
     parentWorkflowId: String,
@@ -137,7 +139,7 @@ class WorkflowGoalRunnerManifestStore(
   }
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
-  private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator)
+  private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator)
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }

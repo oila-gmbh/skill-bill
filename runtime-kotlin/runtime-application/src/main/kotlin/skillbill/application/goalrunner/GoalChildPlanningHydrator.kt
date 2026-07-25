@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -10,6 +11,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -34,8 +36,9 @@ private data class PreparedGoalPlanning(
 
 internal class GoalChildPlanningHydrator(
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
-  private val payloadValidator = PreparedPlanningPayloadValidator(phaseOutputValidator)
+  private val payloadValidator = PreparedPlanningPayloadValidator(phaseOutputValidator, planningProjectionValidator)
   private val importMatcher = GoalChildPlanningImportMatcher(payloadValidator)
 
   fun hydrate(
@@ -176,8 +179,11 @@ internal class GoalChildPlanningHydrator(
 
 private class PreparedPlanningPayloadValidator(
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   fun requireValid(phaseId: String, payload: String, expectedDigest: String, workflowId: String) {
+    // The digest check stays ahead of the projection gate so a corrupted payload still reports as a
+    // digest failure rather than as whatever the corruption made the projection look like.
     if (sha256HexUtf8(payload) != expectedDigest) {
       throw InvalidGoalPlanningPreparationSchemaError(
         workflowId,
@@ -186,18 +192,22 @@ private class PreparedPlanningPayloadValidator(
       )
     }
     val decoded = phaseOutputValidator.validateAndReadPhaseOutput(payload, phaseId)
-    val payloadMatches = listOf(
-      decoded["phase_id"] == phaseId,
-      decoded["status"] == "completed",
-      (decoded["produced_outputs"] as? Map<*, *>)?.isEmpty() == false,
-    ).all { it }
-    if (!payloadMatches) {
+    // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
+    // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
+    if (decoded["phase_id"] != phaseId || decoded["status"] != "completed") {
       throw InvalidGoalPlanningPreparationSchemaError(
         workflowId,
         "$phaseId.payload",
-        "imported phase output must match its phase and be completed with non-empty produced_outputs",
+        "imported phase output must match its phase and be completed",
       )
     }
+    requireValidPlanningProjection(
+      envelope = decoded,
+      phaseId = phaseId,
+      sourceLabel = workflowId,
+      planningProjectionValidator = planningProjectionValidator,
+      fieldPath = "$phaseId.payload",
+    )
   }
 }
 

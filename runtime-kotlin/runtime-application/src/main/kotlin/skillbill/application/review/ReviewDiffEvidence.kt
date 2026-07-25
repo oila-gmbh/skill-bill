@@ -17,12 +17,16 @@ internal data class ReviewDiffEvidence(
   fun ownedFiles(paths: Set<String>): List<ReviewChangedFileEvidence> = files.filter { it.path in paths }
 
   companion object {
+    /**
+     * Null when the delta carries no attributable records, for callers where an empty delta is a
+     * valid state rather than a contract violation. The authoritative review still uses [parse],
+     * which loud-fails on the same input.
+     */
+    fun parseAttributable(diff: String): ReviewDiffEvidence? = if (diffRecords(diff).isEmpty()) null else parse(diff)
+
     fun parse(diff: String): ReviewDiffEvidence {
       val normalized = diff.replace("\r\n", "\n")
-      val gitRecords = normalized.split(Regex("(?m)(?=^diff --git )")).filter { it.startsWith("diff --git ") }
-      val records = gitRecords.ifEmpty {
-        normalized.split(Regex("(?m)(?=^\\+\\+\\+ )")).filter { it.startsWith("+++ ") }
-      }
+      val records = diffRecords(diff)
       require(records.isNotEmpty()) { "The authoritative review diff contains no attributable diff records." }
       val hunks = mutableListOf<ReviewChangedHunk>()
       val files = records.map { record ->
@@ -237,3 +241,11 @@ internal data class ReviewChangedFileEvidence(
   val oldPath: String? = path,
   val newPath: String? = path,
 )
+
+private fun diffRecords(diff: String): List<String> {
+  val normalized = diff.replace("\r\n", "\n")
+  val gitRecords = normalized.split(Regex("(?m)(?=^diff --git )")).filter { it.startsWith("diff --git ") }
+  return gitRecords.ifEmpty {
+    normalized.split(Regex("(?m)(?=^\\+\\+\\+ )")).filter { it.startsWith("+++ ") }
+  }
+}

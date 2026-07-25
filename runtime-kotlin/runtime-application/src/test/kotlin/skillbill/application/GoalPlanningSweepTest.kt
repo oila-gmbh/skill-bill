@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
@@ -592,6 +593,7 @@ class GoalPlanningSweepTest {
       database = database,
       envelopeValidator = NoopGoalPlanningPreparationEnvelopeValidator,
       phaseOutputValidator = outputValidator,
+      planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
@@ -736,7 +738,88 @@ class GoalPlanningSweepTest {
       assertTrue(stopped.blockedReason.contains("provenance"))
     }
   }
+
+  @Test
+  fun `a plan child that first emits empty test_obligations relaunches once and checkpoints only the valid plan`() {
+    // The SKILL-141 escape, at the goal-side producer: `plan` completed with tasks[].test_obligations
+    // empty. The gate rejects it producer-side and the phase re-enters its own bounded fix loop, so the
+    // remediation prompt — not the consumer — carries the validation detail.
+    var planAttempts = 0
+    val harness = sweepHarness(planningProjectionValidator = realPlanningProjectionValidator) { phase, _, _ ->
+      if (phase != "plan") {
+        validPhaseOutcome(phase)
+      } else {
+        planAttempts += 1
+        if (planAttempts == 1) launchFacts(stdout = emptyTestObligationsPlanPayload()) else validPhaseOutcome(phase)
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(2, planAttempts, "the invalid plan must relaunch exactly once before the valid one settles")
+    val retryPrompt = harness.launcher.requests.last().skillRunRequest.promptOverride.orEmpty()
+    assertTrue(
+      retryPrompt.contains("test_obligations"),
+      "the relaunch prompt must carry the projection validation detail as priorSchemaFailure",
+    )
+    val record = assertNotNull(harness.recordFor(1))
+    assertFalse(
+      record.planPayload.contains(""""test_obligations":[]"""),
+      "only the projection-valid plan may be checkpointed",
+    )
+  }
+
+  @Test
+  fun `a plan child that never emits a valid projection stops at the fix-loop cap with nothing checkpointed`() {
+    var planAttempts = 0
+    val harness = sweepHarness(planningProjectionValidator = realPlanningProjectionValidator) { phase, _, _ ->
+      if (phase != "plan") {
+        validPhaseOutcome(phase)
+      } else {
+        planAttempts += 1
+        launchFacts(stdout = emptyTestObligationsPlanPayload())
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, planAttempts)
+    assertEquals(1, stopped.currentSubtaskId)
+    assertEquals("plan", stopped.lastResumableStep)
+    assertTrue(stopped.blockedReason.contains("test_obligations"), stopped.blockedReason)
+    assertEquals(0, harness.preparedCount(), "no subtask plan may be checkpointed in the failing state")
+    assertNull(harness.recordFor(1))
+  }
+
+  @Test
+  fun `the preplan gate observes the enriched payload that is actually checkpointed`() {
+    // Enrichment, not raw child stdout, produces the checkpointed bytes. A rejecting validator must
+    // therefore be reached through the enriched payload, before checkpointSharedPreplan runs.
+    val harness = sweepHarness(planningProjectionValidator = RejectingSweepPlanningProjectionValidator) { phase, _, _ ->
+      validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals("preplan", stopped.lastResumableStep)
+    assertEquals(0, harness.preparedCount())
+    assertEquals(
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      harness.launcher.phases.count { it == "preplan" },
+      "the preplan fix loop reuses the one runtime cap",
+    )
+  }
 }
+
+private fun emptyTestObligationsPlanPayload(): String =
+  """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"plan",""" +
+    """"status":"completed","summary":"s","produced_outputs":""" +
+    """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{""" +
+    """"task_id":"task-1","description":"Fixture task.","criterion_refs":["AC-001"],""" +
+    """"test_obligations":[]}],"validation_strategy":["Focused runtime tests."]}}"""
 
 private fun GoalPlanningPreparationRecord.withSharedPacket(
   transform: (Map<String, Any?>) -> Map<String, Any?>,
@@ -1149,6 +1232,7 @@ private fun sharedSweepFixtures(
     database = database,
     envelopeValidator = NoopGoalPlanningPreparationEnvelopeValidator,
     phaseOutputValidator = outputValidator,
+    planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
   )
   return SweepFixtures(
     database = database,
@@ -1184,6 +1268,8 @@ private fun sweepHarness(
   planCheckpointThrows: Boolean = false,
   outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
   contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
+  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    NoopFeatureTaskRuntimePlanningProjectionValidator,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1199,7 +1285,7 @@ private fun sweepHarness(
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
     contextDiscovery,
-    NoopFeatureTaskRuntimePlanningProjectionValidator,
+    planningProjectionValidator,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }
