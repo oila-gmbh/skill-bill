@@ -19,6 +19,7 @@ data class ParallelCodeReviewRequest(
   val repoRoot: Path,
   val timeout: Duration?,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
+  val resolvedTier: CodeReviewExecutionMode? = null,
   val suppliedDiff: String? = null,
   val suppliedDiffPath: Path? = null,
   val reviewRunId: String? = null,
@@ -29,7 +30,22 @@ data class ParallelCodeReviewRequest(
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."
     }
+    resolvedTier?.let { tier ->
+      require(tier == CodeReviewExecutionMode.INLINE || tier == CodeReviewExecutionMode.DELEGATED) {
+        "resolvedTier must be either INLINE or DELEGATED, got $tier."
+      }
+      require(codeReviewMode == CodeReviewExecutionMode.AUTO || codeReviewMode == tier) {
+        "Both parallel review lanes must share one resolved depth tier: lane 1 resolved to " +
+          "${tier.wireValue} but the requested mode is ${codeReviewMode.wireValue}."
+      }
+    }
   }
+
+  /**
+   * Lane 2 never resolves depth for itself; it inherits whatever lane 1 resolved to so a light lane
+   * can never be paired with a full-depth one.
+   */
+  val lane2Tier: CodeReviewExecutionMode get() = resolvedTier ?: codeReviewMode
 }
 
 data class ParallelCodeReviewResult(

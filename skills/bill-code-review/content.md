@@ -25,13 +25,12 @@ metadata.
 including specialist selection, launching one worker per routed area. Inability
 to launch a required native worker blocks loudly; it never degrades to inline.
 
-`inline`
-always runs the complete routed review in the current agent context regardless
-of size or risk: one agent, no specialist workers, no nested baseline
-orchestrator. Its purpose is verification — confirm the change does what it
-claims and catch the defects a careful reader finds on one attentive pass. It is
-not an audit of every area in depth and does not carry delegated's coverage
-guarantee. Walk the routed areas once each, follow only the signals that appear,
+`inline` is the light tier: one agent in the current context, no specialist
+workers, no nested baseline orchestrator, under a bounded budget. Treat the
+routed areas as an explicit checklist and walk each one once at reduced depth.
+Its purpose is verification — confirm the change does what it claims and catch
+the defects a careful reader finds on one attentive pass. It is not an audit of
+every area in depth. Follow only the signals that appear,
 and do not build a case for a marginal finding to justify having looked. An
 inline result states the areas it walked and that specialist depth was not
 applied; never present it as equivalent to a delegated result.
@@ -61,9 +60,6 @@ When the argument is absent, consult the repo-local config fallback (next sectio
 
 ## Config Fallback (when `parallel:` is absent)
 
-
-
-
 The `parallel:` arg, when present, always wins — skip this section entirely. When no `parallel:` arg is passed, source the lane-2 agent from repo-local config so a project can set it once instead of retyping it per review. Code review has no durable downstream state, so config-as-default is sufficient; there is no stamp.
 
 Resolve the effective lane-2 agent with the runtime, which applies the precedence `parallel: arg > code_review_parallel_agent config > none` and validates any config value against the supported agent ids:
@@ -88,9 +84,6 @@ governed review contract and the selected review mode may do so.
 
 ## Argument Recognition
 
-
-
-
 - Recognise `parallel:<agent>` or `parallel:<agent>:<model>` where `<agent>` is a supported agent ID and `<model>` is an optional model override for lane 2 (e.g. `o3`, `claude-opus-4-8`).
 - Parse by splitting on `:` — the first token is always `parallel`, the second is the agent ID, and the optional third token is the model. Any further colons are part of the model ID (e.g. `us.anthropic.claude-opus-4-8`).
 - To verify supported agent IDs, run `skill-bill code-review-merge --help`; the `--lane2-agent` help line lists them.
@@ -99,15 +92,9 @@ governed review contract and the selected review mode may do so.
 
 ## Scope Resolution
 
-
-
-
 Determine the diff scope from the caller's request using the same labels as the normal flow: `staged`, `unstaged`, `branch` (default), or `pr`. Resolve the diff text for that scope.
 
 ## Lane 2: Routing Capability Table
-
-
-
 
 This table is the single source of truth for lane 2 routing. Update the values here to retune
 behaviour — the routing steps below read from this table, so no routing prose changes when an
@@ -125,9 +112,6 @@ Agents marked "no" under stdin-pipe always use CLI delegation — their `$(cat .
 form breaks above `ARG_MAX` on most shells, so it is not their route.
 
 ## Lane 2: Routing Decision
-
-
-
 
 Decide the lane 2 path:
 
@@ -266,15 +250,9 @@ the prompt as a positional argument instead: `<agent> "<prompt>"`. If the agent 
 
 ## Lane 1: Routed Review
 
-
-
-
 While lane 2 runs in the background, run the normal routed stack-specific review in this session. This is the full routed review, **not** a single in-thread read of the diff: route to the dominant stack, flatten required composition into direct specialist lanes, and apply the normal execution-mode selection without launching a nested baseline orchestrator. Collect every specialist's risk register into the routed review output, then capture that full output to the lane-1 review file (`<lane1-review-path>`).
 
 ## Merge
-
-
-
 
 Once both lanes finish, merge findings:
 
@@ -292,9 +270,6 @@ Once the merged result is displayed, delete the scratch files: `rm -f <lane2-pro
 
 ## Parallel Output Format
 
-
-
-
 ```
 - [F-001] [claude, codex] Major | High | file:line | description
 - [F-002] [claude] Minor | Medium | file:line | description
@@ -311,9 +286,6 @@ Parallel lane: <agent> [model: <lane2Model>] (success | failed: <reason>)
 Omit `[model: ...]` when no model override was specified.
 
 ## Failure Handling
-
-
-
 
 - Lane 2 fails (non-zero exit, timeout, missing CLI): note in summary, continue with lane 1 findings only, skip the merge step.
 - Lane 1 fails but lane 2 succeeds: use lane 2 findings only, all labeled `[<agent>]`, note in summary.

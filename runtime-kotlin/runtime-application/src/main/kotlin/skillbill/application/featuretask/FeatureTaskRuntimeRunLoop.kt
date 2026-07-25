@@ -58,6 +58,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
@@ -318,6 +319,7 @@ internal class FeatureTaskRuntimeRunLoop(
           findings = findings,
           rawReviewResult = output,
           normalizedOutput = outputMap,
+          blockerDispositions = GoalSubtaskReviewSummaryReducer.blockerDispositions(outputMap),
         ),
         dbOverride = request.dbPathOverride,
       ) == null
@@ -332,7 +334,10 @@ internal class FeatureTaskRuntimeRunLoop(
     goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
   }.fold(
     onSuccess = { reviewState ->
-      reviewState?.takeIf { it.reviewCapReached || it.reviewSkippedByUser || it.completedPassCount >= 2 }
+      reviewState
+        ?.takeIf {
+          it.reviewCapReached || it.pausedForOperatorDecision || it.reviewSkippedByUser || it.completedPassCount >= 2
+        }
         ?.let {
           settleCarriedForwardGoalReview(
             it,
@@ -434,6 +439,7 @@ internal class FeatureTaskRuntimeRunLoop(
         verdict = effectiveVerdict,
         edgeIterationCount = edge?.let { state.edgeIterationCount(it.loopId) } ?: 0,
         settledVerdictsByPhaseId = state.settledVerdictsByPhaseId(),
+        unresolvedBlockerPresent = unresolvedBlockerDispositionPresent(),
       )
     }.getOrElse { error ->
       if (error !is FeatureTaskRuntimePhaseOrderViolationError) throw error
@@ -454,9 +460,31 @@ internal class FeatureTaskRuntimeRunLoop(
       blockOnCapExhaustion(phaseId, transition)
       null
     }
+    is FeatureTaskRuntimeNextPhase.TerminalPause -> {
+      pauseOnUnresolvedBlocker(phaseId, transition)
+      null
+    }
     is FeatureTaskRuntimeNextPhase.Next -> {
       val loopId = transition.loopId
       when {
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+          (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
+          state.unresolvedReviewFindings(phaseId).isNotEmpty() &&
+          !goalReviewStateOrNull()?.blockerDispositions.isNullOrEmpty() -> {
+          // A disposed remediation pass pauses on its unresolved Blocker instead of hard-blocking;
+          // the cap-exhaustion block below stays the path for an undisposed pass only.
+          pauseOnUnresolvedBlocker(
+            phaseId,
+            FeatureTaskRuntimeNextPhase.TerminalPause(
+              loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID,
+              edgeIteration = state
+                .edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
+                .coerceAtLeast(1),
+              unresolvedVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+            ),
+          )
+          null
+        }
         phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
           (state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2) &&
           state.unresolvedReviewFindings(phaseId).isNotEmpty() -> {
@@ -860,6 +888,58 @@ internal class FeatureTaskRuntimeRunLoop(
       loopId = transition.loopId,
       edgeIteration = transition.edgeIteration,
       outputArtifact = state.outputFor(phaseId)?.payload,
+    )
+    blockAt(phaseId, reason)
+  }
+
+  private fun goalReviewStateOrNull(): GoalSubtaskReviewState? =
+    if (!isGoalContinuationRun(request)) {
+      null
+    } else {
+      runCatching { goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride) }.getOrNull()
+    }
+
+  private fun unresolvedBlockerDispositionPresent(): Boolean =
+    goalReviewStateOrNull()?.unresolvedBlockerDispositions?.isNotEmpty() == true
+
+  /**
+   * SKILL-141's non-terminal resumable status, not a block: the persisted review state, its
+   * `review_base_sha`, the baseline untracked inventory, and the consumed pass count survive intact
+   * so resume never re-reserves a consumed pass. The bounded operator decision over `retry_fix`,
+   * `accept_and_advance`, and `abandon_subtask` is what releases it.
+   */
+  private fun pauseOnUnresolvedBlocker(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalPause) {
+    val reviewState = goalReviewStateOrNull()
+    val unresolvedCount = reviewState?.unresolvedBlockerDispositions?.size ?: 0
+    val reason = "Goal-subtask review pass ${transition.edgeIteration} left $unresolvedCount Blocker " +
+      "disposition(s) unresolved after the single bounded fix attempt. The subtask is paused and " +
+      "resumable; choose retry_fix, accept_and_advance, or abandon_subtask to continue."
+    goalContinuationRecorder.recordGoalContinuationState(
+      GoalContinuationStateRecordRequest(
+        workflowId = request.workflowId,
+        workflowStatus = STATUS_PAUSED,
+      ),
+      dbOverride = request.dbPathOverride,
+    )
+    val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = phaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    )
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = state.nextIteration(phaseId),
+        resolvedAgentId = resolvedAgent.resolvedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = transition.loopId,
+        edgeIteration = transition.edgeIteration,
+      ),
+      dbOverride = request.dbPathOverride,
     )
     blockAt(phaseId, reason)
   }
@@ -2246,6 +2326,7 @@ internal class FeatureTaskRuntimeRunLoop(
           unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
           rawReviewResult = outputText,
+          blockerDispositions = GoalSubtaskReviewSummaryReducer.blockerDispositions(outputMap),
         ),
         dbOverride = run.request.dbPathOverride,
       )

@@ -428,6 +428,7 @@ $defs:
       - failed
       - abandoned
       - blocked
+      - paused
   # The phase step ids MUST mirror
   # FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds (the same source
   # McpToolRegistry derives the MCP update step-id enum from). The parity test

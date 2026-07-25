@@ -4,8 +4,8 @@ title: "Goal subtask review state"
 description: >
   Durable, child-owned review state for one decomposed feature-task runtime
   subtask. It pins the local review baseline, selected execution mode, pass
-  accounting, compact safe summaries, and the references to full review input
-  and result artifacts.
+  accounting, compact safe summaries, per-Blocker disposition evidence, and the
+  references to full review input and result artifacts.
 type: object
 additionalProperties: false
 required:
@@ -20,7 +20,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
   review_base_sha:
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
@@ -44,7 +44,34 @@ properties:
     maximum: 2
   disposition:
     type: string
-    enum: [pending, review_cap_reached]
+    enum: [pending, paused, review_cap_reached]
+  blocker_dispositions:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [finding_id, verdict, evidence]
+      properties:
+        finding_id:
+          type: string
+          minLength: 1
+        verdict:
+          type: string
+          enum: [resolved, unresolved, superseded]
+        evidence:
+          type: array
+          items:
+            type: string
+            minLength: 1
+  operator_decision:
+    type: string
+    enum: [retry_fix, accept_and_advance, abandon_subtask]
+  resolved_tier:
+    type: string
+    enum: [auto, inline, delegated]
+  deciding_rule:
+    type: string
+    minLength: 1
   review_input_artifact:
     type: string
     minLength: 1

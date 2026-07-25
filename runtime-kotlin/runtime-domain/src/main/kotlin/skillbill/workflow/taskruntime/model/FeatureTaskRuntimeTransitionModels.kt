@@ -46,11 +46,38 @@ sealed interface FeatureTaskRuntimeNextPhase {
       }
     }
   }
+
+  /**
+   * A bounded edge reached its cap while an unresolved Blocker disposition remains: the subtask
+   * pauses on SKILL-141's non-terminal resumable status and waits for a bounded operator decision
+   * over retry_fix, accept_and_advance, and abandon_subtask. Unlike [TerminalBlock] this is not a
+   * terminal state; the persisted review state resumes it.
+   */
+  data class TerminalPause(
+    val loopId: String,
+    val edgeIteration: Int,
+    val unresolvedVerdict: FeatureTaskRuntimeVerdict,
+  ) : FeatureTaskRuntimeNextPhase {
+    init {
+      require(loopId.isNotBlank()) { "FeatureTaskRuntimeNextPhase.TerminalPause.loopId must be non-blank." }
+      require(edgeIteration >= 1) {
+        "FeatureTaskRuntimeNextPhase.TerminalPause.edgeIteration must be >= 1, was $edgeIteration."
+      }
+    }
+  }
 }
 
 enum class FeatureTaskRuntimeCapExhaustionBehavior {
   BLOCK,
   ADVANCE,
+
+  /**
+   * Cap exhaustion is no longer the terminating signal for this edge; the Blocker disposition is.
+   * With no unresolved Blocker the run advances exactly as [ADVANCE]; with one it pauses resumably.
+   * This is what keeps a child from both advancing on cap exhaustion and pausing on an unresolved
+   * Blocker.
+   */
+  ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
 }
 
 /**

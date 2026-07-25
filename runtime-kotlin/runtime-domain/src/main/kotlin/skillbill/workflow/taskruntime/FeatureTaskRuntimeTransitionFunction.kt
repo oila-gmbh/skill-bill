@@ -38,8 +38,10 @@ object FeatureTaskRuntimeTransitionFunction {
     verdict: FeatureTaskRuntimeVerdict,
     edgeIterationCount: Int,
     settledVerdictsByPhaseId: Map<String, FeatureTaskRuntimeVerdict> = emptyMap(),
-  ): FeatureTaskRuntimeNextPhase = computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount)
-    .also { transition -> guardEntryGate(declaration, transition, settledVerdictsByPhaseId) }
+    unresolvedBlockerPresent: Boolean = false,
+  ): FeatureTaskRuntimeNextPhase =
+    computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount, unresolvedBlockerPresent)
+      .also { transition -> guardEntryGate(declaration, transition, settledVerdictsByPhaseId) }
 
   private fun guardEntryGate(
     declaration: FeatureTaskRuntimeTransitionDeclaration,
@@ -62,6 +64,7 @@ object FeatureTaskRuntimeTransitionFunction {
     currentPhaseId: String,
     verdict: FeatureTaskRuntimeVerdict,
     edgeIterationCount: Int,
+    unresolvedBlockerPresent: Boolean,
   ): FeatureTaskRuntimeNextPhase {
     require(edgeIterationCount >= 0) {
       "FeatureTaskRuntimeTransitionFunction.edgeIterationCount must be non-negative, was $edgeIterationCount."
@@ -77,6 +80,16 @@ object FeatureTaskRuntimeTransitionFunction {
       } else {
         when (edge.capExhaustionBehavior) {
           FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE -> forwardTransition(declaration, currentPhaseId)
+          FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER ->
+            if (unresolvedBlockerPresent) {
+              FeatureTaskRuntimeNextPhase.TerminalPause(
+                loopId = edge.loopId,
+                edgeIteration = edgeIterationCount,
+                unresolvedVerdict = verdict,
+              )
+            } else {
+              forwardTransition(declaration, currentPhaseId)
+            }
           FeatureTaskRuntimeCapExhaustionBehavior.BLOCK -> FeatureTaskRuntimeNextPhase.TerminalBlock(
             loopId = edge.loopId,
             edgeIteration = edgeIterationCount,

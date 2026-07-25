@@ -34,6 +34,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
     reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
+    resolvedReviewTier: CodeReviewExecutionMode? = null,
+    reviewDecidingRule: String? = null,
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
@@ -51,6 +53,9 @@ object FeatureTaskRuntimePhasePromptComposer {
         codeReviewMode,
         parallelReviewAgent,
         goalSubtaskReviewInput,
+        reviewPassNumber,
+        resolvedReviewTier,
+        reviewDecidingRule,
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
@@ -540,17 +545,20 @@ object FeatureTaskRuntimePhasePromptComposer {
     codeReviewMode: CodeReviewExecutionMode,
     parallelReviewAgent: String?,
     goalSubtaskReviewInput: GoalSubtaskReviewInput?,
+    reviewPassNumber: Int?,
+    resolvedReviewTier: CodeReviewExecutionMode?,
+    reviewDecidingRule: String?,
   ): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       return ""
     }
     val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
-      " Combine it with `parallel:$agent`; both lanes must receive mode:${codeReviewMode.wireValue} " +
+      " Combine it with `parallel:$agent`; both lanes must receive the resolved tier " +
+        "${resolvedReviewTier?.wireValue ?: codeReviewMode.wireValue} " +
         "and the second lane must not launch parallel review recursively."
     }.orEmpty()
     val materializedScope = goalSubtaskReviewInput?.let { input ->
       """
-
       ## Immutable-base review scope
       Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
       It includes committed, staged, unstaged, and owned untracked changes below.
@@ -561,13 +569,25 @@ object FeatureTaskRuntimePhasePromptComposer {
       ${input.reviewText}
       """.trimIndent()
     }.orEmpty()
+    val remediationContext = if (reviewPassNumber == 2) {
+      """
+      ## Reserved remediation pass (pass two)
+      This is the reserved inline remediation pass under context:feature-remediation. Scope is strictly the prior Blocker findings union diff(pre-fix tree -> post-fix tree). Do not re-review the full base-to-current delta. A defect introduced by the remediation itself must still be caught.
+      """.trimIndent()
+    } else {
+      ""
+    }
+    val resolvedTierInfo = if (resolvedReviewTier != null && reviewDecidingRule != null) {
+      """
+      ## Resolved review tier
+      AUTO resolved to tier ${resolvedReviewTier.wireValue} by rule "$reviewDecidingRule". An explicit INLINE or DELEGATED always overrides AUTO.
+      """.trimIndent()
+    } else {
+      ""
+    }
     return """
       ## Review execution mode
-      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The initial pass uses the run-selected
-      mode; every later pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass.
-      AUTO keeps the shared policy's existing selection; remediation INLINE uses the governed exception and selects
-      inline specialist coverage for high-risk signals; DELEGATED must use normal routed delegation and fail if workers
-      cannot start.$parallel$materializedScope
+      Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. Pass one uses the run-selected mode; the reserved remediation pass is explicitly INLINE under context:feature-remediation. Never launch a third review pass. AUTO resolves depth by pass number: pass one to DELEGATED, every later pass to INLINE. An explicit INLINE or DELEGATED always overrides AUTO.$parallel$resolvedTierInfo$materializedScope$remediationContext
     """.trimIndent()
   }
 

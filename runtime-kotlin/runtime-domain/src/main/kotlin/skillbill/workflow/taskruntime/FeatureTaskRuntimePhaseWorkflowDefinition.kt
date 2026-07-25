@@ -106,7 +106,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     workflowIdPrefix = "wftr",
     defaultSessionPrefix = "ftr",
     contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
+    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
     stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),
     defaultInitialStepId = PHASE_PREPLAN,
@@ -349,9 +349,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * unbounded because each new audit verdict is the authority on whether implementation is complete.
    *
    * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span, bounded at one
-   * review->fix iteration; an `approved` verdict or exhaustion of that remediation budget advances to
-   * `validate`. That span structurally excludes `audit`, so no review outcome can reopen an audit
-   * repair plan.
+   * review->fix iteration under `PER_SUBTASK` cap scope. Cap exhaustion is not the terminating
+   * signal; the Blocker disposition is. With every prior Blocker `resolved` or `superseded` the child
+   * advances to `validate`; with any Blocker still `unresolved` it pauses resumably for a bounded
+   * operator decision instead of advancing. That span structurally excludes `audit`, so no review
+   * outcome can reopen an audit repair plan.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
    * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
@@ -374,7 +376,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         FeatureTaskRuntimeBackwardEdge(

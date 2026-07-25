@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-142-inline-review-depth-tier"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 5
   action: "resume"
 subtasks:
 - id: 1
@@ -54,12 +54,12 @@ subtasks:
 - id: 4
   name: "Per-lane severity calibration"
   spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec_subtask_4_lane_severity_calibration.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260725-170013-j2mf"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -67,12 +67,12 @@ subtasks:
 - id: 5
   name: "Inline as a bounded light tier; remediation pass bounded to its delta"
   spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec_subtask_5_inline_light_tier_bounded_remediation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260725-172600-dsgk"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

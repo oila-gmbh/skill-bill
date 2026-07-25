@@ -234,7 +234,7 @@ class WorkflowServiceTest {
     val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(opened.workflowId)).toSnapshot()
     assertContains(saved.artifactsJson, "Operator abandoned the goal.")
     assertTrue(saved.workflowStatus in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses)
-    assertFalse("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
+    assertTrue("paused" in FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses)
     assertIs<WorkflowUpdateResult.Error>(service.abandonFeatureTaskRuntime(opened.workflowId, "Again."))
   }
 

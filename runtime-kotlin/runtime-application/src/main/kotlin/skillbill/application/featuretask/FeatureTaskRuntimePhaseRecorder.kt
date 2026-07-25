@@ -52,6 +52,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
@@ -344,6 +345,7 @@ class FeatureTaskRuntimePhaseRecorder(
         verdict = completion.verdict,
         unresolvedFindingCount = completion.unresolvedFindingCount,
         findings = completion.findings,
+        blockerDispositions = completion.blockerDispositions,
       )
       val passNumber = completedState.completedPassCount.toString()
       val existingRecords = phaseRecordsFrom(artifacts)
@@ -822,6 +824,7 @@ internal data class GoalReviewPhaseCompletionRequest(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val rawReviewResult: String,
+  val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
 )
 
 // How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping

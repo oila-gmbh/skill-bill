@@ -5,7 +5,10 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.reviewStateError
 
 internal data class StructuredGoalReviewFinding(
   val severity: String,
@@ -93,6 +96,39 @@ internal object GoalSubtaskReviewSummaryReducer {
       location = finding.location,
       summary = finding.message,
     )
+  }
+
+  /**
+   * Parse seam for the reserved remediation pass's per-Blocker dispositions. An entry without
+   * location-bearing evidence is rejected here rather than persisted unevidenced.
+   */
+  fun blockerDispositions(output: Map<String, Any?>): List<GoalSubtaskBlockerDisposition> {
+    val raw = output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("blocker_dispositions") as? List<*>
+      ?: return emptyList()
+    return raw.mapIndexed { index, entry ->
+      val path = "produced_outputs.blocker_dispositions[$index]"
+      val disposition = JsonSupport.anyToStringAnyMap(entry)
+        ?: reviewStateError(path, "must be an object.")
+      val evidence = (disposition["evidence"] as? List<*>)
+        ?.mapNotNull { it as? String }
+        ?.map(String::trim)
+        ?.filter(String::isNotBlank)
+        .orEmpty()
+      if (evidence.isEmpty()) {
+        reviewStateError("$path.evidence", "must cite the specific changed lines that settle the Blocker.")
+      }
+      GoalSubtaskBlockerDisposition(
+        findingId = (disposition["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank)
+          ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
+        verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
+          (disposition["verdict"] as? String)?.trim()
+            ?: reviewStateError("$path.verdict", "must be resolved, unresolved, or superseded."),
+        ),
+        evidence = evidence,
+      )
+    }
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)

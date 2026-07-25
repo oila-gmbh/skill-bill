@@ -9,6 +9,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 internal const val STATUS_RUNNING = "running"
 internal const val STATUS_COMPLETED = "completed"
 internal const val STATUS_BLOCKED = "blocked"
+
+// SKILL-141's non-terminal resumable workflow status, consumed rather than forked: an unresolved
+// Blocker disposition pauses the child here instead of blocking it.
+internal const val STATUS_PAUSED = "paused"
 internal const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 internal const val SCHEMA_GATE_DETAIL_MAX_CHARS = 500
 

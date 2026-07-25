@@ -24,6 +24,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -143,7 +144,12 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ?: return@transaction null
     require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
-    val completed = state.completeReservedPass(request.verdict, request.unresolvedFindingCount, request.findings)
+    val completed = state.completeReservedPass(
+      request.verdict,
+      request.unresolvedFindingCount,
+      request.findings,
+      request.blockerDispositions,
+    )
     val passNumber = completed.completedPassCount.toString()
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
@@ -313,6 +319,7 @@ internal data class GoalReviewPassCompletionRequest(
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val rawReviewResult: String,
   val normalizedOutput: Map<String, Any?>,
+  val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
 )
 
 private data class GoalReviewInputRecoveryRequest(
