@@ -112,6 +112,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var paused: FeatureTaskRuntimeRunReport.Paused? = null
   private var operatorGrantedFixIteration: Boolean = false
+  private var operatorRetryGrantConsumed: Boolean = false
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
     .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
@@ -519,6 +520,9 @@ internal class FeatureTaskRuntimeRunLoop(
           null
         }
         else -> {
+          if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+            consumeOperatorRetryGrant()
+          }
           recordBackwardEdge(
             edge = edge,
             destinationPhaseId = transition.phaseId,
@@ -931,9 +935,26 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun effectiveEdgeIterationCount(edge: FeatureTaskRuntimeBackwardEdge): Int {
     val consumed = state.edgeIterationCount(edge.loopId)
-    val granted = operatorGrantedFixIteration &&
+    val granted = operatorRetryGrantActive() &&
       edge.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
-    return if (granted) (consumed - 1).coerceAtLeast(0) else consumed
+    return FeatureTaskRuntimeOperatorRetryGrant.discountedIterationCount(consumed, granted)
+  }
+
+  /**
+   * The grant survives the process that recorded it: a resumed run reads `retry_fix` back off the
+   * durable review state. Re-pausing clears `operator_decision`, so a subsequent unresolved pass has
+   * no grant left and pauses again.
+   */
+  private fun operatorRetryGrantActive(): Boolean =
+    FeatureTaskRuntimeOperatorRetryGrant.active(
+      consumed = operatorRetryGrantConsumed,
+      inSessionGrant = operatorGrantedFixIteration,
+      persistedDecision = goalReviewStateOrNull()?.operatorDecision,
+    )
+
+  private fun consumeOperatorRetryGrant() {
+    operatorRetryGrantConsumed = true
+    operatorGrantedFixIteration = false
   }
 
   private fun persistResolvedReviewTier(run: PhaseRun, resolution: ReviewPassResolution) {
@@ -968,8 +989,16 @@ internal class FeatureTaskRuntimeRunLoop(
       runCatching { goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride) }.getOrNull()
     }
 
+  /**
+   * An operator-granted `retry_fix` suppresses the unresolved-Blocker pause for exactly one
+   * transition, so the granted `implement_fix` iteration is actually entered instead of the carried
+   * PAUSED disposition re-pausing the subtask on resume.
+   */
   private fun unresolvedBlockerDispositionPresent(): Boolean =
-    goalReviewStateOrNull()?.unresolvedBlockerDispositions?.isNotEmpty() == true
+    FeatureTaskRuntimeOperatorRetryGrant.pausesOnUnresolvedBlocker(
+      grantActive = operatorRetryGrantActive(),
+      unresolvedBlockerPresent = goalReviewStateOrNull()?.unresolvedBlockerDispositions?.isNotEmpty() == true,
+    )
 
   /**
    * SKILL-141's non-terminal resumable status, not a block: the persisted review state, its

@@ -40,4 +40,67 @@ class FeatureTaskRuntimeOperatorDecisionEntryPointTest {
     assertEquals("retry_fix", error.decision)
     assertEquals(true, error.message.orEmpty().contains("wftr-1"))
   }
+
+  @Test
+  fun `a persisted retry_fix grant survives the resume that reads it back`() {
+    assertEquals(
+      true,
+      FeatureTaskRuntimeOperatorRetryGrant.active(
+        consumed = false,
+        inSessionGrant = false,
+        persistedDecision = GoalSubtaskOperatorDecision.RETRY_FIX,
+      ),
+      "A resumed run reads the grant off durable review state, not off in-memory session flags.",
+    )
+  }
+
+  @Test
+  fun `an active grant suppresses the unresolved-Blocker pause for one transition`() {
+    assertEquals(
+      false,
+      FeatureTaskRuntimeOperatorRetryGrant.pausesOnUnresolvedBlocker(
+        grantActive = true,
+        unresolvedBlockerPresent = true,
+      ),
+      "The granted implement_fix iteration must be entered instead of re-pausing on the carried disposition.",
+    )
+    assertEquals(
+      0,
+      FeatureTaskRuntimeOperatorRetryGrant.discountedIterationCount(consumedIterations = 1, grantActive = true),
+      "The grant is unbudgeted: it discounts the one consumed review_fix iteration.",
+    )
+  }
+
+  @Test
+  fun `a consumed grant pauses again on the next unresolved pass`() {
+    val consumed = FeatureTaskRuntimeOperatorRetryGrant.active(
+      consumed = true,
+      inSessionGrant = true,
+      persistedDecision = GoalSubtaskOperatorDecision.RETRY_FIX,
+    )
+    assertEquals(false, consumed, "The grant is single-use once the review_fix edge is taken.")
+    assertEquals(
+      true,
+      FeatureTaskRuntimeOperatorRetryGrant.pausesOnUnresolvedBlocker(
+        grantActive = consumed,
+        unresolvedBlockerPresent = true,
+      ),
+    )
+  }
+
+  @Test
+  fun `a non-retry decision never grants an iteration`() {
+    listOf(GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE, GoalSubtaskOperatorDecision.ABANDON_SUBTASK)
+      .forEach { decision ->
+        assertEquals(
+          false,
+          FeatureTaskRuntimeOperatorRetryGrant.active(
+            consumed = false,
+            inSessionGrant = false,
+            persistedDecision = decision,
+          ),
+          "Only retry_fix grants a fresh implement_fix iteration.",
+        )
+      }
+  }
 }
