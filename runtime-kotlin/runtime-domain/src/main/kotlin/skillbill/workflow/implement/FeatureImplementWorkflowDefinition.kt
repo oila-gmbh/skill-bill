@@ -4,6 +4,22 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureImplementWorkflowDefinition {
+  private val implementationReceiptFields = setOf(
+    "projection_kind",
+    "contract_version",
+    "completed_task_ids",
+    "changed_paths",
+    "tests_added",
+    "tests_updated",
+    "deviations",
+    "unresolved_items",
+    "repository_checkpoint",
+  )
+  private val auditReceiptFields = setOf("contract_version", "verdict", "criterion_results")
+  private val reviewReceiptFields = setOf("contract_version", "verdict", "findings")
+  private val validationReceiptFields = setOf("contract_version", "validation_status", "checks", "repository_checkpoint")
+  private val historyReceiptFields = setOf("contract_version", "changed_paths", "repository_checkpoint")
+
   private val privateArtifactKeys = setOf(
     "step_artifacts",
     "telemetry_payload",
@@ -228,17 +244,7 @@ object FeatureImplementWorkflowDefinition {
         "implementation_summary",
         "repository_evidence",
         typedFields = mapOf(
-          "implementation_summary" to setOf(
-            "projection_kind",
-            "contract_version",
-            "completed_task_ids",
-            "changed_paths",
-            "tests_added",
-            "tests_updated",
-            "deviations",
-            "unresolved_items",
-            "repository_checkpoint",
-          ),
+          "implementation_summary" to implementationReceiptFields,
         ),
       ),
       "review" to projection(
@@ -246,15 +252,8 @@ object FeatureImplementWorkflowDefinition {
         "audit_report",
         "repository_evidence",
         typedFields = mapOf(
-          "implementation_summary" to setOf(
-            "projection_kind",
-            "contract_version",
-            "completed_task_ids",
-            "changed_paths",
-            "unresolved_items",
-            "repository_checkpoint",
-          ),
-          "audit_report" to setOf("contract_version", "verdict", "criterion_results"),
+          "implementation_summary" to implementationReceiptFields,
+          "audit_report" to auditReceiptFields,
         ),
       ),
       "validate" to projection(
@@ -262,18 +261,36 @@ object FeatureImplementWorkflowDefinition {
         "review_result",
         "repository_evidence",
         typedFields = mapOf(
-          "audit_report" to setOf("contract_version", "verdict", "criterion_results"),
-          "review_result" to setOf("contract_version", "verdict", "findings"),
+          "audit_report" to auditReceiptFields,
+          "review_result" to reviewReceiptFields,
         ),
       ),
-      "write_history" to projection("implementation_summary", "validation_result", "repository_evidence"),
+      "write_history" to projection(
+        "implementation_summary",
+        "validation_result",
+        "repository_evidence",
+        typedFields = mapOf(
+          "implementation_summary" to implementationReceiptFields,
+          "validation_result" to validationReceiptFields,
+        ),
+      ),
       "commit_push" to projection(
         "implementation_summary",
         "validation_result",
         "history_result",
         "repository_evidence",
+        typedFields = mapOf(
+          "implementation_summary" to implementationReceiptFields,
+          "validation_result" to validationReceiptFields,
+          "history_result" to historyReceiptFields,
+        ),
       ),
-      "pr_description" to projection("implementation_summary", "branch", "repository_evidence"),
+      "pr_description" to projection(
+        "implementation_summary",
+        "branch",
+        "repository_evidence",
+        typedFields = mapOf("implementation_summary" to implementationReceiptFields),
+      ),
     ),
   )
 }

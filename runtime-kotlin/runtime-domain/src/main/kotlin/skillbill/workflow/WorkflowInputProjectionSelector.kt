@@ -16,7 +16,11 @@ object WorkflowInputProjectionSelector {
     snapshot: WorkflowSnapshotView,
     stepId: String,
     producerIteration: Int,
+    resolvedRepositoryCheckpointIdentity: String,
   ): WorkflowInputProjection {
+    if (resolvedRepositoryCheckpointIdentity.isBlank()) {
+      throw invalid(definition, "projection for step '$stepId' has no runtime-resolved repository checkpoint")
+    }
     val declaration = definition.inputProjectionsByStep[stepId]
       ?: throw invalid(definition, "missing input projection for step '$stepId'")
     val missing = declaration.requiredArtifactKeys.filterNot(snapshot.artifacts::containsKey)
@@ -54,6 +58,12 @@ object WorkflowInputProjectionSelector {
       ?: throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence is not typed")
     val checkpointIdentity = checkpoint["fingerprint"] ?: checkpoint["checkpoint"]
       ?: throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence has no identity")
+    if (checkpointIdentity != resolvedRepositoryCheckpointIdentity) {
+      throw invalid(
+        definition,
+        "projection for step '$stepId' repository checkpoint evidence does not match the runtime-resolved checkpoint",
+      )
+    }
     val claimedIdentity = checkpoint["repository_checkpoint"] ?: checkpoint["checkpoint"] ?: checkpoint["fingerprint"]
     if (claimedIdentity != checkpointIdentity) {
       throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence is stale or mismatched")

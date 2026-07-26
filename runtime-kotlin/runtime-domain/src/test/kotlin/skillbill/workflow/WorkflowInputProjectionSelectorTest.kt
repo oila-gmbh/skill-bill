@@ -60,7 +60,7 @@ class WorkflowInputProjectionSelectorTest {
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1)
+      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1, "abc123")
     }
   }
 
@@ -98,7 +98,7 @@ class WorkflowInputProjectionSelectorTest {
       ),
     )
 
-    val projection = WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1)
+    val projection = WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1, "abc123")
     val projectedReceipt = projection.artifacts.getValue("implementation_summary") as Map<*, *>
     assertFalse("private_diagnostic" in projectedReceipt)
     assertEquals(
@@ -141,37 +141,103 @@ class WorkflowInputProjectionSelectorTest {
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1)
+      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1, "current")
     }
   }
 
   @Test
-  fun `fresh and resumed selection are identical and omit private artifacts`() {
+  fun `projection rejects supplied checkpoint evidence stale against runtime resolved checkpoint`() {
     val definition = FeatureImplementWorkflowDefinition.definition
+    val receipt = definition.inputProjectionsByStep.getValue("audit")
+      .projectedFieldsByArtifactKey.getValue("implementation_summary")
+      .associateWith { field ->
+        when (field) {
+          "projection_kind" -> "implementation_receipt"
+          "contract_version" -> "0.1"
+          "repository_checkpoint" -> mapOf("fingerprint" to "supplied")
+          else -> emptyList<String>()
+        }
+      }
     val snapshot = engine.snapshotView(
       definition,
       engine.updateRecord(
         definition,
-        engine.openRecord(definition, "wfl-1", "fis-1", "audit"),
+        engine.openRecord(definition, "wfl-runtime-stale", "fis-runtime-stale", "audit"),
         skillbill.workflow.model.WorkflowUpdateInput(
           workflowStatus = "running",
           currentStepId = "audit",
           stepUpdates = null,
           artifactsPatch = mapOf(
             "plan" to mapOf("tasks" to listOf("one")),
-            "implementation_summary" to mapOf("completed" to true),
-            "repository_evidence" to mapOf("checkpoint" to "abc123"),
-            "review_result" to mapOf("raw" to "must remain private"),
-            "telemetry_payload" to mapOf("tokens" to 99),
+            "implementation_summary" to receipt,
+            "repository_evidence" to mapOf("fingerprint" to "supplied"),
           ),
           sessionId = "",
         ),
       ),
     )
-    val fresh = engine.launchProjection(definition, snapshot, "audit", 2)
-    val resumed = engine.launchProjection(definition, snapshot, "audit", 2)
 
-    assertEquals(fresh, resumed)
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1, "runtime-resolved")
+    }
+  }
+
+  @Test
+  fun `every receipt bearing prose projection declares typed fields`() {
+    val projections = FeatureImplementWorkflowDefinition.definition.inputProjectionsByStep
+    val receiptKeys = setOf(
+      "implementation_summary",
+      "audit_report",
+      "review_result",
+      "validation_result",
+      "history_result",
+    )
+
+    projections.forEach { (stepId, declaration) ->
+      declaration.requiredArtifactKeys.intersect(receiptKeys).forEach { receiptKey ->
+        assertTrue(
+          declaration.projectedFieldsByArtifactKey.getValue(receiptKey).isNotEmpty(),
+          "$stepId must declare bounded fields for $receiptKey",
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `fresh and resumed selection are identical and omit private artifacts`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val receipt = definition.inputProjectionsByStep.getValue("audit")
+      .projectedFieldsByArtifactKey.getValue("implementation_summary")
+      .associateWith { field ->
+        when (field) {
+          "projection_kind" -> "implementation_receipt"
+          "contract_version" -> "0.1"
+          "repository_checkpoint" -> mapOf("fingerprint" to "abc123")
+          else -> emptyList<String>()
+        }
+      }
+    val record = engine.updateRecord(
+      definition,
+      engine.openRecord(definition, "wfl-1", "fis-1", "audit"),
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "audit",
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          "plan" to mapOf("tasks" to listOf("one")),
+          "implementation_summary" to receipt,
+          "repository_evidence" to mapOf("checkpoint" to "abc123"),
+          "review_result" to mapOf("raw" to "must remain private"),
+          "telemetry_payload" to mapOf("tokens" to 99),
+        ),
+        sessionId = "",
+      ),
+    )
+    val snapshot = engine.snapshotView(definition, record)
+    val fresh = engine.launchProjection(definition, snapshot, "audit", 0, "abc123")
+    val resumed = engine.continueDecision(definition, record).view.stepArtifacts
+
+    assertEquals(fresh!!.artifacts, resumed)
     assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh!!.artifacts.keys)
     assertFalse("review_result" in fresh.artifacts)
     assertFalse("telemetry_payload" in fresh.artifacts)
@@ -207,7 +273,7 @@ class WorkflowInputProjectionSelectorTest {
     )
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1)
+      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1, "abc123")
     }
   }
 

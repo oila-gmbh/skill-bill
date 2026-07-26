@@ -225,7 +225,13 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val declaredProjection = launchProjection(definition, snapshot, resume.resumeStepId, attemptCount)
+    val declaredProjection = launchProjection(
+      definition,
+      snapshot,
+      resume.resumeStepId,
+      attemptCount,
+      resolvedRepositoryCheckpointIdentity(definition, snapshot, resume.resumeStepId),
+    )
     val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
       ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
     val stepArtifacts = declaredProjection?.artifacts ?: stepArtifactKeys.associateWith { key ->
@@ -305,8 +311,27 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     snapshot: WorkflowSnapshotView,
     stepId: String,
     producerIteration: Int,
+    resolvedRepositoryCheckpointIdentity: String =
+      resolvedRepositoryCheckpointIdentity(definition, snapshot, stepId),
   ): WorkflowInputProjection? = definition.inputProjectionsByStep[stepId]?.let {
-    WorkflowInputProjectionSelector.select(definition, snapshot, stepId, producerIteration)
+    WorkflowInputProjectionSelector.select(
+      definition,
+      snapshot,
+      stepId,
+      producerIteration,
+      resolvedRepositoryCheckpointIdentity,
+    )
+  }
+
+  private fun resolvedRepositoryCheckpointIdentity(
+    definition: WorkflowDefinition,
+    snapshot: WorkflowSnapshotView,
+    stepId: String,
+  ): String {
+    val checkpointArtifactKey =
+      definition.inputProjectionsByStep[stepId]?.repositoryCheckpointArtifactKey.orEmpty()
+    val evidence = snapshot.artifacts[checkpointArtifactKey] as? Map<*, *>
+    return (evidence?.get("fingerprint") ?: evidence?.get("checkpoint")) as? String ?: ""
   }
 
   companion object {
