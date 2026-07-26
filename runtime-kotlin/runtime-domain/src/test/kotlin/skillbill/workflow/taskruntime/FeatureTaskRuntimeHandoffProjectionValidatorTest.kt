@@ -154,9 +154,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val fields = envelope.projections.single().fields
     assertEquals(listOf("unresolved_blocker_findings", "repository_checkpoint"), fields.map { it.name })
     val blockers = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
-    assertEquals(1, blockers.values.size)
-    assertContains(blockers.values.single(), "F-001")
-    assertFalse(blockers.values.single().contains("F-002"))
+    assertEquals(1, blockers.items.size)
+    assertContains(blockers.items.single(), "F-001")
+    assertFalse(blockers.items.single().contains("F-002"))
   }
 
   @Test

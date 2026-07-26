@@ -242,7 +242,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "unresolved_gap_ids",
         "repository_checkpoint",
       ),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     ),
   )
 
@@ -253,7 +253,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       name = "change_receipt",
       contractId = PhaseProjectionContract.CHANGE_RECEIPT,
       fields = listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     ),
     phaseProjection(
       consumerPhaseId = PHASE_REVIEW,
@@ -261,7 +261,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       name = "audit_clearance",
       contractId = PhaseProjectionContract.AUDIT_CLEARANCE,
       fields = listOf("clearance_status", "review_scope", "repository_checkpoint"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     ),
   )
 
@@ -359,7 +359,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "review_repair_request",
         PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
         listOf("unresolved_blocker_findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
     PHASE_REVIEW to listOf(
@@ -369,7 +369,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "audit_clearance",
         PhaseProjectionContract.AUDIT_CLEARANCE,
         listOf("clearance_status", "review_scope", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
     PHASE_VALIDATE to listOf(
@@ -392,7 +392,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "audit_clearance",
         PhaseProjectionContract.AUDIT_CLEARANCE,
         listOf("verdict", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
     PHASE_WRITE_HISTORY to listOf(
@@ -409,7 +409,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "validation_receipt",
         PhaseProjectionContract.VALIDATION_RECEIPT,
         listOf("validation_status", "checks", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
     PHASE_COMMIT_PUSH to listOf(
@@ -426,7 +426,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           "gate_attestations",
           "repository_checkpoint",
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
         PHASE_COMMIT_PUSH,
@@ -434,7 +434,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "validation_receipt",
         PhaseProjectionContract.VALIDATION_RECEIPT,
         listOf("validation_status", "checks", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
         PHASE_COMMIT_PUSH,

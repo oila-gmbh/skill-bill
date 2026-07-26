@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapSco
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
@@ -91,10 +92,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
     )
     assertEquals(
-      listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      ),
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     )
     assertEquals(
@@ -164,9 +162,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds
     assertTrue(ids.indexOf(edge.destinationPhaseId) < ids.indexOf(edge.fromPhaseId))
-    // The fix phase consumes the plan, the latest implement output, and the review findings.
+    // The fix phase consumes only the bounded review repair request; settled plan and implementation
+    // evidence stay private to their producing phases.
     assertEquals(
-      listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_REVIEW),
+      listOf(def.PHASE_REVIEW),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
     )
   }
@@ -346,6 +345,20 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       },
     )
     assertTrue(reviewRetry.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
+  }
+
+  @Test
+  fun `phase transitions never reject repository movement`() {
+    val checkpointedDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.values
+      .flatMap { it.projectionDeclarations }
+      .filter { "repository_checkpoint" in it.declaredFieldNames }
+
+    assertTrue(checkpointedDeclarations.isNotEmpty())
+    assertTrue(
+      checkpointedDeclarations.all {
+        it.checkpointPolicy == FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY
+      },
+    )
   }
 
   @Test
