@@ -208,6 +208,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
         inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
           planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
+            ?: phaseProjectionFields(inputs, declaration, output)
             ?: listOf(
               FeatureTaskRuntimeHandoffProjectionField(
                 name = PHASE_OUTPUT_RECEIPT_FIELD,
@@ -414,6 +415,89 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
     FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
   )
+
+  private val PHASE_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
+  )
+
+  /**
+   * Selects named values from the validated phase envelope. The declaration is the allowlist:
+   * summary, narration, raw output, reports, progress and telemetry have no route into this method.
+   * Structured list entries are independently serialized so collection budgets count every item.
+   */
+  private fun phaseProjectionFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
+    if (declaration.projectionContractId !in PHASE_PROJECTION_CONTRACT_IDS) return null
+    val envelope = output.normalizedOutput?.envelope
+      ?: JsonSupport.parseObjectOrNull(output.payload)?.let { JsonSupport.jsonElementToValue(it) }
+        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: reject(
+        inputs,
+        declaration,
+        FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+        "validated producer output could not be decoded as an object.",
+      )
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    return declaration.declaredFieldNames.mapNotNull { name ->
+      val value = if (name == "verdict") envelope[name] else produced[name]
+      value?.let {
+        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
+      }
+    }
+  }
+
+  private fun projectionValue(
+    name: String,
+    value: Any,
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): FeatureTaskRuntimeHandoffProjectionValue {
+    if (name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
+      val checkpoint = JsonSupport.anyToStringAnyMap(value)
+      val fingerprint = (checkpoint?.get("fingerprint") as? String)?.takeIf(String::isNotBlank)
+        ?: reject(
+          inputs,
+          declaration,
+          FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+          "repository_checkpoint must contain a non-blank fingerprint.",
+        )
+      return FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+        FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+        fingerprint,
+      )
+    }
+    return when (value) {
+      is Iterable<*> -> FeatureTaskRuntimeHandoffProjectionValue.TextList(
+        value.map { item ->
+          when (item) {
+            is String -> item
+            is Map<*, *> -> JsonSupport.mapToJsonString(
+              item.entries.associate { (key, entryValue) -> key.toString() to entryValue },
+            )
+            else -> item.toString()
+          }
+        },
+      )
+      is Map<*, *> -> FeatureTaskRuntimeHandoffProjectionValue.Text(
+        JsonSupport.mapToJsonString(value.entries.associate { (key, entryValue) -> key.toString() to entryValue }),
+      )
+      else -> FeatureTaskRuntimeHandoffProjectionValue.Text(value.toString())
+    }
+  }
 
   /**
    * Resolves the concrete bounded planning projection fields for a declared upstream edge, or null when

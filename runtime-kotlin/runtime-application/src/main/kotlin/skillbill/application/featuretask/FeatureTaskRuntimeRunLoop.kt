@@ -1363,24 +1363,14 @@ internal class FeatureTaskRuntimeRunLoop(
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
         declaration.copy(
-          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
-            phaseId,
-            listOf(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-            ),
-          ),
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
         )
       } else if (
         phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
         declaration.copy(
-          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.upstreamReceiptProjections(
-            phaseId,
-            declaration.consumedUpstreamPhaseIds +
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-          ),
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.reviewRetryProjections(),
         )
       } else {
         declaration

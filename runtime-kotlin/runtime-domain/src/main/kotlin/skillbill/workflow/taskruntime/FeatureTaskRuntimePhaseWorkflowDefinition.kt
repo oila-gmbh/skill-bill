@@ -188,6 +188,79 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION: String = "0.1"
 
   /**
+   * Closed downstream projection contracts. These names are deliberately consumer-oriented: a
+   * producer's complete phase envelope remains private, while each edge receives only the fields
+   * listed by its declaration.
+   */
+  object PhaseProjectionContract {
+    const val VERSION: String = "0.1"
+    const val AUDIT_CLEARANCE: String = "feature_task_runtime.audit_clearance"
+    const val AUDIT_REPAIR_REQUEST: String = "feature_task_runtime.audit_repair_request"
+    const val REVIEW_CLEARANCE: String = "feature_task_runtime.review_clearance"
+    const val REVIEW_REPAIR_REQUEST: String = "feature_task_runtime.review_repair_request"
+    const val CHANGE_RECEIPT: String = "feature_task_runtime.change_receipt"
+    const val VALIDATION_REQUEST: String = "feature_task_runtime.validation_request"
+    const val VALIDATION_RECEIPT: String = "feature_task_runtime.validation_receipt"
+    const val BOUNDARY_CANDIDATES: String = "feature_task_runtime.boundary_candidates"
+    const val HISTORY_RECEIPT: String = "feature_task_runtime.history_receipt"
+    const val COMMIT_REQUEST: String = "feature_task_runtime.commit_request"
+    const val COMMIT_RECEIPT: String = "feature_task_runtime.commit_receipt"
+    const val PR_REQUEST: String = "feature_task_runtime.pr_request"
+  }
+
+  fun phaseProjection(
+    consumerPhaseId: String,
+    producingPhaseId: String,
+    name: String,
+    contractId: String,
+    fields: List<String>,
+    checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
+    consumerPhaseId = consumerPhaseId,
+    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+    projectionName = name,
+    projectionContractId = contractId,
+    projectionContractVersion = PhaseProjectionContract.VERSION,
+    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+    declaredFieldNames = fields,
+    checkpointPolicy = checkpointPolicy,
+    required = false,
+  )
+
+  fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
+    executablePlanDeclaration(PHASE_IMPLEMENT),
+    phaseProjection(
+      consumerPhaseId = PHASE_IMPLEMENT,
+      producingPhaseId = PHASE_AUDIT,
+      name = "audit_repair_request",
+      contractId = PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
+      fields = listOf("verdict", "gaps", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+    ),
+  )
+
+  fun reviewRetryProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
+    phaseProjection(
+      consumerPhaseId = PHASE_REVIEW,
+      producingPhaseId = PHASE_IMPLEMENT_FIX,
+      name = "change_receipt",
+      contractId = PhaseProjectionContract.CHANGE_RECEIPT,
+      fields = listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    ),
+    phaseProjection(
+      consumerPhaseId = PHASE_REVIEW,
+      producingPhaseId = PHASE_AUDIT,
+      name = "audit_clearance",
+      contractId = PhaseProjectionContract.AUDIT_CLEARANCE,
+      fields = listOf("verdict", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+    ),
+  )
+
+  /**
    * One coarse whole-receipt projection per declared upstream edge: the producing phase's validated
    * output delivered as a single bounded text field. This is deliberately the widest projection the
    * mechanism allows — it proves the declaration path is load-bearing without yet claiming any edge
@@ -314,6 +387,119 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_AUDIT to listOf(
       planCommitmentDeclaration(PHASE_AUDIT),
       implementationReceiptDeclaration(PHASE_AUDIT),
+    ),
+    PHASE_IMPLEMENT_FIX to listOf(
+      executablePlanDeclaration(PHASE_IMPLEMENT_FIX),
+      phaseProjection(
+        PHASE_IMPLEMENT_FIX,
+        PHASE_IMPLEMENT,
+        "change_receipt",
+        PhaseProjectionContract.CHANGE_RECEIPT,
+        listOf("changed_paths", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+      phaseProjection(
+        PHASE_IMPLEMENT_FIX,
+        PHASE_REVIEW,
+        "review_repair_request",
+        PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+        listOf("verdict", "findings", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+    ),
+    PHASE_REVIEW to listOf(
+      phaseProjection(
+        PHASE_REVIEW,
+        PHASE_IMPLEMENT,
+        "change_receipt",
+        PhaseProjectionContract.CHANGE_RECEIPT,
+        listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
+      phaseProjection(
+        PHASE_REVIEW,
+        PHASE_AUDIT,
+        "audit_clearance",
+        PhaseProjectionContract.AUDIT_CLEARANCE,
+        listOf("verdict", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+    ),
+    PHASE_VALIDATE to listOf(
+      phaseProjection(
+        PHASE_VALIDATE,
+        PHASE_IMPLEMENT,
+        "validation_request",
+        PhaseProjectionContract.VALIDATION_REQUEST,
+        listOf("changed_paths", "tests_added", "tests_updated", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
+      phaseProjection(
+        PHASE_VALIDATE,
+        PHASE_AUDIT,
+        "audit_clearance",
+        PhaseProjectionContract.AUDIT_CLEARANCE,
+        listOf("verdict", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+    ),
+    PHASE_WRITE_HISTORY to listOf(
+      phaseProjection(
+        PHASE_WRITE_HISTORY,
+        PHASE_IMPLEMENT,
+        "boundary_candidates",
+        PhaseProjectionContract.BOUNDARY_CANDIDATES,
+        listOf("changed_paths", "completed_task_ids", "deviations"),
+      ),
+      phaseProjection(
+        PHASE_WRITE_HISTORY,
+        PHASE_VALIDATE,
+        "validation_receipt",
+        PhaseProjectionContract.VALIDATION_RECEIPT,
+        listOf("validation_status", "checks", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+    ),
+    PHASE_COMMIT_PUSH to listOf(
+      phaseProjection(
+        PHASE_COMMIT_PUSH,
+        PHASE_IMPLEMENT,
+        "commit_request",
+        PhaseProjectionContract.COMMIT_REQUEST,
+        listOf("changed_paths", "completed_task_ids", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+      phaseProjection(
+        PHASE_COMMIT_PUSH,
+        PHASE_VALIDATE,
+        "validation_receipt",
+        PhaseProjectionContract.VALIDATION_RECEIPT,
+        listOf("validation_status", "checks", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+      phaseProjection(
+        PHASE_COMMIT_PUSH,
+        PHASE_WRITE_HISTORY,
+        "history_receipt",
+        PhaseProjectionContract.HISTORY_RECEIPT,
+        listOf("changed_paths", "decisions_recorded"),
+      ),
+    ),
+    PHASE_PR to listOf(
+      phaseProjection(
+        PHASE_PR,
+        PHASE_IMPLEMENT,
+        "pr_request",
+        PhaseProjectionContract.PR_REQUEST,
+        listOf("completed_task_ids", "changed_paths", "tests_added", "tests_updated", "deviations"),
+      ),
+      phaseProjection(
+        PHASE_PR,
+        PHASE_COMMIT_PUSH,
+        "commit_receipt",
+        PhaseProjectionContract.COMMIT_RECEIPT,
+        listOf("commit_sha", "branch", "pushed"),
+      ),
     ),
   )
 

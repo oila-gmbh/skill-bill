@@ -5,6 +5,7 @@ import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -241,6 +242,101 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       emptyList(),
       declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN).derivedContextKeys,
     )
+  }
+
+  @Test
+  fun `consumer projection matrix is exact and downstream edges never receive whole phase receipts`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val expected = mapOf(
+      def.PHASE_PLAN to setOf(def.PHASE_PREPLAN to "feature_task_runtime.preplanning_digest"),
+      def.PHASE_IMPLEMENT to setOf(def.PHASE_PLAN to "feature_task_runtime.executable_plan"),
+      def.PHASE_AUDIT to setOf(
+        def.PHASE_PLAN to "feature_task_runtime.plan_commitment",
+        def.PHASE_IMPLEMENT to "feature_task_runtime.implementation_receipt",
+      ),
+      def.PHASE_IMPLEMENT_FIX to setOf(
+        def.PHASE_PLAN to "feature_task_runtime.executable_plan",
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+        def.PHASE_REVIEW to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+      ),
+      def.PHASE_REVIEW to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      ),
+      def.PHASE_VALIDATE to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      ),
+      def.PHASE_WRITE_HISTORY to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
+        def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+      ),
+      def.PHASE_COMMIT_PUSH to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+        def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+        def.PHASE_WRITE_HISTORY to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
+      ),
+      def.PHASE_PR to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
+        def.PHASE_COMMIT_PUSH to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+      ),
+    )
+    expected.forEach { (consumer, expectedEdges) ->
+      val actual = def.phaseDeclarations.getValue(consumer).projectionDeclarations.map { declaration ->
+        val source = declaration.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
+        source.producingPhaseId to declaration.projectionContractId
+      }.toSet()
+      assertEquals(expectedEdges, actual, consumer)
+      assertTrue(
+        def.phaseDeclarations.getValue(consumer).projectionDeclarations.none {
+          it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID
+        },
+        "$consumer must not receive a complete upstream phase receipt",
+      )
+      def.phaseDeclarations.getValue(consumer).projectionDeclarations.forEach { declaration ->
+        assertTrue("phase_output_receipt" !in declaration.declaredFieldNames)
+        assertTrue(
+          declaration.declaredFieldNames.none {
+            it in setOf(
+              "summary", "raw_payload", "payload", "raw_prompt", "prompt", "transcript",
+              "tool_output", "logs", "source_body", "diff_body", "telemetry", "prior_reports",
+              "repair_history",
+            )
+          },
+          "${declaration.projectionName} exposes forbidden context",
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `remediation selectors retain only the immutable plan and applicable repair projection`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val auditRemediation = def.auditRemediationProjections()
+    assertEquals(
+      listOf(
+        def.PHASE_PLAN to "feature_task_runtime.executable_plan",
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
+      ),
+      auditRemediation.map {
+        (it.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput).producingPhaseId to
+          it.projectionContractId
+      },
+    )
+    assertTrue(auditRemediation.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
+
+    val reviewRetry = def.reviewRetryProjections()
+    assertEquals(
+      listOf(
+        def.PHASE_IMPLEMENT_FIX to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      ),
+      reviewRetry.map {
+        (it.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput).producingPhaseId to
+          it.projectionContractId
+      },
+    )
+    assertTrue(reviewRetry.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
   }
 
   @Test
