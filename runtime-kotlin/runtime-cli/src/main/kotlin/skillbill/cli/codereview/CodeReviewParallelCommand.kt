@@ -2,6 +2,7 @@ package skillbill.cli.codereview
 
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.long
@@ -10,6 +11,7 @@ import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
@@ -62,6 +64,18 @@ class CodeReviewParallelCommand(
     "--diff-file",
     help = "Exact diff input for both lanes. When supplied, it replaces the configured review scope.",
   )
+  private val baseRevision by option(
+    "--base-revision",
+    help = "Immutable base identity for --diff-file. Must be paired with --head-revision.",
+  )
+  private val headRevision by option(
+    "--head-revision",
+    help = "Immutable head identity for --diff-file. Must be paired with --base-revision.",
+  )
+  private val expandFiles by option(
+    "--expand-file",
+    help = "Governed prelaunch whole-file evidence as LANE:PATH=REACHABILITY_REASON. Repeatable.",
+  ).multiple()
   private val codeReviewMode by option(
     "--execution-mode",
     help = "Shared execution mode for both lanes: inline (default), auto, or delegated.",
@@ -104,6 +118,9 @@ class CodeReviewParallelCommand(
           codeReviewMode = parseExecutionMode(codeReviewMode),
           suppliedDiffPath = suppliedDiffPath(),
           reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
+          baseRevision = baseRevision?.takeIf(String::isNotBlank),
+          headRevision = headRevision?.takeIf(String::isNotBlank),
+          prelaunchExpansions = expandFiles.map(::parseExpansion),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
@@ -150,6 +167,19 @@ class CodeReviewParallelCommand(
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()
+  }
+
+  private fun parseExpansion(value: String): ReviewPrelaunchExpansion {
+    val laneSeparator = value.indexOf(':')
+    val reasonSeparator = value.indexOf('=', startIndex = laneSeparator + 1)
+    if (laneSeparator <= 0 || reasonSeparator <= laneSeparator + 1 || reasonSeparator == value.lastIndex) {
+      throw UsageError("--expand-file must use LANE:PATH=REACHABILITY_REASON with non-blank values.")
+    }
+    return ReviewPrelaunchExpansion(
+      lane = value.substring(0, laneSeparator),
+      path = value.substring(laneSeparator + 1, reasonSeparator),
+      reachabilityReason = value.substring(reasonSeparator + 1),
+    )
   }
 
   private companion object {

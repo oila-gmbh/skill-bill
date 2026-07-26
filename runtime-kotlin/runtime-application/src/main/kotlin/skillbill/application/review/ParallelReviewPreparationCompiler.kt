@@ -7,6 +7,7 @@ import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
@@ -168,6 +169,9 @@ internal object ParallelReviewPreparationCompiler {
         workerKind = route.workerKind,
         logicalWorkerName = null,
         repoRoot = input.repoRoot,
+        prelaunchExpansions = input.prelaunchExpansions
+          .filter { it.lane == assignment.lane || it.lane == assignment.lane.substringAfter(':') }
+          .map { ReviewExpansionAuthorizationRequest(assignment.lane, it.path, it.reachabilityReason) },
       )
     }
   }
@@ -209,4 +213,5 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
+  val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
 )

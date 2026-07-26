@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.RUNTIME_REFUSED_AGENT_MESSAGE
 import skillbill.install.model.isRuntimeRefusedAgent
+import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -15,10 +16,12 @@ import skillbill.ports.review.model.NativeReviewWorkerRequest
 import java.nio.file.Files
 import java.util.Comparator
 
-@Inject
-class FileSystemAgentRunLauncher(
-  processRunner: JvmAgentRunProcessRunner,
+class FileSystemAgentRunLauncher internal constructor(
+  processRunner: AgentRunProcessRunner,
 ) : AgentRunLauncher {
+  @Inject
+  constructor(processRunner: JvmAgentRunProcessRunner) : this(processRunner as AgentRunProcessRunner)
+
   private val adapters: Map<InstallAgent, AgentRunAdapter> = headlessAgentRunAdapters(processRunner)
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
@@ -49,13 +52,10 @@ class FileSystemAgentRunLauncher(
       "Native review isolation does not match the provider strategy."
     }
     val capabilities = adapter.nativeReviewCapabilities
-    if (request.logicalWorkerName == null) {
-      return UnsupportedAgentRunLaunch(agent, "A provider-native governed review requires a logical worker identity.")
-    }
     if (agent == InstallAgent.JUNIE) {
       return UnsupportedAgentRunLaunch(
         agent,
-        "Agent '${agent.id}' cannot select the installed native review worker '${request.logicalWorkerName}'.",
+        "Agent '${agent.id}' cannot start a prompt-only governed native review worker.",
       )
     }
     if (!capabilities.supportsGovernedLaunch) {

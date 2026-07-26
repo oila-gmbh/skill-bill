@@ -12,6 +12,7 @@ import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewBudgetEvaluator
@@ -74,6 +75,7 @@ class DelegatedReviewLaunchBroker(
         projectedHunks = request.packet.changedHunks.filter { it.hunkId in request.assignment.assignedHunks },
       ),
     )
+    val preauthorizedEvidenceRequests = authorizePrelaunchExpansions(request, evidenceBroker)
     return DelegatedReviewLaunchOutcome.Prepared(
       DelegatedReviewLaunch(
         launch = launch,
@@ -81,9 +83,23 @@ class DelegatedReviewLaunchBroker(
         isolation = isolation,
         evidenceBroker = evidenceBroker,
         rubricIsAuthoritative = request.workerKind == ReviewWorkerKind.PROVIDER_NATIVE,
+        preauthorizedEvidenceRequests = preauthorizedEvidenceRequests,
       ),
     )
   }
+
+  private fun authorizePrelaunchExpansions(
+    request: DelegatedReviewLaunchRequest,
+    evidenceBroker: skillbill.ports.review.ReviewEvidenceBroker,
+  ): List<ReviewEvidenceRequest> = request.prelaunchExpansions.map { expansion ->
+    val authorization = evidenceBroker.authorizeExpansion(expansion)
+    ReviewEvidenceRequest(
+      lane = expansion.lane,
+      path = expansion.path,
+      reachabilityReason = expansion.reachabilityReason,
+      authorizedExpansion = authorization,
+    )
+  }.distinctBy { it.path }
 
   private fun requireBoundedNamedDependencies(request: DelegatedReviewLaunchRequest) {
     val allowed = request.assignment.dependencyAllowlist.normalized.toSet()

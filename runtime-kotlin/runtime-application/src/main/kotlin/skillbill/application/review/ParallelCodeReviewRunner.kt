@@ -236,6 +236,7 @@ class ParallelCodeReviewRunner(
         reviewRunId = request.reviewRunId,
         baseRevision = baseRevision,
         headRevision = headRevision,
+        prelaunchExpansions = request.prelaunchExpansions,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
