@@ -215,11 +215,6 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.repositoryCheckpointFingerprint
 
-  private fun postFixCheckpointFingerprint(): String? =
-    recorder.loadDeliveredProjections(request.workflowId, request.dbPathOverride)
-      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
-      ?.repositoryCheckpointFingerprint
-
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
       check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
@@ -404,10 +399,22 @@ internal class FeatureTaskRuntimeRunLoop(
           it.reviewCapReached || it.pausedForOperatorDecision || it.reviewSkippedByUser || it.completedPassCount >= 2
         }
         ?.let {
-          settleCarriedForwardGoalReview(
-            it,
-            activeReentry,
-          )
+          if (it.pausedForOperatorDecision) {
+            val reason = state.recordFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+              ?.blockedReason
+              ?: "Goal-subtask review is paused for an operator decision."
+            pauseAt(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              reason,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+            )
+            PhaseSettlement.stop()
+          } else {
+            settleCarriedForwardGoalReview(
+              it,
+              activeReentry,
+            )
+          }
         }
     },
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
@@ -1740,7 +1747,7 @@ internal class FeatureTaskRuntimeRunLoop(
       null
     }
     val missing = persisted ?: invalidPlanningContext
-      ?: missingUpstream(run.declaration, state.outputs())?.let { missingIds ->
+      ?: missingRequiredUpstream(run, state)?.let { missingIds ->
         PreLaunchBlock(
           1,
           "Phase '${run.phaseId}' requires upstream output(s) ${missingIds.joinToString()} that are not " +
@@ -1765,6 +1772,19 @@ internal class FeatureTaskRuntimeRunLoop(
         rejectedOutput = durable?.rejectedOutput,
       )
     }
+  }
+
+  private fun missingRequiredUpstream(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String>? {
+    val recoverableAuditRepairSource =
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+        run.reentry.auditRepairPlan != null &&
+        run.reentry.auditRepairState != null
+    return missingUpstream(run.declaration, state.outputs())
+      ?.filterNot {
+        recoverableAuditRepairSource && it == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+      }
+      ?.takeIf(List<String>::isNotEmpty)
   }
 
   private fun isRetryableGoalReviewPreparation(phaseId: String, reason: String): Boolean {
@@ -2680,39 +2700,10 @@ internal class FeatureTaskRuntimeRunLoop(
           ),
         )
       }
-      if (!persistPostFixCheckpoint(run, repositoryFingerprint)) {
-        return AttemptResult.settled(
-          blockAndPersistInPhase(
-            run,
-            iteration,
-            "Validated implement_fix output was persisted, but its post-completion repository checkpoint was not.",
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-            fileManifest = fileManifest,
-          ),
-        )
-      }
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput)),
-    )
-  }
-
-  private fun persistPostFixCheckpoint(run: PhaseRun, repositoryFingerprint: String?): Boolean {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return true
-    val fingerprint = repositoryFingerprint ?: return false
-    val briefing = recorder.loadPhaseBriefings(run.request.workflowId, run.request.dbPathOverride)
-      ?.get(run.phaseId)
-      ?: return false
-    return recorder.recordPhaseBriefing(
-      run.request.workflowId,
-      briefing.copy(
-        handoffEnvelope = briefing.handoffEnvelope.copy(
-          repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
-        ),
-      ),
-      run.request.dbPathOverride,
     )
   }
 
@@ -2881,7 +2872,7 @@ internal class FeatureTaskRuntimeRunLoop(
           run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
           run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
         ) {
-          postFixCheckpointFingerprint()
+          repositoryCheckpoint?.fingerprint
         } else {
           run.reentry?.expectedRepositoryCheckpoint
             ?: run.reentry?.auditRepairState?.repositoryFingerprint
@@ -2890,6 +2881,9 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
       branchIdentity = resolvedBranch,
+      baseBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+        ?.baseBranch
+        ?: "main",
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(

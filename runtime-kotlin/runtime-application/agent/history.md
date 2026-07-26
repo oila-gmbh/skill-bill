@@ -1,3 +1,14 @@
+## [2026-07-26] SKILL-146 subtask 3 — Bounded feature-task phase projections
+Areas: runtime-application/featuretask
+- Tightened audit-remediation and review-retry launches to their dedicated bounded projection sets instead of rebuilding broad upstream receipts
+- Review-fix handoffs now carry the reviewed repository checkpoint through re-entry and verify the completed implement-fix fingerprint before retrying review
+- Audit repair may recover its durable repair plan and state when the prior audit output is unavailable, while still requiring every other declared upstream
+- Reused the phase handoff checkpoint contract for branch identity, base branch, and expected-checkpoint enforcement across remediation edges. reusable
+- Preserved operator-decision pauses during carried-forward goal review so the runtime cannot settle or advance a review awaiting explicit action
+- Breaking changes/limitations: completed implement-fix phases now require repository fingerprinting; fingerprint failure blocks the phase as a process failure
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-26] SKILL-143 — Bounded blocked-subtask recovery
 Areas: runtime-application, runtime-cli, runtime-domain, runtime-ports, runtime-infra-sqlite, runtime-infra-fs
 - Added an explicit subtask-scoped reset that deletes only an incompatible terminal child workflow while preserving planning checkpoints, unrelated subtask state, runtime fields, commits, workflow links, and out-of-band acceptances
