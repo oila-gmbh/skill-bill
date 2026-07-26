@@ -471,6 +471,19 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     ),
   )
 
+  /**
+   * Private producer evidence that a runtime-owned projector may combine. These records are never
+   * delivered directly; the consumer still sees only the closed declaration in
+   * [PHASE_PROJECTION_MATRIX].
+   */
+  fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
+    PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
+    PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE)
+    PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY)
+    PHASE_PR -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_COMMIT_PUSH)
+    else -> emptySet()
+  }
+
   val phaseDeclarations: Map<String, FeatureTaskRuntimePhaseDeclaration> =
     definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimePhaseDeclaration(

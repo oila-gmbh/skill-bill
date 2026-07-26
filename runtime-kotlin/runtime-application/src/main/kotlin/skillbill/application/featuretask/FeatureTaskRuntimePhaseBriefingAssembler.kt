@@ -53,14 +53,13 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
   )
 
-  fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> =
-    when (phaseId) {
-      in FINALIZATION_PHASE_IDS -> FINALIZATION
-      // The bounded PR request explicitly carries the acceptance contract; it still excludes
-      // planning, audit, review, history, and raw validation context.
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> ACCEPTANCE_CONTRACT_PHASES
-      else -> ACCEPTANCE_CONTRACT_PHASES
-    }
+  fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> = when (phaseId) {
+    in FINALIZATION_PHASE_IDS -> FINALIZATION
+    // The bounded PR request explicitly carries the acceptance contract; it still excludes
+    // planning, audit, review, history, and raw validation context.
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> ACCEPTANCE_CONTRACT_PHASES
+    else -> ACCEPTANCE_CONTRACT_PHASES
+  }
 }
 
 /**
@@ -120,6 +119,10 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         runInvariants = handoff.runInvariants,
         resolvedCheckpoint = handoff.repositoryCheckpoint,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
+        auditRepairPlan = handoff.auditRepairPlan,
+        auditRepairState = handoff.auditRepairState,
+        branchIdentity = handoff.branchIdentity,
+        baseBranch = handoff.baseBranch,
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
         addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
@@ -234,6 +237,12 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       appendLine("  - Honor dependency order internally without deferring any runnable item to another round.")
       appendLine(
         "  - After each item, verify its repository outcome and record its terminal result before continuing.",
+      )
+      appendLine(
+        "  - A fixed outcome requires executed_verification to show the gap's original failure_evidence " +
+          "check no longer failing at its recorded artifact_ref: re-read the repaired symbols and state " +
+          "the concrete repository fact that discharges that exact check. Generic inspection notes or " +
+          "git diff output alone never justify fixed. Builds and tests stay deferred to validate.",
       )
       appendLine("  - Do not finish until every carried repair_item_id has exactly one terminal result.")
       appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")

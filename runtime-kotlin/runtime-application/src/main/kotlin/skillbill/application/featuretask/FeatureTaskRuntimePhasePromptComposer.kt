@@ -464,7 +464,10 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Inspect only the\n" +
         "      repaired symbols and the directly necessary production evidence needed to decide whether each\n" +
         "      carried gap is resolved or recurring. Do not rescan the full subtask, the full acceptance-criterion\n" +
-        "      surface, or the cumulative diff. Do not hunt for unrelated or newly discoverable gaps. Emit a\n" +
+        "      surface, or the cumulative diff. Do not hunt for unrelated or newly discoverable gaps. A recurring\n" +
+        "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
+        "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
+        "      a preference for a different repair approach never makes a resolved gap recurring. Emit a\n" +
         "      compact gap only when one of the carried gaps still recurs; otherwise emit satisfied with gaps [].\n"
     }
 

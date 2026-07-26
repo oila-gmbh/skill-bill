@@ -215,6 +215,11 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.repositoryCheckpointFingerprint
 
+  private fun postFixCheckpointFingerprint(): String? =
+    recorder.loadDeliveredProjections(request.workflowId, request.dbPathOverride)
+      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
+      ?.repositoryCheckpointFingerprint
+
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
       check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
@@ -2144,13 +2149,13 @@ internal class FeatureTaskRuntimeRunLoop(
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
-    val repositoryFingerprint = auditRepairRepositoryFingerprint(run)?.let { result ->
+    val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
         return AttemptResult.settled(
           blockAndPersistInPhase(
             run,
             iteration,
-            "Audit-repair repository fingerprinting failed: ${result.error}",
+            "Completed-phase repository fingerprinting failed for '${run.phaseId}': ${result.error}",
             observability,
             failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
             fileManifest = fileManifest,
@@ -2331,12 +2336,14 @@ internal class FeatureTaskRuntimeRunLoop(
     return paths
   }
 
-  private fun auditRepairRepositoryFingerprint(run: PhaseRun) =
-    if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-      gitOperations.repositoryFingerprint(run.request.repoRoot)
-    } else {
-      null
-    }
+  private fun completedPhaseRepositoryFingerprint(run: PhaseRun) = if (
+    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
+    run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+  ) {
+    gitOperations.repositoryFingerprint(run.request.repoRoot)
+  } else {
+    null
+  }
 
   @Suppress("ReturnCount")
   private fun auditRepairNonProgressReason(
@@ -2841,10 +2848,19 @@ internal class FeatureTaskRuntimeRunLoop(
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repositoryCheckpoint = repositoryCheckpoint,
       expectedRepositoryCheckpoint = (
-        run.reentry?.expectedRepositoryCheckpoint
-          ?: run.reentry?.auditRepairState?.repositoryFingerprint
+        if (
+          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+          run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+        ) {
+          postFixCheckpointFingerprint()
+        } else {
+          run.reentry?.expectedRepositoryCheckpoint
+            ?: run.reentry?.auditRepairState?.repositoryFingerprint
+            ?: repositoryCheckpoint?.fingerprint
+        }
         )
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
+      branchIdentity = resolvedBranch,
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(

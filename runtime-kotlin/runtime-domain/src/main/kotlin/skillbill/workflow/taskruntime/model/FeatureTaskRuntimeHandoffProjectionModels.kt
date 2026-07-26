@@ -678,6 +678,12 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   /** Checkpoint recorded in durable state, compared against the resolved one under `must_match`. */
   val expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  /** Durable runtime-owned repair state used to construct audit-remediation projections. */
+  val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
+  val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  /** Runtime-owned branch identity used only by bounded finalization request projectors. */
+  val branchIdentity: String? = null,
+  val baseBranch: String = "main",
   val addonContentBySlug: Map<String, String> = emptyMap(),
   val workflowId: String? = null,
   /**

@@ -452,8 +452,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         "validated producer output could not be decoded as an object.",
       )
     val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced)
     return declaration.declaredFieldNames.mapNotNull { name ->
-      val value = if (name == "verdict") {
+      val value = runtimeOwned[name] ?: if (name == "verdict") {
         envelope[name]
       } else {
         resolveDeclaredPhaseField(produced, name)
@@ -462,6 +463,153 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
       }
     }
+  }
+
+  private fun runtimeOwnedPhaseProjectionValues(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    produced: Map<String, Any?>,
+  ): Map<String, Any?> = when (declaration.projectionContractId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> {
+      val plan = inputs.auditRepairPlan
+      val state = inputs.auditRepairState
+      mapOf(
+        "audit_repair_plan" to plan?.let(::auditRepairPlanProjection),
+        "prior_terminal_repair_outcomes" to state?.repairItemResults?.map { result ->
+          mapOf(
+            "repair_item_id" to result.repairItemId,
+            "outcome" to result.outcome.name.lowercase(),
+          )
+        }.orEmpty(),
+        "unresolved_gap_ids" to state?.unresolvedGapLedger?.unresolvedGaps?.map { it.gapId }
+          .orEmpty()
+          .ifEmpty { plan?.gaps?.map { it.gapId }.orEmpty() },
+        "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      )
+    }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
+      "unresolved_blocker_findings" to reviewBlockerProjection(produced),
+      "repository_checkpoint" to inputs.expectedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
+    else -> finalizationProjectionValues(inputs, declaration)
+  }.filterValues { it != null }
+
+  private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
+    (
+      produced["findings"] as? List<*>
+        ?: JsonSupport.anyToStringAnyMap(produced["review_result"])?.get("findings") as? List<*>
+      ).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .filter { finding -> (finding["severity"] as? String)?.equals("blocker", ignoreCase = true) == true }
+      .map { finding ->
+        mapOf(
+          "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
+          "severity" to "blocker",
+          "location" to (
+            finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
+            ),
+          "expected_outcome" to (
+            finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the Blocker."
+            ),
+          "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
+          "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
+        ).filterValues { it != null }
+      }
+
+  private fun auditRepairPlanProjection(
+    plan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan,
+  ): Map<String, Any?> = mapOf(
+    "contract_version" to plan.contractVersion,
+    "gaps" to plan.gaps.map { gap ->
+      mapOf(
+        "gap_id" to gap.gapId,
+        "acceptance_criterion_ref" to gap.acceptanceCriterionRef,
+        "acceptance_criterion_text" to gap.acceptanceCriterionText,
+        "diagnosis" to gap.diagnosis,
+        "affected_boundary" to gap.affectedBoundary,
+        "repair_items" to gap.repairItems.map { item ->
+          mapOf(
+            "repair_item_id" to item.repairItemId,
+            "intended_outcome" to item.intendedOutcome,
+            "implementation_actions" to item.implementationActions,
+            "affected_paths_or_symbols" to item.affectedPathsOrSymbols,
+            "required_verification" to item.requiredVerification,
+            "depends_on" to item.dependsOn,
+            "status" to item.status.name.lowercase(),
+          )
+        },
+      )
+    },
+  )
+
+  private fun finalizationProjectionValues(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): Map<String, Any?> {
+    val outputs = inputs.resolvedUpstream.outputsByPhaseId
+    val plan = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN]?.let {
+      planningProducedOutputs(it)
+    }.orEmpty()
+    val implementation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]?.let {
+      planningProducedOutputs(it)
+    }.orEmpty()
+    val validation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE]?.let {
+      genericProducedOutputs(it)
+    }.orEmpty()
+    val checkpoint = inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
+    val changedPaths = (implementation["changed_paths"] as? List<*>).orEmpty().filterIsInstance<String>()
+    val requiredChecks = (
+      (plan["validation_strategy"] as? List<*>).orEmpty() +
+        (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
+          JsonSupport.anyToStringAnyMap(task)?.get("test_obligations") as? List<*> ?: emptyList<Any?>()
+        }
+      ).filterIsInstance<String>().distinct()
+    val branch = inputs.branchIdentity ?: "unknown"
+    val base = inputs.baseBranch
+    return when (declaration.projectionContractId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST -> mapOf(
+        "validation_strategy" to (plan["validation_strategy"] ?: emptyList<String>()),
+        "changed_paths" to changedPaths,
+        "required_checks" to requiredChecks,
+        "repository_checkpoint" to checkpoint,
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES -> mapOf(
+        "changed_paths" to changedPaths,
+        "boundary_candidates" to changedPaths.map { it.substringBeforeLast('/', "") }.filter(String::isNotBlank).distinct(),
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST -> mapOf(
+        "path_inventory" to changedPaths,
+        "required_inclusions" to changedPaths,
+        "required_exclusions" to emptyList<String>(),
+        "branch_identity" to branch,
+        "gate_attestations" to listOf("audit", "review", "validate", "write_history"),
+        "repository_checkpoint" to checkpoint,
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST -> mapOf(
+        "completed_task_ids" to implementation["completed_task_ids"],
+        "changed_paths" to changedPaths,
+        "tests_added" to implementation["tests_added"],
+        "tests_updated" to implementation["tests_updated"],
+        "deviations" to implementation["deviations"],
+        "validation_summary" to (
+          validation["validation_result"] ?: validation["validation_summary"] ?: validation["summary"] ?: "completed"
+          ),
+        "base_branch" to base,
+        "diff_reference" to (inputs.resolvedCheckpoint?.fingerprint ?: "repository-checkpoint-unavailable"),
+      )
+      else -> emptyMap()
+    }
+  }
+
+  private fun planningProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> =
+    genericProducedOutputs(output)
+
+  private fun genericProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> {
+    val envelope = output.normalizedOutput?.envelope
+      ?: JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyMap()
+    return JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
   }
 
   /**

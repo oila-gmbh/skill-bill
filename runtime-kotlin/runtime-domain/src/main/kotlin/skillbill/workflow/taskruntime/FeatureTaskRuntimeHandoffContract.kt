@@ -55,6 +55,9 @@ object FeatureTaskRuntimeHandoffContract {
         latestByPhase[sourceRef.producingPhaseId]?.let { resolved[sourceRef.producingPhaseId] = it }
       }
     }
+    FeatureTaskRuntimePhaseWorkflowDefinition.runtimeProjectorProducerPhaseIds(declaration.phaseId).forEach { phaseId ->
+      latestByPhase[phaseId]?.let { resolved[phaseId] = it }
+    }
     return FeatureTaskRuntimeResolvedUpstreamOutputs(resolved)
   }
 
@@ -76,6 +79,8 @@ object FeatureTaskRuntimeHandoffContract {
     durablyClosedCriterionRefs: List<String> = emptyList(),
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+    branchIdentity: String? = null,
+    baseBranch: String = "main",
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -84,6 +89,8 @@ object FeatureTaskRuntimeHandoffContract {
     projectionDeclarations = declaration.projectionDeclarations,
     repositoryCheckpoint = repositoryCheckpoint,
     expectedRepositoryCheckpoint = expectedRepositoryCheckpoint,
+    branchIdentity = branchIdentity,
+    baseBranch = baseBranch,
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,

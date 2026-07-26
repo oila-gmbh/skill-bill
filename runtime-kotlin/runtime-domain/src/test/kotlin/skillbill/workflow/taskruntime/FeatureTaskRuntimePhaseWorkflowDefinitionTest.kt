@@ -395,6 +395,28 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
+  fun `runtime projectors privately combine only the producers needed by finalization consumers`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    assertEquals(
+      setOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_VALIDATE),
+    )
+    assertEquals(
+      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_WRITE_HISTORY),
+    )
+    assertEquals(
+      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_WRITE_HISTORY),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_COMMIT_PUSH),
+    )
+    assertEquals(
+      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_COMMIT_PUSH),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_PR),
+    )
+    assertTrue(def.runtimeProjectorProducerPhaseIds(def.PHASE_REVIEW).isEmpty())
+  }
+
+  @Test
   fun `the pipeline is audit-first and review is gated on a satisfied audit`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val ids = def.transitions.forwardPhaseIds

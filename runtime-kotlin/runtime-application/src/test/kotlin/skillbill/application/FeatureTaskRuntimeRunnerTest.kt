@@ -2765,6 +2765,19 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     // (e) the fix briefing carries the review findings handed off for remediation.
     val fixBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement_fix"])
     assertContains(fixBriefing.briefingText, REVIEW_BLOCKER_MESSAGE)
+    val postFixFingerprint = requireNotNull(
+      harness.recorder.loadDeliveredProjections(WORKFLOW_ID)
+        .orEmpty()["implement_fix"]
+        ?.repositoryCheckpointFingerprint,
+    )
+    val repeatedReviewProjection = requireNotNull(
+      harness.recorder.loadDeliveredProjections(WORKFLOW_ID).orEmpty()["review"],
+    )
+    assertEquals(
+      postFixFingerprint,
+      repeatedReviewProjection.repositoryCheckpointFingerprint,
+      "repeated review must match the runtime-captured post-fix checkpoint",
+    )
     // (AC6) each implement_fix launch + re-review carry the review_fix loop id + iteration in the ledger.
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }

@@ -120,6 +120,46 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `review repair projection keeps only unresolved Blocker findings and exact reviewed checkpoint`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      ),
+      projectionName = "review_repair_request",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+      declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree")
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              1,
+              """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"}]}}""",
+            ),
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+        expectedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields
+    assertEquals(listOf("unresolved_blocker_findings", "repository_checkpoint"), fields.map { it.name })
+    val blockers = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
+    assertEquals(1, blockers.values.size)
+    assertContains(blockers.values.single(), "F-001")
+    assertFalse(blockers.values.single().contains("F-002"))
+  }
+
+  @Test
   fun `phase request projection rejects a required field missing from the producer result`() {
     val declaration = declaration(
       projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
@@ -445,13 +485,14 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   )
 
   private fun inputs(
+    consumerPhaseId: String = CONSUMER,
     declarations: List<PhaseHandoffProjectionDeclaration> = listOf(declaration()),
     resolvedUpstream: FeatureTaskRuntimeResolvedUpstreamOutputs = upstream(),
     runInvariants: FeatureTaskRuntimeRunInvariants = runInvariants(),
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
-    consumerPhaseId = CONSUMER,
+    consumerPhaseId = consumerPhaseId,
     declarations = declarations,
     resolvedUpstream = resolvedUpstream,
     runInvariants = runInvariants,

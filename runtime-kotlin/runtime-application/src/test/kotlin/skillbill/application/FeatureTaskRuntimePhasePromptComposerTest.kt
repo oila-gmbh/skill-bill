@@ -13,12 +13,21 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -27,6 +36,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass") // single suite over one composer; splitting would scatter the per-phase prompt contract
 class FeatureTaskRuntimePhasePromptComposerTest {
   @Test
   fun `review prompt forwards selected execution mode through a parallel lane`() {
@@ -485,6 +495,44 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `follow-up audit prompt binds recurring dispositions to the original failure evidence`() {
+    val followUpPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit", auditRepairState = carriedGapRepairState()),
+    )
+
+    assertContains(followUpPrompt, "FOLLOW-UP AUDIT SCOPE", false, "carried unresolved gaps select the follow-up scope")
+    assertContains(followUpPrompt, "ac-001-gap-1", false, "the carried gap ids are named in the scope")
+    assertContains(
+      followUpPrompt,
+      "ORIGINAL failure_evidence check still fails at its",
+      false,
+      "recurring requires the original check to still fail",
+    )
+    assertContains(
+      followUpPrompt,
+      "never makes a resolved gap recurring",
+      false,
+      "reinterpretation of the criterion cannot reopen a repaired gap",
+    )
+    assertFalse(
+      followUpPrompt.contains("INITIAL AUDIT SCOPE"),
+      "a carried-gap round must not rescan the full criterion surface",
+    )
+  }
+
+  @Test
+  fun `initial audit prompt carries no recurrence vocabulary`() {
+    val initialPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(initialPrompt, "INITIAL AUDIT SCOPE", false, "no carried gaps selects the initial scope")
+    assertFalse(
+      initialPrompt.contains("FOLLOW-UP AUDIT SCOPE"),
+      "the initial pass must not receive the carried-gap scope",
+    )
+  }
+
+  @Test
   fun `audit prompt separates blocking gaps from non blocking findings`() {
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
@@ -748,6 +796,7 @@ private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIP
 private fun briefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+  auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
 ) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
   FeatureTaskRuntimeHandoffContract.assembleHandoff(
     declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize),
@@ -763,7 +812,48 @@ private fun briefingFor(
       FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
       FeatureTaskRuntimePhaseOutput("review", 1, """{"review":"ok"}"""),
     ),
+    auditRepairState = auditRepairState,
     // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
     repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
   ),
 )
+
+private fun carriedGapRepairState(): FeatureTaskRuntimeAuditRepairState {
+  val plan = FeatureTaskRuntimeAuditRepairPlan(
+    contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
+    gaps = listOf(
+      FeatureTaskRuntimeAuditGap(
+        gapId = "ac-001-gap-1",
+        acceptanceCriterionRef = "AC-001",
+        acceptanceCriterionText = "The seam is durable.",
+        failureEvidence = FeatureTaskRuntimeEvidence(
+          FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH,
+          "FeatureTaskRuntimeRunLoop.prepareLaunch",
+          "AC-001",
+        ),
+        diagnosis = "The seam drops the durable checkpoint.",
+        affectedBoundary = "runtime application",
+        repairItems = listOf(
+          FeatureTaskRuntimeRepairItem(
+            repairItemId = "ac-001-gap-1-item-1",
+            intendedOutcome = "Preserve the durable checkpoint",
+            implementationActions = listOf("Thread the checkpoint through prepareLaunch"),
+            affectedPathsOrSymbols = listOf("FeatureTaskRuntimeRunLoop.prepareLaunch"),
+            requiredVerification = listOf("Verify AC-001 at prepareLaunch"),
+            dependsOn = emptyList(),
+          ),
+        ),
+      ),
+    ),
+  )
+  return FeatureTaskRuntimeAuditRepairState(
+    acceptedPlans = listOf(plan),
+    repairItemResults = emptyList(),
+    priorGapDispositions = emptyList(),
+    unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+      listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
+    ),
+    repositoryFingerprint = "digest",
+    progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
+  )
+}
