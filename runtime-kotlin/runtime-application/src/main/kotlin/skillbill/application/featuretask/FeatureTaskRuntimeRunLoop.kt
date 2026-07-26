@@ -69,6 +69,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
@@ -92,6 +93,32 @@ internal data class FeatureTaskRuntimeRunLoopContext(
   val transitions: FeatureTaskRuntimeTransitionDeclaration,
   val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>,
 )
+
+internal data class LaunchRejectionAttribution(
+  val projectionContractId: String,
+  val producerIteration: FeatureTaskRuntimeProducerIteration,
+)
+
+internal fun resolveLaunchRejectionAttribution(
+  declarations: List<PhaseHandoffProjectionDeclaration>,
+  projectionName: String,
+  currentProducerIteration: (String) -> Int?,
+  fallbackProducerIteration: FeatureTaskRuntimeProducerIteration,
+): LaunchRejectionAttribution {
+  val declaration = declarations.singleOrNull { it.projectionName == projectionName }
+    ?: return LaunchRejectionAttribution(
+      projectionContractId = "feature_task_runtime.$projectionName",
+      producerIteration = fallbackProducerIteration,
+    )
+  val declaredProducer = declaration.producerIteration
+  return LaunchRejectionAttribution(
+    projectionContractId = declaration.projectionContractId,
+    producerIteration = FeatureTaskRuntimeProducerIteration(
+      phaseId = declaredProducer.phaseId,
+      iteration = currentProducerIteration(declaredProducer.phaseId) ?: declaredProducer.iteration,
+    ),
+  )
+}
 
 @Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 internal class FeatureTaskRuntimeRunLoop(
@@ -2802,6 +2829,7 @@ internal class FeatureTaskRuntimeRunLoop(
       } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
         recordLaunchSeamRejection(
           run,
+          state,
           FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
           error.projectionName,
           resolvedProducerIteration,
@@ -2825,6 +2853,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } catch (error: InvalidWorkflowStateSchemaError) {
       recordLaunchSeamRejection(
         run,
+        state,
         FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
         "durable_audit_state",
         measurementContext.producerIteration,
@@ -2846,6 +2875,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
       recordLaunchSeamRejection(
         run,
+        state,
         error.failureKind.toMeasurementFailureClassification(),
         error.projectionName,
         measurementContext.producerIteration,
@@ -2861,6 +2891,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
       recordLaunchSeamRejection(
         run,
+        state,
         FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
         "phase_briefing",
         measurementContext.producerIteration,
@@ -2876,6 +2907,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
       recordLaunchSeamRejection(
         run,
+        state,
         FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
         "planning_projection",
         measurementContext.producerIteration,
@@ -2891,6 +2923,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } catch (error: InvalidWorkflowStateSchemaError) {
       recordLaunchSeamRejection(
         run,
+        state,
         FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
         "durable_briefing",
         measurementContext.producerIteration,
@@ -2964,17 +2997,23 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun recordLaunchSeamRejection(
     run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
     classification: FeatureTaskRuntimeProjectionFailureClassification,
     sourceLabel: String,
-    producerIteration: FeatureTaskRuntimeProducerIteration,
+    fallbackProducerIteration: FeatureTaskRuntimeProducerIteration,
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ) {
+    val attribution = resolveLaunchRejectionAttribution(
+      declarations = run.declaration.projectionDeclarations,
+      projectionName = sourceLabel,
+      currentProducerIteration = { phaseId -> state.outputFor(phaseId)?.iteration },
+      fallbackProducerIteration = fallbackProducerIteration,
+    )
     recorder.recordProjectionRejection(
       workflowId = run.request.workflowId,
       consumerPhaseId = run.phaseId,
-      projectionContractId = run.declaration.projectionDeclarations.firstOrNull()
-        ?.projectionContractId ?: "feature_task_runtime.$sourceLabel",
-      producerIteration = producerIteration,
+      projectionContractId = attribution.projectionContractId,
+      producerIteration = attribution.producerIteration,
       repositoryCheckpointFingerprint = repositoryCheckpoint?.fingerprint,
       failureClassification = classification,
       sourceLabel = sourceLabel,
