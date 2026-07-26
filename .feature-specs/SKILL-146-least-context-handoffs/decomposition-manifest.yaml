@@ -60,12 +60,12 @@ subtasks:
 - id: 4
   name: "Prose continuation and feature-verification least-context parity"
   spec_path: ".feature-specs/SKILL-146-least-context-handoffs/spec_subtask_4_prose_and_verification_projections.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260726-154125-0l2x"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

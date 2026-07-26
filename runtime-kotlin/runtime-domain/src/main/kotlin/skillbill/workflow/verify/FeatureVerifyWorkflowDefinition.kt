@@ -4,6 +4,16 @@ import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureVerifyWorkflowDefinition {
+  private val criteriaFields = setOf(
+    "acceptance_criteria",
+    "non_goals",
+    "rollout_expectation",
+    "technical_constraints",
+  )
+  private val diffFields = setOf("checkpoint", "comparison_scope", "changed_files")
+  private val evaluatorPolicyFields = setOf("contract_version", "rules")
+  private val evaluatorReceiptFields = setOf("contract_version", "verdict", "findings")
+
   private val privateArtifactKeys = setOf(
     "telemetry_payload",
     "progress",
@@ -15,8 +25,12 @@ object FeatureVerifyWorkflowDefinition {
     "progress_write_failures",
   )
 
-  private fun projection(vararg keys: String) = WorkflowInputProjectionDeclaration(
+  private fun projection(
+    vararg keys: String,
+    typedFields: Map<String, Set<String>>,
+  ) = WorkflowInputProjectionDeclaration(
     requiredArtifactKeys = keys.toList(),
+    projectedFieldsByArtifactKey = typedFields,
     forbiddenArtifactKeys = privateArtifactKeys,
     maxUtf8Bytes = 64 * 1024,
     maxCollectionItems = 512,
@@ -71,6 +85,7 @@ object FeatureVerifyWorkflowDefinition {
         "code_review_receipt",
         "unit_test_value_receipt",
         "completeness_audit_receipt",
+        "diff_projection",
       ),
       "finish" to listOf("verdict_result"),
     ),
@@ -173,15 +188,51 @@ object FeatureVerifyWorkflowDefinition {
     openPriorStepsCompleted = true,
     completedTerminalSummaryArtifact = "verdict_result",
     inputProjectionsByStep = mapOf(
-      "feature_flag_audit" to projection("criteria_summary", "feature_flag_policy", "diff_projection"),
-      "code_review" to projection("criteria_summary", "review_rubric", "diff_projection"),
-      "unit_test_value_check" to projection("criteria_summary", "unit_test_value_rubric", "diff_projection"),
-      "completeness_audit" to projection("criteria_summary", "completeness_rubric", "diff_projection"),
+      "feature_flag_audit" to projection(
+        "criteria_summary", "feature_flag_policy", "diff_projection",
+        typedFields = mapOf(
+          "criteria_summary" to criteriaFields,
+          "feature_flag_policy" to evaluatorPolicyFields,
+          "diff_projection" to diffFields,
+        ),
+      ),
+      "code_review" to projection(
+        "criteria_summary", "review_rubric", "diff_projection",
+        typedFields = mapOf(
+          "criteria_summary" to criteriaFields,
+          "review_rubric" to evaluatorPolicyFields,
+          "diff_projection" to diffFields,
+        ),
+      ),
+      "unit_test_value_check" to projection(
+        "criteria_summary", "unit_test_value_rubric", "diff_projection",
+        typedFields = mapOf(
+          "criteria_summary" to criteriaFields,
+          "unit_test_value_rubric" to evaluatorPolicyFields,
+          "diff_projection" to diffFields,
+        ),
+      ),
+      "completeness_audit" to projection(
+        "criteria_summary", "completeness_rubric", "diff_projection",
+        typedFields = mapOf(
+          "criteria_summary" to criteriaFields,
+          "completeness_rubric" to evaluatorPolicyFields,
+          "diff_projection" to diffFields,
+        ),
+      ),
       "verdict" to projection(
         "feature_flag_audit_receipt",
         "code_review_receipt",
         "unit_test_value_receipt",
         "completeness_audit_receipt",
+        "diff_projection",
+        typedFields = mapOf(
+          "feature_flag_audit_receipt" to evaluatorReceiptFields,
+          "code_review_receipt" to evaluatorReceiptFields,
+          "unit_test_value_receipt" to evaluatorReceiptFields,
+          "completeness_audit_receipt" to evaluatorReceiptFields,
+          "diff_projection" to diffFields,
+        ),
       ),
     ),
   )

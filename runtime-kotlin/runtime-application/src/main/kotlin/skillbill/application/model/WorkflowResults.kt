@@ -1,6 +1,7 @@
 package skillbill.application.model
 
 import skillbill.workflow.model.WorkflowContinueView
+import skillbill.workflow.model.WorkflowInputProjection
 import skillbill.workflow.model.WorkflowResumeView
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowSummaryView
@@ -28,6 +29,7 @@ sealed interface WorkflowOpenResult {
     val workflowId: String,
     val dbPath: String,
     val snapshot: WorkflowSnapshotView,
+    val launchProjection: WorkflowInputProjection? = null,
   ) : WorkflowOpenResult
   data class Error(val workflowId: String, val error: String) : WorkflowOpenResult
 }
@@ -37,6 +39,7 @@ sealed interface WorkflowUpdateResult {
     val workflowId: String,
     val dbPath: String,
     val acknowledgement: WorkflowUpdateAcknowledgementView,
+    val launchProjection: WorkflowInputProjection? = null,
   ) : WorkflowUpdateResult
   data class Error(val workflowId: String, val error: String, val dbPath: String? = null) : WorkflowUpdateResult
 }

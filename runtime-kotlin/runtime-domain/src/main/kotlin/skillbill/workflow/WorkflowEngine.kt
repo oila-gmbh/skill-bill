@@ -482,6 +482,15 @@ class WorkflowEngine(
       "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
     )
 
+    @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
+    fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> = linkedMapOf(
+      "step_id" to projection.stepId,
+      "producer_iteration" to projection.producerIteration,
+      "repository_checkpoint" to projection.repositoryCheckpoint,
+      "artifacts" to projection.artifacts,
+      "utf8_bytes" to projection.utf8Bytes,
+    )
+
     private fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
       @Suppress("UNCHECKED_CAST")
       val rawSteps = map["steps"] as List<Map<String, Any?>>
@@ -718,8 +727,8 @@ class WorkflowEngine(
         "Follow the normal step instructions in $instructionPath. " +
         "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
         "current-step context instead of reconstructing prior context from chat history. " +
-        "Omitted artifact keys ($omittedArtifacts) " +
-        "require read-only inspection with `workflow show` when needed. Workflow activation status: " +
+        "Omitted artifact keys ($omittedArtifacts) remain private phase context. Explicit operator diagnostics " +
+        "may inspect them with `workflow show`; phase agents must not. Workflow activation status: " +
         "`$continueStatus`. Next action: $nextAction"
     }
 
@@ -769,7 +778,8 @@ class WorkflowEngine(
       commonLines += "Reference sections: ${references.ifBlank { "normal step instructions only" }}"
       commonLines +=
         "Rules: do not rerun completed steps unless the workflow sends work backwards; treat " +
-        "`current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed."
+        "`current_step_artifacts` as the complete authoritative phase input. Omitted keys remain private; " +
+        "`workflow show` is an explicit operator diagnostic and must not widen phase context."
       commonLines +=
         "Workflow update rule: every step_updates item must include step_id, status, and integer " +
         "attempt_count; use attempt_count $nextAttemptCount for `$resumeStepId` unless a later retry increments it."

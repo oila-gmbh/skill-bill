@@ -41,7 +41,10 @@ Continuation-mode rules:
 
 - Keep the same `workflow_id` and `session_id`; do not open a new workflow.
 - Use `continue_step_id` as the starting point.
-- Use `step_artifacts` and `session_summary` as authoritative recovered context; do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
+- Use only the bounded `current_step_artifacts` projection and `session_summary`
+  as authoritative recovered context. Do not retrieve the complete durable
+  artifact map or reconstruct earlier phases from chat history unless the step
+  explicitly requires user confirmation.
 - Read the `reference_sections` listed in the continuation payload before resuming work.
 - Skip already-completed earlier steps unless the normal workflow loop sends work backwards.
 - After the resumed step completes, continue the normal sequence defined below.

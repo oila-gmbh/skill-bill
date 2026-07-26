@@ -29,6 +29,7 @@ internal fun WorkflowOpenResult.toMcpMap(
   goalObservabilityEventValidator: GoalObservabilityEventValidator,
 ): Map<String, Any?> = when (this) {
   is WorkflowOpenResult.Ok -> workflowSnapshotMcpMap(snapshot, goalObservabilityEventValidator).apply {
+    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -41,6 +42,7 @@ internal fun WorkflowOpenResult.toMcpMap(
 
 internal fun WorkflowUpdateResult.toMcpMap(): Map<String, Any?> = when (this) {
   is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
+    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
     val workflowCommand = if (acknowledgement.workflowName == "bill-feature-verify") "verify-workflow" else "workflow"
     val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
     val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"

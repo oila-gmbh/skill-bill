@@ -13,7 +13,7 @@ class FeatureVerifyWorkflowRuntimeTest {
     private val delegate = CanonicalWorkflowStateSchemaValidator()
     override fun validate(snapshot: Map<String, Any?>, slug: String) = delegate.validate(snapshot, slug)
   }
-  private val engine = WorkflowEngine(validator)
+  private val engine = WorkflowEngine(validator) { "abc123" }
 
   @Test
   fun `verify open completes steps before the initial step`() {
@@ -65,11 +65,15 @@ class FeatureVerifyWorkflowRuntimeTest {
           stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
           artifactsPatch =
           linkedMapOf(
-            "feature_flag_audit_receipt" to mapOf("verdict" to "not_applicable"),
-            "code_review_receipt" to mapOf("verdict" to "pass"),
-            "unit_test_value_receipt" to mapOf("verdict" to "strong"),
-            "completeness_audit_receipt" to mapOf("verdict" to "pass"),
-            "diff_projection" to mapOf("checkpoint" to "abc123", "files" to 4),
+            "feature_flag_audit_receipt" to evaluatorReceipt("not_applicable"),
+            "code_review_receipt" to evaluatorReceipt("pass"),
+            "unit_test_value_receipt" to evaluatorReceipt("strong"),
+            "completeness_audit_receipt" to evaluatorReceipt("pass"),
+            "diff_projection" to mapOf(
+              "checkpoint" to "abc123",
+              "comparison_scope" to "branch_diff",
+              "changed_files" to listOf("Changed.kt"),
+            ),
           ),
           sessionId = "",
         ),
@@ -115,8 +119,8 @@ class FeatureVerifyWorkflowRuntimeTest {
   @Test
   fun `verify continuation directives preserve oracle text`() {
     assertEquals(
-      "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
-        "persist a compact typed receipt, and keep telemetry in its dedicated store.",
+      "Reuse criteria_summary, review_rubric, and diff_projection, pass orchestrated=true to bill-code-review, " +
+        "persist code_review_receipt, and keep telemetry in its dedicated store.",
       definition.continuationDirectives["code_review"],
     )
     assertEquals(
@@ -124,6 +128,12 @@ class FeatureVerifyWorkflowRuntimeTest {
       definition.continuationDirectives["verdict"],
     )
   }
+
+  private fun evaluatorReceipt(verdict: String) = mapOf(
+    "contract_version" to "0.1",
+    "verdict" to verdict,
+    "findings" to emptyList<String>(),
+  )
 
   private fun completedAs(status: String) = engine.updateRecord(
     definition,

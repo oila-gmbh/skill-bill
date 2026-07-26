@@ -24,6 +24,56 @@ class WorkflowInputProjectionSelectorTest {
   }
 
   @Test
+  fun `fresh and resumed review projections use review scope as repository checkpoint`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val artifacts = mapOf(
+      "acceptance_criteria" to mapOf("criteria" to listOf("AC-1")),
+      "review_scope" to mapOf(
+        "fingerprint" to "abc123",
+        "comparison_scope" to "base..head",
+        "changed_paths" to listOf("Changed.kt"),
+      ),
+      "audit_clearance" to mapOf("contract_version" to "0.1", "verdict" to "approved"),
+    )
+    val opened = engine.openRecord(definition, "wfl-review", "fis-review", "review")
+    val updated = engine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "review",
+        stepUpdates = null,
+        artifactsPatch = artifacts,
+        sessionId = "",
+      ),
+    )
+    val resumed = engine.updateRecord(
+      definition,
+      updated,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "review",
+        stepUpdates = null,
+        artifactsPatch = emptyMap(),
+        sessionId = "",
+      ),
+    )
+
+    listOf(updated, resumed).forEachIndexed { index, record ->
+      val projection = WorkflowInputProjectionSelector.select(
+        definition,
+        engine.snapshotView(definition, record),
+        "review",
+        index + 1,
+        "abc123",
+      )
+
+      assertEquals("abc123", (projection.repositoryCheckpoint as Map<*, *>)["fingerprint"])
+      assertEquals(artifacts.keys, projection.artifacts.keys)
+    }
+  }
+
+  @Test
   fun `verification evaluators are independent and verdict accepts receipts only`() {
     val projections = FeatureVerifyWorkflowDefinition.definition.inputProjectionsByStep
     val evaluatorSteps = listOf("feature_flag_audit", "code_review", "unit_test_value_check", "completeness_audit")
@@ -33,8 +83,20 @@ class WorkflowInputProjectionSelectorTest {
       assertTrue("diff_projection" in keys)
       assertFalse(keys.any { it.endsWith("_receipt") || it.endsWith("_result") })
     }
-    assertTrue(projections.getValue("verdict").requiredArtifactKeys.all { it.endsWith("_receipt") })
-    assertFalse("diff_projection" in projections.getValue("verdict").requiredArtifactKeys)
+    assertTrue(
+      projections.getValue("verdict").requiredArtifactKeys
+        .filterNot { it == "diff_projection" }
+        .all { it.endsWith("_receipt") },
+    )
+    assertTrue("diff_projection" in projections.getValue("verdict").requiredArtifactKeys)
+    projections.values.forEach { declaration ->
+      declaration.requiredArtifactKeys.forEach { key ->
+        assertTrue(
+          declaration.projectedFieldsByArtifactKey.getValue(key).isNotEmpty(),
+          "verification projection must declare typed fields for $key",
+        )
+      }
+    }
   }
 
   @Test
@@ -237,7 +299,7 @@ class WorkflowInputProjectionSelectorTest {
     val resumed = engine.continueDecision(definition, record).view.stepArtifacts
 
     assertEquals(fresh!!.artifacts, resumed)
-    assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh!!.artifacts.keys)
+    assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh.artifacts.keys)
     assertFalse("review_result" in fresh.artifacts)
     assertFalse("telemetry_payload" in fresh.artifacts)
   }

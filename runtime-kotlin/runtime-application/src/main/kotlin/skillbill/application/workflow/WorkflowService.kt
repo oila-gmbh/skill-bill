@@ -39,6 +39,7 @@ import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -75,7 +76,7 @@ class WorkflowService(
   // cost across every call.
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())
-    check(resolved.ok) { resolved.error ?: "Could not resolve the repository checkpoint." }
+    check(resolved.ok) { resolved.error }
     resolved.value.orEmpty()
   }
 
@@ -139,9 +140,9 @@ class WorkflowService(
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
       val currentStep = engine.snapshotView(family.definition, saved).steps
         .firstOrNull { it.stepId == stepId }
-      engine.freshLaunchProjection(
+      val launchProjection = launchProjectionIfReady(
         family.definition,
-        saved,
+        engine.snapshotView(family.definition, saved),
         stepId,
         currentStep?.attemptCount ?: 0,
       )
@@ -149,6 +150,7 @@ class WorkflowService(
         workflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
         snapshot = engine.snapshotView(family.definition, saved),
+        launchProjection = launchProjection,
       )
     }
   }
@@ -653,6 +655,7 @@ class WorkflowService(
     dbPath: String,
   ): WorkflowUpdateResult.Ok {
     val snapshot = engine.snapshotView(definition, updated)
+    val currentStep = snapshot.steps.firstOrNull { it.stepId == snapshot.currentStepId }
     return WorkflowUpdateResult.Ok(
       workflowId = updated.workflowId,
       dbPath = dbPath,
@@ -660,8 +663,23 @@ class WorkflowService(
         snapshot = snapshot,
         input = effectiveInput,
       ),
+      launchProjection = launchProjectionIfReady(
+        definition,
+        snapshot,
+        snapshot.currentStepId,
+        currentStep?.attemptCount ?: 0,
+      ),
     )
   }
+
+  private fun launchProjectionIfReady(
+    definition: WorkflowDefinition,
+    snapshot: WorkflowSnapshotView,
+    stepId: String,
+    producerIteration: Int,
+  ) = definition.inputProjectionsByStep[stepId]
+    ?.takeIf { declaration -> declaration.requiredArtifactKeys.all(snapshot.artifacts::containsKey) }
+    ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
 
 private fun WorkflowEngine.syncDecompositionParentRuntime(

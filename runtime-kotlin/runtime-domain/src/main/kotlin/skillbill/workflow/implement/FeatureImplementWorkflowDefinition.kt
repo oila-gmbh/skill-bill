@@ -34,13 +34,14 @@ object FeatureImplementWorkflowDefinition {
   private fun projection(
     vararg keys: String,
     typedFields: Map<String, Set<String>> = emptyMap(),
+    repositoryCheckpointArtifactKey: String = "repository_evidence",
   ) = WorkflowInputProjectionDeclaration(
     requiredArtifactKeys = keys.toList(),
     projectedFieldsByArtifactKey = typedFields,
     forbiddenArtifactKeys = privateArtifactKeys,
     maxUtf8Bytes = 64 * 1024,
     maxCollectionItems = 512,
-    repositoryCheckpointArtifactKey = "repository_evidence",
+    repositoryCheckpointArtifactKey = repositoryCheckpointArtifactKey,
   )
 
   val definition: WorkflowDefinition = WorkflowDefinition(
@@ -91,7 +92,7 @@ object FeatureImplementWorkflowDefinition {
       "plan" to listOf("assessment", "preplan_digest"),
       "implement" to listOf("plan"),
       "audit" to listOf("plan", "implementation_summary", "repository_evidence"),
-      "review" to listOf("implementation_summary", "audit_report", "repository_evidence"),
+      "review" to listOf("acceptance_criteria", "review_scope", "audit_clearance"),
       "validate" to listOf("audit_report", "review_result", "repository_evidence"),
       "write_history" to listOf("implementation_summary", "validation_result"),
       "commit_push" to listOf("implementation_summary", "validation_result", "history_result"),
@@ -110,7 +111,7 @@ object FeatureImplementWorkflowDefinition {
       "implement" to
         "Resume implementation from the persisted plan, then refresh implementation_summary.",
       "review" to
-        "Resume code review from the audited implementation receipt and checkpoint-scoped repository evidence.",
+        "Resume code review from acceptance_criteria, the exact checkpointed review_scope, and audit_clearance.",
       "audit" to
         "Resume the completeness audit from the executable plan, implementation receipt, acceptance criteria, " +
         "and checkpoint-scoped repository evidence; review_result is not an audit input.",
@@ -208,8 +209,8 @@ object FeatureImplementWorkflowDefinition {
         "then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and " +
         "heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.",
       "review" to
-        "Do not re-run implementation first unless the review loop sends work back. Start from the audited " +
-        "implementation receipt and checkpoint-scoped repository evidence and run Step 6 inline.",
+        "Do not re-run implementation first unless the review loop sends work back. Start from acceptance_criteria, " +
+        "the exact checkpointed review_scope, and compact audit_clearance, then run Step 6 inline.",
       "audit" to
         "Resume at the completeness audit using the executable plan, implementation receipt, acceptance criteria, " +
         "and checkpoint-scoped repository evidence. Never inject review_result. Only loop back to implementation " +
@@ -248,13 +249,15 @@ object FeatureImplementWorkflowDefinition {
         ),
       ),
       "review" to projection(
-        "implementation_summary",
-        "audit_report",
-        "repository_evidence",
+        "acceptance_criteria",
+        "review_scope",
+        "audit_clearance",
         typedFields = mapOf(
-          "implementation_summary" to implementationReceiptFields,
-          "audit_report" to auditReceiptFields,
+          "acceptance_criteria" to setOf("criteria"),
+          "review_scope" to setOf("fingerprint", "comparison_scope", "changed_paths"),
+          "audit_clearance" to setOf("contract_version", "verdict"),
         ),
+        repositoryCheckpointArtifactKey = "review_scope",
       ),
       "validate" to projection(
         "audit_report",

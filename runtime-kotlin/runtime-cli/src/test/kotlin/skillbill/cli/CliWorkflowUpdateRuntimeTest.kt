@@ -2,7 +2,10 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.contracts.JsonSupport
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.ports.workflow.repositoryFingerprint
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -61,6 +64,7 @@ class CliWorkflowUpdateRuntimeTest {
       "json",
     )
     val workflowId = opened["workflow_id"] as String
+    val checkpoint = GitWorkflowGitOperations().repositoryFingerprint(Path.of("").toAbsolutePath()).value
 
     val update = runJson(
       "--db",
@@ -76,11 +80,11 @@ class CliWorkflowUpdateRuntimeTest {
       """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
       "--artifacts-patch",
       "{" +
-        "\"criteria_summary\":{}," +
-        "\"diff_summary\":{}," +
-        "\"review_result\":{}," +
-        "\"unit_test_value_result\":{}," +
-        "\"completeness_audit_result\":{}" +
+        "\"diff_projection\":{\"checkpoint\":\"$checkpoint\",\"comparison_scope\":\"base..head\",\"changed_files\":[]}," +
+        "\"feature_flag_audit_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
+        "\"code_review_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
+        "\"unit_test_value_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
+        "\"completeness_audit_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}" +
         "}",
       "--format",
       "json",
@@ -89,11 +93,11 @@ class CliWorkflowUpdateRuntimeTest {
       payload = update,
       stepId = "verdict",
       artifactKeys = listOf(
-        "completeness_audit_result",
-        "criteria_summary",
-        "diff_summary",
-        "review_result",
-        "unit_test_value_result",
+        "code_review_receipt",
+        "completeness_audit_receipt",
+        "diff_projection",
+        "feature_flag_audit_receipt",
+        "unit_test_value_receipt",
       ),
       readOnlyCommand = "skill-bill --db '$dbPath' verify-workflow show '$workflowId' --format json",
     )

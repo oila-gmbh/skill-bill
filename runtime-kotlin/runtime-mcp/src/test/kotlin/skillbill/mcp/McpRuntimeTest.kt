@@ -31,6 +31,8 @@ import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -661,6 +663,8 @@ class McpRuntimeTest {
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
       "<CONTINUED_AT>" to continued["updated_at"].toString(),
+      "<CHECKPOINT>" to GitWorkflowGitOperations()
+        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
     )
     assertCompactUpdateAcknowledgementPayload(updated, listOf("verdict"))
     assertEquals(1, listed["workflow_count"])
@@ -1019,15 +1023,26 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
       stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
       artifactsPatch =
       mapOf(
-        "criteria_summary" to emptyMap<String, Nothing?>(),
-        "diff_summary" to emptyMap(),
-        "review_result" to emptyMap(),
-        "unit_test_value_result" to emptyMap(),
-        "completeness_audit_result" to emptyMap(),
+        "diff_projection" to mapOf(
+          "checkpoint" to GitWorkflowGitOperations()
+            .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
+          "comparison_scope" to "base..head",
+          "changed_files" to emptyList<String>(),
+        ),
+        "feature_flag_audit_receipt" to evaluatorReceipt(),
+        "code_review_receipt" to evaluatorReceipt(),
+        "unit_test_value_receipt" to evaluatorReceipt(),
+        "completeness_audit_receipt" to evaluatorReceipt(),
       ),
     ),
     context = context,
   )
+
+private fun evaluatorReceipt(): Map<String, Any?> = mapOf(
+  "contract_version" to "0.1",
+  "verdict" to "approved",
+  "findings" to emptyList<Map<String, Any?>>(),
+)
 
 private fun enabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
   val configPath = tempDir.resolve("config.json")

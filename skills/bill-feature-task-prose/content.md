@@ -349,7 +349,12 @@ If gaps are found: the orchestrator does not regenerate the implementation plan.
 
 When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
 
-Persist `audit_report`, then advance to `review`. On gaps, loop back to `implement` with the carried repair plan; never loop back to `plan` or enter review before audit is satisfied.
+Persist the private `audit_report`. When the audit clears, also persist the
+bounded review handoff artifacts: `acceptance_criteria` (`criteria` only),
+`review_scope` (exact checkpoint, comparison scope, and changed paths), and
+`audit_clearance` (contract version and verdict only), then advance to
+`review`. On gaps, loop back to `implement` with the carried repair plan; never
+loop back to `plan` or enter review before audit is satisfied.
 
 Location-bearing finding evidence is returned only by
 `skill-bill goal findings --issue-key <KEY>`. Goal, status, watch, telemetry,
@@ -615,25 +620,22 @@ The compact continuation payload includes:
 - `continue_step_directive` — the step-specific rule for the resumed phase
 - `required_artifact_keys`, `available_artifact_keys`, and
   `missing_artifact_keys`
-- `current_step_artifacts` — compact summaries for the required current-step
-  artifacts. Small artifacts are inline; large artifacts include size,
-  preview, truncation, and omission metadata instead of the full value.
+- `current_step_artifacts` — the bounded, typed current-step projection used
+  identically for fresh and resumed launches.
 - `omitted_artifact_keys` — available durable artifacts omitted from the
   compact current-step summaries
 - `continuation_brief` — short human-facing summary
 - `continuation_entry_prompt` — a paste-ready prompt for an orchestrator or AI
   caller
-- `read_only_full_state_command` and `read_only_full_state_guidance` — the
-  read-only `workflow show` fallback for complete state
+- `read_only_full_state_command` and `read_only_full_state_guidance` — explicit
+  operator diagnostics; phase agents do not invoke them to widen context
 
 Re-entry rules:
 
 - Do not open a new workflow when continuing an existing run.
 - Keep using the same `workflow_id` and `session_id`.
-- Treat inline `current_step_artifacts` values as authoritative inputs for the
-  resumed phase. If an artifact is summarized or omitted because it is large,
-  inspect full state with the payload's `read_only_full_state_command` only as
-  needed.
+- Treat `current_step_artifacts` as the complete authoritative projection for
+  the resumed phase. Do not retrieve omitted or complete durable artifacts.
 - Skip earlier completed steps unless the normal workflow loops send work
   backwards.
 - After the resumed step completes, continue the standard `bill-feature-task`
