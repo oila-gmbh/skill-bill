@@ -1,6 +1,6 @@
 package skillbill.application.review
 
-import skillbill.error.MissingInstalledNativeAgentError
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.review.context.model.ProviderTokenThresholds
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
@@ -8,7 +8,6 @@ import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -21,17 +20,15 @@ class ParallelCodeReviewRegressionTest {
 
   @Test fun `long parent briefing and AGENTS bodies never reach a specialist or its accounting`() {
     val recorder = ReviewRecorder()
+    val repoRoot = java.nio.file.Files.createTempDirectory("review-context-isolation")
+    java.nio.file.Files.writeString(repoRoot.resolve("AGENTS.md"), agentsBody)
+    java.nio.file.Files.writeString(repoRoot.resolve("parent-briefing.md"), parentBriefing)
     val runner = reviewHarness(
-      config(
-        diff = diffForChanges(
-          "src/Repo.kt" to "val briefing = \"$parentBriefing\"",
-          "AGENTS.md" to agentsBody,
-        ),
-      ),
+      config(),
       recorder,
     )
 
-    val result = runner.run(harnessRequest())
+    val result = runner.run(harnessRequest(repoRoot = repoRoot))
 
     recorder.nativeLaunches.forEach { launch ->
       assertFalse(launch.prompt.contains("AGENTS_BODY_SENTINEL"), "Specialist saw a project-guidance body.")
@@ -41,7 +38,7 @@ class ParallelCodeReviewRegressionTest {
     val serialized = summary.toBoundedPayload().toString()
     assertFalse(serialized.contains("AGENTS_BODY_SENTINEL"))
     assertFalse(serialized.contains("PARENT_BRIEFING_SENTINEL"))
-    assertTrue(summary.aggregateCounters.launchBytes > 0, "Bodies are measured even though they are not retained.")
+    assertTrue(summary.aggregateCounters.launchBytes > 0, "The isolated launch projection remains measured.")
   }
 
   @Test fun `overlapping lane ownership assigns each hunk once and never doubles usage`() {
@@ -74,28 +71,24 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(result.mergeResult.formattedOutput.isNotBlank())
   }
 
-  @Test fun `a dangling required native agent stops every launch with the governed repair command`() {
+  @Test fun `prompt-only specialist launches do not rediscover installed native agents`() {
     val recorder = ReviewRecorder()
+    var preflightCalled = false
     val runner = reviewHarness(
       config(
         preflight = {
-          throw MissingInstalledNativeAgentError(
-            logicalName = "bill-kotlin-code-review-security",
-            provider = "codex",
-            expectedPath = "~/.codex/agents/bill-kotlin-code-review-security.md",
-            reason = "managed inventory entry is missing",
-            repairCommand = "skill-bill install apply",
-          )
+          preflightCalled = true
         },
       ),
       recorder,
     )
 
-    val failure = assertFailsWith<MissingInstalledNativeAgentError> { runner.run(harnessRequest()) }
+    runner.run(harnessRequest())
 
-    assertEquals("skill-bill install apply", failure.repairCommand)
-    assertTrue(recorder.nativeLaunches.isEmpty(), "No specialist may start after a failed preflight.")
-    assertTrue(recorder.parentLaunches.isEmpty(), "A failed preflight must not fall back to a generic parent review.")
+    assertFalse(preflightCalled)
+    assertTrue(recorder.preflightRequests.isEmpty())
+    assertTrue(recorder.nativeLaunches.isNotEmpty())
+    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName == null })
   }
 
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {
@@ -104,10 +97,10 @@ class ParallelCodeReviewRegressionTest {
       config(
         budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneResultBytes = 512),
       ) { request ->
-        if (request.logicalWorkerName == "bill-kotlin-code-review-security") {
+        if (request.broker.accounting().lane.endsWith("security")) {
           RecordedWorkerResponse(stdout = "x".repeat(4_096))
         } else {
-          RecordedWorkerResponse(stdout = finding("src/Repo.kt", specialist = request.logicalWorkerName))
+          RecordedWorkerResponse(stdout = finding("src/Repo.kt", specialist = request.broker.accounting().lane))
         }
       },
       recorder,
@@ -127,7 +120,7 @@ class ParallelCodeReviewRegressionTest {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       config(budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxSpecialistModelTurns = 2)) { request ->
-        if (request.logicalWorkerName == "bill-kotlin-code-review-testing") {
+        if (request.broker.accounting().lane.endsWith("testing")) {
           RecordedWorkerResponse(modelTurns = 5)
         } else {
           RecordedWorkerResponse()
@@ -152,7 +145,13 @@ class ParallelCodeReviewRegressionTest {
       recorder,
     )
 
-    val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
+    val summary = assertNotNull(
+      runner.run(
+        harnessRequest(
+          prelaunchExpansions = assignedExpansion("src/Repo.kt"),
+        ),
+      ).accountingSummary,
+    )
 
     val specialists = summary.lanes.filter { it.children.isEmpty() }
     assertTrue(specialists.isNotEmpty())
@@ -173,7 +172,13 @@ class ParallelCodeReviewRegressionTest {
       recorder,
     )
 
-    val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
+    val summary = assertNotNull(
+      runner.run(
+        harnessRequest(
+          prelaunchExpansions = assignedExpansion("src/Repo.kt") + assignedExpansion("src/Other.kt"),
+        ),
+      ).accountingSummary,
+    )
 
     val specialists = summary.lanes.filter { it.children.isEmpty() }
     assertTrue(specialists.isNotEmpty())
@@ -192,7 +197,7 @@ class ParallelCodeReviewRegressionTest {
           providerTokenThresholds = ProviderTokenThresholds(outputTokens = 100, totalTokens = 60_000),
         ),
       ) { request ->
-        if (request.logicalWorkerName == "bill-kotlin-code-review-architecture") {
+        if (request.broker.accounting().lane.endsWith("architecture")) {
           RecordedWorkerResponse(usage = ProviderTokenUsage(10, 0, 5_000, 0, 5_010), usageEnforceable = true)
         } else {
           RecordedWorkerResponse(usage = ProviderTokenUsage(10, 0, 10, 0, 20), usageEnforceable = true)
@@ -255,5 +260,13 @@ class ParallelCodeReviewRegressionTest {
     response = response,
     budget = budget,
     preflight = preflight,
+  )
+
+  private fun assignedExpansion(path: String) = listOf(
+    ReviewPrelaunchExpansion(
+      lane = "parallel-code-review",
+      path = path,
+      reachabilityReason = "The test explicitly exercises an assigned complete-file expansion.",
+    ),
   )
 }

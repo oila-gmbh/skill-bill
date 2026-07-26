@@ -2226,7 +2226,7 @@ class RuntimeArchitectureTest {
     val scopeDeclarationPattern: Regex =
       Regex(
         """^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|open\s+|sealed\s+""" +
-          """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+)*""" +
+          """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+|fun\s+)*""" +
           """(?:class|object|interface)\s+([A-Za-z0-9_]+)""",
       )
   }

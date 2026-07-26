@@ -101,9 +101,9 @@ After Section 1 in a stack-specific review skill, use:
 - `### 3. Action Items (Max 10, prioritized)`
 - `### 4. Verdict`
 
-Every finding in `### 2. Risk Register` must use this exact machine-readable bullet format:
+Every finding in `### 2. Risk Register` must use this authoritative machine-readable bullet format:
 
-```text
+```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
 ```
 

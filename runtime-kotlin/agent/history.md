@@ -1,3 +1,13 @@
+## [2026-07-26] SKILL-146 delegated-review least-context lane projection (subtask 5)
+Areas: runtime-kotlin/runtime-{domain,ports,application,infra-fs,infra-sqlite,core,cli}, orchestration/{contracts,review-orchestrator}
+- Delegated review lanes now receive only their assigned hunk content plus authoritative rubric, consumer contract, evidence policy, and report structure; whole-diff and scratch-artifact rediscovery are typed forbidden outcomes.
+- A reusable evidence broker admits bounded hunk windows, requires a nonblank reachability reason for complete-file expansion, and rejects repeat reads across pagination variants. reusable
+- Claude, Codex, and CLI launch paths share one semantic packet projection without a complete-diff path or artifact; authoritative rule restatements are parity-tested byte for byte.
+- Durable review accounting and regression coverage keep private evidence, sibling lane content, and forbidden retrieval details outside prompt-visible and persisted summaries.
+- Known limitation: this subtask does not reduce review lanes, alter rubric severity, or permit unreasoned complete-file access.
+Feature flag: N/A
+Acceptance criteria: subtask 5: 6/6 implemented
+
 ## [2026-07-26] SKILL-146 prose and verification least-context projections (subtask 4)
 Areas: runtime-kotlin/runtime-{domain,application,core,cli,infra-fs,mcp}, skills/bill-feature-{task-prose,verify}
 - Prose feature work now runs `implement -> audit -> review -> validate`; each fresh or resumed step receives the same declared, budgeted projection, and audit no longer consumes review output. reusable

@@ -109,12 +109,11 @@ class ReviewOperationPolicy(
     )
   }
 
-  private fun classifyRubric(rubricId: String): ForbiddenReviewOperation =
-    forbidden(
-      "rubric_rediscovery",
-      rubricId,
-      "Lane '${assignment.lane}' receives rubric '$laneRubricId' directly in its launch projection.",
-    )
+  private fun classifyRubric(rubricId: String): ForbiddenReviewOperation = forbidden(
+    "rubric_rediscovery",
+    rubricId,
+    "Lane '${assignment.lane}' receives rubric '$laneRubricId' directly in its launch projection.",
+  )
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val path = operation.target

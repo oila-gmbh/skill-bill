@@ -86,6 +86,32 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
+  fun `diff file expansion rejects an unmatched selector instead of silently dropping it`() {
+    val tempDir = createGitRepo()
+    Files.writeString(tempDir.resolve("Test.kt"), "fun evidence() = true\n")
+    val diff = Files.createTempFile("parallel-review", ".diff")
+    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1", "claude",
+        "--agent2", "codex",
+        "--diff-file", diff.toString(),
+        "--base-revision", "immutable-base",
+        "--head-revision", "immutable-head",
+        "--expand-file", "unknown-lane:Test.kt=called by assigned hunk",
+        "--execution-mode", "delegated",
+        "--repo-root", tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = RecordingParallelLauncher()),
+    )
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "Prelaunch expansion selector 'unknown-lane' does not match")
+  }
+
+  @Test
   fun `code-review-parallel fails with usage error when agent2 is omitted`() {
     val result = CliRuntime.run(
       listOf("code-review-parallel", "--agent1", "claude"),

@@ -7,10 +7,10 @@ import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
-import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
@@ -84,7 +84,7 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
   ) = ReviewPreparationService(
-    reviewFactPorts(input, hunks, decisions, revisionId),
+    reviewFactPorts(input, hunks, decisions),
     envelopeValidator,
     budget,
   ).prepare(
@@ -99,7 +99,6 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     hunks: List<ReviewChangedHunk>,
     decisions: List<ReviewLaneDecision>,
-    revisionId: String,
   ): ReviewFactPorts {
     val scope = ReviewScopeFacts(
       "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
@@ -148,6 +147,15 @@ internal object ParallelReviewPreparationCompiler {
     val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
       require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
     }
+    val validExpansionSelectors = routes.flatMap { route ->
+      listOf(route.lane, route.lane.substringAfter(':'))
+    }.toSet() + PARALLEL_REVIEW_SELECTOR
+    input.prelaunchExpansions.forEach { expansion ->
+      require(expansion.lane in validExpansionSelectors) {
+        "Prelaunch expansion selector '${expansion.lane}' does not match '$PARALLEL_REVIEW_SELECTOR', " +
+          "a prepared assignment lane, or a prepared specialist skill."
+      }
+    }
     return preparation.assignments.map { assignment ->
       val route = requireNotNull(routesByLane[assignment.lane]) {
         "Prepared assignment '${assignment.lane}' has no selected specialist route."
@@ -170,7 +178,11 @@ internal object ParallelReviewPreparationCompiler {
         logicalWorkerName = null,
         repoRoot = input.repoRoot,
         prelaunchExpansions = input.prelaunchExpansions
-          .filter { it.lane == assignment.lane || it.lane == assignment.lane.substringAfter(':') }
+          .filter {
+            it.lane == PARALLEL_REVIEW_SELECTOR ||
+              it.lane == assignment.lane ||
+              it.lane == assignment.lane.substringAfter(':')
+          }
           .map { ReviewExpansionAuthorizationRequest(assignment.lane, it.path, it.reachabilityReason) },
       )
     }
@@ -179,6 +191,8 @@ internal object ParallelReviewPreparationCompiler {
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
+
+  private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }
 
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)

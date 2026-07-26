@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
@@ -322,6 +323,7 @@ fun harnessRequest(
   agent2Id: String = "claude",
   timeout: Duration? = null,
   reviewRunId: String? = null,
+  prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
   agent2Id = agent2Id,
@@ -332,6 +334,7 @@ fun harnessRequest(
   reviewRunId = reviewRunId,
   baseRevision = "base-revision",
   headRevision = "head-revision",
+  prelaunchExpansions = prelaunchExpansions,
 )
 
 fun reviewPack(

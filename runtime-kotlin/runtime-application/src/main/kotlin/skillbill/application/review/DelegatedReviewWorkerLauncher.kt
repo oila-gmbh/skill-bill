@@ -31,7 +31,7 @@ class DelegatedReviewWorkerLauncher(
     val operations = BrokerBackedNativeReviewOperationProtocol(prepared.evidenceBroker)
     val evidenceRequests = (
       evidenceRequests(prepared.launch.assignment) + prepared.preauthorizedEvidenceRequests
-    ).distinctBy { evidenceRequest -> evidenceRequest.path }
+      ).distinctBy { evidenceRequest -> evidenceRequest.path }
     val evidence = if (evidenceRequests.isEmpty()) {
       null
     } else {

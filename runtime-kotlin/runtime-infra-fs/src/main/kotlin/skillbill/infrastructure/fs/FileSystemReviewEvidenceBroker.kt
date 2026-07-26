@@ -28,6 +28,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
+private const val EXPANSION_ID_HEX_LENGTH = 24
+
 @Inject
 class FileSystemReviewEvidenceBrokerFactory : ReviewEvidenceBrokerFactory {
   override fun brokerFor(binding: ReviewEvidenceBrokerBinding): ReviewEvidenceBroker =
@@ -115,6 +117,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   private fun readOne(request: ReviewEvidenceRequest): ReviewEvidenceResult {
     val exactPath = request.path
+    if (!exactPath.startsWith('/') && !exactPath.startsWith('\\')) {
+      requireRepositoryRelativePath(exactPath)
+    }
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
     policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
     requireRepositoryRelativePath(exactPath)
@@ -163,51 +168,65 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     normalized: String,
     assigned: Boolean,
     completeFileAuthorized: Boolean,
-  ): ReviewEvidenceResult {
-    if (assigned && !completeFileAuthorized) {
-      val content = projectedHunks
-        .filter { it.path == normalized }
-        .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
-        .joinToString("\n") { it.content.replace("\r\n", "\n") }
-      val bytes = content.toByteArray(StandardCharsets.UTF_8).size.toLong()
-      evidenceBudgetOutcome(bytes)?.let { return it }
-      cumulativeBytes += bytes
-      return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
-    }
-    val real = resolveRepositoryFile(root, normalized)
-    val expectedDigest = completeFileCheckpoint.getValue(normalized)
+  ): ReviewEvidenceResult = if (assigned && !completeFileAuthorized) {
+    readProjectedHunks(normalized)
+  } else {
+    readCompleteFile(normalized, assigned)
+  }
+
+  private fun readProjectedHunks(path: String): ReviewEvidenceResult {
+    val content = projectedHunks
+      .filter { it.path == path }
+      .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
+      .joinToString("\n") { it.content.replace("\r\n", "\n") }
+    return serveEvidence(content.toByteArray(StandardCharsets.UTF_8))
+  }
+
+  private fun readCompleteFile(path: String, assigned: Boolean): ReviewEvidenceResult {
+    val real = resolveRepositoryFile(root, path)
+    val expectedDigest = completeFileCheckpoint.getValue(path)
     if (real == null) {
-      if (expectedDigest != null) rejectCheckpointDrift(normalized)
+      if (expectedDigest != null) rejectCheckpointDrift(path)
       require(assigned) { "Expanded evidence path must be a repository file." }
       return unavailableResult(cumulativeBytes, expansionLedger.size)
     }
-    if (expectedDigest == null || checkpointDigest(normalized) != expectedDigest) {
-      rejectCheckpointDrift(normalized)
+    val contentBytes = Files.readAllBytes(real)
+    if (expectedDigest == null || digest(contentBytes) != expectedDigest) {
+      rejectCheckpointDrift(path)
     }
-    val bytes = Files.size(real)
+    return serveEvidence(contentBytes)
+  }
+
+  private fun serveEvidence(contentBytes: ByteArray): ReviewEvidenceResult {
+    val bytes = contentBytes.size.toLong()
     evidenceBudgetOutcome(bytes)?.let { return it }
-    val content = Files.readString(real, StandardCharsets.UTF_8)
     cumulativeBytes += bytes
-    return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
+    return ReviewEvidenceResult(
+      contentBytes.toString(StandardCharsets.UTF_8),
+      bytes,
+      cumulativeBytes,
+      expansionLedger.size,
+    )
   }
 
   private fun checkpointDigest(path: String): String? {
     val real = resolveRepositoryFile(root, path) ?: return null
-    val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(real))
-    return digest.joinToString("") { "%02x".format(it) }
+    return digest(Files.readAllBytes(real))
   }
 
-  private fun rejectCheckpointDrift(path: String): Nothing =
-    throw InvalidReviewContextSchemaError(
-      sourceLabel = "review-evidence:${assignment.reviewId}:${assignment.lane}",
-      reason = "Complete-file evidence '$path' changed after the immutable launch checkpoint was bound.",
-    )
+  private fun digest(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)
+    .joinToString("") { "%02x".format(it) }
+
+  private fun rejectCheckpointDrift(path: String): Nothing = throw InvalidReviewContextSchemaError(
+    sourceLabel = "review-evidence:${assignment.reviewId}:${assignment.lane}",
+    reason = "Complete-file evidence '$path' changed after the immutable launch checkpoint was bound.",
+  )
 
   private fun stableExpansionId(path: String, reason: String): String {
     val input = "${assignment.digest}\u0000$path\u0000$reason".toByteArray(StandardCharsets.UTF_8)
     val digest = MessageDigest.getInstance("SHA-256").digest(input)
       .joinToString("") { "%02x".format(it) }
-    return "exp-${digest.take(24)}"
+    return "exp-${digest.take(EXPANSION_ID_HEX_LENGTH)}"
   }
 
   @Synchronized

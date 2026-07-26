@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
@@ -166,7 +167,18 @@ class ReviewAccountingDurableRedactionTest {
       recorder,
     )
 
-    val result = runner.run(harnessRequest(reviewRunId = REVIEW_RUN_ID))
+    val result = runner.run(
+      harnessRequest(
+        reviewRunId = REVIEW_RUN_ID,
+        prelaunchExpansions = listOf(
+          ReviewPrelaunchExpansion(
+            "parallel-code-review",
+            "src/Repo.kt",
+            "The durable redaction proof measures an explicitly authorized complete-file expansion.",
+          ),
+        ),
+      ),
+    )
 
     return recorder to assertNotNull(result.accountingSummary, "The recorded review produced no accounting.")
   }
