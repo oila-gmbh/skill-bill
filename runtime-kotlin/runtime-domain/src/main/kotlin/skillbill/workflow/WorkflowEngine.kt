@@ -42,7 +42,10 @@ import java.math.BigInteger
  * `WorkflowEngine.snapshotMap(view)` and method references like
  * `WorkflowEngine::summaryMap` keep working without an instance.
  */
-class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
+class WorkflowEngine(
+  private val schemaValidator: WorkflowSnapshotValidator,
+  private val repositoryCheckpointIdentityResolver: () -> String = { "" },
+) {
   /**
    * SKILL-48 Subtask 2a: builds the canonical snapshot-shape map for the
    * given [record], validates it against the workflow-state schema, and
@@ -230,7 +233,6 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       snapshot,
       resume.resumeStepId,
       attemptCount,
-      resolvedRepositoryCheckpointIdentity(definition, snapshot, resume.resumeStepId),
     )
     val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
       ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
@@ -311,8 +313,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     snapshot: WorkflowSnapshotView,
     stepId: String,
     producerIteration: Int,
-    resolvedRepositoryCheckpointIdentity: String =
-      resolvedRepositoryCheckpointIdentity(definition, snapshot, stepId),
+    resolvedRepositoryCheckpointIdentity: String = repositoryCheckpointIdentityResolver(),
   ): WorkflowInputProjection? = definition.inputProjectionsByStep[stepId]?.let {
     WorkflowInputProjectionSelector.select(
       definition,
@@ -323,16 +324,13 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     )
   }
 
-  private fun resolvedRepositoryCheckpointIdentity(
+  fun freshLaunchProjection(
     definition: WorkflowDefinition,
-    snapshot: WorkflowSnapshotView,
+    record: WorkflowStateSnapshot,
     stepId: String,
-  ): String {
-    val checkpointArtifactKey =
-      definition.inputProjectionsByStep[stepId]?.repositoryCheckpointArtifactKey.orEmpty()
-    val evidence = snapshot.artifacts[checkpointArtifactKey] as? Map<*, *>
-    return (evidence?.get("fingerprint") ?: evidence?.get("checkpoint")) as? String ?: ""
-  }
+    producerIteration: Int,
+  ): WorkflowInputProjection? =
+    launchProjection(definition, snapshotView(definition, record), stepId, producerIteration)
 
   companion object {
     private val resumableStepStatuses = setOf("running", "blocked", "pending")

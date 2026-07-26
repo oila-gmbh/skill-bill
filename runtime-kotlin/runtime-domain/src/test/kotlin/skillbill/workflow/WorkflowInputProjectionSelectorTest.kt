@@ -11,7 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class WorkflowInputProjectionSelectorTest {
-  private val engine = WorkflowEngine(AcceptingWorkflowSnapshotValidator)
+  private val engine = WorkflowEngine(AcceptingWorkflowSnapshotValidator) { "abc123" }
 
   @Test
   fun `prose order audits before review and audit excludes review result`() {
@@ -233,14 +233,50 @@ class WorkflowInputProjectionSelectorTest {
         sessionId = "",
       ),
     )
-    val snapshot = engine.snapshotView(definition, record)
-    val fresh = engine.launchProjection(definition, snapshot, "audit", 0, "abc123")
+    val fresh = engine.freshLaunchProjection(definition, record, "audit", 0)
     val resumed = engine.continueDecision(definition, record).view.stepArtifacts
 
     assertEquals(fresh!!.artifacts, resumed)
     assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh!!.artifacts.keys)
     assertFalse("review_result" in fresh.artifacts)
     assertFalse("telemetry_payload" in fresh.artifacts)
+  }
+
+  @Test
+  fun `engine resolves checkpoint independently of supplied evidence for fresh and resumed launches`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val receipt = definition.inputProjectionsByStep.getValue("audit")
+      .projectedFieldsByArtifactKey.getValue("implementation_summary")
+      .associateWith { field ->
+        when (field) {
+          "projection_kind" -> "implementation_receipt"
+          "contract_version" -> "0.1"
+          "repository_checkpoint" -> mapOf("fingerprint" to "supplied")
+          else -> emptyList<String>()
+        }
+      }
+    val record = engine.updateRecord(
+      definition,
+      engine.openRecord(definition, "wfl-independent", "fis-independent", "audit"),
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "audit",
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          "plan" to mapOf("tasks" to listOf("one")),
+          "implementation_summary" to receipt,
+          "repository_evidence" to mapOf("fingerprint" to "supplied"),
+        ),
+        sessionId = "",
+      ),
+    )
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      engine.freshLaunchProjection(definition, record, "audit", 0)
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      engine.continueDecision(definition, record)
+    }
   }
 
   @Test

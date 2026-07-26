@@ -30,6 +30,7 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
@@ -72,7 +73,11 @@ class WorkflowService(
   // `runtime-infra-fs`). The validator caches the compiled JSON Schema
   // instance, so a single shared engine amortises schema parse + compile
   // cost across every call.
-  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
+    val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())
+    check(resolved.ok) { resolved.error ?: "Could not resolve the repository checkpoint." }
+    resolved.value.orEmpty()
+  }
 
   @Suppress("LongParameterList")
   fun open(
@@ -132,6 +137,14 @@ class WorkflowService(
       )
       executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
+      val currentStep = engine.snapshotView(family.definition, saved).steps
+        .firstOrNull { it.stepId == stepId }
+      engine.freshLaunchProjection(
+        family.definition,
+        saved,
+        stepId,
+        currentStep?.attemptCount ?: 0,
+      )
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
