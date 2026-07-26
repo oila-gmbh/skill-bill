@@ -164,3 +164,11 @@ skill-bill goal <issue_key>
 ## Goal Runner Boundary
 
 `skill-bill goal <issue_key>` is consumer-only. It must not synthesize specs from prose. If no decomposition manifest exists, it should continue to loud-fail and direct callers back to preparation.
+
+## Handoff Contract Inputs
+
+Prepared artifacts define governed acceptance and subtask boundaries, but do
+not grant later agents access to the complete preparation artifact map.
+Feature-task runtime selects named, versioned consumer projections and applies
+UTF-8 and collection budgets before launch. Agents cannot add sources, widen
+field allowlists, or choose a fallback artifact.

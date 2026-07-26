@@ -46,6 +46,37 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaPaths {
 }
 
 /**
+ * The declaration contract is intentionally versioned independently from the delivered envelope.
+ * Version 0.2 is incompatible with the pre-SKILL-146 implicit declaration shape: source, budget,
+ * visibility, checkpoint policy, and producer iteration are all mandatory closed-world fields.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION: String = "0.2"
+
+object FeatureTaskRuntimePhaseHandoffSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+}
+
+/**
+ * Pins the durable private-evidence/delivered-projection wire split. Legacy records without the
+ * explicit record kind, producer iteration, and repository checkpoint are not compatible.
+ */
+const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
+
+object FeatureTaskRuntimePersistenceSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-persistence-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-persistence-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.yaml"
+}
+
+/**
  * Runtime-side mirror of the planning-projections schema's `contract_version`;
  * `FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest` fails the build if they diverge.
  * Pins the four concrete bounded projections (preplanning digest, executable plan, plan commitment,

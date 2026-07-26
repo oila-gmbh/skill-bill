@@ -713,6 +713,20 @@ skillbill.workflow.verify
 
 ## Phase Context Boundary (SKILL-137 handoff projections)
 
+SKILL-146 makes this boundary explicitly four-part: complete producer output is
+private evidence; a named consumer projection is the only prompt-visible
+derivative; repository state has an immutable checkpoint identity; and
+phase-local instructions use workflow-owned invariant allowlists. Declaration
+and persistence wires have independent incompatible `0.2` contracts. Delivered
+records identify the workflow, consumer, producer iteration, and checkpoint;
+legacy records missing that identity loud-fail with restart or explicit
+migration guidance.
+
+Budgets are enforced before launch against serialized UTF-8 bytes and
+collection items. The runtime never truncates, drops fields, or falls back to a
+complete artifact. Measurements contain identifiers, byte/item counts, token
+estimates, and failure classifications only, never prompt or evidence bodies.
+
 A feature-task-runtime phase no longer receives the complete output of its
 upstream phases. Context reaching a phase is split into four parts with distinct
 owners, storage, and failure modes.

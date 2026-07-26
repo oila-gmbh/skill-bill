@@ -72,6 +72,17 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
     }
   }
 
+  @Test
+  fun `legacy and agent widened delivered records fail loudly`() {
+    val valid = deliveredProjection().toArtifactMap()
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(valid - "contract_version")
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(valid + ("agent_selected_fields" to listOf("secret")))
+    }
+  }
+
   private fun deliveredProjection() = FeatureTaskRuntimeDeliveredProjectionRecord(
     workflowId = "wftr-1",
     consumerPhaseId = "implement",

@@ -508,6 +508,13 @@ class ApplicationPersistencePortTest {
     // A second delivery to the same consumer is a new iteration, not a silent overwrite of history.
     assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
     assertEquals(2, requireNotNull(recorder.loadDeliveredProjections(workflowId))["implement"]?.iteration)
+    val afterSecondDelivery = decodeArtifactsForTest(
+      requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+    @Suppress("UNCHECKED_CAST")
+    val deliveredHistory =
+      afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY] as Map<String, Any?>
+    assertEquals(2, deliveredHistory.size, "distinct producer iterations must remain independently durable")
   }
 
   @Test

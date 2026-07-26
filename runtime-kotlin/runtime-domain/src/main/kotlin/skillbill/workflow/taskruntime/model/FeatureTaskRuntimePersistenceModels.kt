@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -213,6 +214,9 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
   val iteration: Int,
   val envelope: FeatureTaskRuntimeHandoffEnvelope,
 ) {
+  val repositoryCheckpointFingerprint: String =
+    envelope.repositoryCheckpoint?.fingerprint ?: "not_required:$consumerPhaseId"
+
   init {
     require(workflowId.isNotBlank()) { "FeatureTaskRuntimeDeliveredProjectionRecord.workflowId must be non-blank." }
     require(consumerPhaseId.isNotBlank()) {
@@ -229,19 +233,36 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
 
   @OpenBoundaryMap("Feature-task-runtime delivered-projection record at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    "record_kind" to "delivered_projection",
     "workflow_id" to workflowId,
     "consumer_phase_id" to consumerPhaseId,
-    "iteration" to iteration,
+    "producer_iteration" to iteration,
+    "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
   )
 
   companion object {
     @OpenBoundaryMap("Feature-task-runtime delivered-projection decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord =
-      FeatureTaskRuntimeDeliveredProjectionRecord(
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord {
+      requireExactDeliveredProjectionFields(raw)
+      val contractVersion = raw["contract_version"] as? String ?: missing("contract_version")
+      if (contractVersion != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered projection uses unsupported persistence contract version " +
+            "'$contractVersion'; restart the workflow or run an explicit compatible migration.",
+        )
+      }
+      if (raw["record_kind"] != "delivered_projection") {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime prompt-facing persistence record must have kind 'delivered_projection'; " +
+            "private evidence cannot be read through this API.",
+        )
+      }
+      val record = FeatureTaskRuntimeDeliveredProjectionRecord(
         workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
         consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
-        iteration = (raw["iteration"] as? Number)?.toInt() ?: missing("iteration"),
+        iteration = (raw["producer_iteration"] as? Number)?.toInt() ?: missing("producer_iteration"),
         envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
           JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
             // Named explicitly: the private phase-output artifact is never an acceptable substitute
@@ -249,6 +270,36 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
             ?: missing("handoff_envelope"),
         ),
       )
+      val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
+        ?: missing("repository_checkpoint")
+      val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
+      if (persistedFingerprint != record.repositoryCheckpointFingerprint) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered projection checkpoint identity does not match its validated envelope; " +
+            "restart the consumer phase from current repository state.",
+        )
+      }
+      return record
+    }
+
+    private fun requireExactDeliveredProjectionFields(raw: Map<String, Any?>) {
+      val expected = setOf(
+        "contract_version",
+        "record_kind",
+        "workflow_id",
+        "consumer_phase_id",
+        "producer_iteration",
+        "repository_checkpoint",
+        "handoff_envelope",
+      )
+      val unexpected = raw.keys - expected
+      if (unexpected.isNotEmpty()) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered-projection record contains unsupported fields; " +
+            "restart the workflow or run an explicit compatible migration.",
+        )
+      }
+    }
 
     // Single throw seam so the strict decoder stays within the throw-count budget.
     private fun missing(field: String): Nothing = throw InvalidWorkflowStateSchemaError(

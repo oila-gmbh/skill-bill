@@ -301,6 +301,42 @@ val copyFeatureTaskRuntimeHandoffEnvelopeSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimePhaseHandoffSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePhaseHandoffSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseHandoffSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseHandoffSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical phase-handoff schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val canonicalFeatureTaskRuntimePersistenceSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-persistence-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePersistenceSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePersistenceSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePersistenceSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical feature-task-runtime persistence schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml")
@@ -392,6 +428,8 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
+  dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -414,6 +452,8 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
+  dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

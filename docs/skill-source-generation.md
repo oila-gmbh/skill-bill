@@ -672,3 +672,12 @@ Generated `SKILL.md` wrappers, support pointers, provider-native output
 directories, native-agent sources, and arbitrary sidecars are forbidden in an
 agent add-on source directory. Agent add-ons are distinct from governed skills
 under `skills/` and pack-owned add-ons under `platform-packs/<slug>/addons/`.
+
+## Runtime Handoff Terminology
+
+Governed feature-task content describes four distinct inputs: private producer
+evidence, the exact prompt-visible consumer projection, repository checkpoint
+state, and allowlisted phase-local instructions. Do not describe these as
+complete artifact inheritance or agent-selected retrieval. Handoff declarations
+and delivered persistence records are versioned runtime contracts; projection
+budgets are enforced before launch without truncation or full-artifact fallback.

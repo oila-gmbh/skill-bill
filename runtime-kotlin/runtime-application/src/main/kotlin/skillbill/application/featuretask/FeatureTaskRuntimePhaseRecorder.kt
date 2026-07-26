@@ -476,16 +476,25 @@ class FeatureTaskRuntimePhaseRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val updatedBriefings = LinkedHashMap(phaseBriefingsFrom(artifacts, ::validateEnvelopeWire))
       .apply { put(briefing.phaseId, briefing) }
-    val existingDelivered = deliveredProjectionsFrom(artifacts, ::validateEnvelopeWire)
+    val deliveredHistory = deliveredProjectionHistoryFrom(artifacts, ::validateEnvelopeWire)
+    val existingDelivered = deliveredHistory.values
+      .filter { it.consumerPhaseId == briefing.phaseId }
+      .maxByOrNull(FeatureTaskRuntimeDeliveredProjectionRecord::iteration)
     val delivered = FeatureTaskRuntimeDeliveredProjectionRecord(
       workflowId = workflowId,
       consumerPhaseId = briefing.phaseId,
       // Each briefing write is one delivery to that consumer, so the iteration counts re-entries.
-      iteration = (existingDelivered[briefing.phaseId]?.iteration ?: 0) + 1,
+      iteration = (existingDelivered?.iteration ?: 0) + 1,
       envelope = briefing.handoffEnvelope,
     )
-    val updatedDelivered = LinkedHashMap(existingDelivered)
-      .apply { put(briefing.phaseId, delivered) }
+    val deliveredKey = listOf(
+      delivered.workflowId,
+      delivered.consumerPhaseId,
+      delivered.iteration.toString(),
+      delivered.repositoryCheckpointFingerprint,
+    ).joinToString(separator = "|")
+    val updatedDelivered = LinkedHashMap(deliveredHistory)
+      .apply { put(deliveredKey, delivered) }
     val patch = mapOf(
       FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
         updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },

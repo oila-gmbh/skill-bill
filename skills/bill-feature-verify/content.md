@@ -282,3 +282,11 @@ After presenting the verdict, ask:
 If the user wants a PR comment:
 - Format the verdict as a GitHub PR review comment using `gh pr review <number>`
 - Use `--comment` for APPROVE WITH FIXES, `--approve` for APPROVE, `--request-changes` for REQUEST CHANGES
+
+## Verification Input Boundary
+
+Each verifier receives only its declared criteria and authoritative bounded
+repository projection. Private workflow evidence, unrelated evaluator outputs,
+telemetry, and complete upstream artifact maps are not prompt inputs. The
+consolidated verdict consumes compact typed evaluator receipts, while repository
+checkpoint state remains authoritative over receipt claims.

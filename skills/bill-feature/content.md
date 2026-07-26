@@ -100,3 +100,12 @@ If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surfac
 ## Status Requests
 
 If the user asks for status on a prepared feature, read the `bill-feature-goal.md` sidecar in this skill's own installed directory and follow its status behavior. Do not use the Skill tool — `bill-feature-goal` is an internal skill.
+
+## Least-Context Runtime Handoffs
+
+Runtime phases consume workflow-declared, versioned projections rather than a
+complete artifact map. Private phase evidence remains diagnostic-only; the
+prompt-visible delivery is budgeted before launch and persisted exactly with
+its producer iteration and repository checkpoint. Resume, retry, crash
+recovery, and remediation must reuse this same boundary. An incompatible legacy
+record fails loudly and requires restart or an explicit migration.
