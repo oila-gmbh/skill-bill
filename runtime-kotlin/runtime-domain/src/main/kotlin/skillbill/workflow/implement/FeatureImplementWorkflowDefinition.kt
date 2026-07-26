@@ -131,13 +131,13 @@ object FeatureImplementWorkflowDefinition {
       ),
       "review" to listOf(
         "content.md :: Continuation Mode",
-        "content.md :: Step 5: Code Review (orchestrator)",
-        "content.md :: Fix-loop briefing (used by Step 5 review loop)",
+        "content.md :: Step 6: Code Review (orchestrator)",
+        "content.md :: Fix-loop briefing (used by Step 6 review loop)",
       ),
       "audit" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Durable Progress Write Contract",
-        "content.md :: Step 6: Completeness Audit (subagent)",
+        "content.md :: Step 5: Completeness Audit (subagent)",
         "content.md :: Completeness audit subagent briefing",
       ),
       "validate" to listOf(

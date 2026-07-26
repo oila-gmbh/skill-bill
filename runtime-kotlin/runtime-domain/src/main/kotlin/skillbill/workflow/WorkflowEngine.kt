@@ -16,6 +16,7 @@ import skillbill.workflow.model.WorkflowContinuationArtifactSummary
 import skillbill.workflow.model.WorkflowContinueDecision
 import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowInputProjection
 import skillbill.workflow.model.WorkflowResumeView
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -224,14 +225,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val declaredProjection = definition.inputProjectionsByStep[resume.resumeStepId]?.let {
-      WorkflowInputProjectionSelector.select(
-        definition = definition,
-        snapshot = snapshot,
-        stepId = resume.resumeStepId,
-        producerIteration = attemptCount,
-      )
-    }
+    val declaredProjection = launchProjection(definition, snapshot, resume.resumeStepId, attemptCount)
     val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
       ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
     val stepArtifacts = declaredProjection?.artifacts ?: stepArtifactKeys.associateWith { key ->
@@ -278,6 +272,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
       continuationBrief = continuationBrief,
       continuationEntryPrompt = continuationEntryPrompt,
+      declaredProjection = declaredProjection,
     )
     val view = WorkflowContinueView(
       resume = resume,
@@ -303,6 +298,15 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       resumeStepId = resume.resumeStepId,
       nextAttemptCount = nextAttemptCount,
     )
+  }
+
+  fun launchProjection(
+    definition: WorkflowDefinition,
+    snapshot: WorkflowSnapshotView,
+    stepId: String,
+    producerIteration: Int,
+  ): WorkflowInputProjection? = definition.inputProjectionsByStep[stepId]?.let {
+    WorkflowInputProjectionSelector.select(definition, snapshot, stepId, producerIteration)
   }
 
   companion object {
@@ -582,11 +586,14 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       continueStepDirective: String,
       continuationBrief: String,
       continuationEntryPrompt: String,
+      declaredProjection: WorkflowInputProjection?,
     ): WorkflowCompactContinueView {
       val requiredKeys = resume.requiredArtifacts
       val availableKeys = resume.availableArtifacts
-      val currentStepArtifactKeys = requiredKeys
-      val currentStepArtifacts = currentStepArtifactKeys.map { key ->
+      val currentStepArtifactKeys = declaredProjection?.artifacts?.keys?.toList() ?: requiredKeys
+      val currentStepArtifacts = declaredProjection?.artifacts?.map { (key, value) ->
+        losslessProjectionArtifact(key, value)
+      } ?: currentStepArtifactKeys.map { key ->
         val resolved = resolvedArtifactValue(definition, snapshot, key)
         artifactSummary(key, resolved.value, resolved.present)
       }
@@ -611,6 +618,21 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         continuationEntryPrompt = continuationEntryPrompt,
         readOnlyFullStateGuidance =
         "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
+      )
+    }
+
+    private fun losslessProjectionArtifact(key: String, value: Any?): WorkflowContinuationArtifactSummary {
+      val sizeBytes = jsonString(value).toByteArray(Charsets.UTF_8).size
+      return WorkflowContinuationArtifactSummary(
+        key = key,
+        present = true,
+        inline = true,
+        sizeBytes = sizeBytes,
+        value = value,
+        preview = null,
+        truncated = false,
+        omitted = false,
+        omissionReason = null,
       )
     }
 

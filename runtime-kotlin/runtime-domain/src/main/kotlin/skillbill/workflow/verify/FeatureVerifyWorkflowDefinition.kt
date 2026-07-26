@@ -79,9 +79,9 @@ object FeatureVerifyWorkflowDefinition {
       "extract_criteria" to
         "Re-extract and confirm the criteria, then persist criteria_summary before moving to gather_diff.",
       "gather_diff" to
-        "Reuse input_context and criteria_summary, then gather the diff target and persist diff_summary.",
+        "Reuse input_context and criteria_summary, then persist the bounded checkpointed diff_projection and evaluator policies.",
       "feature_flag_audit" to
-        "Reuse criteria_summary and diff_summary, run the audit if still required, and persist the result.",
+        "Reuse criteria_summary, feature_flag_policy, and diff_projection; persist feature_flag_audit_receipt.",
       "code_review" to
         "Run bill-code-review independently against criteria, its rubric, and diff_projection, then persist " +
         "code_review_receipt.",
@@ -136,13 +136,14 @@ object FeatureVerifyWorkflowDefinition {
         "criteria_summary before advancing.",
       "gather_diff" to
         "Skip Steps 1 and 2. Reuse the saved input_context and criteria_summary artifacts, then gather the diff " +
-        "target and persist diff_summary.",
+        "target and persist the bounded checkpointed diff_projection plus feature_flag_policy, review_rubric, " +
+        "unit_test_value_rubric, and completeness_rubric.",
       "feature_flag_audit" to
-        "Reuse the saved criteria_summary and diff_summary artifacts. Run the audit only when the spec or diff " +
-        "still requires it, then persist feature_flag_audit_result.",
+        "Reuse criteria_summary, feature_flag_policy, and diff_projection. Run the audit only when applicable, " +
+        "then persist feature_flag_audit_receipt.",
       "code_review" to
-        "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
-        "persist a compact typed receipt, and keep telemetry in its dedicated store.",
+        "Reuse criteria_summary, review_rubric, and diff_projection, pass orchestrated=true to bill-code-review, " +
+        "persist code_review_receipt, and keep telemetry in its dedicated store.",
       "unit_test_value_check" to
         "Run independently from sibling evaluators using criteria_summary, unit_test_value_rubric, and the " +
         "checkpoint-scoped diff_projection.",
@@ -180,7 +181,6 @@ object FeatureVerifyWorkflowDefinition {
         "code_review_receipt",
         "unit_test_value_receipt",
         "completeness_audit_receipt",
-        "diff_projection",
       ),
     ),
   )

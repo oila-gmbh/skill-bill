@@ -24,7 +24,8 @@ object WorkflowInputProjectionSelector {
       throw invalid(definition, "projection for step '$stepId' is missing required artifact keys: ${missing.joinToString()}")
     }
     val selected = declaration.requiredArtifactKeys.associateWith(snapshot.artifacts::get)
-    val forbidden = selected.keys.intersect(declaration.forbiddenArtifactKeys)
+    val forbidden = selected.keys.intersect(declaration.forbiddenArtifactKeys) +
+      selected.values.flatMapTo(mutableSetOf()) { nestedKeys(it) }.intersect(declaration.forbiddenArtifactKeys)
     if (forbidden.isNotEmpty()) {
       throw invalid(definition, "projection for step '$stepId' contains forbidden artifact keys: ${forbidden.sorted().joinToString()}")
     }
@@ -39,10 +40,20 @@ object WorkflowInputProjectionSelector {
     if (bytes > declaration.maxUtf8Bytes) {
       throw invalid(definition, "projection for step '$stepId' exceeds its UTF-8 byte budget")
     }
+    val repositoryCheckpoint = selected[declaration.repositoryCheckpointArtifactKey]
+      ?: throw invalid(definition, "projection for step '$stepId' has null repository checkpoint evidence")
+    val checkpoint = repositoryCheckpoint as? Map<*, *>
+      ?: throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence is not typed")
+    val checkpointIdentity = checkpoint["fingerprint"] ?: checkpoint["checkpoint"]
+      ?: throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence has no identity")
+    val claimedIdentity = checkpoint["repository_checkpoint"] ?: checkpoint["checkpoint"] ?: checkpoint["fingerprint"]
+    if (claimedIdentity != checkpointIdentity) {
+      throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence is stale or mismatched")
+    }
     return WorkflowInputProjection(
       stepId = stepId,
       producerIteration = producerIteration,
-      repositoryCheckpoint = snapshot.artifacts[declaration.repositoryCheckpointArtifactKey],
+      repositoryCheckpoint = repositoryCheckpoint,
       artifacts = selected,
       utf8Bytes = bytes,
     )
@@ -53,6 +64,18 @@ object WorkflowInputProjectionSelector {
     is Iterable<*> -> value.sumOf(::collectionItemCount)
     is Array<*> -> value.sumOf(::collectionItemCount)
     else -> 1
+  }
+
+  private fun nestedKeys(value: Any?): Set<String> = when (value) {
+    is Map<*, *> -> value.entries.flatMapTo(mutableSetOf()) { (key, nested) ->
+      buildSet {
+        if (key is String) add(key)
+        addAll(nestedKeys(nested))
+      }
+    }
+    is Iterable<*> -> value.flatMapTo(mutableSetOf(), ::nestedKeys)
+    is Array<*> -> value.flatMapTo(mutableSetOf(), ::nestedKeys)
+    else -> emptySet()
   }
 
   private fun invalid(definition: WorkflowDefinition, detail: String) =

@@ -33,9 +33,35 @@ class WorkflowInputProjectionSelectorTest {
       assertTrue("diff_projection" in keys)
       assertFalse(keys.any { it.endsWith("_receipt") || it.endsWith("_result") })
     }
-    assertTrue(projections.getValue("verdict").requiredArtifactKeys.all {
-      it.endsWith("_receipt") || it == "diff_projection"
-    })
+    assertTrue(projections.getValue("verdict").requiredArtifactKeys.all { it.endsWith("_receipt") })
+    assertFalse("diff_projection" in projections.getValue("verdict").requiredArtifactKeys)
+  }
+
+  @Test
+  fun `projection rejects forbidden diagnostics nested inside a typed receipt`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val snapshot = engine.snapshotView(
+      definition,
+      engine.updateRecord(
+        definition,
+        engine.openRecord(definition, "wfl-3", "fis-3", "audit"),
+        skillbill.workflow.model.WorkflowUpdateInput(
+          workflowStatus = "running",
+          currentStepId = "audit",
+          stepUpdates = null,
+          artifactsPatch = mapOf(
+            "plan" to mapOf("tasks" to listOf("one")),
+            "implementation_summary" to mapOf("completed" to true, "progress" to mapOf("heartbeat" to 1)),
+            "repository_evidence" to mapOf("fingerprint" to "abc123"),
+          ),
+          sessionId = "",
+        ),
+      ),
+    )
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 1)
+    }
   }
 
   @Test
@@ -61,11 +87,11 @@ class WorkflowInputProjectionSelectorTest {
         ),
       ),
     )
-    val fresh = WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 2)
-    val resumed = WorkflowInputProjectionSelector.select(definition, snapshot, "audit", 2)
+    val fresh = engine.launchProjection(definition, snapshot, "audit", 2)
+    val resumed = engine.launchProjection(definition, snapshot, "audit", 2)
 
     assertEquals(fresh, resumed)
-    assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh.artifacts.keys)
+    assertEquals(setOf("plan", "implementation_summary", "repository_evidence"), fresh!!.artifacts.keys)
     assertFalse("review_result" in fresh.artifacts)
     assertFalse("telemetry_payload" in fresh.artifacts)
   }

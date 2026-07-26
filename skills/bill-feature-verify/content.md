@@ -102,21 +102,21 @@ After Step 2 is confirmed, call `feature_verify_started` and save the returned `
 
 Step id: `gather_diff`
 
-Primary artifact: `diff_summary`
+Primary artifact: `diff_projection`
 
-Based on user input, gather changes via `gh pr diff`, `git diff`, or `git log`. Resolve the PR diff target from the user input, persist `diff_summary` before advancing to the feature-flag audit, and update workflow state so `gather_diff` is completed and `feature_flag_audit` is running.
+Based on user input, gather changes via `gh pr diff`, `git diff`, or `git log`. Resolve the immutable repository checkpoint and bounded comparison scope, then persist `diff_projection`, `feature_flag_policy`, `review_rubric`, `unit_test_value_rubric`, and `completeness_rubric` before advancing.
 
-The success artifact for this step is `diff_summary`: the resolved diff target, commit/PR reference, changed-files summary, and any canonical diff pointer forwarded to review.
+The success artifact is a typed `diff_projection` containing its checkpoint identity and bounded changed-file evidence. It must not contain the complete diff, prompts, logs, source bodies, telemetry, or progress payloads.
 
 ## Step 4: Feature Flag Audit (conditional)
 
 Step id: `feature_flag_audit`
 
-Primary artifact: `feature_flag_audit_result`
+Primary artifact: `feature_flag_audit_receipt`
 
 Use the Feature Flag Audit rubric below for the full rubric and output format.
 
-The audit is legally skippable when the spec and diff do not require it. Persist `feature_flag_audit_result` either way. Update workflow state so `feature_flag_audit` is completed or skipped and `code_review` is running.
+The audit is legally skippable when the spec and diff do not require it. Persist a compact typed `feature_flag_audit_receipt` either way. Update workflow state so `feature_flag_audit` is completed or skipped and `code_review` is running.
 
 ## Step 5: Code Review
 
@@ -134,7 +134,7 @@ Persist `code_review_receipt` after review finishes. Update workflow state so `c
 
 Step id: `unit_test_value_check`
 
-Primary artifact: `unit_test_value_result`
+Primary artifact: `unit_test_value_receipt`
 
 Run `bill-unit-test-value-check` independently against acceptance criteria, its declared rubric, and the authoritative checkpoint-scoped diff projection. It must not receive code-review, feature-flag, or completeness output. If the diff contains no unit tests, persist a compact skipped receipt. Otherwise persist only its typed bounded receipt; keep the full report private.
 
@@ -144,7 +144,7 @@ Persist `unit_test_value_receipt` after the check finishes. Update workflow stat
 
 Step id: `completeness_audit`
 
-Primary artifact: `completeness_audit_result`
+Primary artifact: `completeness_audit_receipt`
 
 Use the Completeness Audit rubric below for the audit format and rules.
 
