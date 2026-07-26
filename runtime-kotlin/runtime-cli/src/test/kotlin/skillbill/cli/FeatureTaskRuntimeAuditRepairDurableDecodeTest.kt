@@ -6,6 +6,7 @@ import skillbill.db.workflow.WorkflowStateRow
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
@@ -33,6 +34,7 @@ class FeatureTaskRuntimeAuditRepairDurableDecodeTest {
           override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
         },
         FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
+        FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter(),
       )
 
       val compatible = assertNotNull(recorder.loadAuditRepairState(row.workflowId, dbPath.toString()))

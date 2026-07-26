@@ -31,6 +31,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.learnings.model.CreateLearningRequest
@@ -113,6 +114,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisib
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
@@ -515,6 +518,10 @@ class ApplicationPersistencePortTest {
     val deliveredHistory =
       afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY] as Map<String, Any?>
     assertEquals(2, deliveredHistory.size, "distinct producer iterations must remain independently durable")
+    assertTrue(
+      deliveredHistory.keys.all { "|plan#1|" in it },
+      "durable selection keys must carry the normalized source producer identity",
+    )
   }
 
   @Test
@@ -532,6 +539,31 @@ class ApplicationPersistencePortTest {
 
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID, error.failureKind)
     assertEquals("implement", error.consumerPhaseId)
+  }
+
+  @Test
+  fun `projection rejection emits content free classified telemetry before briefing delivery`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val telemetry = RecordingProjectionLifecycleTelemetryRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository, lifecycleTelemetry = telemetry)
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+    val rejection = InvalidFeatureTaskRuntimeHandoffProjectionError(
+      workflowId = workflowId,
+      consumerPhaseId = "implement",
+      projectionName = "plan_receipt",
+      projectionContractId = "feature_task_runtime.executable_plan",
+      projectionContractVersion = "0.1",
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION,
+      reason = "repository checkpoint differs",
+    )
+
+    assertTrue(recorder.recordProjectionRejection(workflowId, "implement", rejection, "checkpoint-2"))
+
+    val measurement = telemetry.projectionMeasurements.single()
+    assertEquals(FeatureTaskRuntimeProjectionFailureClassification.STALE_CHECKPOINT, measurement.failureClassification)
+    assertEquals(0, measurement.deliveredProjectionUtf8Bytes)
+    assertEquals(0, measurement.privateEvidenceUtf8Bytes)
   }
 
   @Test
@@ -1832,6 +1864,7 @@ private class FakeDatabaseSessionFactory(
   private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
   private val telemetryReconciliation: TelemetryReconciliationRepository = NoopTelemetryReconciliationRepository,
   private val workflows: WorkflowStateRepository = NoopWorkflowStateRepository,
+  private val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
@@ -1854,13 +1887,23 @@ private class FakeDatabaseSessionFactory(
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
-    override val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository
+    override val lifecycleTelemetry: LifecycleTelemetryRepository = this@FakeDatabaseSessionFactory.lifecycleTelemetry
     override val telemetryReconciliation: TelemetryReconciliationRepository =
       this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+  }
+}
+
+@Suppress("TooManyFunctions")
+private class RecordingProjectionLifecycleTelemetryRepository : LifecycleTelemetryRepository by
+  NoopLifecycleTelemetryRepository {
+  val projectionMeasurements = mutableListOf<FeatureTaskRuntimeProjectionMeasurement>()
+
+  override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) {
+    projectionMeasurements += record
   }
 }
 
@@ -2729,6 +2772,7 @@ private fun testPhaseRecorder(database: DatabaseSessionFactory) = FeatureTaskRun
   database,
   WorkflowSnapshotValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
+  FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter(),
 )
 
 private fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (

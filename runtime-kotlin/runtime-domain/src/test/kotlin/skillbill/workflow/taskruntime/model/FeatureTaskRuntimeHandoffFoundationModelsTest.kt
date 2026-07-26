@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -18,6 +19,8 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
       budget = FeatureTaskRuntimeHandoffProjectionBudget(4096, 16),
       declaredFieldNames = listOf("changed_paths"),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      required = false,
+      allowsPrivateArtifactReference = true,
       producerIteration = FeatureTaskRuntimeProducerIteration("implement", 4),
       inlineAlternative = FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT,
       authorizedReferenceKinds = setOf(FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT),
@@ -28,8 +31,11 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     assertEquals(mapOf("kind" to "upstream_phase_output", "id" to "implement"), wire["source"])
     assertEquals(mapOf("phase_id" to "implement", "iteration" to 4), wire["producer_iteration"])
     assertEquals(listOf("private_evidence_artifact"), wire["authorized_reference_kinds"])
+    assertEquals(false, wire["required"])
+    assertEquals(true, wire["allows_private_artifact_reference"])
+    assertEquals("private_evidence_artifact", wire["inline_alternative"])
     assertFalse(wire.containsKey("source_ref"))
-    assertEquals(declaration, PhaseHandoffProjectionDeclaration.fromArtifactMap(wire))
+    assertEquals(declaration, PhaseHandoffProjectionDeclaration.fromArtifactMap(wire, AcceptingFoundationValidator))
   }
 
   @Test
@@ -97,4 +103,10 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
       FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(evidence.toArtifactMap())
     }
   }
+}
+
+private object AcceptingFoundationValidator : FeatureTaskRuntimeHandoffFoundationValidator {
+  override fun validateDeclaration(payload: Map<String, Any?>, sourceLabel: String) = Unit
+  override fun validatePersistenceRecord(payload: Map<String, Any?>, sourceLabel: String) = Unit
+  override fun validateMeasurement(payload: Map<String, Any?>, sourceLabel: String) = Unit
 }

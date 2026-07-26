@@ -15,6 +15,8 @@ required:
   - checkpoint_policy
   - producer_iteration
   - declared_fields
+  - required
+  - allows_private_artifact_reference
 properties:
   contract_version:
     const: "0.2"
@@ -43,6 +45,17 @@ properties:
     items:
       type: string
       pattern: "^[a-z][a-z0-9_]*$"
+  required:
+    type: boolean
+  allows_private_artifact_reference:
+    type: boolean
+  inline_alternative:
+    enum:
+      - private_evidence_artifact
+      - repository_path
+      - repository_checkpoint
+      - acceptance_criterion_ref
+      - repair_item_id
   authorized_reference_kinds:
     type: array
     uniqueItems: true

@@ -9,10 +9,18 @@ prohibition: an agent running a governed feature skill must never poll a running
 execution from inside its own session. Watching is the user's terminal, not the
 agent's context.
 
-The motivation is token cost. Every poll's output lands in the agent's context
-window and is paid for on that request and every request after it. A 60-refresh
-watch loop buys the agent nothing it could act on — the foreground call already
-returns the outcome — while permanently inflating the transcript.
+The motivation is token cost, and the mechanism is worth stating precisely
+because it is not what it looks like.
+
+The expensive part is not the bytes a poll returns. It is that every tool call
+re-sends the entire conversation, and the conversation is larger on each
+successive call. A poll loop is therefore quadratic: 60 refreshes are 60
+full-context requests, each bigger than the one before, and each poll's output
+permanently inflates every request that follows it.
+
+The alternative costs one request. A single blocking call returns the outcome
+when the run ends, however long that takes. The loop buys nothing the agent could
+act on — it cannot intervene mid-run — and pays a compounding price for it.
 
 Files in scope:
 
@@ -39,39 +47,69 @@ run is in flight, the agent must not:
 The prohibition binds regardless of how the loop is expressed — a shell loop, a
 scheduled wake-up, repeated tool calls, or a subagent spawned to watch.
 
+The test is **request count, not output size**. A "cheap" poll that returns two
+lines still costs a full re-send of the conversation, so trimming what a poll
+returns does not make polling acceptable. Prefer one long blocking call over any
+number of short ones.
+
+## Quiet Launch
+
+The agent launches the goal with `--no-live-output`
+(`GoalCliCommands.kt:111`). Everything the run prints to stdout is captured and
+lands in the agent's context when the call returns, paid for in full whether or
+not anything reads it.
+
+The saving is modest but unbounded-growing: the heartbeat pair fires every 90
+seconds (`AgentRunProcessRunner.kt:117`), so a three-hour goal accrues a few
+hundred lines and a longer one proportionally more. It costs nothing to suppress
+once `goal watch` gives the user a real live feed, which is the trade subtask 1
+makes possible.
+
+The user's live view is `skill-bill goal watch` in their own terminal — which is
+why subtask 1 exists, and why the required monitoring block is the thing that
+makes this posture acceptable rather than a regression.
+
 ## Permitted In-Session Surface
 
-The governing line is **push, not pull**: relay a transition the agent already
-has; never spend a call to go get one.
+The agent's conversation surface for a run is:
 
-The agent's conversation surface during a run is:
-
-1. **Phase transitions that arrive without a call.** When the run is in the
-   foreground and the runtime's transition output is already in the agent's
-   context, relay it — briefly, one line per transition, no embellishment. This
-   costs nothing beyond what was already paid.
-2. **Terminal outcome** — what the foreground call returns when it returns:
-   complete, blocked, or failed, reported once.
-3. **Errors** — a launch failure, a loud-fail, or a non-zero exit, reported when
-   it happens.
-4. **One status call on explicit user request**, answered from a single
+1. **A single completion line**, emitted when the call returns.
+2. **Errors** — a launch failure, a loud-fail, or a non-zero exit.
+3. **One status call on explicit user request**, answered from a single
    `skill-bill goal status` invocation.
 
-If a transition is not already in context — a detached or background run, or any
-case where obtaining it needs another call — the agent does not go and fetch it.
-The user's live feed is the terminal monitoring block the skill is already
-required to print. Silence during a detached run is correct behavior, and the
-skill says so, so the absence of relayed transitions is not read as a fault.
+There is no in-session transition relay. With `--no-live-output` the agent has no
+transitions to relay, and it must not acquire any.
+
+## The Completion Line
+
+A run that finishes with nothing appearing in the session reads as broken. One
+line prevents that, and one line is all that is permitted.
+
+Compose it **only** from the structured fields the run already returns
+(`goalRunText`, `GoalCliCommands.kt:800-815`): `status`, the completed / pending
+/ blocked counts, `pull_request_url`, and `blocked_reason` where present. For
+example:
+
+```text
+goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241
+goal SKILL-146: blocked at subtask 2 — <blocked_reason>
+goal SKILL-146: failed — <reason>
+```
+
+Explicitly forbidden: reading back, summarizing, or paraphrasing the run's stdout
+to produce this line. The structured fields are sufficient and bounded; the
+stream is neither. If the user wants detail, they ask, and the agent answers with
+one `goal status` call.
 
 ### Reconciliation note
 
 `skills/bill-feature-goal/content.md:232` currently reads that the agent "does
-not relay transitions into the conversation". That is stricter than intended and
-must be amended, not preserved: transitions the agent already has are worth
-relaying, and the user asked for them. Rewrite the line so it forbids
-*poll-driven* relay — going out to fetch transitions and paraphrasing them back
-— while permitting zero-cost relay of transitions already in context. The
-prohibition is on the loop, not on the telling.
+not relay transitions into the conversation". That stays correct under this
+design and needs no loosening — with a quiet launch there are no in-context
+transitions to relay. Extend the surrounding text so it is clear the agent is
+nonetheless required to emit the completion line, and that silence during the
+run is deliberate rather than a failure.
 
 ## Acceptance Criteria (this subtask)
 
@@ -79,24 +117,56 @@ prohibition is on the loop, not on the telling.
    prohibition, in imperative form, in the "Watching Long Runs" section.
 2. `skills/bill-feature-task-runtime/content.md` states the same prohibition in
    its "Progress Visibility" section, consistent in wording with the goal skill.
-3. Both skills state the permitted in-session surface as the four allowed items,
-   lead it with the push-not-pull rule, and state the token-cost reason in one
-   sentence.
-4. Both skills state that transitions already in the agent's context from a
-   foreground run are relayed one line each, and that transitions requiring an
-   extra call are not fetched.
-5. Both skills state that the terminal monitoring block is the user's live feed
-   for detached runs, and that agent silence during such a run is correct.
-6. The live-polling example at `skills/bill-feature-goal/content.md:306` is
+3. `skills/bill-feature-goal/content.md` instructs the agent to launch with
+   `--no-live-output`, and states the token-cost reason in one sentence.
+4. Both skills state the permitted in-session surface as the three allowed items,
+   state that there is no in-session transition relay, and state the cost rule as
+   request count rather than output size — one blocking call beats any number of
+   short polls, and trimming a poll's output does not make polling acceptable.
+5. Both skills require exactly one completion line, composed only from the
+   structured result fields (`status`, counts, `pull_request_url`,
+   `blocked_reason`), and give the three worked examples for complete, blocked,
+   and failed.
+6. Both skills forbid reading back, summarizing, or paraphrasing run stdout to
+   compose that line.
+7. Both skills state that the terminal monitoring block is the user's live feed
+   and that agent silence during the run is deliberate, not a failure.
+8. The live-polling example at `skills/bill-feature-goal/content.md:306` is
    reframed as a user-terminal command, not something the agent runs, and drops
    its `--max-refreshes` bound per subtask 1.
-7. The `content.md:232` "does not relay transitions" line is amended to forbid
-   poll-driven relay while permitting zero-cost relay, and no remaining sentence
-   in either skill contradicts that.
-8. `skill-bill validate`, `npx --yes agnix --strict .`, and
-   `scripts/validate_agent_configs` pass.
-9. `./install.sh` is run so the local agent install picks up the new staging
-   hash.
+9. The `content.md:232` "does not relay transitions" line is extended per the
+   reconciliation note, and no remaining sentence in either skill contradicts the
+   quiet-launch posture.
+9a. The `--monitor` instruction at
+    `skills/bill-feature-task-runtime/content.md:88` is retained, and both skills
+    state why quiet launch applies to `goal` only: `--monitor` scales with phase
+    count, goal live output scales with wall-clock duration.
+10. `skill-bill validate`, `npx --yes agnix --strict .`, and
+    `scripts/validate_agent_configs` pass.
+11. `./install.sh` is run so the local agent install picks up the new staging
+    hash.
+
+## `--monitor` on feature-task-runtime stays
+
+`skills/bill-feature-task-runtime/content.md:88` instructs the agent to pass
+`--monitor`. Keep that instruction. It is not the same case as goal live output,
+and the difference is what the two scale with:
+
+- `--monitor` emits six discrete lifecycle events
+  (`FeatureTaskRuntimeRunModels.kt:216-267`: `RunStarted`, `BranchResolved`,
+  `BranchSetupBlocked`, `PhaseStarted`, `PhaseFixLoopIteration`,
+  `PhaseCompleted`) — roughly two lines per phase, 15-30 lines per run. Scales
+  with **phase count**.
+- Goal live output adds a heartbeat pair every 90 seconds
+  (`AgentRunProcessRunner.kt:117`). Scales with **wall-clock duration**, so a
+  long goal accumulates a few hundred lines with no upper bound.
+
+`feature-task` also has no `watch` equivalent, so dropping `--monitor` would
+leave the user with no live view in exchange for a saving too small to measure.
+
+The quiet-launch rule therefore applies to `goal` only. State that asymmetry
+explicitly in both skills so the inconsistency reads as deliberate rather than an
+oversight, and so nobody "fixes" it later by suppressing `--monitor`.
 
 ## Non-Goals
 

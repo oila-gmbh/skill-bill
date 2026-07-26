@@ -10,6 +10,8 @@ import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -17,6 +19,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.NoopFeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.WorkflowEngine
@@ -39,7 +42,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -47,6 +49,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -57,6 +62,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
@@ -74,6 +80,7 @@ class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+  private val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
   private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
@@ -477,7 +484,11 @@ class FeatureTaskRuntimePhaseRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val updatedBriefings = LinkedHashMap(phaseBriefingsFrom(artifacts, ::validateEnvelopeWire))
       .apply { put(briefing.phaseId, briefing) }
-    val deliveredHistory = deliveredProjectionHistoryFrom(artifacts, ::validateEnvelopeWire)
+    val deliveredHistory = deliveredProjectionHistoryFrom(
+      artifacts,
+      ::validateEnvelopeWire,
+      ::validatePersistenceWire,
+    )
     val existingDelivered = deliveredHistory.values
       .filter { it.consumerPhaseId == briefing.phaseId }
       .maxByOrNull(FeatureTaskRuntimeDeliveredProjectionRecord::iteration)
@@ -487,6 +498,10 @@ class FeatureTaskRuntimePhaseRecorder(
       // Each briefing write is one delivery to that consumer, so the iteration counts re-entries.
       iteration = (existingDelivered?.iteration ?: 0) + 1,
       envelope = briefing.handoffEnvelope,
+    )
+    handoffFoundationValidator.validatePersistenceRecord(
+      delivered.toArtifactMap(),
+      "delivered-projection:${briefing.phaseId}",
     )
     val privatePhaseRecords = phaseRecordsFrom(artifacts)
     briefing.handoffEnvelope.projections.forEach { projection ->
@@ -498,25 +513,36 @@ class FeatureTaskRuntimePhaseRecorder(
           ?.toByteArray(Charsets.UTF_8)
           ?.size
           ?: 0
-      unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(
-        FeatureTaskRuntimeProjectionMeasurement(
-          workflowId = workflowId,
-          consumerPhaseId = briefing.phaseId,
-          projectionContractId = projection.projectionContractId,
-          producerIteration = projection.producerIteration,
-          repositoryCheckpointFingerprint = delivered.repositoryCheckpointFingerprint,
-          projectedUtf8Bytes = projection.utf8ByteSize,
-          projectedCollectionItems = projection.itemCount,
-          estimatedTokens = (projection.utf8ByteSize + 3) / 4,
-          privateEvidenceUtf8Bytes = privateEvidenceUtf8Bytes,
-          deliveredProjectionUtf8Bytes = deliveredProjectionUtf8Bytes,
-        ),
+      val measurement = FeatureTaskRuntimeProjectionMeasurement(
+        workflowId = workflowId,
+        consumerPhaseId = briefing.phaseId,
+        projectionContractId = projection.projectionContractId,
+        producerIteration = projection.producerIteration,
+        repositoryCheckpointFingerprint = delivered.repositoryCheckpointFingerprint,
+        projectedUtf8Bytes = projection.utf8ByteSize,
+        projectedCollectionItems = projection.itemCount,
+        estimatedTokens = (projection.utf8ByteSize + 3) / 4,
+        privateEvidenceUtf8Bytes = privateEvidenceUtf8Bytes,
+        deliveredProjectionUtf8Bytes = deliveredProjectionUtf8Bytes,
       )
+      handoffFoundationValidator.validateMeasurement(
+        measurement.toTelemetryMap(),
+        "projection-delivery:${briefing.phaseId}:${projection.projectionName}",
+      )
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
     }
     val deliveredKey = listOf(
       delivered.workflowId,
       delivered.consumerPhaseId,
       delivered.iteration.toString(),
+      delivered.sourceProducerIterations
+        .sortedWith(
+          compareBy(
+            FeatureTaskRuntimeProducerIteration::phaseId,
+            FeatureTaskRuntimeProducerIteration::iteration,
+          ),
+        )
+        .joinToString(separator = ",") { "${it.phaseId}#${it.iteration}" },
       delivered.repositoryCheckpointFingerprint,
     ).joinToString(separator = "|")
     val updatedDelivered = LinkedHashMap(deliveredHistory)
@@ -529,6 +555,50 @@ class FeatureTaskRuntimePhaseRecorder(
     )
     persistPatch(unitOfWork.workflowStates, record, patch)
     true
+  }
+
+  /**
+   * Records a content-free measurement when projection construction rejects a launch before a
+   * briefing exists. Zero sizes mean no projection crossed the launch boundary.
+   */
+  fun recordProjectionRejection(
+    workflowId: String,
+    consumerPhaseId: String,
+    error: InvalidFeatureTaskRuntimeHandoffProjectionError,
+    repositoryCheckpointFingerprint: String?,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) == null) {
+      return@transaction false
+    }
+    val measurement = FeatureTaskRuntimeProjectionMeasurement(
+      workflowId = workflowId,
+      consumerPhaseId = consumerPhaseId,
+      projectionContractId = error.projectionContractId.ifBlank { "unknown" },
+      producerIteration = FeatureTaskRuntimeProducerIteration(consumerPhaseId, 1),
+      repositoryCheckpointFingerprint = repositoryCheckpointFingerprint ?: "not_resolved:$consumerPhaseId",
+      projectedUtf8Bytes = 0,
+      projectedCollectionItems = 0,
+      estimatedTokens = 0,
+      privateEvidenceUtf8Bytes = 0,
+      deliveredProjectionUtf8Bytes = 0,
+      failureClassification = error.failureKind.toMeasurementFailureClassification(),
+    )
+    handoffFoundationValidator.validateMeasurement(
+      measurement.toTelemetryMap(),
+      "projection-rejection:$consumerPhaseId:${error.projectionName}",
+    )
+    unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
+    true
+  }
+
+  fun validateHandoffDeclarations(declarations: List<PhaseHandoffProjectionDeclaration>) {
+    declarations.forEach { declaration ->
+      handoffFoundationValidator.validateDeclaration(
+        declaration.toArtifactMap(),
+        "phase-handoff-declaration:${declaration.consumerPhaseId}:${declaration.projectionName}",
+      )
+    }
   }
 
   /**
@@ -557,13 +627,38 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@read null
-    deliveredProjectionsFrom(decodeArtifacts(record.artifactsJson)) { envelope ->
-      handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
-    }
+    deliveredProjectionsFrom(
+      decodeArtifacts(record.artifactsJson),
+      validateEnvelope = { envelope -> handoffEnvelopeValidator.validateEnvelope(envelope, workflowId) },
+      validatePersistenceRecord = { persistence ->
+        handoffFoundationValidator.validatePersistenceRecord(persistence, "delivered-projection:$workflowId")
+      },
+    )
   }
 
   private fun validateEnvelopeWire(envelope: Map<String, Any?>) =
     handoffEnvelopeValidator.validateEnvelope(envelope, workflowId = null)
+
+  private fun validatePersistenceWire(record: Map<String, Any?>) =
+    handoffFoundationValidator.validatePersistenceRecord(record, "delivered-projection")
+
+  private fun FeatureTaskRuntimeHandoffProjectionFailureKind.toMeasurementFailureClassification():
+    FeatureTaskRuntimeProjectionFailureClassification = when (this) {
+      FeatureTaskRuntimeHandoffProjectionFailureKind.UNSUPPORTED_CONTRACT_VERSION ->
+        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION
+      FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW ->
+        FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW
+      FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION ->
+        FeatureTaskRuntimeProjectionFailureClassification.STALE_CHECKPOINT
+      FeatureTaskRuntimeHandoffProjectionFailureKind.MISSING_REQUIRED_SOURCE,
+      FeatureTaskRuntimeHandoffProjectionFailureKind.UNDECLARED_FIELD,
+      -> FeatureTaskRuntimeProjectionFailureClassification.UNPROJECTABLE_SOURCE
+      FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+      FeatureTaskRuntimeHandoffProjectionFailureKind.DUPLICATE_PROJECTION_NAME,
+      FeatureTaskRuntimeHandoffProjectionFailureKind.INVALID_COMPACT_REFERENCE,
+      FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+      -> FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT
+    }
 
   fun loadAuditRepairState(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditRepairState? =
     database.read(dbOverride) { unitOfWork ->

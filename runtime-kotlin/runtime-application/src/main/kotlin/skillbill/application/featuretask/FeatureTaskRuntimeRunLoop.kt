@@ -2707,6 +2707,7 @@ internal class FeatureTaskRuntimeRunLoop(
       expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
     )
+    recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
       run.request.workflowId,
@@ -2778,6 +2779,13 @@ internal class FeatureTaskRuntimeRunLoop(
     val prepared = try {
       prepareLaunch(run, state, priorSchemaFailure, durablyClosedCriterionRefs)
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      recorder.recordProjectionRejection(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        error = error,
+        repositoryCheckpointFingerprint = run.reentry?.auditRepairState?.repositoryFingerprint,
+        dbOverride = run.request.dbPathOverride,
+      )
       // A handoff-projection rejection is static declaration/config drift, not a legacy producer
       // record: re-running the producer cannot fix a wrong declaration. Block the phase durably instead
       // of unwinding out of a run that already persisted STATUS_RUNNING.

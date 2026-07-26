@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
@@ -3047,6 +3048,7 @@ private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTa
   GoalTestEmptyDatabase,
   GoalTestNoopSnapshotValidator,
   AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
 )
 
 // Seedable in-memory harness for the AC2 phase-ledger regression: opens a real runtime-mode workflow
@@ -3060,6 +3062,7 @@ private class GoalStatusPhaseLedgerHarness {
       database,
       GoalTestNoopSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+      AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     )
 
   fun openRuntimeWorkflow(workflowId: String) {

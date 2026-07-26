@@ -478,6 +478,9 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
@@ -1162,6 +1165,9 @@ Categories:
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`

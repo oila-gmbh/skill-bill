@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
@@ -4320,6 +4321,7 @@ internal fun runnerHarness(
     database,
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =
@@ -4395,6 +4397,7 @@ internal fun telemetryRunnerHarness(
     database,
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
   val decomposeTerminalRecorder =

@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
@@ -27,6 +28,25 @@ private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
 
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
+  @Test
+  fun `projection identity uses the resolved producer attempt`() {
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            PRODUCER to FeatureTaskRuntimePhaseOutput(
+              phaseId = PRODUCER,
+              iteration = 7,
+              payload = """{"plan":"ok"}""",
+            ),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals(FeatureTaskRuntimeProducerIteration(PRODUCER, 7), envelope.projections.single().producerIteration)
+  }
+
   @Test
   fun `a declared upstream receipt is projected within budget`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())

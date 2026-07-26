@@ -31,8 +31,9 @@ private fun handoffEnvelopeWireMap(briefingMap: Map<String, Any?>): Map<String, 
 internal fun deliveredProjectionsFrom(
   artifacts: Map<String, Any?>,
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
+  validatePersistenceRecord: (Map<String, Any?>) -> Unit = {},
 ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord> =
-  deliveredProjectionHistoryFrom(artifacts, validateEnvelope)
+  deliveredProjectionHistoryFrom(artifacts, validateEnvelope, validatePersistenceRecord)
     .values
     .groupBy(FeatureTaskRuntimeDeliveredProjectionRecord::consumerPhaseId)
     .mapValues { (_, records) -> records.maxBy(FeatureTaskRuntimeDeliveredProjectionRecord::iteration) }
@@ -40,8 +41,10 @@ internal fun deliveredProjectionsFrom(
 internal fun deliveredProjectionHistoryFrom(
   artifacts: Map<String, Any?>,
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
+  validatePersistenceRecord: (Map<String, Any?>) -> Unit = {},
 ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord> =
   decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY) { _, recordMap ->
+    validatePersistenceRecord(recordMap)
     val delivered = FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(recordMap)
     validateEnvelope(
       JsonSupport.anyToStringAnyMap(recordMap["handoff_envelope"])

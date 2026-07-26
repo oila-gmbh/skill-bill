@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
+import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 
@@ -400,7 +401,10 @@ data class PhaseHandoffProjectionDeclaration(
       "iteration" to producerIteration.iteration,
     ),
     "declared_fields" to declaredFieldNames,
+    "required" to required,
+    "allows_private_artifact_reference" to allowsPrivateArtifactReference,
   ).apply {
+    inlineAlternative?.let { put("inline_alternative", it.wireValue) }
     if (authorizedReferenceKinds.isNotEmpty()) {
       put("authorized_reference_kinds", authorizedReferenceKinds.map { it.wireValue }.sorted())
     }
@@ -408,13 +412,20 @@ data class PhaseHandoffProjectionDeclaration(
 
   companion object {
     @OpenBoundaryMap("Strict feature-task-runtime phase-handoff declaration decode")
-    fun fromArtifactMap(raw: Map<String, Any?>): PhaseHandoffProjectionDeclaration {
+    fun fromArtifactMap(
+      raw: Map<String, Any?>,
+      foundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
+    ): PhaseHandoffProjectionDeclaration {
+      foundationValidator.validateDeclaration(raw, "phase-handoff-declaration")
       val allowed = setOf(
         "contract_version", "consumer_phase_id", "projection_name", "source", "projection_contract",
         "prompt_visibility", "budget", "checkpoint_policy", "producer_iteration", "declared_fields",
-        "authorized_reference_kinds",
+        "required", "allows_private_artifact_reference", "inline_alternative", "authorized_reference_kinds",
       )
-      invalidIf(raw.keys.any { it !in allowed } || raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION)
+      invalidIf(
+        raw.keys.any { it !in allowed } ||
+          raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
+      )
       val source = raw["source"] as? Map<*, *> ?: invalid()
       val sourceRef = when (source["kind"]) {
         "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
@@ -431,6 +442,8 @@ data class PhaseHandoffProjectionDeclaration(
       val references = (raw["authorized_reference_kinds"] as? List<*>).orEmpty().map {
         FeatureTaskRuntimeCompactReferenceKind.fromWire(it as? String ?: invalid())
       }.toSet()
+      val inlineAlternative = (raw["inline_alternative"] as? String)
+        ?.let(FeatureTaskRuntimeCompactReferenceKind::fromWire)
       return PhaseHandoffProjectionDeclaration(
         consumerPhaseId = raw.string("consumer_phase_id"),
         sourceRef = sourceRef,
@@ -444,17 +457,20 @@ data class PhaseHandoffProjectionDeclaration(
         ),
         declaredFieldNames = (raw["declared_fields"] as? List<*>)?.map { it as? String ?: invalid() } ?: invalid(),
         checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.fromWire(raw.string("checkpoint_policy")),
+        required = raw.boolean("required"),
+        allowsPrivateArtifactReference = raw.boolean("allows_private_artifact_reference"),
         producerIteration = FeatureTaskRuntimeProducerIteration(
           phaseId = producer.string("phase_id"),
           iteration = producer.int("iteration"),
         ),
-        inlineAlternative = references.singleOrNull(),
+        inlineAlternative = inlineAlternative,
         authorizedReferenceKinds = references,
       )
     }
 
     private fun Map<*, *>.string(key: String): String = (this[key] as? String)?.takeIf(String::isNotBlank) ?: invalid()
     private fun Map<*, *>.int(key: String): Int = (this[key] as? Number)?.toInt() ?: invalid()
+    private fun Map<*, *>.boolean(key: String): Boolean = this[key] as? Boolean ?: invalid()
     private fun invalidIf(condition: Boolean) {
       if (condition) invalid()
     }

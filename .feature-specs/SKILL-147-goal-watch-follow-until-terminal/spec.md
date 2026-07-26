@@ -12,14 +12,40 @@ context window.**
    Today it prints exactly one refresh and exits, because `--max-refreshes`
    defaults to `1` and `--interval-seconds` only controls the gap *between*
    refreshes. Make the user's live feed actually work.
-2. Governed feature skills forbid the agent from polling a running execution
-   from inside its session. The agent's in-session surface is limited to phase
-   transitions the runtime already emits, the terminal outcome, and errors.
+2. Governed feature skills forbid the agent from polling a running execution,
+   launch the run quiet so its progress stream never enters the agent's context,
+   and require exactly one completion line when it ends.
 
-The second half is a token-cost fix. Every poll's output enters the agent's
-context and is paid for on that request and every request after it, for
-information the foreground call already returns on its own. Giving the user a
-watch command that works is what makes the prohibition costless.
+### Why polling is the expensive part
+
+The dominant cost is not the bytes a poll returns. It is that **every tool call
+re-sends the whole conversation**, and the conversation is larger each time. Ten
+polls are not ten small reads; they are ten full-context requests, each bigger
+than the last. Cost grows with the square of the poll count, not linearly.
+
+A single blocking call that runs for three hours costs **one** request. Sixty
+polls across those same three hours cost sixty, each carrying an ever-larger
+transcript — orders of magnitude more, for information the one call was going to
+return anyway.
+
+That ranks the two fixes:
+
+1. **No polling loops** (subtask 2). Removes the quadratic term. This is the
+   whole point.
+2. **Quiet launch** (subtask 2). Removes a few hundred captured stdout lines from
+   one request. Worth doing because it is free once `watch` works, but it is a
+   rounding error next to the first.
+
+The same reasoning is why `--monitor` on feature-task stays: its lines ride
+inside a call that already happens, adding no request.
+
+What remains in-session is one line: `goal SKILL-146: complete — 3/3 subtasks,
+PR <url>`. Composed from the structured result the run already returns, never by
+reading back the stream. A finished run that surfaced nothing would read as
+broken, and one line is both the cure and the entire budget.
+
+Giving the user a watch command that actually works is what makes the quiet
+posture acceptable rather than a regression.
 
 The CLI fix is not "unlimited refreshes". It is **follow-until-terminal**: the
 watch loop ends when the goal has nothing left to run, so the command still
@@ -144,15 +170,16 @@ release notes; no migration is required.
     timer or for change, sleeping to re-read progress, tailing logs or diffs to
     infer progress, and spawning any process or subagent to observe a run
     already in flight.
-11. Both skills state the permitted in-session surface under a push-not-pull
-    rule: phase transitions already in the agent's context from a foreground run
-    are relayed one line each; transitions that would need another call are not
-    fetched; plus the terminal outcome, errors, and one status call on explicit
-    user request. The token-cost reason is stated in one sentence.
-12. The `bill-feature-goal` line stating the agent "does not relay transitions
-    into the conversation" is amended to forbid poll-driven relay rather than
-    relay itself, and agent silence during a detached run is documented as
-    correct.
+11. `bill-feature-goal` instructs the agent to launch with `--no-live-output`, so
+    the run's progress stream never enters the agent's context.
+12. Both skills limit the in-session surface to one completion line, errors, and
+    one status call on explicit user request, with no transition relay.
+13. Both skills require exactly one completion line composed only from the
+    structured result fields (`status`, counts, `pull_request_url`,
+    `blocked_reason`), and forbid composing it by reading or summarizing run
+    stdout.
+14. Both skills state that agent silence during the run is deliberate and that
+    the monitoring block is the user's live feed.
 
 ## Non-Goals
 

@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
@@ -374,6 +375,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       database,
       StatusNoopSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+      AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     )
     val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
     val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)

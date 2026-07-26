@@ -53,6 +53,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         projectionContractVersion = declaration.projectionContractVersion,
         promptVisibility = declaration.promptVisibility,
         fields = fields,
+        producerIteration = resolvedProducerIteration(inputs, declaration),
       )
       enforceBudget(inputs, declaration, projection)
       projection
@@ -63,6 +64,20 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       repositoryCheckpoint = inputs.resolvedCheckpoint,
     )
   }
+
+  private fun resolvedProducerIteration(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): FeatureTaskRuntimeProducerIteration =
+    when (val source = declaration.sourceRef) {
+      is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput -> {
+        val output = inputs.resolvedUpstream.outputsByPhaseId[source.producingPhaseId]
+        if (output == null) declaration.producerIteration else {
+          FeatureTaskRuntimeProducerIteration(source.producingPhaseId, output.iteration)
+        }
+      }
+      else -> declaration.producerIteration
+    }
 
   private fun rejectDuplicateProjectionNames(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {
     val seen = mutableSetOf<String>()
