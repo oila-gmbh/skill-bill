@@ -2210,6 +2210,14 @@ internal class FeatureTaskRuntimeRunLoop(
     )?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
+    immediateConsumerProjectionGateReason(
+      run,
+      iteration,
+      normalizedOutput,
+      repositoryFingerprint,
+    )?.let { reason ->
+      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return schemaInvalidAttempt(reason, fileManifest, outputText)
     }
@@ -2221,6 +2229,61 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest,
       repositoryFingerprint,
     )
+  }
+
+  /**
+   * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
+   * This shares the launch assembler and validator instead of restating receipt shapes. Rejecting here
+   * keeps malformed finalization receipts in the producer's bounded correction loop.
+   */
+  private fun immediateConsumerProjectionGateReason(
+    run: PhaseRun,
+    iteration: Int,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repositoryFingerprint: String?,
+  ): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return null
+    val producerIndex = transitions.forwardPhaseIds.indexOf(run.phaseId)
+    if (producerIndex < 0 || producerIndex == transitions.forwardPhaseIds.lastIndex) return null
+    val consumerPhaseId = transitions.forwardPhaseIds[producerIndex + 1]
+    val declaration = phaseDeclaration(consumerPhaseId, run.request.runInvariants.featureSize)
+    val currentOutput = FeatureTaskRuntimePhaseOutput(
+      phaseId = run.phaseId,
+      iteration = iteration,
+      payload = normalizedOutput.canonicalJson,
+      normalizedOutput = normalizedOutput,
+    )
+    val outputs = state.outputs().filterNot { it.phaseId == run.phaseId } + currentOutput
+    val resolvedFingerprint = repositoryFingerprint?.takeIf(String::isNotBlank)
+      ?: gitOperations.repositoryFingerprint(run.request.repoRoot).value.takeIf(String::isNotBlank)
+    val checkpoint = resolvedFingerprint
+      ?.let(::FeatureTaskRuntimeRepositoryCheckpoint)
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = declaration,
+      runInvariants = run.request.runInvariants,
+      recordedOutputs = outputs,
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
+      branchIdentity = resolvedBranch,
+      baseBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+        ?.baseBranch
+        ?: "main",
+    )
+    return try {
+      FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+        handoff,
+        run.request.workflowId,
+        planningProjectionValidator,
+        run.request.agentAddonSelection,
+      )
+      null
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      "Phase '${run.phaseId}' reported 'completed' but its output cannot satisfy immediate consumer " +
+        "'$consumerPhaseId': ${boundedSchemaGateDetail(error.message.orEmpty())}"
+    } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+      "Phase '${run.phaseId}' reported 'completed' but its output cannot frame immediate consumer " +
+        "'$consumerPhaseId': ${boundedSchemaGateDetail(error.message.orEmpty())}"
+    }
   }
 
   /**

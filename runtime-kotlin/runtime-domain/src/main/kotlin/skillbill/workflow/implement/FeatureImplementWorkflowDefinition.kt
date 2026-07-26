@@ -5,20 +5,27 @@ import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureImplementWorkflowDefinition {
   private val implementationReceiptFields = setOf(
-    "projection_kind",
-    "contract_version",
-    "completed_task_ids",
-    "changed_paths",
-    "tests_added",
-    "tests_updated",
-    "deviations",
-    "unresolved_items",
-    "repository_checkpoint",
+    "tasks_completed",
+    "files_created",
+    "files_modified",
+    "tests_written",
+    "plan_deviation_notes",
+    "criteria_to_file_map",
+    "notes_for_review",
+    "stopped_early",
+    "stopped_reason",
   )
-  private val auditReceiptFields = setOf("contract_version", "verdict", "criterion_results")
+  private val auditReceiptFields = setOf("pass", "per_criterion", "gaps")
   private val reviewReceiptFields = setOf("contract_version", "verdict", "findings")
-  private val validationReceiptFields = setOf("contract_version", "validation_status", "checks", "repository_checkpoint")
-  private val historyReceiptFields = setOf("contract_version", "changed_paths", "repository_checkpoint")
+  private val validationReceiptFields = setOf(
+    "validation_result",
+    "routed_skill",
+    "detected_stack",
+    "fallback",
+    "initial_failure_count",
+    "final_failure_count",
+  )
+  private val historyReceiptFields = setOf("written", "changed_paths")
 
   private val privateArtifactKeys = setOf(
     "step_artifacts",

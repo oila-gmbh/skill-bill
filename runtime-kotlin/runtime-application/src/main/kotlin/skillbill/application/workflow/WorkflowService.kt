@@ -34,12 +34,13 @@ import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
+import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowSnapshotView
+import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -55,6 +56,13 @@ import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.random.Random
+
+private val resolveEffectiveSessionId =
+  { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
+    sessionId.ifBlank {
+      if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
+    }
+  }
 
 @Inject
 @Suppress("TooManyFunctions")
@@ -108,13 +116,7 @@ class WorkflowService(
     val family = kind.workflowFamily()
     val stepId = currentStepId ?: family.definition.defaultInitialStepId
     val workflowId = generateWorkflowId(family.definition.workflowIdPrefix)
-    val effectiveSessionId = if (
-      sessionId.isBlank() && kind == WorkflowFamilyKind.TASK_RUNTIME
-    ) {
-      "${family.definition.defaultSessionPrefix}-$workflowId"
-    } else {
-      sessionId
-    }
+    val effectiveSessionId = resolveEffectiveSessionId(kind, sessionId, family.definition, workflowId)
     WorkflowEngine.validateOpen(family.definition, stepId)?.let { error ->
       return WorkflowOpenResult.Error(workflowId, error)
     }
@@ -678,7 +680,11 @@ class WorkflowService(
     stepId: String,
     producerIteration: Int,
   ) = definition.inputProjectionsByStep[stepId]
-    ?.takeIf { declaration -> declaration.requiredArtifactKeys.all(snapshot.artifacts::containsKey) }
+    ?.takeIf { declaration ->
+      declaration.requiredArtifactKeys.all { artifactKey ->
+        artifactKey == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY || snapshot.artifacts.containsKey(artifactKey)
+      }
+    }
     ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
 

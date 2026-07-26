@@ -25,17 +25,15 @@ object FeatureVerifyWorkflowDefinition {
     "progress_write_failures",
   )
 
-  private fun projection(
-    vararg keys: String,
-    typedFields: Map<String, Set<String>>,
-  ) = WorkflowInputProjectionDeclaration(
-    requiredArtifactKeys = keys.toList(),
-    projectedFieldsByArtifactKey = typedFields,
-    forbiddenArtifactKeys = privateArtifactKeys,
-    maxUtf8Bytes = 64 * 1024,
-    maxCollectionItems = 512,
-    repositoryCheckpointArtifactKey = "diff_projection",
-  )
+  private fun projection(vararg keys: String, typedFields: Map<String, Set<String>>) =
+    WorkflowInputProjectionDeclaration(
+      requiredArtifactKeys = keys.toList(),
+      projectedFieldsByArtifactKey = typedFields,
+      forbiddenArtifactKeys = privateArtifactKeys,
+      maxUtf8Bytes = 64 * 1024,
+      maxCollectionItems = 512,
+      repositoryCheckpointArtifactKey = "diff_projection",
+    )
 
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-verify",
@@ -95,7 +93,8 @@ object FeatureVerifyWorkflowDefinition {
       "extract_criteria" to
         "Re-extract and confirm the criteria, then persist criteria_summary before moving to gather_diff.",
       "gather_diff" to
-        "Reuse input_context and criteria_summary, then persist the bounded checkpointed diff_projection and evaluator policies.",
+        "Reuse input_context and criteria_summary, then persist the bounded checkpointed diff_projection and " +
+        "evaluator policies.",
       "feature_flag_audit" to
         "Reuse criteria_summary, feature_flag_policy, and diff_projection; persist feature_flag_audit_receipt.",
       "code_review" to
@@ -189,7 +188,9 @@ object FeatureVerifyWorkflowDefinition {
     completedTerminalSummaryArtifact = "verdict_result",
     inputProjectionsByStep = mapOf(
       "feature_flag_audit" to projection(
-        "criteria_summary", "feature_flag_policy", "diff_projection",
+        "criteria_summary",
+        "feature_flag_policy",
+        "diff_projection",
         typedFields = mapOf(
           "criteria_summary" to criteriaFields,
           "feature_flag_policy" to evaluatorPolicyFields,
@@ -197,7 +198,9 @@ object FeatureVerifyWorkflowDefinition {
         ),
       ),
       "code_review" to projection(
-        "criteria_summary", "review_rubric", "diff_projection",
+        "criteria_summary",
+        "review_rubric",
+        "diff_projection",
         typedFields = mapOf(
           "criteria_summary" to criteriaFields,
           "review_rubric" to evaluatorPolicyFields,
@@ -205,7 +208,9 @@ object FeatureVerifyWorkflowDefinition {
         ),
       ),
       "unit_test_value_check" to projection(
-        "criteria_summary", "unit_test_value_rubric", "diff_projection",
+        "criteria_summary",
+        "unit_test_value_rubric",
+        "diff_projection",
         typedFields = mapOf(
           "criteria_summary" to criteriaFields,
           "unit_test_value_rubric" to evaluatorPolicyFields,
@@ -213,7 +218,9 @@ object FeatureVerifyWorkflowDefinition {
         ),
       ),
       "completeness_audit" to projection(
-        "criteria_summary", "completeness_rubric", "diff_projection",
+        "criteria_summary",
+        "completeness_rubric",
+        "diff_projection",
         typedFields = mapOf(
           "criteria_summary" to criteriaFields,
           "completeness_rubric" to evaluatorPolicyFields,

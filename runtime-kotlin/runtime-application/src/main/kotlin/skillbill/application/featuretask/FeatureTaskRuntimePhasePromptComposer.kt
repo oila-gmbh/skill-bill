@@ -404,6 +404,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
       -> planningProjectionShapeExampleFor(phaseId)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
@@ -493,6 +494,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN_PROJECTION_SHAPE
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN_PROJECTION_SHAPE
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT_PROJECTION_SHAPE
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> VALIDATION_PROJECTION_SHAPE
     else -> ""
   }
 
@@ -548,6 +550,18 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +
       "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
       "      payloads."
+
+  private const val VALIDATION_PROJECTION_SHAPE: String =
+    "\n    - Required produced_outputs shape: emit a validation_result OBJECT. Its repository_checkpoint\n" +
+      "      is also an OBJECT containing fingerprint — never a prefixed string such as\n" +
+      "      \"repository_checkpoint=<hash>\":\n" +
+      "      ```json\n" +
+      "      { \"validation_result\": {\n" +
+      "          \"validation_status\": \"passed\",\n" +
+      "          \"checks\": [ { \"name\": \"<check name>\", \"status\": \"passed\" } ],\n" +
+      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" }\n" +
+      "        } }\n" +
+      "      ```"
 
   // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
   // consumer parses, not a replacement for it. Presenting them under their own "Required

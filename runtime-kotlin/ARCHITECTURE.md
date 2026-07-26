@@ -422,7 +422,9 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.continueMap`
     - `skillbill.workflow.WorkflowEngine.compactContinueMap`
     - `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+    - `skillbill.workflow.WorkflowEngine.inputProjectionMap`
     - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
+    - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
     - `skillbill.install.model.InstallPlanWireValidator.validate`
@@ -1131,7 +1133,9 @@ Categories:
 - `skillbill.workflow.WorkflowEngine.continueMap`
 - `skillbill.workflow.WorkflowEngine.compactContinueMap`
 - `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+- `skillbill.workflow.WorkflowEngine.inputProjectionMap`
 - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
+- `skillbill.workflow.model.WorkflowInputProjection.artifacts`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`

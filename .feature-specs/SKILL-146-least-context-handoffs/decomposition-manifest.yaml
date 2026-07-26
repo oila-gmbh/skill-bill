@@ -65,7 +65,7 @@ subtasks:
   commit_sha: null
   workflow_id: "wftr-20260726-154125-0l2x"
   blocked_reason: null
-  last_resumable_step: "implement_fix"
+  last_resumable_step: "write_history"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

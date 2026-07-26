@@ -1,3 +1,13 @@
+## [2026-07-26] SKILL-146 prose and verification least-context projections (subtask 4)
+Areas: runtime-kotlin/runtime-{domain,application,core,cli,infra-fs,mcp}, skills/bill-feature-{task-prose,verify}
+- Prose feature work now runs `implement -> audit -> review -> validate`; each fresh or resumed step receives the same declared, budgeted projection, and audit no longer consumes review output. reusable
+- Runtime-owned checkpoint evidence is injected at launch and replaces producer claims, while finalization receipts remain stable after later repository changes. reusable
+- Feature verification evaluators run independently from criteria, policy, and checkpointed diff projections; the verdict consolidates only compact typed receipts, with telemetry and sibling outputs excluded. reusable
+- Governed prose/verification sources, continuation surfaces, fixtures, goldens, and projection tests enforce required/forbidden fields, UTF-8 budgets, and explicit private diagnostics.
+- Known limitation: delegated review delivery and end-to-end compatibility work remain scoped to later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 6/6 implemented
+
 ## [2026-07-26] SKILL-146 runtime projection engine and least-context launch handoffs (subtask 2)
 Areas: runtime-kotlin/runtime-{domain,application,contracts,ports,cli}
 - One launch-assembly path now selects exact producer iterations, validates declared planning projections, persists the delivered least-context handoff, and applies the same behavior to fresh, resumed, retried, crash-recovered, and remediating launches. reusable

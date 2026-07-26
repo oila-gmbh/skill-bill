@@ -64,6 +64,8 @@ import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -400,7 +402,10 @@ class ApplicationPersistencePortTest {
         workflowStatus = "blocked",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
-        artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
+        artifactsPatch = mapOf(
+          "preplan_digest" to mapOf("ok" to true),
+          "plan" to mapOf("task_count" to 1),
+        ),
       ),
       dbOverride = null,
     ) as WorkflowUpdateResult.Ok
@@ -415,8 +420,8 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", updated.acknowledgement.workflowStatus)
     assertEquals(1, listed.workflowCount)
     assertEquals(workflowId, latest.summary.workflowId)
-    assertEquals(listOf("plan"), resumed.resume.missingArtifacts)
-    assertEquals("blocked", continued.view.continueStatus)
+    assertEquals(emptyList(), resumed.resume.missingArtifacts)
+    assertEquals("reopened", continued.view.continueStatus)
   }
 
   @Test
@@ -1127,7 +1132,8 @@ class ApplicationPersistencePortTest {
         artifactsPatch =
         mapOf(
           "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-          "audit_report" to mapOf("gap_count" to 0),
+          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
+          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "blocked_reason" to "Validation paused.",
         ),
       ),
@@ -1518,7 +1524,8 @@ class ApplicationPersistencePortTest {
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = mapOf(
-          "audit_report" to mapOf("gap_count" to 0),
+          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
+          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "validation_result" to mapOf("passed" to false),
         ),
       ),
@@ -1555,11 +1562,15 @@ class ApplicationPersistencePortTest {
         stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
         artifactsPatch =
         mapOf(
-          "criteria_summary" to emptyMap<String, Any?>(),
-          "diff_summary" to emptyMap(),
-          "review_result" to emptyMap(),
-          "unit_test_value_result" to emptyMap(),
-          "completeness_audit_result" to emptyMap(),
+          "feature_flag_audit_receipt" to evaluatorReceipt("skipped"),
+          "code_review_receipt" to evaluatorReceipt("pass"),
+          "unit_test_value_receipt" to evaluatorReceipt("pass"),
+          "completeness_audit_receipt" to evaluatorReceipt("pass"),
+          "diff_projection" to mapOf(
+            "checkpoint" to "noop-repository-fingerprint",
+            "comparison_scope" to "branch_diff",
+            "changed_files" to emptyList<String>(),
+          ),
         ),
       ),
       dbOverride = null,
@@ -2698,7 +2709,7 @@ private class InMemoryWorkflowStateRepository(
 private class FakeWorkflowGitOperations(
   private val commitSha: String = "commit-sha",
   private val commitError: String = "",
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
   val checkouts = mutableListOf<String>()
   val baseValidations = mutableListOf<String>()
   val commits = mutableListOf<String>()
@@ -2744,7 +2755,19 @@ private class FakeWorkflowGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
+    object : RepositoryFingerprintGitOperations {
+      override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+    }
 }
+
+private fun evaluatorReceipt(verdict: String): Map<String, Any?> = mapOf(
+  "contract_version" to "0.3",
+  "verdict" to verdict,
+  "findings" to emptyList<Any>(),
+)
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(
   id = id,

@@ -16,6 +16,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpToolDispatcher
@@ -31,7 +32,6 @@ import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -573,26 +573,17 @@ class McpRuntimeTest {
     assertSqliteTimestampShape(opened["started_at"].toString(), "implement started_at")
     assertEquals(opened["started_at"], opened["updated_at"])
 
-    val updated =
-      McpWorkflowRuntime.update(
-        WorkflowFamilyKind.TASK_PROSE,
-        WorkflowUpdateRequest(
-          workflowId = workflowId,
-          workflowStatus = "blocked",
-          currentStepId = "implement",
-          stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
-          artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
-        ),
-        context,
-      )
+    val updated = blockImplementWorkflow(workflowId, context)
     val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_PROSE, context = context)
     val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context)
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val updatedAt = got["updated_at"].toString()
+    val continuedAt = continued["updated_at"].toString()
 
     assertSqliteTimestampShape(updatedAt, "implement updated_at")
+    assertSqliteTimestampShape(continuedAt, "implement continued_at")
     assertEquals(opened["started_at"], got["started_at"])
     assertTrue(updatedAt >= opened["started_at"].toString())
 
@@ -611,14 +602,17 @@ class McpRuntimeTest {
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
+      "<CONTINUED_AT>" to continuedAt,
+      "<CHECKPOINT>" to GitWorkflowGitOperations()
+        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
     )
     assertEquals("blocked", updated["workflow_status"])
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals(workflowId, got["workflow_id"])
-    assertEquals(listOf("plan"), resumed["missing_artifacts"])
-    assertEquals("error", continued["status"])
-    assertEquals("blocked", continued["continue_status"])
+    assertEquals(emptyList<String>(), resumed["missing_artifacts"])
+    assertEquals("ok", continued["status"])
+    assertEquals("reopened", continued["continue_status"])
     assertCompactContinuationPayload(continued, "implement")
   }
 
@@ -1036,6 +1030,22 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
       ),
     ),
     context = context,
+  )
+
+private fun blockImplementWorkflow(workflowId: String, context: McpRuntimeContext): Map<String, *> =
+  McpWorkflowRuntime.update(
+    WorkflowFamilyKind.TASK_PROSE,
+    WorkflowUpdateRequest(
+      workflowId = workflowId,
+      workflowStatus = "blocked",
+      currentStepId = "implement",
+      stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
+      artifactsPatch = mapOf(
+        "plan" to mapOf("mode" to "implement", "task_count" to 1),
+        "preplan_digest" to mapOf("ok" to true),
+      ),
+    ),
+    context,
   )
 
 private fun evaluatorReceipt(): Map<String, Any?> = mapOf(

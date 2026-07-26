@@ -130,6 +130,18 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `validate prompt shows repository checkpoint as a fingerprint object`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+    )
+
+    assertContains(prompt, "\"validation_result\": {")
+    assertContains(prompt, "\"repository_checkpoint\": { \"fingerprint\":")
+    assertContains(prompt, "never a prefixed string")
+  }
+
+  @Test
   fun `review prompt preserves every durable execution mode unchanged`() {
     CodeReviewExecutionMode.entries.forEach { mode ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(

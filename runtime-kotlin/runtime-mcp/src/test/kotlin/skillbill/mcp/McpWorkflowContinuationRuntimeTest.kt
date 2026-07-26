@@ -5,6 +5,8 @@ import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -140,7 +142,7 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
   )
 }
 
-private object TestWorkflowGitOperations : WorkflowGitOperations {
+private object TestWorkflowGitOperations : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -172,4 +174,10 @@ private object TestWorkflowGitOperations : WorkflowGitOperations {
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
+    object : RepositoryFingerprintGitOperations {
+      override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+    }
 }

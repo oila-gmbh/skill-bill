@@ -27,6 +27,10 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import java.math.BigDecimal
 import java.math.BigInteger
 
+private typealias CheckpointResolver = () -> String
+
+private val unresolvedCheckpoint: CheckpointResolver = { "" }
+
 /**
  * SKILL-52.2 Subtask 4: pure workflow engine. The schema-validator
  * dependency is now a domain-owned port
@@ -44,7 +48,7 @@ import java.math.BigInteger
  */
 class WorkflowEngine(
   private val schemaValidator: WorkflowSnapshotValidator,
-  private val repositoryCheckpointIdentityResolver: () -> String = { "" },
+  private val checkpoint: CheckpointResolver = unresolvedCheckpoint,
 ) {
   /**
    * SKILL-48 Subtask 2a: builds the canonical snapshot-shape map for the
@@ -192,6 +196,7 @@ class WorkflowEngine(
     val requiredArtifacts = definition.requiredArtifactsByStep[resumeStepId].orEmpty()
     val missingArtifacts =
       definition.requiredArtifactPresenceResolver.missingRequiredArtifacts(snapshot, resumeStepId, requiredArtifacts)
+        .filterNot { it == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY }
     val canResume = resumeMode != "done" && missingArtifacts.isEmpty()
     val nextAction =
       if (resumeMode == "done") {
@@ -313,7 +318,7 @@ class WorkflowEngine(
     snapshot: WorkflowSnapshotView,
     stepId: String,
     producerIteration: Int,
-    resolvedRepositoryCheckpointIdentity: String = repositoryCheckpointIdentityResolver(),
+    resolvedRepositoryCheckpointIdentity: String = checkpoint(),
   ): WorkflowInputProjection? = definition.inputProjectionsByStep[stepId]?.let {
     WorkflowInputProjectionSelector.select(
       definition,

@@ -559,7 +559,7 @@ class CliRuntimeTest {
   }
 
   @Test
-  fun `workflow cli commands list latest resume and block continuation`() {
+  fun `workflow cli commands list latest resume and reopen valid continuation`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-workflow")
     val dbPath = tempDir.resolve("metrics.db")
     val opened =
@@ -598,7 +598,7 @@ class CliRuntimeTest {
         "--step-updates",
         """[{"step_id":"implement","status":"blocked","attempt_count":1}]""",
         "--artifacts-patch",
-        """{"preplan_digest":{"ok":true}}""",
+        """{"preplan_digest":{"ok":true},"plan":{"task_count":1}}""",
         "--format",
         "json",
       )
@@ -609,9 +609,9 @@ class CliRuntimeTest {
         listOf("--db", dbPath.toString(), "workflow", "continue", workflowId, "--format", "json"),
       )
     val continuePayload = decodeJsonObject(continued.stdout)
-    assertEquals(1, continued.exitCode)
-    assertEquals("blocked", continuePayload["continue_status"])
-    assertEquals(listOf("plan"), continuePayload["missing_artifacts"])
+    assertEquals(0, continued.exitCode)
+    assertEquals("reopened", continuePayload["continue_status"])
+    assertEquals(emptyList<Any>(), continuePayload["missing_artifacts"])
     assertEquals(workflowId, continuePayload["workflow_id"])
   }
 
@@ -650,7 +650,8 @@ class CliRuntimeTest {
       """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
       "--artifacts-patch",
       "{" +
-        "\"diff_projection\":{\"checkpoint\":\"$checkpoint\",\"comparison_scope\":\"base..head\",\"changed_files\":[]}," +
+        "\"diff_projection\":{\"checkpoint\":\"$checkpoint\"," +
+        "\"comparison_scope\":\"base..head\",\"changed_files\":[]}," +
         "\"feature_flag_audit_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
         "\"code_review_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
         "\"unit_test_value_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +

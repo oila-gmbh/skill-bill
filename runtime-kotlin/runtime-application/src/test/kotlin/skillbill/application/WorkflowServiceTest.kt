@@ -413,7 +413,7 @@ class WorkflowServiceTest {
   }
 
   @Test
-  fun `continueWorkflow with missing artifacts returns Standard with continue_status blocked`() {
+  fun `continueWorkflow rejects a missing declared projection with a typed error`() {
     val service = newService()
     val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     service.update(
@@ -428,18 +428,11 @@ class WorkflowServiceTest {
         artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
       ),
     )
-    val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
-    val standard = assertIs<WorkflowContinueResult.Standard>(continued)
-    assertEquals("blocked", standard.view.continueStatus)
-    assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
-    assertEquals(listOf("plan"), standard.view.compact.missingArtifactKeys)
-    val missingSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
-    assertFalse(missingSummary.present)
-    assertEquals("missing_required_artifact", missingSummary.omissionReason)
-    assertEquals(
-      "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
-      standard.view.compact.readOnlyFullStateGuidance,
-    )
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
+    }
+    assertContains(error.message.orEmpty(), "missing required artifact keys: plan")
+    assertFalse(error.message.orEmpty().contains("preplan_digest"))
   }
 
   @Test

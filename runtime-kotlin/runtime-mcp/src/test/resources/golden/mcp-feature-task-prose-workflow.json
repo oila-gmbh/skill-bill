@@ -13,8 +13,8 @@
       {"step_id": "preplan", "status": "pending", "attempt_count": 0},
       {"step_id": "plan", "status": "pending", "attempt_count": 0},
       {"step_id": "implement", "status": "pending", "attempt_count": 0},
-      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "validate", "status": "pending", "attempt_count": 0},
       {"step_id": "write_history", "status": "pending", "attempt_count": 0},
       {"step_id": "commit_push", "status": "pending", "attempt_count": 0},
@@ -35,8 +35,18 @@
     "workflow_status": "blocked",
     "current_step_id": "implement",
     "updated_step_ids": ["implement"],
-    "updated_artifact_keys": ["preplan_digest"],
+    "updated_artifact_keys": ["plan", "preplan_digest"],
     "read_only_full_state_guidance": "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, including steps and the complete durable artifacts map.",
+    "launch_projection": {
+      "step_id": "implement",
+      "producer_iteration": 1,
+      "repository_checkpoint": {"fingerprint": "<CHECKPOINT>"},
+      "artifacts": {
+        "plan": {"mode": "implement", "task_count": 1},
+        "repository_evidence": {"fingerprint": "<CHECKPOINT>"}
+      },
+      "utf8_bytes": 149
+    },
     "read_only_full_state_command": "skill-bill --db '<DB_PATH>' workflow show '<WORKFLOW_ID>' --format json",
     "db_path": "<DB_PATH>"
   },
@@ -87,15 +97,18 @@
       {"step_id": "preplan", "status": "pending", "attempt_count": 0},
       {"step_id": "plan", "status": "pending", "attempt_count": 0},
       {"step_id": "implement", "status": "blocked", "attempt_count": 1},
-      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "validate", "status": "pending", "attempt_count": 0},
       {"step_id": "write_history", "status": "pending", "attempt_count": 0},
       {"step_id": "commit_push", "status": "pending", "attempt_count": 0},
       {"step_id": "pr_description", "status": "pending", "attempt_count": 0},
       {"step_id": "finish", "status": "pending", "attempt_count": 0}
     ],
-    "artifacts": {"preplan_digest": {"ok": true}},
+    "artifacts": {
+      "plan": {"mode": "implement", "task_count": 1},
+      "preplan_digest": {"ok": true}
+    },
     "started_at": "<STARTED_AT>",
     "updated_at": "<UPDATED_AT>",
     "finished_at": "",
@@ -116,25 +129,28 @@
       {"step_id": "preplan", "status": "pending", "attempt_count": 0},
       {"step_id": "plan", "status": "pending", "attempt_count": 0},
       {"step_id": "implement", "status": "blocked", "attempt_count": 1},
-      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "audit", "status": "pending", "attempt_count": 0},
+      {"step_id": "review", "status": "pending", "attempt_count": 0},
       {"step_id": "validate", "status": "pending", "attempt_count": 0},
       {"step_id": "write_history", "status": "pending", "attempt_count": 0},
       {"step_id": "commit_push", "status": "pending", "attempt_count": 0},
       {"step_id": "pr_description", "status": "pending", "attempt_count": 0},
       {"step_id": "finish", "status": "pending", "attempt_count": 0}
     ],
-    "artifacts": {"preplan_digest": {"ok": true}},
+    "artifacts": {
+      "plan": {"mode": "implement", "task_count": 1},
+      "preplan_digest": {"ok": true}
+    },
     "started_at": "<STARTED_AT>",
     "updated_at": "<UPDATED_AT>",
     "finished_at": "",
     "resume_mode": "resume",
     "resume_step_id": "implement",
     "last_completed_step_id": "",
-    "available_artifacts": ["preplan_digest"],
+    "available_artifacts": ["plan", "preplan_digest"],
     "required_artifacts": ["plan"],
-    "missing_artifacts": ["plan"],
-    "can_resume": false,
+    "missing_artifacts": [],
+    "can_resume": true,
     "next_action": "Resume implementation from the persisted plan, then refresh implementation_summary.",
     "status": "ok",
     "db_path": "<DB_PATH>"
@@ -144,8 +160,8 @@
     "skill_name": "bill-feature-task",
     "workflow_status_before_continue": "blocked",
     "started_at": "<STARTED_AT>",
-    "updated_at": "<UPDATED_AT>",
-    "continue_status": "blocked",
+    "updated_at": "<CONTINUED_AT>",
+    "continue_status": "reopened",
     "resume_step_id": "implement",
     "resume_step_label": "Step 4: Execute Plan",
     "continue_step_id": "implement",
@@ -158,21 +174,21 @@
       "content.md :: Implementation subagent briefing"
     ],
     "required_artifact_keys": ["plan"],
-    "available_artifact_keys": ["preplan_digest"],
-    "missing_artifact_keys": ["plan"],
+    "available_artifact_keys": ["plan", "preplan_digest"],
+    "missing_artifact_keys": [],
     "required_artifacts": ["plan"],
-    "available_artifacts": ["preplan_digest"],
-    "missing_artifacts": ["plan"],
+    "available_artifacts": ["plan", "preplan_digest"],
+    "missing_artifacts": [],
     "current_step_artifacts": [
-      {"key": "plan", "present": false, "inline": false, "size_bytes": null, "value": null, "preview": null, "truncated": false, "omitted": true, "omission_reason": "missing_required_artifact"}
+      {"key": "plan", "present": true, "inline": true, "size_bytes": 35, "value": {"mode": "implement", "task_count": 1}, "preview": null, "truncated": false, "omitted": false, "omission_reason": null},
+      {"key": "repository_evidence", "present": true, "inline": true, "size_bytes": 82, "value": {"fingerprint": "<CHECKPOINT>"}, "preview": null, "truncated": false, "omitted": false, "omission_reason": null}
     ],
     "omitted_artifact_keys": ["preplan_digest"],
-    "continuation_brief": "Resume `bill-feature-task` workflow `<WORKFLOW_ID>` from `Step 4: Execute Plan` (`implement`). Follow the normal step instructions in `skills/bill-feature-task/content.md`. Use `current_step_artifacts` in this compact payload (plan) as authoritative current-step context instead of reconstructing prior context from chat history. Omitted artifact keys (preplan_digest) require read-only inspection with `workflow show` when needed. Workflow activation status: `blocked`. Next action: Resume implementation from the persisted plan, then refresh implementation_summary.",
-    "continuation_entry_prompt": "Use `bill-feature-task` in continuation mode.\nWorkflow id: <WORKFLOW_ID>\nSession id: fis-20260425-mcp\nContinue status: blocked\nResume step: implement (Step 4: Execute Plan)\nFeature: (unknown)\nFeature size: (unknown)\nBranch: (unknown)\nCurrent-step artifacts: plan\nOmitted artifact keys: preplan_digest\nSpec summary: (none saved)\nReference sections: content.md :: Continuation Mode; content.md :: Durable Progress Write Contract; content.md :: Step 4: Execute Plan (subagent); content.md :: Implementation subagent briefing\nRules: do not rerun completed steps unless the workflow sends work backwards; treat `current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed.\nWorkflow update rule: every step_updates item must include step_id, status, and integer attempt_count; use attempt_count 2 for `implement` unless a later retry increments it.\nKeep the same workflow_id and session_id, then continue `bill-feature-task`.\nStep directive: Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan artifact, then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.\nImmediate next action: Resume implementation from the persisted plan, then refresh implementation_summary.",
+    "continuation_brief": "Resume `bill-feature-task` workflow `<WORKFLOW_ID>` from `Step 4: Execute Plan` (`implement`). Follow the normal step instructions in `skills/bill-feature-task/content.md`. Use `current_step_artifacts` in this compact payload (plan) as authoritative current-step context instead of reconstructing prior context from chat history. Omitted artifact keys (preplan_digest) remain private phase context. Explicit operator diagnostics may inspect them with `workflow show`; phase agents must not. Workflow activation status: `reopened`. Next action: Resume implementation from the persisted plan, then refresh implementation_summary.",
+    "continuation_entry_prompt": "Use `bill-feature-task` in continuation mode.\nWorkflow id: <WORKFLOW_ID>\nSession id: fis-20260425-mcp\nContinue status: reopened\nResume step: implement (Step 4: Execute Plan)\nFeature: (unknown)\nFeature size: (unknown)\nBranch: (unknown)\nCurrent-step artifacts: plan\nOmitted artifact keys: preplan_digest\nSpec summary: (none saved)\nReference sections: content.md :: Continuation Mode; content.md :: Durable Progress Write Contract; content.md :: Step 4: Execute Plan (subagent); content.md :: Implementation subagent briefing\nRules: do not rerun completed steps unless the workflow sends work backwards; treat `current_step_artifacts` as the complete authoritative phase input. Omitted keys remain private; `workflow show` is an explicit operator diagnostic and must not widen phase context.\nWorkflow update rule: every step_updates item must include step_id, status, and integer attempt_count; use attempt_count 3 for `implement` unless a later retry increments it.\nKeep the same workflow_id and session_id, then continue `bill-feature-task`.\nStep directive: Do not re-plan unless the recovered plan proves invalid. Reuse the saved plan artifact, then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.\nImmediate next action: Resume implementation from the persisted plan, then refresh implementation_summary.",
     "read_only_full_state_guidance": "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
     "read_only_full_state_command": "skill-bill --db '<DB_PATH>' workflow show '<WORKFLOW_ID>' --format json",
     "db_path": "<DB_PATH>",
-    "status": "error",
-    "error": "Cannot continue workflow until the missing artifacts are restored: plan"
+    "status": "ok"
   }
 }

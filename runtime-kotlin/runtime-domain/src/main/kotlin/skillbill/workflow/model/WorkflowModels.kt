@@ -142,6 +142,7 @@ data class WorkflowInputProjection(
   val stepId: String,
   val producerIteration: Int,
   val repositoryCheckpoint: Any?,
+  @OpenBoundaryMap("Closed-world workflow launch projection artifacts at the CLI/MCP serialization seam")
   val artifacts: Map<String, Any?>,
   val utf8Bytes: Int,
 )

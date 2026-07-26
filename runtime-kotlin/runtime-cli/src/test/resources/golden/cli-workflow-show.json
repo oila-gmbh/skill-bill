@@ -37,12 +37,12 @@
     {
       "attempt_count": 0,
       "status": "pending",
-      "step_id": "review"
+      "step_id": "audit"
     },
     {
       "attempt_count": 0,
       "status": "pending",
-      "step_id": "audit"
+      "step_id": "review"
     },
     {
       "attempt_count": 0,

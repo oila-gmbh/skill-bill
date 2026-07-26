@@ -99,6 +99,9 @@ Then ask: **Confirm or adjust the criteria before I review the PR.**
 
 The success artifact for this step is `criteria_summary`: acceptance criteria, non-goals, rollout expectation, and technical constraints.
 
+Persist it with the exact wire fields `acceptance_criteria`, `non_goals`,
+`rollout_expectation`, and `technical_constraints`.
+
 After Step 2 is confirmed, call `feature_verify_started` and save the returned `session_id`. When the input context has an authoritative normalized issue key, retain it and pass `issue_key: <normalized issue key>` to `feature_verify_workflow_open`; otherwise omit the field rather than deriving one from presentation data, workflow ids, or free text. Immediately call `feature_verify_workflow_update` to mark `collect_inputs` and `extract_criteria` completed, set `gather_diff` to running, and persist `input_context` plus `criteria_summary`.
 
 ## Step 3: Gather PR Diff
@@ -111,6 +114,10 @@ Based on user input, gather changes via `gh pr diff`, `git diff`, or `git log`. 
 
 The success artifact is a typed `diff_projection` containing its checkpoint identity and bounded changed-file evidence. It must not contain the complete diff, prompts, logs, source bodies, telemetry, or progress payloads.
 
+Persist `diff_projection` with the exact wire fields `checkpoint`,
+`comparison_scope`, and `changed_files`. Persist each evaluator policy or rubric
+with exactly `contract_version` and `rules`.
+
 ## Step 4: Feature Flag Audit (conditional)
 
 Step id: `feature_flag_audit`
@@ -120,6 +127,10 @@ Primary artifact: `feature_flag_audit_receipt`
 Use the Feature Flag Audit rubric below for the full rubric and output format.
 
 The audit is legally skippable when the spec and diff do not require it. Persist a compact typed `feature_flag_audit_receipt` either way. Update workflow state so `feature_flag_audit` is completed or skipped and `code_review` is running.
+
+Every evaluator receipt, including a skipped receipt, has the exact bounded
+wire fields `contract_version`, `verdict`, and `findings`. Full evaluator
+narratives and telemetry are private.
 
 ## Step 5: Code Review
 
@@ -132,6 +143,9 @@ Run `bill-code-review` against the PR diff. Follow the full skill instructions i
 When this skill runs `bill-code-review`, this skill is itself a parent. Pass `orchestrated=true` to `import_review` and `triage_findings`. Store the returned `telemetry_payload` only in the dedicated telemetry store; persist a compact typed code-review receipt in workflow domain state.
 
 Persist `code_review_receipt` after review finishes. Update workflow state so `code_review` is completed and `unit_test_value_check` is running.
+
+Persist only the evaluator receipt wire shape defined in Step 4; raw review
+output remains outside workflow domain state.
 
 ## Step 6: Unit Test Value Check
 

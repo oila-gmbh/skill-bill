@@ -64,13 +64,13 @@ Continuation-mode rules:
 
 - Keep the same `workflow_id` and `session_id`; do not open a new workflow.
 - Use `resume_step_id` / `continue_step_id` as the starting point.
-- Use the validated `current_step_projection` as the authoritative recovered context. Fresh launches and continuations resolve the same projection for the exact step, producer iteration, and repository checkpoint. The runtime rejects missing or oversized projections; it never truncates them or falls back to full artifacts. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
+- Use the validated `current_step_artifacts` as the authoritative recovered context. Fresh launches and continuations resolve the same projection for the exact step, producer iteration, and repository checkpoint. The runtime rejects missing or oversized projections; it never truncates them or falls back to full artifacts. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 - Read the `reference_sections` listed in the continuation payload before resuming work.
 - Skip already-completed earlier steps unless the normal workflow loop sends work backwards (review back to `implement_fix`, or audit back to implement).
 - After the resumed step completes, continue the normal sequence defined below.
 - If `continue_status` is `done`, do not rerun the workflow; summarize the terminal state instead.
 - If `continue_status` is `blocked`, stop and restore the missing artifacts named by the workflow payload before continuing.
-- `workflow continue` is a mutating activation/reopen command (it re-opens resumable state), not a read-only inspection command. Its compact continuation output is the default child-session context. Use `workflow show <workflow-id> --format json` for read-only full-state inspection, including the complete durable `artifacts` map, and fetch full state only when explicitly needed.
+- `workflow continue` is a mutating activation/reopen command (it re-opens resumable state), not a read-only inspection command. Its compact `current_step_artifacts` output is the complete phase context. Only a separate operator may use `workflow show <workflow-id> --format json` as an explicit read-only diagnostic; phase agents must never fetch or receive the complete durable `artifacts` map.
 
 ## Retry, Resume, and Review Reuse
 
@@ -99,7 +99,7 @@ unchanged.
 
 On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
 
-- Treat `current_step_projection` as the complete bounded recovered context. Do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
+- Treat `current_step_artifacts` as the complete bounded recovered context. Do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
 - Full durable artifacts and private evidence remain available only through an explicit, read-only operator diagnostic such as `workflow show`; diagnostic results never become phase-launch input.
 - Resume context is bounded: do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 
@@ -261,6 +261,12 @@ The subagent executes the plan atomically (one task per turn), prints per-task p
 
 The subagent returns the implementation return contract: `files_created`, `files_modified`, `tasks_completed`, `plan_deviation_notes`, `tests_written`, `notes_for_review`.
 
+Persist the governed `implementation_summary` wire shape exactly as
+`tasks_completed`, `files_created`, `files_modified`, `tests_written`,
+`plan_deviation_notes`, `criteria_to_file_map`, `notes_for_review`,
+`stopped_early`, and `stopped_reason`. Progress-write failures and other private
+diagnostics remain outside this domain receipt.
+
 For MEDIUM/LARGE, the subagent performs the post-implementation compact internally before returning: summarize files, feature flag info, criteria-to-file mapping, deviations; then re-read the saved spec to verify every criterion is mapped.
 
 Persist `implementation_summary` before advancing to `audit`.
@@ -345,6 +351,9 @@ SMALL: the subagent returns a quick confirmation for each criterion. MEDIUM/LARG
 
 The subagent returns the audit return contract: `pass: bool`, `per_criterion: [...]`, `gaps: [...]`.
 
+Persist the governed `audit_report` wire shape exactly as `pass`,
+`per_criterion`, and `gaps`.
+
 If gaps are found: the orchestrator does not regenerate the implementation plan. It carries the complete audit repair plan — one or more ordered repair items per unmet criterion, each with a stable identifier — into one fresh implementation subagent briefed with the immutable original preplan and plan plus that repair plan. That single invocation repairs every carried gap, honors dependencies internally, and returns a terminal outcome for every repair item (`fixed`, or `already_satisfied` with concrete repository and verification evidence); it may not launch one pass per gap or defer a carried item to review, audit, validation, or another round. The orchestrator then re-spawns the audit subagent once, scoped only to that complete carried gap set and the round's repair work. The follow-up audit classifies each carried gap as resolved or recurring; it does not rescan the full subtask, cumulative diff, or unrelated acceptance surface and does not discover new gaps. Review begins only after the carried gaps are satisfied. There is no fixed iteration cap: audit and repair repeat while they make progress. When an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop loudly with the unresolved gap and repair-item identifiers instead of advancing. When complete, if a tracked `.feature-specs/{ISSUE_KEY}-{feature-name}/spec.md` exists, the orchestrator reconciles it to its final state for ALL sizes (not only MEDIUM/LARGE): set `Status: Complete`, resolve any Open Questions with the decisions taken, and correct anything the implementation changed (for example a corrected flag or argument name). SMALL runs do not create a spec on disk, but when one already exists it must still be reconciled here.
 
 When reconciling that `## Status` block, also write an `Agent:` line recording the resolved invoking agent next to `Status: Complete` — for example `- Agent: claude`. Resolve the agent through the existing governed order, never a re-invented source: `--agent` argument, then the `SKILL_BILL_AGENT` environment variable, then the detected invoking-agent execution context, then the documented last-resort default (`codex`). This line is a completion-reconciliation outcome, never an authored input: write it only here, only when the spec exists on disk (a SMALL run with no spec writes nothing), and keep it idempotent — if an `Agent:` line is already present under `## Status`, update it in place rather than adding a second one. The line lives only under `## Status` and must not perturb the `## Acceptance Criteria` section.
@@ -376,6 +385,11 @@ If `bill-code-check` reports no supported stack for the affected repo, the subag
 
 The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `validation_result`, then advance to `write_history`.
 
+Persist the governed `validation_result` wire shape exactly as
+`validation_result`, `routed_skill`, `detected_stack`, `fallback`,
+`initial_failure_count`, and `final_failure_count`. Keep `telemetry_payload` and
+optional diagnostic detail outside the domain receipt.
+
 ## Step 7: Write Boundary History (orchestrator)
 
 Step id: `write_history`
@@ -383,6 +397,9 @@ Step id: `write_history`
 Primary artifact: `history_result`
 
 Run `bill-boundary-history` inline in the orchestrator. Read its skill file and apply it inline. The skill owns write/skip rules and entry format. Persist `history_result`, then advance to `commit_push`.
+
+Persist the governed `history_result` wire shape exactly as `written` and
+`changed_paths`.
 
 ## Step 8: Commit and Push (orchestrator)
 

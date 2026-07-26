@@ -80,7 +80,8 @@ class CliWorkflowUpdateRuntimeTest {
       """[{"step_id":"verdict","status":"blocked","attempt_count":1}]""",
       "--artifacts-patch",
       "{" +
-        "\"diff_projection\":{\"checkpoint\":\"$checkpoint\",\"comparison_scope\":\"base..head\",\"changed_files\":[]}," +
+        "\"diff_projection\":{\"checkpoint\":\"$checkpoint\"," +
+        "\"comparison_scope\":\"base..head\",\"changed_files\":[]}," +
         "\"feature_flag_audit_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
         "\"code_review_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
         "\"unit_test_value_receipt\":{\"contract_version\":\"0.1\",\"verdict\":\"approved\",\"findings\":[]}," +
