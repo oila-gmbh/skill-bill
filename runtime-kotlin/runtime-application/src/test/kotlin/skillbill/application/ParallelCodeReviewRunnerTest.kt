@@ -189,6 +189,26 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `delegated review loads packaged specialist contract outside skill bill checkout`() {
+    val reviewedRepo = createGitRepo()
+    createStagedFile(reviewedRepo)
+    val unrelatedWorkingDirectory = Files.createTempDirectory("unrelated-working-directory")
+    val originalWorkingDirectory = System.getProperty("user.dir")
+    try {
+      System.setProperty("user.dir", unrelatedWorkingDirectory.toString())
+
+      val result = runner(alwaysSuccessLauncher()).run(
+        baseRequest(scope = ParallelReviewScope.STAGED, repoRoot = reviewedRepo),
+      )
+
+      assertTrue(result.lane1.success)
+      assertTrue(result.lane2.success)
+    } finally {
+      System.setProperty("user.dir", originalWorkingDirectory)
+    }
+  }
+
+  @Test
   fun `lane1 timedOut produces lane1Success false`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)

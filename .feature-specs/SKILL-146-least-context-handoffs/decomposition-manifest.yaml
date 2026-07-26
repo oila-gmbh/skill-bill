@@ -92,12 +92,12 @@ subtasks:
 - id: 6
   name: "Privacy telemetry, compatibility, documentation, and contract integration"
   spec_path: ".feature-specs/SKILL-146-least-context-handoffs/spec_subtask_6_telemetry_compatibility_docs.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260726-195502-za1j"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

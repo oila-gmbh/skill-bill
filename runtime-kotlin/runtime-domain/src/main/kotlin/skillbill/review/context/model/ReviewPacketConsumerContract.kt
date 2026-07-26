@@ -2,6 +2,7 @@ package skillbill.review.context.model
 
 object ReviewPacketConsumerContract {
   const val SOURCE_PATH: String = "orchestration/review-orchestrator/specialist-contract.md"
+  const val RESOURCE_PATH: String = "specialist-contract.md"
   const val SECTION_HEADING: String = "## Packet Consumer Contract"
 
   val FORBIDDEN_REDISCOVERY: List<String> = listOf(
@@ -40,4 +41,9 @@ object ReviewPacketConsumerContract {
 
   const val REPORT_STRUCTURE: String =
     "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
+
+  fun authoritativeSpecialistContract(): String =
+    requireNotNull(ReviewPacketConsumerContract::class.java.classLoader.getResourceAsStream(RESOURCE_PATH)) {
+      "Packaged authoritative delegated-review specialist contract is missing at $RESOURCE_PATH."
+    }.bufferedReader().use { it.readText() }.replace("\r\n", "\n").trim()
 }

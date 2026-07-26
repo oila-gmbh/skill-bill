@@ -30,6 +30,7 @@ class ReviewPacketConsumerContractParityTest {
 
   @Test fun `governed prose and runtime use authoritative contract bytes`() {
     val markdown = Files.readString(contractPath())
+    assertEquals(markdown.replace("\r\n", "\n").trim(), ReviewPacketConsumerContract.authoritativeSpecialistContract())
     assertEquals(
       ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
       authoritativeBlock(markdown, "authoritative-launch-contract"),

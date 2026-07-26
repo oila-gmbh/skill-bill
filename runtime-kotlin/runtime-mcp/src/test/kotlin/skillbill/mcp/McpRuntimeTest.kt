@@ -930,6 +930,8 @@ class McpTokenEstimationTest {
 private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
   "feature_task_runtime_phase_records" to linkedMapOf(
     "preplan" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "preplan",
       "status" to "completed",
       "attempt_count" to 1,
@@ -938,11 +940,14 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "finished_at" to "2026-06-03T10:00:00Z",
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
       "output_artifact" to
         "{\"contract_version\":\"0.2\",\"phase_id\":\"preplan\",\"status\":\"completed\"," +
         "\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}",
     ),
     "plan" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "plan",
       "status" to "completed",
       "attempt_count" to 1,
@@ -951,17 +956,21 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "finished_at" to "2026-06-03T10:01:00Z",
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
       "output_artifact" to
         "{\"contract_version\":\"0.2\",\"phase_id\":\"plan\",\"status\":\"completed\"," +
         "\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}",
     ),
     "implement" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "implement",
       "status" to "running",
       "attempt_count" to 1,
       "started_at" to "2026-06-03T10:01:00Z",
       "first_started_at" to "2026-06-03T10:01:00Z",
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
     ),
   ),
   "feature_task_runtime_phase_ledger" to listOf(
