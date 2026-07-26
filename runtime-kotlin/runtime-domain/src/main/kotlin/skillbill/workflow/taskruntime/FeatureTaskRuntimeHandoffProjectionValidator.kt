@@ -132,11 +132,10 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * would reject or "refresh" on producer phrasing rather than on repository movement, so the carried
    * value is treated as an opaque claim throughout.
    *
-   * `must_match` therefore compares only the two runtime-produced fingerprints — the freshly resolved
-   * one and the one recorded earlier for this run — which is the comparison that actually detects a
-   * moved tree. `refresh_from_repository` keeps the producer's claim fields untouched and rewrites the
-   * repository-derived checkpoint field to the resolved fingerprint, appending the producer's claim so
-   * the substitution is visible rather than silent (AC-012).
+   * `must_match` is retained as a durable legacy wire value, but repository movement is not a phase
+   * gate. Both checkpoint-aware policies keep the producer's claim fields untouched and rewrite the
+   * repository-derived checkpoint field to the freshly resolved fingerprint, appending the producer's
+   * claim so the substitution is visible rather than silent (AC-012).
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -146,18 +145,19 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     val carried = receiptCarriedCheckpointFingerprint(fields)
     val violation = when (declaration.checkpointPolicy) {
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY ->
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ->
         if (inputs.resolvedCheckpoint == null) {
-          "policy refresh_from_repository requires a freshly resolved repository checkpoint, none was supplied."
+          "checkpoint-aware policy requires a freshly resolved repository checkpoint, none was supplied."
         } else {
           null
         }
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs)
     }
     if (violation != null) {
       reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, violation)
     }
-    if (declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY) {
+    if (declaration.checkpointPolicy == FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED) {
       return fields
     }
     val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint ?: return fields
@@ -185,18 +185,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       ?.value
       ?.substringAfter(CHECKPOINT_PRODUCER_CLAIM_SEPARATOR)
       ?.takeIf(String::isNotBlank)
-
-  private fun mustMatchViolation(inputs: FeatureTaskRuntimeHandoffProjectionInputs): String? {
-    val resolved = inputs.resolvedCheckpoint
-      ?: return "policy must_match requires a resolved repository checkpoint, none was supplied."
-    val expected = inputs.expectedCheckpoint
-      ?: return "policy must_match requires a recorded repository checkpoint to compare against, none was supplied."
-    return if (resolved.fingerprint == expected.fingerprint) {
-      null
-    } else {
-      "policy must_match requires the resolved repository fingerprint to equal the recorded one; they differ."
-    }
-  }
 
   // Returns null when a non-required source has no recorded value, so an optional projection is
   // omitted rather than delivered empty. A required source with no value is a hard rejection.

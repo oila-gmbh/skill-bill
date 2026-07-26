@@ -784,9 +784,9 @@ model-driven retrieval.
 
 **3. Repository-derived context.** `FeatureTaskRuntimeRepositoryCheckpoint`
 carries a deterministic fingerprint, optional base/head refs, and working-tree
-ownership. Policies are `not_required`, `must_match` (resolved and recorded
-fingerprints must be equal), and `refresh_from_repository` (a freshly resolved
-checkpoint is required). The domain stays git-agnostic: the application layer
+ownership. Policies are `not_required`, legacy `must_match`, and
+`refresh_from_repository`. Both checkpoint-aware wire values require and carry a freshly resolved
+checkpoint without rejecting repository movement. The domain stays git-agnostic: the application layer
 resolves the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
 `WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
 the audit-repair path already depends on. No new git port was introduced.
