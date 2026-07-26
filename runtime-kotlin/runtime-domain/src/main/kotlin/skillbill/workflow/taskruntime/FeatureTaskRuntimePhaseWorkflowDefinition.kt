@@ -181,10 +181,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     requiredArtifactPresenceResolver = FeatureTaskRuntimeRequiredArtifactPresenceResolver,
   )
 
-  /** Contract id of the coarse whole-receipt projection every declared edge currently uses. */
+  /** Legacy contract id retained only for compatibility rejection and regression assertions. */
   const val UPSTREAM_PHASE_RECEIPT_CONTRACT_ID: String = "feature_task_runtime.upstream_phase_receipt"
 
-  /** Version of [UPSTREAM_PHASE_RECEIPT_CONTRACT_ID]; the envelope schema pins the outer version. */
+  /** Version of the retired [UPSTREAM_PHASE_RECEIPT_CONTRACT_ID]. */
   const val UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION: String = "0.1"
 
   /**
@@ -236,7 +236,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       producingPhaseId = PHASE_AUDIT,
       name = "audit_repair_request",
       contractId = PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
-      fields = listOf("verdict", "gaps", "repository_checkpoint"),
+      fields = listOf(
+        "audit_repair_plan",
+        "prior_terminal_repair_outcomes",
+        "unresolved_gap_ids",
+        "repository_checkpoint",
+      ),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
     ),
   )
@@ -259,42 +264,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
     ),
   )
-
-  /**
-   * One coarse whole-receipt projection per declared upstream edge: the producing phase's validated
-   * output delivered as a single bounded text field. This is deliberately the widest projection the
-   * mechanism allows — it proves the declaration path is load-bearing without yet claiming any edge
-   * is minimally scoped. Per-edge named-field projections replace these coarse receipts later.
-   */
-  fun upstreamReceiptProjections(
-    consumerPhaseId: String,
-    producingPhaseIds: List<String>,
-  ): List<PhaseHandoffProjectionDeclaration> = producingPhaseIds.distinct().map { producingPhaseId ->
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-      projectionName = "${producingPhaseId}_receipt",
-      projectionContractId = UPSTREAM_PHASE_RECEIPT_CONTRACT_ID,
-      projectionContractVersion = UPSTREAM_PHASE_RECEIPT_CONTRACT_VERSION,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = receiptBudgetFor(producingPhaseId),
-      declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-      // Presence of a declared upstream output is already gated ahead of launch by the run loop's
-      // missing-upstream check, which blocks the phase with an operator-facing reason. Marking these
-      // projections required would relocate that decision into a typed projection failure and change
-      // a graceful block into an exception. The validator's required path stays load-bearing for
-      // declarations that own their own presence contract.
-      required = false,
-    )
-  }
-
-  private fun receiptBudgetFor(producingPhaseId: String): FeatureTaskRuntimeHandoffProjectionBudget =
-    if (producingPhaseId == PHASE_PREPLAN) {
-      FeatureTaskRuntimeHandoffProjectionBudget.PREPLAN_DIGEST_RECEIPT
-    } else {
-      FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT
-    }
 
   /**
    * Concrete bounded planning projections for the preplan->plan, plan->implement, and
@@ -371,17 +340,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   )
 
   /**
-   * Per-phase declarations: the typed projection set (one coarse receipt per edge in
-   * [WorkflowDefinition.requiredArtifactsByStep]) plus derived-context keys. `review` and `pr`
-   * declare derived `diff` context for branch-diff inspection.
-   *
-   * The preplan->plan, plan->implement, and plan+implement->audit edges resolve to the concrete
-   * bounded planning projections instead: `plan` sees only preplan's digest, `implement` only the
-   * executable plan (never the digest — `requiredArtifactsByStep` already excludes `preplan` from its
-   * upstream set), and `audit` only the plan commitment plus the implementation receipt. Every other
-   * edge keeps the coarse whole-receipt projection, which subtasks 3/4/8 own.
+   * Closed-world projection matrix for every phase. Every upstream edge has an explicit typed
+   * declaration; an omitted phase or edge is a contract error rather than permission to deliver a
+   * complete producer receipt.
    */
-  private val PLANNING_PROJECTION_EDGES: Map<String, List<PhaseHandoffProjectionDeclaration>> = mapOf(
+  private val PHASE_PROJECTION_MATRIX: Map<String, List<PhaseHandoffProjectionDeclaration>> = mapOf(
+    PHASE_PREPLAN to emptyList(),
     PHASE_PLAN to listOf(preplanningDigestDeclaration(PHASE_PLAN)),
     PHASE_IMPLEMENT to listOf(executablePlanDeclaration(PHASE_IMPLEMENT)),
     PHASE_AUDIT to listOf(
@@ -403,7 +367,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_REVIEW,
         "review_repair_request",
         PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-        listOf("verdict", "findings", "repository_checkpoint"),
+        listOf("unresolved_blocker_findings", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
     ),
@@ -421,7 +385,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_AUDIT,
         "audit_clearance",
         PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("verdict", "repository_checkpoint"),
+        listOf("clearance_status", "review_scope", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
     ),
@@ -431,7 +395,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_IMPLEMENT,
         "validation_request",
         PhaseProjectionContract.VALIDATION_REQUEST,
-        listOf("changed_paths", "tests_added", "tests_updated", "repository_checkpoint"),
+        listOf(
+          "validation_strategy",
+          "changed_paths",
+          "required_checks",
+          "repository_checkpoint",
+        ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
@@ -449,7 +418,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_IMPLEMENT,
         "boundary_candidates",
         PhaseProjectionContract.BOUNDARY_CANDIDATES,
-        listOf("changed_paths", "completed_task_ids", "deviations"),
+        listOf("changed_paths", "boundary_candidates"),
       ),
       phaseProjection(
         PHASE_WRITE_HISTORY,
@@ -466,7 +435,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_IMPLEMENT,
         "commit_request",
         PhaseProjectionContract.COMMIT_REQUEST,
-        listOf("changed_paths", "completed_task_ids", "repository_checkpoint"),
+        listOf(
+          "path_inventory",
+          "required_inclusions",
+          "required_exclusions",
+          "branch_identity",
+          "gate_attestations",
+          "repository_checkpoint",
+        ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
       phaseProjection(
@@ -491,14 +467,23 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_IMPLEMENT,
         "pr_request",
         PhaseProjectionContract.PR_REQUEST,
-        listOf("completed_task_ids", "changed_paths", "tests_added", "tests_updated", "deviations"),
+        listOf(
+          "completed_task_ids",
+          "changed_paths",
+          "tests_added",
+          "tests_updated",
+          "deviations",
+          "validation_summary",
+          "base_branch",
+          "diff_reference",
+        ),
       ),
       phaseProjection(
         PHASE_PR,
         PHASE_COMMIT_PUSH,
         "commit_receipt",
         PhaseProjectionContract.COMMIT_RECEIPT,
-        listOf("commit_sha", "branch", "pushed"),
+        listOf("commit_sha", "branch", "base_branch", "pushed"),
       ),
     ),
   )
@@ -507,11 +492,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     definition.stepIds.associateWith { phaseId ->
       FeatureTaskRuntimePhaseDeclaration(
         phaseId = phaseId,
-        projectionDeclarations = PLANNING_PROJECTION_EDGES[phaseId]
-          ?: upstreamReceiptProjections(
-            phaseId,
-            definition.requiredArtifactsByStep[phaseId].orEmpty(),
-          ),
+        projectionDeclarations = requireNotNull(PHASE_PROJECTION_MATRIX[phaseId]) {
+          "No closed-world projection declaration for runtime phase '$phaseId'."
+        },
         derivedContextKeys = when (phaseId) {
           PHASE_REVIEW, PHASE_PR -> listOf(DERIVED_CONTEXT_DIFF)
           // Audit compares the plan commitment and the receipt against the tree itself, so it needs

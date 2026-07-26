@@ -307,6 +307,8 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         )
       }
     }
+    assertEquals(definition.stepIds.toSet(), def.phaseDeclarations.keys)
+    assertTrue(def.phaseDeclarations.getValue(def.PHASE_PREPLAN).projectionDeclarations.isEmpty())
   }
 
   @Test
@@ -324,6 +326,15 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       },
     )
     assertTrue(auditRemediation.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
+    assertEquals(
+      listOf(
+        "audit_repair_plan",
+        "prior_terminal_repair_outcomes",
+        "unresolved_gap_ids",
+        "repository_checkpoint",
+      ),
+      auditRemediation.last().declaredFieldNames,
+    )
 
     val reviewRetry = def.reviewRetryProjections()
     assertEquals(
@@ -337,6 +348,52 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       },
     )
     assertTrue(reviewRetry.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
+  }
+
+  @Test
+  fun `repair and finalization projections expose only checkpoint-specific request fields`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    fun fields(consumer: String, projection: String): List<String> =
+      def.phaseDeclarations.getValue(consumer).projectionDeclarations
+        .single { it.projectionName == projection }
+        .declaredFieldNames
+
+    assertEquals(
+      listOf("unresolved_blocker_findings", "repository_checkpoint"),
+      fields(def.PHASE_IMPLEMENT_FIX, "review_repair_request"),
+    )
+    assertEquals(
+      listOf("clearance_status", "review_scope", "repository_checkpoint"),
+      fields(def.PHASE_REVIEW, "audit_clearance"),
+    )
+    assertEquals(
+      listOf("validation_strategy", "changed_paths", "required_checks", "repository_checkpoint"),
+      fields(def.PHASE_VALIDATE, "validation_request"),
+    )
+    assertEquals(
+      listOf(
+        "path_inventory",
+        "required_inclusions",
+        "required_exclusions",
+        "branch_identity",
+        "gate_attestations",
+        "repository_checkpoint",
+      ),
+      fields(def.PHASE_COMMIT_PUSH, "commit_request"),
+    )
+    assertEquals(
+      listOf(
+        "completed_task_ids",
+        "changed_paths",
+        "tests_added",
+        "tests_updated",
+        "deviations",
+        "validation_summary",
+        "base_branch",
+        "diff_reference",
+      ),
+      fields(def.PHASE_PR, "pr_request"),
+    )
   }
 
   @Test
