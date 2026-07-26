@@ -446,6 +446,7 @@ class GoalResetCommand(
         "Hard reset requires explicit confirmation. Pass --confirm-issue-key $issueKey or --force.",
       )
     }
+    emitHardResetAcceptanceWarning()
     val result = goalRunnerStatusService.reset(
       GoalRunnerResetRequest(
         issueKey = issueKey,
@@ -459,6 +460,14 @@ class GoalResetCommand(
     )
     val payload = result.toGoalResetCliMap(issueKey, hard)
     state.completeText(goalResetText(payload), payload, exitCode = payload.goalResetExitCode())
+  }
+
+  private fun emitHardResetAcceptanceWarning() {
+    if (!hard) return
+    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey, state.dbOverride)
+    if (discardedAcceptances.isNotEmpty()) {
+      state.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
+    }
   }
 }
 
@@ -477,6 +486,10 @@ class GoalAcceptCommand(
   private val commit by option("--commit", help = "Commit that carries the landed work.").required()
   private val reason by option("--reason", help = "Why this subtask was completed outside the runtime.").required()
   private val repoRoot by option("--repo-root", help = "Repository root used to verify the commit.")
+  private val restoreAfterHardReset by option(
+    "--restore-after-hard-reset",
+    help = "Restore an acceptance discarded by a goal-wide hard reset.",
+  ).flag(default = false)
 
   override fun run() {
     val result = goalRunnerStatusService.accept(
@@ -487,6 +500,7 @@ class GoalAcceptCommand(
         reason = reason,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        restoreAfterHardReset = restoreAfterHardReset,
       ),
     )
     val payload = result.toGoalAcceptCliMap()
@@ -1069,6 +1083,36 @@ private fun goalAcceptText(payload: Map<String, Any?>): String = buildString {
     appendLine("after_subtasks:")
     appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
   }
+}
+
+private fun hardResetAcceptanceWarning(issueKey: String, records: List<GoalRunnerAcceptedSubtask>): String =
+  buildString {
+    appendLine("hard_reset_acceptances_to_discard:")
+    records.forEach { record ->
+      val command = listOf(
+        "skill-bill",
+        "goal",
+        "accept",
+        issueKey,
+        "--subtask",
+        record.subtaskId.toString(),
+        "--commit",
+        record.commitSha,
+        "--reason",
+        record.reason,
+        "--restore-after-hard-reset",
+      ).joinToString(" ", transform = String::shellWord)
+      appendLine(
+        "acceptance: subtask=${record.subtaskId}; commit=${record.commitSha}; reason=${record.reason}",
+      )
+      appendLine("restore_command: $command")
+    }
+  }
+
+private fun String.shellWord(): String = if (isNotEmpty() && all { it.isLetterOrDigit() || it in "-._/:@" }) {
+  this
+} else {
+  "'${replace("'", "'\"'\"'")}'"
 }
 
 private fun goalResetText(payload: Map<String, Any?>): String = buildString {

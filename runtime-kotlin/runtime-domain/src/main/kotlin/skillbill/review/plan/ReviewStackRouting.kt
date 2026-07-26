@@ -44,7 +44,7 @@ object ReviewStackRouting {
           changed.changedContent.contains(signal, ignoreCase = true)
         } * CONTENT_SIGNAL_SCORE
         pathScore to contentScore
-      }.filterValues { (pathScore, contentScore) -> pathScore > 0 || contentScore > 0 }
+      }.filterValues { (pathScore, _) -> pathScore > 0 }
       val best = scores.values.maxWithOrNull(compareBy({ it.first }, { it.second })) ?: return@forEach
       val winners = scores.filterValues { it == best }.keys.toMutableList()
       if (winners.size > 1) {

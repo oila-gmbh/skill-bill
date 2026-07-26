@@ -72,7 +72,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal reset soft preserves completed subtasks and blocked child resume pointers`() {
+  fun `goal reset soft preserves state and reports a terminal blocked child`() {
     val fixture = goalFixture(subtaskCount = 2)
     val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2)
     val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
@@ -91,14 +91,20 @@ class CliGoalRuntimeTest {
       fixture.context(launcher = launcher),
     )
 
-    assertEquals(0, reset.exitCode, reset.stdout)
-    assertContains(reset.stdout, "status: ok")
+    assertEquals(1, reset.exitCode, reset.stdout)
+    assertContains(reset.stdout, "status: recovery_required")
     assertContains(reset.stdout, "mode: soft")
     assertContains(reset.stdout, "before: status=blocked")
     assertContains(reset.stdout, "after: status=in_progress")
     assertContains(reset.stdout, "id=1; status=complete")
     assertContains(reset.stdout, "id=2; status=in_progress")
     assertContains(reset.stdout, "last_resumable_step=review")
+    assertContains(reset.stdout, "recovery: subtask=2; workflow_id=")
+    assertContains(reset.stdout, "classification=incompatible_terminal")
+    assertContains(
+      reset.stdout,
+      "recovery_command: skill-bill goal reset SKILL-901 --subtask 2 --delete-child-workflow",
+    )
     val status = CliRuntime.run(
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = launcher),

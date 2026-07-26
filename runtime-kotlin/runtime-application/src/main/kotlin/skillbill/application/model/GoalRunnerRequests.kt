@@ -184,6 +184,7 @@ data class GoalRunnerAcceptRequest(
   val reason: String,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
+  val restoreAfterHardReset: Boolean = false,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }

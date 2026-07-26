@@ -55,6 +55,7 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -322,6 +323,7 @@ fun harnessRequest(
   scope = ParallelReviewScope.BRANCH,
   repoRoot = repoRoot,
   timeout = timeout,
+  codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   reviewRunId = reviewRunId,
 )
 

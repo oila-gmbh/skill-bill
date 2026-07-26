@@ -207,7 +207,7 @@ class WorkflowGoalRunnerManifestStore(
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
-      saveWorkflowProjectionInTransaction(unitOfWork, state)
+      saveWorkflowProjectionInTransaction(unitOfWork, state, clearOutOfBandAcceptances = true)
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       Path.of("").toAbsolutePath(),
@@ -238,23 +238,7 @@ class WorkflowGoalRunnerManifestStore(
       require(deleted == 1) {
         "Child workflow '$workflowId' is absent, compatible, or not owned by subtask '$subtaskId'."
       }
-      val recoveredManifest = state.manifest.copy(
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "start"),
-        subtasks = state.manifest.subtasks.map { subtask ->
-          if (subtask.id != subtaskId) {
-            subtask
-          } else {
-            subtask.copy(
-              status = "pending",
-              branch = null,
-              commitSha = null,
-              workflowId = null,
-              blockedReason = null,
-              lastResumableStep = null,
-            )
-          }
-        },
-      ).withParentStatus()
+      val recoveredManifest = state.manifest.afterIncompatibleChildDeletion(subtaskId)
       saveWorkflowProjectionInTransaction(unitOfWork, state.copy(manifest = recoveredManifest))
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
@@ -569,45 +553,14 @@ class WorkflowGoalRunnerManifestStore(
   override fun outOfBandAcceptances(
     parentWorkflowId: String,
     dbPathOverride: String?,
-  ): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read emptyMap()
-    outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
-  }
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = readOutOfBandAcceptances(database, parentWorkflowId, dbPathOverride)
 
   override fun persistOutOfBandAcceptance(
     parentWorkflowId: String,
     acceptance: GoalRunnerOutOfBandAcceptance,
     dbPathOverride: String?,
-  ): GoalRunnerOutOfBandAcceptance = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
-      ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-    val existing = outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
-    val merged = existing + (acceptance.subtaskId to acceptance)
-    val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
-      record,
-      WorkflowUpdateInput(
-        workflowStatus = record.workflowStatus,
-        currentStepId = record.currentStepId,
-        stepUpdates = null,
-        artifactsPatch = mapOf(
-          GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY to merged.values
-            .sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
-            .map { entry ->
-              linkedMapOf(
-                "subtask_id" to entry.subtaskId,
-                "commit_sha" to entry.commitSha,
-                "reason" to entry.reason,
-                "accepted_at" to entry.acceptedAt,
-              )
-            },
-        ),
-        sessionId = record.sessionId.orEmpty(),
-      ),
-    )
-    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-    acceptance
-  }
+  ): GoalRunnerOutOfBandAcceptance =
+    writeOutOfBandAcceptance(database, engine, parentWorkflowId, acceptance, dbPathOverride)
 
   private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
     return database.transaction(dbPathOverride) { unitOfWork -> saveWorkflowProjectionInTransaction(unitOfWork, state) }
@@ -616,6 +569,7 @@ class WorkflowGoalRunnerManifestStore(
   private fun saveWorkflowProjectionInTransaction(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
+    clearOutOfBandAcceptances: Boolean = false,
   ): SavedManifestProjection {
     val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
@@ -631,13 +585,17 @@ class WorkflowGoalRunnerManifestStore(
         workflowStatus = existingSnapshot.workflowStatus,
         currentStepId = existingSnapshot.currentStepId,
         stepUpdates = null,
-        artifactsPatch = mapOf(
-          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-            state.manifest,
-            decompositionManifestValidator,
+        artifactsPatch = buildMap {
+          put(
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-          ),
-        ),
+            encodeDecompositionManifestMap(
+              state.manifest,
+              decompositionManifestValidator,
+              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            ),
+          )
+          if (clearOutOfBandAcceptances) put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, emptyList<Any>())
+        },
         sessionId = existingSnapshot.sessionId.orEmpty(),
       ),
     )
@@ -758,6 +716,70 @@ class WorkflowGoalRunnerManifestStore(
         activeCandidates.firstOrNull()?.manifest ?: candidates.firstOrNull()?.manifest
       }
 }
+
+private fun DecompositionManifest.afterIncompatibleChildDeletion(subtaskId: Int): DecompositionManifest = copy(
+  currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "start"),
+  subtasks = subtasks.map { subtask ->
+    if (subtask.id != subtaskId) {
+      subtask
+    } else {
+      subtask.copy(
+        status = "pending",
+        branch = null,
+        commitSha = null,
+        workflowId = null,
+        blockedReason = null,
+        lastResumableStep = null,
+      )
+    }
+  },
+).withParentStatus()
+
+private fun readOutOfBandAcceptances(
+  database: DatabaseSessionFactory,
+  parentWorkflowId: String,
+  dbPathOverride: String?,
+): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
+  val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read emptyMap()
+  outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
+}
+
+private fun writeOutOfBandAcceptance(
+  database: DatabaseSessionFactory,
+  engine: WorkflowEngine,
+  parentWorkflowId: String,
+  acceptance: GoalRunnerOutOfBandAcceptance,
+  dbPathOverride: String?,
+): GoalRunnerOutOfBandAcceptance = database.transaction(dbPathOverride) { unitOfWork ->
+  val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+  val existing = outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
+  val merged = existing + (acceptance.subtaskId to acceptance)
+  val updated = engine.updateRecord(
+    WorkflowFamily.IMPLEMENT.definition,
+    record,
+    WorkflowUpdateInput(
+      workflowStatus = record.workflowStatus,
+      currentStepId = record.currentStepId,
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY to merged.values
+          .sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
+          .map(GoalRunnerOutOfBandAcceptance::toArtifactMap),
+      ),
+      sessionId = record.sessionId.orEmpty(),
+    ),
+  )
+  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+  acceptance
+}
+
+private fun GoalRunnerOutOfBandAcceptance.toArtifactMap(): Map<String, Any?> = linkedMapOf(
+  "subtask_id" to subtaskId,
+  "commit_sha" to commitSha,
+  "reason" to reason,
+  "accepted_at" to acceptedAt,
+)
 
 private data class ProjectedManifestCandidate(
   val path: Path,

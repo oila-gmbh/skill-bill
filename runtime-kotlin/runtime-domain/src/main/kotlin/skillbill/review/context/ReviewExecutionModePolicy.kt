@@ -39,6 +39,5 @@ object ReviewExecutionModePolicy {
 
   private fun resolveAutoByEligibility(
     @Suppress("UNUSED_PARAMETER") eligibility: ReviewAutoEligibility,
-  ): ResolvedReviewDepth =
-    ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$ELIGIBILITY_RULE:inline_default")
+  ): ResolvedReviewDepth = ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$ELIGIBILITY_RULE:inline_default")
 }

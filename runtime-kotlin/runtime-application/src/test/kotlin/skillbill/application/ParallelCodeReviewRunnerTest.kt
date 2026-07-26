@@ -885,6 +885,7 @@ private fun baseRequest(
   scope = scope,
   repoRoot = repoRoot,
   timeout = timeout,
+  codeReviewMode = CodeReviewExecutionMode.DELEGATED,
 )
 
 private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->

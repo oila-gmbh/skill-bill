@@ -187,18 +187,7 @@ class GoalRunnerStatusService(
       manifestStore.save(resetState, request.dbPathOverride)
     }
     val staleChild = if (!request.hard) {
-      saved.manifest.subtasks.firstNotNullOfOrNull { subtask ->
-        val workflowId = subtask.workflowId?.takeIf(String::isNotBlank) ?: return@firstNotNullOfOrNull null
-        val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
-        classification.takeIf { it == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL }?.let {
-          GoalRunnerChildRecoveryDiagnostic(
-            subtaskId = subtask.id,
-            workflowId = workflowId,
-            classification = it.wireValue,
-            recoveryCommand = scopedChildRecoveryCommand(saved.manifest.issueKey, subtask.id),
-          )
-        }
-      }
+      currentChildRecoveryDiagnostic(saved.manifest, request.dbPathOverride)
     } else {
       null
     }
@@ -210,6 +199,28 @@ class GoalRunnerStatusService(
       after = saved.manifest.toResetSnapshot(),
       recovery = staleChild,
     )
+  }
+
+  private fun currentChildRecoveryDiagnostic(
+    manifest: DecompositionManifest,
+    dbPathOverride: String?,
+  ): GoalRunnerChildRecoveryDiagnostic? {
+    val subtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId } ?: return null
+    val workflowId = subtask.workflowId?.takeIf(String::isNotBlank) ?: return null
+    val classification = classifyDurableChild(outcomeStore.progress(workflowId, dbPathOverride))
+    return classification.takeIf { it == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL }?.let {
+      GoalRunnerChildRecoveryDiagnostic(
+        subtaskId = subtask.id,
+        workflowId = workflowId,
+        classification = it.wireValue,
+        recoveryCommand = scopedChildRecoveryCommand(manifest.issueKey, subtask.id),
+      )
+    }
+  }
+
+  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptedSubtask> {
+    val state = manifestStore.loadDurableByIssueKey(issueKey, dbPathOverride) ?: return emptyList()
+    return manifestStore.outOfBandAcceptances(state.parentWorkflowId, dbPathOverride).toAcceptedSubtasks()
   }
 
   private fun deleteIncompatibleChildWorkflow(
@@ -254,7 +265,11 @@ class GoalRunnerStatusService(
   // durable acceptance the goal keeps re-deriving that subtask as unstarted and proposes running it
   // again, so this is the supported alternative to hand-editing the manifest projection.
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    val loaded = if (request.restoreAfterHardReset) {
+      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+    } else {
+      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    }
       ?: return rejected(request, "No prepared goal exists for '${request.issueKey}'.")
     val repoRoot = request.repoRoot
       ?: return rejected(request, "A repository root is required to verify the accepted commit.")
@@ -269,7 +284,11 @@ class GoalRunnerStatusService(
       acceptedAt = OffsetDateTime.now(ZoneOffset.UTC).toString(),
     )
     manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance, request.dbPathOverride)
-    val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot) ?: loaded
+    val refreshed = if (request.restoreAfterHardReset) {
+      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+    } else {
+      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
+    } ?: loaded
     val reconciled = refreshed.manifest.reconciledWithTerminalOutcomes(
       request.dbPathOverride,
       outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
@@ -297,14 +316,39 @@ class GoalRunnerStatusService(
   ): GoalRunnerAcceptanceEvidence {
     val subtask = manifest.subtasks.firstOrNull { it.id == request.subtaskId }
       ?: return GoalRunnerAcceptanceEvidence.Rejected("Subtask ${request.subtaskId} is not part of this goal.")
-    if (subtask.status == "complete") {
-      return GoalRunnerAcceptanceEvidence.Rejected("Subtask ${request.subtaskId} is already complete.")
+    acceptanceStateRejection(request, subtask)?.let { reason ->
+      return GoalRunnerAcceptanceEvidence.Rejected(reason)
     }
-    unsatisfiedDependency(manifest, subtask)?.let { dependencyId ->
+    val unsatisfiedDependencyId = unsatisfiedDependency(manifest, subtask)
+    if (unsatisfiedDependencyId != null) {
       return GoalRunnerAcceptanceEvidence.Rejected(
-        "Subtask ${request.subtaskId} depends on subtask $dependencyId, which is not complete or skipped.",
+        "Subtask ${request.subtaskId} depends on subtask $unsatisfiedDependencyId, which is not complete or skipped.",
       )
     }
+    return resolvedAcceptanceEvidence(request, repoRoot)
+  }
+
+  private fun acceptanceStateRejection(request: GoalRunnerAcceptRequest, subtask: DecompositionSubtask): String? {
+    val clearedByHardReset = subtask.status == "pending" &&
+      subtask.branch == null &&
+      subtask.commitSha == null &&
+      subtask.workflowId == null &&
+      subtask.blockedReason == null &&
+      subtask.lastResumableStep == null
+    return when {
+      request.restoreAfterHardReset && !clearedByHardReset ->
+        "Subtask ${request.subtaskId} is not in the cleared reset state required for acceptance restoration."
+      !request.restoreAfterHardReset && clearedByHardReset ->
+        "Subtask ${request.subtaskId} is in a cleared reset state; rerun the hard-reset restoration command."
+      subtask.status == "complete" -> "Subtask ${request.subtaskId} is already complete."
+      else -> null
+    }
+  }
+
+  private fun resolvedAcceptanceEvidence(
+    request: GoalRunnerAcceptRequest,
+    repoRoot: Path,
+  ): GoalRunnerAcceptanceEvidence {
     val resolved = gitOperations.resolveCommit(repoRoot, request.commitSha)
     val resolvedSha = resolved.value.trim()
     return if (resolved.ok && resolvedSha.isNotBlank()) {

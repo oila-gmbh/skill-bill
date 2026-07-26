@@ -46,6 +46,7 @@ private const val LOOKUP_IDENTITY_ISSUE_KEY_INDEX: Int = 2
 private const val LOOKUP_LEGACY_ROUTE_SCOPE_INDEX: Int = 3
 private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 4
 private const val LOOKUP_ROUTE_SCOPE_INDEX: Int = 5
+private const val DELETE_GOAL_CHILD_SUBTASK_ID_INDEX: Int = 3
 private const val MINIMUM_OWNER_TOKEN_LENGTH: Int = 16
 
 /**
@@ -325,7 +326,7 @@ private class FeatureTaskWorkflowStateStore(
     ).use { statement ->
       statement.setString(1, workflowId)
       statement.setString(2, parentWorkflowId)
-      statement.setInt(3, subtaskId)
+      statement.setInt(DELETE_GOAL_CHILD_SUBTASK_ID_INDEX, subtaskId)
       statement.executeUpdate()
     }
 

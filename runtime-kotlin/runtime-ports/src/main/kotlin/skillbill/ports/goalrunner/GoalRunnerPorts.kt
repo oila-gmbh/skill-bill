@@ -38,10 +38,8 @@ interface GoalRunnerManifestLookup {
     repoRoot: Path? = null,
   ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
 
-  fun loadDurableByIssueKey(
-    issueKey: String,
-    dbPathOverride: String? = null,
-  ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, null)
+  fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState? =
+    loadByIssueKey(issueKey, dbPathOverride, null)
 }
 
 @Suppress("TooManyFunctions") // single cohesive boundary: manifest reads, saves, review policy, and acceptance

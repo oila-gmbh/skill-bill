@@ -20,6 +20,7 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -92,8 +93,8 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -1897,6 +1898,67 @@ class GoalRunnerObservabilityTest {
     assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
   }
 
+  @Test
+  fun `hard reset lists discarded acceptance and only explicit restoration recreates it`() {
+    val original = manifest(subtaskCount = 2).withBlockedSubtask(
+      subtaskId = 1,
+      workflowId = "wfl-manual",
+      reason = "finished outside runtime",
+    )
+    val store = InMemoryGoalManifestStore(original)
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+      AcceptGitOperations(),
+    )
+    val accepted = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "reviewed; ship it",
+        repoRoot = Path.of("."),
+      ),
+    )
+    val acceptedSha = assertIs<GoalRunnerAcceptResult.Accepted>(accepted).commitSha
+
+    assertEquals(
+      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", accepted.acceptedAt)),
+      service.hardResetPreflight("SKILL-56", null),
+    )
+    service.reset(GoalRunnerResetRequest("SKILL-56", hard = true))
+    assertEquals(emptyList(), service.hardResetPreflight("SKILL-56", null))
+    assertIs<GoalRunnerAcceptResult.Rejected>(
+      service.accept(
+        GoalRunnerAcceptRequest(
+          issueKey = "SKILL-56",
+          subtaskId = 1,
+          commitSha = acceptedSha,
+          reason = "reviewed; ship it",
+          repoRoot = Path.of("."),
+        ),
+      ),
+    )
+
+    val restored = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = acceptedSha,
+        reason = "reviewed; ship it",
+        repoRoot = Path.of("."),
+        restoreAfterHardReset = true,
+      ),
+    )
+
+    assertIs<GoalRunnerAcceptResult.Accepted>(restored)
+    assertEquals(
+      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", restored.acceptedAt)),
+      service.hardResetPreflight("SKILL-56", null),
+    )
+  }
+
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",
     repoRoot = Path.of("/tmp/skillbill-goal-runner"),
@@ -1947,6 +2009,7 @@ internal class InMemoryGoalManifestStore(
     preservePlanning: Boolean,
   ): GoalRunnerManifestState {
     hardReset?.invoke(state, dbPathOverride)
+    acceptances = emptyMap()
     return save(state, dbPathOverride)
   }
 
@@ -2614,7 +2677,10 @@ private class FixedBranchGitOperations(
 }
 
 private class AcceptGitOperations(
-  private val resolvable: Map<String, String> = mapOf("abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd"),
+  private val resolvable: Map<String, String> = mapOf(
+    "abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd",
+    "abc1234abc1234abc1234abc1234abc1234abcd" to "abc1234abc1234abc1234abc1234abc1234abcd",
+  ),
 ) : WorkflowGitOperations by StatusDiffGitOperations {
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     resolvable[revision.trim()]?.let { WorkflowGitOperationResult(status = "ok", value = it) }
