@@ -337,6 +337,24 @@ val copyFeatureTaskRuntimePersistenceSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeProjectionMeasurementSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeProjectionMeasurementSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeProjectionMeasurementSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeProjectionMeasurementSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical projection-measurement schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml")
@@ -430,6 +448,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
+  dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -454,6 +473,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
+  dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

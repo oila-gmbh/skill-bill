@@ -213,6 +213,8 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
   val consumerPhaseId: String,
   val iteration: Int,
   val envelope: FeatureTaskRuntimeHandoffEnvelope,
+  val sourceProducerIterations: List<FeatureTaskRuntimeProducerIteration> =
+    envelope.projections.map { it.producerIteration }.distinct(),
 ) {
   val repositoryCheckpointFingerprint: String =
     envelope.repositoryCheckpoint?.fingerprint ?: "not_required:$consumerPhaseId"
@@ -224,6 +226,9 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     }
     require(iteration >= 1) {
       "FeatureTaskRuntimeDeliveredProjectionRecord.iteration must be >= 1, was $iteration."
+    }
+    require(sourceProducerIterations.toSet() == envelope.projections.map { it.producerIteration }.toSet()) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord source producer identities must match its delivered projections."
     }
     require(envelope.consumerPhaseId == consumerPhaseId) {
       "FeatureTaskRuntimeDeliveredProjectionRecord for '$consumerPhaseId' carries an envelope addressed to " +
@@ -237,7 +242,10 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     "record_kind" to "delivered_projection",
     "workflow_id" to workflowId,
     "consumer_phase_id" to consumerPhaseId,
-    "producer_iteration" to iteration,
+    "consumer_delivery_iteration" to iteration,
+    "source_producer_iterations" to sourceProducerIterations.map {
+      mapOf("phase_id" to it.phaseId, "iteration" to it.iteration)
+    },
     "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
   )
@@ -262,13 +270,23 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       val record = FeatureTaskRuntimeDeliveredProjectionRecord(
         workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
         consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
-        iteration = (raw["producer_iteration"] as? Number)?.toInt() ?: missing("producer_iteration"),
+        iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
+          ?: missing("consumer_delivery_iteration"),
         envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
           JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
             // Named explicitly: the private phase-output artifact is never an acceptable substitute
             // for the delivered projection, so an absent envelope is a hard decode failure.
             ?: missing("handoff_envelope"),
         ),
+        sourceProducerIterations = (raw["source_producer_iterations"] as? List<*>)
+          ?.map { identity ->
+            val map = JsonSupport.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
+            FeatureTaskRuntimeProducerIteration(
+              phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
+              iteration = (map["iteration"] as? Number)?.toInt()
+                ?: missing("source_producer_iterations.iteration"),
+            )
+          } ?: missing("source_producer_iterations"),
       )
       val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
         ?: missing("repository_checkpoint")
@@ -288,7 +306,8 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
         "record_kind",
         "workflow_id",
         "consumer_phase_id",
-        "producer_iteration",
+        "consumer_delivery_iteration",
+        "source_producer_iterations",
         "repository_checkpoint",
         "handoff_envelope",
       )

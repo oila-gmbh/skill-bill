@@ -76,6 +76,17 @@ object FeatureTaskRuntimePersistenceSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.yaml"
 }
 
+const val FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+}
+
 /**
  * Runtime-side mirror of the planning-projections schema's `contract_version`;
  * `FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest` fails the build if they diverge.

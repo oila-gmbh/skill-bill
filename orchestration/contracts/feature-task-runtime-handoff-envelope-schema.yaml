@@ -99,6 +99,7 @@ $defs:
       - projection_contract_id
       - projection_contract_version
       - prompt_visibility
+      - producer_iteration
       - fields
     properties:
       projection_name:
@@ -122,6 +123,17 @@ $defs:
         enum:
           - prompt_visible
           - private_evidence_only
+      producer_iteration:
+        type: object
+        additionalProperties: false
+        required: [phase_id, iteration]
+        properties:
+          phase_id:
+            type: string
+            minLength: 1
+          iteration:
+            type: integer
+            minimum: 1
       fields:
         type: array
         items:

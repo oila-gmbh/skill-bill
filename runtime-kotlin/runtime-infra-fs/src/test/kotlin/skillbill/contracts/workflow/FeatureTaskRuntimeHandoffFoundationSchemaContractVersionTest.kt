@@ -35,6 +35,15 @@ class FeatureTaskRuntimeHandoffFoundationSchemaContractVersionTest {
     )
   }
 
+  @Test
+  fun `projection measurement schema id version and classpath resource match Kotlin pins`() {
+    assertSchemaPin(
+      FeatureTaskRuntimeProjectionMeasurementSchemaPaths.CLASSPATH_RESOURCE,
+      FeatureTaskRuntimeProjectionMeasurementSchemaPaths.EXPECTED_SCHEMA_ID,
+      FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION,
+    )
+  }
+
   private fun assertSchemaPin(resource: String, expectedId: String, expectedVersion: String) {
     val schema = classpathSchema(resource)
     assertEquals(expectedId, schema.path("\$id").asText())

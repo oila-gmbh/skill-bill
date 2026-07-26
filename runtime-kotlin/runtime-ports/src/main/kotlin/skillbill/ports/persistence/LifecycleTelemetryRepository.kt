@@ -13,12 +13,15 @@ import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 
 // SKILL-66 Subtask 2: the lifecycle telemetry contract spans the
 // implement/verify/quality/pr families plus the goal family; the cohesive
 // write surface legitimately exceeds the per-type function budget.
 @Suppress("TooManyFunctions")
 interface LifecycleTelemetryRepository {
+  fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
+
   fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String)
 
   fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String)

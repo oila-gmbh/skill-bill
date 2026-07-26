@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 /**
@@ -56,6 +57,26 @@ data class FeatureTaskRuntimeProjectionMeasurement(
     ) {
       "FeatureTaskRuntimeProjectionMeasurement counts must be non-negative."
     }
+  }
+
+  @OpenBoundaryMap("Content-free feature-task-runtime projection measurement telemetry seam")
+  fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION,
+    "workflow_id" to workflowId,
+    "consumer_phase_id" to consumerPhaseId,
+    "projection_contract_id" to projectionContractId,
+    "producer_iteration" to mapOf(
+      "phase_id" to producerIteration.phaseId,
+      "iteration" to producerIteration.iteration,
+    ),
+    "repository_checkpoint_fingerprint" to repositoryCheckpointFingerprint,
+    "projected_utf8_bytes" to projectedUtf8Bytes,
+    "projected_collection_items" to projectedCollectionItems,
+    "estimated_tokens" to estimatedTokens,
+    "private_evidence_utf8_bytes" to privateEvidenceUtf8Bytes,
+    "delivered_projection_utf8_bytes" to deliveredProjectionUtf8Bytes,
+  ).apply {
+    failureClassification?.let { put("failure_classification", it.wireValue) }
   }
 }
 

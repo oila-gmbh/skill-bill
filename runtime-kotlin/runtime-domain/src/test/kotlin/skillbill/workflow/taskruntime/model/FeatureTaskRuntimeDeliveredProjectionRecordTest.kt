@@ -32,6 +32,39 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
       serialized.contains("private-evidence-body"),
       "the delivered-projection record absorbed the private phase output body",
     )
+    assertEquals(
+      listOf(FeatureTaskRuntimeProducerIteration("plan", 1)),
+      restored.sourceProducerIterations,
+      "the persisted source identity must be the producer attempt, not the consumer delivery count",
+    )
+  }
+
+  @Test
+  fun `multiple source producer iterations survive independently of consumer delivery iteration`() {
+    val first = deliveredProjection()
+    val envelope = first.envelope.copy(
+      projections = first.envelope.projections + first.envelope.projections.single().copy(
+        projectionName = "implementation_receipt",
+        sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput("implement"),
+        producerIteration = FeatureTaskRuntimeProducerIteration("implement", 3),
+      ),
+    )
+    val record = FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = first.workflowId,
+      consumerPhaseId = first.consumerPhaseId,
+      iteration = 7,
+      envelope = envelope,
+    )
+
+    val wire = record.toArtifactMap()
+    val restored = FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(wire)
+
+    assertEquals(7, restored.iteration)
+    assertEquals(
+      listOf(FeatureTaskRuntimeProducerIteration("plan", 1), FeatureTaskRuntimeProducerIteration("implement", 3)),
+      restored.sourceProducerIterations,
+    )
+    assertFalse(wire.containsKey("producer_iteration"))
   }
 
   @Test

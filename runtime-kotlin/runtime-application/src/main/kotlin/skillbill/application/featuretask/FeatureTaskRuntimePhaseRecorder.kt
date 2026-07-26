@@ -39,6 +39,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -487,6 +488,31 @@ class FeatureTaskRuntimePhaseRecorder(
       iteration = (existingDelivered?.iteration ?: 0) + 1,
       envelope = briefing.handoffEnvelope,
     )
+    val privatePhaseRecords = phaseRecordsFrom(artifacts)
+    briefing.handoffEnvelope.projections.forEach { projection ->
+      val deliveredProjectionUtf8Bytes =
+        JsonSupport.mapToJsonString(projection.toEnvelopeMap()).toByteArray(Charsets.UTF_8).size
+      val privateEvidenceUtf8Bytes =
+        privatePhaseRecords[projection.producerIteration.phaseId]
+          ?.outputArtifact
+          ?.toByteArray(Charsets.UTF_8)
+          ?.size
+          ?: 0
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(
+        FeatureTaskRuntimeProjectionMeasurement(
+          workflowId = workflowId,
+          consumerPhaseId = briefing.phaseId,
+          projectionContractId = projection.projectionContractId,
+          producerIteration = projection.producerIteration,
+          repositoryCheckpointFingerprint = delivered.repositoryCheckpointFingerprint,
+          projectedUtf8Bytes = projection.utf8ByteSize,
+          projectedCollectionItems = projection.itemCount,
+          estimatedTokens = (projection.utf8ByteSize + 3) / 4,
+          privateEvidenceUtf8Bytes = privateEvidenceUtf8Bytes,
+          deliveredProjectionUtf8Bytes = deliveredProjectionUtf8Bytes,
+        ),
+      )
+    }
     val deliveredKey = listOf(
       delivered.workflowId,
       delivered.consumerPhaseId,

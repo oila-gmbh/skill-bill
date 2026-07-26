@@ -64,7 +64,8 @@ $defs:
       - record_kind
       - workflow_id
       - consumer_phase_id
-      - producer_iteration
+      - consumer_delivery_iteration
+      - source_producer_iterations
       - repository_checkpoint
       - handoff_envelope
     properties:
@@ -78,9 +79,23 @@ $defs:
       consumer_phase_id:
         type: string
         minLength: 1
-      producer_iteration:
+      consumer_delivery_iteration:
         type: integer
         minimum: 1
+      source_producer_iterations:
+        type: array
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required: [phase_id, iteration]
+          properties:
+            phase_id:
+              type: string
+              minLength: 1
+            iteration:
+              type: integer
+              minimum: 1
       repository_checkpoint:
         $ref: "#/$defs/checkpoint"
       handoff_envelope:
