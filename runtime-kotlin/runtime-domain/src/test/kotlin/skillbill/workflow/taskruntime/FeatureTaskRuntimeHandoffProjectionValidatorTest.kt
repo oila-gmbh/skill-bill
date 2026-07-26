@@ -23,7 +23,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.contracts.JsonSupport
 
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
@@ -47,15 +46,16 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `projection byte size equals its canonical persisted rendering`() {
+  fun `projection byte size equals its canonical delivered rendering`() {
     val projection = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())
       .projections.single()
 
     assertEquals(
-      JsonSupport.mapToJsonString(projection.toEnvelopeMap()).toByteArray(Charsets.UTF_8).size,
+      projection.canonicalDeliveredRendering.toByteArray(Charsets.UTF_8).size,
       projection.utf8ByteSize,
     )
   }
+
   @Test
   fun `projection identity uses the resolved producer attempt`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(

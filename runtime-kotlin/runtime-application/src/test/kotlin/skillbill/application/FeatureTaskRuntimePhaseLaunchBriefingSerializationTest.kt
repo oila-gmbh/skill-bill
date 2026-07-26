@@ -30,7 +30,8 @@ class FeatureTaskRuntimePhaseLaunchBriefingSerializationTest {
     }
 
     assertContains(error.message.orEmpty(), "upstream_outputs_by_phase_id")
-    assertContains(error.message.orEmpty(), "handoff_envelope")
+    assertContains(error.message.orEmpty(), "Restart")
+    assertContains(error.message.orEmpty(), "migrate")
   }
 
   @Test

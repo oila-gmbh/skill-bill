@@ -209,6 +209,7 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
 class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
   val sourceLabel: String,
   val reason: String,
+  val projectionName: String? = null,
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime planning projection '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",

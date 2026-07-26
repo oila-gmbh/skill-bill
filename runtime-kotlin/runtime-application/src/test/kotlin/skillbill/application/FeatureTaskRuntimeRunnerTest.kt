@@ -2068,51 +2068,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 class FeatureTaskRuntimeCheckpointScopeTest {
   @Test
   fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.repositoryFingerprintValue = "child-fingerprint-1"
-    // The owned inventory and the parent-captured baseline are both `ls-files`-shaped, so a sibling's
-    // wholly-untracked directory matches entry-for-entry. Under the old porcelain-derived inventory it
-    // arrived as the collapsed `dir/` entry, matched nothing in the baseline, and leaked (F-005).
-    git.ownedPathsValue = listOf(
-      "runtime-domain/Child.kt",
-      "runtime-domain/Renamed.kt",
-      ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
-      ".feature-specs/SKILL-137/sibling/notes.md",
-    )
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = git),
-        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
-          subtaskId = 5,
-          goalBranch = "feat/existing-runtime-branch",
-          suppressPr = true,
-          parentWorkflowId = "wfl-parent",
-          reviewBaseline = GoalSubtaskReviewBaseline(
-            "0".repeat(40),
-            listOf(
-              ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
-              ".feature-specs/SKILL-137/sibling/notes.md",
-            ),
-          ),
-        ),
-      ),
-    )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.recorder.recordResolvedBranch(
-      WORKFLOW_ID,
-      FeatureTaskRuntimeResolvedBranch(
-        branch = "feat/existing-runtime-branch",
-        reviewBaseSha = "0".repeat(40),
-        baselineOwnedPaths = listOf(
-          ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
-          ".feature-specs/SKILL-137/sibling/notes.md",
-        ),
-      ),
-    )
+    val harness = checkpointScopeHarness()
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -2135,6 +2091,49 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
   }
 
+  private fun checkpointScopeHarness(): RunnerHarness {
+    val siblingPaths = listOf(
+      ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+      ".feature-specs/SKILL-137/sibling/notes.md",
+    )
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").also {
+      it.repositoryFingerprintValue = "child-fingerprint-1"
+      // Both inventories are `ls-files`-shaped so a wholly-untracked sibling directory matches
+      // entry-for-entry instead of leaking through a collapsed porcelain `dir/` entry (F-005).
+      it.ownedPathsValue = listOf("runtime-domain/Child.kt", "runtime-domain/Renamed.kt") + siblingPaths
+    }
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), siblingPaths),
+        ),
+      ),
+    )
+    harness.seedCheckpointAudit(siblingPaths)
+    return harness
+  }
+
+  private fun RunnerHarness.seedCheckpointAudit(baselineOwnedPaths: List<String> = emptyList()) {
+    seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/existing-runtime-branch",
+        reviewBaseSha = "0".repeat(40),
+        baselineOwnedPaths = baselineOwnedPaths,
+      ),
+    )
+  }
+
   @Test
   fun `an unmeasurable owned-path read blocks audit instead of rendering an empty scope`() {
     // An empty inventory reads as "this scope owns nothing", so an audit given it can conclude no work
@@ -2147,9 +2146,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedCheckpointAudit()
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
@@ -2173,9 +2170,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedCheckpointAudit()
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
@@ -2200,9 +2195,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedCheckpointAudit()
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
@@ -3625,12 +3618,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertTrue(git.createCommitMessages.isEmpty(), "a clean tree must not produce a checkpoint commit")
   }
 
-  // (c) The checkpoint boundary is established at the right point — after a verifier-passing iteration
-  // and before the backward edge re-enters the mutating phase — and respects suppress_pr: a dirty tree
-  // yields exactly one checkpoint commit on the resolved feature branch (no push), a clean tree yields
-  // none.
+  // (c) A dirty tree is checkpointed at every declared authority boundary: before each review and
+  // before the backward edge re-enters the mutating phase. This fixture stays dirty after every
+  // synthetic phase launch, so the sequence is audit, remediation, audit.
   @Test
-  fun `dirty tree checkpoints once before mutating re-entry on the resolved feature branch`() {
+  fun `dirty tree checkpoints review and remediation boundaries on the resolved feature branch`() {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.worktreeStatusValue = " M src/Foo.kt" // dirty tree => one checkpoint commit on the boundary
@@ -3652,13 +3644,14 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    // Exactly one checkpoint commit: fired on the single backward edge into implement.
-    assertEquals(1, git.createCommitMessages.size, "a dirty tree must checkpoint exactly once before re-entry")
-    assertContains(git.createCommitMessages.single(), "feat/existing-runtime-branch")
-    assertContains(git.createCommitMessages.single(), "remediation checkpoint")
+    assertEquals(3, git.createCommitMessages.size)
+    assertContains(git.createCommitMessages[0], "audited implementation checkpoint")
+    assertContains(git.createCommitMessages[1], "remediation checkpoint")
+    assertContains(git.createCommitMessages[2], "audited implementation checkpoint")
+    assertTrue(git.createCommitMessages.all { it.contains("feat/existing-runtime-branch") })
     // The checkpoint stages the full tree before committing: agents never `git add`, so without a
     // stage-all the bare commit would run against an empty index and fail (F-001).
-    assertEquals(1, git.stageAllCalls, "the checkpoint must stage the full tree once before committing")
+    assertEquals(3, git.stageAllCalls, "each checkpoint must stage the full tree before committing")
   }
 
   // F-001: a staging failure must block loudly rather than proceeding to a doomed empty-index commit.
@@ -3712,12 +3705,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
-  // F-004: a suppress_pr goal-continuation run driven through the checkpoint boundary (dirty tree,
-  // mutating re-entry) commits exactly one checkpoint and performs no push. The no-push property holds
-  // by construction: WorkflowGitOperations exposes no push and the checkpoint path only stages +
-  // commits, so honoring suppress_pr reduces to "the checkpoint is the single added durable boundary".
+  // F-004: suppress_pr changes the terminal push behavior, not checkpoint authority. An always-dirty
+  // goal-continuation run therefore commits both audit-review boundaries and its remediation boundary.
+  // WorkflowGitOperations exposes no push, so this path cannot publish any of those commits.
   @Test
-  fun `suppress_pr goal-continuation checkpoints once and never pushes`() {
+  fun `suppress_pr goal-continuation checkpoints every authority boundary and never pushes`() {
     var reviewLaunches = 0
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goalcont-checkpoint")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
@@ -3753,10 +3745,13 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
     assertEquals(
-      1,
+      3,
       git.createCommitMessages.size,
-      "a suppress_pr goal-continuation must checkpoint exactly once before re-entry",
+      "suppress_pr must preserve both review checkpoints and the remediation checkpoint",
     )
+    assertContains(git.createCommitMessages[0], "audited implementation checkpoint")
+    assertContains(git.createCommitMessages[1], "remediation checkpoint")
+    assertContains(git.createCommitMessages[2], "audited implementation checkpoint")
   }
 
   // (c continued) A checkpoint is never created on the default branch: a non-mutating cycle (no
@@ -5020,6 +5015,11 @@ internal class RecordingWorkflowGitOperations(
     headCommitShaCalls++
     return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
   }
+
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "ok",
+    value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
+  )
 
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     object : RuntimePhaseFileManifestGitOperations {

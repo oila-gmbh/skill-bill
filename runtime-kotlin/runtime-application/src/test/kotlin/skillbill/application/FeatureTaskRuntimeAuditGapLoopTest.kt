@@ -100,6 +100,33 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `final audit repair iteration is committed before review`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").apply {
+      worktreeStatusValue = " M src/Foo.kt"
+    }
+    val delegate = auditGapLauncher(convergeOnAudit = 2)
+    var commitMessagesObservedAtReview: List<String> = emptyList()
+    val launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "review") {
+        commitMessagesObservedAtReview = git.createCommitMessages.toList()
+      }
+      delegate.launch(request)
+    }
+    val harness = runnerHarness(
+      launcher = launcher,
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(2, commitMessagesObservedAtReview.size)
+    assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
+    assertContains(commitMessagesObservedAtReview[1], "audited implementation checkpoint")
+    assertEquals(2, git.stageAllCalls)
+  }
+
+  @Test
   fun `audit gap validates persisted planning outputs against their phase identities`() {
     val identityCheckingValidator = object : FeatureTaskRuntimePhaseOutputValidator {
       override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {

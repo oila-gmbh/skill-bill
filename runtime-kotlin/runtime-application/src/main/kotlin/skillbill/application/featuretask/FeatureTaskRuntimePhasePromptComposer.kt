@@ -40,11 +40,12 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
-    agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
+    val resolvedReviewMode = resolvedReviewTier ?: codeReviewMode
     return listOf(
       header(issueKey, briefing.phaseId),
+      ceremonyDirective(briefing, reviewPassNumber, resolvedReviewMode),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(

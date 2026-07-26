@@ -10,7 +10,6 @@ import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -67,6 +66,16 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesF
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
 import java.time.Instant
+
+internal data class FeatureTaskRuntimeProjectionRejection(
+  val workflowId: String,
+  val consumerPhaseId: String,
+  val projectionContractId: String,
+  val producerIteration: FeatureTaskRuntimeProducerIteration,
+  val repositoryCheckpointFingerprint: String?,
+  val failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
+  val sourceLabel: String,
+)
 
 /**
  * Application-layer write/read seam for feature-task-runtime per-phase records and the
@@ -586,71 +595,53 @@ class FeatureTaskRuntimePhaseRecorder(
     dbOverride: String? = null,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     recordProjectionRejectionMeasurement(
-      unitOfWork = unitOfWork,
-      workflowId = workflowId,
-      consumerPhaseId = consumerPhaseId,
-      projectionContractId = error.projectionContractId.ifBlank { "unknown" },
-      producerIteration = FeatureTaskRuntimeProducerIteration(consumerPhaseId, 1),
-      repositoryCheckpointFingerprint = repositoryCheckpointFingerprint,
-      failureClassification = error.failureKind.toMeasurementFailureClassification(),
-      sourceLabel = error.projectionName,
+      unitOfWork,
+      FeatureTaskRuntimeProjectionRejection(
+        workflowId = workflowId,
+        consumerPhaseId = consumerPhaseId,
+        projectionContractId = error.projectionContractId.ifBlank { "unknown" },
+        producerIteration = FeatureTaskRuntimeProducerIteration(consumerPhaseId, 1),
+        repositoryCheckpointFingerprint = repositoryCheckpointFingerprint,
+        failureClassification = error.failureKind.toMeasurementFailureClassification(),
+        sourceLabel = error.projectionName,
+      ),
     )
   }
 
-  fun recordProjectionRejection(
-    workflowId: String,
-    consumerPhaseId: String,
-    projectionContractId: String,
-    producerIteration: FeatureTaskRuntimeProducerIteration,
-    repositoryCheckpointFingerprint: String?,
-    failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
-    sourceLabel: String,
+  internal fun recordProjectionRejection(
+    rejection: FeatureTaskRuntimeProjectionRejection,
     dbOverride: String? = null,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    recordProjectionRejectionMeasurement(
-      unitOfWork,
-      workflowId,
-      consumerPhaseId,
-      projectionContractId,
-      producerIteration,
-      repositoryCheckpointFingerprint,
-      failureClassification,
-      sourceLabel,
-    )
+    recordProjectionRejectionMeasurement(unitOfWork, rejection)
   }
 
   private fun recordProjectionRejectionMeasurement(
     unitOfWork: UnitOfWork,
-    workflowId: String,
-    consumerPhaseId: String,
-    projectionContractId: String,
-    producerIteration: FeatureTaskRuntimeProducerIteration,
-    repositoryCheckpointFingerprint: String?,
-    failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
-    sourceLabel: String,
+    rejection: FeatureTaskRuntimeProjectionRejection,
   ): Boolean {
-    if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) == null) {
+    if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, rejection.workflowId) == null) {
       return false
     }
     val measurement = FeatureTaskRuntimeProjectionMeasurement(
-      workflowId = workflowId,
-      consumerPhaseId = consumerPhaseId,
-      projectionContractId = projectionContractId.ifBlank { "unknown" },
-      producerIteration = producerIteration,
-      repositoryCheckpointFingerprint = repositoryCheckpointFingerprint ?: "not_resolved:$consumerPhaseId",
+      workflowId = rejection.workflowId,
+      consumerPhaseId = rejection.consumerPhaseId,
+      projectionContractId = rejection.projectionContractId.ifBlank { "unknown" },
+      producerIteration = rejection.producerIteration,
+      repositoryCheckpointFingerprint = rejection.repositoryCheckpointFingerprint
+        ?: "not_resolved:${rejection.consumerPhaseId}",
       projectedUtf8Bytes = 0,
       projectedCollectionItems = 0,
       estimatedTokens = 0,
       privateEvidenceUtf8Bytes = 0,
       deliveredProjectionUtf8Bytes = 0,
-      failureClassification = failureClassification,
+      failureClassification = rejection.failureClassification,
     )
     handoffFoundationValidator.validateMeasurement(
       measurement.toTelemetryMap(),
-      "projection-rejection:$consumerPhaseId:$sourceLabel",
+      "projection-rejection:${rejection.consumerPhaseId}:${rejection.sourceLabel}",
     )
     unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
-    true
+    return true
   }
 
   fun validateHandoffDeclarations(declarations: List<PhaseHandoffProjectionDeclaration>) {
@@ -839,22 +830,19 @@ class FeatureTaskRuntimePhaseRecorder(
       resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
     }
 
-  fun recordWorkflowOwnedPaths(
-    workflowId: String,
-    ownedPaths: List<String>,
-    dbOverride: String? = null,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction false
-    val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
-    val updated = resolved.copy(workflowOwnedPaths = ownedPaths.distinct().sorted())
-    persistPatch(
-      unitOfWork.workflowStates,
-      record,
-      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
-    )
-    true
-  }
+  fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
+      val updated = resolved.copy(workflowOwnedPaths = ownedPaths.distinct().sorted())
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+      )
+      true
+    }
 
   /**
    * Strict read of the per-phase records keyed by phase id; an absent key yields an empty map

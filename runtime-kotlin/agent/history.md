@@ -1,3 +1,14 @@
+## [2026-07-26] SKILL-146 runtime projection engine and least-context launch handoffs (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application,contracts,ports,cli}
+- One launch-assembly path now selects exact producer iterations, validates declared planning projections, persists the delivered least-context handoff, and applies the same behavior to fresh, resumed, retried, crash-recovered, and remediating launches. reusable
+- Repository checkpoints use immutable base/head refs plus workflow-owned paths, isolate goal siblings, and establish an audited implementation commit before review so review measures the final audited tree. reusable
+- Projection budgets reject overflow before launch without truncation or full-artifact fallback; incompatible durable briefing/workflow records loud-fail or enter the bounded producer-owned regeneration path according to ownership. reusable
+- Launch-seam rejection measurements retain the exact rejected projection declaration, contract, current producer iteration, checkpoint fingerprint, and typed failure class without recording private content. reusable
+- The handoff validator, run loop, persistence mappings, prompt assertions, and runtime/CLI surfaces share the versioned contract machinery introduced in subtask 1; no provider-specific or agent-controlled retrieval path was added.
+- Known limitation: phase-specific receipt payloads and delegated review delivery remain scoped to later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
 ## [2026-07-26] SKILL-146 versioned handoff contract and durable evidence boundary (subtask 1)
 Areas: runtime-kotlin/runtime-{domain,application,core,contracts,infra-fs,infra-sqlite,ports,cli}, orchestration/contracts
 - Phase handoffs now use closed-world, versioned declarations and typed models for consumer/source identity, projection contract/version, prompt visibility, UTF-8 byte and item budgets, and repository-checkpoint policy; arbitrary agent maps cannot widen the boundary. reusable

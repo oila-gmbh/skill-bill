@@ -459,6 +459,7 @@ class DefaultGoalPlanningSweep(
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
       planningProjectionValidator = planningProjectionValidator,
+      agentAddonSelection = request.agentAddonSelection,
     )
     val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       issueKey = request.issueKey,
@@ -466,7 +467,6 @@ class DefaultGoalPlanningSweep(
       suppressDecomposition = true,
       specSource = shared.specSource,
       specReference = runInvariants.specReference,
-      agentAddonSelection = request.agentAddonSelection,
       priorSchemaFailure = priorSchemaFailure,
     )
     return GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)

@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
@@ -9,13 +9,14 @@ import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.charset.StandardCharsets
@@ -87,13 +88,18 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): FeatureTaskRuntimePhaseLaunchBriefing {
+    val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
+      handoff.phaseId,
+      agentAddonSelection,
+    )
     val promptDeclarations = handoff.projectionDeclarations +
       invariantDeclarations(handoff.phaseId) +
-      agentAddonSelection.entries.map { entry ->
+      boundedAddonSelection.entries.map { entry ->
+        val slug = entry.persisted.slug
         PhaseHandoffProjectionDeclaration(
           consumerPhaseId = handoff.phaseId,
-          sourceRef = FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(entry.slug),
-          projectionName = "agent_addon_${entry.slug.replace('-', '_')}",
+          sourceRef = FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(slug),
+          projectionName = "agent_addon_${slug.replace('-', '_')}",
           projectionContractId = "feature_task_runtime.agent_addon_content",
           projectionContractVersion = "0.1",
           promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
@@ -111,7 +117,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
-        addonContentBySlug = agentAddonSelection.entries.associate { it.slug to it.content },
+        addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
@@ -202,6 +208,9 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     appendLine("# Feature-task-runtime phase briefing")
     appendLine("phase: ${handoff.phaseId}")
     handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
+    appendLine()
+    appendAllowlistedRunInvariants(handoff)
+    appendLine()
     // Only rendered on an audit_gap re-entry; a forward launch and a review_fix re-entry both carry
     // no gap criteria, so their briefings stay byte-for-byte identical.
     if (handoff.reentryGapCriteria.isNotEmpty()) {

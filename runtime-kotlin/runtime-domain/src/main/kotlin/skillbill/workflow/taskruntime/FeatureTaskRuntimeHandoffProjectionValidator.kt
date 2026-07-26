@@ -441,12 +441,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
       else -> FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
     }
-    val projection = featureTaskRuntimePlanningProjectionFromEnvelope(
-      envelope = phaseOutputEnvelope(output, producingPhaseId),
-      producingPhaseId = producingPhaseId,
-      expectedKind = expectedKind,
-      schemaValidator = inputs.planningProjectionValidator,
-    )
+    val projection = try {
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = phaseOutputEnvelope(output, producingPhaseId),
+        producingPhaseId = producingPhaseId,
+        expectedKind = expectedKind,
+        schemaValidator = inputs.planningProjectionValidator,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+        sourceLabel = error.sourceLabel,
+        reason = error.reason,
+        projectionName = declaration.projectionName,
+        cause = error,
+      )
+    }
     // Exhaustive narrowing on the parsed type: no cast, so a shape the declaration did not ask for is
     // a typed rejection rather than a ClassCastException on an already-completed producing phase.
     return when {

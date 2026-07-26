@@ -72,15 +72,17 @@ class CliFeatureTaskRuntimeRuntimeTest {
     ).toRealPath().toString()
     selectedLauncher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "### 1. first-helper")
-      assertContains(prompt, "### 2. last-helper")
+      val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+      val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+      assertContains(prompt, firstHeader)
+      assertContains(prompt, lastHeader)
       assertContains(prompt, "First selected guidance.")
       assertContains(prompt, "Last selected guidance.")
-      assertContains(prompt, firstManifest)
-      assertContains(prompt, lastManifest)
+      assertFalse(prompt.contains(firstManifest), prompt)
+      assertFalse(prompt.contains(lastManifest), prompt)
       assertFalse(prompt.contains("middle-unselected"), prompt)
       assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
-      assertTrue(prompt.indexOf("### 1. first-helper") < prompt.indexOf("### 2. last-helper"), prompt)
+      assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
     }
     val reviewPrompts = selectedLauncher.requests
       .map { it.skillRunRequest.promptOverride.orEmpty() }
@@ -135,9 +137,11 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(ALL_PHASES.dropWhile { it != "implement" }, resumedLauncher.phaseOrder())
     resumedLauncher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "### 1. first-helper")
-      assertContains(prompt, "### 2. last-helper")
-      assertTrue(prompt.indexOf("### 1. first-helper") < prompt.indexOf("### 2. last-helper"), prompt)
+      val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+      val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+      assertContains(prompt, firstHeader)
+      assertContains(prompt, lastHeader)
+      assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
       assertFalse(prompt.contains("middle-unselected"), prompt)
       assertFalse(prompt.contains("UNSELECTED RESUME SENTINEL"), prompt)
     }
@@ -205,7 +209,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
       assertEquals(ALL_PHASES.size, launcher.requests.size, case)
       assertTrue(
         launcher.requests.all { request ->
-          request.skillRunRequest.promptOverride.orEmpty().contains("### 1. execution-budget")
+          request.skillRunRequest.promptOverride.orEmpty()
+            .contains("### agent_addon_execution_budget (addon_content:execution-budget)")
         },
         case,
       )
@@ -1913,9 +1918,11 @@ private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILIN
 private fun phaseIdFromPrompt(prompt: String): String =
   PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
 
-private fun selectedAgentAddonSection(prompt: String): String = prompt
-  .substringAfter("## Selected agent add-ons")
-  .substringBefore("# Feature-task-runtime phase briefing")
+private fun selectedAgentAddonSection(prompt: String): String {
+  val start = prompt.indexOf("### agent_addon_")
+  require(start >= 0) { "Prompt does not contain a projected agent add-on: $prompt" }
+  return prompt.substring(start).substringBefore("## Derived context")
+}
 
 // Returns one schema-valid phase output per launch. The delivered prompt pins the runtime phase,
 // so the test double reads that phase id and echoes it back in the validated output.
@@ -2132,6 +2139,11 @@ private class FakeRuntimeGitOperations(
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "ok",
+    value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: "1".repeat(40),
+  )
 
   override fun validateBranchBase(
     repoRoot: Path,

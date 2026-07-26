@@ -80,11 +80,10 @@ fun WorkflowGitOperations.repositoryCheckpointFingerprint(
   baseCommit: String?,
   headCommit: String,
   ownedPaths: List<String>,
-): WorkflowGitOperationResult =
-  (this as? RepositoryFingerprintGitOperationsProvider)
-    ?.repositoryFingerprintOperations
-    ?.repositoryCheckpointFingerprint(repoRoot, baseCommit, headCommit, ownedPaths)
-    ?: error("WorkflowGitOperations must provide a repository checkpoint fingerprint implementation.")
+): WorkflowGitOperationResult = (this as? RepositoryFingerprintGitOperationsProvider)
+  ?.repositoryFingerprintOperations
+  ?.repositoryCheckpointFingerprint(repoRoot, baseCommit, headCommit, ownedPaths)
+  ?: error("WorkflowGitOperations must provide a repository checkpoint fingerprint implementation.")
 
 /**
  * SKILL-137: the working-tree paths a run owns, for the audit repository checkpoint.

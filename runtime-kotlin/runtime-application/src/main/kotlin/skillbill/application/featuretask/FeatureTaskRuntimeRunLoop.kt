@@ -31,8 +31,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
@@ -53,10 +53,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
@@ -515,34 +515,42 @@ internal class FeatureTaskRuntimeRunLoop(
       pauseOnUnresolvedBlocker(phaseId, transition)
       null
     }
-    is FeatureTaskRuntimeNextPhase.Next -> {
-      val loopId = transition.loopId
-      when {
-        settleExhaustedReviewSequence(phaseId) -> null
-        loopId == null -> transition.phaseId
-        reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
-          !establishRemediationCheckpoint(phaseId, loopId) -> null
-        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-          !authoritativeAuditRepairPlanMatches(phaseId) -> {
-          blockAt(
-            phaseId,
-            "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
-          )
-          null
+    is FeatureTaskRuntimeNextPhase.Next -> nextTransitionTarget(phaseId, edge, effectiveVerdict, transition)
+  }
+
+  private fun nextTransitionTarget(
+    phaseId: String,
+    edge: FeatureTaskRuntimeBackwardEdge?,
+    effectiveVerdict: FeatureTaskRuntimeVerdict,
+    transition: FeatureTaskRuntimeNextPhase.Next,
+  ): String? {
+    val loopId = transition.loopId
+    return when {
+      settleExhaustedReviewSequence(phaseId) -> null
+      loopId == null && !establishForwardCheckpoint(phaseId, transition.phaseId) -> null
+      loopId == null -> transition.phaseId
+      reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
+        !establishRemediationCheckpoint(phaseId, loopId) -> null
+      loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+        !authoritativeAuditRepairPlanMatches(phaseId) -> {
+        blockAt(
+          phaseId,
+          "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
+        )
+        null
+      }
+      else -> {
+        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+          consumeOperatorRetryGrant()
         }
-        else -> {
-          if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
-            consumeOperatorRetryGrant()
-          }
-          recordBackwardEdge(
-            edge = edge,
-            destinationPhaseId = transition.phaseId,
-            loopId = loopId,
-            edgeIteration = requireNotNull(transition.edgeIteration),
-            verdict = effectiveVerdict,
-          )
-          transition.phaseId
-        }
+        recordBackwardEdge(
+          edge = edge,
+          destinationPhaseId = transition.phaseId,
+          loopId = loopId,
+          edgeIteration = requireNotNull(transition.edgeIteration),
+          verdict = effectiveVerdict,
+        )
+        transition.phaseId
       }
     }
   }
@@ -593,6 +601,19 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun spanBetween(destinationPhaseId: String, sourcePhaseId: String): List<String> =
     transitions.spanBetween(destinationPhaseId, sourcePhaseId)
 
+  private fun establishForwardCheckpoint(precedingPhaseId: String, destinationPhaseId: String): Boolean = if (
+    precedingPhaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+    destinationPhaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+  ) {
+    checkpointEstablished(
+      precedingPhaseId = precedingPhaseId,
+      commitMessage = ::auditReviewCheckpointMessage,
+      blockedReason = ::auditReviewCheckpointBlockedReason,
+    )
+  } else {
+    true
+  }
+
   /**
    * Every path that lets the remediation proceed records the pre-fix sha, including the paths that
    * skip the checkpoint commit. HEAD is the pre-fix tree on all of them, and without the sha the
@@ -600,7 +621,11 @@ internal class FeatureTaskRuntimeRunLoop(
    * tree — the exact scope bound AC-012 exists to enforce.
    */
   private fun establishRemediationCheckpoint(precedingPhaseId: String, loopId: String): Boolean {
-    val established = checkpointEstablished(precedingPhaseId)
+    val established = checkpointEstablished(
+      precedingPhaseId = precedingPhaseId,
+      commitMessage = ::remediationCheckpointMessage,
+      blockedReason = ::remediationCheckpointBlockedReason,
+    )
     if (!established) return false
     // Only the review_fix edge reserves a remediation review pass, so only it has a pre-fix base to
     // record. The audit_gap edge re-enters implement without one and must not be gated on it.
@@ -608,7 +633,11 @@ internal class FeatureTaskRuntimeRunLoop(
     return recordRemediationBaseSha(precedingPhaseId)
   }
 
-  private fun checkpointEstablished(precedingPhaseId: String): Boolean {
+  private fun checkpointEstablished(
+    precedingPhaseId: String,
+    commitMessage: (String) -> String,
+    blockedReason: (String, String) -> String,
+  ): Boolean {
     val branch = resolvedBranch ?: return true
     if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
       return true
@@ -619,9 +648,9 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
     return when {
-      !status.ok -> blockCheckpoint(precedingPhaseId, branch, status.error)
+      !status.ok -> blockCheckpoint(precedingPhaseId, branch, status.error, blockedReason)
       status.value.isBlank() -> true
-      else -> commitCheckpoint(precedingPhaseId, branch)
+      else -> commitCheckpoint(precedingPhaseId, branch, commitMessage, blockedReason)
     }
   }
 
@@ -666,17 +695,27 @@ internal class FeatureTaskRuntimeRunLoop(
     return false
   }
 
-  private fun commitCheckpoint(precedingPhaseId: String, branch: String): Boolean {
+  private fun commitCheckpoint(
+    precedingPhaseId: String,
+    branch: String,
+    commitMessage: (String) -> String,
+    blockedReason: (String, String) -> String,
+  ): Boolean {
     val staged = phaseGates.gitOperations.stageAll(request.repoRoot)
     if (!staged.ok) {
-      return blockCheckpoint(precedingPhaseId, branch, staged.error)
+      return blockCheckpoint(precedingPhaseId, branch, staged.error, blockedReason)
     }
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, remediationCheckpointMessage(branch))
-    return if (commit.ok) true else blockCheckpoint(precedingPhaseId, branch, commit.error)
+    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, commitMessage(branch))
+    return if (commit.ok) true else blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)
   }
 
-  private fun blockCheckpoint(precedingPhaseId: String, branch: String, error: String): Boolean {
-    blockAt(precedingPhaseId, remediationCheckpointBlockedReason(branch, error))
+  private fun blockCheckpoint(
+    precedingPhaseId: String,
+    branch: String,
+    error: String,
+    blockedReason: (String, String) -> String,
+  ): Boolean {
+    blockAt(precedingPhaseId, blockedReason(branch, error))
     return false
   }
 
@@ -1223,10 +1262,18 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun remediationCheckpointMessage(branch: String): String =
     "chore(skill-bill): remediation checkpoint on '$branch' before mutating-phase re-entry"
 
+  private fun auditReviewCheckpointMessage(branch: String): String =
+    "chore(skill-bill): audited implementation checkpoint on '$branch' before review"
+
   private fun remediationCheckpointBlockedReason(branch: String, error: String): String =
     "Feature-task-runtime could not establish a remediation checkpoint on the feature branch '$branch' " +
       "before re-entering a mutating phase" + (if (error.isBlank()) "." else " ($error).") +
       " Refusing to re-enter a mutating phase on a dirty, non-reconcilable tree."
+
+  private fun auditReviewCheckpointBlockedReason(branch: String, error: String): String =
+    "Feature-task-runtime could not commit the audited implementation on the feature branch '$branch' " +
+      "before review" + (if (error.isBlank()) "." else " ($error).") +
+      " Refusing to review an uncommitted final audit iteration."
 
   private fun capExhaustionReason(
     loopId: String,
@@ -2147,57 +2194,83 @@ internal class FeatureTaskRuntimeRunLoop(
    * `WorkflowGitOperations` fingerprint the audit-repair path already depends on. No new git port is
    * introduced and the domain stays git-agnostic: the checkpoint arrives as a plain value.
    */
-  private fun resolveRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
-    val needsCheckpoint = run.declaration.projectionDeclarations.any { projection ->
-      projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
-    }
-    if (!needsCheckpoint) return null
-    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-    // On a goal child the review state, not the resolved branch, holds the immutable base and the
-    // baseline untracked inventory the parent captured for this subtask alone.
-    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
-    val ownedPaths = resolvedBranch?.workflowOwnedPaths?.takeIf { it.isNotEmpty() }
-      ?: checkpointOwnedPaths(
-        run,
-        resolvedBranch?.baselineOwnedPaths
-          ?: goalReviewState?.baselineUntrackedPaths
-          ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
-      )?.also { inventory ->
-        if (!recorder.recordWorkflowOwnedPaths(
-            run.request.workflowId,
-            inventory,
-            run.request.dbPathOverride,
-          )
-        ) {
-          return null
-        }
+  private fun resolveRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
+    if (run.declaration.projectionDeclarations.none { projection ->
+        projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
       }
-      ?: return null
-    val headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD"
+    ) {
+      null
+    } else {
+      buildRepositoryCheckpoint(run)
+    }
+
+  private fun buildRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
+    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val ownedPaths = resolveCheckpointOwnedPaths(
+      run = run,
+      persistedOwnedPaths = resolvedBranch?.workflowOwnedPaths,
+      baselineOwnedPaths = resolvedBranch?.baselineOwnedPaths
+        ?: goalReviewState?.baselineUntrackedPaths
+        ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+    ) ?: return null
+    val revisions = resolveCheckpointRevisions(
+      run = run,
+      headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD",
+      baseRevision = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+    ) ?: return null
+    val fingerprint = gitOperations.repositoryCheckpointFingerprint(
+      run.request.repoRoot,
+      revisions.base,
+      revisions.head,
+      ownedPaths,
+    ).takeIf { it.ok }?.value?.takeIf(String::isNotBlank) ?: return null
+    return FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = fingerprint,
+      baseRef = revisions.base,
+      headRef = revisions.head,
+      workingTreeOwnedPaths = ownedPaths,
+    )
+  }
+
+  private fun resolveCheckpointOwnedPaths(
+    run: PhaseRun,
+    persistedOwnedPaths: List<String>?,
+    baselineOwnedPaths: List<String>,
+  ): List<String>? {
+    persistedOwnedPaths?.takeIf { it.isNotEmpty() }?.let { return it }
+    val inventory = checkpointOwnedPaths(run, baselineOwnedPaths) ?: return null
+    return inventory.takeIf {
+      recorder.recordWorkflowOwnedPaths(
+        run.request.workflowId,
+        inventory,
+        run.request.dbPathOverride,
+      )
+    }
+  }
+
+  private fun resolveCheckpointRevisions(
+    run: PhaseRun,
+    headRevision: String,
+    baseRevision: String?,
+  ): CheckpointRevisions? {
     val immutableHead = gitOperations.resolveCommit(run.request.repoRoot, headRevision)
       .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
       ?: gitOperations.headCommitSha(run.request.repoRoot).takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
       ?: return null
-    val baseRevision = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha
     val immutableBase = baseRevision?.let { revision ->
       gitOperations.resolveCommit(run.request.repoRoot, revision)
         .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
         ?: revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) }
     }
     if (baseRevision != null && immutableBase == null) return null
-    val fingerprint = gitOperations.repositoryCheckpointFingerprint(
-      run.request.repoRoot,
-      immutableBase,
-      immutableHead,
-      ownedPaths,
-    ).takeIf { it.ok }?.value?.takeIf(String::isNotBlank) ?: return null
-    return FeatureTaskRuntimeRepositoryCheckpoint(
-      fingerprint = fingerprint,
-      baseRef = immutableBase,
-      headRef = immutableHead,
-      workingTreeOwnedPaths = ownedPaths,
-    )
+    return CheckpointRevisions(base = immutableBase, head = immutableHead)
   }
+
+  private data class CheckpointRevisions(
+    val base: String?,
+    val head: String,
+  )
 
   /**
    * Owned paths for the checkpoint scope. Subtracting the run's persisted tracked-and-untracked
@@ -2814,129 +2887,10 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
-    val resolvedProducerIteration = run.declaration.projectionDeclarations
-      .map { declaration ->
-        val phaseId = declaration.producerIteration.phaseId
-        state.outputFor(phaseId)?.let { FeatureTaskRuntimeProducerIteration(phaseId, it.iteration) }
-          ?: declaration.producerIteration
-      }
-      .maxByOrNull(FeatureTaskRuntimeProducerIteration::iteration)
-      ?: FeatureTaskRuntimeProducerIteration(run.phaseId, 1)
-    val measurementContext = LaunchRejectionMeasurementContext(
-      producerIteration = resolvedProducerIteration,
-      repositoryCheckpoint = try {
-        resolveRepositoryCheckpoint(run)
-      } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
-        recordLaunchSeamRejection(
-          run,
-          state,
-          FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
-          error.projectionName,
-          resolvedProducerIteration,
-          null,
-        )
-        return LaunchResult.projectionRejected(
-          "Feature-task-runtime phase '${run.phaseId}' could not resolve its repository checkpoint: ${error.message}",
-        )
-      },
-    )
-    // Read the audit's own durably-closed criterion refs OUTSIDE the quarantine-guarded region: a
-    // drift here (audit_repair_state.satisfied_criterion_refs naming undeclared criteria) is audit's
-    // own state, not an upstream producer record, so re-running a producer cannot fix it. It keeps the
-    // first-occurrence durable block.
-    val durablyClosedCriterionRefs = try {
-      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-        durablyClosedCriterionRefs()
-      } else {
-        emptyList()
-      }
-    } catch (error: InvalidWorkflowStateSchemaError) {
-      recordLaunchSeamRejection(
-        run,
-        state,
-        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
-        "durable_audit_state",
-        measurementContext.producerIteration,
-        measurementContext.repositoryCheckpoint,
-      )
-      return LaunchResult.projectionRejected(
-        "Feature-task-runtime phase '${run.phaseId}' rejected its durable audit-repair state at the launch seam: " +
-          error.message,
-      )
-    }
-    val prepared = try {
-      prepareLaunch(
-        run,
-        state,
-        priorSchemaFailure,
-        durablyClosedCriterionRefs,
-        measurementContext.repositoryCheckpoint,
-      )
-    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
-      recordLaunchSeamRejection(
-        run,
-        state,
-        error.failureKind.toMeasurementFailureClassification(),
-        error.projectionName,
-        measurementContext.producerIteration,
-        measurementContext.repositoryCheckpoint,
-      )
-      // A handoff-projection rejection is static declaration/config drift, not a legacy producer
-      // record: re-running the producer cannot fix a wrong declaration. Block the phase durably instead
-      // of unwinding out of a run that already persisted STATUS_RUNNING.
-      return LaunchResult.projectionRejected(
-        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
-          error.message,
-      )
-    } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
-      recordLaunchSeamRejection(
-        run,
-        state,
-        FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
-        "phase_briefing",
-        measurementContext.producerIteration,
-        measurementContext.repositoryCheckpoint,
-      )
-      // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
-      // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
-      // persist and wedge the row with no blockedReason; block durably instead.
-      return LaunchResult.projectionRejected(
-        "Feature-task-runtime phase '${run.phaseId}' could not fit its launch briefing under the byte ceiling: " +
-          error.message,
-      )
-    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-      recordLaunchSeamRejection(
-        run,
-        state,
-        FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
-        "planning_projection",
-        measurementContext.producerIteration,
-        measurementContext.repositoryCheckpoint,
-      )
-      // A legacy or drifted upstream producer record failed bounded-projection validation. Rather than
-      // wedge the consumer on a record it cannot repair, quarantine the record as private evidence and
-      // re-enter the producing phase under a bounded regeneration cap.
-      return LaunchResult.recordRejected(
-        QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
-        error.message.orEmpty(),
-      )
-    } catch (error: InvalidWorkflowStateSchemaError) {
-      recordLaunchSeamRejection(
-        run,
-        state,
-        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
-        "durable_briefing",
-        measurementContext.producerIteration,
-        measurementContext.repositoryCheckpoint,
-      )
-      // A durable handoff/briefing artifact failed schema validation at the launch seam (a stale
-      // briefing row, a forbidden legacy field). This is corruption drift a producer re-run cannot
-      // reliably repair — the artifact's own contract says recover it out of band — so it keeps the
-      // first-occurrence durable block rather than entering the quarantine-and-regenerate edge.
-      return LaunchResult.projectionRejected(
-        "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
-          error.message,
-      )
+    val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorSchemaFailure)) {
+      is PreparedLaunchReady -> preparation.value
+      is LaunchPreparationRejected -> return preparation.result
+      else -> error("Unexpected launch preparation result.")
     }
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
@@ -2995,6 +2949,174 @@ internal class FeatureTaskRuntimeRunLoop(
     return reconcileLaunch(run.phaseId, outcome, fileManifest)
   }
 
+  private fun prepareLaunchForCapture(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    priorSchemaFailure: String?,
+  ): LaunchPreparation {
+    val measurementContext = when (val resolution = resolveLaunchMeasurementContext(run, state)) {
+      is LaunchMeasurementContextReady -> resolution.value
+      is LaunchPreparationRejected -> return resolution
+      else -> error("Unexpected launch measurement result.")
+    }
+    val durablyClosedCriterionRefs = when (
+      val resolution = resolveDurablyClosedCriterionRefs(run, state, measurementContext)
+    ) {
+      is ClosedCriterionRefsReady -> resolution.value
+      is LaunchPreparationRejected -> return resolution
+      else -> error("Unexpected closed-criterion result.")
+    }
+    return prepareDeclaredLaunch(
+      run,
+      state,
+      priorSchemaFailure,
+      durablyClosedCriterionRefs,
+      measurementContext,
+    )
+  }
+
+  private fun resolveLaunchMeasurementContext(run: PhaseRun, state: FeatureTaskRuntimeRunState): LaunchPreparation {
+    val producerIteration = run.declaration.projectionDeclarations
+      .map { declaration ->
+        val phaseId = declaration.producerIteration.phaseId
+        state.outputFor(phaseId)?.let { FeatureTaskRuntimeProducerIteration(phaseId, it.iteration) }
+          ?: declaration.producerIteration
+      }
+      .maxByOrNull(FeatureTaskRuntimeProducerIteration::iteration)
+      ?: FeatureTaskRuntimeProducerIteration(run.phaseId, 1)
+    return try {
+      LaunchMeasurementContextReady(
+        LaunchRejectionMeasurementContext(
+          producerIteration = producerIteration,
+          repositoryCheckpoint = resolveRepositoryCheckpoint(run),
+        ),
+      )
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      recordLaunchSeamRejection(
+        run,
+        state,
+        FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
+        error.projectionName,
+        producerIteration,
+        null,
+      )
+      LaunchPreparationRejected(
+        LaunchResult.projectionRejected(
+          "Feature-task-runtime phase '${run.phaseId}' could not resolve its repository checkpoint: ${error.message}",
+        ),
+      )
+    }
+  }
+
+  private fun resolveDurablyClosedCriterionRefs(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    context: LaunchRejectionMeasurementContext,
+  ): LaunchPreparation = try {
+    // Audit closure state is owned by audit itself, not an upstream producer. Its schema rejection
+    // remains a durable block because regenerating a producer cannot repair it.
+    ClosedCriterionRefsReady(
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        durablyClosedCriterionRefs()
+      } else {
+        emptyList()
+      },
+    )
+  } catch (error: InvalidWorkflowStateSchemaError) {
+    recordLaunchSeamRejection(
+      run,
+      state,
+      FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
+      "durable_audit_state",
+      context.producerIteration,
+      context.repositoryCheckpoint,
+    )
+    LaunchPreparationRejected(
+      LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected its durable audit-repair state at the launch seam: " +
+          error.message,
+      ),
+    )
+  }
+
+  private fun prepareDeclaredLaunch(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    priorSchemaFailure: String?,
+    durablyClosedCriterionRefs: List<String>,
+    context: LaunchRejectionMeasurementContext,
+  ): LaunchPreparation = try {
+    PreparedLaunchReady(
+      prepareLaunch(
+        run,
+        state,
+        priorSchemaFailure,
+        durablyClosedCriterionRefs,
+        context.repositoryCheckpoint,
+      ),
+    )
+  } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+    recordLaunchSeamRejection(
+      run,
+      state,
+      error.failureKind.toMeasurementFailureClassification(),
+      error.projectionName,
+      context.producerIteration,
+      context.repositoryCheckpoint,
+    )
+    LaunchPreparationRejected(
+      LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
+      ),
+    )
+  } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+    recordLaunchSeamRejection(
+      run,
+      state,
+      FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
+      "phase_briefing",
+      context.producerIteration,
+      context.repositoryCheckpoint,
+    )
+    LaunchPreparationRejected(
+      LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not fit its launch briefing under the byte ceiling: " +
+          error.message,
+      ),
+    )
+  } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+    recordLaunchSeamRejection(
+      run,
+      state,
+      FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
+      error.projectionName ?: "planning_projection",
+      context.producerIteration,
+      context.repositoryCheckpoint,
+    )
+    LaunchPreparationRejected(
+      LaunchResult.recordRejected(
+        QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
+        error.message.orEmpty(),
+      ),
+    )
+  } catch (error: InvalidWorkflowStateSchemaError) {
+    recordLaunchSeamRejection(
+      run,
+      state,
+      FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
+      "durable_briefing",
+      context.producerIteration,
+      context.repositoryCheckpoint,
+    )
+    LaunchPreparationRejected(
+      LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
+          error.message,
+      ),
+    )
+  }
+
   private fun recordLaunchSeamRejection(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -3010,14 +3132,16 @@ internal class FeatureTaskRuntimeRunLoop(
       fallbackProducerIteration = fallbackProducerIteration,
     )
     recorder.recordProjectionRejection(
-      workflowId = run.request.workflowId,
-      consumerPhaseId = run.phaseId,
-      projectionContractId = attribution.projectionContractId,
-      producerIteration = attribution.producerIteration,
-      repositoryCheckpointFingerprint = repositoryCheckpoint?.fingerprint,
-      failureClassification = classification,
-      sourceLabel = sourceLabel,
-      dbOverride = run.request.dbPathOverride,
+      FeatureTaskRuntimeProjectionRejection(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        projectionContractId = attribution.projectionContractId,
+        producerIteration = attribution.producerIteration,
+        repositoryCheckpointFingerprint = repositoryCheckpoint?.fingerprint,
+        failureClassification = classification,
+        sourceLabel = sourceLabel,
+      ),
+      run.request.dbPathOverride,
     )
   }
 
@@ -3025,6 +3149,18 @@ internal class FeatureTaskRuntimeRunLoop(
     val producerIteration: FeatureTaskRuntimeProducerIteration,
     val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   )
+
+  private sealed interface LaunchPreparation
+
+  private data class PreparedLaunchReady(val value: PreparedLaunch) : LaunchPreparation
+
+  private data class LaunchMeasurementContextReady(
+    val value: LaunchRejectionMeasurementContext,
+  ) : LaunchPreparation
+
+  private data class ClosedCriterionRefsReady(val value: List<String>) : LaunchPreparation
+
+  private data class LaunchPreparationRejected(val result: LaunchResult) : LaunchPreparation
 
   private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {
     run.reentry

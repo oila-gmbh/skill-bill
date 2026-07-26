@@ -330,6 +330,10 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     }
 
     assertContains(error.reason, "additionalProperties")
+    assertEquals(
+      FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan).projectionName,
+      error.projectionName,
+    )
   }
 
   @Test
