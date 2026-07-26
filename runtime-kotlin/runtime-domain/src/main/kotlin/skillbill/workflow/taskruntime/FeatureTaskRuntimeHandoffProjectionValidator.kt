@@ -479,6 +479,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "unresolved_blocker_findings" to reviewBlockerProjection(produced),
       "repository_checkpoint" to inputs.expectedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
     )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
+      "changed_paths" to inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty(),
+      "tests_added" to (produced["tests_added"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "tests_updated" to (produced["tests_updated"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "deviations" to (produced["deviations"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
     else -> finalizationProjectionValues(inputs, declaration)
   }.filterValues { it != null }
 

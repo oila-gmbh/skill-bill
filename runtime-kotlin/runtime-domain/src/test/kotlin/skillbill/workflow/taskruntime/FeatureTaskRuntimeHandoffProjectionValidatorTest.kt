@@ -160,6 +160,42 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `change receipt derives changed paths from the runtime checkpoint`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+      declaredFieldNames = listOf(
+        "changed_paths",
+        "tests_added",
+        "tests_updated",
+        "deviations",
+        "repository_checkpoint",
+      ),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "current-tree",
+      workingTreeOwnedPaths = listOf("src/Foo.kt", "src/FooTest.kt"),
+    )
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(declaration),
+        resolvedUpstream = upstream("""{"produced_outputs":{}}"""),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    val changedPaths = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+      fields.getValue("changed_paths").value,
+    )
+    assertEquals(listOf("src/Foo.kt", "src/FooTest.kt"), changedPaths.items)
+    assertEquals(emptyList(), assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+      fields.getValue("tests_added").value,
+    ).items)
+  }
+
+  @Test
   fun `phase request projection rejects a required field missing from the producer result`() {
     val declaration = declaration(
       projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
