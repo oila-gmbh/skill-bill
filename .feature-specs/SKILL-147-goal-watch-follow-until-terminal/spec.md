@@ -19,14 +19,23 @@ context window.**
 ### Why polling is the expensive part
 
 The dominant cost is not the bytes a poll returns. It is that **every tool call
-re-sends the whole conversation**, and the conversation is larger each time. Ten
-polls are not ten small reads; they are ten full-context requests, each bigger
-than the last. Cost grows with the square of the poll count, not linearly.
+re-sends the whole conversation**, and the conversation is larger each time —
+each poll's output permanently inflates every request that follows it. Prompt
+caching discounts the re-sent prefix but does not eliminate it, and the growth
+compounds superlinearly with the poll count. The request count, not any single
+poll's output size, is what compounds.
 
-A single blocking call that runs for three hours costs **one** request. Sixty
-polls across those same three hours cost sixty, each carrying an ever-larger
-transcript — orders of magnitude more, for information the one call was going to
-return anyway.
+The unit of comparison is one completion signal versus a poll chain. A run whose
+result arrives in a single request — a blocking call that returns, or a detached
+run whose exit re-invokes the agent once — costs one request however long the run
+takes. Sixty polls across the same span cost sixty, each carrying an ever-larger
+transcript, for information the one signal was going to deliver anyway.
+
+The current skill text forces exactly that chain: it hands the agent
+`goal watch --interval-seconds 5 --max-refreshes 12` — a sixty-second window.
+One such call is a single request, but a multi-hour goal makes the agent repeat
+it (or fall back to repeated `goal status` calls) for the whole run, and the
+repetition is the quadratic pattern.
 
 That ranks the two fixes:
 
@@ -43,6 +52,28 @@ What remains in-session is one line: `goal SKILL-146: complete — 3/3 subtasks,
 PR <url>`. Composed from the structured result the run already returns, never by
 reading back the stream. A finished run that surfaced nothing would read as
 broken, and one line is both the cure and the entire budget.
+
+### How the agent learns the run finished
+
+Forbidding polling only works if the completion signal is named, because the
+"one blocking call" does not exist for long runs: agent harnesses cap foreground
+tool calls (Claude Code kills a foreground command at 10 minutes), which is
+exactly why the goal skill already tells the agent to detach when timeout risk
+exists. The sanctioned signals, per launch mode:
+
+- **Foreground, within the harness timeout** — the blocking call returns the
+  structured result; compose the completion line from it.
+- **Detached, on a harness with background-completion notification** — Claude
+  Code re-invokes the agent when a background process exits; that single
+  re-invocation carries the result. One signal, zero polls.
+- **Detached, on a harness without such notification** — the agent prints the
+  monitoring block, states that the run continues in the background, and ends
+  its turn. The completion line is emitted when the user next addresses the
+  session, answered from one `goal status` call. The completion-line obligation
+  binds when the run's outcome reaches the session, never through polling.
+
+Subtask 2 writes this into both governed skills so the prohibition and the
+completion-line requirement are jointly satisfiable on every supported agent.
 
 Giving the user a watch command that actually works is what makes the quiet
 posture acceptable rather than a regression.
@@ -82,6 +113,23 @@ A goal with `blocked_count > 0` **and** `pending_count > 0` is not terminal:
 blocked-subtask recovery may still advance it, and the user watching wants to see
 that happen.
 
+### Change-only rendering
+
+Following at a short interval repeats one line for as long as a phase runs — six
+identical `current_step=review` lines, then five identical `current_step=validate`
+lines, of which only the transitions carry information. A refresh prints only when
+its rendered text differs from the last printed one.
+
+Comparison is on rendered text with `refresh_index` normalized out, rather than a
+hand-picked field list, so it stays correct as the rendering gains lines and
+handles the optional diff surfaces without special-casing. The first refresh and
+the loop-ending refresh always print. `--show-unchanged` restores the old
+behavior.
+
+The resulting quiet gap during a long phase is intentional and gets no synthetic
+keepalive line: idle detection below is what distinguishes a running goal from a
+stopped one.
+
 ### Idle detection
 
 Counts alone are not enough. A goal can have runnable work and still never
@@ -114,8 +162,8 @@ Two conditions keep this from firing wrongly, and both are contract, not polish:
   refresh that ends the loop. A finished goal must not cost the user one extra
   interval before the command returns.
 - The final payload gains `stop_reason` with one of `goal_terminal`,
-  `max_refreshes`, or `not_found`, and `refresh_count` reports the refreshes
-  actually performed.
+  `max_refreshes`, `not_found`, or — once subtask 3 lands — `goal_idle`, and
+  `refresh_count` reports the refreshes actually performed.
 
 ### Automation compatibility
 
@@ -125,7 +173,7 @@ reach a terminal state instead of returning immediately.
 
 The blast radius is empty. Every caller in this repo is already covered:
 
-- CLI tests (`CliGoalRuntimeTest.kt:421, 458, 519`) pass `--max-refreshes`
+- CLI tests (`CliGoalRuntimeTest.kt:423, 460, 521`) pass `--max-refreshes`
   explicitly.
 - Docs and governed skills print human-facing copy-paste blocks, updated by
   subtask 1.
@@ -153,8 +201,11 @@ release notes; no migration is required.
 4. An explicit `--max-refreshes N` (N > 0) still bounds the loop and reports
    `stop_reason: max_refreshes` when the bound is what ended it;
    `--max-refreshes 1` reproduces the pre-change one-shot behavior.
-5. Every refresh, including the final one, emits its `watch_refresh:` line, and
-   no sleep occurs after the refresh that ends the loop.
+5. No sleep occurs after the refresh that ends the loop.
+5a. A refresh prints only when its rendered text, with `refresh_index` normalized
+    out, differs from the last printed refresh; the first refresh and the
+    loop-ending refresh always print, and `--show-unchanged` restores a line per
+    refresh.
 6. The final payload reports `refresh_count` as the number of refreshes actually
    performed, and keeps the existing goal-derived exit code.
 7. `--interval-seconds` and `--max-refreshes` validation still loud-fails on
@@ -174,6 +225,12 @@ release notes; no migration is required.
     the run's progress stream never enters the agent's context.
 12. Both skills limit the in-session surface to one completion line, errors, and
     one status call on explicit user request, with no transition relay.
+12a. Both skills name the completion signal per launch mode — blocking return
+     for foreground runs within the harness timeout, background-exit
+     notification where the harness provides one, and end-turn with
+     report-on-user-return where it does not — so the polling prohibition and
+     the completion-line requirement are jointly satisfiable on every supported
+     agent.
 13. Both skills require exactly one completion line composed only from the
     structured result fields (`status`, counts, `pull_request_url`,
     `blocked_reason`), and forbid composing it by reading or summarizing run

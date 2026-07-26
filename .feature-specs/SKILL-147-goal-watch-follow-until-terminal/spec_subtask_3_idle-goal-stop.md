@@ -35,6 +35,13 @@ the current subtask is therefore: an ownership row exists for that subtask's
 This is a read. It must not reclaim, reconcile, fence, or write — `watch` stays
 read-only, and crash reconciliation remains the startup path's job.
 
+Implementation must confirm the usage-limit-pause premise: the idle stop only
+catches a paused goal if the pausing runner actually exits and lets its lease
+expire. If a limit-paused worker keeps heartbeating, the lease stays live and
+this path never fires for exactly the case it was designed for — in that case
+the pause path, not `watch`, needs the fix, and this subtask should surface it
+rather than paper over it.
+
 ### Projection
 
 Add `executionLiveness` to `GoalRunnerStatusProjection` with three values:

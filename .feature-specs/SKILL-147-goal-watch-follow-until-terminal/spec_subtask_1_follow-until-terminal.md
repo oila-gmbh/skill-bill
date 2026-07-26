@@ -16,6 +16,8 @@ In scope:
 - `DEFAULT_GOAL_WATCH_REFRESHES` becomes the unlimited sentinel `0`.
 - A private terminal predicate over the CLI refresh map, reading `status`,
   `pending_count`, and nothing else.
+- Change-only rendering: suppress a refresh whose rendered text is identical to
+  the last printed one, plus a `--show-unchanged` escape hatch.
 - Payload: add `stop_reason`, correct `refresh_count` to the performed count.
 - `--max-refreshes` help text: describe the unlimited default and the `0`
   sentinel.
@@ -28,19 +30,74 @@ In scope:
 
 Out of scope: everything listed under the parent spec's Non-Goals.
 
+## Change-Only Rendering
+
+A follow-until-terminal watch at a short interval repeats the same line for as
+long as a phase runs:
+
+```text
+watch_refresh: index=51 status=ok current_subtask=1 current_step=review liveness=workflow_status=running; step=review
+watch_refresh: index=52 status=ok current_subtask=1 current_step=review liveness=workflow_status=running; step=review
+…
+watch_refresh: index=57 status=ok current_subtask=1 current_step=validate liveness=workflow_status=running; step=validate
+```
+
+Only index 57 carries information. Print a refresh only when it differs from the
+last one printed.
+
+### Comparison rule
+
+Compare the **rendered refresh text** with `refresh_index` normalized out, not a
+hand-picked field list. Identical rendering means identical information, so this
+stays correct as `goalWatchRefreshText` gains lines, and it needs no upkeep when
+new fields are added.
+
+It also handles the diff surfaces for free: with `--diff-stat` or `--diff-hunk`,
+a changing diff changes the rendered text and prints; an unchanged diff does not.
+
+### Always print
+
+Suppression never hides an edge:
+
+- the **first** refresh, so the command shows something immediately;
+- the refresh that **ends the loop**, whatever the stop reason, so the last
+  rendered state is always visible.
+
+### Escape hatch
+
+`--show-unchanged` restores a line per refresh. It exists for debugging the watch
+loop itself and for anyone who wants a visible pulse; it is not the default.
+
+### On the quiet gap
+
+With change-only rendering a long phase prints nothing for minutes. That is
+correct and must not be softened with a synthetic keepalive line, which would
+reintroduce exactly the noise being removed. A goal that has genuinely stopped is
+caught by the idle stop in subtask 3, which ends the loop and says so — so
+silence means running, and stopped means exited.
+
 ## Acceptance Criteria (this subtask)
 
 1. `DEFAULT_GOAL_WATCH_REFRESHES` is `0`, `0` means unlimited, and
    `require(maxRefreshes >= 0)` replaces the current positive-only check while
    still loud-failing on negative input.
-2. The loop performs a refresh, prints its `watch_refresh:` line, then stops
-   without sleeping when the refresh is terminal or the explicit bound is
-   reached; otherwise it sleeps `intervalSeconds` and refreshes again.
+2. The loop performs a refresh, prints its `watch_refresh:` line subject to
+   criterion 3a, then stops without sleeping when the refresh is terminal or the
+   explicit bound is reached; otherwise it sleeps `intervalSeconds` and refreshes
+   again.
 3. Terminal detection returns true when the refresh map has
    `status == "not_found"`, or when `pending_count == 0`; it returns false when
    `pending_count > 0`, including when `blocked_count > 0`.
+3a. A refresh is printed only when its rendered text, with `refresh_index`
+    normalized out, differs from the last printed refresh. The first refresh and
+    the refresh that ends the loop are always printed.
+3b. `--show-unchanged` disables suppression and prints every refresh; it defaults
+    to off and is documented as a debugging aid.
+3c. No synthetic keepalive or "still running" line is emitted during a suppressed
+    run.
 4. The final payload carries `stop_reason` of `goal_terminal`, `not_found`, or
-   `max_refreshes`, and `refresh_count` equal to the refreshes performed.
+   `max_refreshes`, and `refresh_count` equal to the refreshes performed —
+   counting refreshes performed, not refreshes printed.
 5. The existing goal-derived exit code (`goalStatusExitCode`) is unchanged.
 6. A CLI test asserts a multi-refresh follow run stops on the first terminal
    projection without consuming its remaining interval.
@@ -49,6 +106,11 @@ Out of scope: everything listed under the parent spec's Non-Goals.
 8. A CLI test asserts a blocked-but-pending projection does not stop the loop.
 9. A CLI test asserts no child run is launched across a multi-refresh follow run,
    extending the existing read-only assertion.
+9a. A CLI test asserts a run of identical projections prints one line, that the
+    line prints again when `current_step` changes, and that `--show-unchanged`
+    prints every refresh.
+9b. A CLI test asserts the loop-ending refresh prints even when identical to the
+    previous one.
 10. The governed skill and doc call sites print
     `skill-bill goal watch <issue_key> --interval-seconds 5` with no
     `--max-refreshes`, and state that watch follows until the goal finishes.

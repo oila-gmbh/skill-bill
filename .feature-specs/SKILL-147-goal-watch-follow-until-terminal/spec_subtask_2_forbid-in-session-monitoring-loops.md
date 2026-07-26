@@ -14,18 +14,24 @@ because it is not what it looks like.
 
 The expensive part is not the bytes a poll returns. It is that every tool call
 re-sends the entire conversation, and the conversation is larger on each
-successive call. A poll loop is therefore quadratic: 60 refreshes are 60
-full-context requests, each bigger than the one before, and each poll's output
-permanently inflates every request that follows it.
+successive call — each poll's output permanently inflates every request that
+follows it. Prompt caching discounts the re-sent prefix but does not eliminate
+it, so a poll loop's cost still compounds superlinearly: 60 refreshes are 60
+full-context requests, each bigger than the one before.
 
-The alternative costs one request. A single blocking call returns the outcome
-when the run ends, however long that takes. The loop buys nothing the agent could
-act on — it cannot intervene mid-run — and pays a compounding price for it.
+The alternative costs one request: a single completion signal — a blocking call
+that returns, or one background-exit re-invocation — delivers the outcome when
+the run ends, however long that takes (see Completion Signal below for which
+signal applies where). The loop buys nothing the agent could act on — it cannot
+intervene mid-run — and pays a compounding price for it.
 
 Files in scope:
 
 - `skills/bill-feature-goal/content.md` — the "Watching Long Runs (orchestrator
-  pattern)" section (~line 228) and the live-polling example (~line 306).
+  pattern)" section (~line 228), the live-polling example (~line 306), and the
+  "Keep live output enabled unless the user asks for quieter output" sentence
+  (~line 227), which directly contradicts the quiet-launch posture and must be
+  replaced by the `--no-live-output` instruction.
 - `skills/bill-feature-task-runtime/content.md` — the "Progress Visibility"
   section (~line 91).
 
@@ -60,14 +66,40 @@ lands in the agent's context when the call returns, paid for in full whether or
 not anything reads it.
 
 The saving is modest but unbounded-growing: the heartbeat pair fires every 90
-seconds (`AgentRunProcessRunner.kt:117`), so a three-hour goal accrues a few
-hundred lines and a longer one proportionally more. It costs nothing to suppress
+seconds (`DEFAULT_STATUS_HEARTBEAT_INTERVAL`,
+`runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/launcher/process/AgentRunProcessRunner.kt:117`),
+so a three-hour goal accrues a few hundred lines and a longer one proportionally
+more. It costs nothing to suppress
 once `goal watch` gives the user a real live feed, which is the trade subtask 1
 makes possible.
 
 The user's live view is `skill-bill goal watch` in their own terminal — which is
 why subtask 1 exists, and why the required monitoring block is the thing that
 makes this posture acceptable rather than a regression.
+
+## Completion Signal
+
+The prohibition is only satisfiable if the skills name how the agent learns the
+run finished, because the "one blocking call" does not exist for long runs:
+agent harnesses cap foreground tool calls (Claude Code kills a foreground
+command at 10 minutes), which is why the goal skill already instructs a
+detached launch when timeout risk exists. Both skills must state the sanctioned
+signal per launch mode:
+
+1. **Foreground, within the harness timeout** — the blocking call returns the
+   structured result; compose the completion line from it.
+2. **Detached, harness with background-completion notification** — the harness
+   re-invokes the agent when the background process exits (Claude Code's
+   background tasks do this); that single re-invocation carries the result. One
+   signal, zero polls.
+3. **Detached, harness without such notification** — the agent prints the
+   monitoring block, states that the run continues in the background, and ends
+   its turn. The completion line is emitted when the user next addresses the
+   session, answered from one `goal status` call.
+
+In every mode the completion-line obligation binds when the run's outcome
+reaches the session — never through polling, and mode 3's deferred report is
+not a loophole for checking "just once" mid-run.
 
 ## Permitted In-Session Surface
 
@@ -118,11 +150,16 @@ run is deliberate rather than a failure.
 2. `skills/bill-feature-task-runtime/content.md` states the same prohibition in
    its "Progress Visibility" section, consistent in wording with the goal skill.
 3. `skills/bill-feature-goal/content.md` instructs the agent to launch with
-   `--no-live-output`, and states the token-cost reason in one sentence.
+   `--no-live-output`, states the token-cost reason in one sentence, and the
+   contradicting "Keep live output enabled" sentence (~line 227) is removed.
 4. Both skills state the permitted in-session surface as the three allowed items,
    state that there is no in-session transition relay, and state the cost rule as
-   request count rather than output size — one blocking call beats any number of
-   short polls, and trimming a poll's output does not make polling acceptable.
+   request count rather than output size — one completion signal beats any number
+   of short polls, and trimming a poll's output does not make polling acceptable.
+4a. Both skills name the completion signal per launch mode as specified in the
+    Completion Signal section: blocking return within the harness timeout,
+    background-exit re-invocation where the harness provides one, and end-turn
+    with report-on-user-return where it does not.
 5. Both skills require exactly one completion line, composed only from the
    structured result fields (`status`, counts, `pull_request_url`,
    `blocked_reason`), and give the three worked examples for complete, blocked,
