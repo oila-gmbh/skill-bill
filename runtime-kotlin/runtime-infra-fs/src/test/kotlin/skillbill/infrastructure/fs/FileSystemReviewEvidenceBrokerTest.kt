@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
@@ -227,6 +228,27 @@ class FileSystemReviewEvidenceBrokerTest {
 
     assertEquals("outside\nowned\noutside", result.results.single().content)
     assertEquals(listOf(boundExpansion), result.expansions)
+  }
+
+  @Test fun `complete-file expansion rejects content drift after launch checkpoint binding`() {
+    val root = repo("A.kt" to "checkpoint content")
+    val assignment = assignment(listOf("A.kt"))
+    val broker = broker(root, assignment)
+    val expansion = broker.authorizeExpansion(
+      ReviewExpansionAuthorizationRequest("security", "A.kt", "definition is outside the projected hunk"),
+    )
+    Files.writeString(root.resolve("A.kt"), "newer working-tree content")
+
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      broker.readBatch(
+        ReviewEvidenceBatchRequest.of(
+          ReviewEvidenceRequest("security", "A.kt", expansion.reachabilityReason, expansion),
+        ),
+      )
+    }
+
+    assertTrue(failure.reason.contains("changed after the immutable launch checkpoint"))
+    assertEquals(0, broker.accounting().evidenceBytes)
   }
 
   @Test fun `broker authorizes expansion with assignment digest and nonblank reason`() {

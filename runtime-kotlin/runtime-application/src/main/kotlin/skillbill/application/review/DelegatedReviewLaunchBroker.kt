@@ -75,7 +75,11 @@ class DelegatedReviewLaunchBroker(
         projectedHunks = request.packet.changedHunks.filter { it.hunkId in request.assignment.assignedHunks },
       ),
     )
-    val preauthorizedEvidenceRequests = authorizePrelaunchExpansions(request, evidenceBroker)
+    val preauthorizedEvidenceRequests = try {
+      authorizePrelaunchExpansions(request, evidenceBroker)
+    } catch (error: IllegalArgumentException) {
+      reject(request, error.message ?: "The prelaunch expansion projection is invalid.")
+    }
     return DelegatedReviewLaunchOutcome.Prepared(
       DelegatedReviewLaunch(
         launch = launch,

@@ -28,6 +28,29 @@ class ReviewPacketConsumerContractParityTest {
     assertEquals(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, documented)
   }
 
+  @Test fun `governed prose and runtime use authoritative contract bytes`() {
+    val markdown = Files.readString(contractPath())
+    assertEquals(
+      ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+      authoritativeBlock(markdown, "authoritative-launch-contract"),
+    )
+    assertEquals(
+      ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES,
+      authoritativeBlock(markdown, "evidence-surface-rules"),
+    )
+    assertEquals(
+      ReviewPacketConsumerContract.REPORT_STRUCTURE,
+      authoritativeBlock(markdown, "report-structure"),
+    )
+  }
+
+  private fun authoritativeBlock(markdown: String, name: String): String {
+    val opening = "```$name\n"
+    val body = markdown.substringAfter(opening, "")
+    assertTrue(body.isNotEmpty(), "Missing authoritative '$name' block.")
+    return body.substringBefore("\n```")
+  }
+
   private fun contractPath(): Path {
     var current: Path? = Path.of("").toAbsolutePath().normalize()
     while (current != null) {

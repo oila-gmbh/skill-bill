@@ -78,7 +78,8 @@ class ReviewRecorder {
   val savedAccounting: MutableList<ReviewAccountingRecord> = mutableListOf()
   val refusedOperations: MutableList<ForbiddenReviewOperation> = mutableListOf()
 
-  val launchedSpecialists: List<String> get() = nativeLaunches.mapNotNull { it.logicalWorkerName }
+  val launchedSpecialists: List<String>
+    get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
 }
 
 /**

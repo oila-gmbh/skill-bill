@@ -29,6 +29,10 @@ Do not reference this repo-relative path directly from installable skills — us
 
 Every downstream routed layer and delegated specialist consumes the authoritative review packet exactly as launched. The packet is the single source of scope, routing, guidance, and measurement facts; a consumer that re-derives any of them produces a divergent review and breaks digest-backed attribution.
 
+```authoritative-launch-contract
+Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, recompute, or read sibling-lane or parent review context.
+```
+
 Consumers must not rediscover any of the following:
 
 - `review_status` — the packet already carries the resolved review status
@@ -53,10 +57,9 @@ Consumers must not rediscover any of the following:
 - `rules_rediscovery` — review rules are supplied directly at launch
 - `repeated_evidence_read` — a normalized evidence target may be read only once
 
-Evidence reads are batched and measured. Ordinary assigned reads return only the launch-projected
-hunk windows. A complete-file response requires a governed expansion record from the launch
-`dependency_allowlist` with a nonblank reachability reason. Normalized target identity makes
-offset, limit, pagination-token, path-alias, and batching variants the same single-use read.
+```evidence-surface-rules
+Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once.
+```
 
 ## Shared Report Structure
 
@@ -76,9 +79,9 @@ After Section 1 in a stack-specific review skill, use:
 - `### 3. Action Items (Max 10, prioritized)`
 - `### 4. Verdict`
 
-Every finding in `### 2. Risk Register` must use this exact machine-readable bullet format:
+Every finding in `### 2. Risk Register` must use this authoritative machine-readable bullet format:
 
-```text
+```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
 ```
 

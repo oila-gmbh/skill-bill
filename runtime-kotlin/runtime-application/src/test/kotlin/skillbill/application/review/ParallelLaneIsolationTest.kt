@@ -2,9 +2,11 @@ package skillbill.application.review
 
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Two top-level lanes reuse the same optimized flow without sharing state or counting each other. */
@@ -17,7 +19,7 @@ class ParallelLaneIsolationTest {
     reviewHarness(config(), recorder).run(harnessRequest())
 
     assertEquals(1, recorder.diffCommands.count { it.contains("diff") })
-    assertEquals(1, recorder.preflightRequests.size)
+    assertTrue(recorder.preflightRequests.isEmpty(), "Prompt-only lanes expose no logical identities to preflight.")
     assertEquals(areas.sorted(), recorder.rubricResolutions.distinct().sorted().map { it.substringAfterLast('-') })
     assertEquals(areas.size, recorder.rubricResolutions.size, "Rubrics resolve once, not once per lane.")
     assertEquals(
@@ -25,7 +27,7 @@ class ParallelLaneIsolationTest {
       recorder.brokerBindings.map { it.assignment.digest }.distinct().size,
       "Each lane binds its own broker per specialist.",
     )
-    assertEquals(areas.size * 2, recorder.evidenceBatches.size)
+    assertTrue(recorder.evidenceBatches.isEmpty(), "Assigned hunk bodies travel in the prompt, not filesystem reads.")
     assertEquals(areas.size * 2, recorder.nativeLaunches.size)
   }
 
@@ -37,11 +39,12 @@ class ParallelLaneIsolationTest {
     assertTrue(recorder.parentLaunches.isEmpty(), "Delegated review never starts an inline parent lane.")
     val allSpecialists = areas.map { "bill-kotlin-code-review-$it" }
     recorder.nativeLaunches.forEach { launch ->
-      val worker = assertNotNull(launch.logicalWorkerName)
-      assertTrue(worker.startsWith("bill-kotlin-code-review-"), "Only flattened specialists launch: '$worker'.")
+      assertNull(launch.logicalWorkerName, "Provider launches do not receive a rediscoverable logical worker identity.")
+      val worker = allSpecialists.single { launch.prompt.contains(it.substringAfterLast('-')) }
       (allSpecialists - worker).forEach { sibling ->
         assertTrue(!launch.prompt.contains(sibling), "Prompt for '$worker' named sibling lane '$sibling'.")
       }
+      assertTrue(launch.prompt.contains("assigned_hunk_bodies"), "The prompt must carry its assigned hunk envelope.")
       assertTrue(
         !launch.prompt.contains("bill-kotlin-code-review\n") && !launch.prompt.contains("bill-code-review"),
         "Prompt for '$worker' referenced a baseline orchestrator.",
@@ -73,13 +76,15 @@ class ParallelLaneIsolationTest {
   @Test fun `aggregate usage counts each lane once across mixed terminal outcomes`() {
     val recorder = ReviewRecorder()
     val usage = ProviderTokenUsage(600, 200, 60, 10, 660)
+    val launchIndex = AtomicInteger()
     val runner = reviewHarness(
-      config(budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneResultBytes = 512)) { request ->
-        when (request.logicalWorkerName) {
-          "bill-kotlin-code-review-security" -> RecordedWorkerResponse(stdout = "x".repeat(2_048), usage = usage)
-          "bill-kotlin-code-review-testing" -> RecordedWorkerResponse(exitStatus = 3, usage = usage)
+      config(budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneResultBytes = 512)) {
+        when (launchIndex.getAndIncrement() % areas.size) {
+          1 ->
+            RecordedWorkerResponse(stdout = "x".repeat(2_048), usage = usage)
+          2 -> RecordedWorkerResponse(exitStatus = 3, usage = usage)
           else -> RecordedWorkerResponse(
-            stdout = finding("src/Repo.kt", specialist = request.logicalWorkerName),
+            stdout = finding("src/Repo.kt"),
             usage = usage,
           )
         }
@@ -110,12 +115,13 @@ class ParallelLaneIsolationTest {
 
   @Test fun `a timed out specialist fails only its own lane and is still accounted`() {
     val recorder = ReviewRecorder()
+    val launchIndex = AtomicInteger()
     val runner = reviewHarness(
-      config { request ->
-        if (request.logicalWorkerName == "bill-kotlin-code-review-security") {
+      config {
+        if (launchIndex.getAndIncrement() % areas.size == 1) {
           RecordedWorkerResponse(exitStatus = null, timedOut = true)
         } else {
-          RecordedWorkerResponse(stdout = finding("src/Repo.kt", specialist = request.logicalWorkerName))
+          RecordedWorkerResponse(stdout = finding("src/Repo.kt"))
         }
       },
       recorder,
@@ -132,8 +138,8 @@ class ParallelLaneIsolationTest {
     fun merged(): String {
       val recorder = ReviewRecorder()
       return reviewHarness(
-        config { request ->
-          RecordedWorkerResponse(stdout = finding("src/Repo.kt", specialist = request.logicalWorkerName))
+        config {
+          RecordedWorkerResponse(stdout = finding("src/Repo.kt"))
         },
         recorder,
       ).run(harnessRequest()).mergeResult.formattedOutput

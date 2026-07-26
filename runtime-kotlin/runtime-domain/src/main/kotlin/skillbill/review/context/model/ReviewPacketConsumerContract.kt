@@ -39,6 +39,5 @@ object ReviewPacketConsumerContract {
       "Each normalized evidence target may be read once."
 
   const val REPORT_STRUCTURE: String =
-    "[F-NNN] Severity | Confidence | optional specialist=<exact identity> | " +
-      "path=<JSON string> | line=<positive integer> | description"
+    "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
 }

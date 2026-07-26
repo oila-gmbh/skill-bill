@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.DelegatedReviewExecutionBroker
@@ -11,6 +12,7 @@ import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
+import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -96,6 +98,37 @@ class ParallelCodeReviewRunnerTest {
     assertFailsWith<IllegalArgumentException> { runner.run(baseRequest(repoRoot = repo)) }
 
     assertEquals(2, admitted)
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `invalid prelaunch expansion is translated to the typed review context error`() {
+    val repo = createGitRepo()
+    createStagedFile(repo)
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runnerWithEvidenceBroker(
+      launcher,
+      ReviewEvidenceBrokerFactory { binding ->
+        object : TestReviewEvidenceBroker(binding) {
+          override fun authorizeExpansion(
+            request: skillbill.ports.review.model.ReviewExpansionAuthorizationRequest,
+          ): skillbill.review.context.model.ReviewExpansionRecord =
+            throw IllegalArgumentException("expansion path escaped the measured evidence surface")
+        }
+      },
+    )
+
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      runner.run(
+        baseRequest(repoRoot = repo).copy(
+          prelaunchExpansions = listOf(
+            ReviewPrelaunchExpansion("parallel-code-review", "Other.kt", "reachable caller"),
+          ),
+        ),
+      )
+    }
+
+    assertContains(failure.reason, "expansion path escaped")
     assertTrue(launcher.requests.isEmpty())
   }
 
@@ -1040,7 +1073,7 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
 
 private fun diffFor(path: String): String = "+++ b/$path"
 
-private class TestReviewEvidenceBroker(
+private open class TestReviewEvidenceBroker(
   private val binding: ReviewEvidenceBrokerBinding,
 ) : ReviewEvidenceBroker {
   private val identity = ReviewLaneIdentity.of(binding.assignment)
