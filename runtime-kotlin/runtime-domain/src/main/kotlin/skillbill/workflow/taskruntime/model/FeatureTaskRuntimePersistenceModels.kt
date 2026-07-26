@@ -282,7 +282,7 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       if (contractVersion != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime delivered projection uses unsupported persistence contract version " +
-            "'$contractVersion'; restart the workflow or run an explicit compatible migration.",
+            "'$contractVersion'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
         )
       }
     }
@@ -351,14 +351,15 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
       if (unexpected.isNotEmpty()) {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime delivered-projection record contains unsupported fields; " +
-            "restart the workflow or run an explicit compatible migration.",
+            "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
         )
       }
     }
 
     // Single throw seam so the strict decoder stays within the throw-count budget.
     private fun missing(field: String): Nothing = throw InvalidWorkflowStateSchemaError(
-      "Feature-task-runtime delivered-projection record is missing field '$field'.",
+      "Feature-task-runtime delivered-projection record is missing field '$field'; " +
+        "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
     )
   }
 }

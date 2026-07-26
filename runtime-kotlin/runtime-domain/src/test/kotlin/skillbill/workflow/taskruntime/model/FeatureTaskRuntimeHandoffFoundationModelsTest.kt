@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -104,6 +105,23 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(evidence.toArtifactMap())
     }
+  }
+
+  @Test
+  fun `legacy private evidence fails with content-free restart or migration guidance`() {
+    val legacy = FeatureTaskRuntimePrivatePhaseEvidenceRecord(
+      workflowId = "wftr-1",
+      producerIteration = FeatureTaskRuntimeProducerIteration("implement", 2),
+      repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("checkpoint-2"),
+      phaseOutput = """{"private":"diagnostic-only"}""",
+    ).toArtifactMap() - "contract_version"
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePrivatePhaseEvidenceRecord.fromArtifactMap(legacy)
+    }
+
+    assertContains(error.message.orEmpty(), FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE)
+    assertFalse(error.message.orEmpty().contains("diagnostic-only"))
   }
 }
 

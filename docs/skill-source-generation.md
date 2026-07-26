@@ -477,6 +477,15 @@ custom-agent location.
 
 Generated provider artifacts are never committed to the repo.
 
+Delegated-review worker rules are authored once in
+`orchestration/review-orchestrator/specialist-contract.md`. Its marked launch,
+evidence-surface, and report-structure blocks plus forbidden-rediscovery list
+are projected into runtime, prose, CLI, and provider-native launches. Generated
+support pointers and provider artifacts may deliver those rules, but governed
+`content.md` and delegation playbooks must not maintain divergent copies.
+`ReviewPacketConsumerContractParityTest` owns byte/list parity with the runtime
+constants.
+
 ## Scaffolding
 
 The scaffolder is the supported way to create new governed source.

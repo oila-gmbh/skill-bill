@@ -731,12 +731,19 @@ phase-local instructions use workflow-owned invariant allowlists. Declaration
 and persistence wires have independent incompatible `0.2` contracts. Delivered
 records identify the workflow, consumer, producer iteration, and checkpoint;
 legacy records missing that identity loud-fail with restart or explicit
-migration guidance.
+out-of-band migration guidance. The operator action is deliberately identical at
+workflow, briefing, handoff, private-evidence, and delivered-projection read
+seams: restart the active run or use the documented out-of-band migration
+procedure. Unsupported versions are never defaulted or interpreted as the
+current least-context shape.
 
 Budgets are enforced before launch against serialized UTF-8 bytes and
 collection items. The runtime never truncates, drops fields, or falls back to a
 complete artifact. Measurements contain identifiers, byte/item counts, token
 estimates, and failure classifications only, never prompt or evidence bodies.
+They are written only through lifecycle telemetry and progress stores; no
+measurement or diagnostic field is added to a phase receipt or other
+prompt-consumable domain artifact.
 
 A feature-task-runtime phase no longer receives the complete output of its
 upstream phases. Context reaching a phase is split into four parts with distinct

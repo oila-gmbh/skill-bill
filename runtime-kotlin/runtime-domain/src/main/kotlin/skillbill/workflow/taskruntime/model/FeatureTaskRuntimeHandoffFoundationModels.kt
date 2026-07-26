@@ -6,6 +6,9 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VE
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 
+const val FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE: String =
+  "restart the active run or use the documented out-of-band migration procedure"
+
 /**
  * Immutable identity of the exact producer attempt from which a consumer projection was derived.
  * A phase id alone is insufficient on retries and backward edges.
@@ -134,7 +137,8 @@ data class FeatureTaskRuntimePrivatePhaseEvidenceRecord(
       ) {
         throw InvalidWorkflowStateSchemaError(
           "Private feature-task-runtime evidence is incompatible with persistence contract " +
-            "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION; restart or explicitly migrate the workflow.",
+            "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION; " +
+            "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
         )
       }
       val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
@@ -158,7 +162,7 @@ data class FeatureTaskRuntimePrivatePhaseEvidenceRecord(
     }
 
     private fun invalidPrivateEvidence(): Nothing = throw InvalidWorkflowStateSchemaError(
-      "Private feature-task-runtime evidence is malformed; restart or explicitly migrate the workflow.",
+      "Private feature-task-runtime evidence is malformed; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
     )
   }
 }

@@ -72,6 +72,25 @@ Completed outcomes emit `completed`; planning decompositions emit `decomposed_at
 
 `goal_started.status` is emitted as `running`.
 
+### Least-context projection measurements
+
+Feature-task-runtime projection accounting is emitted only through the telemetry
+and progress stores. It never becomes a phase receipt, review result, validation
+receipt, continuation artifact, or other domain input.
+
+`skillbill_feature_task_runtime_projection_measurement` carries only workflow,
+consumer phase, projection-contract, producer-iteration, and repository-checkpoint
+identifiers plus projected UTF-8 bytes, collection-item counts, estimated tokens,
+private-evidence bytes, delivered-projection bytes, and an optional closed failure
+classification. Accepted projections record their measured sizes. Rejected
+projections record zero delivered sizes and classify contract, version, budget,
+unprojectable-source, stale-checkpoint, stale-producer, or sibling-context failure.
+
+The event must never contain prompt text, source or diff bodies, receipt bodies,
+raw phase outputs or payloads, transcripts, tool output, command logs, excerpts,
+or arbitrary metadata. Measurements are content-free accounting; private evidence
+remains available only through the diagnostic persistence boundary.
+
 ### Feature-task skills
 
 Feature-task skills (`bill-feature-task`) use the `feature_task_prose_started` and `feature_task_prose_finished` MCP tools. These are always top-level — they are not invoked with `orchestrated=true` by other skills.

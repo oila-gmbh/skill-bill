@@ -9,6 +9,14 @@ This is the canonical review-delegation contract. Installed skills consume it th
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
+The delegated worker rules themselves have one authoritative authored source:
+`orchestration/review-orchestrator/specialist-contract.md`. Runtime, prose, CLI,
+and provider-native launches project its launch contract, forbidden-rediscovery
+list, evidence-surface rules, and report structure into the worker assignment.
+Workers do not reload those rules from disk, and this playbook does not restate
+them. Maintainer parity tests pin the runtime constants to the authoritative
+marked blocks and list in that source.
+
 ## Shared Delegation Rules
 
 - Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`; Codex CLI launches MUST use a fresh process receiving only the governed compact assignment. Other providers retain their existing launch behavior.

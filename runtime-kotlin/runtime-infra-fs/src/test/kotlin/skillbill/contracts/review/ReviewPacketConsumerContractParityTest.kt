@@ -44,6 +44,16 @@ class ReviewPacketConsumerContractParityTest {
     )
   }
 
+  @Test fun `delegation surfaces name the specialist contract without restating its marked rules`() {
+    val root = contractPath().parent.parent.parent
+    val delegation = Files.readString(root.resolve("orchestration/review-delegation/PLAYBOOK.md"))
+    val sourcePath = ReviewPacketConsumerContract.SOURCE_PATH
+    assertTrue(sourcePath in delegation)
+    listOf("authoritative-launch-contract", "evidence-surface-rules", "report-structure").forEach { marker ->
+      assertTrue("```$marker" !in delegation, "Delegation playbook must not restate authoritative '$marker' bytes.")
+    }
+  }
+
   private fun authoritativeBlock(markdown: String, name: String): String {
     val opening = "```$name\n"
     val body = markdown.substringAfter(opening, "")

@@ -307,3 +307,11 @@ repository projection. Private workflow evidence, unrelated evaluator outputs,
 telemetry, and complete upstream artifact maps are not prompt inputs. The
 consolidated verdict consumes compact typed evaluator receipts, while repository
 checkpoint state remains authoritative over receipt claims.
+
+Durable least-context records are versioned boundaries. A legacy workflow,
+briefing, handoff, private-evidence, or delivered-projection record must fail
+through the typed workflow-contract hierarchy; it is never defaulted or decoded
+as the current shape. The actionable operator guidance is to restart the active
+run or use the documented out-of-band migration procedure. Error and
+continuation surfaces identify the incompatible record and consumer projection
+without copying private content.

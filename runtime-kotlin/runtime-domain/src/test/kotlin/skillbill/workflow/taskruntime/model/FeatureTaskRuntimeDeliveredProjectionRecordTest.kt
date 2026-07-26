@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -108,11 +109,15 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
   @Test
   fun `legacy and agent widened delivered records fail loudly`() {
     val valid = deliveredProjection().toArtifactMap()
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
+    val legacy = assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(valid - "contract_version")
     }
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
+    val widened = assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(valid + ("agent_selected_fields" to listOf("secret")))
+    }
+    listOf(legacy, widened).forEach { error ->
+      assertContains(error.message.orEmpty(), FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE)
+      assertFalse(error.message.orEmpty().contains("secret"))
     }
   }
 
