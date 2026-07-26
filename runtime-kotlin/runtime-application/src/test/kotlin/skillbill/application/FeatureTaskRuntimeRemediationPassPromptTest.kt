@@ -128,7 +128,9 @@ private fun reviewBriefing() = FeatureTaskRuntimePhaseBriefingAssembler.assemble
       acceptanceCriteria = listOf("AC-008", "AC-010"),
       mandatesAndOverrides = emptyList(),
     ),
-    recordedOutputs = listOf(FeatureTaskRuntimePhaseOutput("review", 1, """{"review":"ok"}""")),
+    recordedOutputs = listOf(
+      FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+    ),
     repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
   ),
 )

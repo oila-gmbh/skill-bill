@@ -195,7 +195,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "present as a no-op. See the mutating-phase idempotency contract below.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
-    "and report defects with concrete file references. Emit review_result with only unresolved " +
+    "and report defects with concrete file references. Emit produced_outputs.findings with only unresolved " +
     "actionable Blocker findings and the exact repository_checkpoint reviewed; keep approved and " +
     "non-blocking findings, specialist narration, and telemetry outside that repair projection.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to

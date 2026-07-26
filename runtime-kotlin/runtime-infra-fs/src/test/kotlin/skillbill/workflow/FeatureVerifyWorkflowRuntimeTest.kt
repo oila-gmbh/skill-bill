@@ -65,11 +65,11 @@ class FeatureVerifyWorkflowRuntimeTest {
           stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
           artifactsPatch =
           linkedMapOf(
-            "review_result" to mapOf("findings" to emptyList<String>()),
-            "criteria_summary" to mapOf("criteria" to 3),
-            "diff_summary" to mapOf("files" to 4),
-            "completeness_audit_result" to mapOf("result" to "pass"),
-            "unit_test_value_result" to mapOf("overall_verdict" to "Strong"),
+            "feature_flag_audit_receipt" to mapOf("verdict" to "not_applicable"),
+            "code_review_receipt" to mapOf("verdict" to "pass"),
+            "unit_test_value_receipt" to mapOf("verdict" to "strong"),
+            "completeness_audit_receipt" to mapOf("verdict" to "pass"),
+            "diff_projection" to mapOf("checkpoint" to "abc123", "files" to 4),
           ),
           sessionId = "",
         ),
@@ -80,11 +80,11 @@ class FeatureVerifyWorkflowRuntimeTest {
     assertEquals("reopened", decision.view.continueStatus)
     assertEquals(
       listOf(
-        "criteria_summary",
-        "diff_summary",
-        "review_result",
-        "unit_test_value_result",
-        "completeness_audit_result",
+        "feature_flag_audit_receipt",
+        "code_review_receipt",
+        "unit_test_value_receipt",
+        "completeness_audit_receipt",
+        "diff_projection",
       ),
       decision.view.stepArtifactKeys,
     )
@@ -116,12 +116,11 @@ class FeatureVerifyWorkflowRuntimeTest {
   fun `verify continuation directives preserve oracle text`() {
     assertEquals(
       "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
-        "and store the returned telemetry payload with the review result.",
+        "persist a compact typed receipt, and keep telemetry in its dedicated store.",
       definition.continuationDirectives["code_review"],
     )
     assertEquals(
-      "Reuse the saved review, unit test value, and audit artifacts to produce the final verdict without rerunning " +
-        "earlier steps unless recovery made them stale.",
+      "Reuse only compact typed evaluator receipts to produce the final verdict without rerunning earlier phases.",
       definition.continuationDirectives["verdict"],
     )
   }

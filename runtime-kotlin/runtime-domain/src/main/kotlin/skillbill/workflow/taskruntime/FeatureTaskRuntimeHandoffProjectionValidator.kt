@@ -22,6 +22,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
@@ -32,7 +33,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjection
  * oversized projection can never be truncated, silently dropped, or swapped for its full source
  * artifact — it fails the launch with a typed error naming the projection and its contract.
  */
-@Suppress("TooManyFunctions") // one cohesive validation seam; each function is a named rejection rule
+@Suppress("TooManyFunctions", "LargeClass")
 object FeatureTaskRuntimeHandoffProjectionValidator {
   const val COMPACT_REFERENCE_MAX_LENGTH: Int = 512
 
@@ -133,16 +134,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * value is treated as an opaque claim throughout.
    *
    * `must_match` is retained as a durable legacy wire value, but repository movement is not a phase
-   * gate. Both checkpoint-aware policies keep the producer's claim fields untouched and rewrite the
-   * repository-derived checkpoint field to the freshly resolved fingerprint, appending the producer's
-   * claim so the substitution is visible rather than silent (AC-012).
+   * gate. Both checkpoint-aware policies refresh from the current repository.
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
     fields: List<FeatureTaskRuntimeHandoffProjectionField>,
   ): List<FeatureTaskRuntimeHandoffProjectionField> {
-    val carried = receiptCarriedCheckpointFingerprint(fields)
+    val carried = if (
+      declaration.projectionContractId ==
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE
+    ) {
+      null
+    } else {
+      receiptCarriedCheckpointFingerprint(fields)
+    }
     val violation = when (declaration.checkpointPolicy) {
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
       FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
@@ -208,7 +214,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
                 } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
               ),
             )
-        }
+        } ?: durableAuditRepairProjectionFields(inputs, declaration)
       is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
         runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
       FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> listOf(
@@ -240,6 +246,26 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
     }
     return fields
+  }
+
+  private fun durableAuditRepairProjectionFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
+    if (
+      declaration.projectionContractId !=
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST ||
+      inputs.auditRepairPlan == null ||
+      inputs.auditRepairState == null
+    ) {
+      return null
+    }
+    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, emptyMap())
+    return declaration.declaredFieldNames.mapNotNull { name ->
+      runtimeOwned[name]?.let { value ->
+        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, value, inputs, declaration))
+      }
+    }
   }
 
   private fun runInvariantFields(
@@ -458,6 +484,15 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     declaration: PhaseHandoffProjectionDeclaration,
     produced: Map<String, Any?>,
   ): Map<String, Any?> = when (declaration.projectionContractId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE -> mapOf(
+      "clearance_status" to auditClearanceStatus(produced),
+      "review_scope" to FeatureTaskRuntimePhaseWorkflowDefinition
+        .ceremonyScaling(inputs.runInvariants.featureSize)
+        .reviewScope
+        .wireValue,
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "verdict" to auditClearanceStatus(produced),
+    )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> {
       val plan = inputs.auditRepairPlan
       val state = inputs.auditRepairState
@@ -477,7 +512,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to reviewBlockerProjection(produced),
-      "repository_checkpoint" to inputs.expectedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
       "changed_paths" to inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty(),
@@ -489,11 +524,17 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     else -> finalizationProjectionValues(inputs, declaration)
   }.filterValues { it != null }
 
+  private fun auditClearanceStatus(produced: Map<String, Any?>): String? {
+    val unmetCriteria = produced["unmet_criteria"] as? List<*>
+    return when {
+      unmetCriteria == null -> resolveDeclaredPhaseField(produced, "clearance_status")?.toString()
+      unmetCriteria.isEmpty() -> FeatureTaskRuntimeVerdict.SATISFIED.wireValue
+      else -> FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue
+    }
+  }
+
   private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
-    (
-      produced["findings"] as? List<*>
-        ?: JsonSupport.anyToStringAnyMap(produced["review_result"])?.get("findings") as? List<*>
-      ).orEmpty()
+    (produced["findings"] as? List<*>).orEmpty()
       .mapNotNull(JsonSupport::anyToStringAnyMap)
       .filter { finding -> (finding["severity"] as? String)?.equals("blocker", ignoreCase = true) == true }
       .map { finding ->
@@ -537,6 +578,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     },
   )
 
+  @Suppress("CyclomaticComplexMethod")
   private fun finalizationProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
@@ -570,7 +612,10 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES -> mapOf(
         "changed_paths" to changedPaths,
-        "boundary_candidates" to changedPaths.map { it.substringBeforeLast('/', "") }.filter(String::isNotBlank).distinct(),
+        "boundary_candidates" to changedPaths
+          .map { it.substringBeforeLast('/', "") }
+          .filter(String::isNotBlank)
+          .distinct(),
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST -> mapOf(
         "path_inventory" to changedPaths,
@@ -581,11 +626,11 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         "repository_checkpoint" to checkpoint,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST -> mapOf(
-        "completed_task_ids" to implementation["completed_task_ids"],
+        "completed_task_ids" to (implementation["completed_task_ids"] ?: emptyList<String>()),
         "changed_paths" to changedPaths,
-        "tests_added" to implementation["tests_added"],
-        "tests_updated" to implementation["tests_updated"],
-        "deviations" to implementation["deviations"],
+        "tests_added" to (implementation["tests_added"] ?: emptyList<String>()),
+        "tests_updated" to (implementation["tests_updated"] ?: emptyList<String>()),
+        "deviations" to (implementation["deviations"] ?: emptyList<String>()),
         "validation_summary" to (
           validation["validation_result"] ?: validation["validation_summary"] ?: validation["summary"] ?: "completed"
           ),

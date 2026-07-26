@@ -244,6 +244,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
+  @Suppress("LongMethod")
   fun `consumer projection matrix is exact and downstream edges never receive whole phase receipts`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val expected = mapOf(

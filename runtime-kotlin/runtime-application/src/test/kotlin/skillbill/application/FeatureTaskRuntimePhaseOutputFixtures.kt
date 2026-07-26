@@ -42,8 +42,25 @@ internal fun validJsonOutput(phaseId: String): String = """
   }
 """.trimIndent()
 
+@Suppress("LongMethod")
 internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
-  "commit_push" -> """{"commit_push_result": {"commit_sha": "commit-runtime-1"}}"""
+  "validate" ->
+    """{"validation_result":{
+      "validation_status":"passed",
+      "checks":["FooTest"],
+      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"}
+    }}
+    """.trimIndent()
+  "write_history" ->
+    """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
+  "commit_push" ->
+    """{"commit_push_result":{
+      "commit_sha":"commit-runtime-1",
+      "branch":"feat/SKILL-65-runtime-feature-task-parity",
+      "base_branch":"main",
+      "pushed":true
+    }}
+    """.trimIndent()
   // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
   // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
   "preplan" ->
@@ -108,7 +125,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   // A clean audit must emit a verification signal or the audit gate blocks (SKILL-85 Subtask 5):
   // an explicit empty unmet_criteria array affirms "every acceptance criterion is met" and advances.
   "audit" -> """{"unmet_criteria": []}"""
-  else -> """{"tasks": ["task-1"]}"""
+  else -> """{"tasks":["task-1"]}"""
 }
 
 // SKILL-140 Subtask 3 (task-6/task-7): the enumerable parity corpus. Each entry carries a stable id

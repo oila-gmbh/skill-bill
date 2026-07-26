@@ -35,6 +35,7 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
  * [phaseDeclarations] adds the derived-context declarations that the `WorkflowDefinition`
  * shape cannot express.
  */
+@Suppress("TooManyFunctions")
 object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
@@ -208,6 +209,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val PR_REQUEST: String = "feature_task_runtime.pr_request"
   }
 
+  @Suppress("LongParameterList")
   fun phaseProjection(
     consumerPhaseId: String,
     producingPhaseId: String,
@@ -223,7 +225,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     projectionContractId = contractId,
     projectionContractVersion = PhaseProjectionContract.VERSION,
     promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = fields,
     checkpointPolicy = checkpointPolicy,
     required = true,

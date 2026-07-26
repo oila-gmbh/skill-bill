@@ -1,8 +1,27 @@
 package skillbill.workflow.verify
 
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureVerifyWorkflowDefinition {
+  private val privateArtifactKeys = setOf(
+    "telemetry_payload",
+    "progress",
+    "prompt",
+    "logs",
+    "source_body",
+    "complete_diff",
+    "raw_review_output",
+  )
+
+  private fun projection(vararg keys: String) = WorkflowInputProjectionDeclaration(
+    requiredArtifactKeys = keys.toList(),
+    forbiddenArtifactKeys = privateArtifactKeys,
+    maxUtf8Bytes = 64 * 1024,
+    maxCollectionItems = 512,
+    repositoryCheckpointArtifactKey = "diff_projection",
+  )
+
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-verify",
     workflowName = "bill-feature-verify",
@@ -42,11 +61,16 @@ object FeatureVerifyWorkflowDefinition {
       "collect_inputs" to emptyList(),
       "extract_criteria" to listOf("input_context"),
       "gather_diff" to listOf("input_context", "criteria_summary"),
-      "feature_flag_audit" to listOf("criteria_summary", "diff_summary"),
-      "code_review" to listOf("criteria_summary", "diff_summary"),
-      "unit_test_value_check" to listOf("diff_summary", "review_result"),
-      "completeness_audit" to listOf("criteria_summary", "diff_summary", "review_result", "unit_test_value_result"),
-      "verdict" to listOf("criteria_summary", "review_result", "unit_test_value_result", "completeness_audit_result"),
+      "feature_flag_audit" to listOf("criteria_summary", "feature_flag_policy", "diff_projection"),
+      "code_review" to listOf("criteria_summary", "review_rubric", "diff_projection"),
+      "unit_test_value_check" to listOf("criteria_summary", "unit_test_value_rubric", "diff_projection"),
+      "completeness_audit" to listOf("criteria_summary", "completeness_rubric", "diff_projection"),
+      "verdict" to listOf(
+        "feature_flag_audit_receipt",
+        "code_review_receipt",
+        "unit_test_value_receipt",
+        "completeness_audit_receipt",
+      ),
       "finish" to listOf("verdict_result"),
     ),
     resumeActions =
@@ -59,16 +83,14 @@ object FeatureVerifyWorkflowDefinition {
       "feature_flag_audit" to
         "Reuse criteria_summary and diff_summary, run the audit if still required, and persist the result.",
       "code_review" to
-        "Reuse criteria_summary and diff_summary, then invoke bill-code-review and persist review_result.",
+        "Run bill-code-review independently against criteria, its rubric, and diff_projection, then persist " +
+        "code_review_receipt.",
       "unit_test_value_check" to
-        "Reuse diff_summary and review_result, then invoke bill-unit-test-value-check and persist " +
-        "unit_test_value_result.",
+        "Run bill-unit-test-value-check independently against criteria, its rubric, and diff_projection.",
       "completeness_audit" to
-        "Reuse criteria_summary, diff_summary, review_result, and unit_test_value_result, then persist " +
-        "completeness_audit_result.",
+        "Run completeness independently against criteria, its rubric, and diff_projection.",
       "verdict" to
-        "Reuse saved review, unit test value, and audit artifacts, then write the final verdict without rerunning " +
-        "earlier phases.",
+        "Reuse only compact typed evaluator receipts to produce the final verdict without rerunning earlier phases.",
       "finish" to "Close the workflow by marking the verdict complete and emitting the terminal summary.",
     ),
     continuationReferenceSections =
@@ -120,16 +142,15 @@ object FeatureVerifyWorkflowDefinition {
         "still requires it, then persist feature_flag_audit_result.",
       "code_review" to
         "Reuse the saved criteria_summary and diff_summary artifacts, pass orchestrated=true to bill-code-review, " +
-        "and store the returned telemetry payload with the review result.",
+        "persist a compact typed receipt, and keep telemetry in its dedicated store.",
       "unit_test_value_check" to
-        "Reuse diff_summary and review_result, run bill-unit-test-value-check against the PR diff, and persist " +
-        "unit_test_value_result.",
+        "Run independently from sibling evaluators using criteria_summary, unit_test_value_rubric, and the " +
+        "checkpoint-scoped diff_projection.",
       "completeness_audit" to
-        "Reuse criteria_summary, diff_summary, review_result, and unit_test_value_result. If the verify target " +
-        "changed materially, refresh the diff before re-running the audit.",
+        "Run independently from sibling evaluators using criteria_summary, completeness_rubric, and the " +
+        "checkpoint-scoped diff_projection. Refresh the projection if the target changed materially.",
       "verdict" to
-        "Reuse the saved review, unit test value, and audit artifacts to produce the final verdict without rerunning " +
-        "earlier steps unless recovery made them stale.",
+        "Reuse only compact typed evaluator receipts to produce the final verdict without rerunning earlier phases.",
       "finish" to
         "Do not re-run analysis. Close the workflow using the saved verdict_result and return the terminal summary " +
         "only.",
@@ -138,16 +159,29 @@ object FeatureVerifyWorkflowDefinition {
     listOf(
       "input_context",
       "criteria_summary",
-      "diff_summary",
-      "feature_flag_audit_result",
-      "review_result",
-      "unit_test_value_result",
-      "completeness_audit_result",
+      "diff_projection",
+      "feature_flag_audit_receipt",
+      "code_review_receipt",
+      "unit_test_value_receipt",
+      "completeness_audit_receipt",
       "verdict_result",
       "session_notes",
       "review_diff_pointer",
     ),
     openPriorStepsCompleted = true,
     completedTerminalSummaryArtifact = "verdict_result",
+    inputProjectionsByStep = mapOf(
+      "feature_flag_audit" to projection("criteria_summary", "feature_flag_policy", "diff_projection"),
+      "code_review" to projection("criteria_summary", "review_rubric", "diff_projection"),
+      "unit_test_value_check" to projection("criteria_summary", "unit_test_value_rubric", "diff_projection"),
+      "completeness_audit" to projection("criteria_summary", "completeness_rubric", "diff_projection"),
+      "verdict" to projection(
+        "feature_flag_audit_receipt",
+        "code_review_receipt",
+        "unit_test_value_receipt",
+        "completeness_audit_receipt",
+        "diff_projection",
+      ),
+    ),
   )
 }

@@ -799,12 +799,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(resumeLauncher),
     )
 
-    assertEquals(0, resume.exitCode, resume.stdout)
-    assertContains(resume.stdout, "workflow_id: $workflowId")
-    assertContains(
-      resume.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push",
-    )
+    assertEquals(1, resume.exitCode, resume.stdout)
+    assertContains(resume.stdout, "is terminal and cannot be resumed")
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
   }
 
@@ -1987,6 +1983,9 @@ private class RecordingPhaseLauncher(
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
         "plan" -> EXECUTABLE_PLAN_OUTPUTS
         "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
+        "validate" -> VALIDATION_RESULT_OUTPUTS
+        "write_history" -> HISTORY_RESULT_OUTPUTS
+        "commit_push" -> COMMIT_PUSH_RESULT_OUTPUTS
         else -> """tasks: ["task-1"]"""
       }
       val base =
@@ -2023,6 +2022,17 @@ private class RecordingPhaseLauncher(
         // The mutating-phase reconciliation gate reads this alongside the receipt's own evidence.
         """reconciled_state: {reconciled: true, """ +
         """evidence: "All planned changes are present at their intended state."}}"""
+
+    private const val VALIDATION_RESULT_OUTPUTS: String =
+      """{validation_result: {validation_status: "passed", checks: ["FooTest"], """ +
+        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}}}"""
+
+    private const val HISTORY_RESULT_OUTPUTS: String =
+      """{history_result: {changed_paths: ["agent/history.md"], decisions_recorded: []}}"""
+
+    private const val COMMIT_PUSH_RESULT_OUTPUTS: String =
+      """{commit_push_result: {commit_sha: "commit-runtime-1", """ +
+        """branch: "feat/pre-created-runtime-branch", base_branch: "main", pushed: true}}"""
 
     fun validPhaseOutputForTest(phaseId: String): String = validPhaseOutput(phaseId)
 

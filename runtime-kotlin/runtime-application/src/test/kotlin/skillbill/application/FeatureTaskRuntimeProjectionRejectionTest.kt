@@ -30,7 +30,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val planPrompt = requireNotNull(
       harness.launcher.requests
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
@@ -94,7 +94,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val auditPrompt = requireNotNull(
       harness.launcher.requests
         .map { requireNotNull(it.skillRunRequest.promptOverride) }

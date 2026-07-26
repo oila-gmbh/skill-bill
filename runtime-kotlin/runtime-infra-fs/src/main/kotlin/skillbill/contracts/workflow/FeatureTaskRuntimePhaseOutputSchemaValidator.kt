@@ -202,7 +202,13 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val location = first.getValue("location") as String
     val issue = first.getValue("issue") as String
     val gapId = "${criterion.lowercase()}-gap-1"
-    val artifactRef = (first["file"] as? String)?.let { "$it:$location" } ?: location
+    val artifactRef = "$criterion:" + gaps.joinToString("--") { gap ->
+      val gapLocation = gap.getValue("location") as String
+      listOfNotNull(gap["file"] as? String, gapLocation)
+        .joinToString("-")
+        .replace('/', '-')
+        .replace(':', '-')
+    }
     return mapOf(
       "gap_id" to gapId,
       "acceptance_criterion_ref" to criterion,
@@ -213,7 +219,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         "check_ref" to criterion,
       ),
       "diagnosis" to issue,
-      "affected_boundary" to location,
+      "affected_boundary" to gaps.joinToString(" | ") { it.getValue("location") as String },
       "repair_items" to gaps.mapIndexed { index, gap ->
         val itemLocation = gap.getValue("location") as String
         val itemFix = gap.getValue("fix") as String

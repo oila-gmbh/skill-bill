@@ -224,8 +224,17 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot)
-    val stepArtifacts = stepArtifactKeys.associateWith { key ->
+    val declaredProjection = definition.inputProjectionsByStep[resume.resumeStepId]?.let {
+      WorkflowInputProjectionSelector.select(
+        definition = definition,
+        snapshot = snapshot,
+        stepId = resume.resumeStepId,
+        producerIteration = attemptCount,
+      )
+    }
+    val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
+      ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
+    val stepArtifacts = declaredProjection?.artifacts ?: stepArtifactKeys.associateWith { key ->
       resolvedArtifactValue(definition, snapshot, key).value
     }
     val currentStepArtifactKeys = resume.requiredArtifacts

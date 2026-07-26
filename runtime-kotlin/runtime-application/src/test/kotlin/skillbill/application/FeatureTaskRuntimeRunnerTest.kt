@@ -366,7 +366,19 @@ class FeatureTaskRuntimeRunnerTest {
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("review", 1, VALID_OUTPUT),
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+        "write_history",
+        1,
+        validJsonOutput("write_history"),
+      ),
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+        "commit_push",
+        1,
+        validJsonOutput("commit_push"),
+      ),
     )
 
     val briefings = ALL_PHASES.associateWith { phaseId ->
@@ -623,14 +635,16 @@ class FeatureTaskRuntimeRunnerTest {
     // Audit runs before review, so it no longer carries any review output.
     assertFalse(auditBriefing.hasUpstreamReceipt("review"))
     val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, reviewBriefing.upstreamReceipt("implement"))
-    assertEquals(VALID_AUDIT_OUTPUT, reviewBriefing.upstreamReceipt("audit"))
+    assertContains(reviewBriefing.briefingText, "clearance_status: satisfied")
+    assertFalse(reviewBriefing.briefingText.contains(IMPLEMENT_OUTPUT))
     val historyBriefing = requireNotNull(briefings["write_history"]) { "history briefing must be persisted" }
-    assertEquals(IMPLEMENT_OUTPUT, historyBriefing.upstreamReceipt("implement"))
+    assertContains(historyBriefing.briefingText, "boundary_candidates")
+    assertContains(historyBriefing.briefingText, "validation_status: passed")
     val commitBriefing = requireNotNull(briefings["commit_push"]) { "commit briefing must be persisted" }
-    assertTrue(commitBriefing.hasUpstreamReceipt("write_history"))
+    assertContains(commitBriefing.briefingText, "gate_attestations")
+    assertContains(commitBriefing.briefingText, "decisions_recorded")
     val prBriefing = requireNotNull(briefings["pr"]) { "pr briefing must be persisted" }
-    assertTrue(prBriefing.hasUpstreamReceipt("commit_push"))
+    assertContains(prBriefing.briefingText, "commit_sha")
   }
 
   @Test
@@ -1331,8 +1345,15 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
     )
     assertEquals("review", paused.pausedPhase)
     val cappedLaunches = reviewLaunches
+    assertEquals(
+      harness.reviewedDeltaDigest(),
+      harness.currentReviewDeltaDigest(git, repoRoot),
+      "the paused review must retain the digest of the unchanged delta it judged",
+    )
 
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+    )
     assertEquals(
       cappedLaunches,
       reviewLaunches,
@@ -1429,12 +1450,8 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
     assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
-    // implement carries its reconciliation report (mutating-phase gate), so review's implement
-    // upstream is the full reconciliation output rather than the minimal VALID_OUTPUT.
-    assertEquals(
-      normalizedOutput(validJsonOutput("implement")),
-      normalizedOutput(briefings.getValue("review").requireUpstreamReceipt("implement")),
-    )
+    assertContains(briefings.getValue("review").briefingText, "clearance_status: satisfied")
+    assertFalse(briefings.getValue("review").briefingText.contains(validJsonOutput("implement")))
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "diff")
   }
@@ -2765,7 +2782,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     // (e) the fix briefing carries the review findings handed off for remediation.
     val fixBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement_fix"])
     assertContains(fixBriefing.briefingText, REVIEW_BLOCKER_MESSAGE)
-    val postFixFingerprint = requireNotNull(
+    val deliveredFixLaunchFingerprint = requireNotNull(
       harness.recorder.loadDeliveredProjections(WORKFLOW_ID)
         .orEmpty()["implement_fix"]
         ?.repositoryCheckpointFingerprint,
@@ -2773,10 +2790,9 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val repeatedReviewProjection = requireNotNull(
       harness.recorder.loadDeliveredProjections(WORKFLOW_ID).orEmpty()["review"],
     )
-    assertEquals(
-      postFixFingerprint,
-      repeatedReviewProjection.repositoryCheckpointFingerprint,
-      "repeated review must match the runtime-captured post-fix checkpoint",
+    assertTrue(
+      deliveredFixLaunchFingerprint != repeatedReviewProjection.repositoryCheckpointFingerprint,
+      "implement_fix delivery must remain its actual launch projection while repeated review uses the post-fix tree",
     )
     // (AC6) each implement_fix launch + re-review carry the review_fix loop id + iteration in the ledger.
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
@@ -4535,7 +4551,7 @@ internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String
     // A clean audit must likewise emit a verification signal (an empty unmet_criteria array affirms
     // every acceptance criterion is met) or the audit gate blocks (SKILL-85 Subtask 5 AC1).
     phaseId == "audit" -> VALID_AUDIT_OUTPUT
-    else -> VALID_OUTPUT
+    else -> validJsonOutput(phaseId)
   }
 }
 

@@ -77,6 +77,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = multiUpstreamOutputs(oversizedBytes),
+      repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        "fixture-checkpoint",
+      ),
     )
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
@@ -96,7 +99,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   }
 
   @Test
-  fun `normal-size upstream projections are delivered verbatim and within the framing ceiling`() {
+  fun `normal-size review repair projection excludes unrelated upstream bodies`() {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
@@ -110,15 +113,18 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = recordedOutputs,
+      repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        "fixture-checkpoint",
+      ),
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    assertContains(briefing.briefingText, """{"plan":"$planBody"}""")
-    assertContains(briefing.briefingText, """{"implement":"$implementBody"}""")
-    assertContains(briefing.briefingText, """{"review":"$reviewBody"}""")
-    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN}")
-    assertEquals("""{"plan":"$planBody"}""", briefing.requireUpstreamReceipt("plan"))
+    assertFalse(briefing.briefingText.contains(planBody))
+    assertFalse(briefing.briefingText.contains(implementBody))
+    assertFalse(briefing.briefingText.contains(reviewBody))
+    assertContains(briefing.briefingText, "unresolved_blocker_findings")
+    assertContains(briefing.briefingText, "repository_checkpoint")
   }
 
   @Test
@@ -194,7 +200,6 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
     ).forEach { phaseId ->
       val briefing = briefingFor(phaseId)
       assertFalse(
@@ -211,6 +216,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       assertEquals(invariants.acceptanceCriteria, briefing.acceptanceCriteria)
       assertContains(briefing.briefingText, "spec_reference:")
     }
+    assertContains(
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR).briefingText,
+      "acceptance_criteria:",
+    )
   }
 
   @Test
@@ -251,7 +260,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       """{"implement":"${"i".repeat(bodyBytes)}"}""",
     ),
-    phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"${"r".repeat(bodyBytes)}"}"""),
+    phaseOutput(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      """{"produced_outputs":{"findings":[{"severity":"blocker","message":"${"r".repeat(bodyBytes)}"}]}}""",
+    ),
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =

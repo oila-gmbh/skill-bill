@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 
 class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   @Test
-  fun `goal runner stops when a completed runtime report carries a blocked child outcome`() {
+  fun `goal runner completes when the typed commit receipt carries its commit sha`() {
     val parity = goalChildParityRun(
       launcher = defaultPhaseAwareLauncher(),
       config = GoalChildParityConfig(
@@ -36,11 +36,8 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     )
 
     val child = assertIs<FeatureTaskRuntimeRunReport.Completed>(parity.childReports.single())
-    assertEquals("blocked", child.subtaskOutcome?.status)
-    val stopped = assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertContains(stopped.stop.blockedReason, "no commit SHA")
-    assertEquals(WORKFLOW_ID, stopped.stop.workflowId)
-    assertEquals("commit_push", stopped.stop.lastResumableStep)
+    assertEquals("complete", child.subtaskOutcome?.status)
+    assertIs<GoalRunnerRunReport.Completed>(parity.report)
   }
 
   @Test
@@ -199,7 +196,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: implement") }
       .last()
-    assertContains(remediationPrompt, "### from: preplan")
+    assertTrue(!remediationPrompt.contains("### from: preplan"))
     assertContains(remediationPrompt, "### from: plan")
     assertContains(remediationPrompt, "AC-2 acceptance criterion is not yet implemented")
     val planningRecords = runtime.recorder.loadPhaseRecords(workflowId).orEmpty()
@@ -596,7 +593,11 @@ private fun RunnerHarness.goalChildObservation(
     remediationHandoffs = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: implement") && it.contains("audit_repair_plan") }
       .map { prompt ->
-        prompt.substringAfter("audit_repair_plan:\n").substringBefore("audit_remediation_execution_rules:").trim()
+        prompt
+          .replace(Regex("for issue SKILL-\\d+\\."), "for issue <issue>.")
+          .substringAfter("audit_repair_plan:\n")
+          .substringBefore("audit_remediation_execution_rules:")
+          .trim()
       },
     reviewComposition = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }

@@ -64,7 +64,7 @@ Continuation-mode rules:
 
 - Keep the same `workflow_id` and `session_id`; do not open a new workflow.
 - Use `resume_step_id` / `continue_step_id` as the starting point.
-- Use `current_step_artifacts` as authoritative recovered context; inline values are complete, while summarized values carry explicit size, preview, truncation, and omission metadata. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
+- Use the validated `current_step_projection` as the authoritative recovered context. Fresh launches and continuations resolve the same projection for the exact step, producer iteration, and repository checkpoint. The runtime rejects missing or oversized projections; it never truncates them or falls back to full artifacts. Do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 - Read the `reference_sections` listed in the continuation payload before resuming work.
 - Skip already-completed earlier steps unless the normal workflow loop sends work backwards (review back to `implement_fix`, or audit back to implement).
 - After the resumed step completes, continue the normal sequence defined below.
@@ -99,8 +99,8 @@ unchanged.
 
 On retry or resume, durable workflow state is the single source of authority. Avoid re-injecting prior plans, reviews, implementation summaries, or unrelated decomposition artifacts into the resumed run:
 
-- Treat `current_step_artifacts` as the bounded recovered context. Pull only the artifacts the resumed step needs; do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
-- When an artifact is summarized or omitted with size/truncation metadata, work from the summary and fetch the specific omitted slice read-only only if the resumed step genuinely needs it. Prefer scoped reads over full re-injection.
+- Treat `current_step_projection` as the complete bounded recovered context. Do not re-paste prior plans, full prior review reports, prior implementation RESULT summaries, or sibling-subtask decomposition artifacts into history.
+- Full durable artifacts and private evidence remain available only through an explicit, read-only operator diagnostic such as `workflow show`; diagnostic results never become phase-launch input.
 - Resume context is bounded: do not reconstruct earlier phases from chat history unless the step explicitly requires user confirmation.
 
 Review and fix-loop reuse (AC5):

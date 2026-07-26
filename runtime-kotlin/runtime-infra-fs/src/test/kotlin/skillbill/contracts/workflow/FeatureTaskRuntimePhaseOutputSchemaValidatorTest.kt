@@ -366,7 +366,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
-  fun `compact audit gaps for one criterion become ordered repair items under one durable gap`() {
+  fun `compact audit gaps for one criterion preserve distinct failure locations`() {
     val output =
       """
       {
@@ -400,13 +400,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"]).orEmpty()
     val plan = JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"]).orEmpty()
     val gaps = (plan["gaps"] as List<*>).map { JsonSupport.anyToStringAnyMap(it).orEmpty() }
-    val repairItems = (gaps.single()["repair_items"] as List<*>)
-      .map { JsonSupport.anyToStringAnyMap(it).orEmpty() }
-
     assertEquals("ac-002-gap-1", gaps.single()["gap_id"])
+    val evidence = JsonSupport.anyToStringAnyMap(gaps.single()["failure_evidence"]).orEmpty()
     assertEquals(
-      listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
-      repairItems.map { it["repair_item_id"] },
+      "AC-002:Runtime.prepareLaunch--WorkflowDefinition.review",
+      evidence["artifact_ref"],
     )
     assertEquals(1, (produced["unmet_criteria"] as List<*>).size)
   }

@@ -810,7 +810,11 @@ private fun briefingFor(
       FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
       FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
       FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("review", 1, """{"review":"ok"}"""),
+      FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+      FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+      FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
+      FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
+      FeatureTaskRuntimePhaseOutput("commit_push", 1, validJsonOutput("commit_push")),
     ),
     auditRepairState = auditRepairState,
     // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).

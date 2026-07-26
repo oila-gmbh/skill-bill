@@ -225,9 +225,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       appendLine("audit_gaps:")
       handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
     }
-    handoff.auditRepairPlan?.let { plan ->
-      appendLine("audit_repair_plan:")
-      JsonSupport.mapToJsonString(auditRepairPlanToWire(plan)).lineSequence().forEach { appendLine("  $it") }
+    handoff.auditRepairPlan?.let {
       appendLine("audit_remediation_execution_rules:")
       appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
       appendLine(

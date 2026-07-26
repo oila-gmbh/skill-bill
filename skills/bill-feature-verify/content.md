@@ -31,7 +31,7 @@ After every major phase boundary, call `feature_verify_workflow_update` with:
 
 Workflow state is independent of telemetry settings. Persist it even when `feature_verify_started` or `feature_verify_finished` returns `status: skipped`.
 
-Stable step ids: `collect_inputs`, `extract_criteria`, `gather_diff`, `feature_flag_audit`, `code_review`, `unit_test_value_check`, `completeness_audit`, `verdict`, `finish`. Stable artifact names: `input_context`, `criteria_summary`, `diff_summary`, `feature_flag_audit_result`, `review_result`, `unit_test_value_result`, `completeness_audit_result`, `verdict_result`.
+Stable step ids: `collect_inputs`, `extract_criteria`, `gather_diff`, `feature_flag_audit`, `code_review`, `unit_test_value_check`, `completeness_audit`, `verdict`, `finish`. Stable domain artifact names: `input_context`, `criteria_summary`, `diff_projection`, `feature_flag_audit_receipt`, `code_review_receipt`, `unit_test_value_receipt`, `completeness_audit_receipt`, `verdict_result`.
 
 ## Continuation Mode
 
@@ -122,13 +122,13 @@ The audit is legally skippable when the spec and diff do not require it. Persist
 
 Step id: `code_review`
 
-Primary artifact: `review_result`
+Primary artifact: `code_review_receipt`
 
 Run `bill-code-review` against the PR diff. Follow the full skill instructions including any matching `.agents/skill-overrides.md` section.
 
-When this skill runs `bill-code-review`, this skill is itself a parent. Pass `orchestrated=true` to `import_review` and `triage_findings`, collect the returned `telemetry_payload`, and store it alongside `review_result` so the verify workflow remains the lifecycle owner.
+When this skill runs `bill-code-review`, this skill is itself a parent. Pass `orchestrated=true` to `import_review` and `triage_findings`. Store the returned `telemetry_payload` only in the dedicated telemetry store; persist a compact typed code-review receipt in workflow domain state.
 
-Persist `review_result` after review finishes. Update workflow state so `code_review` is completed and `unit_test_value_check` is running.
+Persist `code_review_receipt` after review finishes. Update workflow state so `code_review` is completed and `unit_test_value_check` is running.
 
 ## Step 6: Unit Test Value Check
 
@@ -136,9 +136,9 @@ Step id: `unit_test_value_check`
 
 Primary artifact: `unit_test_value_result`
 
-Run `bill-unit-test-value-check` against the PR diff. If the diff contains no unit tests, persist a skipped `unit_test_value_result` that names the reviewed scope and states that no unit tests were present. If unit tests are present, preserve the skill's verdict, table findings, keep/rewrite/delete guidance, and missing high-value cases in `unit_test_value_result`.
+Run `bill-unit-test-value-check` independently against acceptance criteria, its declared rubric, and the authoritative checkpoint-scoped diff projection. It must not receive code-review, feature-flag, or completeness output. If the diff contains no unit tests, persist a compact skipped receipt. Otherwise persist only its typed bounded receipt; keep the full report private.
 
-Persist `unit_test_value_result` after the check finishes. Update workflow state so `unit_test_value_check` is completed or skipped and `completeness_audit` is running.
+Persist `unit_test_value_receipt` after the check finishes. Update workflow state so `unit_test_value_check` is completed or skipped and `completeness_audit` is running.
 
 ## Step 7: Completeness Audit
 
@@ -148,7 +148,7 @@ Primary artifact: `completeness_audit_result`
 
 Use the Completeness Audit rubric below for the audit format and rules.
 
-Persist `completeness_audit_result` when the audit succeeds. When the verify target changes materially during the same session, loop back to `gather_diff`, `code_review`, or `unit_test_value_check` and increment the next step's `attempt_count`. Otherwise, update workflow state so `completeness_audit` is completed and `verdict` is running.
+Run completeness independently against acceptance criteria, its declared rubric, and the authoritative checkpoint-scoped diff projection; do not provide sibling evaluator output. Persist only `completeness_audit_receipt`. When the verify target changes materially during the same session, invalidate stale projections and receipts, refresh the checkpoint-scoped diff, and increment the next step's `attempt_count`. Otherwise, update workflow state so `completeness_audit` is completed and `verdict` is running.
 
 ## Step 8: Consolidated Verdict
 

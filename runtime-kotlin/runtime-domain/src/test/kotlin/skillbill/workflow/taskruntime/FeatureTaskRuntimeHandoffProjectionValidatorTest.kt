@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -142,7 +143,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
             FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
               FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
               1,
-              """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"}]}}""",
+              """{"produced_outputs":{"findings":[""" +
+                """{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},""" +
+                """{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"}]}}""",
             ),
           ),
         ),
@@ -190,9 +193,62 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       fields.getValue("changed_paths").value,
     )
     assertEquals(listOf("src/Foo.kt", "src/FooTest.kt"), changedPaths.items)
-    assertEquals(emptyList(), assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
-      fields.getValue("tests_added").value,
-    ).items)
+    assertEquals(
+      emptyList(),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+        fields.getValue("tests_added").value,
+      ).items,
+    )
+  }
+
+  @Test
+  fun `audit clearance derives gate status scope and checkpoint from runtime-owned facts`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producer),
+      projectionName = "audit_clearance",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      declaredFieldNames = listOf("clearance_status", "review_scope", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("runtime-tree")
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            producer to FeatureTaskRuntimePhaseOutput(
+              phaseId = producer,
+              iteration = 2,
+              payload = """{"produced_outputs":{"unmet_criteria":[],"audit_result":{""" +
+                """"clearance_status":"agent-claim","review_scope":"agent-scope",""" +
+                """"repository_checkpoint":{"fingerprint":"agent-tree"}}}}""",
+            ),
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    assertEquals(
+      FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(fields.getValue("clearance_status").value).text,
+    )
+    assertEquals(
+      "branch_diff",
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(fields.getValue("review_scope").value).text,
+    )
+    assertEquals(
+      "runtime-tree",
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.CompactReference>(
+        fields.getValue("repository_checkpoint").value,
+      ).value,
+    )
   }
 
   @Test
@@ -347,20 +403,20 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `legacy must_match refreshes a stale checkpoint instead of rejecting repository movement`() {
-    val refreshed = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+  fun `legacy must_match refreshes repository movement`() {
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
         declarations = listOf(declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH)),
         resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
         expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-def"),
       ),
     )
-    assertEquals("head-abc", refreshed.repositoryCheckpoint?.fingerprint)
+    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
   }
 
   @Test
   fun `legacy must_match does not require a recorded checkpoint`() {
-    val refreshed = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
         declarations = listOf(
           declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
@@ -368,7 +424,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
         resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
       ),
     )
-    assertEquals("head-abc", refreshed.repositoryCheckpoint?.fingerprint)
+    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
   }
 
   @Test
@@ -504,6 +560,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     mandatesAndOverrides = emptyList(),
   )
 
+  @Suppress("LongParameterList")
   private fun inputs(
     consumerPhaseId: String = CONSUMER,
     declarations: List<PhaseHandoffProjectionDeclaration> = listOf(declaration()),

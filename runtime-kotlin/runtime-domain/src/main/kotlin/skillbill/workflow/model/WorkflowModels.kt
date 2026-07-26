@@ -120,6 +120,27 @@ data class WorkflowDefinition(
   val openPriorStepsCompleted: Boolean,
   val completedTerminalSummaryArtifact: String,
   val workflowMode: String? = null,
+  val inputProjectionsByStep: Map<String, WorkflowInputProjectionDeclaration> = emptyMap(),
   val requiredArtifactPresenceResolver: RequiredArtifactPresenceResolver =
     RequiredArtifactPresenceResolver.DEFAULT,
+)
+
+/**
+ * Closed-world declaration for model-delivered workflow input. Durable artifacts not named
+ * here remain private and are available only through explicit operator inspection surfaces.
+ */
+data class WorkflowInputProjectionDeclaration(
+  val requiredArtifactKeys: List<String>,
+  val forbiddenArtifactKeys: Set<String>,
+  val maxUtf8Bytes: Int,
+  val maxCollectionItems: Int,
+  val repositoryCheckpointArtifactKey: String,
+)
+
+data class WorkflowInputProjection(
+  val stepId: String,
+  val producerIteration: Int,
+  val repositoryCheckpoint: Any?,
+  val artifacts: Map<String, Any?>,
+  val utf8Bytes: Int,
 )

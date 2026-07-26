@@ -1,8 +1,27 @@
 package skillbill.workflow.implement
 
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureImplementWorkflowDefinition {
+  private val privateArtifactKeys = setOf(
+    "step_artifacts",
+    "telemetry_payload",
+    "progress",
+    "prompt",
+    "logs",
+    "source_body",
+    "complete_diff",
+  )
+
+  private fun projection(vararg keys: String) = WorkflowInputProjectionDeclaration(
+    requiredArtifactKeys = keys.toList(),
+    forbiddenArtifactKeys = privateArtifactKeys,
+    maxUtf8Bytes = 64 * 1024,
+    maxCollectionItems = 512,
+    repositoryCheckpointArtifactKey = "repository_evidence",
+  )
+
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-task",
     workflowName = "bill-feature-task",
@@ -20,8 +39,8 @@ object FeatureImplementWorkflowDefinition {
       "preplan",
       "plan",
       "implement",
-      "review",
       "audit",
+      "review",
       "validate",
       "write_history",
       "commit_push",
@@ -35,8 +54,8 @@ object FeatureImplementWorkflowDefinition {
       "preplan" to "Step 2: Pre-Planning",
       "plan" to "Step 3: Create Implementation Plan or Decompose",
       "implement" to "Step 4: Execute Plan",
-      "review" to "Step 5: Code Review",
-      "audit" to "Step 6: Completeness Audit",
+      "audit" to "Step 5: Completeness Audit",
+      "review" to "Step 6: Code Review",
       "validate" to "Step 6b: Quality Check",
       "write_history" to "Step 7: Boundary History",
       "commit_push" to "Step 8: Commit and Push",
@@ -50,9 +69,9 @@ object FeatureImplementWorkflowDefinition {
       "preplan" to listOf("assessment", "branch"),
       "plan" to listOf("assessment", "preplan_digest"),
       "implement" to listOf("plan"),
-      "review" to listOf("implementation_summary"),
-      "audit" to listOf("implementation_summary", "review_result"),
-      "validate" to listOf("audit_report"),
+      "audit" to listOf("plan", "implementation_summary", "repository_evidence"),
+      "review" to listOf("implementation_summary", "audit_report", "repository_evidence"),
+      "validate" to listOf("audit_report", "review_result", "repository_evidence"),
       "write_history" to listOf("implementation_summary", "validation_result"),
       "commit_push" to listOf("implementation_summary", "validation_result", "history_result"),
       "pr_description" to listOf("implementation_summary", "branch"),
@@ -70,9 +89,10 @@ object FeatureImplementWorkflowDefinition {
       "implement" to
         "Resume implementation from the persisted plan, then refresh implementation_summary.",
       "review" to
-        "Resume code review from the latest implementation_summary and persist review_result after each pass.",
+        "Resume code review from the audited implementation receipt and checkpoint-scoped repository evidence.",
       "audit" to
-        "Resume the completeness audit from implementation_summary and review_result, then persist audit_report.",
+        "Resume the completeness audit from the executable plan, implementation receipt, acceptance criteria, " +
+        "and checkpoint-scoped repository evidence; review_result is not an audit input.",
       "validate" to "Resume final validation from the latest audit_report, then persist validation_result.",
       "write_history" to
         "Resume boundary history from implementation_summary and validation_result, then persist history_result.",
@@ -167,11 +187,12 @@ object FeatureImplementWorkflowDefinition {
         "then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and " +
         "heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.",
       "review" to
-        "Do not re-run implementation first unless the review loop sends work back. Start from the latest " +
-        "implementation_summary artifact and run Step 5 inline in the orchestrator.",
+        "Do not re-run implementation first unless the review loop sends work back. Start from the audited " +
+        "implementation receipt and checkpoint-scoped repository evidence and run Step 6 inline.",
       "audit" to
-        "Resume at the completeness audit using the latest implementation_summary and review_result artifacts. Only " +
-        "loop back to planning if the audit actually finds gaps. Require durable progress writes using workflow_id, " +
+        "Resume at the completeness audit using the executable plan, implementation receipt, acceptance criteria, " +
+        "and checkpoint-scoped repository evidence. Never inject review_result. Only loop back to implementation " +
+        "when the audit finds gaps. Require durable progress writes using workflow_id, " +
         "step_id=audit, and the resumed attempt_count.",
       "validate" to
         "Resume the final validation gate from the latest audit_report artifact, then continue the normal " +
@@ -195,5 +216,19 @@ object FeatureImplementWorkflowDefinition {
     openPriorStepsCompleted = false,
     completedTerminalSummaryArtifact = "pr_result",
     workflowMode = "prose",
+    inputProjectionsByStep = mapOf(
+      "implement" to projection("plan", "repository_evidence"),
+      "audit" to projection("plan", "implementation_summary", "repository_evidence"),
+      "review" to projection("implementation_summary", "audit_report", "repository_evidence"),
+      "validate" to projection("audit_report", "review_result", "repository_evidence"),
+      "write_history" to projection("implementation_summary", "validation_result", "repository_evidence"),
+      "commit_push" to projection(
+        "implementation_summary",
+        "validation_result",
+        "history_result",
+        "repository_evidence",
+      ),
+      "pr_description" to projection("implementation_summary", "branch", "repository_evidence"),
+    ),
   )
 }
