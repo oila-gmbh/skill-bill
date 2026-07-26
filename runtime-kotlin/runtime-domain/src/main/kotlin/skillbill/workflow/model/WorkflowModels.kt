@@ -131,6 +131,7 @@ data class WorkflowDefinition(
  */
 data class WorkflowInputProjectionDeclaration(
   val requiredArtifactKeys: List<String>,
+  val projectedFieldsByArtifactKey: Map<String, Set<String>> = emptyMap(),
   val forbiddenArtifactKeys: Set<String>,
   val maxUtf8Bytes: Int,
   val maxCollectionItems: Int,

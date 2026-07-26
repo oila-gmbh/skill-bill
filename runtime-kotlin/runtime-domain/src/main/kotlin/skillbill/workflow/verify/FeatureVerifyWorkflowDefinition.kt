@@ -12,6 +12,7 @@ object FeatureVerifyWorkflowDefinition {
     "source_body",
     "complete_diff",
     "raw_review_output",
+    "progress_write_failures",
   )
 
   private fun projection(vararg keys: String) = WorkflowInputProjectionDeclaration(

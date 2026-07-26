@@ -23,7 +23,15 @@ object WorkflowInputProjectionSelector {
     if (missing.isNotEmpty()) {
       throw invalid(definition, "projection for step '$stepId' is missing required artifact keys: ${missing.joinToString()}")
     }
-    val selected = declaration.requiredArtifactKeys.associateWith(snapshot.artifacts::get)
+    val selected = declaration.requiredArtifactKeys.associateWith { artifactKey ->
+      projectArtifact(
+        definition = definition,
+        stepId = stepId,
+        artifactKey = artifactKey,
+        value = snapshot.artifacts[artifactKey],
+        projectedFields = declaration.projectedFieldsByArtifactKey[artifactKey],
+      )
+    }
     val forbidden = selected.keys.intersect(declaration.forbiddenArtifactKeys) +
       selected.values.flatMapTo(mutableSetOf()) { nestedKeys(it) }.intersect(declaration.forbiddenArtifactKeys)
     if (forbidden.isNotEmpty()) {
@@ -50,6 +58,17 @@ object WorkflowInputProjectionSelector {
     if (claimedIdentity != checkpointIdentity) {
       throw invalid(definition, "projection for step '$stepId' repository checkpoint evidence is stale or mismatched")
     }
+    selected
+      .filterKeys { it != declaration.repositoryCheckpointArtifactKey }
+      .values
+      .mapNotNull(::nestedRepositoryCheckpointIdentity)
+      .firstOrNull { it != checkpointIdentity }
+      ?.let {
+        throw invalid(
+          definition,
+          "projection for step '$stepId' artifact checkpoint does not match authoritative repository evidence",
+        )
+      }
     return WorkflowInputProjection(
       stepId = stepId,
       producerIteration = producerIteration,
@@ -66,6 +85,27 @@ object WorkflowInputProjectionSelector {
     else -> 1
   }
 
+  private fun projectArtifact(
+    definition: WorkflowDefinition,
+    stepId: String,
+    artifactKey: String,
+    value: Any?,
+    projectedFields: Set<String>?,
+  ): Any? {
+    if (projectedFields == null) return value
+    val typed = value as? Map<*, *>
+      ?: throw invalid(definition, "projection for step '$stepId' artifact '$artifactKey' is not typed")
+    val missingFields = projectedFields.filterNot(typed::containsKey)
+    if (missingFields.isNotEmpty()) {
+      throw invalid(
+        definition,
+        "projection for step '$stepId' artifact '$artifactKey' is missing required fields: " +
+          missingFields.sorted().joinToString(),
+      )
+    }
+    return projectedFields.associateWith(typed::get)
+  }
+
   private fun nestedKeys(value: Any?): Set<String> = when (value) {
     is Map<*, *> -> value.entries.flatMapTo(mutableSetOf()) { (key, nested) ->
       buildSet {
@@ -76,6 +116,12 @@ object WorkflowInputProjectionSelector {
     is Iterable<*> -> value.flatMapTo(mutableSetOf(), ::nestedKeys)
     is Array<*> -> value.flatMapTo(mutableSetOf(), ::nestedKeys)
     else -> emptySet()
+  }
+
+  private fun nestedRepositoryCheckpointIdentity(value: Any?): Any? {
+    val typed = value as? Map<*, *> ?: return null
+    val nested = typed["repository_checkpoint"] as? Map<*, *> ?: return null
+    return nested["fingerprint"] ?: nested["checkpoint"]
   }
 
   private fun invalid(definition: WorkflowDefinition, detail: String) =

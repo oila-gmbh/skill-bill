@@ -12,10 +12,15 @@ object FeatureImplementWorkflowDefinition {
     "logs",
     "source_body",
     "complete_diff",
+    "progress_write_failures",
   )
 
-  private fun projection(vararg keys: String) = WorkflowInputProjectionDeclaration(
+  private fun projection(
+    vararg keys: String,
+    typedFields: Map<String, Set<String>> = emptyMap(),
+  ) = WorkflowInputProjectionDeclaration(
     requiredArtifactKeys = keys.toList(),
+    projectedFieldsByArtifactKey = typedFields,
     forbiddenArtifactKeys = privateArtifactKeys,
     maxUtf8Bytes = 64 * 1024,
     maxCollectionItems = 512,
@@ -218,9 +223,49 @@ object FeatureImplementWorkflowDefinition {
     workflowMode = "prose",
     inputProjectionsByStep = mapOf(
       "implement" to projection("plan", "repository_evidence"),
-      "audit" to projection("plan", "implementation_summary", "repository_evidence"),
-      "review" to projection("implementation_summary", "audit_report", "repository_evidence"),
-      "validate" to projection("audit_report", "review_result", "repository_evidence"),
+      "audit" to projection(
+        "plan",
+        "implementation_summary",
+        "repository_evidence",
+        typedFields = mapOf(
+          "implementation_summary" to setOf(
+            "projection_kind",
+            "contract_version",
+            "completed_task_ids",
+            "changed_paths",
+            "tests_added",
+            "tests_updated",
+            "deviations",
+            "unresolved_items",
+            "repository_checkpoint",
+          ),
+        ),
+      ),
+      "review" to projection(
+        "implementation_summary",
+        "audit_report",
+        "repository_evidence",
+        typedFields = mapOf(
+          "implementation_summary" to setOf(
+            "projection_kind",
+            "contract_version",
+            "completed_task_ids",
+            "changed_paths",
+            "unresolved_items",
+            "repository_checkpoint",
+          ),
+          "audit_report" to setOf("contract_version", "verdict", "criterion_results"),
+        ),
+      ),
+      "validate" to projection(
+        "audit_report",
+        "review_result",
+        "repository_evidence",
+        typedFields = mapOf(
+          "audit_report" to setOf("contract_version", "verdict", "criterion_results"),
+          "review_result" to setOf("contract_version", "verdict", "findings"),
+        ),
+      ),
       "write_history" to projection("implementation_summary", "validation_result", "repository_evidence"),
       "commit_push" to projection(
         "implementation_summary",
