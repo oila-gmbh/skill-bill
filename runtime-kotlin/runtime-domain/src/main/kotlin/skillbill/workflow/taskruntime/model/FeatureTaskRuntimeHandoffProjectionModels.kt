@@ -496,7 +496,12 @@ data class FeatureTaskRuntimeHandoffProjection(
       iteration = 1,
     ),
 ) {
-  val utf8ByteSize: Int get() = fields.sumOf { it.value.utf8ByteSize }
+  /**
+   * Exact UTF-8 size of the canonical wire representation delivered and persisted. Counting only
+   * values misses field names, value-kind tags, reference metadata, and collection framing.
+   */
+  val utf8ByteSize: Int
+    get() = JsonSupport.mapToJsonString(toEnvelopeMap()).toByteArray(Charsets.UTF_8).size
   val itemCount: Int get() = fields.sumOf { it.value.itemCount }
 
   @OpenBoundaryMap("Feature-task-runtime handoff projection at the durable envelope wire seam")

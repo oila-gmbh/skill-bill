@@ -32,6 +32,7 @@ import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
@@ -54,6 +55,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
@@ -2122,11 +2126,6 @@ internal class FeatureTaskRuntimeRunLoop(
       projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
     }
     if (!needsCheckpoint) return null
-    val fingerprint = gitOperations.repositoryFingerprint(run.request.repoRoot)
-      .takeIf { it.ok }
-      ?.value
-      ?.takeIf(String::isNotBlank)
-      ?: return null
     val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     // On a goal child the review state, not the resolved branch, holds the immutable base and the
     // baseline untracked inventory the parent captured for this subtask alone.
@@ -2135,12 +2134,28 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
     ) ?: return null
+    val headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD"
+    val immutableHead = gitOperations.resolveCommit(run.request.repoRoot, headRevision)
+      .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
+      ?: gitOperations.headCommitSha(run.request.repoRoot).takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
+      ?: return null
+    val baseRevision = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha
+    val immutableBase = baseRevision?.let { revision ->
+      gitOperations.resolveCommit(run.request.repoRoot, revision)
+        .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
+        ?: revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) }
+    }
+    if (baseRevision != null && immutableBase == null) return null
+    val fingerprint = gitOperations.repositoryCheckpointFingerprint(
+      run.request.repoRoot,
+      immutableBase,
+      immutableHead,
+      ownedPaths,
+    ).takeIf { it.ok }?.value?.takeIf(String::isNotBlank) ?: return null
     return FeatureTaskRuntimeRepositoryCheckpoint(
       fingerprint = fingerprint,
-      baseRef = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
-      // The run-owned branch, not a measured HEAD: the durable pair is the same base/head scope review
-      // resolves, and measuring HEAD here would add a git read the commit-sha path deliberately avoids.
-      headRef = resolvedBranch?.branch?.takeIf(String::isNotBlank),
+      baseRef = immutableBase,
+      headRef = immutableHead,
       workingTreeOwnedPaths = ownedPaths,
     )
   }
@@ -2712,6 +2727,7 @@ internal class FeatureTaskRuntimeRunLoop(
       handoff,
       run.request.workflowId,
       planningProjectionValidator,
+      run.request.agentAddonSelection,
     )
     recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
     val passNumber = reviewPassNumber(run, state)
@@ -2736,7 +2752,6 @@ internal class FeatureTaskRuntimeRunLoop(
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       specReference = run.request.runInvariants.specReference,
-      agentAddonSelection = run.request.agentAddonSelection,
     )
     return PreparedLaunch(briefing, prompt)
   }
@@ -2794,6 +2809,11 @@ internal class FeatureTaskRuntimeRunLoop(
           error.message,
       )
     } catch (error: InvalidFeatureTaskRuntimePhaseBriefingFramingError) {
+      recordLaunchSeamRejection(
+        run,
+        FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
+        "phase_briefing",
+      )
       // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
       // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
       // persist and wedge the row with no blockedReason; block durably instead.
@@ -2802,6 +2822,11 @@ internal class FeatureTaskRuntimeRunLoop(
           error.message,
       )
     } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      recordLaunchSeamRejection(
+        run,
+        FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
+        "planning_projection",
+      )
       // A legacy or drifted upstream producer record failed bounded-projection validation. Rather than
       // wedge the consumer on a record it cannot repair, quarantine the record as private evidence and
       // re-enter the producing phase under a bounded regeneration cap.
@@ -2810,6 +2835,11 @@ internal class FeatureTaskRuntimeRunLoop(
         error.message.orEmpty(),
       )
     } catch (error: InvalidWorkflowStateSchemaError) {
+      recordLaunchSeamRejection(
+        run,
+        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
+        "durable_briefing",
+      )
       // A durable handoff/briefing artifact failed schema validation at the launch seam (a stale
       // briefing row, a forbidden legacy field). This is corruption drift a producer re-run cannot
       // reliably repair — the artifact's own contract says recover it out of band — so it keeps the
@@ -2874,6 +2904,28 @@ internal class FeatureTaskRuntimeRunLoop(
         ).distinct().sorted(),
     )
     return reconcileLaunch(run.phaseId, outcome, fileManifest)
+  }
+
+  private fun recordLaunchSeamRejection(
+    run: PhaseRun,
+    classification: FeatureTaskRuntimeProjectionFailureClassification,
+    sourceLabel: String,
+  ) {
+    val producerIteration = run.declaration.projectionDeclarations
+      .map(PhaseHandoffProjectionDeclaration::producerIteration)
+      .maxByOrNull(FeatureTaskRuntimeProducerIteration::iteration)
+      ?: FeatureTaskRuntimeProducerIteration(run.phaseId, 1)
+    recorder.recordProjectionRejection(
+      workflowId = run.request.workflowId,
+      consumerPhaseId = run.phaseId,
+      projectionContractId = run.declaration.projectionDeclarations.firstOrNull()
+        ?.projectionContractId ?: "feature_task_runtime.$sourceLabel",
+      producerIteration = producerIteration,
+      repositoryCheckpointFingerprint = run.reentry?.auditRepairState?.repositoryFingerprint,
+      failureClassification = classification,
+      sourceLabel = sourceLabel,
+      dbOverride = run.request.dbPathOverride,
+    )
   }
 
   private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {

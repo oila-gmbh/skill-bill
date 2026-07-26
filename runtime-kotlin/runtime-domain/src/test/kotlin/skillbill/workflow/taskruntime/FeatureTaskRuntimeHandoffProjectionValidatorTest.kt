@@ -23,11 +23,39 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.contracts.JsonSupport
 
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
 
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
+  @Test
+  fun `projection byte budget counts the complete canonical delivered representation`() {
+    val valueOnlyBytes = """{"plan":"ok"}""".toByteArray(Charsets.UTF_8).size
+    val declaration = declaration(
+      budget = FeatureTaskRuntimeHandoffProjectionBudget(
+        maxUtf8Bytes = valueOnlyBytes,
+        maxCollectionItems = 1,
+      ),
+    )
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs(declarations = listOf(declaration)))
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
+  }
+
+  @Test
+  fun `projection byte size equals its canonical persisted rendering`() {
+    val projection = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())
+      .projections.single()
+
+    assertEquals(
+      JsonSupport.mapToJsonString(projection.toEnvelopeMap()).toByteArray(Charsets.UTF_8).size,
+      projection.utf8ByteSize,
+    )
+  }
   @Test
   fun `projection identity uses the resolved producer attempt`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(

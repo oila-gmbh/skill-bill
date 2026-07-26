@@ -532,8 +532,7 @@ class FeatureTaskRuntimePhaseRecorder(
   ) {
     val privatePhaseRecords = phaseRecordsFrom(artifacts)
     briefing.handoffEnvelope.projections.forEach { projection ->
-      val deliveredProjectionUtf8Bytes =
-        JsonSupport.mapToJsonString(projection.toEnvelopeMap()).toByteArray(Charsets.UTF_8).size
+      val deliveredProjectionUtf8Bytes = projection.utf8ByteSize
       val privateEvidenceUtf8Bytes =
         privatePhaseRecords[projection.producerIteration.phaseId]
           ?.outputArtifact
@@ -586,25 +585,69 @@ class FeatureTaskRuntimePhaseRecorder(
     repositoryCheckpointFingerprint: String?,
     dbOverride: String? = null,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) == null) {
-      return@transaction false
-    }
-    val measurement = FeatureTaskRuntimeProjectionMeasurement(
+    recordProjectionRejectionMeasurement(
+      unitOfWork = unitOfWork,
       workflowId = workflowId,
       consumerPhaseId = consumerPhaseId,
       projectionContractId = error.projectionContractId.ifBlank { "unknown" },
       producerIteration = FeatureTaskRuntimeProducerIteration(consumerPhaseId, 1),
+      repositoryCheckpointFingerprint = repositoryCheckpointFingerprint,
+      failureClassification = error.failureKind.toMeasurementFailureClassification(),
+      sourceLabel = error.projectionName,
+    )
+  }
+
+  fun recordProjectionRejection(
+    workflowId: String,
+    consumerPhaseId: String,
+    projectionContractId: String,
+    producerIteration: FeatureTaskRuntimeProducerIteration,
+    repositoryCheckpointFingerprint: String?,
+    failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
+    sourceLabel: String,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    recordProjectionRejectionMeasurement(
+      unitOfWork,
+      workflowId,
+      consumerPhaseId,
+      projectionContractId,
+      producerIteration,
+      repositoryCheckpointFingerprint,
+      failureClassification,
+      sourceLabel,
+    )
+  }
+
+  private fun recordProjectionRejectionMeasurement(
+    unitOfWork: UnitOfWork,
+    workflowId: String,
+    consumerPhaseId: String,
+    projectionContractId: String,
+    producerIteration: FeatureTaskRuntimeProducerIteration,
+    repositoryCheckpointFingerprint: String?,
+    failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
+    sourceLabel: String,
+  ): Boolean {
+    if (WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) == null) {
+      return false
+    }
+    val measurement = FeatureTaskRuntimeProjectionMeasurement(
+      workflowId = workflowId,
+      consumerPhaseId = consumerPhaseId,
+      projectionContractId = projectionContractId.ifBlank { "unknown" },
+      producerIteration = producerIteration,
       repositoryCheckpointFingerprint = repositoryCheckpointFingerprint ?: "not_resolved:$consumerPhaseId",
       projectedUtf8Bytes = 0,
       projectedCollectionItems = 0,
       estimatedTokens = 0,
       privateEvidenceUtf8Bytes = 0,
       deliveredProjectionUtf8Bytes = 0,
-      failureClassification = error.failureKind.toMeasurementFailureClassification(),
+      failureClassification = failureClassification,
     )
     handoffFoundationValidator.validateMeasurement(
       measurement.toTelemetryMap(),
-      "projection-rejection:$consumerPhaseId:${error.projectionName}",
+      "projection-rejection:$consumerPhaseId:$sourceLabel",
     )
     unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
     true

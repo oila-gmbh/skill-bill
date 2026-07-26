@@ -193,6 +193,29 @@ private object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOper
     }
   }
 
+  override fun repositoryCheckpointFingerprint(
+    repoRoot: Path,
+    baseCommit: String?,
+    headCommit: String,
+    ownedPaths: List<String>,
+  ): WorkflowGitOperationResult = runCatching {
+    val digest = MessageDigest.getInstance("SHA-256")
+    UntrackedFingerprintDigest.digestPart(digest, "base", baseCommit.orEmpty().toByteArray())
+    UntrackedFingerprintDigest.digestPart(digest, "head", headCommit.toByteArray())
+    val root = repoRoot.normalize()
+    ownedPaths.distinct().sorted().forEach { path ->
+      val resolved = root.resolve(path).normalize()
+      require(resolved.startsWith(root)) { "Checkpoint path escapes repository root: $path" }
+      UntrackedFingerprintDigest.digestUntrackedEntry(digest, path, resolved)
+    }
+    WorkflowGitOperationResult(status = "ok", value = digest.digest().joinToString("") { "%02x".format(it) })
+  }.getOrElse { error ->
+    WorkflowGitOperationResult(
+      status = "error",
+      error = "Could not fingerprint workflow-owned repository checkpoint: ${error.message}",
+    )
+  }
+
   fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult {
     val status = runGitCommand(repoRoot, "status", "--porcelain")
     if (!status.ok) {

@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -46,7 +45,6 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing, reviewPassNumber, resolvedReviewTier ?: codeReviewMode),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(
@@ -62,7 +60,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       ),
       commitExclusionDirective(briefing.phaseId, issueKey, specSource),
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
-      AgentAddonPromptFormatter.format(budgetedAddonsFor(briefing.phaseId, agentAddonSelection)),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),

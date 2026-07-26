@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
@@ -16,6 +17,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.charset.StandardCharsets
 
@@ -84,20 +88,37 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     workflowId: String? = null,
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+    agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): FeatureTaskRuntimePhaseLaunchBriefing {
+    val promptDeclarations = handoff.projectionDeclarations +
+      invariantDeclarations(handoff.phaseId) +
+      agentAddonSelection.entries.map { entry ->
+        PhaseHandoffProjectionDeclaration(
+          consumerPhaseId = handoff.phaseId,
+          sourceRef = FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(entry.slug),
+          projectionName = "agent_addon_${entry.slug.replace('-', '_')}",
+          projectionContractId = "feature_task_runtime.agent_addon_content",
+          projectionContractVersion = "0.1",
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+          budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT,
+          declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD),
+        )
+      }
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       FeatureTaskRuntimeHandoffProjectionInputs(
         consumerPhaseId = handoff.phaseId,
-        declarations = handoff.projectionDeclarations,
+        declarations = promptDeclarations,
         resolvedUpstream = handoff.upstreamOutputs,
         runInvariants = handoff.runInvariants,
         resolvedCheckpoint = handoff.repositoryCheckpoint,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
+        addonContentBySlug = agentAddonSelection.entries.associate { it.slug to it.content },
       ),
     )
-    val briefingText = serialize(handoff, envelope, workflowId)
+    val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
+    val briefingText = serialize(projectedHandoff, envelope, workflowId)
     return FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = handoff.phaseId,
       specReference = handoff.runInvariants.specReference,
@@ -115,6 +136,30 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
+
+  private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =
+    FeatureTaskRuntimeRunInvariantPromptAllowlist.forPhase(phaseId).map { field ->
+      val source = if (field == FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING) {
+        FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
+      } else {
+        FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(field)
+      }
+      val projectedField = if (field == FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING) {
+        FeatureTaskRuntimeHandoffProjectionValidator.CEREMONY_SCALING_FIELD
+      } else {
+        field.wireValue
+      }
+      PhaseHandoffProjectionDeclaration(
+        consumerPhaseId = phaseId,
+        sourceRef = source,
+        projectionName = "run_invariant_${field.wireValue}",
+        projectionContractId = "feature_task_runtime.run_invariant",
+        projectionContractVersion = "0.1",
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+        budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+        declaredFieldNames = listOf(projectedField),
+      )
+    }
 
   private fun serialize(
     handoff: FeatureTaskRuntimePhaseHandoff,
@@ -202,8 +247,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         ),
       ).lineSequence().forEach { appendLine("  $it") }
     }
-    appendLine()
-    appendAllowlistedRunInvariants(handoff)
     appendLine()
     appendLine("## Upstream projections (layer 2, declared and validated)")
     appendProjections(envelope)

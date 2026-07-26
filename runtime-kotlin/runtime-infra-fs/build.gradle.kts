@@ -301,6 +301,24 @@ val copyFeatureTaskRuntimeHandoffEnvelopeSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimePhaseLaunchBriefingSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePhaseLaunchBriefingSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseLaunchBriefingSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseLaunchBriefingSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical phase-launch-briefing schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimePhaseHandoffSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml")
@@ -446,6 +464,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
@@ -471,6 +490,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
