@@ -34,6 +34,7 @@ import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
@@ -89,6 +90,9 @@ class ObservingReviewEvidenceBroker(
   private val recorder: ReviewRecorder,
   private val delegate: ReviewEvidenceBroker,
 ) : ReviewEvidenceBroker {
+  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest) =
+    delegate.authorizeExpansion(request)
+
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     recorder.evidenceBatches += request
     return delegate.readBatch(request).also { result ->
@@ -159,6 +163,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
           ObservingReviewEvidenceBroker(recorder, FileSystemReviewEvidenceBroker(binding))
         },
         isolationResolver = { ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE },
+        envelopeValidator = { _, _ -> },
       ),
       DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)),
     ),

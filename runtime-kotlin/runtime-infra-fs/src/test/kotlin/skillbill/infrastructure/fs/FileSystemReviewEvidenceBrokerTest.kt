@@ -4,6 +4,7 @@ import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
@@ -197,6 +198,63 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("exp-1", expansion.expansionId)
     assertEquals(assignment.digest, expansion.assignmentDigest)
     assertEquals(result.expansions, broker.accounting().expansions)
+  }
+
+  @Test fun `authorized expansion of assigned path returns the complete file`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
+    val base = assignment(listOf("A.kt"))
+    val expansion = ReviewExpansionRecord("exp-assigned", base.digest, "A.kt", "caller is outside hunk", true, 0)
+    val assigned = base.copy(expansions = listOf(expansion), assignedHunks = listOf(hunk.hunkId))
+    val boundExpansion = expansion.copy(assignmentDigest = assigned.digest)
+    val authorized = assigned.copy(expansions = listOf(boundExpansion))
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        authorized,
+        "security",
+        policy(),
+        trustedExpansionLedger = authorized.expansions,
+        projectedHunks = listOf(hunk),
+      ),
+    )
+
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", boundExpansion.reachabilityReason, boundExpansion),
+      ),
+    )
+
+    assertEquals("outside\nowned\noutside", result.results.single().content)
+    assertEquals(listOf(boundExpansion), result.expansions)
+  }
+
+  @Test fun `broker authorizes expansion with assignment digest and nonblank reason`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val assignment = assignment(listOf("A.kt"))
+    val broker = broker(root, assignment)
+
+    val expansion = broker.authorizeExpansion(
+      ReviewExpansionAuthorizationRequest("security", "A.kt", "definition reaches beyond projected hunk"),
+    )
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", expansion.reachabilityReason, expansion),
+      ),
+    )
+
+    assertEquals(assignment.digest, expansion.assignmentDigest)
+    assertEquals("outside\nowned\noutside", result.results.single().content)
+    assertEquals(listOf(expansion), result.expansions)
+  }
+
+  @Test fun `absolute scratch rediscovery is typed before repository path validation`() {
+    val root = repo("A.kt" to "assigned")
+    val result = broker(root, assignment(listOf("A.kt"))).readBatch(
+      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "/tmp/review.diff")),
+    )
+
+    assertEquals("diff_artifact_rediscovery", result.results.single().forbidden?.category)
   }
 
   @Test fun `lane accepts its expansion at a later global packet sequence`() {

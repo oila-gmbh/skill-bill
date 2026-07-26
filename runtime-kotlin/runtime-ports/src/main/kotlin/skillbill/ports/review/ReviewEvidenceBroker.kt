@@ -2,12 +2,14 @@ package skillbill.ports.review
 
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewExpansionRecord
 
 /**
  * The single measured surface a delegated specialist may act through. Every call is policy-checked
@@ -15,6 +17,9 @@ import skillbill.review.context.model.ReviewBudgetOutcome
  * rather than serving more context.
  */
 interface ReviewEvidenceBroker {
+  fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
+    error("This evidence broker does not support governed complete-file expansion.")
+
   fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult
 
   fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult

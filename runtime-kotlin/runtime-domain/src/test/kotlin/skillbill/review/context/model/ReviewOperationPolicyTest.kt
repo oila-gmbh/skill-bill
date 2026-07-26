@@ -111,9 +111,9 @@ class ReviewOperationPolicyTest {
     }
   }
 
-  @Test fun `only the lane rubric may be read`() {
-    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.RUBRIC_READ, "security")))
-    assertEquals("unrelated_rubric_read", category(ReviewOperationKind.RUBRIC_READ, "performance"))
+  @Test fun `every rubric read is forbidden because the launch projection is authoritative`() {
+    assertEquals("rubric_rediscovery", category(ReviewOperationKind.RUBRIC_READ, "security"))
+    assertEquals("rubric_rediscovery", category(ReviewOperationKind.RUBRIC_READ, "performance"))
   }
 
   @Test fun `unselected mcp tools and unscoped shell are forbidden`() {

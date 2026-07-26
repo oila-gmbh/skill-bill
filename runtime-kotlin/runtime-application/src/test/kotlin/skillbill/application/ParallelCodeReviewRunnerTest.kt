@@ -271,16 +271,17 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "assigned_paths:")
-      assertContains(prompt, "- Child.kt")
-      assertContains(prompt, "specialist_contract:")
-      assertContains(prompt, "rubric:")
-      assertContains(prompt, "evidence_surface:")
-      assertContains(prompt, "brokered_evidence:")
+      assertContains(prompt, "\"contract_version\":\"0.7\"")
+      assertContains(prompt, "\"kind\":\"launch\"")
+      assertContains(prompt, "\"assigned_paths\":[\"Child.kt\"]")
+      assertContains(prompt, "\"specialist_contract\":")
+      assertContains(prompt, "\"rubric\":")
+      assertContains(prompt, "\"evidence_surface_rules\":")
+      assertContains(prompt, "\"assigned_hunk_bodies\":")
       assertContains(prompt, "+owned change")
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
-      assertContains(prompt, "assignment_digest:")
+      assertContains(prompt, "\"assignment_digest\":")
       assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
@@ -797,6 +798,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
         isolationResolver = { agentId ->
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
+        envelopeValidator = { _, _ -> },
       ),
       DelegatedReviewWorkerLauncher(
         NativeReviewWorkerLauncher { request ->

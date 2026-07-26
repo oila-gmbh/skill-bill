@@ -8,6 +8,7 @@ import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewEvidenceResult
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
@@ -24,6 +25,7 @@ import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 
 @Inject
 class FileSystemReviewEvidenceBrokerFactory : ReviewEvidenceBrokerFactory {
@@ -38,7 +40,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val budget = binding.budget
   private val identity = ReviewLaneIdentity.of(assignment)
   private val policy = ReviewOperationPolicy(assignment, binding.laneRubricId, binding.namedDependencies)
-  private val trustedExpansionLedger = binding.trustedExpansionLedger
+  private val authorizedExpansionLedger = binding.trustedExpansionLedger.toMutableList()
   private val projectedHunks = binding.projectedHunks
 
   private var cumulativeBytes = 0L
@@ -54,6 +56,29 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     val admitted = assignment.assignedPaths + assignment.dependencyAllowlist.normalized +
       assignment.evidenceTargets.map { it.path } + assignment.expansions.map { it.requestedPath }
     admitted.distinct().forEach { validateRepositoryMapping(root, it) }
+  }
+
+  @Synchronized
+  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord {
+    require(request.lane == assignment.lane) { "Expansion lane does not own this assignment." }
+    require(request.reachabilityReason.isNotBlank()) { "Expansion reachability reason must not be blank." }
+    requireRepositoryRelativePath(request.path)
+    require(policy.isReachable(request.path)) { "Expansion path is outside the assignment evidence surface." }
+    val existing = authorizedExpansionLedger.singleOrNull {
+      it.requestedPath == request.path && it.reachabilityReason == request.reachabilityReason
+    }
+    if (existing != null) return existing
+    val sequence = (authorizedExpansionLedger.maxOfOrNull { it.sequence } ?: -1) + 1
+    val expansion = ReviewExpansionRecord(
+      expansionId = stableExpansionId(request.path, request.reachabilityReason),
+      assignmentDigest = assignment.digest,
+      requestedPath = request.path,
+      reachabilityReason = request.reachabilityReason,
+      authorized = true,
+      sequence = sequence,
+    )
+    authorizedExpansionLedger += expansion
+    return expansion
   }
 
   @Synchronized
@@ -85,8 +110,10 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   }
 
   private fun readOne(request: ReviewEvidenceRequest): ReviewEvidenceResult {
-    requireRepositoryRelativePath(request.path)
     val exactPath = request.path
+    val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
+    policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
+    requireRepositoryRelativePath(exactPath)
     val normalizedTarget = normalizeEvidenceIdentity(exactPath)
     if (!admittedEvidenceTargets.add(normalizedTarget)) {
       return forbiddenResult(
@@ -99,11 +126,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
         expansionLedger.size,
       )
     }
-    val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
-    policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
-
     val assigned = policy.isAssigned(exactPath)
-    if (!assigned) {
+    val expansion = request.authorizedExpansion
+    if (!assigned || expansion != null) {
       val expansion = requireNotNull(request.authorizedExpansion) {
         "Unassigned evidence requires an authorized expansion record."
       }
@@ -118,8 +143,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
         "Expansion '${expansion.expansionId}' reason provenance changed before admission."
       }
       require(expansion !in expansionLedger) { "Expansion '${expansion.expansionId}' was already admitted." }
-      require(expansion in trustedExpansionLedger) {
-        "Expansion '${expansion.expansionId}' does not exactly match the trusted parent-packet ledger."
+      require(expansion in authorizedExpansionLedger) {
+        "Expansion '${expansion.expansionId}' was not authorized by this assignment's measured broker."
       }
       expansionLedger += expansion
       if (expansionLedger.size > budget.maxAssignmentExpansions) {
@@ -127,11 +152,15 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       }
     }
 
-    return readAdmittedFile(exactPath, assigned)
+    return readAdmittedFile(exactPath, assigned, expansion != null)
   }
 
-  private fun readAdmittedFile(normalized: String, assigned: Boolean): ReviewEvidenceResult {
-    if (assigned) {
+  private fun readAdmittedFile(
+    normalized: String,
+    assigned: Boolean,
+    completeFileAuthorized: Boolean,
+  ): ReviewEvidenceResult {
+    if (assigned && !completeFileAuthorized) {
       val content = projectedHunks
         .filter { it.path == normalized }
         .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
@@ -151,6 +180,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     val content = Files.readString(real, StandardCharsets.UTF_8)
     cumulativeBytes += bytes
     return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
+  }
+
+  private fun stableExpansionId(path: String, reason: String): String {
+    val input = "${assignment.digest}\u0000$path\u0000$reason".toByteArray(StandardCharsets.UTF_8)
+    val digest = MessageDigest.getInstance("SHA-256").digest(input)
+      .joinToString("") { "%02x".format(it) }
+    return "exp-${digest.take(24)}"
   }
 
   @Synchronized

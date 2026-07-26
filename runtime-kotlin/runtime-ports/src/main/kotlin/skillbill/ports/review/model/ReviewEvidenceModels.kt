@@ -16,6 +16,12 @@ data class ReviewEvidenceRequest(
   val paginationToken: String? = null,
 )
 
+data class ReviewExpansionAuthorizationRequest(
+  val lane: String,
+  val path: String,
+  val reachabilityReason: String,
+)
+
 data class ReviewEvidenceBatchRequest(val lane: String, val requests: List<ReviewEvidenceRequest>) {
   init {
     require(lane.isNotBlank()) { "Evidence batch lane must not be blank." }

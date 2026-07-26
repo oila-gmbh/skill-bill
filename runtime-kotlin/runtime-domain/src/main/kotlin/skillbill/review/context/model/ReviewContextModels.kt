@@ -550,6 +550,8 @@ data class GovernedReviewLaunch(
   }
 
   val canonicalPayload: String get() = buildString {
+    appendLine("contract_version: \"0.7\"")
+    appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
     appendLine("review_revision: ${assignment.reviewRevision.sessionId}@${assignment.reviewRevision.runRevision}")
     appendLine("packet_digest: ${assignment.packetDigest}")
@@ -580,7 +582,13 @@ data class GovernedReviewLaunch(
     appendLine("criteria_references:")
     assignment.criteriaReferences.sorted().forEach { appendLine("  - $it") }
     appendLine("matched_rules:")
-    assignment.matchedRules.map { it.ruleId }.sorted().forEach { appendLine("  - $it") }
+    assignment.matchedRules.sortedBy { it.ruleId }.forEach { rule ->
+      appendLine("  - rule_id: ${structuredString(rule.ruleId)}")
+      appendLine("    source_path: ${structuredString(rule.sourcePath)}")
+      appendLine("    excerpt: |")
+      rule.excerpt.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
+      appendLine("    digest: ${rule.digest}")
+    }
     appendLine("evidence_targets:")
     assignment.evidenceTargets.map { it.targetId }.sorted().forEach { appendLine("  - $it") }
     appendLine("dependency_allowlist:")

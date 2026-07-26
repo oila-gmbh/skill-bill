@@ -2,10 +2,12 @@ package skillbill.ports.review
 
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewExpansionRecord
 
 /**
  * Synchronous provider boundary for operations requested by a governed worker. Adapters must call
@@ -13,6 +15,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
  * the operation is not executed.
  */
 interface NativeReviewOperationProtocol {
+  fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord
   fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult
   fun tool(call: ReviewToolCall): ReviewToolCallResult
 
@@ -29,6 +32,8 @@ interface NativeReviewOperationProtocol {
 class BrokerBackedNativeReviewOperationProtocol(
   private val broker: ReviewEvidenceBroker,
 ) : NativeReviewOperationProtocol {
+  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
+    broker.authorizeExpansion(request)
   override fun read(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult = broker.readBatch(request)
   override fun tool(call: ReviewToolCall): ReviewToolCallResult = broker.recordToolCall(call)
   override fun modelTurn(): ReviewBudgetOutcome? = broker.recordModelTurn()

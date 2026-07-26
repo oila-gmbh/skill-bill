@@ -109,15 +109,12 @@ class ReviewOperationPolicy(
     )
   }
 
-  private fun classifyRubric(rubricId: String): ForbiddenReviewOperation? = if (rubricId == laneRubricId) {
-    null
-  } else {
+  private fun classifyRubric(rubricId: String): ForbiddenReviewOperation =
     forbidden(
-      "unrelated_rubric_read",
+      "rubric_rediscovery",
       rubricId,
-      "Lane '${assignment.lane}' owns exactly one rubric, '$laneRubricId'.",
+      "Lane '${assignment.lane}' receives rubric '$laneRubricId' directly in its launch projection.",
     )
-  }
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val path = operation.target

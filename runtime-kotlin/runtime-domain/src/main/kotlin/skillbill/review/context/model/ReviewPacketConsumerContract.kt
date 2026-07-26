@@ -17,6 +17,7 @@ object ReviewPacketConsumerContract {
     "telemetry_ownership_determination",
     "broad_repository_search",
     "unrelated_rubric_read",
+    "rubric_rediscovery",
     "unassigned_file_access",
     "unselected_mcp_tool_call",
     "unscoped_shell_command",

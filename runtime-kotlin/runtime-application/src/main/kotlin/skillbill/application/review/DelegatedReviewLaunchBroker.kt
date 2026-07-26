@@ -6,11 +6,13 @@ import skillbill.application.review.model.DelegatedReviewLaunchOutcome
 import skillbill.application.review.model.DelegatedReviewLaunchRequest
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewWorkerKind
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewContextBudgetExceeded
@@ -26,6 +28,7 @@ import java.nio.charset.StandardCharsets
 class DelegatedReviewLaunchBroker(
   private val evidenceBrokerFactory: ReviewEvidenceBrokerFactory,
   private val isolationResolver: ReviewLaunchIsolationResolver,
+  private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
   fun prepare(request: DelegatedReviewLaunchRequest): DelegatedReviewLaunchOutcome {
     requireBoundedNamedDependencies(request)
@@ -34,19 +37,25 @@ class DelegatedReviewLaunchBroker(
 
     parentPacketOutcome(request)?.let { return DelegatedReviewLaunchOutcome.Terminated(it) }
 
-    val launch = GovernedReviewLaunch(
-      assignment = request.assignment,
-      packet = request.packet,
-      specialistContract = request.specialistContract,
-      rubric = rubric.body,
-      brokerId = request.brokerId,
-      budget = request.budget,
-    )
+    val launch = try {
+      GovernedReviewLaunch(
+        assignment = request.assignment,
+        packet = request.packet,
+        specialistContract = request.specialistContract,
+        rubric = rubric.body,
+        brokerId = request.brokerId,
+        budget = request.budget,
+      )
+    } catch (error: IllegalArgumentException) {
+      reject(request, error.message ?: "The governed launch could not be projected.")
+    }
+    val envelope = launch.toLaunchEnvelope().asWireMap()
+    envelopeValidator.validate(envelope, launchLabel(request))
     if (isolation == ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE) {
       launch.requireCodexForkTurns(isolation.forkTurns)
     }
 
-    val prompt = projectPrompt(launch, isolation, request.workerKind)
+    val prompt = JsonSupport.mapToJsonString(envelope)
     ReviewBudgetEvaluator.exceededOrNull(
       ReviewLaneIdentity.of(request.assignment),
       "lane_launch_bytes",
@@ -137,31 +146,12 @@ class DelegatedReviewLaunchBroker(
     }
   }
 
-  /**
-   * The launch payload is the whole of what the worker sees. Nothing about parent scope, status,
-   * routing, learnings, guidance, telemetry, or ceremony is projected, and no parent transcript.
-   */
-  private fun projectPrompt(
-    launch: GovernedReviewLaunch,
-    isolation: ReviewLaunchIsolationStrategy,
-    workerKind: ReviewWorkerKind,
-  ): String = buildString {
-    appendLine(launch.canonicalPayload)
-    appendLine("isolation: ${isolation.name.lowercase()}")
-    appendLine(
-      when (workerKind) {
-        ReviewWorkerKind.PROVIDER_NATIVE ->
-          "rubric_authority: embedded governed rubric is authoritative; do not read any rubric sidecar."
-        ReviewWorkerKind.GENERIC ->
-          "rubric_authority: the single rubric projected above is authoritative; read no other rubric."
-      },
-    )
-    append("evidence_broker: ${launch.brokerId}")
-  }
-
   private fun reject(request: DelegatedReviewLaunchRequest, reason: String): Nothing =
     throw InvalidReviewContextSchemaError(
-      sourceLabel = "review-launch:${request.assignment.reviewId}:${request.assignment.lane}",
+      sourceLabel = launchLabel(request),
       reason = reason,
     )
+
+  private fun launchLabel(request: DelegatedReviewLaunchRequest): String =
+    "review-launch:${request.assignment.reviewId}:${request.assignment.lane}"
 }
