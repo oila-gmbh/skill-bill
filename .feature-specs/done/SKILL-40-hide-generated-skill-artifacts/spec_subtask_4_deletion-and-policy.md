@@ -1,6 +1,6 @@
 # SKILL-40 Subtask 4: mass deletion, remaining test migration, policy paragraph
 
-Parent spec: [./spec.md](./spec.md)
+Parent spec: [./spec.md](spec.md)
 
 Status: Not started
 

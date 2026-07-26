@@ -31,7 +31,7 @@ sections:
       Inspect both the changed files and repo markers before routing.
 
       Resolve the scope before routing. If the caller asks for staged changes, route and review only the staged diff; do not let unstaged edits expand the findings beyond repo-marker stack detection.
-      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `delegated`; malformed, repeated, unknown, or conflicting values fail before review work begins. Apply the declared `auto` resolution rule only to explicit `auto`: the review-pass-number rule when a pass number exists, otherwise the size-and-risk eligibility fallback. An explicit `inline` request runs the light depth tier in the current context — one agent walking the routed areas as an explicit checklist at reduced depth under a bounded budget, without spawning specialists or fabricating lane totals, and never presented as equivalent coverage to delegated. An explicit or defaulted `delegated` request always follows delegated routing and must never fall back inline if workers are unavailable.
+      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `inline`; malformed, repeated, unknown, or conflicting values fail before review work begins. Explicit `auto` also resolves to `inline` in every context, including first and later feature-task passes, oversized or high-risk diffs, and layered stacks; retain the applicable named auto rule only for auditable metadata. An explicit, defaulted, or auto-resolved `inline` request runs the light depth tier in the current context — one agent walking every manifest-declared review area and required baseline area as an explicit checklist at reduced depth under a bounded budget, without spawning specialists or fabricating lane totals, and never presented as equivalent coverage to delegated. Diff signals focus each area's inspection but never remove a declared area; record areas with no applicable signal as checked with no applicable signal. Only an explicit `delegated` request follows delegated routing, and it must never fall back inline if workers are unavailable.
 
   - heading: Local Review Learnings
     body: |
@@ -75,14 +75,15 @@ sections:
 
       For a single routed platform pack:
 
-      - Let the routed pack choose `inline` or `delegated`.
-      - If the routed pack selects `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection.
+      - Apply the already-resolved `inline` or `delegated` mode to the routed pack.
+      - If the mode is `inline`, run it inline in the current thread instead of spawning an extra routed worker just for indirection. Build an ordered checklist from every `review_areas` entry declared by the pack plus every required baseline layer's declared areas, inspect each area once, and report its checked status even when no area-specific diff signal exists.
       - If the routed pack selects `delegated`, pass along the routed skill name, rendered runtime instructions, and required review context.
 
       For multiple routed platform packs:
 
-      - Use delegated workers for each routed pack and merge the results in the parent review.
-      - Use parallel delegated workers only when multiple supported stacks are clearly in scope.
+      - In `inline` mode, walk every declared area of every routed pack in the current thread and merge the findings without launching workers.
+      - In `delegated` mode, use delegated workers for each routed pack and merge the results in the parent review.
+      - Use parallel delegated workers only when multiple supported stacks are clearly in scope and the resolved mode is `delegated`.
       - If delegated review is required for the current scope and the runtime lacks a documented delegation path or cannot start the required worker(s), stop and report that delegated review is required for this scope but unavailable on the current runtime.
 
       When routing to another skill, pass along:

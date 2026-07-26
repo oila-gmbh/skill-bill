@@ -1,3 +1,14 @@
+## [2026-07-26] SKILL-143 — Bounded blocked-subtask recovery
+Areas: runtime-application, runtime-cli, runtime-domain, runtime-ports, runtime-infra-sqlite, runtime-infra-fs
+- Added an explicit subtask-scoped reset that deletes only an incompatible terminal child workflow while preserving planning checkpoints, unrelated subtask state, runtime fields, commits, workflow links, and out-of-band acceptances
+- Soft-reset diagnostics name the blocking child workflow and exact scoped recovery command; the attempt ledger distinguishes resumable children from stale terminal children requiring deletion
+- Goal-wide hard reset now preflights discarded acceptances and emits restorable commands; explicit restoration mode accepts only the cleared reset projection and recreates durable acceptance
+- Pattern: classify durable child state from the workflow store, keep the manifest as a projection, and require an explicit operator action for every destructive recovery edge. reusable
+- CLI, application, persistence, and regression coverage lock malformed/unknown/incompatible selector rejection, mutation boundaries, and end-to-end recovery without reaccepting unrelated work
+- Breaking changes/limitations: recovery never retries automatically; blocked subtasks still require operator action, and hard-reset restoration requires the emitted explicit flag
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-25] SKILL-142 subtask 5 — Bounded inline remediation convergence
 Areas: runtime-application, runtime-domain, runtime-cli, runtime-infra-fs, orchestration contracts
 - Added a distinct bounded inline review tier for later remediation passes while preserving delegated review as the default full-depth path

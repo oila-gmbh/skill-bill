@@ -1,6 +1,6 @@
 # SKILL-40 Subtask 1: switch skill-discovery marker from SKILL.md to content.md
 
-Parent spec: [./spec.md](./spec.md)
+Parent spec: [./spec.md](spec.md)
 
 Status: Not started
 

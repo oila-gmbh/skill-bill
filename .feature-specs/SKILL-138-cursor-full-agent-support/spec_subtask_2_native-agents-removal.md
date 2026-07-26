@@ -1,6 +1,6 @@
 # SKILL-138 · Subtask 2 — Cursor native agents, inventory, CLI, and removal
 
-Parent: [spec.md](./spec.md)
+Parent: [spec.md](spec.md)
 
 ## Scope
 

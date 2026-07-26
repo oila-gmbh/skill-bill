@@ -1,6 +1,6 @@
 # SKILL-40 Subtask 3: render CLI, snapshot tests, CI drift check
 
-Parent spec: [./spec.md](./spec.md)
+Parent spec: [./spec.md](spec.md)
 
 Status: Complete
 

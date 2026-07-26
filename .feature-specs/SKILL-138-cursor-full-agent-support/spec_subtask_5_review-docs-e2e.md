@@ -1,6 +1,6 @@
 # SKILL-138 · Subtask 5 — Governed review, skill prose, docs, and live parity
 
-Parent: [spec.md](./spec.md)
+Parent: [spec.md](spec.md)
 
 ## Scope
 

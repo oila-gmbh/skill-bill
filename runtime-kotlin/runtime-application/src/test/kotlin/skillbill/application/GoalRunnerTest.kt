@@ -20,6 +20,7 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -92,6 +93,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -1789,6 +1791,81 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
+  fun `scoped recovery resets only selected terminal child`() {
+    val original = manifest(subtaskCount = 2).copy(
+      status = "blocked",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "blocked"),
+      subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+        when (subtask.id) {
+          1 -> subtask.copy(status = "complete", commitSha = "full-commit-1")
+          else -> subtask.copy(
+            status = "blocked",
+            workflowId = "wfl-stale",
+            blockedReason = "terminal child",
+            lastResumableStep = "implement",
+          )
+        }
+      },
+    )
+    val store = InMemoryGoalManifestStore(original)
+    val outcomes = RecordingOutcomeStore().apply {
+      progresses["wfl-stale"] = GoalRunnerWorkflowProgress(
+        workflowId = "wfl-stale",
+        workflowStatus = "failed",
+        currentStepId = "implement",
+        progressToken = "terminal",
+      )
+    }
+
+    val reset = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+      GoalRunnerResetRequest(
+        issueKey = "SKILL-56",
+        hard = false,
+        subtaskId = 2,
+        deleteChildWorkflow = true,
+      ),
+    )
+
+    requireNotNull(reset)
+    assertEquals("scoped_child_recovery", reset.mode)
+    assertEquals(original.subtasks.first(), store.manifest.subtasks.first())
+    assertEquals("pending", store.manifest.subtasks.last().status)
+    assertNull(store.manifest.subtasks.last().workflowId)
+    assertEquals(null, outcomes.lastReconcileRequest, "selector validation must not mutate through reconciliation")
+  }
+
+  @Test
+  fun `scoped recovery rejects resumable child without mutation`() {
+    val original = manifest(subtaskCount = 1)
+      .copy(status = "blocked", currentSubtaskIntent = CurrentSubtaskIntent(1, "blocked"))
+      .withBlockedSubtask(1, workflowId = "wfl-resumable", reason = "paused")
+    val store = InMemoryGoalManifestStore(original)
+    val outcomes = RecordingOutcomeStore().apply {
+      progresses["wfl-resumable"] = GoalRunnerWorkflowProgress(
+        workflowId = "wfl-resumable",
+        workflowStatus = "paused",
+        currentStepId = "implement",
+        progressToken = "resumable",
+      )
+    }
+
+    assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+        GoalRunnerResetRequest(
+          issueKey = "SKILL-56",
+          hard = false,
+          subtaskId = 1,
+          deleteChildWorkflow = true,
+        ),
+      )
+    }
+
+    assertEquals(original, store.manifest)
+    assertEquals(0, store.saveCount)
+    assertEquals(null, outcomes.lastReconcileRequest)
+  }
+
+  @Test
   fun `hard reset deletes goal planning preparation before saving pending projection`() {
     val database = GoalTestPlanningDatabase()
     val store = InMemoryGoalManifestStore(
@@ -1819,6 +1896,67 @@ class GoalRunnerObservabilityTest {
     assertEquals(listOf("wfl-parent"), database.deletedChildWorkflowParentIds)
     assertEquals(listOf<String?>("/tmp/skillbill-goal-runner/metrics.db"), database.transactionDbOverrides)
     assertEquals(listOf("pending", "pending"), store.manifest.subtasks.map(DecompositionSubtask::status))
+  }
+
+  @Test
+  fun `hard reset lists discarded acceptance and only explicit restoration recreates it`() {
+    val original = manifest(subtaskCount = 2).withBlockedSubtask(
+      subtaskId = 1,
+      workflowId = "wfl-manual",
+      reason = "finished outside runtime",
+    )
+    val store = InMemoryGoalManifestStore(original)
+    val service = GoalRunnerStatusService(
+      store,
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+      AcceptGitOperations(),
+    )
+    val accepted = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "reviewed; ship it",
+        repoRoot = Path.of("."),
+      ),
+    )
+    val acceptedSha = assertIs<GoalRunnerAcceptResult.Accepted>(accepted).commitSha
+
+    assertEquals(
+      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", accepted.acceptedAt)),
+      service.hardResetPreflight("SKILL-56", null),
+    )
+    service.reset(GoalRunnerResetRequest("SKILL-56", hard = true))
+    assertEquals(emptyList(), service.hardResetPreflight("SKILL-56", null))
+    assertIs<GoalRunnerAcceptResult.Rejected>(
+      service.accept(
+        GoalRunnerAcceptRequest(
+          issueKey = "SKILL-56",
+          subtaskId = 1,
+          commitSha = acceptedSha,
+          reason = "reviewed; ship it",
+          repoRoot = Path.of("."),
+        ),
+      ),
+    )
+
+    val restored = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = acceptedSha,
+        reason = "reviewed; ship it",
+        repoRoot = Path.of("."),
+        restoreAfterHardReset = true,
+      ),
+    )
+
+    assertIs<GoalRunnerAcceptResult.Accepted>(restored)
+    assertEquals(
+      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", restored.acceptedAt)),
+      service.hardResetPreflight("SKILL-56", null),
+    )
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -1871,7 +2009,36 @@ internal class InMemoryGoalManifestStore(
     preservePlanning: Boolean,
   ): GoalRunnerManifestState {
     hardReset?.invoke(state, dbPathOverride)
+    acceptances = emptyMap()
     return save(state, dbPathOverride)
+  }
+
+  override fun deleteIncompatibleChildWorkflow(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    workflowId: String,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState {
+    val recovered = state.copy(
+      manifest = state.manifest.copy(
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId, "start"),
+        subtasks = state.manifest.subtasks.map { subtask ->
+          if (subtask.id == subtaskId && subtask.workflowId == workflowId) {
+            subtask.copy(
+              status = "pending",
+              branch = null,
+              commitSha = null,
+              workflowId = null,
+              blockedReason = null,
+              lastResumableStep = null,
+            )
+          } else {
+            subtask
+          }
+        },
+      ),
+    )
+    return save(recovered, dbPathOverride)
   }
 
   override fun saveNewChildWorkflow(
@@ -2510,7 +2677,10 @@ private class FixedBranchGitOperations(
 }
 
 private class AcceptGitOperations(
-  private val resolvable: Map<String, String> = mapOf("abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd"),
+  private val resolvable: Map<String, String> = mapOf(
+    "abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd",
+    "abc1234abc1234abc1234abc1234abc1234abcd" to "abc1234abc1234abc1234abc1234abc1234abcd",
+  ),
 ) : WorkflowGitOperations by StatusDiffGitOperations {
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     resolvable[revision.trim()]?.let { WorkflowGitOperationResult(status = "ok", value = it) }

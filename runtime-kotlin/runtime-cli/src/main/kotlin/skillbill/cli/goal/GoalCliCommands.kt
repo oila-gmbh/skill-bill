@@ -78,7 +78,7 @@ class GoalRunCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
   private val codeReviewMode by option(
     "--code-review-mode",
-    help = "Review execution mode for every child: delegated (default), auto, or inline.",
+    help = "Review execution mode for every child: inline (default), auto, or delegated.",
   )
   private val parallelReviewAgent by option(
     "--parallel-review-agent",
@@ -409,6 +409,14 @@ class GoalResetCommand(
     "--preserve-planning",
     help = "Delete incompatible child workflows while preserving immutable goal planning checkpoints.",
   ).flag(default = false)
+  private val subtaskId by option(
+    "--subtask",
+    help = "Selected subtask ID for scoped incompatible-child recovery.",
+  ).int()
+  private val deleteChildWorkflow by option(
+    "--delete-child-workflow",
+    help = "Explicitly delete the selected subtask's incompatible terminal child workflow.",
+  ).flag(default = false)
   private val confirmIssueKey by option(
     "--confirm-issue-key",
     help = "Confirmation gate for --hard. Must match the issue key.",
@@ -416,6 +424,17 @@ class GoalResetCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
 
   override fun run() {
+    if ((subtaskId != null) != deleteChildWorkflow) {
+      throw UsageError("--subtask ID and --delete-child-workflow must be supplied together.")
+    }
+    if (subtaskId != null && requireNotNull(subtaskId) <= 0) {
+      throw UsageError("--subtask must be a positive integer.")
+    }
+    if (deleteChildWorkflow && (hard || preservePlanning)) {
+      throw UsageError(
+        "--subtask ID --delete-child-workflow is incompatible with --hard and --preserve-planning.",
+      )
+    }
     if (preservePlanning && !hard) {
       throw UsageError(
         "--preserve-planning only applies to a hard reset; a soft reset never deletes child workflows. " +
@@ -427,17 +446,28 @@ class GoalResetCommand(
         "Hard reset requires explicit confirmation. Pass --confirm-issue-key $issueKey or --force.",
       )
     }
+    emitHardResetAcceptanceWarning()
     val result = goalRunnerStatusService.reset(
       GoalRunnerResetRequest(
         issueKey = issueKey,
         hard = hard,
         preservePlanning = preservePlanning,
+        subtaskId = subtaskId,
+        deleteChildWorkflow = deleteChildWorkflow,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
       ),
     )
     val payload = result.toGoalResetCliMap(issueKey, hard)
     state.completeText(goalResetText(payload), payload, exitCode = payload.goalResetExitCode())
+  }
+
+  private fun emitHardResetAcceptanceWarning() {
+    if (!hard) return
+    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey, state.dbOverride)
+    if (discardedAcceptances.isNotEmpty()) {
+      state.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
+    }
   }
 }
 
@@ -456,6 +486,10 @@ class GoalAcceptCommand(
   private val commit by option("--commit", help = "Commit that carries the landed work.").required()
   private val reason by option("--reason", help = "Why this subtask was completed outside the runtime.").required()
   private val repoRoot by option("--repo-root", help = "Repository root used to verify the commit.")
+  private val restoreAfterHardReset by option(
+    "--restore-after-hard-reset",
+    help = "Restore an acceptance discarded by a goal-wide hard reset.",
+  ).flag(default = false)
 
   override fun run() {
     val result = goalRunnerStatusService.accept(
@@ -466,6 +500,7 @@ class GoalAcceptCommand(
         reason = reason,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        restoreAfterHardReset = restoreAfterHardReset,
       ),
     )
     val payload = result.toGoalAcceptCliMap()
@@ -979,12 +1014,20 @@ private fun String.goalCliToken(): String = replace("\\", "\\\\")
 
 private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boolean): Map<String, Any?> = this?.let {
   linkedMapOf(
-    "status" to "ok",
+    "status" to if (it.recovery?.recoveryCommand == null) "ok" else "recovery_required",
     "issue_key" to it.issueKey,
     "mode" to it.mode,
     "parent_workflow_id" to it.parentWorkflowId,
     "before" to resetSnapshotMap(it.before),
     "after" to resetSnapshotMap(it.after),
+    "recovery" to it.recovery?.let { recovery ->
+      linkedMapOf(
+        "subtask_id" to recovery.subtaskId,
+        "workflow_id" to recovery.workflowId,
+        "classification" to recovery.classification,
+        "command" to recovery.recoveryCommand,
+      )
+    },
   )
 } ?: linkedMapOf(
   "status" to "not_found",
@@ -1042,6 +1085,36 @@ private fun goalAcceptText(payload: Map<String, Any?>): String = buildString {
   }
 }
 
+private fun hardResetAcceptanceWarning(issueKey: String, records: List<GoalRunnerAcceptedSubtask>): String =
+  buildString {
+    appendLine("hard_reset_acceptances_to_discard:")
+    records.forEach { record ->
+      val command = listOf(
+        "skill-bill",
+        "goal",
+        "accept",
+        issueKey,
+        "--subtask",
+        record.subtaskId.toString(),
+        "--commit",
+        record.commitSha,
+        "--reason",
+        record.reason,
+        "--restore-after-hard-reset",
+      ).joinToString(" ", transform = String::shellWord)
+      appendLine(
+        "acceptance: subtask=${record.subtaskId}; commit=${record.commitSha}; reason=${record.reason}",
+      )
+      appendLine("restore_command: $command")
+    }
+  }
+
+private fun String.shellWord(): String = if (isNotEmpty() && all { it.isLetterOrDigit() || it in "-._/:@" }) {
+  this
+} else {
+  "'${replace("'", "'\"'\"'")}'"
+}
+
 private fun goalResetText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
   appendLine("status: ${payload["status"]}")
@@ -1056,6 +1129,13 @@ private fun goalResetText(payload: Map<String, Any?>): String = buildString {
     appendGoalResetSubtaskLines(this, before["subtasks"] as? List<*>)
     appendLine("after_subtasks:")
     appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
+  }
+  (payload["recovery"] as? Map<*, *>)?.let { recovery ->
+    appendLine(
+      "recovery: subtask=${recovery["subtask_id"]}; workflow_id=${recovery["workflow_id"]}; " +
+        "classification=${recovery["classification"]}",
+    )
+    recovery["command"]?.let { appendLine("recovery_command: $it") }
   }
 }
 

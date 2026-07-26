@@ -64,7 +64,7 @@ class CodeReviewParallelCommand(
   )
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: delegated (default), auto, or inline.",
+    help = "Shared execution mode for both lanes: inline (default), auto, or delegated.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
   private val reviewRunId by option(
     "--review-run-id",

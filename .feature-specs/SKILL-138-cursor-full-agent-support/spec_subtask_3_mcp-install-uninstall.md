@@ -1,6 +1,6 @@
 # SKILL-138 · Subtask 3 — MCP, terminal install/uninstall, replay, and smoke tests
 
-Parent: [spec.md](./spec.md)
+Parent: [spec.md](spec.md)
 
 ## Scope
 

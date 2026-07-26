@@ -40,14 +40,8 @@ data class ReviewPassResolution(
 private object AutoDepthRule {
   private const val RULE_NAME = "auto_depth_by_pass_number"
 
-  fun resolve(passNumber: Int): ReviewPassResolution = when (passNumber) {
-    1 -> ReviewPassResolution(
-      resolvedTier = CodeReviewExecutionMode.DELEGATED,
-      decidingRule = "$RULE_NAME:pass_one_delegated",
-    )
-    else -> ReviewPassResolution(
-      resolvedTier = CodeReviewExecutionMode.INLINE,
-      decidingRule = "$RULE_NAME:later_pass_inline",
-    )
-  }
+  fun resolve(passNumber: Int): ReviewPassResolution = ReviewPassResolution(
+    resolvedTier = CodeReviewExecutionMode.INLINE,
+    decidingRule = "$RULE_NAME:pass_${passNumber}_inline",
+  )
 }

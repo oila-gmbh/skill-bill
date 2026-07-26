@@ -854,7 +854,12 @@ class GoalRunner(
           ?: confirmedAliveKillDiagnosticClass(reconciled.liveness)
           ?: stoppedOutcome.reason.toDiagnosticClass(),
         recoverableJsonPresent = launchDiagnostics?.recoverableJsonPresent ?: false,
-        nextSafeAction = launchDiagnostics?.nextSafeAction ?: stoppedOutcome.reason.nextSafeAction(),
+        nextSafeAction = launchDiagnostics?.nextSafeAction ?: recoverySafeAction(
+          issueKey = state.manifest.issueKey,
+          subtaskId = subtaskId,
+          progress = progress,
+          fallback = stoppedOutcome.reason.nextSafeAction(),
+        ),
         attemptDurationMillis = attemptDurationMillis,
         reAttemptCause = reAttemptCause,
         causingLoopEntry = causingLoopEntry,
@@ -2074,6 +2079,17 @@ private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
   -> "resume_from_last_resumable_step"
   GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
   else -> "inspect_blocked_reason"
+}
+
+internal fun recoverySafeAction(
+  issueKey: String,
+  subtaskId: Int,
+  progress: GoalRunnerWorkflowProgress?,
+  fallback: String,
+): String = when (classifyDurableChild(progress)) {
+  DurableChildRecoveryClass.RESUMABLE -> "resume_from_last_resumable_step"
+  DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL -> scopedChildRecoveryCommand(issueKey, subtaskId)
+  else -> fallback
 }
 
 private fun missingResultPrefixDiagnostics(lastResumableStep: String?): GoalRunnerLaunchDiagnostics =

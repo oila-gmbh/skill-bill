@@ -14,16 +14,16 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
       assertEquals(listOf(pinnedMode, pinnedMode), FeatureTaskRuntimeReviewPassSequence.passes(pinnedMode))
     }
     assertEquals(
-      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
+      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
       FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.AUTO),
     )
   }
 
   @Test
-  fun `auto resolves pass one to delegated and every later pass to inline`() {
+  fun `auto resolves every pass to inline`() {
     val passOne = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 1)
     val passTwo = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 2)
-    assertEquals(CodeReviewExecutionMode.DELEGATED, passOne.resolvedTier)
+    assertEquals(CodeReviewExecutionMode.INLINE, passOne.resolvedTier)
     assertEquals(CodeReviewExecutionMode.INLINE, passTwo.resolvedTier)
   }
 

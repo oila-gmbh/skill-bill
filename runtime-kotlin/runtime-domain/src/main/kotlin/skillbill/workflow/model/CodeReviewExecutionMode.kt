@@ -8,7 +8,7 @@ enum class CodeReviewExecutionMode(val wireValue: String) {
   ;
 
   companion object {
-    val DEFAULT: CodeReviewExecutionMode = DELEGATED
+    val DEFAULT: CodeReviewExecutionMode = INLINE
 
     fun fromWire(value: String): CodeReviewExecutionMode = entries.firstOrNull { it.wireValue == value }
       ?: throw IllegalArgumentException(

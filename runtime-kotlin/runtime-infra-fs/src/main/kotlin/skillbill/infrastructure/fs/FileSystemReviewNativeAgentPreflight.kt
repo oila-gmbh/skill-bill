@@ -4,7 +4,6 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingInstalledNativeAgentError
-import skillbill.install.apply.currentNativeAgentApplyCacheRoot
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
 import skillbill.model.EnvironmentContext
@@ -21,21 +20,11 @@ class FileSystemReviewNativeAgentPreflight(
 ) : ReviewNativeAgentPreflightPort {
   override fun verify(request: ReviewNativeAgentPreflightRequest) {
     val home = environment.userHome
-    val currentCache = currentNativeAgentApplyCacheRoot(
-      home,
-      request.repoRoot.resolve("platform-packs"),
-      request.repoRoot.resolve("skills"),
-    )
-    val legacyCache = skillbill.nativeagent.rendering.NativeAgentOperations.installCacheRoot(
-      home,
-      request.repoRoot.resolve("platform-packs"),
-      request.repoRoot.resolve("skills"),
-    )
     // sourceRoot is intentionally omitted: passing it would let read() bootstrap trust from
     // whatever links currently exist on disk when the durable inventory is missing, so a
     // tampered artifact could validate against a digest computed from itself. Preflight must
     // reject a missing inventory outright; only install/reconcile may legitimately bootstrap it.
-    val inventory = NativeAgentLinkInventory.read(home, listOf(currentCache, legacyCache))
+    val inventory = NativeAgentLinkInventory.read(home, emptyList())
     request.assignments.distinct().forEach { assignment ->
       val agentId = assignment.agentId
       val logicalName = assignment.logicalName
@@ -74,17 +63,12 @@ class FileSystemReviewNativeAgentPreflight(
           "managed inventory must contain one entry per applicable provider path",
         )
       }
-      applicable.forEach { verifyEntry(it, provider, currentCache) }
+      applicable.forEach { verifyEntry(it, provider) }
     }
   }
 
-  private fun verifyEntry(entry: NativeAgentLinkInventoryEntry, provider: NativeAgentProvider, currentCache: Path) {
+  private fun verifyEntry(entry: NativeAgentLinkInventoryEntry, provider: NativeAgentProvider) {
     val installed = entry.installedPath
-    val expectedTarget = currentCache.resolve(provider.directoryName).resolve(provider.fileName(entry.logicalName))
-      .toAbsolutePath().normalize()
-    if (entry.cacheTargetPath != expectedTarget) {
-      fail(entry.logicalName, provider, installed, "recorded target is not the current installed generation")
-    }
     if (!Files.isSymbolicLink(installed)) fail(entry.logicalName, provider, installed, "managed link is missing")
     val resolved = runCatching { installed.toRealPath() }
       .getOrElse { fail(entry.logicalName, provider, installed, "managed link is dangling or unreadable", it) }

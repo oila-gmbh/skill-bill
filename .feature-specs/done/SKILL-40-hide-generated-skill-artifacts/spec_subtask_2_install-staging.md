@@ -1,6 +1,6 @@
 # SKILL-40 Subtask 2: install pipeline renders generated artifacts into a staging dir
 
-Parent spec: [./spec.md](./spec.md)
+Parent spec: [./spec.md](spec.md)
 
 Status: Complete
 

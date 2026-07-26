@@ -1,6 +1,6 @@
 # SKILL-138 · Subtask 1 — Agent identity, schemas, paths, and desktop selection
 
-Parent: [spec.md](./spec.md)
+Parent: [spec.md](spec.md)
 
 ## Scope
 

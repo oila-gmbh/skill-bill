@@ -1,6 +1,6 @@
 # SKILL-138 · Subtask 4 — Cursor headless runtime, decoding, models, and continuation
 
-Parent: [spec.md](./spec.md)
+Parent: [spec.md](spec.md)
 
 ## Scope
 

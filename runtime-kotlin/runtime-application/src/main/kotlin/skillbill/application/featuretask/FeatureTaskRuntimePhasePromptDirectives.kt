@@ -95,7 +95,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   }
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves depth by pass number: pass one to DELEGATED, every later pass to INLINE. An explicit INLINE or DELEGATED always overrides AUTO on every pass.$parallel$resolvedTierInfo$materializedScope$remediationContext
+    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves to INLINE on every pass. Only an explicit DELEGATED selection launches workers.$parallel$resolvedTierInfo$materializedScope$remediationContext
   """.trimIndent()
 }
 
