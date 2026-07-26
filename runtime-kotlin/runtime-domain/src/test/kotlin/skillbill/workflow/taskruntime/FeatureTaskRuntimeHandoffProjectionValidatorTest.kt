@@ -102,6 +102,45 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `phase request projection resolves fields from its governed result container`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+      declaredFieldNames = listOf("commit_sha", "branch", "pushed"),
+    )
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(declaration),
+        resolvedUpstream = upstream(
+          """{"produced_outputs":{"commit_push_result":{"commit_sha":"abc123","branch":"feat/x","pushed":true}}}""",
+        ),
+      ),
+    )
+
+    assertEquals(listOf("commit_sha", "branch", "pushed"), envelope.projections.single().fields.map { it.name })
+  }
+
+  @Test
+  fun `phase request projection rejects a required field missing from the producer result`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+      declaredFieldNames = listOf("commit_sha", "branch"),
+    )
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(declaration),
+          resolvedUpstream = upstream(
+            """{"produced_outputs":{"commit_push_result":{"commit_sha":"abc123"}}}""",
+          ),
+        ),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD, error.failureKind)
+    assertContains(error.message.orEmpty(), "declared field 'branch' resolved to no value")
+  }
+
+  @Test
   fun `a non-required missing source is omitted rather than rejected`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
@@ -368,6 +407,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     sourceRef: FeatureTaskRuntimeHandoffSourceRef =
       FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(PRODUCER),
     projectionName: String = "plan_receipt",
+    projectionContractId: String = "test.upstream_phase_receipt",
     contractVersion: String = "0.1",
     promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility =
       FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
@@ -383,7 +423,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     consumerPhaseId = consumerPhaseId,
     sourceRef = sourceRef,
     projectionName = projectionName,
-    projectionContractId = "test.upstream_phase_receipt",
+    projectionContractId = projectionContractId,
     projectionContractVersion = contractVersion,
     promptVisibility = promptVisibility,
     budget = budget,

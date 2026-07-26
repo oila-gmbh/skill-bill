@@ -453,10 +453,34 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
     val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
     return declaration.declaredFieldNames.mapNotNull { name ->
-      val value = if (name == "verdict") envelope[name] else produced[name]
+      val value = if (name == "verdict") {
+        envelope[name]
+      } else {
+        resolveDeclaredPhaseField(produced, name)
+      }
       value?.let {
         FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
       }
+    }
+  }
+
+  /**
+   * Phase producers own named result objects (`validation_result`, `history_result`,
+   * `commit_push_result`, and `pr_result`). Resolve only those governed containers; searching every
+   * nested object would turn a closed projection into an accidental context-discovery mechanism.
+   */
+  private fun resolveDeclaredPhaseField(produced: Map<String, Any?>, name: String): Any? {
+    produced[name]?.let { return it }
+    val resultContainers = listOf(
+      "audit_result",
+      "review_result",
+      "validation_result",
+      "history_result",
+      "commit_push_result",
+      "pr_result",
+    )
+    return resultContainers.firstNotNullOfOrNull { container ->
+      JsonSupport.anyToStringAnyMap(produced[container])?.get(name)
     }
   }
 

@@ -51,11 +51,16 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
   private val FINALIZATION_PHASE_IDS: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
   )
 
   fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> =
-    if (phaseId in FINALIZATION_PHASE_IDS) FINALIZATION else ACCEPTANCE_CONTRACT_PHASES
+    when (phaseId) {
+      in FINALIZATION_PHASE_IDS -> FINALIZATION
+      // The bounded PR request explicitly carries the acceptance contract; it still excludes
+      // planning, audit, review, history, and raw validation context.
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> ACCEPTANCE_CONTRACT_PHASES
+      else -> ACCEPTANCE_CONTRACT_PHASES
+    }
 }
 
 /**

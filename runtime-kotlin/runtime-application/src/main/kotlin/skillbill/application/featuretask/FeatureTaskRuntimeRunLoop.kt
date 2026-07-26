@@ -200,8 +200,20 @@ internal class FeatureTaskRuntimeRunLoop(
       },
       auditRepairPlan = auditRepairPlan,
       auditRepairState = auditRepairState,
+      expectedRepositoryCheckpoint = if (
+        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+      ) {
+        reviewedCheckpointFingerprint()
+      } else {
+        null
+      },
     )
   }
+
+  private fun reviewedCheckpointFingerprint(): String? =
+    recorder.loadDeliveredProjections(request.workflowId, request.dbPathOverride)
+      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.repositoryCheckpointFingerprint
 
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
@@ -740,6 +752,7 @@ internal class FeatureTaskRuntimeRunLoop(
       loopId = edge.loopId,
       edgeIteration = edgeIteration,
       drivingVerdict = edge.triggeringVerdict,
+      expectedRepositoryCheckpoint = reviewedCheckpointFingerprint(),
     )
     activeReentry = pendingReentry
     return edge.destinationPhaseId
@@ -787,6 +800,11 @@ internal class FeatureTaskRuntimeRunLoop(
       },
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
         recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
+      } else {
+        null
+      },
+      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+        reviewedCheckpointFingerprint()
       } else {
         null
       },
@@ -1340,6 +1358,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val reentryGapCriteria: List<String> = emptyList(),
     val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
     val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+    val expectedRepositoryCheckpoint: String? = null,
   )
 
   @Suppress("LongParameterList")
@@ -2821,7 +2840,10 @@ internal class FeatureTaskRuntimeRunLoop(
       auditRepairState = run.reentry?.auditRepairState,
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repositoryCheckpoint = repositoryCheckpoint,
-      expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
+      expectedRepositoryCheckpoint = (
+        run.reentry?.expectedRepositoryCheckpoint
+          ?: run.reentry?.auditRepairState?.repositoryFingerprint
+        )
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)

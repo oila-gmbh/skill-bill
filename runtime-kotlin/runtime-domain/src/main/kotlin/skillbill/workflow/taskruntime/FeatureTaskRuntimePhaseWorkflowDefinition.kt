@@ -142,8 +142,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN to listOf(PHASE_PREPLAN),
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
       PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
-      PHASE_IMPLEMENT_FIX to listOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_REVIEW),
-      PHASE_REVIEW to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
+      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW),
+      PHASE_REVIEW to listOf(PHASE_AUDIT),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
       PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
@@ -226,7 +226,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
     declaredFieldNames = fields,
     checkpointPolicy = checkpointPolicy,
-    required = false,
+    required = true,
   )
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
@@ -253,14 +253,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       name = "change_receipt",
       contractId = PhaseProjectionContract.CHANGE_RECEIPT,
       fields = listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
     ),
     phaseProjection(
       consumerPhaseId = PHASE_REVIEW,
       producingPhaseId = PHASE_AUDIT,
       name = "audit_clearance",
       contractId = PhaseProjectionContract.AUDIT_CLEARANCE,
-      fields = listOf("verdict", "repository_checkpoint"),
+      fields = listOf("clearance_status", "review_scope", "repository_checkpoint"),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
     ),
   )
@@ -285,7 +285,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = FeatureTaskRuntimePrePlanningDigest.DECLARED_FIELD_NAMES,
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required = false,
+    required = true,
   )
 
   fun executablePlanDeclaration(
@@ -301,7 +301,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = FeatureTaskRuntimeExecutablePlan.DECLARED_FIELD_NAMES,
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required = false,
+    required = true,
   )
 
   fun planCommitmentDeclaration(
@@ -317,7 +317,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = FeatureTaskRuntimePlanCommitment.DECLARED_FIELD_NAMES,
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required = false,
+    required = true,
   )
 
   fun implementationReceiptDeclaration(
@@ -336,7 +336,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     // freshly resolved checkpoint rather than inspecting whatever tree happens to be current. The
     // producer's own claims survive the refresh; only the repository evidence is re-derived.
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    required = false,
+    required = true,
   )
 
   /**
@@ -353,15 +353,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       implementationReceiptDeclaration(PHASE_AUDIT),
     ),
     PHASE_IMPLEMENT_FIX to listOf(
-      executablePlanDeclaration(PHASE_IMPLEMENT_FIX),
-      phaseProjection(
-        PHASE_IMPLEMENT_FIX,
-        PHASE_IMPLEMENT,
-        "change_receipt",
-        PhaseProjectionContract.CHANGE_RECEIPT,
-        listOf("changed_paths", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      ),
       phaseProjection(
         PHASE_IMPLEMENT_FIX,
         PHASE_REVIEW,
@@ -372,14 +363,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
     ),
     PHASE_REVIEW to listOf(
-      phaseProjection(
-        PHASE_REVIEW,
-        PHASE_IMPLEMENT,
-        "change_receipt",
-        PhaseProjectionContract.CHANGE_RECEIPT,
-        listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
       phaseProjection(
         PHASE_REVIEW,
         PHASE_AUDIT,

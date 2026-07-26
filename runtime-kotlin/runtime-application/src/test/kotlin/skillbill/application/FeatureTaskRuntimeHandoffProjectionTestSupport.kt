@@ -28,8 +28,8 @@ internal fun FeatureTaskRuntimePhaseLaunchBriefing.requireUpstreamReceipt(produc
 internal fun FeatureTaskRuntimePhaseLaunchBriefing.hasUpstreamReceipt(producingPhaseId: String): Boolean =
   upstreamReceipt(producingPhaseId) != null
 
-/** Phases whose prompts omit the acceptance contract and policy mandates by allowlist. */
-internal val FINALIZATION_PHASE_IDS: Set<String> = setOf("write_history", "commit_push", "pr")
+/** Finalization phases whose prompts omit the acceptance contract; PR explicitly requires it. */
+internal val FINALIZATION_PHASE_IDS: Set<String> = setOf("write_history", "commit_push")
 
 /**
  * Canonical `produced_outputs` bodies for the phases that feed the bounded planning projections on the

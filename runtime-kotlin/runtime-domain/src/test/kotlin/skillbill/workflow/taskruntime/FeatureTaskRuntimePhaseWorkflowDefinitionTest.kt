@@ -255,12 +255,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         def.PHASE_IMPLEMENT to "feature_task_runtime.implementation_receipt",
       ),
       def.PHASE_IMPLEMENT_FIX to setOf(
-        def.PHASE_PLAN to "feature_task_runtime.executable_plan",
-        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
         def.PHASE_REVIEW to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
       ),
       def.PHASE_REVIEW to setOf(
-        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
       def.PHASE_VALIDATE to setOf(
@@ -294,6 +291,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         "$consumer must not receive a complete upstream phase receipt",
       )
       def.phaseDeclarations.getValue(consumer).projectionDeclarations.forEach { declaration ->
+        assertTrue(declaration.required, "${declaration.projectionName} must reject missing required fields")
         assertTrue("phase_output_receipt" !in declaration.declaredFieldNames)
         assertTrue(
           declaration.declaredFieldNames.none {
