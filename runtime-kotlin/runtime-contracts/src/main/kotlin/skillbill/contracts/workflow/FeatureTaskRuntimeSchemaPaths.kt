@@ -73,8 +73,8 @@ object FeatureTaskRuntimePhaseHandoffSchemaPaths {
 }
 
 /**
- * Pins the durable private-evidence/delivered-projection wire split. Legacy records without the
- * explicit record kind, producer iteration, and repository checkpoint are not compatible.
+ * Pins the durable private-phase-record/delivered-projection wire split. Legacy phase records
+ * without the explicit record kind and version are not compatible.
  */
 const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
 

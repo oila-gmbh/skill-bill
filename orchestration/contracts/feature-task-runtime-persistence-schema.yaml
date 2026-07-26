@@ -3,7 +3,7 @@ $id: "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.y
 title: Feature-task-runtime handoff persistence records
 description: Strict wire records keeping private phase evidence separate from exact delivered projections.
 oneOf:
-  - $ref: "#/$defs/private_evidence"
+  - $ref: "#/$defs/private_phase_record"
   - $ref: "#/$defs/delivered_projection"
 $defs:
   checkpoint:
@@ -26,36 +26,60 @@ $defs:
         items:
           type: string
           minLength: 1
-  private_evidence:
+  private_phase_record:
     type: object
     additionalProperties: false
     required:
       - contract_version
       - record_kind
-      - workflow_id
-      - producer_phase_id
-      - producer_iteration
-      - repository_checkpoint
-      - phase_output
+      - phase_id
+      - status
+      - attempt_count
+      - started_at
+      - first_started_at
+      - resolved_agent_id
+      - execution_origin
     properties:
       contract_version:
         const: "0.2"
       record_kind:
-        const: private_phase_evidence
-      workflow_id:
+        const: private_phase_record
+      phase_id:
         type: string
         minLength: 1
-      producer_phase_id:
+      status:
         type: string
         minLength: 1
-      producer_iteration:
+      attempt_count:
         type: integer
         minimum: 1
-      repository_checkpoint:
-        $ref: "#/$defs/checkpoint"
-      phase_output:
+      started_at:
         type: string
         minLength: 1
+      first_started_at:
+        type: string
+        minLength: 1
+      finished_at: { type: string, minLength: 1 }
+      duration_millis: { type: integer, minimum: 0 }
+      resolved_agent_id: { type: string, minLength: 1 }
+      execution_origin: { enum: [agent-executed, goal-planning-hydrated] }
+      output_artifact: { type: string }
+      rejected_output: { type: string }
+      blocked_reason: { type: string }
+      failure_disposition:
+        enum: [retryable, non_retryable_policy_conflict, needs_user_action, process_failure, invalid_output]
+      file_manifest_before:
+        type: array
+        items: { type: string }
+      file_manifest_after:
+        type: array
+        items: { type: string }
+      file_manifest_introduced:
+        type: array
+        items: { type: string }
+      loop_id: { type: string, minLength: 1 }
+      edge_iteration: { type: integer, minimum: 1 }
+      review_pass_number: { type: integer, minimum: 1, maximum: 2 }
   delivered_projection:
     type: object
     additionalProperties: false
@@ -105,6 +129,6 @@ x-coherence-checks:
   - id: exact-delivery
     description: The serialized envelope bytes are the exact validated prompt-visible projection.
   - id: separate-read-apis
-    description: Private evidence and delivered projections use distinct models, keys, and read APIs.
+    description: Private phase records and delivered projections use distinct models, keys, and read APIs.
   - id: incompatible-legacy-version
     description: Missing record kind, identity, or version is a typed loud failure; no implicit migration occurs.

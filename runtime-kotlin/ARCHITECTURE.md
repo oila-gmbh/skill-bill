@@ -478,8 +478,6 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrivatePhaseEvidenceRecord.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrivatePhaseEvidenceRecord.fromArtifactMap`
     - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
@@ -730,6 +728,12 @@ derivative; repository state has an immutable checkpoint identity; and
 phase-local instructions use workflow-owned invariant allowlists. Declaration
 and persistence wires have independent incompatible `0.2` contracts. Delivered
 records identify the workflow, consumer, producer iteration, and checkpoint;
+the versioned, exact-decoded `FeatureTaskRuntimePhaseRecord` wire is the
+authoritative durable private-evidence record written and read by the phase
+recorder. It remains under the private phase-record artifact key, separate from
+the delivered-projection key and prompt-facing read API. Unknown fields,
+missing record identity, and unsupported versions are incompatible rather than
+defaulted.
 legacy records missing that identity loud-fail with restart or explicit
 out-of-band migration guidance. The operator action is deliberately identical at
 workflow, briefing, handoff, private-evidence, and delivered-projection read
@@ -1180,8 +1184,6 @@ Categories:
 - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrivatePhaseEvidenceRecord.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrivatePhaseEvidenceRecord.fromArtifactMap`
 - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`

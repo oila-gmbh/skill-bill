@@ -22,7 +22,7 @@ class FeatureTaskRuntimeHandoffFoundationSchemaContractVersionTest {
     assertEquals(FeatureTaskRuntimePersistenceSchemaPaths.EXPECTED_SCHEMA_ID, schema.path("\$id").asText())
     val versions = schema.path("\$defs").let { defs ->
       listOf(
-        defs.path("private_evidence"),
+        defs.path("private_phase_record"),
         defs.path("delivered_projection"),
       )
     }.map { it.path("properties").path("contract_version").path("const").asText() }

@@ -21,6 +21,7 @@ import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.plan.model.ReviewLaunchLane
+import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
@@ -144,6 +145,7 @@ internal object ParallelReviewPreparationCompiler {
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
+    val specialistContract = loadAuthoritativeSpecialistContract(input.repoRoot)
     val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
       require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
     }
@@ -169,7 +171,7 @@ internal object ParallelReviewPreparationCompiler {
       DelegatedReviewLaunchRequest(
         packet = preparation.packet,
         assignment = assignment,
-        specialistContract = ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+        specialistContract = specialistContract,
         rubrics = listOf(route.rubric),
         brokerId = "review-evidence-${assignment.digest}",
         budget = budget,
@@ -191,6 +193,18 @@ internal object ParallelReviewPreparationCompiler {
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
+
+  private fun loadAuthoritativeSpecialistContract(repoRoot: Path): String {
+    val relative = Path.of(ReviewPacketConsumerContract.SOURCE_PATH)
+    val candidates = listOf(
+      repoRoot.resolve(relative),
+      Path.of("").toAbsolutePath().normalize().resolve(relative),
+      Path.of("").toAbsolutePath().normalize().resolve("..").resolve(relative).normalize(),
+    )
+    val source = candidates.firstOrNull { Files.isRegularFile(it) }
+      ?: error("Authoritative delegated-review specialist contract is missing.")
+    return Files.readString(source).replace("\r\n", "\n").trim()
+  }
 
   private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }

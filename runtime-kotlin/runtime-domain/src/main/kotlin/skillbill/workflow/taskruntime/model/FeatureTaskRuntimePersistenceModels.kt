@@ -433,6 +433,8 @@ data class FeatureTaskRuntimePhaseRecord(
 
   @OpenBoundaryMap("Feature-task-runtime per-phase record artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    "record_kind" to "private_phase_record",
     "phase_id" to phaseId,
     "status" to status,
     "attempt_count" to attemptCount,
@@ -459,37 +461,60 @@ data class FeatureTaskRuntimePhaseRecord(
     /** Strict decode; loud-fails on any missing or malformed required field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
-      val startedAt = raw.requireStringField("started_at")
-      return FeatureTaskRuntimePhaseRecord(
-        phaseId = raw.requireStringField("phase_id"),
-        status = raw.requireStringField("status"),
-        attemptCount = raw.requireIntField("attempt_count"),
-        startedAt = startedAt,
-        // Records written before first_started_at existed fall back to started_at.
-        firstStartedAt = raw.optionalStringField("first_started_at") ?: startedAt,
-        finishedAt = raw.optionalStringField("finished_at"),
-        durationMillis = raw.optionalLongField("duration_millis"),
-        resolvedAgentId = raw.requireStringField("resolved_agent_id"),
-        executionOrigin = raw.optionalStringField("execution_origin")?.let(
-          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
-        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
-        outputArtifact = raw.optionalStringField("output_artifact"),
-        rejectedOutput = raw.optionalStringField("rejected_output"),
-        blockedReason = raw.optionalStringField("blocked_reason"),
-        failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
-          FeatureTaskRuntimeFailureDisposition.fromWireValue(value)
-            ?: throw InvalidWorkflowStateSchemaError(
-              "Feature-task-runtime artifact field 'failure_disposition' has unsupported value '$value'.",
-            )
-        },
-        fileManifestBefore = raw.optionalStringListField("file_manifest_before"),
-        fileManifestAfter = raw.optionalStringListField("file_manifest_after"),
-        fileManifestIntroduced = raw.optionalStringListField("file_manifest_introduced"),
-        loopId = raw.optionalStringField("loop_id"),
-        edgeIteration = raw.optionalIntField("edge_iteration"),
-        reviewPassNumber = raw.optionalIntField("review_pass_number"),
+      val required = setOf(
+        "contract_version", "record_kind", "phase_id", "status", "attempt_count", "started_at",
+        "first_started_at", "resolved_agent_id", "execution_origin",
       )
+      val allowed = required + setOf(
+        "finished_at", "duration_millis", "output_artifact", "rejected_output", "blocked_reason",
+        "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
+        "loop_id", "edge_iteration", "review_pass_number",
+      )
+      if (!raw.keys.containsAll(required) ||
+        !allowed.containsAll(raw.keys) ||
+        raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION ||
+        raw["record_kind"] != "private_phase_record"
+      ) {
+        incompatiblePhaseRecord()
+      }
+      return try {
+        FeatureTaskRuntimePhaseRecord(
+          phaseId = raw.requireStringField("phase_id"),
+          status = raw.requireStringField("status"),
+          attemptCount = raw.requireIntField("attempt_count"),
+          startedAt = raw.requireStringField("started_at"),
+          firstStartedAt = raw.requireStringField("first_started_at"),
+          finishedAt = raw.optionalStringField("finished_at"),
+          durationMillis = raw.optionalLongField("duration_millis"),
+          resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+          executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.fromWireValue(
+            raw.requireStringField("execution_origin"),
+          ),
+          outputArtifact = raw.optionalStringField("output_artifact"),
+          rejectedOutput = raw.optionalStringField("rejected_output"),
+          blockedReason = raw.optionalStringField("blocked_reason"),
+          failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
+            FeatureTaskRuntimeFailureDisposition.fromWireValue(value) ?: incompatiblePhaseRecord()
+          },
+          fileManifestBefore = raw.optionalStringListField("file_manifest_before"),
+          fileManifestAfter = raw.optionalStringListField("file_manifest_after"),
+          fileManifestIntroduced = raw.optionalStringListField("file_manifest_introduced"),
+          loopId = raw.optionalStringField("loop_id"),
+          edgeIteration = raw.optionalIntField("edge_iteration"),
+          reviewPassNumber = raw.optionalIntField("review_pass_number"),
+        )
+      } catch (_: InvalidWorkflowStateSchemaError) {
+        incompatiblePhaseRecord()
+      } catch (_: IllegalArgumentException) {
+        incompatiblePhaseRecord()
+      }
     }
+
+    private fun incompatiblePhaseRecord(): Nothing = throw InvalidWorkflowStateSchemaError(
+      "Private feature-task-runtime phase record is incompatible with persistence contract " +
+        "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION; " +
+        "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+    )
   }
 }
 
