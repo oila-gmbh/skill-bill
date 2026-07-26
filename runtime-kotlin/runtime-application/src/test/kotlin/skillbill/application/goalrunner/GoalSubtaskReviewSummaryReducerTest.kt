@@ -39,7 +39,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Blocker findings request changes and remain unresolved`() {
+  fun `Blocker findings remain recorded but do not request changes`() {
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
@@ -49,8 +49,9 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
-    assertEquals(1, outcome.unresolvedFindingCount)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
+    assertEquals(0, outcome.unresolvedFindingCount)
+    assertEquals(1, GoalSubtaskReviewSummaryReducer.fromOutput(output).size)
   }
 
   @Test
@@ -200,7 +201,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Blocker plus Major findings request changes with one unresolved count`() {
+  fun `Blocker plus Major findings remain recorded without blocking`() {
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
@@ -213,10 +214,12 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    // Only Blocker reopens implement_fix, so the verdict is CHANGES_REQUESTED with one unresolved.
-    // Major is recorded in the ledger but does not trigger a fix pass.
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
-    assertEquals(1, outcome.unresolvedFindingCount)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
+    assertEquals(0, outcome.unresolvedFindingCount)
+    assertEquals(
+      2,
+      GoalSubtaskReviewSummaryReducer.unaddressedFindings(output, "SKILL-146", 3, "workflow", 1).size,
+    )
   }
 
   @Test

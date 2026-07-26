@@ -58,4 +58,15 @@ class GoalSubtaskBlockerDispositionParseTest {
   fun `a pass with no dispositions parses empty rather than failing`() {
     assertEquals(emptyList(), GoalSubtaskReviewSummaryReducer.blockerDispositions(emptyMap()))
   }
+
+  @Test
+  fun `a prior blocker does not require a disposition`() {
+    assertEquals(
+      emptyList(),
+      GoalSubtaskReviewSummaryReducer.blockerDispositions(
+        output(),
+        priorBlockerFindingIds = listOf("F-001"),
+      ),
+    )
+  }
 }
