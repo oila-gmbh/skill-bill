@@ -489,20 +489,47 @@ class FeatureTaskRuntimePhaseRecorder(
       ::validateEnvelopeWire,
       ::validatePersistenceWire,
     )
-    val existingDelivered = deliveredHistory.values
-      .filter { it.consumerPhaseId == briefing.phaseId }
-      .maxByOrNull(FeatureTaskRuntimeDeliveredProjectionRecord::iteration)
-    val delivered = FeatureTaskRuntimeDeliveredProjectionRecord(
-      workflowId = workflowId,
-      consumerPhaseId = briefing.phaseId,
-      // Each briefing write is one delivery to that consumer, so the iteration counts re-entries.
-      iteration = (existingDelivered?.iteration ?: 0) + 1,
-      envelope = briefing.handoffEnvelope,
-    )
+    val delivered = nextDeliveredProjectionRecord(workflowId, briefing, deliveredHistory)
     handoffFoundationValidator.validatePersistenceRecord(
       delivered.toArtifactMap(),
       "delivered-projection:${briefing.phaseId}",
     )
+    recordProjectionMeasurements(unitOfWork, workflowId, briefing, delivered, artifacts)
+    val updatedDelivered = LinkedHashMap(deliveredHistory)
+      .apply { put(deliveredProjectionKey(delivered), delivered) }
+    val patch = mapOf(
+      FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
+        updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },
+      FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY to
+        updatedDelivered.mapValues { (_, value) -> value.toArtifactMap() },
+    )
+    persistPatch(unitOfWork.workflowStates, record, patch)
+    true
+  }
+
+  private fun nextDeliveredProjectionRecord(
+    workflowId: String,
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    deliveredHistory: Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>,
+  ): FeatureTaskRuntimeDeliveredProjectionRecord {
+    val existingDelivered = deliveredHistory.values
+      .filter { it.consumerPhaseId == briefing.phaseId }
+      .maxByOrNull(FeatureTaskRuntimeDeliveredProjectionRecord::iteration)
+    return FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = workflowId,
+      consumerPhaseId = briefing.phaseId,
+      iteration = (existingDelivered?.iteration ?: 0) + 1,
+      envelope = briefing.handoffEnvelope,
+    )
+  }
+
+  private fun recordProjectionMeasurements(
+    unitOfWork: UnitOfWork,
+    workflowId: String,
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
+    artifacts: Map<String, Any?>,
+  ) {
     val privatePhaseRecords = phaseRecordsFrom(artifacts)
     briefing.handoffEnvelope.projections.forEach { projection ->
       val deliveredProjectionUtf8Bytes =
@@ -531,31 +558,22 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
     }
-    val deliveredKey = listOf(
-      delivered.workflowId,
-      delivered.consumerPhaseId,
-      delivered.iteration.toString(),
-      delivered.sourceProducerIterations
-        .sortedWith(
-          compareBy(
-            FeatureTaskRuntimeProducerIteration::phaseId,
-            FeatureTaskRuntimeProducerIteration::iteration,
-          ),
-        )
-        .joinToString(separator = ",") { "${it.phaseId}#${it.iteration}" },
-      delivered.repositoryCheckpointFingerprint,
-    ).joinToString(separator = "|")
-    val updatedDelivered = LinkedHashMap(deliveredHistory)
-      .apply { put(deliveredKey, delivered) }
-    val patch = mapOf(
-      FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
-        updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },
-      FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY to
-        updatedDelivered.mapValues { (_, value) -> value.toArtifactMap() },
-    )
-    persistPatch(unitOfWork.workflowStates, record, patch)
-    true
   }
+
+  private fun deliveredProjectionKey(delivered: FeatureTaskRuntimeDeliveredProjectionRecord): String = listOf(
+    delivered.workflowId,
+    delivered.consumerPhaseId,
+    delivered.iteration.toString(),
+    delivered.sourceProducerIterations
+      .sortedWith(
+        compareBy(
+          FeatureTaskRuntimeProducerIteration::phaseId,
+          FeatureTaskRuntimeProducerIteration::iteration,
+        ),
+      )
+      .joinToString(separator = ",") { "${it.phaseId}#${it.iteration}" },
+    delivered.repositoryCheckpointFingerprint,
+  ).joinToString(separator = "|")
 
   /**
    * Records a content-free measurement when projection construction rejects a launch before a
@@ -643,7 +661,8 @@ class FeatureTaskRuntimePhaseRecorder(
     handoffFoundationValidator.validatePersistenceRecord(record, "delivered-projection")
 
   private fun FeatureTaskRuntimeHandoffProjectionFailureKind.toMeasurementFailureClassification():
-    FeatureTaskRuntimeProjectionFailureClassification = when (this) {
+    FeatureTaskRuntimeProjectionFailureClassification =
+    when (this) {
       FeatureTaskRuntimeHandoffProjectionFailureKind.UNSUPPORTED_CONTRACT_VERSION ->
         FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION
       FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW ->

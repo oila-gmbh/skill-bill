@@ -2,7 +2,6 @@
 
 package skillbill.contracts.workflow
 
-import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
@@ -12,6 +11,8 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
+
+private const val MAX_REPORTED_SCHEMA_FAILURES = 3
 
 object FeatureTaskRuntimePhaseHandoffSchemaValidator {
   fun validate(payload: Map<String, Any?>, sourceLabel: String) = validateAgainst(
@@ -47,20 +48,28 @@ private fun validateAgainst(
   expectedId: String,
   error: (String) -> RuntimeException,
 ) {
-  try {
+  val failures = mapContractFailures(error) {
     val document = YAMLMapper().readTree(readContract(classpathResource, repoPath))
     require(document.path("\$id").asText() == expectedId) { "schema identity mismatch" }
     val schema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
       .getSchema(ObjectMapper().writeValueAsString(document))
-    val failures = schema.validate(ObjectMapper().valueToTree(payload))
-    if (failures.isNotEmpty()) {
-      throw error(failures.sortedBy { it.instanceLocation.toString() }.take(3).joinToString(" | ") { it.message })
-    }
-  } catch (failure: RuntimeException) {
-    throw failure
-  } catch (failure: Exception) {
-    throw error(failure.message ?: failure::class.simpleName.orEmpty())
+    schema.validate(ObjectMapper().valueToTree(payload))
   }
+  if (failures.isNotEmpty()) {
+    val reason = failures
+      .sortedBy { it.instanceLocation.toString() }
+      .take(MAX_REPORTED_SCHEMA_FAILURES)
+      .joinToString(" | ") { it.message }
+    throw error(reason)
+  }
+}
+
+private inline fun <T> mapContractFailures(error: (String) -> RuntimeException, block: () -> T): T = try {
+  block()
+} catch (failure: RuntimeException) {
+  throw failure
+} catch (failure: Exception) {
+  throw error(failure.message ?: failure::class.simpleName.orEmpty())
 }
 
 private fun readContract(classpathResource: String, repoPath: String): String {
@@ -72,5 +81,5 @@ private fun readContract(classpathResource: String, repoPath: String): String {
     if (Files.isRegularFile(candidate)) return Files.readString(candidate)
     current = current.parent
   }
-  throw IllegalStateException("Canonical runtime contract is missing at '$classpathResource' or '$repoPath'.")
+  error("Canonical runtime contract is missing at '$classpathResource' or '$repoPath'.")
 }

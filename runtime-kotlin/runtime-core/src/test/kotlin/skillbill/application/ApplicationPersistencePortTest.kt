@@ -514,6 +514,7 @@ class ApplicationPersistencePortTest {
     val afterSecondDelivery = decodeArtifactsForTest(
       requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
+
     @Suppress("UNCHECKED_CAST")
     val deliveredHistory =
       afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY] as Map<String, Any?>
@@ -1899,7 +1900,7 @@ private class FakeDatabaseSessionFactory(
 
 @Suppress("TooManyFunctions")
 private class RecordingProjectionLifecycleTelemetryRepository : LifecycleTelemetryRepository by
-  NoopLifecycleTelemetryRepository {
+NoopLifecycleTelemetryRepository {
   val projectionMeasurements = mutableListOf<FeatureTaskRuntimeProjectionMeasurement>()
 
   override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) {

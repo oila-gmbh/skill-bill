@@ -5139,7 +5139,7 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
 
 internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
-  private val lifecycle: LifecycleTelemetryRepository? = null,
+  private val lifecycle: LifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
   private val knownIssue: Boolean = true,
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
@@ -5161,8 +5161,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val dbPath: Path = this@RuntimeFakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository get() = error("unused")
     override val learnings: LearningRepository get() = error("unused")
-    override val lifecycleTelemetry: LifecycleTelemetryRepository
-      get() = lifecycle ?: error("unused")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository = lifecycle
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository

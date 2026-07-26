@@ -17,6 +17,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
@@ -68,16 +69,17 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun resolvedProducerIteration(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
-  ): FeatureTaskRuntimeProducerIteration =
-    when (val source = declaration.sourceRef) {
-      is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput -> {
-        val output = inputs.resolvedUpstream.outputsByPhaseId[source.producingPhaseId]
-        if (output == null) declaration.producerIteration else {
-          FeatureTaskRuntimeProducerIteration(source.producingPhaseId, output.iteration)
-        }
+  ): FeatureTaskRuntimeProducerIteration = when (val source = declaration.sourceRef) {
+    is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput -> {
+      val output = inputs.resolvedUpstream.outputsByPhaseId[source.producingPhaseId]
+      if (output == null) {
+        declaration.producerIteration
+      } else {
+        FeatureTaskRuntimeProducerIteration(source.producingPhaseId, output.iteration)
       }
-      else -> declaration.producerIteration
     }
+    else -> declaration.producerIteration
+  }
 
   private fun rejectDuplicateProjectionNames(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {
     val seen = mutableSetOf<String>()

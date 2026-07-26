@@ -254,6 +254,14 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     @OpenBoundaryMap("Feature-task-runtime delivered-projection decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord {
       requireExactDeliveredProjectionFields(raw)
+      requireSupportedPersistenceContract(raw)
+      requireDeliveredProjectionRecordKind(raw)
+      val record = decodeDeliveredProjection(raw)
+      requireMatchingCheckpoint(raw, record)
+      return record
+    }
+
+    private fun requireSupportedPersistenceContract(raw: Map<String, Any?>) {
       val contractVersion = raw["contract_version"] as? String ?: missing("contract_version")
       if (contractVersion != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
         throw InvalidWorkflowStateSchemaError(
@@ -261,33 +269,46 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
             "'$contractVersion'; restart the workflow or run an explicit compatible migration.",
         )
       }
+    }
+
+    private fun requireDeliveredProjectionRecordKind(raw: Map<String, Any?>) {
       if (raw["record_kind"] != "delivered_projection") {
         throw InvalidWorkflowStateSchemaError(
           "Feature-task-runtime prompt-facing persistence record must have kind 'delivered_projection'; " +
             "private evidence cannot be read through this API.",
         )
       }
-      val record = FeatureTaskRuntimeDeliveredProjectionRecord(
-        workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
-        consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
-        iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
-          ?: missing("consumer_delivery_iteration"),
-        envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
-          JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
-            // Named explicitly: the private phase-output artifact is never an acceptable substitute
-            // for the delivered projection, so an absent envelope is a hard decode failure.
-            ?: missing("handoff_envelope"),
-        ),
-        sourceProducerIterations = (raw["source_producer_iterations"] as? List<*>)
-          ?.map { identity ->
-            val map = JsonSupport.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
-            FeatureTaskRuntimeProducerIteration(
-              phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
-              iteration = (map["iteration"] as? Number)?.toInt()
-                ?: missing("source_producer_iterations.iteration"),
-            )
-          } ?: missing("source_producer_iterations"),
-      )
+    }
+
+    private fun decodeDeliveredProjection(raw: Map<String, Any?>) = FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
+      consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
+      iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
+        ?: missing("consumer_delivery_iteration"),
+      envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
+        JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
+          // Named explicitly: the private phase-output artifact is never an acceptable substitute
+          // for the delivered projection, so an absent envelope is a hard decode failure.
+          ?: missing("handoff_envelope"),
+      ),
+      sourceProducerIterations = decodeSourceProducerIterations(raw),
+    )
+
+    private fun decodeSourceProducerIterations(raw: Map<String, Any?>): List<FeatureTaskRuntimeProducerIteration> =
+      (raw["source_producer_iterations"] as? List<*>)
+        ?.map { identity ->
+          val map = JsonSupport.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
+          FeatureTaskRuntimeProducerIteration(
+            phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
+            iteration = (map["iteration"] as? Number)?.toInt()
+              ?: missing("source_producer_iterations.iteration"),
+          )
+        } ?: missing("source_producer_iterations")
+
+    private fun requireMatchingCheckpoint(
+      raw: Map<String, Any?>,
+      record: FeatureTaskRuntimeDeliveredProjectionRecord,
+    ) {
       val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
         ?: missing("repository_checkpoint")
       val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
@@ -297,7 +318,6 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
             "restart the consumer phase from current repository state.",
         )
       }
-      return record
     }
 
     private fun requireExactDeliveredProjectionFields(raw: Map<String, Any?>) {

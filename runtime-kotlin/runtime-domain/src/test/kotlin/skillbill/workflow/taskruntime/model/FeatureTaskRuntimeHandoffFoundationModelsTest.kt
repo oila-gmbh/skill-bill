@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,6 +57,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     assertEquals("0.1", wire["contract_version"])
     assertFalse(wire.keys.any { it in setOf("prompt", "payload", "source_body", "diff_body", "receipt") })
   }
+
   @Test
   fun `producer iteration rejects blank identity and non-positive attempts`() {
     assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimeProducerIteration("", 1) }

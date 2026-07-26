@@ -1,3 +1,14 @@
+## [2026-07-26] SKILL-146 versioned handoff contract and durable evidence boundary (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application,core,contracts,infra-fs,infra-sqlite,ports,cli}, orchestration/contracts
+- Phase handoffs now use closed-world, versioned declarations and typed models for consumer/source identity, projection contract/version, prompt visibility, UTF-8 byte and item budgets, and repository-checkpoint policy; arbitrary agent maps cannot widen the boundary. reusable
+- Durable storage separates complete private source evidence from the exact prompt-visible delivered projection, and validates both production writes and legacy reads with typed loud failures. reusable
+- The runtime-contract recipe is applied across the handoff, envelope, projection-measurement, and persistence schemas: pinned Kotlin constants, parity tests, typed schema errors, strict parsing, and classpath bundling. reusable
+- Projection validation enforces declared fields, compact references, checkpoint identity, pre-launch budgets, and explicit incompatibility; the application recorder and composition root share the infrastructure validator through the domain port. reusable
+- Measurement and telemetry models are content-free and tests lock sensitive-field absence, schema/model/mapping/fixture alignment, exact durable round trips, UTF-8 accounting, and collection limits.
+- Known limitation: phase-specific projectors, prose/verification projections, delegated review delivery, compatibility documentation, and end-to-end validation remain in later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 5/5 implemented
+
 ## [2026-07-24] SKILL-140 lease-based crash reconciliation for killed children (subtask 5)
 Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp, orchestration/contracts
 - A workflow row left non-terminal by a killed child (expired lease + dead process) self-heals to the typed resumable interrupted state on the next runner startup, so a crashed feature-task child no longer wedges the loop and resume continues from that phase; the goal parent treats such a row as resumable instead of emitting a terminal `NO_TERMINAL_STORE_OUTCOME`-class block. reusable
