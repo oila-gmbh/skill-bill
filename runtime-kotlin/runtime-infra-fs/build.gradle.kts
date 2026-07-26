@@ -45,6 +45,25 @@ val copyAgentAddonSchema =
 val canonicalReviewContextSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
+
+val canonicalSpecialistContractPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/review-orchestrator/specialist-contract.md")
+    .absolutePath
+
+val copySpecialistContract =
+  tasks.register<Copy>("copySpecialistContract") {
+    val contractPath = canonicalSpecialistContractPath
+    from(contractPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/review"))
+    inputs.file(contractPath)
+    doFirst {
+      require(File(contractPath).isFile) {
+        "Authoritative delegated-review specialist contract is missing at $contractPath."
+      }
+    }
+  }
+
 val copyReviewContextSchema =
   tasks.register<Copy>("copyReviewContextSchema") {
     val schemaPath = canonicalReviewContextSchemaPath
@@ -450,6 +469,7 @@ sourceSets.named("main") {
 }
 
 tasks.named("processResources") {
+  dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
@@ -476,6 +496,7 @@ tasks.named("processResources") {
 }
 
 tasks.named("processTestResources") {
+  dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)

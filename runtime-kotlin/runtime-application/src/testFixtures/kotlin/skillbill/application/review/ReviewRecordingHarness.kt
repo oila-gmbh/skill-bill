@@ -5,6 +5,7 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -195,6 +196,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
+    reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
     nativeAgentPreflight = ReviewNativeAgentPreflightPort { request ->
       recorder.preflightRequests += request
       config.preflight(request)

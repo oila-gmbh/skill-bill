@@ -30,6 +30,7 @@ import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
@@ -75,6 +76,7 @@ class ParallelCodeReviewRunner(
   private val repoLocalConfig: RepoLocalConfigPort,
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   private val reviewRubricResolver: ReviewRubricResolver,
+  private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
   private val database: DatabaseSessionFactory,
 ) {
@@ -240,6 +242,7 @@ class ParallelCodeReviewRunner(
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
+      specialistContract = reviewSpecialistContractProvider.authoritativeContract(),
     )
   }
 

@@ -32,6 +32,7 @@ import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
@@ -189,7 +190,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `delegated review loads packaged specialist contract outside skill bill checkout`() {
+  fun `delegated review obtains specialist contract independently of reviewed checkout`() {
     val reviewedRepo = createGitRepo()
     createStagedFile(reviewedRepo)
     val unrelatedWorkingDirectory = Files.createTempDirectory("unrelated-working-directory")
@@ -910,6 +911,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = config.rubricResolver,
+    reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     nativeAgentPreflight = config.nativeAgentPreflight,
     database = NoopReviewDatabase,
   )
@@ -941,6 +943,13 @@ private object NoopReviewDatabase : DatabaseSessionFactory {
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
 }
+
+private const val TEST_SPECIALIST_CONTRACT: String =
+  "## Shared Contract For Every Specialist\n" +
+    "- Evidence is mandatory\n" +
+    "- Keep each specialist review pass to at most 7 findings\n\n" +
+    "## Shared Report Structure\n" +
+    "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
 
 private fun baseRequest(
   agent1Id: String = "claude",

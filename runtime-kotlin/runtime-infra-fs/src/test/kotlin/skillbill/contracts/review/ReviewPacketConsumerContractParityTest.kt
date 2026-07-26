@@ -1,5 +1,6 @@
 package skillbill.contracts.review
 
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,7 +31,13 @@ class ReviewPacketConsumerContractParityTest {
 
   @Test fun `governed prose and runtime use authoritative contract bytes`() {
     val markdown = Files.readString(contractPath())
-    assertEquals(markdown.replace("\r\n", "\n").trim(), ReviewPacketConsumerContract.authoritativeSpecialistContract())
+    assertEquals(
+      listOf(
+        ReviewPacketConsumerContract.SPECIALIST_RULES_HEADING,
+        ReviewPacketConsumerContract.REPORT_STRUCTURE_HEADING,
+      ).joinToString("\n\n") { sourceSection(markdown, it) },
+      ClasspathReviewSpecialistContractProvider().authoritativeContract(),
+    )
     assertEquals(
       ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
       authoritativeBlock(markdown, "authoritative-launch-contract"),
@@ -60,6 +67,12 @@ class ReviewPacketConsumerContractParityTest {
     val body = markdown.substringAfter(opening, "")
     assertTrue(body.isNotEmpty(), "Missing authoritative '$name' block.")
     return body.substringBefore("\n```")
+  }
+
+  private fun sourceSection(markdown: String, heading: String): String {
+    val body = markdown.replace("\r\n", "\n").substringAfter("$heading\n", "")
+    assertTrue(body.isNotEmpty(), "Missing authoritative '$heading' section.")
+    return "$heading\n${body.substringBefore("\n## ").trim()}"
   }
 
   private fun contractPath(): Path {

@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.contracts.JsonSupport
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.util.concurrent.atomic.AtomicInteger
@@ -40,7 +41,11 @@ class ParallelLaneIsolationTest {
     val allSpecialists = areas.map { "bill-kotlin-code-review-$it" }
     recorder.nativeLaunches.forEach { launch ->
       assertNull(launch.logicalWorkerName, "Provider launches do not receive a rediscoverable logical worker identity.")
-      val worker = allSpecialists.single { launch.prompt.contains(it.substringAfterLast('-')) }
+      val envelope = requireNotNull(JsonSupport.parseObjectOrNull(launch.prompt))
+        .let(JsonSupport::jsonElementToValue)
+        .let { requireNotNull(JsonSupport.anyToStringAnyMap(it)) }
+      val worker = requireNotNull(envelope["lane"] as? String).substringAfter(':')
+      assertTrue(worker in allSpecialists, "Prompt carried an unexpected specialist lane '$worker'.")
       (allSpecialists - worker).forEach { sibling ->
         assertTrue(!launch.prompt.contains(sibling), "Prompt for '$worker' named sibling lane '$sibling'.")
       }

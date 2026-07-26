@@ -2,8 +2,10 @@ package skillbill.review.context.model
 
 object ReviewPacketConsumerContract {
   const val SOURCE_PATH: String = "orchestration/review-orchestrator/specialist-contract.md"
-  const val RESOURCE_PATH: String = "specialist-contract.md"
+  const val RESOURCE_PATH: String = "skillbill/review/specialist-contract.md"
+  const val SPECIALIST_RULES_HEADING: String = "## Shared Contract For Every Specialist"
   const val SECTION_HEADING: String = "## Packet Consumer Contract"
+  const val REPORT_STRUCTURE_HEADING: String = "## Shared Report Structure"
 
   val FORBIDDEN_REDISCOVERY: List<String> = listOf(
     "review_status",
@@ -42,8 +44,17 @@ object ReviewPacketConsumerContract {
   const val REPORT_STRUCTURE: String =
     "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
 
-  fun authoritativeSpecialistContract(): String =
-    requireNotNull(ReviewPacketConsumerContract::class.java.classLoader.getResourceAsStream(RESOURCE_PATH)) {
-      "Packaged authoritative delegated-review specialist contract is missing at $RESOURCE_PATH."
-    }.bufferedReader().use { it.readText() }.replace("\r\n", "\n").trim()
+  fun authoritativeSpecialistContract(source: String): String {
+    val normalized = source.replace("\r\n", "\n")
+    return listOf(SPECIALIST_RULES_HEADING, REPORT_STRUCTURE_HEADING)
+      .joinToString("\n\n") { heading -> normalized.requireSection(heading) }
+  }
+
+  private fun String.requireSection(heading: String): String {
+    val body = substringAfter("$heading\n", "")
+    require(body.isNotEmpty()) {
+      "Packaged authoritative delegated-review specialist contract is missing section '$heading'."
+    }
+    return "$heading\n${body.substringBefore("\n## ").trim()}"
+  }
 }

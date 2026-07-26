@@ -1,3 +1,14 @@
+## [2026-07-26] SKILL-146 telemetry compatibility and contract integration (subtask 6)
+Areas: runtime-kotlin/runtime-{domain,contracts,application,core,infra-fs,infra-sqlite,cli,mcp}, orchestration/{contracts,telemetry-contract,review-delegation}, skills/bill-feature-verify
+- Runtime persistence records privacy-safe byte/token estimates and typed counters while keeping prompt, diff, source, receipt, raw tool content, telemetry, and progress diagnostics outside domain artifacts.
+- Versioned persistence and handoff contracts, pinned schema paths/constants, typed incompatibility failures, mappings, fixtures, and continuation goldens now loud-fail legacy records with restart or out-of-band migration guidance.
+- Documentation and governed sources describe durable private-versus-delivered separation, privacy guarantees, compatibility behavior, and the single authoritative delegated-review rules source.
+- Delegated review preparation consumes the authoritative rules contract through parity-tested runtime wiring instead of restating rules. reusable
+- Contract, persistence, privacy-absence, measurement-presence, CLI/MCP, architecture, and generated-artifact regressions keep schemas, models, mappings, docs, and surfaces aligned.
+- Known limitation: legacy records are not silently migrated; incompatible state requires an explicit restart or documented out-of-band migration.
+Feature flag: N/A
+Acceptance criteria: subtask 6: 7/7 implemented
+
 ## [2026-07-26] SKILL-146 delegated-review least-context lane projection (subtask 5)
 Areas: runtime-kotlin/runtime-{domain,ports,application,infra-fs,infra-sqlite,core,cli}, orchestration/{contracts,review-orchestrator}
 - Delegated review lanes now receive only their assigned hunk content plus authoritative rubric, consumer contract, evidence policy, and report structure; whole-diff and scratch-artifact rediscovery are typed forbidden outcomes.

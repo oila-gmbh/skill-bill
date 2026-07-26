@@ -470,11 +470,11 @@ data class FeatureTaskRuntimePhaseRecord(
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
         "loop_id", "edge_iteration", "review_pass_number",
       )
-      if (!raw.keys.containsAll(required) ||
-        !allowed.containsAll(raw.keys) ||
-        raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION ||
-        raw["record_kind"] != "private_phase_record"
-      ) {
+      val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
+      val hasCompatibleIdentity =
+        raw["contract_version"] == FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION &&
+          raw["record_kind"] == "private_phase_record"
+      if (!hasCompatibleFields || !hasCompatibleIdentity) {
         incompatiblePhaseRecord()
       }
       return try {

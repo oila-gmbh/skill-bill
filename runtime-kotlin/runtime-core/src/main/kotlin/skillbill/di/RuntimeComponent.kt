@@ -48,6 +48,7 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
@@ -156,6 +157,7 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -498,6 +500,12 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun reviewRubricResolver(adapter: FileSystemReviewRubricResolver): ReviewRubricResolver = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewSpecialistContractProvider(
+    adapter: ClasspathReviewSpecialistContractProvider,
+  ): ReviewSpecialistContractProvider = adapter
 
   @Provides
   @JvmSynthetic

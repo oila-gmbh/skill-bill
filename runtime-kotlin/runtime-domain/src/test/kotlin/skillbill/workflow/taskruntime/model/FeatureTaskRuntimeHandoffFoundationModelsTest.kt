@@ -1,9 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -91,7 +89,6 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
       )
     }
   }
-
 }
 
 private object AcceptingFoundationValidator : FeatureTaskRuntimeHandoffFoundationValidator {

@@ -2,7 +2,9 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 
@@ -43,8 +45,17 @@ internal fun deliveredProjectionHistoryFrom(
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
   validatePersistenceRecord: (Map<String, Any?>) -> Unit = {},
 ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord> =
-  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY) { _, recordMap ->
-    validatePersistenceRecord(recordMap)
+  decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY) { key, recordMap ->
+    try {
+      validatePersistenceRecord(recordMap)
+    } catch (error: InvalidFeatureTaskRuntimePersistenceSchemaError) {
+      val consumerPhaseId = recordMap["consumer_phase_id"] as? String ?: "<unknown>"
+      throw InvalidFeatureTaskRuntimePersistenceSchemaError(
+        sourceLabel = "consumer-phase:$consumerPhaseId/delivered-projection:$key",
+        reason = "${error.reason}; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+        cause = error,
+      )
+    }
     val delivered = FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(recordMap)
     validateEnvelope(
       JsonSupport.anyToStringAnyMap(recordMap["handoff_envelope"])

@@ -31,6 +31,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -1950,29 +1951,15 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
           "feature_task_runtime_phase_records" to mapOf(
-            "preplan" to mapOf(
-              "contract_version" to "0.2",
-              "record_kind" to "private_phase_record",
-              "phase_id" to "preplan",
-              "status" to "completed",
-              "attempt_count" to 1,
-              "started_at" to "2026-06-18T10:00:00Z",
-              "first_started_at" to "2026-06-18T10:00:00Z",
-              "finished_at" to "2026-06-18T10:01:00Z",
-              "resolved_agent_id" to "agent-preplan",
-              "execution_origin" to "agent-executed",
+            "preplan" to completedRuntimePhaseRecord(
+              "preplan",
+              "2026-06-18T10:00:00Z",
+              "2026-06-18T10:01:00Z",
             ),
-            "plan" to mapOf(
-              "contract_version" to "0.2",
-              "record_kind" to "private_phase_record",
-              "phase_id" to "plan",
-              "status" to "completed",
-              "attempt_count" to 1,
-              "started_at" to "2026-06-18T10:02:00Z",
-              "first_started_at" to "2026-06-18T10:02:00Z",
-              "finished_at" to "2026-06-18T10:03:00Z",
-              "resolved_agent_id" to "agent-plan",
-              "execution_origin" to "agent-executed",
+            "plan" to completedRuntimePhaseRecord(
+              "plan",
+              "2026-06-18T10:02:00Z",
+              "2026-06-18T10:03:00Z",
             ),
           ),
         ),
@@ -2108,6 +2095,20 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     assertEquals(setOf("implement_fix"), WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds)
   }
+
+  private fun completedRuntimePhaseRecord(phaseId: String, startedAt: String, finishedAt: String): Map<String, Any?> =
+    mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+      "record_kind" to "private_phase_record",
+      "phase_id" to phaseId,
+      "status" to "completed",
+      "attempt_count" to 1,
+      "started_at" to startedAt,
+      "first_started_at" to startedAt,
+      "finished_at" to finishedAt,
+      "resolved_agent_id" to "agent-$phaseId",
+      "execution_origin" to "agent-executed",
+    )
 }
 
 // Goal-runner progress projection, progress/session/ledger persistence, and subtask resume

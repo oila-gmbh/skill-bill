@@ -1,0 +1,39 @@
+package skillbill.application.featuretask
+
+import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertFailsWith
+
+class FeatureTaskRuntimeHandoffEnvelopeArtifactDecodersTest {
+  @Test
+  fun `delivered projection read translates schema failure with consumer identity and migration guidance`() {
+    val projectionKey = "wftr-1:review:2:plan:1"
+    val artifacts = mapOf(
+      FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY to mapOf(
+        projectionKey to mapOf(
+          "consumer_phase_id" to "review",
+          "contract_version" to "legacy",
+        ),
+      ),
+    )
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePersistenceSchemaError> {
+      deliveredProjectionsFrom(
+        artifacts = artifacts,
+        validatePersistenceRecord = {
+          throw InvalidFeatureTaskRuntimePersistenceSchemaError(
+            sourceLabel = "delivered-projection:wftr-1",
+            reason = "unsupported legacy contract",
+          )
+        },
+      )
+    }
+
+    assertContains(error.sourceLabel, "consumer-phase:review")
+    assertContains(error.sourceLabel, "delivered-projection:$projectionKey")
+    assertContains(error.message.orEmpty(), FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE)
+  }
+}

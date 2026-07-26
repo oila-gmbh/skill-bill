@@ -18,7 +18,6 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
-import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.plan.model.ReviewLaunchLane
 import java.nio.file.Path
@@ -30,6 +29,7 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
+    specialistContract: String,
   ): List<DelegatedReviewLaunchRequest> {
     val hunks = input.evidence.hunks
     val routes = specialistRoutes(input)
@@ -50,7 +50,7 @@ internal object ParallelReviewPreparationCompiler {
     }
     val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
     val preparation = prepareReview(input, hunks, routes, decisions, revisionId, budget, envelopeValidator)
-    return launchRequests(input, preparation, routes, budget)
+    return launchRequests(input, preparation, routes, budget, specialistContract)
   }
 
   private fun specialistRoutes(input: ParallelReviewPreparationInput): List<SpecialistRoute> {
@@ -143,8 +143,8 @@ internal object ParallelReviewPreparationCompiler {
     preparation: skillbill.application.review.model.ReviewPreparationResult,
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
+    specialistContract: String,
   ): List<DelegatedReviewLaunchRequest> {
-    val specialistContract = ReviewPacketConsumerContract.authoritativeSpecialistContract()
     val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
       require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
     }
