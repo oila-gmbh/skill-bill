@@ -3,6 +3,7 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.DelegatedReviewWorkerOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
+import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
@@ -10,8 +11,8 @@ import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
-import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
@@ -22,6 +23,7 @@ import skillbill.review.context.model.TokenOwnership
 @Inject
 class DelegatedReviewWorkerLauncher(
   private val launcher: NativeReviewWorkerLauncher,
+  private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
   @Suppress("LongMethod")
   fun launch(request: DelegatedReviewWorkerRequest): DelegatedReviewWorkerOutcome {
@@ -53,7 +55,12 @@ class DelegatedReviewWorkerLauncher(
         ),
       )
     }
-    val boundedPrompt = boundedPrompt(prepared.prompt, evidenceRequests, evidence?.results.orEmpty())
+    val brokeredEvidence = evidenceRequests.zip(evidence?.results.orEmpty()).mapNotNull { (request, result) ->
+      result.content?.let { content -> request.path to content }
+    }
+    val finalEnvelope = prepared.launch.toLaunchEnvelope(brokeredEvidence).asWireMap()
+    envelopeValidator.validate(finalEnvelope, "delegated review final launch '${prepared.launch.assignment.lane}'")
+    val boundedPrompt = JsonSupport.mapToJsonString(finalEnvelope)
     finalLaunchOutcome(prepared.launch.assignment, prepared.launch.budget.maxLaneLaunchBytes, boundedPrompt)
       ?.let { outcome ->
         return DelegatedReviewWorkerOutcome(
@@ -142,19 +149,19 @@ class DelegatedReviewWorkerLauncher(
 
   private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> =
     assignment.expansions.map { expansion ->
-        require(expansion.authorized) {
-          "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."
-        }
-        require(expansion.assignmentDigest == assignment.digest) {
-          "Expansion '${expansion.expansionId}' does not belong to assignment '${assignment.digest}'."
-        }
-        ReviewEvidenceRequest(
-          assignment.lane,
-          expansion.requestedPath,
-          expansion.reachabilityReason,
-          expansion,
-        )
-      }.distinctBy { request -> request.path }
+      require(expansion.authorized) {
+        "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."
+      }
+      require(expansion.assignmentDigest == assignment.digest) {
+        "Expansion '${expansion.expansionId}' does not belong to assignment '${assignment.digest}'."
+      }
+      ReviewEvidenceRequest(
+        assignment.lane,
+        expansion.requestedPath,
+        expansion.reachabilityReason,
+        expansion,
+      )
+    }.distinctBy { request -> request.path }
 
   private fun providerUsage(facts: AgentRunLaunchFacts): ProviderTokenUsage? {
     if (listOf(
@@ -179,21 +186,5 @@ class DelegatedReviewWorkerLauncher(
         TokenOwnership.DIRECT
       },
     )
-  }
-
-  private fun boundedPrompt(
-    prompt: String,
-    requests: List<ReviewEvidenceRequest>,
-    evidence: List<ReviewEvidenceResult>,
-  ): String = buildString {
-    append(prompt)
-    appendLine()
-    appendLine("brokered_evidence:")
-    requests.zip(evidence).forEach { (request, result) ->
-      result.content?.let { content ->
-        appendLine("--- ${request.path}")
-        appendLine(content)
-      }
-    }
   }
 }

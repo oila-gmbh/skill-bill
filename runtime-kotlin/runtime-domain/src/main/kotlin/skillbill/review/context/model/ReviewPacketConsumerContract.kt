@@ -28,9 +28,10 @@ object ReviewPacketConsumerContract {
     "repeated_evidence_read",
   )
 
-  const val CONSUMER_CONTRACT: String =
+  const val AUTHORITATIVE_LAUNCH_CONTRACT: String =
     "Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, " +
       "recompute, or read sibling-lane or parent review context."
+  const val CONSUMER_CONTRACT: String = AUTHORITATIVE_LAUNCH_CONTRACT
 
   const val EVIDENCE_SURFACE_RULES: String =
     "Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. " +

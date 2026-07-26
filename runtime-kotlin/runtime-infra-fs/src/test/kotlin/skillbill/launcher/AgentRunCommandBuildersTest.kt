@@ -321,12 +321,15 @@ class AgentRunCommandBuildersTest {
       ).supportsGovernedLaunch,
     )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
+    val claudeCommand = ClaudeAgentRunCommandBuilder().build(isolated).command
     assertTrue(codexCommand.contains("--skip-git-repo-check"))
     assertTrue(codexCommand.contains("--ignore-user-config"))
     assertTrue(codexCommand.contains("read-only"))
     assertTrue(codexCommand.contains("fork_turns=none"))
     assertTrue(codexCommand.contains("tools.web_search=false"))
     assertTrue(codexCommand.contains("tools.shell=false"))
+    assertFalse(codexCommand.any { it.startsWith("agent=") })
+    assertFalse(claudeCommand.contains("--agent"))
     assertFalse(
       CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
     )

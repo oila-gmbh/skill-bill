@@ -43,6 +43,7 @@ Consumers must not rediscover any of the following:
 - `telemetry_ownership_determination` — telemetry ownership is decided by the orchestrator
 - `broad_repository_search` — searches must stay within assigned paths or named dependencies
 - `unrelated_rubric_read` — the single governed rubric in the launch is authoritative
+- `rubric_rediscovery` — the launch-supplied rubric must not be reloaded from a native-agent or disk artifact
 - `unassigned_file_access` — reads outside the assignment require an authorized expansion
 - `unselected_mcp_tool_call` — only tools explicitly projected by the parent may be called
 - `unscoped_shell_command` — shell commands outside the measured evidence surface are forbidden

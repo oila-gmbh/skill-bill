@@ -8,6 +8,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ReviewPacketConsumerContractParityTest {
+  @Test fun `launch specialist and consumer contracts are the same authoritative bytes`() {
+    assertEquals(
+      ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+      ReviewPacketConsumerContract.CONSUMER_CONTRACT,
+    )
+  }
+
   @Test fun `governed prose and runtime list enumerate the same forbidden rediscovery items`() {
     val markdown = Files.readString(contractPath())
     val section = markdown

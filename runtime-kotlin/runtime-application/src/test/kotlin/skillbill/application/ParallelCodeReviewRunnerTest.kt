@@ -273,12 +273,20 @@ class ParallelCodeReviewRunnerTest {
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "\"contract_version\":\"0.7\"")
       assertContains(prompt, "\"kind\":\"launch\"")
+      assertContains(prompt, "\"base_revision\":\"base-revision\"")
+      assertContains(prompt, "\"head_revision\":\"head-revision\"")
       assertContains(prompt, "\"assigned_paths\":[\"Child.kt\"]")
       assertContains(prompt, "\"specialist_contract\":")
       assertContains(prompt, "\"rubric\":")
       assertContains(prompt, "\"evidence_surface_rules\":")
       assertContains(prompt, "\"assigned_hunk_bodies\":")
+      assertContains(prompt, "\"brokered_evidence\":[]")
       assertContains(prompt, "+owned change")
+      assertTrue(prompt.startsWith("{") && prompt.endsWith("}"), "provider input must be one JSON envelope")
+      assertFalse(prompt.contains("brokered_evidence:"), "brokered evidence must not be appended after JSON")
+      assertFalse(prompt.contains("complete_diff"))
+      assertFalse(prompt.contains("\"scratch_path\":"))
+      assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
       assertContains(prompt, "\"assignment_digest\":")
@@ -829,6 +837,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
             ),
           )
         },
+        { _, _ -> },
       ),
     ),
     parentReviewLauncher = launcher,
@@ -888,6 +897,8 @@ private fun baseRequest(
   repoRoot = repoRoot,
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+  baseRevision = "base-revision",
+  headRevision = "head-revision",
 )
 
 private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->

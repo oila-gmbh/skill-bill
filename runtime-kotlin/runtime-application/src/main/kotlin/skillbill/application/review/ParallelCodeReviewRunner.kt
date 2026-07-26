@@ -145,7 +145,9 @@ class ParallelCodeReviewRunner(
     if (resolvedMode != ResolvedReviewExecutionMode.DELEGATED) return
     val providerNativeAssignments = launchRequests
       .filter { it.workerKind == skillbill.application.review.model.ReviewWorkerKind.PROVIDER_NATIVE }
-      .map { ReviewNativeAgentAssignment(it.agentId, requireNotNull(it.logicalWorkerName)) }
+      .mapNotNull { launch ->
+        launch.logicalWorkerName?.let { ReviewNativeAgentAssignment(launch.agentId, it) }
+      }
       .distinct()
     if (providerNativeAssignments.isNotEmpty()) {
       nativeAgentPreflight.verify(
@@ -221,6 +223,7 @@ class ParallelCodeReviewRunner(
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<DelegatedReviewLaunchRequest> {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
+    val (baseRevision, headRevision) = resolveReviewRevisions(request)
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -231,10 +234,24 @@ class ParallelCodeReviewRunner(
         routedPacks = routedManifests.map { it.slug },
         lanes = plannedRubrics,
         reviewRunId = request.reviewRunId,
+        baseRevision = baseRevision,
+        headRevision = headRevision,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
     )
+  }
+
+  private fun resolveReviewRevisions(request: ParallelCodeReviewRequest): Pair<String, String> {
+    val head = request.headRevision ?: runDiff(listOf("git", "rev-parse", "HEAD"), request.repoRoot).trim()
+    val base = request.baseRevision ?: when (request.scope) {
+      ParallelReviewScope.BRANCH -> detectBranchBase(request.repoRoot)
+      else -> head
+    }
+    if (base.isBlank() || head.isBlank()) {
+      throw DiffResolutionException("Review base and head revisions must resolve to non-blank immutable identities.")
+    }
+    return base to head
   }
 
   @Suppress("LongMethod")

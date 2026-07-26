@@ -76,12 +76,12 @@ subtasks:
 - id: 5
   name: "Delegated-review lane delivery and bounded evidence surface"
   spec_path: ".feature-specs/SKILL-146-least-context-handoffs/spec_subtask_5_delegated_review_lane_projection.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260726-174406-oep9"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

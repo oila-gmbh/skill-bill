@@ -90,8 +90,7 @@ class ObservingReviewEvidenceBroker(
   private val recorder: ReviewRecorder,
   private val delegate: ReviewEvidenceBroker,
 ) : ReviewEvidenceBroker {
-  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest) =
-    delegate.authorizeExpansion(request)
+  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest) = delegate.authorizeExpansion(request)
 
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     recorder.evidenceBatches += request
@@ -165,7 +164,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         isolationResolver = { ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE },
         envelopeValidator = { _, _ -> },
       ),
-      DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)),
+      DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)) { _, _ -> },
     ),
     parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
       recorder.parentLaunches += request
@@ -330,6 +329,8 @@ fun harnessRequest(
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   reviewRunId = reviewRunId,
+  baseRevision = "base-revision",
+  headRevision = "head-revision",
 )
 
 fun reviewPack(

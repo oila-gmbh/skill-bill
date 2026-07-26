@@ -190,7 +190,7 @@ $defs:
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
       contract_version: { const: "0.7" }
       kind: { const: launch }
@@ -209,6 +209,15 @@ $defs:
       assigned_hunk_bodies:
         type: array
         items: { $ref: "#/$defs/hunk" }
+      brokered_evidence:
+        type: array
+        items:
+          type: object
+          required: [path, content]
+          properties:
+            path: { $ref: "#/$defs/path" }
+            content: { type: string }
+          additionalProperties: false
       criteria_references: { $ref: "#/$defs/strings" }
       matched_rules: { $ref: "#/$defs/rule_references" }
       evidence_targets: { $ref: "#/$defs/evidence_targets" }

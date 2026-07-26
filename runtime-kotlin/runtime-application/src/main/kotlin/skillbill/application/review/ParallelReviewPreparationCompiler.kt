@@ -17,6 +17,7 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.plan.model.ReviewLaunchLane
 import java.nio.file.Path
@@ -46,7 +47,7 @@ internal object ParallelReviewPreparationCompiler {
         addOns = route.descriptor.addOns,
       )
     }
-    val revisionId = digest(input.diff)
+    val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
     val preparation = prepareReview(input, hunks, routes, decisions, revisionId, budget, envelopeValidator)
     return launchRequests(input, preparation, routes, budget)
   }
@@ -101,8 +102,8 @@ internal object ParallelReviewPreparationCompiler {
   ): ReviewFactPorts {
     val scope = ReviewScopeFacts(
       "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
-      "parallel-scope-base-$revisionId",
-      "parallel-scope-head-$revisionId",
+      input.baseRevision,
+      input.headRevision,
       "authoritative supplied parallel-review diff",
       hunks,
     )
@@ -159,13 +160,13 @@ internal object ParallelReviewPreparationCompiler {
       DelegatedReviewLaunchRequest(
         packet = preparation.packet,
         assignment = assignment,
-        specialistContract = SPECIALIST_CONTRACT,
+        specialistContract = ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
         rubrics = listOf(route.rubric),
         brokerId = "review-evidence-${assignment.digest}",
         budget = budget,
         agentId = route.agentId,
         workerKind = route.workerKind,
-        logicalWorkerName = route.descriptor.skillName.takeIf { route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE },
+        logicalWorkerName = null,
         repoRoot = input.repoRoot,
       )
     }
@@ -174,9 +175,6 @@ internal object ParallelReviewPreparationCompiler {
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
-
-  private const val SPECIALIST_CONTRACT =
-    "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."
 }
 
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
@@ -209,4 +207,6 @@ internal data class ParallelReviewPreparationInput(
   // review_finished telemetry resolves accounting by the caller's run id, but the row is keyed by the
   // packet review id, so the packet must adopt that run id whenever the caller supplies one.
   val reviewRunId: String? = null,
+  val baseRevision: String,
+  val headRevision: String,
 )
