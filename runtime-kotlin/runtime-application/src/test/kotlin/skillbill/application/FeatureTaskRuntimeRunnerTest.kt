@@ -2102,6 +2102,17 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/existing-runtime-branch",
+        reviewBaseSha = "0".repeat(40),
+        baselineOwnedPaths = listOf(
+          ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
+          ".feature-specs/SKILL-137/sibling/notes.md",
+        ),
+      ),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -2116,6 +2127,11 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertFalse(
       auditBriefing.briefingText.contains(".feature-specs/SKILL-137/sibling"),
       "no entry from a sibling subtask's untracked directory may enter the goal-child audit projection",
+    )
+    assertEquals(
+      listOf("runtime-domain/Child.kt", "runtime-domain/Renamed.kt"),
+      requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
+      "the checkpoint must be derived from the durable workflow-owned inventory",
     )
   }
 

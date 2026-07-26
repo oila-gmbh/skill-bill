@@ -57,7 +57,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
@@ -2130,10 +2129,23 @@ internal class FeatureTaskRuntimeRunLoop(
     // On a goal child the review state, not the resolved branch, holds the immutable base and the
     // baseline untracked inventory the parent captured for this subtask alone.
     val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
-    val ownedPaths = checkpointOwnedPaths(
-      run,
-      goalReviewState?.baselineUntrackedPaths ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
-    ) ?: return null
+    val ownedPaths = resolvedBranch?.workflowOwnedPaths?.takeIf { it.isNotEmpty() }
+      ?: checkpointOwnedPaths(
+        run,
+        resolvedBranch?.baselineOwnedPaths
+          ?: goalReviewState?.baselineUntrackedPaths
+          ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
+      )?.also { inventory ->
+        if (!recorder.recordWorkflowOwnedPaths(
+            run.request.workflowId,
+            inventory,
+            run.request.dbPathOverride,
+          )
+        ) {
+          return null
+        }
+      }
+      ?: return null
     val headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD"
     val immutableHead = gitOperations.resolveCommit(run.request.repoRoot, headRevision)
       .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
@@ -2161,9 +2173,8 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * Owned paths for the checkpoint scope. Subtracting the run's recorded baseline untracked inventory
-   * is what keeps a goal-child scoped to its own subtask: sibling subtasks share the tree, and every
-   * path they left behind is already in that baseline.
+   * Owned paths for the checkpoint scope. Subtracting the run's persisted tracked-and-untracked
+   * ownership baseline keeps sibling and pre-existing changes out of this workflow's checkpoint.
    *
    * Both sides of that subtraction come from the same NUL-delimited plumbing listing. `git status
    * --porcelain` is deliberately not the source: it collapses a wholly-untracked directory to one
@@ -2181,10 +2192,10 @@ internal class FeatureTaskRuntimeRunLoop(
    * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
    * option — audit would read a silently narrowed scope as the complete one.
    */
-  private fun checkpointOwnedPaths(run: PhaseRun, baselineUntrackedPaths: List<String>): List<String>? {
+  private fun checkpointOwnedPaths(run: PhaseRun, baselineOwnedPaths: List<String>): List<String>? {
     val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
     if (!owned.ok) return null
-    val baseline = baselineUntrackedPaths.toSet()
+    val baseline = baselineOwnedPaths.toSet()
     val paths = owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
       .map(String::trim)
@@ -2708,6 +2719,7 @@ internal class FeatureTaskRuntimeRunLoop(
     state: FeatureTaskRuntimeRunState,
     priorSchemaFailure: String?,
     durablyClosedCriterionRefs: List<String>,
+    repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ): PreparedLaunch {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
@@ -2718,7 +2730,7 @@ internal class FeatureTaskRuntimeRunLoop(
       auditRepairPlan = run.reentry?.auditRepairPlan,
       auditRepairState = run.reentry?.auditRepairState,
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
-      repositoryCheckpoint = resolveRepositoryCheckpoint(run),
+      repositoryCheckpoint = repositoryCheckpoint,
       expectedRepositoryCheckpoint = run.reentry?.auditRepairState?.repositoryFingerprint
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
     )
@@ -2775,6 +2787,31 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
+    val resolvedProducerIteration = run.declaration.projectionDeclarations
+      .map { declaration ->
+        val phaseId = declaration.producerIteration.phaseId
+        state.outputFor(phaseId)?.let { FeatureTaskRuntimeProducerIteration(phaseId, it.iteration) }
+          ?: declaration.producerIteration
+      }
+      .maxByOrNull(FeatureTaskRuntimeProducerIteration::iteration)
+      ?: FeatureTaskRuntimeProducerIteration(run.phaseId, 1)
+    val measurementContext = LaunchRejectionMeasurementContext(
+      producerIteration = resolvedProducerIteration,
+      repositoryCheckpoint = try {
+        resolveRepositoryCheckpoint(run)
+      } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+        recordLaunchSeamRejection(
+          run,
+          FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
+          error.projectionName,
+          resolvedProducerIteration,
+          null,
+        )
+        return LaunchResult.projectionRejected(
+          "Feature-task-runtime phase '${run.phaseId}' could not resolve its repository checkpoint: ${error.message}",
+        )
+      },
+    )
     // Read the audit's own durably-closed criterion refs OUTSIDE the quarantine-guarded region: a
     // drift here (audit_repair_state.satisfied_criterion_refs naming undeclared criteria) is audit's
     // own state, not an upstream producer record, so re-running a producer cannot fix it. It keeps the
@@ -2786,20 +2823,33 @@ internal class FeatureTaskRuntimeRunLoop(
         emptyList()
       }
     } catch (error: InvalidWorkflowStateSchemaError) {
+      recordLaunchSeamRejection(
+        run,
+        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
+        "durable_audit_state",
+        measurementContext.producerIteration,
+        measurementContext.repositoryCheckpoint,
+      )
       return LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' rejected its durable audit-repair state at the launch seam: " +
           error.message,
       )
     }
     val prepared = try {
-      prepareLaunch(run, state, priorSchemaFailure, durablyClosedCriterionRefs)
+      prepareLaunch(
+        run,
+        state,
+        priorSchemaFailure,
+        durablyClosedCriterionRefs,
+        measurementContext.repositoryCheckpoint,
+      )
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
-      recorder.recordProjectionRejection(
-        workflowId = run.request.workflowId,
-        consumerPhaseId = run.phaseId,
-        error = error,
-        repositoryCheckpointFingerprint = run.reentry?.auditRepairState?.repositoryFingerprint,
-        dbOverride = run.request.dbPathOverride,
+      recordLaunchSeamRejection(
+        run,
+        error.failureKind.toMeasurementFailureClassification(),
+        error.projectionName,
+        measurementContext.producerIteration,
+        measurementContext.repositoryCheckpoint,
       )
       // A handoff-projection rejection is static declaration/config drift, not a legacy producer
       // record: re-running the producer cannot fix a wrong declaration. Block the phase durably instead
@@ -2813,6 +2863,8 @@ internal class FeatureTaskRuntimeRunLoop(
         run,
         FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW,
         "phase_briefing",
+        measurementContext.producerIteration,
+        measurementContext.repositoryCheckpoint,
       )
       // The assembled framing (governing contract plus the resolved repository checkpoint) overflows the
       // briefing byte ceiling. Without this catch the assembler's throw would unwind past the STATUS_RUNNING
@@ -2826,6 +2878,8 @@ internal class FeatureTaskRuntimeRunLoop(
         run,
         FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
         "planning_projection",
+        measurementContext.producerIteration,
+        measurementContext.repositoryCheckpoint,
       )
       // A legacy or drifted upstream producer record failed bounded-projection validation. Rather than
       // wedge the consumer on a record it cannot repair, quarantine the record as private evidence and
@@ -2839,6 +2893,8 @@ internal class FeatureTaskRuntimeRunLoop(
         run,
         FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION,
         "durable_briefing",
+        measurementContext.producerIteration,
+        measurementContext.repositoryCheckpoint,
       )
       // A durable handoff/briefing artifact failed schema validation at the launch seam (a stale
       // briefing row, a forbidden legacy field). This is corruption drift a producer re-run cannot
@@ -2910,23 +2966,26 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     classification: FeatureTaskRuntimeProjectionFailureClassification,
     sourceLabel: String,
+    producerIteration: FeatureTaskRuntimeProducerIteration,
+    repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ) {
-    val producerIteration = run.declaration.projectionDeclarations
-      .map(PhaseHandoffProjectionDeclaration::producerIteration)
-      .maxByOrNull(FeatureTaskRuntimeProducerIteration::iteration)
-      ?: FeatureTaskRuntimeProducerIteration(run.phaseId, 1)
     recorder.recordProjectionRejection(
       workflowId = run.request.workflowId,
       consumerPhaseId = run.phaseId,
       projectionContractId = run.declaration.projectionDeclarations.firstOrNull()
         ?.projectionContractId ?: "feature_task_runtime.$sourceLabel",
       producerIteration = producerIteration,
-      repositoryCheckpointFingerprint = run.reentry?.auditRepairState?.repositoryFingerprint,
+      repositoryCheckpointFingerprint = repositoryCheckpoint?.fingerprint,
       failureClassification = classification,
       sourceLabel = sourceLabel,
       dbOverride = run.request.dbPathOverride,
     )
   }
+
+  private data class LaunchRejectionMeasurementContext(
+    val producerIteration: FeatureTaskRuntimeProducerIteration,
+    val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
+  )
 
   private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {
     run.reentry

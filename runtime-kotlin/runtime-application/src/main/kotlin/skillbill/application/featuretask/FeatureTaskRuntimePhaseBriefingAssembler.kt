@@ -9,10 +9,7 @@ import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
@@ -304,35 +301,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       return
     }
     visible.forEach { projection ->
-      val sourceRef = projection.sourceRef
-      // The upstream heading stays keyed by producing phase so a consumer reads "from: plan", not a
-      // projection name it has no topology for.
-      if (sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
-        appendLine("### from: ${sourceRef.producingPhaseId}")
-      } else {
-        appendLine("### ${projection.projectionName} (${sourceRef.wireValue})")
-      }
-      projection.fields.forEach { field -> appendProjectionField(projection, field) }
-    }
-  }
-
-  private fun StringBuilder.appendProjectionField(
-    projection: FeatureTaskRuntimeHandoffProjection,
-    field: FeatureTaskRuntimeHandoffProjectionField,
-  ) {
-    val single = projection.fields.size == 1 &&
-      field.name == FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD
-    when (val value = field.value) {
-      is FeatureTaskRuntimeHandoffProjectionValue.Text -> {
-        val text = escapeBriefingLineBreaks(value.text)
-        if (single) appendLine(text) else appendLine("${field.name}: $text")
-      }
-      is FeatureTaskRuntimeHandoffProjectionValue.TextList -> {
-        appendLine("${field.name}:")
-        value.items.forEach { item -> appendLine("  - ${escapeBriefingLineBreaks(item)}") }
-      }
-      is FeatureTaskRuntimeHandoffProjectionValue.CompactReference ->
-        appendLine("${field.name}: ${value.kind.wireValue}=${value.value}")
+      append(projection.canonicalDeliveredRendering)
     }
   }
 

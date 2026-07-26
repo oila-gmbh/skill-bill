@@ -5,6 +5,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
@@ -200,6 +201,12 @@ class FeatureTaskRuntimeBranchSetupRunner(
       )
     }
     val immutableBase = requireNotNull(baseline.baseline)
+    val baselineOwnedPaths = gitOperations.repositoryOwnedPaths(request.repoRoot)
+    if (!baselineOwnedPaths.ok) {
+      return FeatureTaskRuntimeBranchSetupOutcome.blocked(
+        "Feature-task-runtime could not capture its workflow ownership baseline: ${baselineOwnedPaths.error}",
+      )
+    }
     val recorded = recorder.recordResolvedBranch(
       request.workflowId,
       FeatureTaskRuntimeResolvedBranch(
@@ -208,6 +215,12 @@ class FeatureTaskRuntimeBranchSetupRunner(
         created = created,
         reviewBaseSha = immutableBase.reviewBaseSha,
         baselineUntrackedPaths = immutableBase.baselineUntrackedPaths,
+        baselineOwnedPaths = baselineOwnedPaths.value.orEmpty()
+          .split('\u0000')
+          .map(String::trim)
+          .filter(String::isNotBlank)
+          .distinct()
+          .sorted(),
       ),
       request.dbPathOverride,
     )

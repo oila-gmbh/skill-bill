@@ -96,6 +96,8 @@ data class FeatureTaskRuntimeResolvedBranch(
   val created: Boolean = false,
   val reviewBaseSha: String? = null,
   val baselineUntrackedPaths: List<String> = emptyList(),
+  val baselineOwnedPaths: List<String> = emptyList(),
+  val workflowOwnedPaths: List<String> = emptyList(),
 ) {
   init {
     require(branch.isNotBlank()) { "FeatureTaskRuntimeResolvedBranch.branch must be non-blank." }
@@ -104,6 +106,12 @@ data class FeatureTaskRuntimeResolvedBranch(
     }
     require(baselineUntrackedPaths.all(String::isNotBlank)) {
       "FeatureTaskRuntimeResolvedBranch.baselineUntrackedPaths must not contain blanks."
+    }
+    require(baselineOwnedPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.baselineOwnedPaths must not contain blanks."
+    }
+    require(workflowOwnedPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.workflowOwnedPaths must not contain blanks."
     }
   }
 
@@ -115,6 +123,8 @@ data class FeatureTaskRuntimeResolvedBranch(
     baseBranch?.let { put("base_branch", it) }
     reviewBaseSha?.let { put("review_base_sha", it) }
     if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
+    put("baseline_owned_paths", baselineOwnedPaths)
+    put("workflow_owned_paths", workflowOwnedPaths)
   }
 
   companion object {
@@ -127,6 +137,12 @@ data class FeatureTaskRuntimeResolvedBranch(
       reviewBaseSha = raw.optionalStringField("review_base_sha"),
       baselineUntrackedPaths = (raw["baseline_untracked_paths"] as? List<*>)
         ?.map { it as? String ?: error("baseline_untracked_paths must contain only strings.") }
+        .orEmpty(),
+      baselineOwnedPaths = (raw["baseline_owned_paths"] as? List<*>)
+        ?.map { it as? String ?: error("baseline_owned_paths must contain only strings.") }
+        .orEmpty(),
+      workflowOwnedPaths = (raw["workflow_owned_paths"] as? List<*>)
+        ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
         .orEmpty(),
     )
   }

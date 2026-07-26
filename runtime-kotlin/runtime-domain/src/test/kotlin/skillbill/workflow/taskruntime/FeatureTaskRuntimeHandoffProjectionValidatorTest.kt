@@ -114,6 +114,30 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `budget enforcement measures the exact prompt-visible rendering`() {
+    val payload = """{"items":["${"x".repeat(80)}"]}"""
+    val wireOnlyBytes = payload.toByteArray(Charsets.UTF_8).size
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(
+            declaration(
+              budget = FeatureTaskRuntimeHandoffProjectionBudget(
+                maxUtf8Bytes = wireOnlyBytes + 1,
+                maxCollectionItems = 64,
+              ),
+            ),
+          ),
+          resolvedUpstream = upstream(payload),
+        ),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
+    assertContains(error.message.orEmpty(), "UTF-8 bytes")
+  }
+
+  @Test
   fun `a duplicate projection name is rejected`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(

@@ -497,12 +497,40 @@ data class FeatureTaskRuntimeHandoffProjection(
     ),
 ) {
   /**
-   * Exact UTF-8 size of the canonical wire representation delivered and persisted. Counting only
-   * values misses field names, value-kind tags, reference metadata, and collection framing.
+   * Exact UTF-8 size of the representation delivered to the consumer. Prompt-visible projections
+   * use their canonical line rendering; private projections use their durable wire representation.
    */
   val utf8ByteSize: Int
-    get() = JsonSupport.mapToJsonString(toEnvelopeMap()).toByteArray(Charsets.UTF_8).size
+    get() = canonicalDeliveredRendering.toByteArray(Charsets.UTF_8).size
   val itemCount: Int get() = fields.sumOf { it.value.itemCount }
+  val canonicalDeliveredRendering: String
+    get() = if (promptVisibility == FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE) {
+      buildString {
+        if (sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
+          appendLine("### from: ${sourceRef.producingPhaseId}")
+        } else {
+          appendLine("### $projectionName (${sourceRef.wireValue})")
+        }
+        fields.forEach { field ->
+          val singleReceipt = fields.size == 1 &&
+            field.name == "phase_output_receipt"
+          when (val value = field.value) {
+            is FeatureTaskRuntimeHandoffProjectionValue.Text -> {
+              val text = value.text.escapeProjectionLineBreaks()
+              if (singleReceipt) appendLine(text) else appendLine("${field.name}: $text")
+            }
+            is FeatureTaskRuntimeHandoffProjectionValue.TextList -> {
+              appendLine("${field.name}:")
+              value.items.forEach { item -> appendLine("  - ${item.escapeProjectionLineBreaks()}") }
+            }
+            is FeatureTaskRuntimeHandoffProjectionValue.CompactReference ->
+              appendLine("${field.name}: ${value.kind.wireValue}=${value.value}")
+          }
+        }
+      }
+    } else {
+      JsonSupport.mapToJsonString(toEnvelopeMap())
+    }
 
   @OpenBoundaryMap("Feature-task-runtime handoff projection at the durable envelope wire seam")
   fun toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
@@ -536,6 +564,8 @@ data class FeatureTaskRuntimeHandoffProjection(
     },
   )
 }
+
+private fun String.escapeProjectionLineBreaks(): String = replace("\r", "\\r").replace("\n", "\\n")
 
 /**
  * The durable, prompt-visible handoff envelope: named typed projections and compact references only.

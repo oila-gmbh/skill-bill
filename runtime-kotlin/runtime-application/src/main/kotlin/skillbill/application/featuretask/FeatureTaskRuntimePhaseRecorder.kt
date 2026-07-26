@@ -703,25 +703,6 @@ class FeatureTaskRuntimePhaseRecorder(
   private fun validatePersistenceWire(record: Map<String, Any?>) =
     handoffFoundationValidator.validatePersistenceRecord(record, "delivered-projection")
 
-  private fun FeatureTaskRuntimeHandoffProjectionFailureKind.toMeasurementFailureClassification():
-    FeatureTaskRuntimeProjectionFailureClassification =
-    when (this) {
-      FeatureTaskRuntimeHandoffProjectionFailureKind.UNSUPPORTED_CONTRACT_VERSION ->
-        FeatureTaskRuntimeProjectionFailureClassification.UNSUPPORTED_VERSION
-      FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW ->
-        FeatureTaskRuntimeProjectionFailureClassification.BUDGET_OVERFLOW
-      FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION ->
-        FeatureTaskRuntimeProjectionFailureClassification.STALE_CHECKPOINT
-      FeatureTaskRuntimeHandoffProjectionFailureKind.MISSING_REQUIRED_SOURCE,
-      FeatureTaskRuntimeHandoffProjectionFailureKind.UNDECLARED_FIELD,
-      -> FeatureTaskRuntimeProjectionFailureClassification.UNPROJECTABLE_SOURCE
-      FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
-      FeatureTaskRuntimeHandoffProjectionFailureKind.DUPLICATE_PROJECTION_NAME,
-      FeatureTaskRuntimeHandoffProjectionFailureKind.INVALID_COMPACT_REFERENCE,
-      FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
-      -> FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT
-    }
-
   fun loadAuditRepairState(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditRepairState? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -857,6 +838,23 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@read null
       resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
     }
+
+  fun recordWorkflowOwnedPaths(
+    workflowId: String,
+    ownedPaths: List<String>,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
+    val updated = resolved.copy(workflowOwnedPaths = ownedPaths.distinct().sorted())
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+    )
+    true
+  }
 
   /**
    * Strict read of the per-phase records keyed by phase id; an absent key yields an empty map

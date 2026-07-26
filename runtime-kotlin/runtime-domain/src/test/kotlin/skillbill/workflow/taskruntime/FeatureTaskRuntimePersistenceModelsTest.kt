@@ -142,6 +142,8 @@ class FeatureTaskRuntimePersistenceModelsTest {
       created = true,
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("owned-new.txt"),
+      baselineOwnedPaths = listOf("tracked-before.kt", "owned-new.txt"),
+      workflowOwnedPaths = listOf("src/Changed.kt"),
     )
     val decoded = FeatureTaskRuntimeResolvedBranch.fromArtifactMap(resolved.toArtifactMap())
     assertEquals(resolved, decoded)
@@ -149,6 +151,8 @@ class FeatureTaskRuntimePersistenceModelsTest {
     assertEquals("main", decoded.baseBranch)
     assertEquals("a".repeat(40), decoded.reviewBaseSha)
     assertEquals(listOf("owned-new.txt"), decoded.baselineUntrackedPaths)
+    assertEquals(listOf("tracked-before.kt", "owned-new.txt"), decoded.baselineOwnedPaths)
+    assertEquals(listOf("src/Changed.kt"), decoded.workflowOwnedPaths)
   }
 
   @Test
