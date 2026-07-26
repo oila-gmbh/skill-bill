@@ -2680,10 +2680,39 @@ internal class FeatureTaskRuntimeRunLoop(
           ),
         )
       }
+      if (!persistPostFixCheckpoint(run, repositoryFingerprint)) {
+        return AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            "Validated implement_fix output was persisted, but its post-completion repository checkpoint was not.",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+            fileManifest = fileManifest,
+          ),
+        )
+      }
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput)),
+    )
+  }
+
+  private fun persistPostFixCheckpoint(run: PhaseRun, repositoryFingerprint: String?): Boolean {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return true
+    val fingerprint = repositoryFingerprint ?: return false
+    val briefing = recorder.loadPhaseBriefings(run.request.workflowId, run.request.dbPathOverride)
+      ?.get(run.phaseId)
+      ?: return false
+    return recorder.recordPhaseBriefing(
+      run.request.workflowId,
+      briefing.copy(
+        handoffEnvelope = briefing.handoffEnvelope.copy(
+          repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
+        ),
+      ),
+      run.request.dbPathOverride,
     )
   }
 
