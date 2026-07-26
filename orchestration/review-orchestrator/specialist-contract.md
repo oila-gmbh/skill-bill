@@ -46,10 +46,16 @@ Consumers must not rediscover any of the following:
 - `unassigned_file_access` — reads outside the assignment require an authorized expansion
 - `unselected_mcp_tool_call` — only tools explicitly projected by the parent may be called
 - `unscoped_shell_command` — shell commands outside the measured evidence surface are forbidden
+- `diff_artifact_rediscovery` — complete-diff files and references are never part of a lane
+- `scratch_path_rediscovery` — scratch review artifacts are outside the governed evidence surface
+- `contract_rediscovery` — specialist and consumer contracts are supplied directly at launch
+- `rules_rediscovery` — review rules are supplied directly at launch
+- `repeated_evidence_read` — a normalized evidence target may be read only once
 
-Evidence reads are batched and measured. Additional file reads are limited to the launch
-`dependency_allowlist` and the governed expansion path, and every expansion carries a nonblank
-reachability reason in the audit ledger; anything else is out of contract.
+Evidence reads are batched and measured. Ordinary assigned reads return only the launch-projected
+hunk windows. A complete-file response requires a governed expansion record from the launch
+`dependency_allowlist` with a nonblank reachability reason. Normalized target identity makes
+offset, limit, pagination-token, path-alias, and batching variants the same single-use read.
 
 ## Shared Report Structure
 

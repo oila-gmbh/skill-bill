@@ -149,6 +149,9 @@ class ReviewOperationPolicyTest {
       category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"),
       category(ReviewOperationKind.MCP_TOOL, "notion_search"),
       category(ReviewOperationKind.SHELL_COMMAND, "curl https://example.test"),
+      category(ReviewOperationKind.CONTRACT_READ, "specialist-contract"),
+      category(ReviewOperationKind.RULES_READ, "review-rules"),
+      category(ReviewOperationKind.FILE_READ, ".scratch/review.diff"),
     )
     categories.forEach { category ->
       assertEquals(true, category in ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, "undeclared: $category")

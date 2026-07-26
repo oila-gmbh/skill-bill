@@ -562,11 +562,13 @@ data class GovernedReviewLaunch(
     specialistContract.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("rubric: |")
     rubric.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
+    appendLine("consumer_contract: |")
+    ReviewPacketConsumerContract.CONSUMER_CONTRACT.lineSequence().forEach { appendLine("  $it") }
     appendLine("assigned_paths:")
     assignment.assignedPaths.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
-    appendLine("immutable_diff_hunks:")
+    appendLine("assigned_hunk_bodies:")
     packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .forEach { hunk ->
@@ -585,6 +587,10 @@ data class GovernedReviewLaunch(
     assignment.dependencyAllowlist.normalized.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("forbidden_rediscovery:")
     ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY.forEach { appendLine("  - $it") }
+    appendLine("evidence_surface_rules: |")
+    ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES.lineSequence().forEach { appendLine("  $it") }
+    appendLine("report_structure: |")
+    ReviewPacketConsumerContract.REPORT_STRUCTURE.lineSequence().forEach { appendLine("  $it") }
     appendLine(
       "budgets: launch=${budget.maxLaneLaunchBytes}, evidence=${budget.maxLaneEvidenceBytes}, " +
         "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}, " +

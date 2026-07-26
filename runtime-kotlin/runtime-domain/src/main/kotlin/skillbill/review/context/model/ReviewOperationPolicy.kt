@@ -1,6 +1,6 @@
 package skillbill.review.context.model
 
-enum class ReviewOperationKind { FILE_READ, SHELL_COMMAND, SEARCH, MCP_TOOL, RUBRIC_READ }
+enum class ReviewOperationKind { FILE_READ, SHELL_COMMAND, SEARCH, MCP_TOOL, RUBRIC_READ, CONTRACT_READ, RULES_READ }
 
 data class ReviewRequestedOperation(
   val kind: ReviewOperationKind,
@@ -48,6 +48,10 @@ class ReviewOperationPolicy(
     ReviewOperationKind.SEARCH -> classifySearch(operation)
     ReviewOperationKind.MCP_TOOL -> classifyMcpTool(operation.target)
     ReviewOperationKind.RUBRIC_READ -> classifyRubric(operation.target)
+    ReviewOperationKind.CONTRACT_READ ->
+      forbidden("contract_rediscovery", operation.target, "Contracts are supplied directly in the lane projection.")
+    ReviewOperationKind.RULES_READ ->
+      forbidden("rules_rediscovery", operation.target, "Review rules are supplied directly in the lane projection.")
     ReviewOperationKind.FILE_READ -> classifyFileRead(operation)
   }
 
@@ -130,6 +134,27 @@ class ReviewOperationPolicy(
   }
 
   private fun classifyAbsoluteProhibitions(path: String): ForbiddenReviewOperation? {
+    if (DIFF_ARTIFACT_FRAGMENTS.any { it in path.lowercase() }) {
+      return forbidden(
+        "diff_artifact_rediscovery",
+        path,
+        "Complete-diff files and references are forbidden; assigned hunk bodies are launch-supplied.",
+      )
+    }
+    if (SCRATCH_PATH_FRAGMENTS.any { it in path.lowercase() }) {
+      return forbidden(
+        "scratch_path_rediscovery",
+        path,
+        "Scratch review artifacts are outside the governed evidence surface.",
+      )
+    }
+    if (CONTRACT_PATH_FRAGMENTS.any { it in path.lowercase() }) {
+      return forbidden(
+        "contract_rediscovery",
+        path,
+        "Rubric and contract bodies are supplied directly in the lane projection.",
+      )
+    }
     val guidanceViolation = GUIDANCE_FILE_NAMES.firstOrNull { path == it || path.endsWith("/$it") }?.let {
       forbidden(
         "project_guidance_traversal",
@@ -179,5 +204,10 @@ class ReviewOperationPolicy(
       listOf("AGENTS.md", "CLAUDE.md", "AGENT.md", "GEMINI.md", ".cursorrules", "CONVENTIONS.md")
 
     val SEARCH_COMMANDS: List<String> = listOf("grep", "rg", "find", "fd", "ls", "glob", "ack")
+    val DIFF_ARTIFACT_FRAGMENTS: List<String> =
+      listOf(".diff", ".patch", "complete-diff", "review-diff", "diff-artifact")
+    val SCRATCH_PATH_FRAGMENTS: List<String> = listOf(".scratch/", ".tmp/", "/tmp/", "scratch-diff")
+    val CONTRACT_PATH_FRAGMENTS: List<String> =
+      listOf("specialist-contract.md", "packet-consumer-contract", "review-rubric", "/rubrics/")
   }
 }

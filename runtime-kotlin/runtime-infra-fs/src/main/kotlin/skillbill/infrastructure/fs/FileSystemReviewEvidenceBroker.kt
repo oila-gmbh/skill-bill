@@ -39,6 +39,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val identity = ReviewLaneIdentity.of(assignment)
   private val policy = ReviewOperationPolicy(assignment, binding.laneRubricId, binding.namedDependencies)
   private val trustedExpansionLedger = binding.trustedExpansionLedger
+  private val projectedHunks = binding.projectedHunks
 
   private var cumulativeBytes = 0L
   private var resultBytes = 0L
@@ -46,6 +47,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private var toolCalls = 0
   private var modelTurns = 0
   private val expansionLedger = mutableListOf<ReviewExpansionRecord>()
+  private val admittedEvidenceTargets = mutableSetOf<String>()
   private var terminalOutcome: ReviewBudgetOutcome? = null
 
   init {
@@ -85,6 +87,18 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private fun readOne(request: ReviewEvidenceRequest): ReviewEvidenceResult {
     requireRepositoryRelativePath(request.path)
     val exactPath = request.path
+    val normalizedTarget = normalizeEvidenceIdentity(exactPath)
+    if (!admittedEvidenceTargets.add(normalizedTarget)) {
+      return forbiddenResult(
+        ForbiddenReviewOperation(
+          "repeated_evidence_read",
+          exactPath,
+          "The normalized evidence target was already read by this lane.",
+        ),
+        cumulativeBytes,
+        expansionLedger.size,
+      )
+    }
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
     policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
 
@@ -117,6 +131,16 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   }
 
   private fun readAdmittedFile(normalized: String, assigned: Boolean): ReviewEvidenceResult {
+    if (assigned) {
+      val content = projectedHunks
+        .filter { it.path == normalized }
+        .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
+        .joinToString("\n") { it.content.replace("\r\n", "\n") }
+      val bytes = content.toByteArray(StandardCharsets.UTF_8).size.toLong()
+      evidenceBudgetOutcome(bytes)?.let { return it }
+      cumulativeBytes += bytes
+      return ReviewEvidenceResult(content, bytes, cumulativeBytes, expansionLedger.size)
+    }
     val real = resolveRepositoryFile(root, normalized)
     if (real == null) {
       require(assigned) { "Expanded evidence path must be a repository file." }
@@ -228,6 +252,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private fun batchResult(results: List<ReviewEvidenceResult>, outcome: ReviewBudgetOutcome?) =
     ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
 }
+
+private fun normalizeEvidenceIdentity(path: String): String =
+  Path.of(path).normalize().joinToString("/") { it.toString() }
 
 private fun validateRepositoryMapping(root: Path, repositoryPath: String) {
   requireRepositoryRelativePath(repositoryPath)

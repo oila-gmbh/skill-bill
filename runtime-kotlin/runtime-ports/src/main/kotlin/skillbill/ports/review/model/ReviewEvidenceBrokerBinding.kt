@@ -2,6 +2,7 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.nio.file.Path
 
@@ -12,8 +13,12 @@ data class ReviewEvidenceBrokerBinding(
   val budget: ReviewContextBudgetPolicy,
   val namedDependencies: Set<String> = emptySet(),
   val trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
+  val projectedHunks: List<ReviewChangedHunk> = emptyList(),
 ) {
   init {
     require(laneRubricId.isNotBlank()) { "A bound lane must name the single rubric it owns." }
+    require(projectedHunks.map { it.hunkId }.toSet() == assignment.assignedHunks.toSet()) {
+      "The evidence broker must receive exactly the assignment-owned projected hunks."
+    }
   }
 }

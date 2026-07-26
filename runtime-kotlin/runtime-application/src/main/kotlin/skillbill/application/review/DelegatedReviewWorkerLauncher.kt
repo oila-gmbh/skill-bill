@@ -140,9 +140,8 @@ class DelegatedReviewWorkerLauncher(
       prompt.toByteArray(Charsets.UTF_8).size.toLong(),
     )
 
-  private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> = (
-    assignment.assignedPaths.map { path -> ReviewEvidenceRequest(assignment.lane, path) } +
-      assignment.expansions.map { expansion ->
+  private fun evidenceRequests(assignment: ReviewAssignment): List<ReviewEvidenceRequest> =
+    assignment.expansions.map { expansion ->
         require(expansion.authorized) {
           "Expansion '${expansion.expansionId}' is not authorized for delegated evidence admission."
         }
@@ -155,8 +154,7 @@ class DelegatedReviewWorkerLauncher(
           expansion.reachabilityReason,
           expansion,
         )
-      }
-    ).distinctBy { request -> request.path }
+      }.distinctBy { request -> request.path }
 
   private fun providerUsage(facts: AgentRunLaunchFacts): ProviderTokenUsage? {
     if (listOf(

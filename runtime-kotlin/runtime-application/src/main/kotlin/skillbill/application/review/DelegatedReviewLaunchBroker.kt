@@ -62,6 +62,7 @@ class DelegatedReviewLaunchBroker(
         budget = request.budget,
         namedDependencies = request.namedDependencies,
         trustedExpansionLedger = request.packet.expansionLedger,
+        projectedHunks = request.packet.changedHunks.filter { it.hunkId in request.assignment.assignedHunks },
       ),
     )
     return DelegatedReviewLaunchOutcome.Prepared(
@@ -146,10 +147,6 @@ class DelegatedReviewLaunchBroker(
     workerKind: ReviewWorkerKind,
   ): String = buildString {
     appendLine(launch.canonicalPayload)
-    appendLine(
-      "finding_protocol: [F-NNN] Severity | Confidence | optional specialist=<exact identity> | " +
-        "path=<JSON string> | line=<positive integer> | description",
-    )
     appendLine("isolation: ${isolation.name.lowercase()}")
     appendLine(
       when (workerKind) {
@@ -159,7 +156,7 @@ class DelegatedReviewLaunchBroker(
           "rubric_authority: the single rubric projected above is authoritative; read no other rubric."
       },
     )
-    append("evidence_surface: all repository access goes through broker ${launch.brokerId}; it is measured.")
+    append("evidence_broker: ${launch.brokerId}")
   }
 
   private fun reject(request: DelegatedReviewLaunchRequest, reason: String): Nothing =

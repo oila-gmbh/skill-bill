@@ -11,6 +11,9 @@ data class ReviewEvidenceRequest(
   val path: String,
   val reachabilityReason: String? = null,
   val authorizedExpansion: ReviewExpansionRecord? = null,
+  val offset: Long? = null,
+  val limit: Long? = null,
+  val paginationToken: String? = null,
 )
 
 data class ReviewEvidenceBatchRequest(val lane: String, val requests: List<ReviewEvidenceRequest>) {

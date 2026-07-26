@@ -10,6 +10,7 @@ import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneDecision
@@ -27,6 +28,33 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
+  @Test fun `assigned reads return only projected hunk bodies and normalized target is single use`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
+    val base = assignment(listOf("A.kt"))
+    val scoped = base.copy(assignedHunks = listOf(hunk.hunkId))
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        scoped,
+        "security",
+        policy(),
+        projectedHunks = listOf(hunk),
+      ),
+    )
+
+    val first = broker.readBatch(batch("A.kt")).results.single()
+    val repeated = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", offset = 1, limit = 1, paginationToken = "next"),
+      ),
+    ).results.single()
+
+    assertEquals(hunk.content, first.content)
+    assertEquals(hunk.content.toByteArray(Charsets.UTF_8).size.toLong(), first.bytes)
+    assertEquals("repeated_evidence_read", repeated.forbidden?.category)
+  }
+
   @Test fun `filesystem unsafe assigned path is rejected while broker is constructed`() {
     val root = repo("A.kt" to "assigned")
     assertFailsWith<IllegalArgumentException> {
