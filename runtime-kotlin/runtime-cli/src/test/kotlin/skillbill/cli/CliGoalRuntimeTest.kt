@@ -1,6 +1,8 @@
 package skillbill.cli
 
 import skillbill.SkillBillVersion
+import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
@@ -8,6 +10,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
+import skillbill.di.RuntimeComponent
+import skillbill.di.create
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -40,6 +44,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
@@ -513,7 +518,7 @@ class CliGoalWatchRuntimeTest {
   @Test
   fun `goal watch resets two idle refreshes with live and stops only after three consecutive idle refreshes`() {
     val fixture = goalFixture(subtaskCount = 1)
-    val childWorkflowId = startRunningGoalChild(fixture)
+    val childWorkflowId = startRunningRuntimeGoalChild(fixture)
     val resetOutput = StringBuilder()
     var observed = 0
 
@@ -545,9 +550,13 @@ class CliGoalWatchRuntimeTest {
     val idleOutput = StringBuilder()
     val idle = CliRuntime.run(
       listOf(
-        "--db", fixture.dbPath.toString(),
-        "goal", "watch", "SKILL-901",
-        "--interval-seconds", "0",
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--interval-seconds",
+        "0",
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,
@@ -812,7 +821,7 @@ class CliGoalWatchRuntimeTest {
     suppressed: CliExecutionResult,
     shown: CliExecutionResult,
   ) {
-    assertEquals(2, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertEquals(3, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
     assertContains(
       suppressedOutput.toString(),
       "watch_refresh: index=1 status=ok current_subtask=1 current_step=implement",
@@ -821,7 +830,7 @@ class CliGoalWatchRuntimeTest {
       suppressedOutput.toString(),
       "watch_refresh: index=2 status=ok current_subtask=1 current_step=review",
     )
-    assertEquals(2, shownOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertEquals(3, shownOutput.lines().count { it.startsWith("watch_refresh:") })
     assertContains(suppressed.stdout, "watch_refresh: index=3 status=ok")
     assertContains(shown.stdout, "watch_refresh: index=3 status=ok")
     assertEquals(3, suppressed.payload?.get("refresh_count"))
@@ -1346,6 +1355,31 @@ class CliGoalZcodeRefusalTest {
     assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
     assertEquals(emptyList(), launcher.requests, result.stdout)
   }
+}
+
+private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
+  val proseWorkflowId = startRunningGoalChild(fixture)
+  val component = RuntimeComponent::class.create(
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher).toRuntimeContext(),
+  )
+  val runtimeWorkflow = assertIs<WorkflowOpenResult.Ok>(
+    component.workflowService.open(
+      kind = WorkflowFamilyKind.TASK_RUNTIME,
+      dbOverride = fixture.dbPath.toString(),
+    ),
+  )
+  DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
+    connection.prepareStatement(
+      "UPDATE feature_task_workflows SET artifacts_json = replace(artifacts_json, ?, ?) " +
+        "WHERE mode = 'prose' AND instr(artifacts_json, ?) > 0",
+    ).use { statement ->
+      statement.setString(1, proseWorkflowId)
+      statement.setString(2, runtimeWorkflow.workflowId)
+      statement.setString(3, proseWorkflowId)
+      assertTrue(statement.executeUpdate() >= 1)
+    }
+  }
+  return runtimeWorkflow.workflowId
 }
 
 private fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {

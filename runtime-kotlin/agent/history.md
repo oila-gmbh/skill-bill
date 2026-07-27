@@ -1,3 +1,13 @@
+## [2026-07-27] SKILL-147 idle goal-watch stop (subtask 3)
+Areas: runtime-kotlin/runtime-{domain,application,cli}
+- Goal status now projects worker-lease execution liveness as `live`, `idle`, or `unknown`; prose workflows, missing workflow identity, and read failures remain unknown so absent runtime leases cannot create false idle stops.
+- The application resolves liveness through a read-only ownership lookup and an injected clock; watch does not reclaim, reconcile, fence, or otherwise mutate lease state.
+- `goal watch` stops with `goal_idle` only after three consecutive idle refreshes, while live or unknown samples reset the debounce. reusable
+- Loop-ending refreshes are printed and skip the following sleep, preserving the terminal-watch ordering contract.
+- Known limitation: usage-limit pauses stop watch only after the runner exits and its lease expires; a worker that keeps heartbeating remains live.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-07-27] SKILL-147 follow-until-terminal goal watch
 Areas: runtime-kotlin/runtime-cli, skills/bill-feature-goal, docs
 - `goal watch` now follows by default until a terminal or missing projection; `--max-refreshes 0` is the unlimited sentinel, while positive bounds remain available for automation.

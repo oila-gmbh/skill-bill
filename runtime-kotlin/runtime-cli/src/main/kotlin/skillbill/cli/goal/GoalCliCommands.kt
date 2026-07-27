@@ -958,17 +958,14 @@ private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
 
-private fun Map<String, Any?>.goalWatchStopReason(
-  refreshCount: Int,
-  maxRefreshes: Int,
-  idleStop: Boolean,
-): String? = when {
-  this["status"] == "not_found" -> "not_found"
-  (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
-  idleStop -> "goal_idle"
-  maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
-  else -> null
-}
+private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
+  when {
+    this["status"] == "not_found" -> "not_found"
+    (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
+    idleStop -> "goal_idle"
+    maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
+    else -> null
+  }
 
 private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")

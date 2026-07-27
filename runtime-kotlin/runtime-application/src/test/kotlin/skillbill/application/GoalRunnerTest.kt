@@ -62,6 +62,7 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.time.RuntimeTimingPort
@@ -1046,7 +1047,8 @@ class GoalRunnerStatusProjectionTest {
     )
 
     val missingCurrentSubtaskStore = InMemoryGoalManifestStore(
-      manifest(subtaskCount = 1).copy(status = "in_progress", currentSubtaskIntent = null),
+      manifest(subtaskCount = 1)
+        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "resume")),
     )
     assertEquals(
       ExecutionLiveness.UNKNOWN,
