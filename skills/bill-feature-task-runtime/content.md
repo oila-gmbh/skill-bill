@@ -88,6 +88,13 @@ Do not ask the user to run this command manually. Keep the run in the foreground
 unless the user asks otherwise; pass `--monitor` to tee phase transitions to the
 terminal.
 
+For a goal-continuation child, durable `install_sync_result.status=deferred`
+means the parent owns install refresh after the active goal exits. Never run an
+installer, uninstaller, or install-sync command from the child, and never block
+subtask completion solely because install sync is deferred. Record the deferred
+work in the phase result or review notes and continue evaluating every other
+acceptance criterion normally.
+
 ### Progress Visibility
 
 The terminal monitoring block is the user's live feed. The invoking agent does
@@ -99,7 +106,8 @@ completion signal or error reaches the session.
 While a foreground or detached run is in flight:
 
 1. Do not run `skill-bill goal watch` in-session, at any interval or refresh count.
-2. Do not call `skill-bill goal status` on a timer or repeatedly to observe change.
+2. Do not call `skill-bill feature-task status <workflow_id>` on a timer or
+   repeatedly to observe change.
 3. Do not sleep, wait, or otherwise idle in order to re-read progress.
 4. Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or
    changed files to infer progress.
@@ -130,10 +138,12 @@ Use the completion signal for the launch mode:
    let that notification re-invoke the agent once with the result; do not poll.
 3. For a detached run where the harness provides no background-exit
    notification, print the monitoring block, state that the run continues,
-   and end the turn. When the user next addresses the session, make one
-   `skill-bill feature-task status <workflow_id>` call and report that read-only
-   snapshot. A status snapshot is not a terminal completion signal; if it is
-   still nonterminal, end the turn without polling.
+   and end the turn. When the user next addresses the session, retrieve the
+   original detached command's return once. If it has completed, report its
+   structured result; if it is still running, state that the run continues and
+   end the turn without polling. Do not substitute a
+   `skill-bill feature-task status <workflow_id>` snapshot for the structured
+   terminal result.
 
 When the outcome reaches the session, emit exactly one completion line. Compose
 it only from the feature-task structured result fields `status`, `workflow_id`,

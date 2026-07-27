@@ -267,13 +267,12 @@ Use the completion signal for the launch mode:
    let that notification re-invoke the agent once with the result; do not poll.
 3. For a detached run where the harness provides no background-exit
    notification, print the monitoring block, state that the run continues,
-   and end the turn. When the user next addresses the session, make one
-   `skill-bill goal status` call and report that read-only snapshot. A goal
-   status snapshot contains counts and current work, not a terminal outcome,
-   `pull_request_url`, or `blocked_reason`; do not compose a completion line
-   from it. If it is still nonterminal, end the turn without polling. The
-   terminal completion line remains reserved for a structured run result
-   delivered by blocking return or background-exit re-invocation.
+   and end the turn. When the user next addresses the session, retrieve the
+   original detached command's return once. If it has completed, report its
+   structured result; if it is still running, state that the goal continues and
+   end the turn without polling. Do not substitute a `skill-bill goal status`
+   snapshot for the structured terminal result because that snapshot omits
+   `pull_request_url` and `blocked_reason`.
 
 When the outcome reaches the session, emit exactly one completion line. Compose
 it only from the structured result fields `status`, completed/pending/blocked

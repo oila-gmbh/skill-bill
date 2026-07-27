@@ -1773,7 +1773,9 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     @Suppress("UNCHECKED_CAST")
     val participants = outcome["participating_agent_ids"] as List<String>
     assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
-    assertEquals("skipped", (artifacts["install_sync_result"] as Map<*, *>)["status"])
+    val installSync = artifacts["install_sync_result"] as Map<*, *>
+    assertEquals("deferred", installSync["status"])
+    assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
 
   @Test

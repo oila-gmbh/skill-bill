@@ -317,7 +317,6 @@ class FeatureSpecSkillWiringContractTest {
     val surfaces = mapOf("goal" to goal, "runtime" to runtime)
     val sharedRules = listOf(
       "Do not run `skill-bill goal watch` in-session, at any interval or refresh count.",
-      "Do not call `skill-bill goal status` on a timer or repeatedly to observe change.",
       "Do not sleep, wait, or otherwise idle in order to re-read progress.",
       "Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or",
       "Do not re-invoke the runtime or launch an observer process or subagent to",
@@ -330,18 +329,36 @@ class FeatureSpecSkillWiringContractTest {
       "where the harness provides background-exit notification",
       "where the harness provides no background-exit",
       "emit exactly one completion line",
-      "`status`, completed/pending/blocked\ncounts, `pull_request_url`, and `blocked_reason`",
-      "goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241",
-      "goal SKILL-146: blocked at subtask 2 — <blocked_reason>",
-      "goal SKILL-146: failed — <blocked_reason>",
       "Do not read back, summarize, or paraphrase run stdout",
     )
 
     surfaces.forEach { (name, content) ->
       sharedRules.forEach { rule -> assertContains(content, rule, message = "$name missing shared rule") }
       assertContains(content, "The terminal monitoring block is the user's live feed.")
+      assertContains(content, "retrieve the\n   original detached command's return once")
+      assertContains(content, "Do not substitute")
     }
 
+    assertContains(goal, "Do not call `skill-bill goal status` on a timer or repeatedly to observe change.")
+    assertContains(goal, "`status`, completed/pending/blocked\ncounts, `pull_request_url`, and `blocked_reason`")
+    assertContains(goal, "goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241")
+    assertContains(goal, "goal SKILL-146: blocked at subtask 2 — <blocked_reason>")
+    assertContains(goal, "goal SKILL-146: failed — <blocked_reason>")
+    assertContains(
+      runtime,
+      "Do not call `skill-bill feature-task status <workflow_id>` on a timer or\n   repeatedly to observe change.",
+    )
+    assertContains(
+      runtime,
+      "`status`, `workflow_id`,\n`completed_phases`, `last_incomplete_phase`, and `blocked_reason`",
+    )
+    assertContains(runtime, "feature-task ft-run-01J8Z0-SKILL-141: complete — 9 phases completed")
+    assertContains(runtime, "feature-task ft-run-01J8Z0-SKILL-141: blocked at review — <blocked_reason>")
+    assertContains(runtime, "feature-task ft-run-01J8Z0-SKILL-141: failed — <error>")
+    assertContains(
+      runtime,
+      "never block\nsubtask completion solely because install sync is deferred",
+    )
     assertContains(goal, "Launch `skill-bill goal` with `--no-live-output`.")
     assertContains(goal, "Goal live output scales with\nwall-clock duration")
     assertContains(goal, "feature-task-runtime `--monitor` is different")
