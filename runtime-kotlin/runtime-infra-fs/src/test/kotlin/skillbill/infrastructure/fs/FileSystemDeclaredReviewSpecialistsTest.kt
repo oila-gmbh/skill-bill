@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.ports.review.InstalledReviewCatalogPort
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -22,7 +23,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     val reviewedRepo = Files.createTempDirectory("external-reviewed-repo")
 
     val specialists = FileSystemDeclaredReviewSpecialists(catalog)
-      .routedSpecialists(reviewedRepo, listOf("docs/guide.md"))
+      .routedSpecialists(reviewedRepo, changed("docs/guide.md"))
 
     assertEquals(
       listOf(
@@ -36,7 +37,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
   @Test
   fun `no platform-packs directory yields no specialists`() {
     val repoRoot = Files.createTempDirectory("declared-specialists-empty")
-    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     assertEquals(emptyList(), specialists)
   }
 
@@ -45,7 +46,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     val repoRoot = Files.createTempDirectory("declared-specialists-absent")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
     Files.createDirectory(packsRoot.resolve("kotlin"))
-    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     assertEquals(emptyList(), specialists)
   }
 
@@ -57,7 +58,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     Files.writeString(packDir.resolve("platform.yaml"), "areas: [unclosed")
     var threw = false
     try {
-      FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+      FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     } catch (_: Exception) {
       threw = true
     }
@@ -68,7 +69,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
   fun `only packs the changed paths route to contribute specialists`() {
     val repoRoot = repoWithPacks()
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
     assertEquals(
       listOf("bill-kotlin-code-review-architecture", "bill-kotlin-code-review-security"),
       specialists.sorted(),
@@ -79,10 +80,16 @@ class FileSystemDeclaredReviewSpecialistsTest {
   fun `preflight excludes an unconditioned non-required specialist that launch does not own`() {
     val repoRoot = Files.createTempDirectory("declared-specialists-unconditioned")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
-    writePack(packsRoot, "kotlin", listOf(".kt", "*.kt"), listOf("architecture"))
+    writePack(
+      packsRoot,
+      "kotlin",
+      listOf(".kt", "*.kt"),
+      listOf("architecture"),
+      includeLaneConditions = false,
+    )
 
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
 
     assertEquals(emptyList(), specialists)
   }
@@ -91,7 +98,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
   fun `a vendored pack that no changed path routes to is never required`() {
     val repoRoot = repoWithPacks()
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
     assertTrue(
       specialists.none { it.startsWith("bill-go-") },
       "a Kotlin-only delta must not demand the vendored Go pack's specialists: $specialists",
@@ -121,7 +128,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     Files.writeString(source, "expect class Shared")
 
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("src/commonMain/kotlin/Shared.kt"))
+      .routedSpecialists(repoRoot, changed("src/commonMain/kotlin/Shared.kt", "expect class Shared"))
 
     assertEquals(listOf("bill-kmp-code-review-platform-correctness"), specialists)
   }
@@ -136,7 +143,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
 
     assertFailsWith<InvalidFallbackCapabilityError> {
       FileSystemDeclaredReviewSpecialists()
-        .routedSpecialists(repoRoot, listOf("src/main/kotlin/Runner.kt"))
+        .routedSpecialists(repoRoot, changed("src/main/kotlin/Runner.kt"))
     }
   }
 
@@ -148,12 +155,16 @@ class FileSystemDeclaredReviewSpecialistsTest {
     return repoRoot
   }
 
+  private fun changed(path: String, content: String = "") =
+    listOf(ReviewRoutingChangedFile(path, content))
+
   private fun writePack(
     packsRoot: Path,
     slug: String,
     pathSignals: List<String>,
     areas: List<String>,
     contentSignals: List<String> = emptyList(),
+    includeLaneConditions: Boolean = true,
   ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
@@ -179,6 +190,13 @@ class FileSystemDeclaredReviewSpecialistsTest {
         appendLine("  baseline: code-review/bill-$slug-code-review/content.md")
         appendLine("  areas:")
         areas.forEach { appendLine("    $it: code-review/bill-$slug-code-review-$it/content.md") }
+        if (includeLaneConditions) {
+          appendLine("lane_conditions:")
+          areas.forEach {
+            appendLine("  $it:")
+            appendLine("    required: true")
+          }
+        }
       },
     )
   }

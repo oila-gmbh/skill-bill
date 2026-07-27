@@ -253,25 +253,41 @@ object InstallNativeAgentOperations {
   ) {
     val catalogRoot = cacheRoot.resolve("review-catalog/platform-packs")
     val selected = selectedPlatforms?.toSet()
-    Files.createDirectories(catalogRoot)
-    Files.list(platformPacksRoot).use { packs ->
+    val desiredPacks = Files.list(platformPacksRoot).use { packs ->
       packs.filter(Files::isDirectory)
         .filter { selected == null || it.fileName.toString() in selected }
-        .forEach { source ->
-          Files.walk(source).use { paths ->
-            paths.forEach { path ->
-              val target = catalogRoot.resolve(source.fileName.toString()).resolve(source.relativize(path)).normalize()
-              require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
-              if (Files.isDirectory(path)) {
-                Files.createDirectories(target)
-              } else if (Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
-                target.parent?.let(Files::createDirectories)
-                if (!Files.exists(target)) journal.beforeMutation(target)
-                Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-              }
+        .toList()
+    }
+    val desiredSlugs = desiredPacks.mapTo(mutableSetOf()) { it.fileName.toString() }
+    journal.beforeMutation(catalogRoot)
+    Files.createDirectories(catalogRoot)
+    Files.list(catalogRoot).use { installed ->
+      installed.filter(Files::isDirectory)
+        .filter { it.fileName.toString() !in desiredSlugs }
+        .forEach { stalePack ->
+          Files.walk(stalePack).use { paths ->
+            paths.sorted(Comparator.reverseOrder()).forEach { path ->
+              journal.beforeMutation(path)
+              Files.delete(path)
             }
           }
         }
+    }
+    desiredPacks.forEach { source ->
+      Files.walk(source).use { paths ->
+        paths.forEach { path ->
+          val target = catalogRoot.resolve(source.fileName.toString()).resolve(source.relativize(path)).normalize()
+          require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
+          if (Files.isDirectory(path)) {
+            journal.beforeMutation(target)
+            Files.createDirectories(target)
+          } else if (Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
+            journal.beforeMutation(target)
+            target.parent?.let(Files::createDirectories)
+            Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+          }
+        }
+      }
     }
   }
 

@@ -20,19 +20,10 @@ import java.nio.file.Path
 class FileSystemDeclaredReviewSpecialists(
   private val installedCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 ) : DeclaredReviewSpecialistsPort {
-  override fun routedSpecialists(repoRoot: Path, changedPaths: List<String>): List<String> {
-    if (changedPaths.isEmpty()) return emptyList()
+  override fun routedSpecialists(repoRoot: Path, changedFiles: List<ReviewRoutingChangedFile>): List<String> {
+    if (changedFiles.isEmpty()) return emptyList()
     val manifests = installedCatalog.manifests().ifEmpty { discoverManifests(repoRoot) }
     if (manifests.isEmpty()) return emptyList()
-    val changedFiles = changedPaths.map { relativePath ->
-      val path = repoRoot.resolve(relativePath).normalize()
-      val content = if (path.startsWith(repoRoot.normalize()) && Files.isRegularFile(path)) {
-        Files.readString(path)
-      } else {
-        ""
-      }
-      ReviewRoutingChangedFile(relativePath, content)
-    }
     val routing = ReviewStackRouting.route(manifests, changedFiles)
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     return routing.routedSlugs.flatMap { slug ->

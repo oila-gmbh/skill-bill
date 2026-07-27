@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Integrate fallback installation, validation, and documentation"
   spec_path: ".feature-specs/SKILL-144-generic-code-review-fallback/spec_subtask_2_install_validation_and_documentation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-110445-sw0k"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

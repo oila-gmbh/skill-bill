@@ -8,7 +8,9 @@ import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.model.CodeReviewExecutionMode
 
 @Suppress("LongParameterList") // single preflight seam; all parameters are mandatory gate dependencies
 @Inject
@@ -28,9 +30,10 @@ class FeatureTaskRuntimePhaseGates(
    * with no attributable records routes to no pack and needs no native worker.
    */
   fun reviewNativeAgentPreflight(request: FeatureTaskRuntimeRunRequest, reviewInput: GoalSubtaskReviewInput?) {
-    val changedPaths = reviewScopePaths(reviewInput)
-    if (changedPaths.isEmpty()) return
-    val specialists = declaredSpecialists.routedSpecialists(request.repoRoot, changedPaths)
+    if (request.runInvariants.codeReviewMode != CodeReviewExecutionMode.DELEGATED) return
+    val changedFiles = reviewScopeFiles(reviewInput)
+    if (changedFiles.isEmpty()) return
+    val specialists = declaredSpecialists.routedSpecialists(request.repoRoot, changedFiles)
     if (specialists.isEmpty()) return
     val agentIds = buildList {
       add(request.invokedAgentId)
@@ -45,8 +48,8 @@ class FeatureTaskRuntimePhaseGates(
     )
   }
 
-  private fun reviewScopePaths(reviewInput: GoalSubtaskReviewInput?): List<String> {
+  private fun reviewScopeFiles(reviewInput: GoalSubtaskReviewInput?): List<ReviewRoutingChangedFile> {
     val evidence = reviewInput?.reviewText?.let(ReviewDiffEvidence::parseAttributable) ?: return emptyList()
-    return evidence.files.map { it.path }.distinct()
+    return evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) }.distinct()
   }
 }

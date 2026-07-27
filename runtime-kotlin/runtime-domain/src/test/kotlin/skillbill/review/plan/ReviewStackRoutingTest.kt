@@ -12,7 +12,6 @@ import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Path
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 
 class ReviewStackRoutingTest {
   @Test
@@ -201,13 +200,14 @@ class ReviewStackRoutingTest {
   }
 
   @Test
-  fun `fallback-required routing fails loudly without an owner`() {
-    assertFailsWith<InvalidFallbackCapabilityError> {
-      ReviewStackRouting.route(
-        listOf(pack("kotlin", path = listOf("*.kt"), content = emptyList())),
-        listOf(ReviewRoutingChangedFile("docs/only.md", "class import function use")),
-      )
-    }
+  fun `unresolved file without fallback uses horizontal base route`() {
+    val result = ReviewStackRouting.route(
+      listOf(pack("kotlin", path = listOf("*.kt"), content = emptyList())),
+      listOf(ReviewRoutingChangedFile("docs/only.md", "class import function use")),
+    )
+
+    assertEquals(emptySet(), result.routedSlugs)
+    assertEquals(emptyMap(), result.ownedPathsBySlug)
   }
 
   @Test

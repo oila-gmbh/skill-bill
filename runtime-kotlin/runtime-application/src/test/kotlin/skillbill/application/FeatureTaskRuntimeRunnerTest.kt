@@ -1114,6 +1114,7 @@ class FeatureTaskRuntimeRunnerTest {
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
         parallelReviewAgent = "claude",
+        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
         branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
       ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { throw missingError },
@@ -1136,6 +1137,7 @@ class FeatureTaskRuntimeRunnerTest {
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
         parallelReviewAgent = "claude",
+        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
         branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
       ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
@@ -1151,6 +1153,7 @@ class FeatureTaskRuntimeRunnerTest {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
+        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
         branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
       ),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
@@ -1161,13 +1164,51 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `inline review never preflights native specialists for a routable delta`() {
+    val called = mutableListOf<String>()
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
+      ),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ ->
+        error("inline review must not resolve native specialists")
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(called.isEmpty())
+  }
+
+  @Test
+  fun `delegated preflight routes with authoritative diff content`() {
+    val routedContent = mutableListOf<String>()
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
+      ),
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, files ->
+        routedContent += files.map { it.changedContent }
+        emptyList()
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(routedContent.any { "+val routed = 1" in it })
+  }
+
+  @Test
   fun `review phase preflight stands down when the review delta routes to no pack`() {
     val called = mutableListOf<String>()
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, paths ->
-        if (paths.any { it.endsWith(".kt") }) listOf("bill-kotlin-code-review-architecture") else emptyList()
+      declaredSpecialists = DeclaredReviewSpecialistsPort { _, files ->
+        if (files.any { it.path.endsWith(".kt") }) listOf("bill-kotlin-code-review-architecture") else emptyList()
       },
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -4309,6 +4350,7 @@ internal data class RuntimeHarnessConfig(
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   val parallelReviewAgent: String? = null,
+  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -4379,6 +4421,7 @@ private fun runnerHarnessRequest(
     featureSize = runtimeConfig.branchSetup.featureSize,
     acceptanceCriteria = runtimeConfig.acceptanceCriteria,
     mandatesAndOverrides = listOf("mandate-X"),
+    codeReviewMode = runtimeConfig.codeReviewMode,
   ),
   invokedAgentId = INVOKED_AGENT,
   agentAssignment = agentAssignment,

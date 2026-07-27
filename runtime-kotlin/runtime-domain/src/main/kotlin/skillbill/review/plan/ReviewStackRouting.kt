@@ -23,7 +23,7 @@ object ReviewStackRouting {
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
     }.groupBy({ it.first }, { it.second })
 
-    val fallback by lazy { ReviewFallbackResolver.resolveRequired(manifests) }
+    val fallback by lazy { ReviewFallbackResolver.resolveOptional(manifests) }
     if (changedFiles.isEmpty()) {
       return ReviewStackRoutingResult(emptySet(), emptyMap())
     }
@@ -54,7 +54,7 @@ object ReviewStackRouting {
         resolveComposition(pathWinners.filterValues { score -> score.second == strongestContent }.keys)
       }
       val owners = if (resolved == null) {
-        setOf(fallback.slug)
+        fallback?.let { setOf(it.slug) }.orEmpty()
       } else {
         linkedSetOf(resolved.slug).apply {
           resolved.codeReviewComposition?.baselineLayers?.mapTo(this) { it.platform }

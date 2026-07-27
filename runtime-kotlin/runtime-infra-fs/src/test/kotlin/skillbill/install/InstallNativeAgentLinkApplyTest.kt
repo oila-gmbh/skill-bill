@@ -625,6 +625,31 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `replacement apply prunes deselected packs from installed review catalog`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val firstPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kmp"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(firstPlan).status)
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val catalog = cacheRoot.resolve("review-catalog/platform-packs")
+    assertTrue(Files.isDirectory(catalog.resolve("kmp")))
+
+    val replacementPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(replacementPlan).status)
+
+    assertFalse(Files.exists(catalog.resolve("kmp"), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isDirectory(catalog.resolve("kotlin")))
+  }
+
+  @Test
   fun `native agent replacement preserves existing link when replacement symlink creation fails`() {
     val targetDir = Files.createTempDirectory("skillbill-native-readonly-target").also(tempDirs::add)
     val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
