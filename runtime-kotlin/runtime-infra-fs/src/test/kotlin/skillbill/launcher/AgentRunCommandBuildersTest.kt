@@ -1,6 +1,8 @@
 package skillbill.launcher
 
 import skillbill.config.model.PhaseCompactionDirective
+import skillbill.infrastructure.fs.CursorReviewStreamError
+import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
@@ -22,7 +24,6 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -30,6 +31,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 class AgentRunCommandBuildersTest {
   @Test
@@ -440,7 +442,6 @@ class AgentRunCommandBuildersTest {
 
   @Test
   fun `cursor normal launch emits flags, workspace, prompt, timeout, environment, non-PTY, approvals`() {
-
     val builder = CursorAgentRunCommandBuilder()
     val command = builder.build(request())
 
@@ -570,24 +571,23 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor decoder tolerates malformed lines and falls back to raw stdout`() {
+  fun `cursor decoder on malformed line throws typed error`() {
     val jsonl = """invalid line
 {"type":"result","result":"success","usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}
 more invalid"""
 
-    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
-
-    assertEquals("success", decoded.text)
-    assertEquals(8, decoded.totalTokens)
+    assertFailsWith<CursorReviewStreamMalformedError> {
+      AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+    }
   }
 
   @Test
-  fun `cursor decoder on fully malformed input returns raw stdout`() {
+  fun `cursor decoder on fully malformed input throws typed error`() {
     val malformed = "not json at all"
 
-    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(malformed)
-
-    assertEquals(malformed, decoded.text)
+    assertFailsWith<CursorReviewStreamMalformedError> {
+      AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(malformed)
+    }
   }
 
   @Test
@@ -598,12 +598,12 @@ more invalid"""
   }
 
   @Test
-  fun `cursor decoder on error event returns empty text`() {
+  fun `cursor decoder on error event throws typed error`() {
     val jsonl = """{"type":"error","error":"Provider error occurred"}"""
 
-    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
-
-    assertEquals("", decoded.text)
+    assertFailsWith<CursorReviewStreamError> {
+      AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+    }
   }
 
   @Test

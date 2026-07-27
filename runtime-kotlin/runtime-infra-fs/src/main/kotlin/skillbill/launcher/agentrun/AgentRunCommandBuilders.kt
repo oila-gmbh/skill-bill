@@ -587,47 +587,44 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     )
   }
 
-  private fun buildCursorCommand(
-    request: SkillRunRequest,
-    isReviewLaunch: Boolean,
-    streaming: Boolean,
-  ): List<String> = buildList {
-    add("agent")
-    add("--print")
+  private fun buildCursorCommand(request: SkillRunRequest, isReviewLaunch: Boolean, streaming: Boolean): List<String> =
+    buildList {
+      add("agent")
+      add("--print")
 
-    if (isReviewLaunch) {
-      request.nativeReviewWorkerName?.let { worker ->
-        add("/$worker")
+      if (isReviewLaunch) {
+        request.nativeReviewWorkerName?.let { worker ->
+          add("/$worker")
+        }
+        add("--workspace")
+        add(request.repoRoot.toString())
+      } else {
+        add("--force")
+        add("--trust")
+        add("--approve-mcps")
+        add("--workspace")
+        add(request.repoRoot.toString())
       }
-      add("--workspace")
-      add(request.repoRoot.toString())
-    } else {
-      add("--force")
-      add("--trust")
-      add("--approve-mcps")
-      add("--workspace")
-      add(request.repoRoot.toString())
-    }
 
-    add("--output-format")
-    add("stream-json")
-    if (streaming) add("--stream-partial-output")
+      add("--output-format")
+      add("stream-json")
+      if (streaming) add("--stream-partial-output")
 
-    request.modelOverride?.let { model ->
-      val modelArg = request.effortOverride?.let { effort ->
-        mergeModelEffort(model, effort)
-      } ?: model
-      add("--model")
-      add(modelArg)
-    }
-    request.effortOverride?.let { effort ->
-      if (request.modelOverride == null) {
-        require(false) {
-          "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
+      request.modelOverride?.let { model ->
+        val modelArg = request.effortOverride?.let { effort ->
+          mergeModelEffort(model, effort)
+        } ?: model
+        add("--model")
+        add(modelArg)
+      }
+      request.effortOverride?.let { effort ->
+        if (request.modelOverride == null) {
+          require(false) {
+            "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
+          }
         }
       }
     }
-  }
 
   private fun mergeModelEffort(model: String, effort: String): String {
     val effortPrefix = "[effort="

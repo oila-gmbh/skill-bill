@@ -204,7 +204,7 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
           "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
           it,
         )
-    }
+      }
     decodedEnvelope = true
     when (event.path("type").takeIf { it.isTextual }?.asText()) {
       "error" -> {

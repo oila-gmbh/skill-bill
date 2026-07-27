@@ -1792,27 +1792,28 @@ private data class FeatureTaskRuntimeCliFixture(
     addAll(extra)
   }
 
-  fun resumeCommand(workflowId: String, selectionJson: String? = null, agentId: String = "codex"): List<String> = buildList {
-    addAll(
-      listOf(
-        "--db",
-        dbPath.toString(),
-        "feature-task",
-        "resume",
-        workflowId,
-        "SKILL-650",
-        specPath.toString(),
-        "--repo-root",
-        tempDir.toString(),
-        "--agent",
-        agentId,
-      ),
-    )
-    selectionJson?.let {
-      add("--agent-addon-selection-json")
-      add(it)
+  fun resumeCommand(workflowId: String, selectionJson: String? = null, agentId: String = "codex"): List<String> =
+    buildList {
+      addAll(
+        listOf(
+          "--db",
+          dbPath.toString(),
+          "feature-task",
+          "resume",
+          workflowId,
+          "SKILL-650",
+          specPath.toString(),
+          "--repo-root",
+          tempDir.toString(),
+          "--agent",
+          agentId,
+        ),
+      )
+      selectionJson?.let {
+        add("--agent-addon-selection-json")
+        add(it)
+      }
     }
-  }
 }
 
 private fun featureTaskCommand(fixture: FeatureTaskRuntimeCliFixture, command: String): List<String> = listOf(
@@ -2290,10 +2291,14 @@ class CursorAgentRuntimeCliTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(ALL_PHASES.size, launcher.requests.size)
 
-    val planRequest = launcher.requests.single { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "plan" }
+    val planRequest = launcher.requests.single {
+      phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "plan"
+    }
     assertEquals("cursor", planRequest.agentId)
 
-    val nonPlanRequests = launcher.requests.filter { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) != "plan" }
+    val nonPlanRequests = launcher.requests.filter {
+      phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) != "plan"
+    }
     assertTrue(nonPlanRequests.all { it.agentId != "cursor" }, "Non-plan phases should not use cursor")
   }
 
@@ -2334,7 +2339,9 @@ class CursorAgentRuntimeCliTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    val reviewRequest = launcher.requests.single { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "review" }
+    val reviewRequest = launcher.requests.single {
+      phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "review"
+    }
     assertEquals("cursor", reviewRequest.agentId)
   }
 }
