@@ -213,13 +213,17 @@ class InstallPlanPolicyTest {
           ),
         ),
         platformPacks = listOf(
-          InstallPlatformPackDiscoverySnapshot(slug = "kmp", packRoot = path("/repo/platform-packs/kmp")),
+          InstallPlatformPackDiscoverySnapshot(
+            slug = "kmp",
+            packRoot = path("/repo/platform-packs/kmp"),
+            baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+          ),
           InstallPlatformPackDiscoverySnapshot(slug = "kotlin", packRoot = path("/repo/platform-packs/kotlin")),
         ),
       ),
     )
 
-    assertEquals(listOf("kotlin"), plan.selectedPlatformSlugs)
+    assertEquals(listOf("kmp", "kotlin"), plan.selectedPlatformSlugs)
 
     val duplicateDiscovery = assertFailsWith<IllegalArgumentException> {
       InstallPlanPolicy.planPlatformSkillMaterialization(

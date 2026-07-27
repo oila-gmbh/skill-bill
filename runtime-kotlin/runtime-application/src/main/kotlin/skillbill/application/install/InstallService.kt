@@ -55,6 +55,7 @@ class InstallService(
           InstallPlatformPackDiscoverySnapshot(
             slug = manifest.slug,
             packRoot = manifest.packRoot,
+            baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
           )
         },
       ),

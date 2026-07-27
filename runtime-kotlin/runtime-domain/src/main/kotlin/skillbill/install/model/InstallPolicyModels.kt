@@ -24,6 +24,7 @@ data class InstallPlatformPackSnapshot(
 data class InstallPlatformPackDiscoverySnapshot(
   val slug: String,
   val packRoot: Path,
+  val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
 )
 
 data class InstallPlatformSkillMaterializationRequest(
