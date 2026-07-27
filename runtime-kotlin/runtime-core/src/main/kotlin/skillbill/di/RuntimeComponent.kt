@@ -59,6 +59,7 @@ import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
+import skillbill.infrastructure.fs.FileSystemInstalledReviewCatalog
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
@@ -149,6 +150,7 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
+import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
@@ -398,6 +400,12 @@ abstract class RuntimeComponent(
   internal fun declaredReviewSpecialistsPort(
     adapter: FileSystemDeclaredReviewSpecialists,
   ): DeclaredReviewSpecialistsPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun installedReviewCatalogPort(
+    adapter: FileSystemInstalledReviewCatalog,
+  ): InstalledReviewCatalogPort = adapter
 
   @Provides
   @JvmSynthetic

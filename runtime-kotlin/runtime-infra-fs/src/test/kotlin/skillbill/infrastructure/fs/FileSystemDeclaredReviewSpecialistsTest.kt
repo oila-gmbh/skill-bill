@@ -1,6 +1,8 @@
 package skillbill.infrastructure.fs
 
 import skillbill.error.InvalidFallbackCapabilityError
+import skillbill.ports.review.InstalledReviewCatalogPort
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -9,6 +11,28 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FileSystemDeclaredReviewSpecialistsTest {
+  @Test
+  fun `installed catalog routes fallback specialists when reviewed repository has no pack tree`() {
+    val installedRoot = Files.createTempDirectory("installed-review-catalog")
+    val packsRoot = Files.createDirectories(installedRoot.resolve("platform-packs"))
+    writePack(packsRoot, "neutral-review", emptyList(), listOf("architecture", "security"))
+    val catalog = InstalledReviewCatalogPort {
+      listOf(loadPlatformManifest(packsRoot.resolve("neutral-review")))
+    }
+    val reviewedRepo = Files.createTempDirectory("external-reviewed-repo")
+
+    val specialists = FileSystemDeclaredReviewSpecialists(catalog)
+      .routedSpecialists(reviewedRepo, listOf("docs/guide.md"))
+
+    assertEquals(
+      listOf(
+        "bill-neutral-review-code-review-architecture",
+        "bill-neutral-review-code-review-security",
+      ),
+      specialists,
+    )
+  }
+
   @Test
   fun `no platform-packs directory yields no specialists`() {
     val repoRoot = Files.createTempDirectory("declared-specialists-empty")

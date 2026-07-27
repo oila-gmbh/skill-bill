@@ -1,5 +1,6 @@
 package skillbill.ports.review
 
+import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 fun interface DeclaredReviewSpecialistsPort {
@@ -13,5 +14,13 @@ fun interface DeclaredReviewSpecialistsPort {
 
   companion object {
     val NONE = DeclaredReviewSpecialistsPort { _, _ -> emptyList() }
+  }
+}
+
+fun interface InstalledReviewCatalogPort {
+  fun manifests(): List<PlatformManifest>
+
+  companion object {
+    val NONE = InstalledReviewCatalogPort { emptyList() }
   }
 }

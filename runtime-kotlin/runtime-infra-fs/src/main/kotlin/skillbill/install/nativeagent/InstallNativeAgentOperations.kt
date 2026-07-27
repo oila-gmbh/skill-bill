@@ -177,6 +177,12 @@ object InstallNativeAgentOperations {
         ),
       )
       val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
+      publishInstalledReviewCatalog(
+        request.platformPacksRoot,
+        request.selectedPlatforms,
+        generated.cacheRoot,
+        journal,
+      )
       val linked = mutableListOf<Path>()
       val skipped = mutableListOf<NativeAgentSkippedLink>()
       val artifactsByPath = generated.artifacts.associateBy { it.path }
@@ -236,6 +242,36 @@ object InstallNativeAgentOperations {
     } catch (error: Throwable) {
       journal.restore().forEach(error::addSuppressed)
       throw error
+    }
+  }
+
+  private fun publishInstalledReviewCatalog(
+    platformPacksRoot: Path,
+    selectedPlatforms: List<String>?,
+    cacheRoot: Path,
+    journal: ProviderMutationJournal,
+  ) {
+    val catalogRoot = cacheRoot.resolve("review-catalog/platform-packs")
+    val selected = selectedPlatforms?.toSet()
+    Files.createDirectories(catalogRoot)
+    Files.list(platformPacksRoot).use { packs ->
+      packs.filter(Files::isDirectory)
+        .filter { selected == null || it.fileName.toString() in selected }
+        .forEach { source ->
+          Files.walk(source).use { paths ->
+            paths.forEach { path ->
+              val target = catalogRoot.resolve(source.fileName.toString()).resolve(source.relativize(path)).normalize()
+              require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
+              if (Files.isDirectory(path)) {
+                Files.createDirectories(target)
+              } else if (Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
+                target.parent?.let(Files::createDirectories)
+                if (!Files.exists(target)) journal.beforeMutation(target)
+                Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+              }
+            }
+          }
+        }
     }
   }
 

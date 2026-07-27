@@ -28,6 +28,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -79,6 +80,7 @@ class ParallelCodeReviewRunner(
   private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
   private val database: DatabaseSessionFactory,
+  private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 ) {
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     var request = originalRequest
@@ -265,26 +267,40 @@ class ParallelCodeReviewRunner(
     manifests: List<PlatformManifest>,
     ownedPathsBySlug: Map<String, Set<String>>,
   ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
-    val rubric = reviewRubricResolver.resolve(null)
-    listOf(
-      PlannedReviewRubric(
-        ReviewLaunchLane(
-          rubric.rubricId,
-          "generic",
-          rubric.area ?: "generic",
-          0,
-          listOf("generic"),
-          true,
-          emptyList(),
-          0,
-          "generic fallback",
-          ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
-          changedHunkIds = evidence.hunks.map { it.hunkId },
+    val installed = installedReviewCatalog.manifests()
+    if (installed.isNotEmpty()) {
+      val routing = ReviewStackRouting.route(
+        installed,
+        evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) },
+      )
+      resolvePlannedRubrics(
+        evidence,
+        installed.filter { it.slug in routing.routedSlugs },
+        installed,
+        routing.ownedPathsBySlug,
+      )
+    } else {
+      val rubric = reviewRubricResolver.resolve(null)
+      listOf(
+        PlannedReviewRubric(
+          ReviewLaunchLane(
+            rubric.rubricId,
+            "horizontal",
+            rubric.area ?: "generic",
+            0,
+            listOf("horizontal"),
+            true,
+            emptyList(),
+            0,
+            "horizontal base behavior",
+            ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
+            changedHunkIds = evidence.hunks.map { it.hunkId },
+          ),
+          ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
+          workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
         ),
-        ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
-        workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
-      ),
-    )
+      )
+    }
   } else {
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     // Each root pack only owns the files that actually routed to it; a required baseline lane
@@ -400,7 +416,9 @@ class ParallelCodeReviewRunner(
     // invalid composition) throws; surface that loudly instead of silently dropping the
     // stack-specific specialists, per the shell's "never silently fall back" contract.
     val manifests = try {
-      scaffoldCatalogService.discoverPlatformManifests(packsRoot)
+      installedReviewCatalog.manifests().ifEmpty {
+        scaffoldCatalogService.discoverPlatformManifests(packsRoot)
+      }
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
       val displayPath = runCatching { repoRoot.relativize(packsRoot) }.getOrDefault(packsRoot)
       throw StackDetectionException(
