@@ -1,6 +1,5 @@
 package skillbill.review.plan
 
-import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.review.plan.model.ReviewStackRoutingResult
 import skillbill.scaffold.model.PlatformManifest
@@ -24,7 +23,7 @@ object ReviewStackRouting {
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
     }.groupBy({ it.first }, { it.second })
 
-    val fallback by lazy { resolveFallback(manifests) }
+    val fallback by lazy { ReviewFallbackResolver.resolveRequired(manifests) }
     if (changedFiles.isEmpty()) {
       return ReviewStackRoutingResult(emptySet(), emptyMap())
     }
@@ -78,22 +77,6 @@ object ReviewStackRouting {
       } == true
     }
     return survivors.singleOrNull()
-  }
-
-  private fun resolveFallback(manifests: List<PlatformManifest>): PlatformManifest {
-    val owners = manifests.filter { CODE_REVIEW_CAPABILITY in it.fallbackCapabilities }
-    if (owners.size != 1) {
-      throw InvalidFallbackCapabilityError(
-        "Code-review routing requires exactly one manifest-declared fallback owner; found ${owners.size}.",
-      )
-    }
-    val owner = owners.single()
-    if (owner.declaredFiles.baseline == null) {
-      throw InvalidFallbackCapabilityError(
-        "Platform pack '${owner.slug}' declares the code-review fallback without a code-review baseline.",
-      )
-    }
-    return owner
   }
 
   private const val CODE_REVIEW_CAPABILITY = "code-review"

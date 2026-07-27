@@ -50,6 +50,20 @@ prints `audit_first_pass_convergence`, `audit_recurring_gap_count`, `audit_new_g
 
 Generic skills like `/bill-code-review` and `/bill-code-check` are routing shells. The real work lives in `platform-packs/<lang>/` (today: `go`, `ios`, `kotlin`, `kmp`, `php`, `python`, `rust`, `typescript`). Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved specialist areas. KMP composes seven areas from its required Kotlin baseline and owns the platform-correctness, UI, and UX-accessibility delta lanes. Each dominant stack routes directly to its own manifest-declared quality checker; KMP selects `bill-kmp-code-check` without a Kotlin fallback. At runtime the generic entry point reads `routing_signals` from every discovered `platform.yaml` and hands off to the matching native skill. Adding a new language is purely additive—drop in a conforming `platform-packs/<lang>/`; no generic-shell platform enumeration is needed.
 
+The shipped `generic` pack is the manifest-declared code-review fallback for
+unsupported, documentation-only, and unresolved paths. Its slug is a distribution
+default, not a framework constant. Positive concrete or composed path ownership wins
+without appending fallback workers; content signals only break ties between equal
+positive path matches and never create ownership.
+
+A team may replace the shipped fallback by moving `fallback_capabilities:
+[code-review]` to one conforming custom pack. Removing every fallback declaration
+preserves the horizontal `bill-code-review` base installation, while multiple
+declarations fail validation. Delegated preflight and launch use the installed
+provider-native worker inventory and recorded digests, so neither the reviewed
+repository nor a surviving Skill Bill source checkout needs `skills/` or
+`platform-packs/` directories.
+
 `/bill-code-review` accepts `mode:auto|inline|delegated`: omission selects delegated review, `mode:auto` resolves depth by review pass number where one exists and otherwise falls back to size-and-risk eligibility, `mode:inline` runs the light depth tier in the current context — one agent covering the routed areas at reduced depth under a bounded budget, not equivalent coverage to delegated — and `mode:delegated` requires the routed delegated path. Feature workflows expose the same choice as `code-review:auto|inline|delegated`, independently of their `mode:runtime|prose` execution-engine selector.
 
 The shipped `rust` pack follows that same manifest-driven path: Cargo and first-party `.rs` signals route to `bill-rust-code-review` and `bill-rust-code-check`, with governed native agents for the baseline and all ten specialist lanes. Its quality checks understand workspaces, features, targets, rustfmt, Clippy, nextest, cargo-deny, and cargo-audit; Rust-specific routing is not hard-coded into either generic shell.

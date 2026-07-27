@@ -81,6 +81,15 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 
 Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript each own all ten approved review areas. KMP composes the seven Kotlin baseline areas it does not replace with KMP-owned platform-correctness, UI, and UX-accessibility lanes. Every pack routes quality checks directly to its own manifest-declared checker, including KMP through `bill-kmp-code-check`.
 
+The shipped `generic` pack is the manifest-declared code-review fallback for
+unsupported, documentation-only, and unresolved paths. Concrete path ownership
+wins without appending generic workers; content signals only break ties among
+equal positive path matches. Teams can move the fallback declaration to one
+custom pack or remove it to retain horizontal base behavior. Multiple fallback
+owners fail validation. Installed native-worker inventory keeps delegated
+preflight independent of both the reviewed repository and the source checkout.
+
+- `generic` — default review fallback for paths without concrete pack ownership
 - `kotlin` — baseline Kotlin review and quality-check behavior
 - `kmp` — Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
 - `ios` — native iOS review and quality-check behavior via `bill-ios-code-review` and `bill-ios-code-check`, routed from `.xcodeproj`, `.xcworkspace`, SwiftUI/UIKit, lifecycle, concurrency, UI, and accessibility signals

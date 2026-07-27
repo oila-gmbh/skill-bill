@@ -3,6 +3,7 @@
 package skillbill.install
 
 import skillbill.error.ContractVersionMismatchError
+import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.error.InvalidInstallPlanSchemaError
 import skillbill.error.InvalidReviewSkillStructureError
 import skillbill.error.MissingContentFileError
@@ -50,6 +51,43 @@ class InstallPlanBuilderTest {
           stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
         }
       }
+    }
+  }
+
+  @Test
+  fun `review capable plan includes the manifest declared fallback without slug knowledge`() {
+    val fixture = setupPlanFixture()
+    seedPlatformPack(fixture.repoRoot, slug = "team-default", areaNames = listOf("security"))
+    declareCodeReviewFallback(fixture.repoRoot, "team-default")
+
+    val plan = InstallOperations.planInstall(fixture.request())
+
+    assertEquals(listOf("team-default"), plan.selectedPlatformSlugs)
+    assertTrue(plan.skills.any { it.name == "bill-team-default-code-review" })
+    assertTrue(plan.skills.any { it.name == "bill-team-default-code-review-security" })
+  }
+
+  @Test
+  fun `review capable plan retains horizontal base behavior when no fallback is declared`() {
+    val fixture = setupPlanFixture()
+
+    val plan = InstallOperations.planInstall(fixture.request())
+
+    assertEquals(emptyList(), plan.selectedPlatformSlugs)
+    assertTrue(plan.skills.any { it.name == "bill-code-review" && it.kind == InstallPlanSkillKind.BASE })
+    assertFalse(plan.skills.any { it.kind == InstallPlanSkillKind.PLATFORM_PACK })
+  }
+
+  @Test
+  fun `review capable plan rejects multiple manifest declared fallbacks`() {
+    val fixture = setupPlanFixture()
+    listOf("first-default", "second-default").forEach { slug ->
+      seedPlatformPack(fixture.repoRoot, slug = slug)
+      declareCodeReviewFallback(fixture.repoRoot, slug)
+    }
+
+    assertFailsWith<InvalidFallbackCapabilityError> {
+      InstallOperations.planInstall(fixture.request())
     }
   }
 
@@ -695,6 +733,17 @@ class InstallPlanBuilderTest {
           relative to value
         }
     }
+  }
+
+  private fun declareCodeReviewFallback(repoRoot: Path, slug: String) {
+    val manifest = repoRoot.resolve("platform-packs/$slug/platform.yaml")
+    Files.writeString(
+      manifest,
+      Files.readString(manifest).replace(
+        "declared_code_review_areas:",
+        "fallback_capabilities:\n  - code-review\n\ndeclared_code_review_areas:",
+      ),
+    )
   }
 
   private data class PlanFixture(

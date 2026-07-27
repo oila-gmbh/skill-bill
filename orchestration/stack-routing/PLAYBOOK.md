@@ -46,9 +46,14 @@ Every router, reviewer, and validator agrees on the following procedure:
 7. If multiple packs have strong signals and no tie-breaker resolves the
    conflict, treat the scope as mixed and route to each matching pack via
    delegated execution.
-8. If no pack has strong-signal evidence, stop and report
-   `Unknown/Unsupported` — never fall back to a default pack.
-9. The routed skill name for the selected pack is
+8. If no concrete pack has positive path ownership, route to the unique pack
+   whose manifest declares `fallback_capabilities: [code-review]`. The shipped
+   `generic` pack is the default distribution choice, not a hard-coded slug.
+   Documentation-only and unsupported paths use this same fallback.
+9. Content signals cannot create ownership. They only break ties between packs
+   with equal positive path matches. Concrete and composed winners never have
+   the fallback appended.
+10. The routed skill name for the selected pack is
    `bill-<slug>-code-review`. This contract is preserved so existing
    user-facing commands keep working.
 

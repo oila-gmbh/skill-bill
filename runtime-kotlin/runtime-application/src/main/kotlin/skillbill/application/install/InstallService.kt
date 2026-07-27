@@ -17,6 +17,7 @@ import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SharedInstallSelection
 import skillbill.install.model.SkillReconciliationOutcome
 import skillbill.install.policy.InstallPlanPolicy
+import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
@@ -44,6 +45,9 @@ class InstallService(
 ) {
   fun planInstall(request: InstallPlanRequest): InstallPlan {
     val facts = planningPorts.planningFactsPort.collectPlanningFacts(InstallPlanningFactsRequest(request)).facts
+    val resolvedReviewFallback = facts.baseSkills
+      .takeIf { skills -> skills.any { it.name == "bill-code-review" } }
+      ?.let { ReviewFallbackResolver.resolveOptional(facts.platformManifests) }
     val materializationPlan = InstallPlanPolicy.planPlatformSkillMaterialization(
       InstallPlatformSkillMaterializationRequest(
         installRequest = request,
@@ -59,10 +63,15 @@ class InstallService(
       InstallPlatformSkillMaterializationPortRequest(
         installRequest = request,
         platformManifests = facts.platformManifests,
-        selectedPlatformSlugs = materializationPlan.selectedPlatformSlugs,
+        selectedPlatformSlugs = (
+          materializationPlan.selectedPlatformSlugs +
+            listOfNotNull(resolvedReviewFallback?.slug)
+          ).distinct(),
       ),
     ).platformPacks
-    val draft = InstallPlanPolicy.buildPlanDraft(facts.toPolicyInput(request, platformPacks))
+    val draft = InstallPlanPolicy.buildPlanDraft(
+      facts.toPolicyInput(request, platformPacks, resolvedReviewFallback?.slug),
+    )
     val staging = planningPorts.stagingIntentPort.buildStagingIntent(
       InstallStagingIntentRequest(
         installRequest = request,

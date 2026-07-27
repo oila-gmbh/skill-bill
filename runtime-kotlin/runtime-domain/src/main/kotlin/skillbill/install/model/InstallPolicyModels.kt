@@ -39,6 +39,7 @@ data class InstallPolicyInput(
   val request: InstallPlanRequest,
   val baseSkills: List<InstallPlanSkill>,
   val platformPacks: List<InstallPlatformPackSnapshot>,
+  val resolvedReviewFallbackSlug: String? = null,
   val detectedAgentTargets: List<InstallAgentTarget>,
   val defaultAgentTargets: List<InstallAgentDefaultTarget>,
 )

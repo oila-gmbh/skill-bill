@@ -68,6 +68,13 @@ Base skills are always included. Optional platform packs add their declared
 review and quality-check skills after manifest validation. All installed
 content-managed skills are rendered into `~/.skill-bill/installed-skills/` and
 agent entries link to that staging cache, not directly to source directories.
+When `bill-code-review` is present, install planning also selects the unique
+pack declaring `fallback_capabilities: [code-review]`. The shipped declaration
+belongs to `generic`, but teams may move it to a custom conforming pack. No
+declaration leaves horizontal base behavior; multiple declarations fail.
+Provider-native review workers are rendered from that same selection and
+recorded in durable managed inventory, so later preflight does not inspect the
+reviewed repository or require the source checkout.
 When a platform pack declares `code_review_composition.baseline_layers`, the
 rendered baseline review skill includes review-composition instructions so the
 referenced baseline layer runs before pack-local specialists.

@@ -281,10 +281,13 @@ private fun resolveManualTargets(input: InstallPolicyInput): List<InstallAgentTa
 }
 
 private fun selectedPlatformSlugs(input: InstallPolicyInput): List<String> {
-  return selectedPlatformSlugs(
+  val explicitlySelected = selectedPlatformSlugs(
     selection = input.request.platformPackSelection,
     discoveredSlugs = input.platformPacks.map(InstallPlatformPackSnapshot::slug),
   )
+  if (input.baseSkills.none { it.name == "bill-code-review" }) return explicitlySelected
+  return input.platformPacks.map(InstallPlatformPackSnapshot::slug)
+    .filter { it in explicitlySelected || it == input.resolvedReviewFallbackSlug }
 }
 
 private fun selectedPlatformSlugs(selection: PlatformPackSelection, discoveredSlugs: List<String>): List<String> =
