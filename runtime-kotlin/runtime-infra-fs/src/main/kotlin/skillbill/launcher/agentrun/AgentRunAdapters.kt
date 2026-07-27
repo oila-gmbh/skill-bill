@@ -51,7 +51,15 @@ class ProcessAgentRunAdapter(
         },
       ),
     )
-    val decoded = (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
+    val decoded = runCatching {
+      (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
+    }.getOrElse { error ->
+      if (error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError) {
+        DecodedAgentRunOutput(result.stdout)
+      } else {
+        throw error
+      }
+    }
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
@@ -111,6 +119,7 @@ fun interface AgentRunOutputDecoder {
     val CLAUDE_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeJson(stdout) }
     val CLAUDE_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeStreamJson(stdout) }
     val CODEX_JSONL = AgentRunOutputDecoder { stdout -> decodeCodexJsonl(stdout) }
+    val CURSOR_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeCursorStreamJson(stdout) }
   }
 }
 
@@ -172,6 +181,85 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   )
 }
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
+private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
+  if (stdout.isBlank()) {
+    return DecodedAgentRunOutput("")
+  }
+
+  var terminalText: String? = null
+  var usage: com.fasterxml.jackson.databind.JsonNode? = null
+  var decodedEnvelope = false
+  var errorEvent = false
+  var errorType: String? = null
+  var errorMessage: String? = null
+  var totalByteCount = 0
+  val maxTotalBytes = 10_000_000 // 10MB limit for Cursor stream processing
+  val cursorStreamPreviewLength = 100 // Characters to show in error messages
+  val lines = stdout.lineSequence().toList()
+
+  if (lines.isEmpty()) {
+    return DecodedAgentRunOutput("")
+  }
+
+  lines.asSequence().takeWhile { line ->
+    totalByteCount += line.toByteArray().size
+    totalByteCount <= maxTotalBytes
+  }.filter(String::isNotBlank).forEach { line ->
+    val event =
+      runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
+        throw skillbill.infrastructure.fs.CursorReviewStreamMalformedError(
+          "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
+          it,
+        )
+      }
+    decodedEnvelope = true
+    when (event.path("type").takeIf { it.isTextual }?.asText()) {
+      "error" -> {
+        errorEvent = true
+        errorType = event.path("error_type").takeIf { it.isTextual }?.asText()
+        errorMessage = event.path("message").takeIf { it.isTextual }?.asText()
+        // Error is stored and thrown later after parsing completes
+      }
+      "result" -> {
+        terminalText = event.path("result").takeIf { it.isTextual }?.asText()
+        event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
+      }
+    }
+  }
+
+  // Throw cursor-specific errors after parsing is complete (reduces throw count)
+  if (errorEvent) {
+    throw when (errorType) {
+      "forbidden_operation" -> skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError(
+        errorMessage ?: "Cursor reported a forbidden operation",
+      )
+      "provider_failure" -> skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError(
+        errorMessage ?: "Cursor reported a provider failure",
+      )
+      "termination" -> skillbill.infrastructure.fs.CursorReviewStreamTerminationError(
+        errorMessage ?: "Cursor process terminated prematurely",
+      )
+      else -> skillbill.infrastructure.fs.CursorReviewStreamError(
+        errorMessage ?: "Cursor reported an unknown error",
+      )
+    }
+  }
+
+  return when {
+    decodedEnvelope && terminalText == null -> DecodedAgentRunOutput("")
+    !decodedEnvelope -> DecodedAgentRunOutput(stdout)
+    else -> DecodedAgentRunOutput(
+      text = terminalText ?: "",
+      inputTokens = usage?.longOrNull("input_tokens"),
+      cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
+      outputTokens = usage?.longOrNull("output_tokens"),
+      reasoningTokens = usage?.longOrNull("reasoning_tokens"),
+      totalTokens = usage?.longOrNull("total_tokens"),
+    )
+  }
+}
+
 private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
@@ -190,6 +278,7 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
   ClaudeAgentRunCommandBuilder(),
   CodexAgentRunCommandBuilder(),
   JunieAgentRunCommandBuilder(),
+  CursorAgentRunCommandBuilder(),
 ).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
   .associate { builder ->
     builder.agent to ProcessAgentRunAdapter(

@@ -4,6 +4,7 @@ package skillbill.install.plan
 
 import skillbill.error.InvalidInternalSkillClassificationError
 import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallTransaction
 import skillbill.install.staging.StagedSymlinkTargetInput
@@ -16,11 +17,12 @@ import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal val SUPPORTED_AGENTS: List<String> = listOf("copilot", "claude", "codex", "opencode", "junie", "zcode")
+internal val SUPPORTED_AGENTS: List<String> = InstallAgent.supportedIds
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
 internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
+internal const val CURSOR_AGENTS_KIND: String = "cursor-agents"
 internal const val ZCODE_AGENTS_KIND: String = "zcode-agents"
 
 internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {
@@ -30,6 +32,7 @@ internal fun agentPaths(home: Path? = null, environment: Map<String, String> = S
     "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
     "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
+    "cursor" to resolvedHome.resolve(".cursor/skills"),
     "zcode" to resolvedHome.resolve(".zcode/skills"),
     "codex" to codexPath(resolvedHome),
   )
@@ -174,6 +177,7 @@ private fun agentIsPresent(
     "claude" -> claudeConfigRoots(home, environment)
     "opencode" -> listOf(home.resolve(".config/opencode"))
     "junie" -> listOf(home.resolve(".junie"))
+    "cursor" -> listOf(home.resolve(".cursor"))
     "zcode" -> listOf(home.resolve(".zcode"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
     else -> emptyList()

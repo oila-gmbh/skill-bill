@@ -20,3 +20,5 @@ agents:
     skills_dir: ~/.config/opencode/skills
   junie:
     skills_dir: ~/.junie/skills
+  cursor:
+    skills_dir: ~/.cursor/skills

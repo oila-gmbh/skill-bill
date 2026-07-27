@@ -30,8 +30,8 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
       harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
     )
 
-    val plan = harness.requestForPhase("plan")
-    val implement = harness.requestForPhase("implement")
+    val plan = harness.requestForPhase("plan").skillRunRequest
+    val implement = harness.requestForPhase("implement").skillRunRequest
     assertEquals("claude-opus", plan.modelOverride)
     assertEquals("high", plan.effortOverride)
     assertEquals("claude-sonnet", implement.modelOverride)
@@ -57,5 +57,93 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   private fun RunnerHarness.requestForPhase(phaseId: String) = launcher.requests.single { request ->
     requireNotNull(request.skillRunRequest.promptOverride).contains("Phase: $phaseId ")
-  }.skillRunRequest
+  }
+
+  @Test
+  fun `cursor model directive renders model with effort bracket syntax`() {
+    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CURSOR to mapOf(
+          ExecutionTier.REASONING to PhaseModelDirective("claude-opus-4-8", "high"),
+          ExecutionTier.IMPLEMENTATION to PhaseModelDirective("claude-sonnet-4-5", "medium"),
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    val plan = harness.requestForPhase("plan").skillRunRequest
+    val implement = harness.requestForPhase("implement").skillRunRequest
+    assertEquals("claude-opus-4-8[effort=high]", plan.modelOverride)
+    assertEquals("high", plan.effortOverride)
+    assertEquals("claude-sonnet-4-5[effort=medium]", implement.modelOverride)
+    assertEquals("medium", implement.effortOverride)
+  }
+
+  @Test
+  fun `cursor model-only directive renders without effort brackets`() {
+    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CURSOR to mapOf(
+          ExecutionTier.REASONING to PhaseModelDirective("claude-opus-4-8", null),
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    val plan = harness.requestForPhase("plan").skillRunRequest
+    assertEquals("claude-opus-4-8", plan.modelOverride)
+    assertEquals(null, plan.effortOverride)
+  }
+
+  @Test
+  fun `cursor invoked-agent route selects cursor adapter`() {
+    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertTrue(harness.launcher.requests.all { it.configuredAgentOverrideId == "cursor" })
+  }
+
+  @Test
+  fun `cursor phase-agent override route selects cursor adapter`() {
+    val harness = runnerHarness(
+      agentAssignment = FeatureTaskRuntimeAgentAssignment(
+        perPhaseAgentIds = mapOf("plan" to "cursor"),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val planRequest = harness.requestForPhase("plan")
+    assertEquals("cursor", planRequest.invokedAgentId)
+
+    val nonPlanRequests = harness.launcher.requests.filter {
+      !it.skillRunRequest.promptOverride.orEmpty().contains("Phase: plan ")
+    }
+    assertTrue(nonPlanRequests.all { it.invokedAgentId != "cursor" })
+  }
+
+  @Test
+  fun `cursor parallel-review route selects cursor adapter`() {
+    val harness = runnerHarness(
+      agentAssignment = FeatureTaskRuntimeAgentAssignment(
+        perPhaseAgentIds = mapOf("review" to "cursor"),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val reviewRequest = harness.launcher.requests.single {
+      it.skillRunRequest.promptOverride.orEmpty().contains("Phase: review ")
+    }
+    assertEquals("cursor", reviewRequest.invokedAgentId)
+  }
 }

@@ -248,6 +248,13 @@ codex exec [--model <lane2Model>] - < <lane2-prompt-path> > <lane2-review-path> 
 
 Omit `--model` when `lane2Model` is empty.
 
+#### cursor
+```bash
+agent --print [--model <lane2Model>] < <lane2-prompt-path> > <lane2-review-path> 2>&1
+```
+
+Omit `--model` when `lane2Model` is empty.
+
 If the CLI exits with "stdin is not a terminal", "not a tty", or a similar rejection, try passing
 the prompt as a positional argument instead: `<agent> "<prompt>"`. If the agent CLI is not found in
 `PATH` or all invocation attempts fail, abort lane 2, skip the merge step, and report

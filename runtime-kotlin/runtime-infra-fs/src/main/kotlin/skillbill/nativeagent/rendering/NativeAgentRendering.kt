@@ -30,6 +30,10 @@ enum class NativeAgentProvider(
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
   },
+  Cursor("cursor-agents", "md") {
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".cursor/agents"))
+  },
   Zcode("zcode-agents", "md") {
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".zcode/agents"))
@@ -47,6 +51,7 @@ enum class NativeAgentProvider(
     Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
     Opencode -> listOfNotNull(detectOpencodeAgentsTarget(home)?.path)
     Junie -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".junie")) }.orEmpty()
+    Cursor -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".cursor")) }.orEmpty()
     Zcode -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".zcode")) }.orEmpty()
   }.map { it.toAbsolutePath().normalize() }
 

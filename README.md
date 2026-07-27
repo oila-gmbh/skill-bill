@@ -53,7 +53,7 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 
 **A feature implemented end-to-end from a spec** — planning, implementation, stack-specialist review, completeness audit, and quality gates, all the way to a merge-ready PR. That is the headline. Everything else exists to make it reliable, repeatable, and yours:
 
-- the same governed skill set installed across every agent you use — verified end-to-end on Claude Code and Codex
+- the same governed skill set installed across every agent you use — verified end-to-end on Claude Code, Codex, and Cursor
 - a governed contract that fails loudly when skills drift instead of silently going stale
 - durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction — and resume is agent-independent: a run paused under Claude Code continues under Codex with the same command
 - automatic decomposition of oversized work into resumable subtasks the runtime tracks for you — each subtask runs in a fresh context briefed from curated durable artifacts, so long goals don't degrade no matter how many hours they run

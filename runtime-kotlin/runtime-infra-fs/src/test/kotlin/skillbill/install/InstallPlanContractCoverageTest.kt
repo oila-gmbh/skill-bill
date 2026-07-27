@@ -116,6 +116,7 @@ class InstallPlanContractCoverageTest {
     Files.createDirectories(fixture.home.resolve(".codex"))
     Files.createDirectories(fixture.home.resolve(".config/opencode"))
     Files.createDirectories(fixture.home.resolve(".junie"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
     Files.createDirectories(fixture.home.resolve(".zcode"))
     val before = snapshotTree(fixture.repoRoot)
 
@@ -134,6 +135,7 @@ class InstallPlanContractCoverageTest {
         fixture.home.resolve(".codex/skills"),
         fixture.home.resolve(".config/opencode/skills"),
         fixture.home.resolve(".junie/skills"),
+        fixture.home.resolve(".cursor/skills"),
         fixture.home.resolve(".zcode/skills"),
       ),
       plan.agents.map { target -> target.path },

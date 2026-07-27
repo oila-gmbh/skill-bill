@@ -93,6 +93,7 @@ fun CopySpec.excludeGeneratedSkillBillArtifacts() {
   exclude("**/codex-agents/**")
   exclude("**/opencode-agents/**")
   exclude("**/junie-agents/**")
+  exclude("**/cursor-agents/**")
 }
 
 val prepareDesktopRuntimeBundle by tasks.registering(Sync::class) {

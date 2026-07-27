@@ -21,6 +21,7 @@ object InstallRuntime {
       "claude-agents-path",
       "opencode-agents-path",
       "junie-agents-path",
+      "cursor-agents-path",
       "link-skill",
       "cleanup-agent-target",
       "link-claude-agents",
@@ -31,6 +32,8 @@ object InstallRuntime {
       "unlink-opencode-agents",
       "link-junie-agents",
       "unlink-junie-agents",
+      "link-cursor-agents",
+      "unlink-cursor-agents",
       "rollback-links",
     ),
   )

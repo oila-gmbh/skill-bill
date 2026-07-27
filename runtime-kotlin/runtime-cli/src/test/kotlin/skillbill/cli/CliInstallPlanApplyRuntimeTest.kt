@@ -90,6 +90,37 @@ class CliInstallPlanApplyRuntimeTest {
   }
 
   @Test
+  fun `install plan accepts manual cursor without a detected cursor home`() {
+    val fixture = installPlanApplyFixture()
+
+    val result = CliRuntime.run(cursorPlanArguments(fixture), installPlanCliContext(fixture.home))
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeInstallPlanApplyJson(result.stdout)
+    assertEquals("planned", payload["status"])
+    val cursor = payload.agents().single { agent -> agent["agent"] == "cursor" }
+    assertEquals(fixture.home.resolve(".cursor/skills").toString(), cursor["path"])
+    assertEquals("manual", cursor["source"])
+    assertEquals(listOf("cursor"), payload.mapValue("mcp_registration")["agents"])
+    assertFalse(Files.exists(fixture.home.resolve(".cursor")))
+  }
+
+  @Test
+  fun `install plan detects cursor when a cursor home exists`() {
+    val fixture = installPlanApplyFixture()
+    createDetectedAgentHomes(fixture.home)
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+
+    val result = CliRuntime.run(detectedPlanArguments(fixture, "anonymous"), installPlanCliContext(fixture.home))
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeInstallPlanApplyJson(result.stdout)
+    val cursor = payload.agents().single { agent -> agent["agent"] == "cursor" }
+    assertEquals(fixture.home.resolve(".cursor/skills").toString(), cursor["path"])
+    assertEquals("detected", cursor["source"])
+  }
+
+  @Test
   fun `install plan maps detected agents all platforms and telemetry levels`() {
     listOf("anonymous", "full", "off").forEach { telemetry ->
       val fixture = installPlanApplyFixture()
@@ -442,6 +473,25 @@ class CliInstallPlanApplyRuntimeTest {
     )
     assertTrue(links.all { link -> link["status"] == "created" })
   }
+
+  private fun cursorPlanArguments(fixture: InstallPlanApplyFixture): List<String> = listOf(
+    "install",
+    "plan",
+    "--repo-root",
+    fixture.repoRoot.toString(),
+    "--agent-mode",
+    "manual",
+    "--agent",
+    "cursor",
+    "--telemetry",
+    "anonymous",
+    "--mcp",
+    "register",
+    "--runtime-mcp-bin",
+    "/tmp/runtime-mcp",
+    "--format",
+    "json",
+  )
 
   private fun manualPlanArguments(fixture: InstallPlanApplyFixture): List<String> = listOf(
     "install",

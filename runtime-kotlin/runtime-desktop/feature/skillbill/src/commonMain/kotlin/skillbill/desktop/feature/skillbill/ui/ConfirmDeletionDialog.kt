@@ -66,6 +66,7 @@ import dev.skillbill.designsystem.generated.resources.confirm_deletion_manifest_
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_preview_failed
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_claude
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_codex
+import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_cursor
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_junie
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_opencode
 import dev.skillbill.designsystem.generated.resources.confirm_deletion_provider_zcode
@@ -509,5 +510,6 @@ private fun displayLabelFor(provider: DesktopAgentSymlinkProvider): String = whe
   DesktopAgentSymlinkProvider.CODEX -> stringResource(Res.string.confirm_deletion_provider_codex)
   DesktopAgentSymlinkProvider.OPENCODE -> stringResource(Res.string.confirm_deletion_provider_opencode)
   DesktopAgentSymlinkProvider.JUNIE -> stringResource(Res.string.confirm_deletion_provider_junie)
+  DesktopAgentSymlinkProvider.CURSOR -> stringResource(Res.string.confirm_deletion_provider_cursor)
   DesktopAgentSymlinkProvider.ZCODE -> stringResource(Res.string.confirm_deletion_provider_zcode)
 }

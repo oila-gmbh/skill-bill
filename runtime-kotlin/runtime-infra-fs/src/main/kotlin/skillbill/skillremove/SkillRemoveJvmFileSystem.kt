@@ -524,11 +524,21 @@ class SkillRemoveJvmFileSystem(
     AgentSymlinkProvider.CODEX -> NativeAgentProvider.Codex
     AgentSymlinkProvider.OPENCODE -> NativeAgentProvider.Opencode
     AgentSymlinkProvider.JUNIE -> NativeAgentProvider.Junie
+    AgentSymlinkProvider.CURSOR -> NativeAgentProvider.Cursor
     AgentSymlinkProvider.ZCODE -> NativeAgentProvider.Zcode
   }
 
+  private fun providerUnlink(provider: AgentSymlinkProvider): (NativeAgentLinkRequest) -> List<Path> = when (provider) {
+    AgentSymlinkProvider.CLAUDE -> InstallNativeAgentOperations::unlinkClaudeAgents
+    AgentSymlinkProvider.CODEX -> InstallNativeAgentOperations::unlinkCodexAgents
+    AgentSymlinkProvider.OPENCODE -> InstallNativeAgentOperations::unlinkOpencodeAgents
+    AgentSymlinkProvider.JUNIE -> InstallNativeAgentOperations::unlinkJunieAgents
+    AgentSymlinkProvider.CURSOR -> InstallNativeAgentOperations::unlinkCursorAgents
+    AgentSymlinkProvider.ZCODE -> InstallNativeAgentOperations::unlinkZcodeAgents
+  }
+
   /**
-   * F-RUNCATCHING-SILENT / F-001-ARCH: iterate the four providers in order, collect each successful
+   * F-RUNCATCHING-SILENT / F-001-ARCH: iterate every [AgentSymlinkProvider] in order, collect each successful
    * unlink into the result list, and accumulate IOException-class failures into [UnlinkFailure]
    * entries instead of dropping them with `runCatching {}`. CancellationException is rethrown
    * eagerly so coroutine cancellation propagates verbatim. Any accumulated failures throw
@@ -558,15 +568,9 @@ class SkillRemoveJvmFileSystem(
     )
     val unlinked = mutableListOf<Path>()
     val failures = mutableListOf<UnlinkFailure>()
-    val providers: List<Pair<AgentSymlinkProvider, (NativeAgentLinkRequest) -> List<Path>>> = listOf(
-      AgentSymlinkProvider.CLAUDE to InstallNativeAgentOperations::unlinkClaudeAgents,
-      AgentSymlinkProvider.CODEX to InstallNativeAgentOperations::unlinkCodexAgents,
-      AgentSymlinkProvider.OPENCODE to InstallNativeAgentOperations::unlinkOpencodeAgents,
-      AgentSymlinkProvider.JUNIE to InstallNativeAgentOperations::unlinkJunieAgents,
-    )
-    providers.forEach { (provider, fn) ->
+    AgentSymlinkProvider.entries.forEach { provider ->
       try {
-        unlinked += fn(baseRequest)
+        unlinked += providerUnlink(provider)(baseRequest)
       } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
         throw cancellation
       } catch (error: IOException) {

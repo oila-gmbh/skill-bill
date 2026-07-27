@@ -539,6 +539,7 @@ remove_from_agent_dir "codex" "$HOME/.codex/skills"
 remove_from_agent_dir "codex" "$HOME/.agents/skills"
 remove_from_agent_dir "opencode" "$HOME/.config/opencode/skills"
 remove_from_agent_dir "junie" "$HOME/.junie/skills"
+remove_from_agent_dir "cursor" "$HOME/.cursor/skills"
 remove_from_agent_dir "zcode" "$HOME/.zcode/skills"
 
 remove_codex_agents_tomls() {
@@ -642,6 +643,31 @@ remove_junie_agent_mds() {
 
 info "Removing Junie subagent markdown installs."
 remove_junie_agent_mds
+
+remove_cursor_agent_mds() {
+  # Uninstall Cursor native subagent markdown symlinks from ~/.cursor/agents.
+  # The source discovery walks governed platform-pack and skill cursor-agents/*.md
+  # definitions and is independent from other agent setup choices.
+  local output
+  if ! output="$(run_runtime_cli install unlink-cursor-agents \
+    --platform-packs "$PLATFORM_PACKS_DIR" \
+    --skills "$SKILLS_DIR")"; then
+    warn "  Cursor subagent cleanup failed; continuing uninstall so reinstall can recover."
+    return 0
+  fi
+  if [[ -z "$output" ]]; then
+    info "  nothing to remove"
+    return 0
+  fi
+  while IFS= read -r link_path; do
+    [[ -n "$link_path" ]] || continue
+    REMOVED_TARGETS+=("$link_path")
+    ok "  removed $(basename "$link_path")"
+  done <<< "$output"
+}
+
+info "Removing Cursor subagent markdown installs."
+remove_cursor_agent_mds
 
 remove_zcode_agent_mds() {
   # Uninstall zcode native subagent markdown symlinks from ~/.zcode/agents.

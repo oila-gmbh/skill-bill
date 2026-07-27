@@ -112,6 +112,19 @@ private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycl
     textDecoder.observe(operations, chunk)
 }
 
+private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
+  private val resultDecoder = IncrementalJsonStringFieldDecoder(
+    targetField = "result",
+    targetContainerField = null,
+    stopAfterFirstMatch = true,
+  )
+
+  override fun newSession(): NativeReviewLifecycleCallbacks = CursorNativeReviewLifecycleCallbacks()
+
+  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+    resultDecoder.observe(operations, chunk)
+}
+
 /**
  * Streams one JSON string field without retaining its provider envelope. Only field names and
  * incomplete escape state are buffered, so a provider cannot move the lane-result byte boundary
@@ -364,6 +377,10 @@ private val CODEX_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
 
 private val JUNIE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = PROXY_PASSTHROUGH_KEYS
 
+private val CURSOR_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "CURSOR_API_KEY",
+) + PROXY_PASSTHROUGH_KEYS
+
 /**
  * Claude Code sizes its own auto-compaction trigger against the model's context window, so a phase
  * on a 1M-context model never compacts at the few-hundred-thousand tokens a phase actually reaches.
@@ -535,6 +552,103 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       environmentPassthroughKeys =
       if (request.reviewEvidenceBroker != null) JUNIE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
+  }
+}
+
+class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
+  override val agent: InstallAgent = InstallAgent.CURSOR
+  override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
+  override val nativeReviewCapabilities: NativeReviewProviderCapabilities = NativeReviewProviderCapabilities(
+    operationBoundary = NativeReviewOperationBoundary.DISABLED,
+    providerUsageExposure = ProviderUsageExposure.COMPLETION_ONLY,
+    lifecycleCallbacks = CursorNativeReviewLifecycleCallbacks(),
+  )
+
+  override fun build(request: SkillRunRequest): AgentRunCommand {
+    requireProcessLaunch(request, reviewIsolation)
+    val streaming = request.streamOutputForLiveness
+    val isReviewLaunch = request.reviewEvidenceBroker != null
+
+    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = buildCursorCommand(request, isReviewLaunch, streaming),
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      stdinText = launchPrompt(request),
+      environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
+      inheritEnvironment = !isReviewLaunch,
+      conversationIsolation = request.conversationIsolation,
+      idlePolicy = when {
+        streaming -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+        else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
+      },
+      environmentPassthroughKeys = if (isReviewLaunch) CURSOR_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
+    )
+  }
+
+  private fun buildCursorCommand(request: SkillRunRequest, isReviewLaunch: Boolean, streaming: Boolean): List<String> =
+    buildList {
+      add("agent")
+      add("--print")
+
+      if (isReviewLaunch) {
+        request.nativeReviewWorkerName?.let { worker ->
+          add("/$worker")
+        }
+        add("--workspace")
+        add(request.repoRoot.toString())
+      } else {
+        add("--force")
+        add("--trust")
+        add("--approve-mcps")
+        add("--workspace")
+        add(request.repoRoot.toString())
+      }
+
+      add("--output-format")
+      add("stream-json")
+      if (streaming) add("--stream-partial-output")
+
+      request.modelOverride?.let { model ->
+        val modelArg = request.effortOverride?.let { effort ->
+          mergeModelEffort(model, effort)
+        } ?: model
+        add("--model")
+        add(modelArg)
+      }
+      request.effortOverride?.let { effort ->
+        if (request.modelOverride == null) {
+          require(false) {
+            "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
+          }
+        }
+      }
+    }
+
+  private fun mergeModelEffort(model: String, effort: String): String {
+    val effortPrefix = "[effort="
+    val effortSuffix = "]"
+
+    fun extractExistingEffort(modelString: String): String? {
+      val effortStart = modelString.indexOf(effortPrefix)
+      if (effortStart == -1) return null
+      val effortEnd = modelString.indexOf(effortSuffix, effortStart)
+      if (effortEnd == -1) return null
+      return modelString.substring(effortStart + effortPrefix.length, effortEnd)
+    }
+
+    val existingEffort = extractExistingEffort(model)
+    return when {
+      existingEffort == null -> "$model$effortPrefix$effort$effortSuffix"
+      existingEffort == effort -> model
+      else ->
+        error(
+          "Conflicting effort directive: model string '$model' declares effort='$existingEffort', but " +
+            "directive specifies effort='$effort'. Remove the conflict from the execution_matrix or " +
+            "phase assignment.",
+        )
+    }
   }
 }
 

@@ -131,12 +131,12 @@ class AgentRunGoalContinuationCommandTest {
   fun `every agent goal-continuation child spawns skill-bill feature-task and never the skill`() {
     val runner = RecordingAgentRunProcessRunner()
     // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters, so the
-    // remaining runtime agents (claude, codex, junie) each spawn skill-bill feature-task directly.
-    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
+    // remaining runtime agents (claude, codex, junie, cursor) each spawn skill-bill feature-task directly.
+    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR).forEach { agent ->
       requireNotNull(headlessAgentRunAdapters(runner)[agent]).launch(skillRunRequest())
     }
 
-    assertEquals(3, runner.requests.size)
+    assertEquals(4, runner.requests.size)
     runner.requests.forEach { request ->
       assertEquals(
         listOf("skill-bill", "--db", "/tmp/skillbill-agent-run/metrics.db", "feature-task"),
@@ -149,7 +149,7 @@ class AgentRunGoalContinuationCommandTest {
       assertFalse(request.command.any { value -> "workflow continue" in value })
       assertFalse(request.command.any { value -> "use the" in value.lowercase() && "skill" in value.lowercase() })
     }
-    val perAgent = listOf("claude", "codex", "junie")
+    val perAgent = listOf("claude", "codex", "junie", "cursor")
     runner.requests.forEachIndexed { index, request ->
       assertEquals(perAgent[index], request.command.last())
       assertEquals("--agent", request.command[request.command.size - 2])
@@ -215,4 +215,106 @@ class AgentRunGoalContinuationCommandTest {
     childWorkflowId = childWorkflowId,
     assignedWorkflowId = assignedWorkflowId,
   )
+
+  @Test
+  fun `cursor goal-continuation child with no child workflow id runs skill-bill feature-task run directly`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val outcome = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CURSOR]).launch(skillRunRequest())
+
+    assertEquals(InstallAgent.CURSOR, outcome.agent)
+    val request = runner.requests.single()
+    assertEquals(
+      listOf(
+        "skill-bill",
+        "--db",
+        "/tmp/skillbill-agent-run/metrics.db",
+        "feature-task",
+        "run",
+        "SKILL-56",
+        ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+        "--goal-parent-issue-key",
+        "SKILL-56",
+        "--goal-subtask-id",
+        "2",
+        "--goal-branch",
+        "feat/SKILL-56-goal",
+        "--suppress-pr",
+        "--goal-parent-workflow-id",
+        "wfl-parent",
+        "--goal-last-resumable-step",
+        "implement",
+        "--code-review-mode",
+        "inline",
+        "--agent",
+        "cursor",
+      ),
+      request.command,
+    )
+    assertNull(request.stdinText)
+    assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
+    assertEquals("inline", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
+    assertTrue(request.inheritEnvironment)
+  }
+
+  @Test
+  fun `cursor goal-continuation child with existing child workflow id runs feature-task resume`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CURSOR]).launch(
+      skillRunRequest(goalContinuation = goalContinuationContext(childWorkflowId = "wfl-child-runtime")),
+    )
+
+    val request = runner.requests.single()
+    assertEquals(
+      listOf(
+        "skill-bill",
+        "--db",
+        "/tmp/skillbill-agent-run/metrics.db",
+        "feature-task",
+        "resume",
+        "wfl-child-runtime",
+        "SKILL-56",
+        ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+        "--goal-parent-issue-key",
+        "SKILL-56",
+        "--goal-subtask-id",
+        "2",
+        "--goal-branch",
+        "feat/SKILL-56-goal",
+        "--suppress-pr",
+        "--goal-parent-workflow-id",
+        "wfl-parent",
+        "--goal-last-resumable-step",
+        "implement",
+        "--code-review-mode",
+        "inline",
+        "--agent",
+        "cursor",
+      ),
+      request.command,
+    )
+    assertNull(request.stdinText)
+    assertFalse(request.command.contains("--workflow-id"))
+  }
+
+  @Test
+  fun `cursor goal-continuation child with assigned workflow id and no child runs feature-task run with workflow-id`() {
+    val runner = RecordingAgentRunProcessRunner()
+    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CURSOR]).launch(
+      skillRunRequest(
+        goalContinuation = goalContinuationContext(childWorkflowId = null, assignedWorkflowId = "wfl-assigned"),
+      ),
+    )
+
+    val request = runner.requests.single()
+    assertContains(request.command, "feature-task")
+    assertContains(request.command, "run")
+    assertContains(request.command, "SKILL-56")
+    assertContains(request.command, ".feature-specs/SKILL-56-goal/spec_subtask_2.md")
+    val workflowIdFlagIndex = request.command.indexOf("--workflow-id")
+    assertTrue(workflowIdFlagIndex >= 0)
+    assertEquals("wfl-assigned", request.command[workflowIdFlagIndex + 1])
+    assertFalse(request.command.contains("resume"))
+    assertEquals("cursor", request.command.last())
+    assertEquals("--agent", request.command[request.command.size - 2])
+  }
 }

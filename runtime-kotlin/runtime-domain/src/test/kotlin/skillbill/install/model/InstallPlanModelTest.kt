@@ -4,13 +4,39 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class InstallPlanModelTest {
   @Test
   fun `supported install agents are exactly the install contract set`() {
     assertEquals(
-      listOf("copilot", "claude", "codex", "opencode", "junie", "zcode"),
+      listOf("copilot", "claude", "codex", "opencode", "junie", "cursor", "zcode"),
       InstallAgent.supportedIds,
+    )
+  }
+
+  @Test
+  fun `cursor is a governed install agent and stays runtime eligible`() {
+    assertEquals(InstallAgent.CURSOR, InstallAgent.fromId("cursor"))
+    assertEquals(InstallAgent.CURSOR, InstallAgent.fromNormalizedId(" CURSOR "))
+    assertFalse(RUNTIME_REFUSED_AGENTS.contains(InstallAgent.CURSOR))
+    assertFalse(isRuntimeRefusedAgent("cursor"))
+  }
+
+  @Test
+  fun `cursor carries no invoking-agent environment marker`() {
+    assertFalse(
+      InvokingAgentContextResolver.INVOKING_AGENT_CONTEXT_SIGNALS.any { signal ->
+        signal.agent == InstallAgent.CURSOR
+      },
+    )
+  }
+
+  @Test
+  fun `native agent provider ids mirror the install agent order`() {
+    assertEquals(
+      listOf("claude", "codex", "opencode", "junie", "cursor", "zcode"),
+      NativeAgentProviderId.entries.map(NativeAgentProviderId::id),
     )
   }
 
@@ -21,10 +47,10 @@ class InstallPlanModelTest {
     }
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallAgent.fromId("cursor")
+      InstallAgent.fromId("not-an-agent")
     }
 
-    assertContains(error.message.orEmpty(), "Unknown agent 'cursor'")
+    assertContains(error.message.orEmpty(), "Unknown agent 'not-an-agent'")
     InstallAgent.supportedIds.forEach { id ->
       assertContains(error.message.orEmpty(), id)
     }

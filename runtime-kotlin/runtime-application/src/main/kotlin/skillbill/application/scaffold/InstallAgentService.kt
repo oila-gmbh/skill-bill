@@ -10,6 +10,7 @@ import skillbill.ports.install.agent.model.InstallAgentTargetCleanupRequest
 import java.nio.file.Path
 
 @Inject
+@Suppress("TooManyFunctions")
 class InstallAgentService(
   private val agentTargetPort: InstallAgentTargetPort,
 ) {
@@ -29,6 +30,8 @@ class InstallAgentService(
   fun opencodeAgentsPath(home: Path? = null): Path = agentDirectory("opencode", home)
 
   fun junieAgentsPath(home: Path? = null): Path = agentDirectory("junie", home)
+
+  fun cursorAgentsPath(home: Path? = null): Path = agentDirectory("cursor", home)
 
   fun zcodeAgentsPath(home: Path? = null): Path = agentDirectory("zcode", home)
 
