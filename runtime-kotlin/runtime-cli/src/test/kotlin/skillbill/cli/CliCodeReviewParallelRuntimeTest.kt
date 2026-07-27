@@ -428,7 +428,8 @@ private fun findRepoRoot(): Path {
   var current = Path.of(".").toAbsolutePath()
   while (current != null) {
     if (Files.exists(current.resolve("build.gradle.kts")) ||
-        Files.exists(current.resolve("settings.gradle.kts"))) {
+      Files.exists(current.resolve("settings.gradle.kts"))
+    ) {
       return current
     }
     current = current.parent
