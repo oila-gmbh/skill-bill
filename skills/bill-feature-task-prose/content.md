@@ -41,7 +41,7 @@ Workflow-state rules:
 - `feature_task_prose_workflow_update` returns a compact acknowledgement by default: status, workflow id/status, current step id, updated step ids, updated artifact keys, db path, and read-only full-state guidance. It does not return the full durable artifact map; use `feature_task_prose_workflow_get` or `workflow show` for explicit read-only full-state inspection.
 - Follow the detailed per-phase briefing contracts in the inline reference sections below. Do not invent prose-only handoffs when a structured artifact exists.
 
-Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `audit`, `review`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable artifact names: `assessment`, `branch`, `agent_addon_selection`, `preplan_digest`, `plan`, `implementation_summary`, `audit_report`, `review_result`, `validation_result`, `history_result`, `commit_push_result`, `pr_result`.
+Stable step ids: `assess`, `create_branch`, `preplan`, `plan`, `implement`, `audit`, `review`, `validate`, `write_history`, `commit_push`, `pr_description`, `finish`. Stable private result artifact names remain `assessment`, `branch`, `agent_addon_selection`, `preplan_digest`, `plan`, `implementation_summary`, `audit_report`, `review_result`, `validation_result`, `history_result`, `commit_push_result`, and `pr_result`. Finalization consumers receive only the bounded handoff artifacts `validation_request`, `validation_receipt`, `boundary_candidates`, `history_receipt`, `commit_request`, `commit_receipt`, and `pr_request`; private result artifacts remain durable but are not continuation inputs.
 
 When the entry authority supplies an agent add-on selection, persist its ordered
 structured `agent_addon_selection` immediately after the workflow opens. Before
@@ -54,7 +54,7 @@ missing sources or an incompatible receiving agent fail
 before phase work. An empty selection adds no artifact content and no prompt
 section, preserving legacy prose behaviour.
 
-Phase-to-artifact mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `audit_report`; Step 6 -> `review_result`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`.
+Phase-to-private-result mapping: Step 1 -> `assessment`; Step 1b -> `branch`; Step 2 -> `preplan_digest`; Step 3 -> `plan` (implementation plan or decomposition package); Step 4 -> `implementation_summary`; Step 5 -> `audit_report`; Step 6 -> `review_result`; Step 6b -> `validation_result`; Step 7 -> `history_result`; Step 8 -> `commit_push_result`; Step 9 -> `pr_result`. At each boundary, the workflow-owned projector also persists the bounded request or receipt required by the next finalization consumer.
 
 ## Continuation Mode
 
@@ -337,7 +337,11 @@ Orchestrated child telemetry:
 - The review will not emit `skillbill_review_finished` on its own — its payload will be embedded in the `skillbill_feature_task_prose_finished` event instead.
 - Before the first review telemetry call, do a lightweight Skill Bill MCP health check such as `feature_task_prose_workflow_latest`. If the MCP tool path returns `Transport closed`, call the same Skill Bill MCP tool through the packaged Kotlin `runtime-mcp` stdio binary from the repo (`runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp`) with a JSON-RPC `tools/call` payload and parse the returned text content. Use this direct-stdio fallback for subsequent owned telemetry/workflow calls in the run, and record that fallback in `review_result`.
 
-Persist `review_result`, then advance to `validate`.
+Persist private `review_result`. Before advancing, persist `validation_request`
+(`validation_strategy`, runtime-resolved `changed_paths`, `required_checks`, and
+`repository_checkpoint`) and retain the bounded `audit_clearance`. Do not
+project `audit_report`, `review_result`, or `implementation_summary` into
+validation.
 
 ## Audit remediation details
 
@@ -377,13 +381,20 @@ Once the audit passes, run Steps 6b through 9 as a continuous sequence without p
 
 Step id: `validate`
 
-Primary artifact: `validation_result`
+Primary private artifact: `validation_result`
+
+Bounded inputs: `validation_request` and `audit_clearance`.
 
 Spawn a subagent with the quality-check briefing defined in the inline reference sections below under `Quality-check subagent briefing`. The subagent runs `bill-code-check` (which auto-routes to the matching stack quality-check skill), fixes any issues at their root without using suppressions, and must call `quality_check_finished` with `orchestrated=true` itself. Validation findings are repair work, not a blocking gate: keep fixing and rerunning validation until the result passes, and do not persist `validate` as blocked for fixable findings. The subagent returns: `validation_result`, `routed_skill`, `detected_stack`, `fallback`, `initial_failure_count`, `final_failure_count`, and the `telemetry_payload` returned by `quality_check_finished`.
 
 If `bill-code-check` reports no supported stack for the affected repo, the subagent falls back to the closest existing repo-native validation command.
 
-The orchestrator appends the returned `telemetry_payload` to the `child_steps` list. Persist `validation_result`, then advance to `write_history`.
+The orchestrator appends the returned `telemetry_payload` to the `child_steps`
+list. Persist private `validation_result`, then persist `validation_receipt`
+(`validation_status`, bounded `checks`, and `repository_checkpoint`) plus
+`boundary_candidates` (`changed_paths` and derived `boundary_candidates`).
+Advance to `write_history` with only those bounded artifacts and fresh
+repository evidence.
 
 Persist the governed `validation_result` wire shape exactly as
 `validation_result`, `routed_skill`, `detected_stack`, `fallback`,
@@ -394,9 +405,17 @@ optional diagnostic detail outside the domain receipt.
 
 Step id: `write_history`
 
-Primary artifact: `history_result`
+Primary private artifact: `history_result`
 
-Run `bill-boundary-history` inline in the orchestrator. Read its skill file and apply it inline. The skill owns write/skip rules and entry format. Persist `history_result`, then advance to `commit_push`.
+Bounded inputs: `boundary_candidates` and `validation_receipt`.
+
+Run `bill-boundary-history` inline in the orchestrator. Read its skill file and
+apply it inline. The skill owns write/skip rules and entry format. Persist
+private `history_result`, then persist `history_receipt` (`changed_paths` and
+`decisions_recorded`) and the runtime-resolved `commit_request`
+(`path_inventory`, `required_inclusions`, `required_exclusions`,
+`branch_identity`, `gate_attestations`, and `repository_checkpoint`). Advance
+without projecting `implementation_summary` or `validation_result`.
 
 Persist the governed `history_result` wire shape exactly as `written` and
 `changed_paths`.
@@ -407,17 +426,29 @@ Step id: `commit_push`
 
 Reserved artifact name: `commit_push_result`
 
+Bounded inputs: `commit_request`, `validation_receipt`, and `history_receipt`.
+
 1. If this run is a goal-continuation subtask with `goal_continuation.suppress_pr=true`, persist a pre-commit projection before staging: update workflow state with `current_step_id=commit_push`, a running `commit_push` step update, and `artifacts_patch.commit_push_result.pre_commit_projection=true`. In `spec_source: local` this writes the git-tracked decomposition manifest and subtask status files as complete before the commit, while leaving the runtime-only commit SHA unset. In `spec_source: linear` the manifest and spec files are excluded from the commit (next item), so skip writing a git-tracked manifest/spec projection delta here — keep the projection in durable runtime state only, not on the working tree.
 2. Stage the new and modified files from this feature. In `spec_source: local`, include any updated `decomposition-manifest.yaml` and subtask spec status files. In `spec_source: linear`, stage by explicit enumerated path and exclude the entire `.feature-specs/{ISSUE_KEY}-{feature-name}/` directory (parent spec, every subtask spec, and `decomposition-manifest.yaml`) so the committed tree contains nothing spec-related. In both modes, do not use `git add -A` or `git add .`.
 3. Commit with message format `feat: <concise description>` (omit the issue key — the branch name already carries it).
 4. Persist the terminal Step 8 artifact after the commit: update workflow state with a completed `commit_push` step and `artifacts_patch.commit_push_result.commit_sha=<HEAD sha>`. The commit SHA is runtime-only and must not create another git-tracked manifest delta.
 5. Push the branch to the remote with `-u` to set upstream tracking.
 
+Persist `commit_receipt` (`commit_sha`, `branch`, `base_branch`, and `pushed`).
+The workflow-owned projector also persists `pr_request`
+(`completed_task_ids`, runtime-resolved `changed_paths`, `tests_added`,
+`tests_updated`, bounded `deviations`, `validation_summary`, `base_branch`, and
+checkpoint `diff_reference`). The PR consumer receives these two bounded
+artifacts, never the private implementation, validation, history, or commit
+results.
+
 ## Step 9: Generate PR Description (subagent)
 
 Step id: `pr_description`
 
-Primary artifact: `pr_result`
+Primary private artifact: `pr_result`
+
+Bounded inputs: `pr_request` and `commit_receipt`.
 
 Spawn a subagent with the PR-description briefing defined in the inline reference sections below under `PR-description subagent briefing`. The subagent invokes `bill-pr-description` via the Skill tool (do not search the filesystem to locate skill files), creates the PR, and must call `pr_description_generated` with `orchestrated=true` itself. The subagent returns: PR URL, PR title, and the `telemetry_payload` returned by `pr_description_generated`.
 
@@ -550,8 +581,15 @@ Persist these named artifacts through `artifacts_patch` when the workflow runtim
 - `history_result`
 - `commit_push_result`
 - `pr_result`
+- `validation_request`
+- `validation_receipt`
+- `boundary_candidates`
+- `history_receipt`
+- `commit_request`
+- `commit_receipt`
+- `pr_request`
 
-### Phase-to-artifact mapping
+### Phase-to-private-result mapping
 
 At each phase boundary, persist the structured result the orchestrator already
 has in hand:
@@ -567,6 +605,12 @@ has in hand:
 - Step 7 → `history_result`
 - Step 8 → `commit_push_result`
 - Step 9 → `pr_result`
+
+Finalization handoffs are separate: review produces `validation_request`;
+validation produces `validation_receipt` and `boundary_candidates`; history
+produces `history_receipt` and `commit_request`; commit produces
+`commit_receipt` and `pr_request`. Continuation projects these bounded
+handoffs, not the private result artifacts above.
 
 ### Open sequence
 

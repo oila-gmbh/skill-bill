@@ -168,6 +168,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       listOf(def.PHASE_REVIEW),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
     )
+    assertEquals(
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      def.phaseDeclarations.getValue(def.PHASE_IMPLEMENT_FIX).projectionDeclarations.single().checkpointPolicy,
+    )
   }
 
   @Test

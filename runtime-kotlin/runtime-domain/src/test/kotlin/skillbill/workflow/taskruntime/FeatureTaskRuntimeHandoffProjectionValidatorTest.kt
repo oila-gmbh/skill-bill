@@ -202,6 +202,63 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `finalization inventory reconciles receipt claims to runtime owned paths`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      ),
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+      declaredFieldNames = listOf(
+        "path_inventory",
+        "required_inclusions",
+        "required_exclusions",
+        "branch_identity",
+        "gate_attestations",
+        "repository_checkpoint",
+      ),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "current-tree",
+      baseRef = "base",
+      headRef = "head",
+      workingTreeOwnedPaths = listOf("src/Owned.kt", "src/OwnedTest.kt"),
+    )
+    val implementation = FeatureTaskRuntimePhaseOutput(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      iteration = 1,
+      payload = """{"produced_outputs":{"changed_paths":["src/Owned.kt","src/ClaimOnly.kt"]}}""",
+    )
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to implementation),
+        ),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    assertEquals(
+      listOf("src/Owned.kt", "src/OwnedTest.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("path_inventory").value).items,
+    )
+    assertEquals(
+      listOf("src/Owned.kt", "src/OwnedTest.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_inclusions").value).items,
+    )
+    assertEquals(
+      listOf("src/ClaimOnly.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_exclusions").value).items,
+    )
+  }
+
+  @Test
   fun `audit clearance derives gate status scope and checkpoint from runtime-owned facts`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
     val producer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
@@ -403,25 +460,46 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `legacy must_match refreshes repository movement`() {
-    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      inputs(
-        declarations = listOf(declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH)),
-        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
-        expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-def"),
-      ),
-    )
-    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
+  fun `must_match rejects repository movement`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(
+            declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
+          ),
+          resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+          expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-def"),
+        ),
+      )
+    }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
+    assertContains(error.message.orEmpty(), "expected checkpoint 'head-def' but resolved 'head-abc'")
   }
 
   @Test
-  fun `legacy must_match does not require a recorded checkpoint`() {
+  fun `must_match requires a recorded checkpoint`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(
+            declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
+          ),
+          resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+        ),
+      )
+    }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
+    assertContains(error.message.orEmpty(), "durable expected repository checkpoint")
+  }
+
+  @Test
+  fun `must_match accepts identical runtime checkpoints`() {
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc")
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
-        declarations = listOf(
-          declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
-        ),
-        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+        declarations = listOf(declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH)),
+        resolvedCheckpoint = checkpoint,
+        expectedCheckpoint = checkpoint,
       ),
     )
     assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)

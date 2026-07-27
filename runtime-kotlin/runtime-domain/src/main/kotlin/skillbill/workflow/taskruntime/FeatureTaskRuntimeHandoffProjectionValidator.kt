@@ -133,8 +133,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * would reject or "refresh" on producer phrasing rather than on repository movement, so the carried
    * value is treated as an opaque claim throughout.
    *
-   * `must_match` is retained as a durable legacy wire value, but repository movement is not a phase
-   * gate. Both checkpoint-aware policies refresh from the current repository.
+   * `must_match` compares two runtime-owned fingerprints: the checkpoint recorded for the producer
+   * edge and a fresh resolution immediately before launch. The agent-authored receipt claim remains
+   * provenance and is never used for that comparison.
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -151,14 +152,22 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
     val violation = when (declaration.checkpointPolicy) {
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      ->
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY ->
         if (inputs.resolvedCheckpoint == null) {
           "checkpoint-aware policy requires a freshly resolved repository checkpoint, none was supplied."
         } else {
           null
         }
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> when {
+        inputs.resolvedCheckpoint == null ->
+          "must_match requires a freshly resolved repository checkpoint, none was supplied."
+        inputs.expectedCheckpoint == null ->
+          "must_match requires the durable expected repository checkpoint, none was supplied."
+        inputs.resolvedCheckpoint.fingerprint != inputs.expectedCheckpoint.fingerprint ->
+          "must_match expected checkpoint '${inputs.expectedCheckpoint.fingerprint}' but resolved " +
+            "'${inputs.resolvedCheckpoint.fingerprint}'."
+        else -> null
+      }
     }
     if (violation != null) {
       reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, violation)
@@ -411,8 +420,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   /**
    * Joins the authoritative runtime fingerprint to the producer's own checkpoint claim. The two are
-   * not comparable values — see `enforceCheckpointPolicy` — so the claim is carried as provenance, not
-   * as a superseded fingerprint. Single-token, so the field stays a compact reference.
+   * not comparable values — see `enforceCheckpointPolicy` — so the claim is carried as provenance,
+   * not as a superseded fingerprint. Single-token, so the field stays a compact reference.
    */
   const val CHECKPOINT_PRODUCER_CLAIM_SEPARATOR: String = "+producer-claimed:"
 
@@ -594,7 +603,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       genericProducedOutputs(it)
     }.orEmpty()
     val checkpoint = inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
-    val changedPaths = (implementation["changed_paths"] as? List<*>).orEmpty().filterIsInstance<String>()
+    val claimedChangedPaths = (implementation["changed_paths"] as? List<*>).orEmpty()
+      .filterIsInstance<String>()
+      .distinct()
+    val changedPaths = inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty()
+      .distinct()
+      .sorted()
+    val excludedClaims = claimedChangedPaths.filterNot { it in changedPaths }.sorted()
     val requiredChecks = (
       (plan["validation_strategy"] as? List<*>).orEmpty() +
         (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
@@ -620,7 +635,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST -> mapOf(
         "path_inventory" to changedPaths,
         "required_inclusions" to changedPaths,
-        "required_exclusions" to emptyList<String>(),
+        "required_exclusions" to excludedClaims,
         "branch_identity" to branch,
         "gate_attestations" to listOf("audit", "review", "validate", "write_history"),
         "repository_checkpoint" to checkpoint,

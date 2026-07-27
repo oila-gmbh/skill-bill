@@ -797,12 +797,24 @@ model-driven retrieval.
 
 **3. Repository-derived context.** `FeatureTaskRuntimeRepositoryCheckpoint`
 carries a deterministic fingerprint, optional base/head refs, and working-tree
-ownership. Policies are `not_required`, legacy `must_match`, and
-`refresh_from_repository`. Both checkpoint-aware wire values require and carry a freshly resolved
-checkpoint without rejecting repository movement. The domain stays git-agnostic: the application layer
-resolves the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
+ownership. Policies are `not_required`, `must_match`, and
+`refresh_from_repository`. Both checkpoint-aware policies require and carry a
+freshly resolved checkpoint. `must_match` also requires the durable expected
+checkpoint and rejects repository movement before launch; it is used for the
+review-to-`implement_fix` edge so remediation targets the exact reviewed tree.
+`refresh_from_repository` deliberately accepts movement and re-derives the
+consumer scope. The domain stays git-agnostic: the application layer resolves
+the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
 `WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
 the audit-repair path already depends on. No new git port was introduced.
+
+Finalization path inventories come from the checkpoint's runtime-resolved
+base/head and scoped owned-path comparison. Implementation receipt paths are
+claims only: validation scope, boundary candidates, commit inclusions and
+exclusions, and PR changed paths are derived from the resolved inventory. Both
+runtime and prose continuation expose bounded validation, boundary, history,
+commit, and PR requests or receipts; they never substitute the private audit,
+review, implementation, validation, or history artifacts.
 
 **4. Phase-local instructions.** Run identity remains durable state on every
 briefing, but prompt rendering is selected per phase by

@@ -216,10 +216,14 @@ class WorkflowInputProjectionSelectorTest {
     val projections = FeatureImplementWorkflowDefinition.definition.inputProjectionsByStep
     val receiptKeys = setOf(
       "implementation_summary",
-      "audit_report",
-      "review_result",
-      "validation_result",
-      "history_result",
+      "audit_clearance",
+      "validation_request",
+      "validation_receipt",
+      "boundary_candidates",
+      "history_receipt",
+      "commit_request",
+      "commit_receipt",
+      "pr_request",
     )
 
     projections.forEach { (stepId, declaration) ->
@@ -229,6 +233,40 @@ class WorkflowInputProjectionSelectorTest {
           "$stepId must declare bounded fields for $receiptKey",
         )
       }
+    }
+  }
+
+  @Test
+  fun `prose finalization uses least context requests and receipts`() {
+    val projections = FeatureImplementWorkflowDefinition.definition.inputProjectionsByStep
+    assertEquals(
+      setOf("validation_request", "audit_clearance", "repository_evidence"),
+      projections.getValue("validate").requiredArtifactKeys.toSet(),
+    )
+    assertEquals(
+      setOf("boundary_candidates", "validation_receipt", "repository_evidence"),
+      projections.getValue("write_history").requiredArtifactKeys.toSet(),
+    )
+    assertEquals(
+      setOf("commit_request", "validation_receipt", "history_receipt", "repository_evidence"),
+      projections.getValue("commit_push").requiredArtifactKeys.toSet(),
+    )
+    assertEquals(
+      setOf("pr_request", "commit_receipt", "repository_evidence"),
+      projections.getValue("pr_description").requiredArtifactKeys.toSet(),
+    )
+    val forbiddenLegacyArtifacts = setOf(
+      "audit_report",
+      "review_result",
+      "implementation_summary",
+      "validation_result",
+      "history_result",
+    )
+    listOf("validate", "write_history", "commit_push", "pr_description").forEach { stepId ->
+      assertTrue(
+        projections.getValue(stepId).requiredArtifactKeys.none { it in forbiddenLegacyArtifacts },
+        "$stepId must not receive private legacy phase artifacts",
+      )
     }
   }
 

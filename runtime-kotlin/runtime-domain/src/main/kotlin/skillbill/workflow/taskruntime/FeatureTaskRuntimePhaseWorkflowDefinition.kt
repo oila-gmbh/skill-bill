@@ -361,7 +361,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "review_repair_request",
         PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
         listOf("unresolved_blocker_findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
     ),
     PHASE_REVIEW to listOf(
@@ -404,6 +404,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "boundary_candidates",
         PhaseProjectionContract.BOUNDARY_CANDIDATES,
         listOf("changed_paths", "boundary_candidates"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
         PHASE_WRITE_HISTORY,
@@ -462,6 +463,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           "base_branch",
           "diff_reference",
         ),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
         PHASE_PR,
