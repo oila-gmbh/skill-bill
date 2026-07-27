@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Cursor native agents, inventory, CLI, and removal"
   spec_path: ".feature-specs/SKILL-138-cursor-full-agent-support/spec_subtask_2_native-agents-removal.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-143540-w44o"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-27] SKILL-138 Cursor native agents, inventory, CLI, and removal (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,ports,desktop}, orchestration/contracts, docs, AGENTS.md
+- NativeAgentProvider.Cursor renders valid YAML-frontmatter Markdown targeting ~/.cursor/agents; provider loops now exhaustively cover Cursor in link/unlink operations, inventory schema, validation preflight, and skill removal execution.
+- Added cursor-agents-path, link-cursor-agents, and unlink-cursor-agents CLI commands registered through runtime-surface with continuation guards and platform-aware path resolution.
+- Repository validation rejects committed cursor-agents output and packaging excludes it while retaining provider-neutral native-agent sources under native-agents/.
+- Desktop removal previews/mappings include Cursor with typed failure handling; uninstall primitives exhaustively cover cursor-agents cleanup.
+- Pattern: new native-agent provider addition updates six enums (InstallAgent, NativeAgentProviderId, NativeAgentProvider, NativeAgentLinkProvider, FirstRunSetupAgent, AgentSymlinkProvider) plus link/unlink operations and inventory/preflight coverage. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
 Areas: runtime-kotlin/runtime-{application,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}/code-review
 - Provider-neutral declarations and flattened launch plans now share one complete logical worker set; undeclared workers, duplicate provider targets, and misleading baseline identities fail before launch.

@@ -10,6 +10,7 @@ import skillbill.ports.install.agent.model.InstallAgentTargetCleanupRequest
 import java.nio.file.Path
 
 @Inject
+@Suppress("TooManyFunctions")
 class InstallAgentService(
   private val agentTargetPort: InstallAgentTargetPort,
 ) {

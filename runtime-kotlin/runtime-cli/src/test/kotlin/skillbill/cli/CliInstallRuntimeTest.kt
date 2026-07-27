@@ -16,6 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class CliInstallRuntimeTest {
   @Test
   fun `native subagent commands link and unlink authored agent files`() {
@@ -55,7 +56,10 @@ class CliInstallRuntimeTest {
   fun `cursor agents path prints the cursor agents directory`() {
     val fixture = installFixture()
 
-    val result = runInstall(fixture, "cursor-agents-path")
+    val result = CliRuntime.run(
+      listOf("install", "cursor-agents-path"),
+      installCliContext(fixture.home),
+    )
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, fixture.home.resolve(".cursor/agents").toString())
