@@ -71,7 +71,7 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "repeated git cost")
     assertContains(watch.stdout, "--show-unchanged")
     assertContains(watch.stdout, "debugging aid")
-    assertContains(watch.stdout, "Zero follows until the goal finishes")
+    assertContains(watch.stdout.replace(Regex("""\s+"""), " "), "Zero follows until the goal finishes")
   }
 
   @Test
@@ -501,7 +501,13 @@ class CliGoalRuntimeTest {
     assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
+}
 
+/**
+ * Goal-watch follow-loop coverage is isolated from the broader goal runtime suite so each test
+ * class stays focused and below the detekt LargeClass threshold.
+ */
+class CliGoalWatchRuntimeTest {
   @Test
   fun `goal watch refreshes read-only status without launching child runs`() {
     val fixture = goalFixture(subtaskCount = 1)
@@ -622,10 +628,11 @@ class CliGoalRuntimeTest {
   @Test
   fun `goal watch default follows until the first terminal projection`() {
     val fixture = goalFixture(subtaskCount = 1)
+    val childWorkflowId = startRunningGoalChild(fixture)
+    recordRunningGoalChildProgress(fixture, childWorkflowId, sequence = 1)
     val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
-    assertEquals(0, run.exitCode, run.stdout)
-    val launchCount = launcher.requests.size
+    val liveStdout = StringBuilder()
+    var refreshesObserved = 0
 
     val watch = CliRuntime.run(
       listOf(
@@ -637,15 +644,26 @@ class CliGoalRuntimeTest {
         "--agent",
         "codex",
         "--interval-seconds",
-        "60",
+        "0",
       ),
-      fixture.context(launcher = launcher),
+      fixture.context(
+        launcher = launcher,
+        liveStdout = {
+          liveStdout.append(it)
+          if (it.startsWith("watch_refresh:") && ++refreshesObserved == 1) {
+            completeRunningGoalChild(fixture, childWorkflowId)
+          }
+        },
+      ),
     )
 
     assertEquals(0, watch.exitCode, watch.stdout)
-    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals(2, watch.payload?.get("refresh_count"))
     assertEquals("goal_terminal", watch.payload?.get("stop_reason"))
-    assertEquals(launchCount, launcher.requests.size)
+    assertContains(liveStdout.toString(), "watch_refresh: index=1 status=ok")
+    assertContains(watch.stdout, "watch_refresh: index=2 status=ok")
+    assertFalse(watch.stdout.contains("watch_refresh: index=3"), watch.stdout)
+    assertEquals(emptyList(), launcher.requests)
   }
 
   @Test
@@ -684,8 +702,11 @@ class CliGoalRuntimeTest {
   @Test
   fun `goal watch suppresses unchanged refreshes and show unchanged prints each refresh`() {
     val fixture = goalFixture(subtaskCount = 1)
+    val childWorkflowId = startRunningGoalChild(fixture)
+    recordRunningGoalChildProgress(fixture, childWorkflowId, sequence = 1)
     val suppressedOutput = StringBuilder()
     val shownOutput = StringBuilder()
+    var suppressedRefreshesObserved = 0
 
     val suppressed = CliRuntime.run(
       listOf(
@@ -701,7 +722,12 @@ class CliGoalRuntimeTest {
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,
-        liveStdout = { suppressedOutput.append(it) },
+        liveStdout = {
+          suppressedOutput.append(it)
+          if (it.startsWith("watch_refresh:") && ++suppressedRefreshesObserved == 1) {
+            advanceRunningGoalChildToReview(fixture, childWorkflowId)
+          }
+        },
       ),
     )
     val shown = CliRuntime.run(
@@ -723,14 +749,33 @@ class CliGoalRuntimeTest {
       ),
     )
 
-    assertEquals(1, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertWatchRefreshRendering(suppressedOutput, shownOutput, suppressed, shown)
+  }
+
+  private fun assertWatchRefreshRendering(
+    suppressedOutput: StringBuilder,
+    shownOutput: StringBuilder,
+    suppressed: CliExecutionResult,
+    shown: CliExecutionResult,
+  ) {
+    assertEquals(2, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertContains(
+      suppressedOutput.toString(),
+      "watch_refresh: index=1 status=ok current_subtask=1 current_step=implement",
+    )
+    assertContains(
+      suppressedOutput.toString(),
+      "watch_refresh: index=2 status=ok current_subtask=1 current_step=review",
+    )
     assertEquals(2, shownOutput.lines().count { it.startsWith("watch_refresh:") })
     assertContains(suppressed.stdout, "watch_refresh: index=3 status=ok")
     assertContains(shown.stdout, "watch_refresh: index=3 status=ok")
     assertEquals(3, suppressed.payload?.get("refresh_count"))
     assertEquals(3, shown.payload?.get("refresh_count"))
   }
+}
 
+class CliGoalExecutionOptionsTest {
   @Test
   fun `goal max wall clock flag passes optional cap to child run`() {
     val fixture = goalFixture(subtaskCount = 1)
@@ -1289,6 +1334,49 @@ private fun recordRunningGoalChildProgress(
               "message" to message,
               "sequence" to sequence,
               "timestamp" to "2026-06-01T00:00:00Z",
+            ),
+          ),
+        ),
+      ),
+    ),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
+}
+
+private fun advanceRunningGoalChildToReview(fixture: GoalCliFixture, childWorkflowId: String) {
+  runGoalJson(
+    workflowUpdateCommand(
+      WorkflowUpdateFixture(
+        dbPath = fixture.dbPath,
+        workflowId = childWorkflowId,
+        currentStep = "review",
+        stepUpdates = """[{"step_id":"review","status":"running","attempt_count":1}]""",
+        artifactsPatch = jsonString(emptyMap<String, Any?>()),
+      ),
+    ),
+    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )
+}
+
+private fun completeRunningGoalChild(fixture: GoalCliFixture, childWorkflowId: String) {
+  runGoalJson(
+    workflowUpdateCommand(
+      WorkflowUpdateFixture(
+        dbPath = fixture.dbPath,
+        workflowId = childWorkflowId,
+        workflowStatus = "completed",
+        currentStep = "commit_push",
+        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+        artifactsPatch = jsonString(
+          mapOf(
+            "commit_push_result" to mapOf("commit_sha" to "sha-1"),
+            "goal_continuation_outcome" to mapOf(
+              "issue_key" to "SKILL-901",
+              "subtask_id" to 1,
+              "status" to "complete",
+              "workflow_id" to childWorkflowId,
+              "commit_sha" to "sha-1",
+              "last_resumable_step" to "commit_push",
             ),
           ),
         ),

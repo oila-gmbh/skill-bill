@@ -377,7 +377,9 @@ class GoalWatchCommand(
         refresh.toMutableMap().apply { this["refresh_index"] = "<refresh_index>" },
       )
       val endsLoop = stopReason.isNotEmpty()
-      if (!endsLoop && (showUnchanged || lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh)) {
+      val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
+      val shouldPrintRefresh = !endsLoop && (showUnchanged || refreshChanged)
+      if (shouldPrintRefresh) {
         state.liveStdout(renderedRefresh)
         lastPrintedRefresh = normalizedRefresh
       }
@@ -389,7 +391,7 @@ class GoalWatchCommand(
       }
     }
     val payload = linkedMapOf<String, Any?>(
-      "status" to latestRefresh?.get("status"),
+      "status" to latestRefresh.get("status"),
       "issue_key" to issueKey,
       "refresh_count" to refreshCount,
       "interval_seconds" to intervalSeconds,

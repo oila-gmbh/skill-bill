@@ -1,3 +1,13 @@
+## [2026-07-27] SKILL-147 follow-until-terminal goal watch
+Areas: runtime-kotlin/runtime-cli, skills/bill-feature-goal, docs
+- `goal watch` now follows by default until a terminal or missing projection; `--max-refreshes 0` is the unlimited sentinel, while positive bounds remain available for automation.
+- Refresh rendering suppresses unchanged projections after normalizing only `refresh_index`; the first and loop-ending refresh remain visible, and `--show-unchanged` restores a debugging pulse. reusable
+- Terminal detection depends only on `status` and `pending_count`, so blocked-but-pending goals continue; payloads report performed refreshes and a typed stop reason.
+- Governed skill and onboarding examples now use the unbounded monitoring command and state that it follows until completion.
+- Known limitation: change-only output intentionally emits no synthetic keepalive during a quiet phase.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-07-27] SKILL-146 least-context end-to-end validation (subtask 7)
 Areas: runtime-kotlin/runtime-{domain,application}, skills/bill-feature-task-prose
 - Finalization handoffs now derive bounded validation, history, commit, and PR projections from typed upstream receipts; PR composition receives acceptance criteria without exposing private implementation or validation reports.
