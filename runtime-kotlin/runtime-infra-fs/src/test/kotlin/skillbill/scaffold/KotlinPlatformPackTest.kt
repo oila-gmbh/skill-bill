@@ -323,7 +323,7 @@ class KotlinPlatformPackTest {
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
 
     assertContains(plan.discoveredPlatformPacks.map { pack -> pack.slug }, "kotlin")
-    assertConcreteAndManifestFallbackSelected(plan, "kotlin")
+    assertConcreteAndManifestFallbackSelected(plan, "kotlin", additionalSlugs = setOf("kmp"))
     assertEquals(
       InstallPlanSkillKind.PLATFORM_PACK,
       skillsByName.getValue("bill-kotlin-code-review").kind,

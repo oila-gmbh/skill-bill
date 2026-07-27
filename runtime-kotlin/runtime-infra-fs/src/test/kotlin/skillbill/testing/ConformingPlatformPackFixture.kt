@@ -11,14 +11,18 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
 
-internal fun assertConcreteAndManifestFallbackSelected(plan: InstallPlan, concreteSlug: String) {
+internal fun assertConcreteAndManifestFallbackSelected(
+  plan: InstallPlan,
+  concreteSlug: String,
+  additionalSlugs: Set<String> = emptySet(),
+) {
   val fallbackSlugs = plan.discoveredPlatformPacks
     .filter { pack ->
       CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot).fallbackCapabilities
     }
     .map { it.slug }
   assertEquals(1, fallbackSlugs.size)
-  assertEquals((fallbackSlugs + concreteSlug).sorted(), plan.selectedPlatformSlugs)
+  assertEquals((fallbackSlugs + concreteSlug + additionalSlugs).sorted(), plan.selectedPlatformSlugs)
 }
 
 internal fun seedConformingPlatformPack(
