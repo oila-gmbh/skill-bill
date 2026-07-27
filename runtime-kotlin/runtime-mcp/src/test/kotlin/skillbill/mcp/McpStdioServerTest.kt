@@ -393,7 +393,7 @@ class McpStdioServerTest {
       val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
 
       assertEquals(true, result["isError"], removed)
-      assertContains(textContent["text"].toString(), "Unknown MCP tool '$removed'", removed)
+      assertContains(textContent["text"].toString(), "Unknown MCP tool '$removed'")
     }
   }
 
