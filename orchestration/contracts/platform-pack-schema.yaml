@@ -272,6 +272,18 @@ properties:
               description: >
                 Composition behavior mode. Kotlin coherence currently accepts
                 `kmp-baseline` only for `kotlin/bill-kotlin-code-review`.
+  fallback_capabilities:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    x-runtime-anchored: true
+    items:
+      type: string
+      enum: [code-review]
+    description: >
+      Capabilities for which this pack is the repository-wide fallback. Cross-pack
+      coherence requires exactly one review-capable owner when code-review routing
+      needs a fallback; the slug is never inferred from the platform name.
   pointers:
     type: object
     x-runtime-anchored: true
@@ -496,3 +508,11 @@ x-coherence-checks:
       `kmp-baseline` is currently supported only when the referenced platform
       and skill are `kotlin/bill-kotlin-code-review`. Enforced after all
       manifests are loaded.
+  fallback-capability-unique:
+    description: >
+      At most one discovered pack may declare each fallback capability.
+      Enforced after all manifests are loaded.
+  fallback-capability-compatible:
+    description: >
+      A pack declaring the code-review fallback capability must declare a
+      code-review baseline. Enforced after all manifests are loaded.

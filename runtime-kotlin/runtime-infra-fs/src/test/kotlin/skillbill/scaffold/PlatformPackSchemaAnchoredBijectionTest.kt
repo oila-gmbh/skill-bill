@@ -44,6 +44,7 @@ class PlatformPackSchemaAnchoredBijectionTest {
     "area_metadata",
     "declared_quality_check_file",
     "code_review_composition",
+    "fallback_capabilities",
     "pointers",
     "addon_usage",
     "feature_addon_usage",

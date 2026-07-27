@@ -123,6 +123,7 @@ data class PlatformManifest(
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,
   val codeReviewComposition: CodeReviewComposition? = null,
+  val fallbackCapabilities: Set<String> = emptySet(),
   val pointers: List<PointerSpec> = emptyList(),
   val addonUsage: List<GovernedAddonUsage> = emptyList(),
   val featureAddonUsage: List<FeatureAddonUsage> = emptyList(),

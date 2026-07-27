@@ -5,6 +5,7 @@ package skillbill.scaffold.platformpack
 import org.yaml.snakeyaml.Yaml
 import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
@@ -47,7 +48,9 @@ internal fun loadPlatformManifest(packRoot: Path): PlatformManifest {
 
 internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Boolean = false): PlatformManifest {
   val pack = loadPlatformManifest(packRoot)
-  validatePlatformPackCompositions(loadCompositionClosure(pack))
+  val closure = loadCompositionClosure(pack)
+  validatePlatformPackCompositions(closure)
+  validatePlatformPackFallbacks(closure)
   validatePlatformPack(pack, SHELL_CONTRACT_VERSION)
   pack.declaredQualityCheckFile?.let { loadQualityCheckContent(pack) }
   if (enforceGovernedReviewStructure) {
@@ -59,6 +62,7 @@ internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Bo
 internal fun discoverPlatformPacks(platformPacksRoot: Path): List<PlatformManifest> {
   val packs = childDirectories(platformPacksRoot).map(::loadPlatformManifest)
   validatePlatformPackCompositions(packs)
+  validatePlatformPackFallbacks(packs)
   packs.forEach { pack ->
     validatePlatformPack(pack, SHELL_CONTRACT_VERSION)
     pack.declaredQualityCheckFile?.let { loadQualityCheckContent(pack) }
@@ -69,7 +73,26 @@ internal fun discoverPlatformPacks(platformPacksRoot: Path): List<PlatformManife
 internal fun discoverPlatformPackManifests(platformPacksRoot: Path): List<PlatformManifest> {
   val packs = childDirectories(platformPacksRoot).map(::loadPlatformManifest)
   validatePlatformPackCompositions(packs)
+  validatePlatformPackFallbacks(packs)
   return packs
+}
+
+internal fun validatePlatformPackFallbacks(packs: List<PlatformManifest>) {
+  packs.flatMap { pack -> pack.fallbackCapabilities.map { it to pack } }
+    .groupBy({ it.first }, { it.second })
+    .forEach { (capability, owners) ->
+      if (owners.size > 1) {
+        throw InvalidFallbackCapabilityError(
+          "Fallback capability '$capability' has multiple owners: ${owners.map { it.slug }.sorted()}.",
+        )
+      }
+      val owner = owners.single()
+      if (capability == CODE_REVIEW_FALLBACK_CAPABILITY && owner.declaredFiles.baseline == null) {
+        throw InvalidFallbackCapabilityError(
+          "Platform pack '${owner.slug}' declares fallback capability '$capability' without a code-review baseline.",
+        )
+      }
+    }
 }
 
 fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
@@ -310,7 +333,12 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
 
   val contractVersion = requireStringField(manifest, slug, "contract_version")
   val declaredAreas = parseDeclaredAreas(manifest, slug)
-  val routingSignals = parseRoutingSignals(manifest, slug, requirePath = manifest["lane_conditions"] != null)
+  val routingSignals = parseRoutingSignals(
+    manifest,
+    slug,
+    requirePath = manifest["lane_conditions"] != null,
+    fallbackOnly = manifest["fallback_capabilities"] != null,
+  )
   val declaredFiles = parseDeclaredFiles(manifest, slug, packRoot, declaredAreas)
   val areaMetadata = parseAreaMetadata(manifest, slug, declaredAreas)
   val laneConditions = parseLaneConditions(manifest, slug, declaredAreas)
@@ -318,6 +346,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val notes = parseOptionalString(manifest, slug, "notes")
   val declaredQualityCheckFile = parseOptionalPath(manifest, slug, "declared_quality_check_file", packRoot)
   val codeReviewComposition = parseCodeReviewComposition(manifest, slug)
+  val fallbackCapabilities = parseFallbackCapabilities(manifest, slug)
   val pointers = parsePointers(manifest, slug)
   val addonUsage = parseAddonUsage(
     manifest,
@@ -367,12 +396,27 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     notes = notes,
     declaredQualityCheckFile = declaredQualityCheckFile,
     codeReviewComposition = codeReviewComposition,
+    fallbackCapabilities = fallbackCapabilities,
     pointers = pointers,
     addonUsage = addonUsage,
     featureAddonUsage = featureAddonUsage,
     customFields = customFields,
   )
 }
+
+private fun parseFallbackCapabilities(manifest: Map<*, *>, slug: String): Set<String> {
+  val raw = manifest["fallback_capabilities"] ?: return emptySet()
+  val values = raw as? List<*> ?: throw InvalidManifestSchemaError(
+    "Platform pack '$slug': 'fallback_capabilities' must be a list.",
+  )
+  return values.mapIndexed { index, value ->
+    (value as? String)?.trim()?.takeIf(String::isNotEmpty) ?: throw InvalidManifestSchemaError(
+      "Platform pack '$slug': 'fallback_capabilities[$index]' must be a non-blank string.",
+    )
+  }.toSet()
+}
+
+internal const val CODE_REVIEW_FALLBACK_CAPABILITY = "code-review"
 
 private fun extractCustomFields(manifest: Map<String, Any?>): Map<String, Any?> =
   manifest.filterKeys { it !in anchoredTopLevelFieldNames() }
@@ -469,11 +513,16 @@ private fun validateAgainstCanonicalSchema(slug: String, manifest: Map<*, *>): M
   return typedManifest
 }
 
-private fun parseRoutingSignals(manifest: Map<*, *>, slug: String, requirePath: Boolean): RoutingSignals {
+private fun parseRoutingSignals(
+  manifest: Map<*, *>,
+  slug: String,
+  requirePath: Boolean,
+  fallbackOnly: Boolean,
+): RoutingSignals {
   val routing = requireMappingField(manifest, slug, "routing_signals")
   val strongRaw = routing["strong"]
     ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.strong' is required.")
-  if (requirePath && routing["path"] == null) {
+  if (requirePath && !fallbackOnly && routing["path"] == null) {
     throw InvalidManifestSchemaError("Platform pack '$slug': manifest field 'routing_signals.path' is required.")
   }
   return RoutingSignals(
@@ -481,9 +530,9 @@ private fun parseRoutingSignals(manifest: Map<*, *>, slug: String, requirePath: 
     tieBreakers = parseStringList(slug, routing["tie_breakers"], "routing_signals.tie_breakers", required = false),
     path = parseStringList(
       slug,
-      routing["path"] ?: strongRaw.takeUnless { requirePath },
+      routing["path"] ?: strongRaw.takeUnless { requirePath || fallbackOnly },
       "routing_signals.path",
-      required = true,
+      required = !fallbackOnly,
     ),
     content = parseStringList(slug, routing["content"], "routing_signals.content", required = false),
   )

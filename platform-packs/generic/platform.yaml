@@ -1,0 +1,91 @@
+platform: generic
+contract_version: "1.2"
+display_name: Generic
+
+routing_signals:
+  strong:
+    - "manifest-declared code-review fallback"
+  tie_breakers: []
+
+fallback_capabilities:
+  - code-review
+
+declared_code_review_areas:
+  - architecture
+  - performance
+  - platform-correctness
+  - security
+  - testing
+  - api-contracts
+  - persistence
+  - reliability
+  - ui
+  - ux-accessibility
+
+declared_files:
+  baseline: code-review/bill-generic-code-review/content.md
+  areas:
+    architecture: code-review/bill-generic-code-review-architecture/content.md
+    performance: code-review/bill-generic-code-review-performance/content.md
+    platform-correctness: code-review/bill-generic-code-review-platform-correctness/content.md
+    security: code-review/bill-generic-code-review-security/content.md
+    testing: code-review/bill-generic-code-review-testing/content.md
+    api-contracts: code-review/bill-generic-code-review-api-contracts/content.md
+    persistence: code-review/bill-generic-code-review-persistence/content.md
+    reliability: code-review/bill-generic-code-review-reliability/content.md
+    ui: code-review/bill-generic-code-review-ui/content.md
+    ux-accessibility: code-review/bill-generic-code-review-ux-accessibility/content.md
+
+area_metadata:
+  architecture: { focus: "Boundary ownership, dependency direction, state lifetime, and change isolation" }
+  performance: { focus: "Work amplification, resource lifetime, blocking behavior, and scale-sensitive paths" }
+  platform-correctness: { focus: "Runtime semantics, lifecycle invariants, error propagation, and concurrency correctness" }
+  security: { focus: "Trust boundaries, authorization, sensitive data, untrusted input, and dangerous side effects" }
+  testing: { focus: "Behavioral coverage, failure-path evidence, isolation, determinism, and regression value" }
+  api-contracts: { focus: "Compatibility, validation, serialization, error contracts, and consumer expectations" }
+  persistence: { focus: "Atomicity, consistency, migrations, ownership, and durable state recovery" }
+  reliability: { focus: "Retries, timeouts, cancellation, recovery, observability, and partial failure" }
+  ui: { focus: "State ownership, rendering identity, navigation, feedback, and interaction correctness" }
+  ux-accessibility: { focus: "Task completion, semantics, keyboard use, focus, localization, and inclusive interaction" }
+
+lane_conditions:
+  architecture: { required: true }
+  platform-correctness: { required: true }
+  performance: { content: ["performance", "latency", "memory", "batch"] }
+  security: { content: ["authorization", "credential", "secret", "untrusted"] }
+  testing: { content: ["test", "fixture", "assert", "regression"] }
+  api-contracts: { content: ["schema", "request", "response", "compatibility"] }
+  persistence: { content: ["database", "migration", "transaction", "storage"] }
+  reliability: { content: ["retry", "timeout", "recovery", "failure"] }
+  ui: { content: ["screen", "view", "render", "navigation"] }
+  ux-accessibility: { content: ["accessibility", "focus", "keyboard", "localization"] }
+
+pointers:
+  code-review/bill-generic-code-review:
+    - { name: review-orchestrator.md, target: orchestration/review-orchestrator/PLAYBOOK.md }
+    - { name: review-delegation.md, target: orchestration/review-delegation/PLAYBOOK.md }
+    - { name: review-scope.md, target: orchestration/review-scope/PLAYBOOK.md }
+    - { name: shell-ceremony.md, target: orchestration/shell-content-contract/shell-ceremony.md }
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+    - { name: stack-routing.md, target: orchestration/stack-routing/PLAYBOOK.md }
+    - { name: telemetry-contract.md, target: orchestration/telemetry-contract/PLAYBOOK.md }
+  code-review/bill-generic-code-review-architecture:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-performance:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-platform-correctness:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-security:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-testing:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-api-contracts:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-persistence:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-reliability:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-ui:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }
+  code-review/bill-generic-code-review-ux-accessibility:
+    - { name: specialist-contract.md, target: orchestration/review-orchestrator/specialist-contract.md }

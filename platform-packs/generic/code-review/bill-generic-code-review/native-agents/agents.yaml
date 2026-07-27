@@ -1,0 +1,12 @@
+contract_version: "0.1"
+agents:
+  - { name: bill-generic-code-review-api-contracts, description: "Technology-neutral API contracts specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-architecture, description: "Technology-neutral architecture specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-performance, description: "Technology-neutral performance specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-persistence, description: "Technology-neutral persistence specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-platform-correctness, description: "Technology-neutral platform correctness specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-reliability, description: "Technology-neutral reliability specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-security, description: "Technology-neutral security specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-testing, description: "Technology-neutral testing specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-ui, description: "Technology-neutral UI specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
+  - { name: bill-generic-code-review-ux-accessibility, description: "Technology-neutral UX accessibility specialist reviewer. Returns a Risk Register in the F-XXX bullet format.", compose: governed-content }
