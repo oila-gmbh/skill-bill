@@ -563,11 +563,9 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
         add("stream-json")
         if (streaming) add("--stream-partial-output")
         request.modelOverride?.let { model ->
-          val modelArg = if (request.effortOverride != null) {
-            mergeModelEffort(model, request.effortOverride)
-          } else {
-            model
-          }
+          val modelArg = request.effortOverride?.let { effort ->
+            mergeModelEffort(model, effort)
+          } ?: model
           add("--model")
           add(modelArg)
         }
@@ -582,7 +580,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
-      environment = goalContinuationEnvironment(request),
+      environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = when {
@@ -611,11 +609,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     return when {
       existingEffort == null -> "$model$effortPrefix$effort$effortSuffix"
       existingEffort == effort -> model
-      else -> {
-        require(false) {
-          "Conflicting effort directive: model string '$model' declares effort='$existingEffort', but directive specifies effort='$effort'. Remove the conflict from the execution_matrix or phase assignment."
-        }
-      }
+      else -> error("Conflicting effort directive: model string '$model' declares effort='$existingEffort', but directive specifies effort='$effort'. Remove the conflict from the execution_matrix or phase assignment.")
     }
   }
 }

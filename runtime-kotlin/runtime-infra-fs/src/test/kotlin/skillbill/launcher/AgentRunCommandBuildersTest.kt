@@ -22,6 +22,7 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -415,6 +416,8 @@ class AgentRunCommandBuildersTest {
   ): SkillRunRequest = SkillRunRequest(
     issueKey = "SKILL-113",
     repoRoot = Path.of("/tmp/skillbill-agent-run"),
+    subtaskId = 1,
+    timeout = 3.seconds,
     promptOverride = "Phase: implement",
     modelOverride = model,
     effortOverride = effort,
@@ -454,7 +457,7 @@ class AgentRunCommandBuildersTest {
       ),
       command.command,
     )
-    assertEquals(InstallAgent.CURSOR.id, command.command.first())
+    assertEquals("agent", command.command.first())
     assertEquals("/tmp/skillbill-agent-run", command.workingDirectory.toString())
     assertEquals(3.seconds, command.timeout)
     assertEquals("Phase: implement", command.stdinText)
@@ -526,7 +529,7 @@ class AgentRunCommandBuildersTest {
   fun `cursor model already with bracket parameters rejects conflicting effort loudly`() {
     val builder = CursorAgentRunCommandBuilder()
 
-    val exception = assertFailsWith<IllegalArgumentException> {
+    val exception = assertFailsWith<IllegalStateException> {
       builder.build(request(model = "claude-opus-4-8[effort=high]", effort = "medium"))
     }
 

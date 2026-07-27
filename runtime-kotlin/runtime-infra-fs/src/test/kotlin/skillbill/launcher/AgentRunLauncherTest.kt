@@ -952,6 +952,16 @@ class HeadlessAgentRunAdapterTest {
     goalContinuation = null,
   ).copy(promptOverride = "Phase: preplan")
 
+  private fun skillRunRequest(): SkillRunRequest = SkillRunRequest(
+    issueKey = "SKILL-88",
+    repoRoot = Path.of("/tmp/skillbill-agent-run"),
+    subtaskId = 1,
+    timeout = 3.seconds,
+    goalContinuation = null,
+    promptOverride = "Test prompt",
+    streamOutputForLiveness = true,
+  )
+
   @Test
   fun `opencode is not registered as a headless runtime adapter`() {
     // SKILL-95 AC5 / SKILL-103 AC6: opencode and zcode are prose-only. Neither may appear in the

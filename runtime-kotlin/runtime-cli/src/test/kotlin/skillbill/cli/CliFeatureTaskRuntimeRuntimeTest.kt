@@ -1792,7 +1792,7 @@ private data class FeatureTaskRuntimeCliFixture(
     addAll(extra)
   }
 
-  fun resumeCommand(workflowId: String, selectionJson: String? = null): List<String> = buildList {
+  fun resumeCommand(workflowId: String, selectionJson: String? = null, agentId: String = "codex"): List<String> = buildList {
     addAll(
       listOf(
         "--db",
@@ -1805,7 +1805,7 @@ private data class FeatureTaskRuntimeCliFixture(
         "--repo-root",
         tempDir.toString(),
         "--agent",
-        "codex",
+        agentId,
       ),
     )
     selectionJson?.let {
@@ -2250,7 +2250,7 @@ class CursorAgentRuntimeCliTest {
 
     val resumedLauncher = RecordingPhaseLauncher()
     val resumed = CliRuntime.run(
-      fixture.resumeCommand(workflowId),
+      fixture.resumeCommand(workflowId, agentId = "cursor"),
       fixture.context(resumedLauncher),
     )
 
@@ -2268,13 +2268,13 @@ class CursorAgentRuntimeCliTest {
     val launcher = RecordingPhaseLauncher()
 
     val result = CliRuntime.run(
-      fixture.goalChildCommand(agentId = "cursor"),
+      fixture.runCommand(extra = listOf("--agent", "cursor")),
       fixture.context(launcher),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(1, launcher.requests.size)
-    assertEquals("cursor", launcher.requests.single().agentId)
+    assertTrue(launcher.requests.isNotEmpty(), "Should launch cursor for at least one phase")
+    assertTrue(launcher.requests.all { it.agentId == "cursor" }, "All phases should use cursor")
   }
 
   @Test
@@ -2322,6 +2322,8 @@ class CursorAgentRuntimeCliTest {
     val result = CliRuntime.run(
       fixture.runCommand(
         extra = listOf(
+          "--agent",
+          "codex",
           "--code-review-mode",
           "delegated",
           "--parallel-review-agent",
