@@ -1,3 +1,14 @@
+## [2026-07-27] SKILL-138 Cursor agent identity and install contracts (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,infra-fs,cli}, runtime-desktop/core/domain, orchestration/contracts, scripts, install.sh, config.yaml
+- Cursor joins `InstallAgent`, the native-agent provider/symlink providers, `FirstRunSetupAgent`, supported-agent lists, detection, default targets, and persisted selections as a first-class agent with no fallback branches.
+- Cursor installs to `~/.cursor/skills` and detects on `~/.cursor`; it deliberately does not take the shared `~/.agents/skills` path, and detection never creates directories.
+- `install-plan-schema.yaml` gained the Cursor agent ID, kept in lockstep with Kotlin through the existing schema/Kotlin parity and contract-coverage tests. reusable
+- User-visible supported-agent lists derive from `InstallAgent.supportedIds` wherever package boundaries permit, so future agents need one enum entry rather than scattered literals. reusable
+- Cursor stays out of `RUNTIME_REFUSED_AGENTS` and no unverified execution-context marker was added; runtime selection relies on governed `--agent cursor`.
+- Known limitation: `scripts/install_smoke_test.sh` was syntax-checked only — `install.sh` exits 64 under goal-continuation to protect the active workflow store, so the end-to-end Cursor install path is unverified here.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 7/7 implemented
+
 ## [2026-07-27] SKILL-144 generic review fallback installation and launch (subtask 2)
 Areas: runtime-kotlin/runtime-{domain,application,ports,core,infra-fs,cli}, docs, orchestration/stack-routing
 - Install planning resolves the unique manifest-declared review fallback without a hard-coded slug; zero declarations preserve horizontal base review and multiple declarations fail loudly.
