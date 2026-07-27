@@ -105,5 +105,67 @@ rtk proxy ./gradlew :runtime-contracts:test :runtime-core:test :runtime-domain:t
 ```
 
 Known pre-existing failure, not attributable to this sweep: `CliCodeReviewParallelRuntimeTest`
-fails on the installed-review-catalog staging path independently of this branch. It is documented
-here rather than chased, and `install.sh` / `uninstall.sh` are not run by this subtask.
+fails 8 of 16 tests with `Platform pack discovery failed for platform-packs: Platform pack 'kmp':
+feature_addon_usage[feature-task] entry 'android-compose-implementation' ... add-on file does not
+exist`. The add-on file is present in the repository and on `main`. The failure comes from the
+installed review catalog, not the repository: `publishInstalledReviewCatalog` stages only
+`platform.yaml`, the baseline file, and area files into
+`~/.skill-bill/installed-skills/<hash>/review-catalog/`, never `addons/`, while
+`requirePackOwnedAddonPointer` resolves `feature_addon_usage` pointer targets as repo-relative.
+The tests read the real `$HOME`, so every pack declaring `feature_addon_usage` (currently `kmp`)
+hard-fails discovery on any machine with an install present.
+
+Triage evidence: a clean `git worktree` at `main` (`69c97d01`) running
+`./gradlew :runtime-cli:test --tests "*CliCodeReviewParallelRuntimeTest*"` reproduces the same 8
+failures with the same message. This branch changes no file under `platform-packs/`, `skills/`,
+`orchestration/`, or install staging, and does not touch this test or pack discovery. Out of scope
+for this subtask; `install.sh` / `uninstall.sh` are not run here.
+
+### Residual-reference sweep (AC-001, AC-002, AC-005)
+
+Word-boundary `grep -rnw` for every deleted symbol across `*.kt`, `*.kts`, `*.md`, `*.yaml`,
+`*.json`, `*.sh`, `*.sql`, `*.py`, excluding `.feature-specs/` and `build/`, returns exactly one
+hit outside `runtime-kotlin/agent/history.md`: none. AC-002's live documentation targets —
+`ARCHITECTURE.md` and `docs/architecture/gradle-module-split-evaluation.md` — are both stripped.
+
+Retained `agent/history.md` references, all inside dated append-only entries:
+
+- `:2150` — `RuntimeSurfaceContract`, in `## [2026-04-25] runtime-placeholder-surface-contracts`.
+- `:708`, `:1261`, `:1475`, `:2235`, `:2238` — `RuntimeModule`, in entries dated at their time.
+
+These are past-tense records of changes that did happen, not claims about current state; rewriting
+dated entries would falsify the boundary-history log. Two `RuntimeModule` lines carry the
+`reusable` marker and read as forward-looking lockstep guidance, so the write_history phase must
+append an entry recording the `RuntimeModule` -> `RuntimeModuleCatalog` relocation into
+`runtime-core` test sources and the deletion of the runtime-surface metadata, keeping that
+guidance accurate going forward. The lockstep rule itself still holds and is still enforced: the
+module list, subsystem-package list, `settings.gradle.kts` include list, and `ARCHITECTURE.md`
+fenced lists remain cross-checked by the passing architecture tests.
+
+### Validate-phase repair
+
+`ImplementationOwnershipArchitectureTest` "runtime core is composition only and not an
+implementation umbrella" failed sweep-caused after `RuntimeModule.kt` moved to test sources:
+its `allowedPackages` allow-list still expected the now-absent `skillbill` root package in
+`runtime-core/src/main/kotlin`. The assertion is an exact set equality, so the stale entry failed
+loudly rather than silently passing. Fixed at root cause by tightening the allow-list to
+`setOf("skillbill.di")` and updating the two assertion messages, which also strengthens the
+downstream non-composition-package check (AC-005).
+
+### Assertion-strength probe after the RuntimeModule rework
+
+Deliberate-violation probe run once locally and reverted: a bogus `"runtime-bogus-probe"` module
+was added to `RuntimeModuleCatalog.declaredModules`, then
+`./gradlew :runtime-core:test --tests "*RuntimeArchitectureTest*"
+--tests "*RuntimeArchitectureDocumentationTest*" --tests "*RuntimeAdapterDependencyAllowlistTest*"`.
+Three assertions failed on the injected edge:
+
+- `RuntimeAdapterDependencyAllowlistTest` "every declared module has only the curated main-source
+  runtime project dependencies"
+- `RuntimeAdapterDependencyAllowlistTest` "every declared module has only the curated
+  test-fixtures runtime project dependencies"
+- `RuntimeArchitectureDocumentationTest` "architecture document settings and runtime module
+  declare the same graph"
+
+The catalog was restored byte-for-byte from a backup copy and the working tree confirmed clean of
+the probe. Relocating the catalog into test sources preserved assertion strength.

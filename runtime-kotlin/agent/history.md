@@ -1,3 +1,14 @@
+## [2026-07-27] SKILL-132 runtime-kotlin dead-code sweep (subtask 1)
+Areas: runtime-kotlin/runtime-{contracts,core,domain,application,ports,infra-fs,mcp,cli}, runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/docs/architecture
+- Deleted the runtime-surface metadata system (`RuntimeSurfaceContract`, `RuntimeSurfaceStatus`, `*Runtime` marker objects) and the generic contract wrappers (`ContractEnvelope`, `ContractResult`, `RuntimeContract`, `ContractViolationException`) together with the tests that only exercised them; no production consumer existed.
+- Architecture tests no longer read the deleted `RuntimeModule` catalog: module/package ownership is now derived from a test-owned `RuntimeModuleCatalog` fixture plus Gradle/source inputs, keeping the assertions authoritative instead of metadata-mirroring. reusable
+- Test-only no-op ports (`EmptyGoalPlanningPreparationRepository`, `EmptyWorkListRepository`, `EmptyReviewAttributionPort`, `NoopGoalPlanningPreparationEnvelopeValidator`) moved from production source sets into `testFixtures`/test source sets; `runtime-ports` gained the `java-test-fixtures` wiring consumers depend on. reusable
+- Pattern to reuse: every deletion carries an evidence-ledger row proving no non-test, resource, generated, serialized, reflective, CLI, or MCP consumer, with compile-delete proof for ambiguous symbols; the ledger lives in `.feature-specs/SKILL-132-.../evidence-ledger.md` and governs the later subtasks.
+- Assertion strength was probed by a deliberate temporary violation (reverted) rather than assumed from a green run — worth repeating whenever architecture tests are rewritten.
+- Known limitation: `:runtime-cli:test` failures were triaged as pre-existing (reproduced on main at 69c97d01, install-staging catalog gap) and are not covered by this branch's green modules.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 6/6 implemented
+
 ## [2026-07-27] SKILL-138 Cursor agent identity and install contracts (subtask 1)
 Areas: runtime-kotlin/runtime-{domain,infra-fs,cli}, runtime-desktop/core/domain, orchestration/contracts, scripts, install.sh, config.yaml
 - Cursor joins `InstallAgent`, the native-agent provider/symlink providers, `FirstRunSetupAgent`, supported-agent lists, detection, default targets, and persisted selections as a first-class agent with no fallback branches.
