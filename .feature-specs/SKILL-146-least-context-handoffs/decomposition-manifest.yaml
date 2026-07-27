@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-146-least-context-handoffs"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 6
+  subtask_id: 7
   action: "resume"
 subtasks:
 - id: 1
@@ -92,12 +92,12 @@ subtasks:
 - id: 6
   name: "Privacy telemetry, compatibility, documentation, and contract integration"
   spec_path: ".feature-specs/SKILL-146-least-context-handoffs/spec_subtask_6_telemetry_compatibility_docs.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260726-195502-za1j"
   blocked_reason: null
-  last_resumable_step: "implement_fix"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -117,7 +117,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260726-213813-onzc"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
