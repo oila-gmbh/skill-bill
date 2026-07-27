@@ -396,17 +396,28 @@ class CliCodeReviewParallelRuntimeTest {
 
 private fun createGitRepo(): Path {
   val dir = Files.createTempDirectory("cli-parallel-review-git")
-  ProcessBuilder("git", "init", dir.toString()).start().waitFor()
-  ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
-  ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
-  ProcessBuilder("git", "-C", dir.toString(), "commit", "--allow-empty", "-m", "initial").start().waitFor()
+  runGit("init", dir.toString())
+  runGit("-C", dir.toString(), "config", "user.email", "test@test.com")
+  runGit("-C", dir.toString(), "config", "user.name", "Test")
+  runGit("-C", dir.toString(), "config", "commit.gpgSign", "false")
+  runGit("-C", dir.toString(), "commit", "--allow-empty", "-m", "initial")
   return dir
 }
 
 private fun createStagedFile(dir: Path) {
   val file = dir.resolve("Test.kt")
   Files.writeString(file, "fun main() {}\n")
-  ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
+  runGit("-C", dir.toString(), "add", "Test.kt")
+}
+
+private fun runGit(vararg args: String) {
+  val process = ProcessBuilder("git", *args)
+    .redirectErrorStream(true)
+    .start()
+  val output = process.inputStream.bufferedReader().use { it.readText() }
+  check(process.waitFor() == 0) {
+    "git ${args.joinToString(" ")} failed: $output"
+  }
 }
 
 private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher {

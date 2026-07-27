@@ -252,7 +252,7 @@ class WorkflowInputProjectionSelectorTest {
       projections.getValue("commit_push").requiredArtifactKeys.toSet(),
     )
     assertEquals(
-      setOf("pr_request", "commit_receipt", "repository_evidence"),
+      setOf("acceptance_criteria", "pr_request", "commit_receipt", "repository_evidence"),
       projections.getValue("pr_description").requiredArtifactKeys.toSet(),
     )
     val forbiddenLegacyArtifacts = setOf(
@@ -328,9 +328,55 @@ class WorkflowInputProjectionSelectorTest {
   fun `finalization receipts remain valid after repository checkpoint changes`() {
     val definition = FeatureImplementWorkflowDefinition.definition
     listOf("commit_push", "pr_description").forEach { stepId ->
-      val receiptFields = definition.inputProjectionsByStep.getValue(stepId).projectedFieldsByArtifactKey.values
+      val receiptFields = definition.inputProjectionsByStep.getValue(stepId).projectedFieldsByArtifactKey
+        .filterKeys { it == "history_receipt" || it == "commit_receipt" }
+        .values
       assertTrue(receiptFields.none { "repository_checkpoint" in it })
     }
+  }
+
+  @Test
+  fun `fresh and resumed prose PR creation receive bounded acceptance criteria`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val record = engine.updateRecord(
+      definition,
+      engine.openRecord(definition, "wfl-pr", "fis-pr", "pr_description"),
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "pr_description",
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          "acceptance_criteria" to mapOf(
+            "criteria" to listOf("AC-1"),
+            "private_notes" to "must remain private",
+          ),
+          "pr_request" to mapOf(
+            "completed_task_ids" to listOf("task-1"),
+            "changed_paths" to listOf("Changed.kt"),
+            "tests_added" to emptyList<String>(),
+            "tests_updated" to emptyList<String>(),
+            "deviations" to emptyList<String>(),
+            "validation_summary" to "passed",
+            "base_branch" to "main",
+            "diff_reference" to "base..head",
+          ),
+          "commit_receipt" to mapOf(
+            "commit_sha" to "abc123",
+            "branch" to "feat/test",
+            "base_branch" to "main",
+            "pushed" to true,
+          ),
+        ),
+        sessionId = "",
+      ),
+    )
+
+    val fresh = engine.freshLaunchProjection(definition, record, "pr_description", 0)
+    val resumed = engine.continueDecision(definition, record).view.stepArtifacts
+
+    assertEquals(fresh!!.artifacts, resumed)
+    assertEquals(mapOf("criteria" to listOf("AC-1")), fresh.artifacts["acceptance_criteria"])
+    assertFalse("private_notes" in (fresh.artifacts["acceptance_criteria"] as Map<*, *>))
   }
 
   @Test

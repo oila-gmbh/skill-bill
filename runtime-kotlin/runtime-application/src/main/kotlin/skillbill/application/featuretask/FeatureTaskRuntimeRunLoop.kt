@@ -75,6 +75,7 @@ import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 internal data class FeatureTaskRuntimeRunLoopDependencies(
@@ -118,6 +119,25 @@ internal fun resolveLaunchRejectionAttribution(
       iteration = currentProducerIteration(declaredProducer.phaseId) ?: declaredProducer.iteration,
     ),
   )
+}
+
+internal fun reconcileCheckpointPathInventory(
+  repoRoot: Path,
+  issueKey: String,
+  specReference: String,
+  specSource: SpecSource,
+  paths: List<String>,
+): List<String> {
+  val specPath = Path.of(specReference)
+    .let { path -> if (path.isAbsolute) repoRoot.relativize(path) else path }
+    .normalize()
+    .toString()
+  return when (specSource) {
+    SpecSource.LOCAL -> (paths + specPath).distinct()
+    SpecSource.LINEAR -> paths.filterNot { path ->
+      path == specPath || path.startsWith(".feature-specs/$issueKey-")
+    }
+  }
 }
 
 @Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
@@ -2304,17 +2324,18 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun buildRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
     val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val revisions = resolveCheckpointRevisions(
+      run = run,
+      headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD",
+      baseRevision = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+    ) ?: return null
     val ownedPaths = resolveCheckpointOwnedPaths(
       run = run,
       persistedOwnedPaths = resolvedBranch?.workflowOwnedPaths,
       baselineOwnedPaths = resolvedBranch?.baselineOwnedPaths
         ?: goalReviewState?.baselineUntrackedPaths
         ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
-    ) ?: return null
-    val revisions = resolveCheckpointRevisions(
-      run = run,
-      headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD",
-      baseRevision = goalReviewState?.reviewBaseSha ?: resolvedBranch?.reviewBaseSha,
+      revisions = revisions,
     ) ?: return null
     val fingerprint = gitOperations.repositoryCheckpointFingerprint(
       run.request.repoRoot,
@@ -2334,9 +2355,23 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     persistedOwnedPaths: List<String>?,
     baselineOwnedPaths: List<String>,
+    revisions: CheckpointRevisions,
   ): List<String>? {
-    persistedOwnedPaths?.takeIf { it.isNotEmpty() }?.let { return it }
-    val inventory = checkpointOwnedPaths(run, baselineOwnedPaths) ?: return null
+    val workingTreePaths = checkpointOwnedPaths(run, baselineOwnedPaths) ?: return null
+    val committedPaths = revisions.base?.let { base ->
+      gitOperations.runtimePhaseChangedPathsBetweenCommits(run.request.repoRoot, base, revisions.head)
+        .takeIf { it.ok }
+        ?.value
+        ?.let(FeatureTaskRuntimePhaseSafetyPolicy::lineSeparatedPaths)
+        ?: return null
+    }.orEmpty()
+    val inventory = reconcileCheckpointPathInventory(
+      repoRoot = run.request.repoRoot,
+      issueKey = run.request.issueKey,
+      specReference = run.request.runInvariants.specReference,
+      specSource = run.specSource,
+      paths = (persistedOwnedPaths.orEmpty() + committedPaths + workingTreePaths).distinct(),
+    ).sorted()
     return inventory.takeIf {
       recorder.recordWorkflowOwnedPaths(
         run.request.workflowId,

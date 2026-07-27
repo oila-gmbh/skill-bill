@@ -116,7 +116,7 @@ object FeatureImplementWorkflowDefinition {
       "validate" to listOf("validation_request", "audit_clearance", "repository_evidence"),
       "write_history" to listOf("boundary_candidates", "validation_receipt", "repository_evidence"),
       "commit_push" to listOf("commit_request", "validation_receipt", "history_receipt", "repository_evidence"),
-      "pr_description" to listOf("pr_request", "commit_receipt", "repository_evidence"),
+      "pr_description" to listOf("acceptance_criteria", "pr_request", "commit_receipt", "repository_evidence"),
       "finish" to listOf("pr_result"),
     ),
     resumeActions =
@@ -310,10 +310,12 @@ object FeatureImplementWorkflowDefinition {
         ),
       ),
       "pr_description" to projection(
+        "acceptance_criteria",
         "pr_request",
         "commit_receipt",
         "repository_evidence",
         typedFields = mapOf(
+          "acceptance_criteria" to setOf("criteria"),
           "pr_request" to prRequestFields,
           "commit_receipt" to commitReceiptFields,
         ),

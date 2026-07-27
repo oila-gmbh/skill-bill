@@ -1119,7 +1119,7 @@ class ApplicationPersistencePortTest {
     Files.writeString(subtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
-    val service = testWorkflowService(database)
+    val service = testWorkflowService(database, FakeWorkflowGitOperations())
     val workflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
 
     service.update(
@@ -1132,6 +1132,8 @@ class ApplicationPersistencePortTest {
         artifactsPatch =
         mapOf(
           "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+          "validation_request" to validationRequest(),
+          "audit_clearance" to auditClearance(),
           "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
           "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "blocked_reason" to "Validation paused.",
@@ -1524,6 +1526,8 @@ class ApplicationPersistencePortTest {
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = mapOf(
+          "validation_request" to validationRequest(),
+          "audit_clearance" to auditClearance(),
           "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
           "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "validation_result" to mapOf("passed" to false),
@@ -2767,6 +2771,18 @@ private fun evaluatorReceipt(verdict: String): Map<String, Any?> = mapOf(
   "contract_version" to "0.3",
   "verdict" to verdict,
   "findings" to emptyList<Any>(),
+)
+
+private fun validationRequest(): Map<String, Any?> = mapOf(
+  "validation_strategy" to listOf("Run focused and repository gates."),
+  "changed_paths" to listOf("src/Changed.kt"),
+  "required_checks" to listOf("test"),
+  "repository_checkpoint" to mapOf("fingerprint" to "test-repository-fingerprint"),
+)
+
+private fun auditClearance(): Map<String, Any?> = mapOf(
+  "contract_version" to "0.1",
+  "verdict" to "approved",
 )
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(

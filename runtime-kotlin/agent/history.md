@@ -1,3 +1,13 @@
+## [2026-07-27] SKILL-146 least-context end-to-end validation (subtask 7)
+Areas: runtime-kotlin/runtime-{domain,application}, skills/bill-feature-task-prose
+- Finalization handoffs now derive bounded validation, history, commit, and PR projections from typed upstream receipts; PR composition receives acceptance criteria without exposing private implementation or validation reports.
+- Repository-checkpoint policy validation and substitution remain one reusable projection path, preserving the producer claim while replacing repository-derived evidence with the resolved runtime fingerprint. reusable
+- Cross-surface tests prove required-field presence and forbidden-context absence through selection, validation, retries, resume, and the full runtime loop.
+- Governed prose guidance matches the runtime phase order and least-context handoff boundaries without widening continuation inputs.
+- Known limitation: finalization projections intentionally carry compact receipts and references, not full upstream artifacts.
+Feature flag: N/A
+Acceptance criteria: subtask 7: 9/9 implemented
+
 ## [2026-07-26] SKILL-146 telemetry compatibility and contract integration (subtask 6)
 Areas: runtime-kotlin/runtime-{domain,contracts,application,core,infra-fs,infra-sqlite,cli,mcp}, orchestration/{contracts,telemetry-contract,review-delegation}, skills/bill-feature-verify
 - Runtime persistence records privacy-safe byte/token estimates and typed counters while keeping prompt, diff, source, receipt, raw tool content, telemetry, and progress diagnostics outside domain artifacts.

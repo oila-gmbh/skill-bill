@@ -5,6 +5,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -809,30 +810,34 @@ private fun briefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
   auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
-) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
-  FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize),
-    runInvariants = FeatureTaskRuntimeRunInvariants(
-      specReference = SPEC_REFERENCE,
-      featureSize = featureSize,
-      acceptanceCriteria = listOf("AC-1"),
-      mandatesAndOverrides = emptyList(),
+): FeatureTaskRuntimePhaseLaunchBriefing {
+  val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
+  return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+    FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize),
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = SPEC_REFERENCE,
+        featureSize = featureSize,
+        acceptanceCriteria = listOf("AC-1"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      recordedOutputs = listOf(
+        FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
+        FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
+        FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
+        FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+        FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+        FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
+        FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
+        FeatureTaskRuntimePhaseOutput("commit_push", 1, validJsonOutput("commit_push")),
+      ),
+      auditRepairState = auditRepairState,
+      // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
     ),
-    recordedOutputs = listOf(
-      FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
-      FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
-      FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
-      FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
-      FeatureTaskRuntimePhaseOutput("commit_push", 1, validJsonOutput("commit_push")),
-    ),
-    auditRepairState = auditRepairState,
-    // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
-    repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
-  ),
-)
+  )
+}
 
 private fun carriedGapRepairState(): FeatureTaskRuntimeAuditRepairState {
   val plan = FeatureTaskRuntimeAuditRepairPlan(

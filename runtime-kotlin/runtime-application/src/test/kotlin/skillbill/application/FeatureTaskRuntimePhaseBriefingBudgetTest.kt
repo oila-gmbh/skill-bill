@@ -72,14 +72,16 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `an oversized upstream projection is rejected, never truncated into the briefing`() {
     val oversizedBytes = 400_000
+    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+      "fixture-checkpoint",
+    )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = multiUpstreamOutputs(oversizedBytes),
-      repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
-        "fixture-checkpoint",
-      ),
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
     )
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
@@ -103,6 +105,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
+    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+      "fixture-checkpoint",
+    )
     val recordedOutputs = listOf(
       phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"$planBody"}"""),
       phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, """{"implement":"$implementBody"}"""),
@@ -113,9 +118,8 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = recordedOutputs,
-      repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
-        "fixture-checkpoint",
-      ),
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)

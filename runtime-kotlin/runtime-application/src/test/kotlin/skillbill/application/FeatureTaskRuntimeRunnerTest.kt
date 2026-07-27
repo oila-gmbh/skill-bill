@@ -23,6 +23,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.SpecSourceResolver
+import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
@@ -2084,6 +2085,23 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 /** AC-014: the goal-child audit checkpoint is scoped to the child's own base and inventory. */
 class FeatureTaskRuntimeCheckpointScopeTest {
   @Test
+  fun `linear checkpoint inventory excludes runtime spec scratch while preserving code paths`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      issueKey = "SKILL-146",
+      specReference = ".feature-specs/SKILL-146-least-context/spec.md",
+      specSource = SpecSource.LINEAR,
+      paths = listOf(
+        ".feature-specs/SKILL-146-least-context/spec.md",
+        ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+  }
+
+  @Test
   fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
     val harness = checkpointScopeHarness()
 
@@ -2092,7 +2110,10 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
     assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Committed.kt")
+    assertContains(auditBriefing.briefingText, "- runtime-domain/Remediation.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
+    assertContains(auditBriefing.briefingText, "- $SPEC_REFERENCE")
     assertFalse(
       auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
       "a sibling subtask's baseline path must not enter the goal-child audit projection",
@@ -2102,9 +2123,15 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       "no entry from a sibling subtask's untracked directory may enter the goal-child audit projection",
     )
     assertEquals(
-      listOf("runtime-domain/Child.kt", "runtime-domain/Renamed.kt"),
+      listOf(
+        SPEC_REFERENCE,
+        "runtime-domain/Child.kt",
+        "runtime-domain/Committed.kt",
+        "runtime-domain/Remediation.kt",
+        "runtime-domain/Renamed.kt",
+      ),
       requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
-      "the checkpoint must be derived from the durable workflow-owned inventory",
+      "the checkpoint must union durable, committed, remediation, and local-spec paths",
     )
   }
 
@@ -2115,9 +2142,14 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").also {
       it.repositoryFingerprintValue = "child-fingerprint-1"
+      it.changedPathsBetweenCommitsValue = "runtime-domain/Committed.kt"
       // Both inventories are `ls-files`-shaped so a wholly-untracked sibling directory matches
       // entry-for-entry instead of leaking through a collapsed porcelain `dir/` entry (F-005).
-      it.ownedPathsValue = listOf("runtime-domain/Child.kt", "runtime-domain/Renamed.kt") + siblingPaths
+      it.ownedPathsValue = listOf(
+        "runtime-domain/Child.kt",
+        "runtime-domain/Renamed.kt",
+        "runtime-domain/Remediation.kt",
+      ) + siblingPaths
     }
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
@@ -2147,6 +2179,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
         branch = "feat/existing-runtime-branch",
         reviewBaseSha = "0".repeat(40),
         baselineOwnedPaths = baselineOwnedPaths,
+        workflowOwnedPaths = listOf("runtime-domain/Child.kt"),
       ),
     )
   }
@@ -2764,7 +2797,18 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   // (b)+(e) AC2/AC6/AC10: changes_requested spawns implement_fix carrying the findings, then re-reviews.
   @Test
   fun `m1 changes_requested spawns implement_fix with the findings then re-reviews`() {
-    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 2))
+    val git = RecordingWorkflowGitOperations().apply {
+      repositoryFingerprintValue = "before-fix"
+    }
+    val harness = runnerHarness(
+      launcher = reviewFixLauncher(
+        convergeOnReview = 2,
+        onPhaseLaunch = { phaseId ->
+          if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
+        },
+      ),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
 
     val report = harness.runner.run(
       harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
@@ -4651,10 +4695,15 @@ internal fun reviewFindingsOutput(
 // The real M1 review_fix launcher: review returns changes_requested findings until [convergeOnReview]
 // (1-based review launch index at which it first approves); a value above the cap never converges.
 // implement_fix and every other phase return their schema-valid reconciled output.
-private fun reviewFixLauncher(convergeOnReview: Int, onReviewLaunch: (Int) -> Unit = {}): RuntimeRecordingLauncher {
+private fun reviewFixLauncher(
+  convergeOnReview: Int,
+  onReviewLaunch: (Int) -> Unit = {},
+  onPhaseLaunch: (String) -> Unit = {},
+): RuntimeRecordingLauncher {
   var reviewLaunches = 0
   return RuntimeRecordingLauncher { request ->
     val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    onPhaseLaunch(phaseId)
     if (phaseId == "review") {
       reviewLaunches += 1
       onReviewLaunch(reviewLaunches)
@@ -5097,6 +5146,26 @@ internal class RecordingWorkflowGitOperations(
           value = repositoryFingerprintSequence.removeFirstOrNull()
             ?: repositoryFingerprintValue
             ?: "repository-fingerprint-$repositoryFingerprintCalls",
+        )
+      }
+
+      override fun repositoryCheckpointFingerprint(
+        repoRoot: Path,
+        baseCommit: String?,
+        headCommit: String,
+        ownedPaths: List<String>,
+      ): WorkflowGitOperationResult {
+        repositoryFingerprintCalls += 1
+        val scopeHash = listOf(
+          baseCommit.orEmpty(),
+          headCommit,
+          ownedPaths.distinct().sorted().joinToString("\u0000"),
+        ).joinToString("\u0000").hashCode().toUInt().toString(16)
+        return WorkflowGitOperationResult(
+          status = "ok",
+          value = repositoryFingerprintSequence.removeFirstOrNull()
+            ?: repositoryFingerprintValue
+            ?: "repository-checkpoint-$scopeHash",
         )
       }
     }

@@ -353,14 +353,22 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `phase transitions never reject repository movement`() {
+  fun `forward checkpoints refresh while reviewed remediation alone requires an exact match`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val checkpointedDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.values
       .flatMap { it.projectionDeclarations }
       .filter { "repository_checkpoint" in it.declaredFieldNames }
+    val mustMatch = checkpointedDeclarations.filter {
+      it.checkpointPolicy == FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH
+    }
 
     assertTrue(checkpointedDeclarations.isNotEmpty())
+    assertEquals(
+      listOf(def.PHASE_IMPLEMENT_FIX to "review_repair_request"),
+      mustMatch.map { it.consumerPhaseId to it.projectionName },
+    )
     assertTrue(
-      checkpointedDeclarations.all {
+      checkpointedDeclarations.filterNot { it in mustMatch }.all {
         it.checkpointPolicy == FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY
       },
     )
