@@ -31,6 +31,3 @@ fun learningEntryPayload(entry: LearningEntry): Map<String, Any?> = mapOf(
 
 fun learningEntrySessionJson(skillName: String?, entries: List<LearningEntry>): String =
   learningSessionJson(skillName, entries.map(::learningEntryPayload))
-
-fun summarizeLearningEntries(entries: List<LearningEntry>): String =
-  if (entries.isEmpty()) "none" else entries.joinToString(", ") { it.reference }

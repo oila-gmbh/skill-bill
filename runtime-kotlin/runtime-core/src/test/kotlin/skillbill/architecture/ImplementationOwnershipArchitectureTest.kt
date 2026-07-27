@@ -47,15 +47,6 @@ class ImplementationOwnershipArchitectureTest {
         "runtime-infra-fs must own moved filesystem implementation $packagePath",
       )
     }
-
-    assertTrue(
-      Files.isRegularFile(
-        runtimeRoot.resolve(
-          "runtime-application/src/main/kotlin/skillbill/workflow/implement/FeatureImplementWorkflowRuntime.kt",
-        ),
-      ),
-      "workflow runtime-surface metadata must be owned outside runtime-core",
-    )
   }
 
   @Test

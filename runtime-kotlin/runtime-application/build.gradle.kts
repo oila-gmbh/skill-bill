@@ -15,6 +15,7 @@ dependencies {
   // The harness must enforce budgets through the real FileSystemReviewEvidenceBroker; main source
   // still depends on the port only.
   testFixturesImplementation(project(":runtime-infra-fs"))
+  testImplementation(testFixtures(project(":runtime-ports")))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
   testImplementation(libs.jackson.dataformat.yaml)

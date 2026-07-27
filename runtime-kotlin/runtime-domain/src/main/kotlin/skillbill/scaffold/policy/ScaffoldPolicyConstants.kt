@@ -40,10 +40,6 @@ val SUPPORTED_SKILL_KINDS: Set<String> =
 val ACTIVE_CREATION_SKILL_KINDS: Set<String> =
   setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON, SKILL_KIND_AGENT_ADDON)
 
-/** Retired partial scaffold creation kinds. Legacy source handling remains supported. */
-val RETIRED_PARTIAL_SCAFFOLD_KINDS: Set<String> =
-  setOf(SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_CODE_REVIEW_AREA)
-
 val RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES: Set<String> =
   setOf("platform-override", SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, "override")
 

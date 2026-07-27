@@ -1,17 +1,16 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-132"
 feature_name: "runtime-kotlin-dead-code-sweep"
 parent_spec_path: ".feature-specs/SKILL-132-runtime-kotlin-dead-code-sweep/spec.md"
-spec_source: "local"
-status: "pending"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-132-runtime-kotlin-dead-code-sweep"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "start"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Remove proven test-owned production declarations"
@@ -19,7 +18,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260727-185010-9nsj"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

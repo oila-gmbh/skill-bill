@@ -1,6 +1,5 @@
 package skillbill.architecture
 
-import skillbill.RuntimeModule
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -19,12 +18,12 @@ class RuntimeAdapterDependencyAllowlistTest {
   @Test
   fun `every declared module has only the curated main-source runtime project dependencies`() {
     assertEquals(
-      RuntimeModule.declaredGradleModules.toSet(),
+      RuntimeModuleCatalog.declaredGradleModules.toSet(),
       ModuleAllowlists.MAIN_PROJECT_DEPENDENCIES.keys,
       "RuntimeAdapterDependencyAllowlistTest must classify every declared Gradle module.",
     )
 
-    val drift = RuntimeModule.declaredGradleModules.mapNotNull { moduleName ->
+    val drift = RuntimeModuleCatalog.declaredGradleModules.mapNotNull { moduleName ->
       val expected = ModuleAllowlists.MAIN_PROJECT_DEPENDENCIES.getValue(moduleName)
       val actual = mainProjectDependencies(moduleName)
       val missing = expected - actual
@@ -56,12 +55,12 @@ class RuntimeAdapterDependencyAllowlistTest {
   @Test
   fun `every declared module has only the curated test-fixtures runtime project dependencies`() {
     assertEquals(
-      RuntimeModule.declaredGradleModules.toSet(),
+      RuntimeModuleCatalog.declaredGradleModules.toSet(),
       ModuleAllowlists.TEST_FIXTURES_PROJECT_DEPENDENCIES.keys,
       "RuntimeAdapterDependencyAllowlistTest must classify every declared Gradle module.",
     )
 
-    val drift = RuntimeModule.declaredGradleModules.mapNotNull { moduleName ->
+    val drift = RuntimeModuleCatalog.declaredGradleModules.mapNotNull { moduleName ->
       val expected = ModuleAllowlists.TEST_FIXTURES_PROJECT_DEPENDENCIES.getValue(moduleName)
       val actual = testFixturesProjectDependencies(moduleName)
       val missing = expected - actual

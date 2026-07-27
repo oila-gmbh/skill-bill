@@ -1,6 +1,5 @@
 package skillbill.architecture
 
-import skillbill.RuntimeModule
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1388,7 +1387,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `every main source package is declared under an owned subsystem`() {
-    val ownershipPrefixes = RuntimeModule.declaredSubsystemPackages.sortedByDescending(String::length)
+    val ownershipPrefixes = RuntimeModuleCatalog.declaredSubsystemPackages.sortedByDescending(String::length)
     val unowned = declaredMainSourceFiles()
       .filter { file -> file.packageName.isNotBlank() }
       .filterNot { file -> file.packageName == "skillbill" }
@@ -1401,7 +1400,7 @@ class RuntimeArchitectureTest {
     assertEquals(
       emptyList(),
       unowned,
-      "Every real main-source package must be owned by RuntimeModule.declaredSubsystemPackages.",
+      "Every real main-source package must be owned by RuntimeModuleCatalog.declaredSubsystemPackages.",
     )
   }
 
@@ -1816,7 +1815,7 @@ class RuntimeArchitectureTest {
     sourceFilesIn(sourceRoot)
   }
 
-  private fun declaredMainSourceFiles(): List<SourceFile> = RuntimeModule.declaredGradleModules
+  private fun declaredMainSourceFiles(): List<SourceFile> = RuntimeModuleCatalog.declaredGradleModules
     .flatMap { moduleName -> mainSourceRoots(moduleName) }
     .flatMap { sourceRoot -> sourceFilesIn(sourceRoot) }
 
