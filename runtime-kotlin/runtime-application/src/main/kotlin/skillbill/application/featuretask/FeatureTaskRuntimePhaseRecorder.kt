@@ -884,6 +884,14 @@ class FeatureTaskRuntimePhaseRecorder(
       unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
     }
 
+  fun workerOwnership(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeWorkerOwnership? =
+    database.read(dbOverride) { unitOfWork ->
+      unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
+    }
+
   /**
    * Ensures a runtime workflow row exists, opening one at the definition's initial step when
    * absent. Idempotent: a no-op when a row already exists.

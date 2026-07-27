@@ -14,6 +14,7 @@ import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
@@ -34,6 +35,8 @@ import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
@@ -45,6 +48,7 @@ class GoalRunnerStatusService(
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val attemptLedgerStore: GoalRunnerAttemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
+  private val clock: Clock = Clock.systemUTC(),
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -76,6 +80,7 @@ class GoalRunnerStatusService(
           manifest = manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
+            executionLiveness = resolveExecutionLiveness(currentSubtask, request.dbPathOverride),
             planning = manifestStore.planningStatus(
               loadedState.parentWorkflowId,
               manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
@@ -99,6 +104,26 @@ class GoalRunnerStatusService(
           ),
         )
       }
+  }
+
+  private fun resolveExecutionLiveness(
+    currentSubtask: DecompositionSubtask?,
+    dbPathOverride: String?,
+  ): ExecutionLiveness {
+    val workflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
+      ?: return ExecutionLiveness.UNKNOWN
+    return runCatching {
+      if (phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) != FeatureTaskWorkflowMode.RUNTIME) {
+        ExecutionLiveness.UNKNOWN
+      } else {
+        val ownership = phaseRecorder.workerOwnership(workflowId, dbPathOverride)
+        if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
+          ExecutionLiveness.LIVE
+        } else {
+          ExecutionLiveness.IDLE
+        }
+      }
+    }.getOrDefault(ExecutionLiveness.UNKNOWN)
   }
 
   private fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =

@@ -6,6 +6,7 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -488,6 +489,7 @@ class CliGoalRuntimeTest {
     // SKILL-103 AC1: the prose-mode CLI child carries no persisted agent attribution, so active_agent
     // is omitted (rendered as none) rather than leaked from the caller's --agent codex.
     assertContains(status.stdout, "active_agent: none")
+    assertContains(status.stdout, "execution_liveness: unknown")
     assertContains(status.stdout, "latest_liveness_signal: liveness=durable_progress phase=implement")
     assertContains(status.stdout, "role=phase_subagent sequence=12")
     assertContains(status.stdout, "latest_observability: phase=implement role=phase_subagent")
@@ -508,6 +510,58 @@ class CliGoalRuntimeTest {
  * class stays focused and below the detekt LargeClass threshold.
  */
 class CliGoalWatchRuntimeTest {
+  @Test
+  fun `goal watch resets two idle refreshes with live and stops only after three consecutive idle refreshes`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val childWorkflowId = startRunningGoalChild(fixture)
+    val resetOutput = StringBuilder()
+    var observed = 0
+
+    val reset = CliRuntime.run(
+      listOf(
+        "--db", fixture.dbPath.toString(),
+        "goal", "watch", "SKILL-901",
+        "--interval-seconds", "0",
+        "--max-refreshes", "4",
+        "--show-unchanged",
+      ),
+      fixture.context(
+        launcher = NoopGoalTestAgentRunLauncher,
+        liveStdout = {
+          resetOutput.append(it)
+          if (it.startsWith("watch_refresh:") && ++observed == 2) {
+            seedLiveWorkerLease(fixture, childWorkflowId)
+          }
+        },
+      ),
+    )
+
+    assertEquals("max_refreshes", reset.payload?.get("stop_reason"))
+    assertEquals(4, reset.payload?.get("refresh_count"))
+    assertContains(resetOutput.toString(), "index=3 status=ok")
+    assertContains(resetOutput.toString(), "execution_liveness=live")
+
+    clearWorkerLease(fixture, childWorkflowId)
+    val idleOutput = StringBuilder()
+    val idle = CliRuntime.run(
+      listOf(
+        "--db", fixture.dbPath.toString(),
+        "goal", "watch", "SKILL-901",
+        "--interval-seconds", "0",
+      ),
+      fixture.context(
+        launcher = NoopGoalTestAgentRunLauncher,
+        liveStdout = { idleOutput.append(it) },
+      ),
+    )
+
+    assertEquals("goal_idle", idle.payload?.get("stop_reason"))
+    assertEquals(3, idle.payload?.get("refresh_count"))
+    assertContains(idle.stdout, "watch_refresh: index=3 status=ok")
+    assertContains(idle.stdout, "execution_liveness=idle")
+    assertFalse(idleOutput.toString().contains("index=4"), idleOutput.toString())
+  }
+
   @Test
   fun `goal watch refreshes read-only status without launching child runs`() {
     val fixture = goalFixture(subtaskCount = 1)
@@ -1291,6 +1345,40 @@ class CliGoalZcodeRefusalTest {
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
     assertEquals(emptyList(), launcher.requests, result.stdout)
+  }
+}
+
+private fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
+  DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
+    connection.prepareStatement(
+      """
+      INSERT OR REPLACE INTO feature_task_runtime_worker_leases (
+        workflow_id, contract_version, generation, owner_token, host_identity, boot_identity,
+        pid, process_birth_token, lease_state, heartbeat_at, expires_at, phase_id, phase_attempt
+      ) VALUES (?, ?, 1, ?, ?, ?, 1234, ?, 'active', ?, ?, 'implement', 1)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.setString(2, FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION)
+      statement.setString(3, "owner-token-cli-watch")
+      statement.setString(4, "test-host")
+      statement.setString(5, "test-boot")
+      statement.setString(6, "birth-1234")
+      statement.setString(7, "2999-01-01T00:00:00Z")
+      statement.setString(8, "2999-01-01T00:01:00Z")
+      statement.executeUpdate()
+    }
+  }
+}
+
+private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
+  DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
+    connection.prepareStatement(
+      "DELETE FROM feature_task_runtime_worker_leases WHERE workflow_id = ?",
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeUpdate()
+    }
   }
 }
 

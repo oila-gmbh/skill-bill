@@ -20,6 +20,7 @@ import skillbill.application.model.GoalRunnerRunEvent
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
@@ -91,6 +92,9 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -998,6 +1002,73 @@ private class DirtyManifestGitOperations(
 
 class GoalRunnerStatusProjectionTest {
   @Test
+  fun `execution liveness is live only while a runtime worker lease is strictly unexpired`() {
+    val harness = GoalStatusPhaseLedgerHarness()
+    harness.openRuntimeWorkflow("wfl-live")
+    harness.seedOwnership("wfl-live", expiresAt = "2026-07-27T12:00:01Z")
+    val service = statusServiceForLiveness(harness, "wfl-live")
+
+    val live = requireNotNull(service.status(goalStatusRequest()))
+    assertEquals(ExecutionLiveness.LIVE, live.executionLiveness)
+
+    harness.seedOwnership("wfl-live", expiresAt = "2026-07-27T12:00:00Z")
+    val boundary = requireNotNull(service.status(goalStatusRequest()))
+    assertEquals(ExecutionLiveness.IDLE, boundary.executionLiveness)
+  }
+
+  @Test
+  fun `execution liveness is idle when a runtime workflow has no ownership row`() {
+    val harness = GoalStatusPhaseLedgerHarness()
+    harness.openRuntimeWorkflow("wfl-idle")
+
+    val status = requireNotNull(statusServiceForLiveness(harness, "wfl-idle").status(goalStatusRequest()))
+
+    assertEquals(ExecutionLiveness.IDLE, status.executionLiveness)
+    assertEquals(0, harness.ownershipWriteCount)
+  }
+
+  @Test
+  fun `execution liveness is unknown for prose mode missing workflow identity and lease read failure`() {
+    val proseHarness = GoalStatusPhaseLedgerHarness()
+    proseHarness.openProseWorkflow("wfl-prose")
+    assertEquals(
+      ExecutionLiveness.UNKNOWN,
+      requireNotNull(statusServiceForLiveness(proseHarness, "wfl-prose").status(goalStatusRequest())).executionLiveness,
+    )
+
+    val missingWorkflowStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
+    assertEquals(
+      ExecutionLiveness.UNKNOWN,
+      requireNotNull(
+        GoalRunnerStatusService(missingWorkflowStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+          .status(goalStatusRequest()),
+      ).executionLiveness,
+    )
+
+    val missingCurrentSubtaskStore = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 1).copy(status = "in_progress", currentSubtaskIntent = null),
+    )
+    assertEquals(
+      ExecutionLiveness.UNKNOWN,
+      requireNotNull(
+        GoalRunnerStatusService(missingCurrentSubtaskStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+          .status(goalStatusRequest()),
+      ).executionLiveness,
+    )
+
+    val failingHarness = GoalStatusPhaseLedgerHarness()
+    failingHarness.openRuntimeWorkflow("wfl-failing")
+    failingHarness.failOwnershipReads = true
+    assertEquals(
+      ExecutionLiveness.UNKNOWN,
+      requireNotNull(
+        statusServiceForLiveness(failingHarness, "wfl-failing").status(goalStatusRequest()),
+      ).executionLiveness,
+    )
+    assertEquals(0, failingHarness.ownershipWriteCount)
+  }
+
+  @Test
   fun `status projection includes latest observability and requested diff stat when present`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
@@ -1418,6 +1489,22 @@ class GoalRunnerStatusProjectionTest {
     assertEquals("pending_launch", status.currentStep)
   }
 }
+
+private fun statusServiceForLiveness(
+  harness: GoalStatusPhaseLedgerHarness,
+  workflowId: String,
+): GoalRunnerStatusService = GoalRunnerStatusService(
+  manifestStore = InMemoryGoalManifestStore(
+    manifest(subtaskCount = 1)
+      .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
+      .withWorkflowId(1, workflowId),
+  ),
+  outcomeStore = RecordingOutcomeStore(),
+  phaseRecorder = harness.recorder,
+  clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+)
+
+private fun goalStatusRequest() = GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex")
 
 class GoalRunnerObservabilityTest {
   @Test
@@ -3064,9 +3151,27 @@ private class GoalStatusPhaseLedgerHarness {
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     )
+  var failOwnershipReads: Boolean
+    get() = repository.failOwnershipReads
+    set(value) {
+      repository.failOwnershipReads = value
+    }
+  val ownershipWriteCount: Int get() = repository.ownershipWriteCount
 
   fun openRuntimeWorkflow(workflowId: String) {
     recorder.ensureWorkflowOpen(workflowId, sessionId = "goal-status-test")
+  }
+
+  fun openProseWorkflow(workflowId: String) {
+    openRuntimeWorkflow(workflowId)
+    repository.saveFeatureTaskRuntimeWorkflow(
+      requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId))
+        .copy(mode = FeatureTaskWorkflowMode.PROSE),
+    )
+  }
+
+  fun seedOwnership(workflowId: String, expiresAt: String) {
+    repository.seedOwnership(workflowId, expiresAt)
   }
 
   fun recordCompletedPhase(workflowId: String, phaseId: String, resolvedAgentId: String) {
@@ -3118,6 +3223,34 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
     emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
 
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
+  private val ownershipRows =
+    linkedMapOf<String, skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership>()
+  var failOwnershipReads = false
+  var ownershipWriteCount = 0
+
+  fun seedOwnership(workflowId: String, expiresAt: String) {
+    ownershipRows[workflowId] = skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership(
+      workflowId = workflowId,
+      ownerToken = "owner-token-123456",
+      generation = 1,
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 1234,
+      processBirthToken = "birth-1234",
+      leaseState = skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+      phaseId = "implement",
+      phaseAttempt = 1,
+      heartbeatAt = "2026-07-27T11:59:30Z",
+      expiresAt = expiresAt,
+    )
+  }
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(
+    workflowId: String,
+  ): skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership? {
+    if (failOwnershipReads) error("lease read failed")
+    return ownershipRows[workflowId]
+  }
 
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
     taskRuntimeRows[row.workflowId] = row
