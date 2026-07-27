@@ -79,7 +79,8 @@ Method: a whole-repository token-frequency scan over `runtime-kotlin`, `skills`,
 | `skillbill.telemetry.config.TelemetryRuntime` — runtime-application | all | removable | Zero occurrences outside its declaration. Dead facade over the live `TelemetryConfigRuntime`, which is retained. |
 | `skillbill.application.review.RoutingSignalPathMatcher` — runtime-application | all | removable | Zero occurrences outside its declaration. Delegated wholly to the live `ReviewPathMatcher`. |
 | `REQUIRED_CONTENT_SECTIONS` — `scaffold/runtime/ScaffoldSupport.kt` | all | removable | Zero occurrences. `REQUIRED_GOVERNED_SECTIONS` is live and retained. |
-| `CANONICAL_CEREMONY_SECTION` — `scaffold/runtime/ScaffoldSupport.kt` | all | removable | Zero occurrences. `CANONICAL_EXECUTION_SECTION` is live and retained. |
+| `CANONICAL_CEREMONY_SECTION` — `scaffold/runtime/ScaffoldSupport.kt` | all | removable | Zero occurrences. |
+| `CANONICAL_EXECUTION_SECTION` — `scaffold/runtime/ScaffoldSupport.kt` | all | removable | Sole consumer was `renderSkillBody`, removed in this sweep; its import in `ScaffoldTemplateRendering.kt` is deleted too. `REQUIRED_GOVERNED_SECTIONS` keeps live consumers in `AuthoringContentMutation` and `SkillMdShapeValidator` and is retained. |
 | `selectedFeatureAddonSupportTargets` — `scaffold/runtime/ScaffoldSupport.kt` | all | removable | Zero occurrences. Its private helper `featureAddonPointerSpecsFor` has two live callers and is retained. |
 | `renderSkillBody` — `scaffold/rendering/ScaffoldTemplateRendering.kt` | all | removable | Zero occurrences. `renderFrontmatter`, `renderDescriptorSection`, and `renderCeremonySection` remain live. |
 | `GoalRunnerCompletedReport` — `runtime-domain/goalrunner/model/` | all | removable | Zero occurrences. Superseded by the live `GoalRunnerRunReport.Completed`. |

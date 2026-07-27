@@ -49,9 +49,6 @@ internal val PLATFORM_PACK_PRESETS: Map<String, String> get() = POLICY_PLATFORM_
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =
   listOf("## Descriptor", "## Execution", "## Ceremony")
 
-internal const val CANONICAL_EXECUTION_SECTION: String =
-  "## Execution\n\nFollow the instructions in [content.md](content.md).\n"
-
 internal data class TemplateContext(
   val skillName: String,
   val family: String,
