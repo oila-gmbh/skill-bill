@@ -312,7 +312,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(
       durablePlan,
       requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID)).acceptedPlans.last(),

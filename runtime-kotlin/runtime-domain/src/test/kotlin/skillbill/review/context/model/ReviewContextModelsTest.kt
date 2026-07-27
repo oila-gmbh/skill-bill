@@ -182,11 +182,12 @@ class ReviewContextModelsTest {
     assertFailsWith<IllegalArgumentException> { launch.requireCodexForkTurns("all") }
     assertEquals(
       listOf(
-        "review_id", "review_revision", "packet_digest", "assignment_digest", "lane", "base_revision",
-        "head_revision", "broker_id", "specialist_contract", "rubric", "assigned_paths", "assigned_hunks",
-        "immutable_diff_hunks",
+        "contract_version", "kind", "review_id", "review_revision", "packet_digest", "assignment_digest",
+        "lane", "base_revision",
+        "head_revision", "broker_id", "specialist_contract", "rubric", "consumer_contract",
+        "assigned_paths", "assigned_hunks", "assigned_hunk_bodies",
         "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
-        "forbidden_rediscovery", "budgets",
+        "forbidden_rediscovery", "evidence_surface_rules", "report_structure", "budgets",
       ),
       launch.canonicalPayload.lines().filter { it.isNotBlank() && !it.startsWith("  ") }
         .map { it.substringBefore(':') },

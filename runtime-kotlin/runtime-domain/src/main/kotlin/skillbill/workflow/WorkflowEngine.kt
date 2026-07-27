@@ -16,6 +16,7 @@ import skillbill.workflow.model.WorkflowContinuationArtifactSummary
 import skillbill.workflow.model.WorkflowContinueDecision
 import skillbill.workflow.model.WorkflowContinueView
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowInputProjection
 import skillbill.workflow.model.WorkflowResumeView
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -25,6 +26,10 @@ import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.model.WorkflowUpdateInput
 import java.math.BigDecimal
 import java.math.BigInteger
+
+private typealias CheckpointResolver = () -> String
+
+private val unresolvedCheckpoint: CheckpointResolver = { "" }
 
 /**
  * SKILL-52.2 Subtask 4: pure workflow engine. The schema-validator
@@ -41,7 +46,10 @@ import java.math.BigInteger
  * `WorkflowEngine.snapshotMap(view)` and method references like
  * `WorkflowEngine::summaryMap` keep working without an instance.
  */
-class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
+class WorkflowEngine(
+  private val schemaValidator: WorkflowSnapshotValidator,
+  private val checkpoint: CheckpointResolver = unresolvedCheckpoint,
+) {
   /**
    * SKILL-48 Subtask 2a: builds the canonical snapshot-shape map for the
    * given [record], validates it against the workflow-state schema, and
@@ -188,6 +196,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val requiredArtifacts = definition.requiredArtifactsByStep[resumeStepId].orEmpty()
     val missingArtifacts =
       definition.requiredArtifactPresenceResolver.missingRequiredArtifacts(snapshot, resumeStepId, requiredArtifacts)
+        .filterNot { it == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY }
     val canResume = resumeMode != "done" && missingArtifacts.isEmpty()
     val nextAction =
       if (resumeMode == "done") {
@@ -224,8 +233,15 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val stepArtifactKeys = continueArtifactKeys(definition, resume.resumeStepId, snapshot)
-    val stepArtifacts = stepArtifactKeys.associateWith { key ->
+    val declaredProjection = launchProjection(
+      definition,
+      snapshot,
+      resume.resumeStepId,
+      attemptCount,
+    )
+    val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
+      ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
+    val stepArtifacts = declaredProjection?.artifacts ?: stepArtifactKeys.associateWith { key ->
       resolvedArtifactValue(definition, snapshot, key).value
     }
     val currentStepArtifactKeys = resume.requiredArtifacts
@@ -269,6 +285,7 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
       continuationBrief = continuationBrief,
       continuationEntryPrompt = continuationEntryPrompt,
+      declaredProjection = declaredProjection,
     )
     val view = WorkflowContinueView(
       resume = resume,
@@ -295,6 +312,30 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       nextAttemptCount = nextAttemptCount,
     )
   }
+
+  fun launchProjection(
+    definition: WorkflowDefinition,
+    snapshot: WorkflowSnapshotView,
+    stepId: String,
+    producerIteration: Int,
+    resolvedRepositoryCheckpointIdentity: String = checkpoint(),
+  ): WorkflowInputProjection? = definition.inputProjectionsByStep[stepId]?.let {
+    WorkflowInputProjectionSelector.select(
+      definition,
+      snapshot,
+      stepId,
+      producerIteration,
+      resolvedRepositoryCheckpointIdentity,
+    )
+  }
+
+  fun freshLaunchProjection(
+    definition: WorkflowDefinition,
+    record: WorkflowStateSnapshot,
+    stepId: String,
+    producerIteration: Int,
+  ): WorkflowInputProjection? =
+    launchProjection(definition, snapshotView(definition, record), stepId, producerIteration)
 
   companion object {
     private val resumableStepStatuses = setOf("running", "blocked", "pending")
@@ -446,6 +487,15 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
     )
 
+    @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
+    fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> = linkedMapOf(
+      "step_id" to projection.stepId,
+      "producer_iteration" to projection.producerIteration,
+      "repository_checkpoint" to projection.repositoryCheckpoint,
+      "artifacts" to projection.artifacts,
+      "utf8_bytes" to projection.utf8Bytes,
+    )
+
     private fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
       @Suppress("UNCHECKED_CAST")
       val rawSteps = map["steps"] as List<Map<String, Any?>>
@@ -573,11 +623,14 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       continueStepDirective: String,
       continuationBrief: String,
       continuationEntryPrompt: String,
+      declaredProjection: WorkflowInputProjection?,
     ): WorkflowCompactContinueView {
       val requiredKeys = resume.requiredArtifacts
       val availableKeys = resume.availableArtifacts
-      val currentStepArtifactKeys = requiredKeys
-      val currentStepArtifacts = currentStepArtifactKeys.map { key ->
+      val currentStepArtifactKeys = declaredProjection?.artifacts?.keys?.toList() ?: requiredKeys
+      val currentStepArtifacts = declaredProjection?.artifacts?.map { (key, value) ->
+        losslessProjectionArtifact(key, value)
+      } ?: currentStepArtifactKeys.map { key ->
         val resolved = resolvedArtifactValue(definition, snapshot, key)
         artifactSummary(key, resolved.value, resolved.present)
       }
@@ -602,6 +655,21 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         continuationEntryPrompt = continuationEntryPrompt,
         readOnlyFullStateGuidance =
         "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
+      )
+    }
+
+    private fun losslessProjectionArtifact(key: String, value: Any?): WorkflowContinuationArtifactSummary {
+      val sizeBytes = jsonString(value).toByteArray(Charsets.UTF_8).size
+      return WorkflowContinuationArtifactSummary(
+        key = key,
+        present = true,
+        inline = true,
+        sizeBytes = sizeBytes,
+        value = value,
+        preview = null,
+        truncated = false,
+        omitted = false,
+        omissionReason = null,
       )
     }
 
@@ -664,8 +732,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
         "Follow the normal step instructions in $instructionPath. " +
         "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
         "current-step context instead of reconstructing prior context from chat history. " +
-        "Omitted artifact keys ($omittedArtifacts) " +
-        "require read-only inspection with `workflow show` when needed. Workflow activation status: " +
+        "Omitted artifact keys ($omittedArtifacts) remain private phase context. Explicit operator diagnostics " +
+        "may inspect them with `workflow show`; phase agents must not. Workflow activation status: " +
         "`$continueStatus`. Next action: $nextAction"
     }
 
@@ -715,7 +783,8 @@ class WorkflowEngine(private val schemaValidator: WorkflowSnapshotValidator) {
       commonLines += "Reference sections: ${references.ifBlank { "normal step instructions only" }}"
       commonLines +=
         "Rules: do not rerun completed steps unless the workflow sends work backwards; treat " +
-        "`current_step_artifacts` as authoritative and inspect omitted keys with read-only workflow show when needed."
+        "`current_step_artifacts` as the complete authoritative phase input. Omitted keys remain private; " +
+        "`workflow show` is an explicit operator diagnostic and must not widen phase context."
       commonLines +=
         "Workflow update rule: every step_updates item must include step_id, status, and integer " +
         "attempt_count; use attempt_count $nextAttemptCount for `$resumeStepId` unless a later retry increments it."

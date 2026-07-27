@@ -23,12 +23,23 @@ data class ParallelCodeReviewRequest(
   val suppliedDiff: String? = null,
   val suppliedDiffPath: Path? = null,
   val reviewRunId: String? = null,
+  val baseRevision: String? = null,
+  val headRevision: String? = null,
+  val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
 ) {
   init {
     reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
+    headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }
     suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."
+    }
+    require((baseRevision == null) == (headRevision == null)) {
+      "baseRevision and headRevision must be supplied together."
+    }
+    require((suppliedDiff == null && suppliedDiffPath == null) || baseRevision != null) {
+      "A supplied diff requires paired baseRevision and headRevision immutable identities."
     }
     resolvedTier?.let { tier ->
       require(tier == CodeReviewExecutionMode.INLINE || tier == CodeReviewExecutionMode.DELEGATED) {
@@ -53,6 +64,18 @@ data class ParallelCodeReviewRequest(
    * starts because the pinned request is built before the lanes are launched.
    */
   fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
+}
+
+data class ReviewPrelaunchExpansion(
+  val lane: String,
+  val path: String,
+  val reachabilityReason: String,
+) {
+  init {
+    require(lane.isNotBlank() && path.isNotBlank() && reachabilityReason.isNotBlank()) {
+      "A prelaunch expansion requires a lane, path, and non-blank reachability reason."
+    }
+  }
 }
 
 data class ParallelCodeReviewResult(

@@ -10,6 +10,7 @@ import skillbill.ports.review.ReviewLaneSelectionPort
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
@@ -28,6 +29,7 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
+    specialistContract: String,
   ): List<DelegatedReviewLaunchRequest> {
     val hunks = input.evidence.hunks
     val routes = specialistRoutes(input)
@@ -46,9 +48,9 @@ internal object ParallelReviewPreparationCompiler {
         addOns = route.descriptor.addOns,
       )
     }
-    val revisionId = digest(input.diff)
+    val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
     val preparation = prepareReview(input, hunks, routes, decisions, revisionId, budget, envelopeValidator)
-    return launchRequests(input, preparation, routes, budget)
+    return launchRequests(input, preparation, routes, budget, specialistContract)
   }
 
   private fun specialistRoutes(input: ParallelReviewPreparationInput): List<SpecialistRoute> {
@@ -82,7 +84,7 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
   ) = ReviewPreparationService(
-    reviewFactPorts(input, hunks, decisions, revisionId),
+    reviewFactPorts(input, hunks, decisions),
     envelopeValidator,
     budget,
   ).prepare(
@@ -97,12 +99,11 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     hunks: List<ReviewChangedHunk>,
     decisions: List<ReviewLaneDecision>,
-    revisionId: String,
   ): ReviewFactPorts {
     val scope = ReviewScopeFacts(
       "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
-      "parallel-scope-base-$revisionId",
-      "parallel-scope-head-$revisionId",
+      input.baseRevision,
+      input.headRevision,
       "authoritative supplied parallel-review diff",
       hunks,
     )
@@ -142,9 +143,19 @@ internal object ParallelReviewPreparationCompiler {
     preparation: skillbill.application.review.model.ReviewPreparationResult,
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
+    specialistContract: String,
   ): List<DelegatedReviewLaunchRequest> {
     val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
       require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
+    }
+    val validExpansionSelectors = routes.flatMap { route ->
+      listOf(route.lane, route.lane.substringAfter(':'))
+    }.toSet() + PARALLEL_REVIEW_SELECTOR
+    input.prelaunchExpansions.forEach { expansion ->
+      require(expansion.lane in validExpansionSelectors) {
+        "Prelaunch expansion selector '${expansion.lane}' does not match '$PARALLEL_REVIEW_SELECTOR', " +
+          "a prepared assignment lane, or a prepared specialist skill."
+      }
     }
     return preparation.assignments.map { assignment ->
       val route = requireNotNull(routesByLane[assignment.lane]) {
@@ -159,14 +170,21 @@ internal object ParallelReviewPreparationCompiler {
       DelegatedReviewLaunchRequest(
         packet = preparation.packet,
         assignment = assignment,
-        specialistContract = SPECIALIST_CONTRACT,
+        specialistContract = specialistContract,
         rubrics = listOf(route.rubric),
         brokerId = "review-evidence-${assignment.digest}",
         budget = budget,
         agentId = route.agentId,
         workerKind = route.workerKind,
-        logicalWorkerName = route.descriptor.skillName.takeIf { route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE },
+        logicalWorkerName = null,
         repoRoot = input.repoRoot,
+        prelaunchExpansions = input.prelaunchExpansions
+          .filter {
+            it.lane == PARALLEL_REVIEW_SELECTOR ||
+              it.lane == assignment.lane ||
+              it.lane == assignment.lane.substringAfter(':')
+          }
+          .map { ReviewExpansionAuthorizationRequest(assignment.lane, it.path, it.reachabilityReason) },
       )
     }
   }
@@ -175,8 +193,7 @@ internal object ParallelReviewPreparationCompiler {
     .digest(value.replace("\r\n", "\n").toByteArray())
     .joinToString("") { "%02x".format(it) }
 
-  private const val SPECIALIST_CONTRACT =
-    "Use only the assignment-owned evidence surface. Return only F-XXX risk-register lines."
+  private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }
 
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
@@ -209,4 +226,7 @@ internal data class ParallelReviewPreparationInput(
   // review_finished telemetry resolves accounting by the caller's run id, but the row is keyed by the
   // packet review id, so the packet must adopt that run id whenever the caller supplies one.
   val reviewRunId: String? = null,
+  val baseRevision: String,
+  val headRevision: String,
+  val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
 )

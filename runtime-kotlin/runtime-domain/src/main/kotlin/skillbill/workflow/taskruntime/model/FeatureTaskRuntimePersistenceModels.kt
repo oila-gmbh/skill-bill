@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -95,6 +96,8 @@ data class FeatureTaskRuntimeResolvedBranch(
   val created: Boolean = false,
   val reviewBaseSha: String? = null,
   val baselineUntrackedPaths: List<String> = emptyList(),
+  val baselineOwnedPaths: List<String> = emptyList(),
+  val workflowOwnedPaths: List<String> = emptyList(),
 ) {
   init {
     require(branch.isNotBlank()) { "FeatureTaskRuntimeResolvedBranch.branch must be non-blank." }
@@ -103,6 +106,12 @@ data class FeatureTaskRuntimeResolvedBranch(
     }
     require(baselineUntrackedPaths.all(String::isNotBlank)) {
       "FeatureTaskRuntimeResolvedBranch.baselineUntrackedPaths must not contain blanks."
+    }
+    require(baselineOwnedPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.baselineOwnedPaths must not contain blanks."
+    }
+    require(workflowOwnedPaths.all(String::isNotBlank)) {
+      "FeatureTaskRuntimeResolvedBranch.workflowOwnedPaths must not contain blanks."
     }
   }
 
@@ -114,6 +123,8 @@ data class FeatureTaskRuntimeResolvedBranch(
     baseBranch?.let { put("base_branch", it) }
     reviewBaseSha?.let { put("review_base_sha", it) }
     if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
+    put("baseline_owned_paths", baselineOwnedPaths)
+    put("workflow_owned_paths", workflowOwnedPaths)
   }
 
   companion object {
@@ -126,6 +137,12 @@ data class FeatureTaskRuntimeResolvedBranch(
       reviewBaseSha = raw.optionalStringField("review_base_sha"),
       baselineUntrackedPaths = (raw["baseline_untracked_paths"] as? List<*>)
         ?.map { it as? String ?: error("baseline_untracked_paths must contain only strings.") }
+        .orEmpty(),
+      baselineOwnedPaths = (raw["baseline_owned_paths"] as? List<*>)
+        ?.map { it as? String ?: error("baseline_owned_paths must contain only strings.") }
+        .orEmpty(),
+      workflowOwnedPaths = (raw["workflow_owned_paths"] as? List<*>)
+        ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
         .orEmpty(),
     )
   }
@@ -212,7 +229,12 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
   val consumerPhaseId: String,
   val iteration: Int,
   val envelope: FeatureTaskRuntimeHandoffEnvelope,
+  val sourceProducerIterations: List<FeatureTaskRuntimeProducerIteration> =
+    envelope.projections.map { it.producerIteration }.distinct(),
 ) {
+  val repositoryCheckpointFingerprint: String =
+    envelope.repositoryCheckpoint?.fingerprint ?: "not_required:$consumerPhaseId"
+
   init {
     require(workflowId.isNotBlank()) { "FeatureTaskRuntimeDeliveredProjectionRecord.workflowId must be non-blank." }
     require(consumerPhaseId.isNotBlank()) {
@@ -220,6 +242,9 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
     }
     require(iteration >= 1) {
       "FeatureTaskRuntimeDeliveredProjectionRecord.iteration must be >= 1, was $iteration."
+    }
+    require(sourceProducerIterations.toSet() == envelope.projections.map { it.producerIteration }.toSet()) {
+      "FeatureTaskRuntimeDeliveredProjectionRecord source producer identities must match its delivered projections."
     }
     require(envelope.consumerPhaseId == consumerPhaseId) {
       "FeatureTaskRuntimeDeliveredProjectionRecord for '$consumerPhaseId' carries an envelope addressed to " +
@@ -229,30 +254,112 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
 
   @OpenBoundaryMap("Feature-task-runtime delivered-projection record at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    "record_kind" to "delivered_projection",
     "workflow_id" to workflowId,
     "consumer_phase_id" to consumerPhaseId,
-    "iteration" to iteration,
+    "consumer_delivery_iteration" to iteration,
+    "source_producer_iterations" to sourceProducerIterations.map {
+      mapOf("phase_id" to it.phaseId, "iteration" to it.iteration)
+    },
+    "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpointFingerprint),
     "handoff_envelope" to envelope.toEnvelopeMap(),
   )
 
   companion object {
     @OpenBoundaryMap("Feature-task-runtime delivered-projection decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord =
-      FeatureTaskRuntimeDeliveredProjectionRecord(
-        workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
-        consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
-        iteration = (raw["iteration"] as? Number)?.toInt() ?: missing("iteration"),
-        envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
-          JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
-            // Named explicitly: the private phase-output artifact is never an acceptable substitute
-            // for the delivered projection, so an absent envelope is a hard decode failure.
-            ?: missing("handoff_envelope"),
-        ),
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeDeliveredProjectionRecord {
+      requireExactDeliveredProjectionFields(raw)
+      requireSupportedPersistenceContract(raw)
+      requireDeliveredProjectionRecordKind(raw)
+      val record = decodeDeliveredProjection(raw)
+      requireMatchingCheckpoint(raw, record)
+      return record
+    }
+
+    private fun requireSupportedPersistenceContract(raw: Map<String, Any?>) {
+      val contractVersion = raw["contract_version"] as? String ?: missing("contract_version")
+      if (contractVersion != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered projection uses unsupported persistence contract version " +
+            "'$contractVersion'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+        )
+      }
+    }
+
+    private fun requireDeliveredProjectionRecordKind(raw: Map<String, Any?>) {
+      if (raw["record_kind"] != "delivered_projection") {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime prompt-facing persistence record must have kind 'delivered_projection'; " +
+            "private evidence cannot be read through this API.",
+        )
+      }
+    }
+
+    private fun decodeDeliveredProjection(raw: Map<String, Any?>) = FeatureTaskRuntimeDeliveredProjectionRecord(
+      workflowId = raw["workflow_id"] as? String ?: missing("workflow_id"),
+      consumerPhaseId = raw["consumer_phase_id"] as? String ?: missing("consumer_phase_id"),
+      iteration = (raw["consumer_delivery_iteration"] as? Number)?.toInt()
+        ?: missing("consumer_delivery_iteration"),
+      envelope = FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(
+        JsonSupport.anyToStringAnyMap(raw["handoff_envelope"])
+          // Named explicitly: the private phase-output artifact is never an acceptable substitute
+          // for the delivered projection, so an absent envelope is a hard decode failure.
+          ?: missing("handoff_envelope"),
+      ),
+      sourceProducerIterations = decodeSourceProducerIterations(raw),
+    )
+
+    private fun decodeSourceProducerIterations(raw: Map<String, Any?>): List<FeatureTaskRuntimeProducerIteration> =
+      (raw["source_producer_iterations"] as? List<*>)
+        ?.map { identity ->
+          val map = JsonSupport.anyToStringAnyMap(identity) ?: missing("source_producer_iterations")
+          FeatureTaskRuntimeProducerIteration(
+            phaseId = map["phase_id"] as? String ?: missing("source_producer_iterations.phase_id"),
+            iteration = (map["iteration"] as? Number)?.toInt()
+              ?: missing("source_producer_iterations.iteration"),
+          )
+        } ?: missing("source_producer_iterations")
+
+    private fun requireMatchingCheckpoint(
+      raw: Map<String, Any?>,
+      record: FeatureTaskRuntimeDeliveredProjectionRecord,
+    ) {
+      val checkpoint = JsonSupport.anyToStringAnyMap(raw["repository_checkpoint"])
+        ?: missing("repository_checkpoint")
+      val persistedFingerprint = checkpoint["fingerprint"] as? String ?: missing("repository_checkpoint.fingerprint")
+      if (persistedFingerprint != record.repositoryCheckpointFingerprint) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered projection checkpoint identity does not match its validated envelope; " +
+            "restart the consumer phase from current repository state.",
+        )
+      }
+    }
+
+    private fun requireExactDeliveredProjectionFields(raw: Map<String, Any?>) {
+      val expected = setOf(
+        "contract_version",
+        "record_kind",
+        "workflow_id",
+        "consumer_phase_id",
+        "consumer_delivery_iteration",
+        "source_producer_iterations",
+        "repository_checkpoint",
+        "handoff_envelope",
       )
+      val unexpected = raw.keys - expected
+      if (unexpected.isNotEmpty()) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime delivered-projection record contains unsupported fields; " +
+            "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+        )
+      }
+    }
 
     // Single throw seam so the strict decoder stays within the throw-count budget.
     private fun missing(field: String): Nothing = throw InvalidWorkflowStateSchemaError(
-      "Feature-task-runtime delivered-projection record is missing field '$field'.",
+      "Feature-task-runtime delivered-projection record is missing field '$field'; " +
+        "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
     )
   }
 }
@@ -326,6 +433,8 @@ data class FeatureTaskRuntimePhaseRecord(
 
   @OpenBoundaryMap("Feature-task-runtime per-phase record artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    "record_kind" to "private_phase_record",
     "phase_id" to phaseId,
     "status" to status,
     "attempt_count" to attemptCount,
@@ -352,37 +461,60 @@ data class FeatureTaskRuntimePhaseRecord(
     /** Strict decode; loud-fails on any missing or malformed required field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
-      val startedAt = raw.requireStringField("started_at")
-      return FeatureTaskRuntimePhaseRecord(
-        phaseId = raw.requireStringField("phase_id"),
-        status = raw.requireStringField("status"),
-        attemptCount = raw.requireIntField("attempt_count"),
-        startedAt = startedAt,
-        // Records written before first_started_at existed fall back to started_at.
-        firstStartedAt = raw.optionalStringField("first_started_at") ?: startedAt,
-        finishedAt = raw.optionalStringField("finished_at"),
-        durationMillis = raw.optionalLongField("duration_millis"),
-        resolvedAgentId = raw.requireStringField("resolved_agent_id"),
-        executionOrigin = raw.optionalStringField("execution_origin")?.let(
-          FeatureTaskRuntimePhaseExecutionOrigin::fromWireValue,
-        ) ?: FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
-        outputArtifact = raw.optionalStringField("output_artifact"),
-        rejectedOutput = raw.optionalStringField("rejected_output"),
-        blockedReason = raw.optionalStringField("blocked_reason"),
-        failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
-          FeatureTaskRuntimeFailureDisposition.fromWireValue(value)
-            ?: throw InvalidWorkflowStateSchemaError(
-              "Feature-task-runtime artifact field 'failure_disposition' has unsupported value '$value'.",
-            )
-        },
-        fileManifestBefore = raw.optionalStringListField("file_manifest_before"),
-        fileManifestAfter = raw.optionalStringListField("file_manifest_after"),
-        fileManifestIntroduced = raw.optionalStringListField("file_manifest_introduced"),
-        loopId = raw.optionalStringField("loop_id"),
-        edgeIteration = raw.optionalIntField("edge_iteration"),
-        reviewPassNumber = raw.optionalIntField("review_pass_number"),
+      val required = setOf(
+        "contract_version", "record_kind", "phase_id", "status", "attempt_count", "started_at",
+        "first_started_at", "resolved_agent_id", "execution_origin",
       )
+      val allowed = required + setOf(
+        "finished_at", "duration_millis", "output_artifact", "rejected_output", "blocked_reason",
+        "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
+        "loop_id", "edge_iteration", "review_pass_number",
+      )
+      val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
+      val hasCompatibleIdentity =
+        raw["contract_version"] == FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION &&
+          raw["record_kind"] == "private_phase_record"
+      if (!hasCompatibleFields || !hasCompatibleIdentity) {
+        incompatiblePhaseRecord()
+      }
+      return try {
+        FeatureTaskRuntimePhaseRecord(
+          phaseId = raw.requireStringField("phase_id"),
+          status = raw.requireStringField("status"),
+          attemptCount = raw.requireIntField("attempt_count"),
+          startedAt = raw.requireStringField("started_at"),
+          firstStartedAt = raw.requireStringField("first_started_at"),
+          finishedAt = raw.optionalStringField("finished_at"),
+          durationMillis = raw.optionalLongField("duration_millis"),
+          resolvedAgentId = raw.requireStringField("resolved_agent_id"),
+          executionOrigin = FeatureTaskRuntimePhaseExecutionOrigin.fromWireValue(
+            raw.requireStringField("execution_origin"),
+          ),
+          outputArtifact = raw.optionalStringField("output_artifact"),
+          rejectedOutput = raw.optionalStringField("rejected_output"),
+          blockedReason = raw.optionalStringField("blocked_reason"),
+          failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
+            FeatureTaskRuntimeFailureDisposition.fromWireValue(value) ?: incompatiblePhaseRecord()
+          },
+          fileManifestBefore = raw.optionalStringListField("file_manifest_before"),
+          fileManifestAfter = raw.optionalStringListField("file_manifest_after"),
+          fileManifestIntroduced = raw.optionalStringListField("file_manifest_introduced"),
+          loopId = raw.optionalStringField("loop_id"),
+          edgeIteration = raw.optionalIntField("edge_iteration"),
+          reviewPassNumber = raw.optionalIntField("review_pass_number"),
+        )
+      } catch (_: InvalidWorkflowStateSchemaError) {
+        incompatiblePhaseRecord()
+      } catch (_: IllegalArgumentException) {
+        incompatiblePhaseRecord()
+      }
     }
+
+    private fun incompatiblePhaseRecord(): Nothing = throw InvalidWorkflowStateSchemaError(
+      "Private feature-task-runtime phase record is incompatible with persistence contract " +
+        "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION; " +
+        "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+    )
   }
 }
 

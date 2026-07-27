@@ -1,5 +1,6 @@
 package skillbill.contracts.review
 
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import java.nio.file.Files
 import java.nio.file.Path
@@ -8,6 +9,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class ReviewPacketConsumerContractParityTest {
+  @Test fun `launch specialist and consumer contracts are the same authoritative bytes`() {
+    assertEquals(
+      ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+      ReviewPacketConsumerContract.CONSUMER_CONTRACT,
+    )
+  }
+
   @Test fun `governed prose and runtime list enumerate the same forbidden rediscovery items`() {
     val markdown = Files.readString(contractPath())
     val section = markdown
@@ -19,6 +27,52 @@ class ReviewPacketConsumerContractParityTest {
       .map { it.groupValues[1] }
       .toList()
     assertEquals(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, documented)
+  }
+
+  @Test fun `governed prose and runtime use authoritative contract bytes`() {
+    val markdown = Files.readString(contractPath())
+    assertEquals(
+      listOf(
+        ReviewPacketConsumerContract.SPECIALIST_RULES_HEADING,
+        ReviewPacketConsumerContract.REPORT_STRUCTURE_HEADING,
+      ).joinToString("\n\n") { sourceSection(markdown, it) },
+      ClasspathReviewSpecialistContractProvider().authoritativeContract(),
+    )
+    assertEquals(
+      ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+      authoritativeBlock(markdown, "authoritative-launch-contract"),
+    )
+    assertEquals(
+      ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES,
+      authoritativeBlock(markdown, "evidence-surface-rules"),
+    )
+    assertEquals(
+      ReviewPacketConsumerContract.REPORT_STRUCTURE,
+      authoritativeBlock(markdown, "report-structure"),
+    )
+  }
+
+  @Test fun `delegation surfaces name the specialist contract without restating its marked rules`() {
+    val root = contractPath().parent.parent.parent
+    val delegation = Files.readString(root.resolve("orchestration/review-delegation/PLAYBOOK.md"))
+    val sourcePath = ReviewPacketConsumerContract.SOURCE_PATH
+    assertTrue(sourcePath in delegation)
+    listOf("authoritative-launch-contract", "evidence-surface-rules", "report-structure").forEach { marker ->
+      assertTrue("```$marker" !in delegation, "Delegation playbook must not restate authoritative '$marker' bytes.")
+    }
+  }
+
+  private fun authoritativeBlock(markdown: String, name: String): String {
+    val opening = "```$name\n"
+    val body = markdown.substringAfter(opening, "")
+    assertTrue(body.isNotEmpty(), "Missing authoritative '$name' block.")
+    return body.substringBefore("\n```")
+  }
+
+  private fun sourceSection(markdown: String, heading: String): String {
+    val body = markdown.replace("\r\n", "\n").substringAfter("$heading\n", "")
+    assertTrue(body.isNotEmpty(), "Missing authoritative '$heading' section.")
+    return "$heading\n${body.substringBefore("\n## ").trim()}"
   }
 
   private fun contractPath(): Path {

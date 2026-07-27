@@ -31,6 +31,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.learnings.model.CreateLearningRequest
@@ -63,6 +64,8 @@ import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -113,6 +116,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisib
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
@@ -397,7 +402,10 @@ class ApplicationPersistencePortTest {
         workflowStatus = "blocked",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
-        artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
+        artifactsPatch = mapOf(
+          "preplan_digest" to mapOf("ok" to true),
+          "plan" to mapOf("task_count" to 1),
+        ),
       ),
       dbOverride = null,
     ) as WorkflowUpdateResult.Ok
@@ -412,8 +420,8 @@ class ApplicationPersistencePortTest {
     assertEquals("blocked", updated.acknowledgement.workflowStatus)
     assertEquals(1, listed.workflowCount)
     assertEquals(workflowId, latest.summary.workflowId)
-    assertEquals(listOf("plan"), resumed.resume.missingArtifacts)
-    assertEquals("blocked", continued.view.continueStatus)
+    assertEquals(emptyList(), resumed.resume.missingArtifacts)
+    assertEquals("reopened", continued.view.continueStatus)
   }
 
   @Test
@@ -508,6 +516,18 @@ class ApplicationPersistencePortTest {
     // A second delivery to the same consumer is a new iteration, not a silent overwrite of history.
     assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
     assertEquals(2, requireNotNull(recorder.loadDeliveredProjections(workflowId))["implement"]?.iteration)
+    val afterSecondDelivery = decodeArtifactsForTest(
+      requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    val deliveredHistory =
+      afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY] as Map<String, Any?>
+    assertEquals(2, deliveredHistory.size, "distinct producer iterations must remain independently durable")
+    assertTrue(
+      deliveredHistory.keys.all { "|plan#1|" in it },
+      "durable selection keys must carry the normalized source producer identity",
+    )
   }
 
   @Test
@@ -525,6 +545,31 @@ class ApplicationPersistencePortTest {
 
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID, error.failureKind)
     assertEquals("implement", error.consumerPhaseId)
+  }
+
+  @Test
+  fun `projection rejection emits content free classified telemetry before briefing delivery`() {
+    val workflowRepository = InMemoryWorkflowStateRepository()
+    val telemetry = RecordingProjectionLifecycleTelemetryRepository()
+    val database = FakeDatabaseSessionFactory(workflows = workflowRepository, lifecycleTelemetry = telemetry)
+    val recorder = testPhaseRecorder(database)
+    val workflowId = openTaskRuntimeWorkflow(database)
+    val rejection = InvalidFeatureTaskRuntimeHandoffProjectionError(
+      workflowId = workflowId,
+      consumerPhaseId = "implement",
+      projectionName = "plan_receipt",
+      projectionContractId = "feature_task_runtime.executable_plan",
+      projectionContractVersion = "0.1",
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION,
+      reason = "repository checkpoint differs",
+    )
+
+    assertTrue(recorder.recordProjectionRejection(workflowId, "implement", rejection, "checkpoint-2"))
+
+    val measurement = telemetry.projectionMeasurements.single()
+    assertEquals(FeatureTaskRuntimeProjectionFailureClassification.STALE_CHECKPOINT, measurement.failureClassification)
+    assertEquals(0, measurement.deliveredProjectionUtf8Bytes)
+    assertEquals(0, measurement.privateEvidenceUtf8Bytes)
   }
 
   @Test
@@ -1074,7 +1119,7 @@ class ApplicationPersistencePortTest {
     Files.writeString(subtaskSpec, "---\nstatus: Pending\n---\n\n# Subtask")
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
-    val service = testWorkflowService(database)
+    val service = testWorkflowService(database, FakeWorkflowGitOperations())
     val workflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
 
     service.update(
@@ -1087,7 +1132,10 @@ class ApplicationPersistencePortTest {
         artifactsPatch =
         mapOf(
           "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-          "audit_report" to mapOf("gap_count" to 0),
+          "validation_request" to validationRequest(),
+          "audit_clearance" to auditClearance(),
+          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
+          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "blocked_reason" to "Validation paused.",
         ),
       ),
@@ -1478,7 +1526,10 @@ class ApplicationPersistencePortTest {
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = mapOf(
-          "audit_report" to mapOf("gap_count" to 0),
+          "validation_request" to validationRequest(),
+          "audit_clearance" to auditClearance(),
+          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
+          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
           "validation_result" to mapOf("passed" to false),
         ),
       ),
@@ -1515,11 +1566,15 @@ class ApplicationPersistencePortTest {
         stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
         artifactsPatch =
         mapOf(
-          "criteria_summary" to emptyMap<String, Any?>(),
-          "diff_summary" to emptyMap(),
-          "review_result" to emptyMap(),
-          "unit_test_value_result" to emptyMap(),
-          "completeness_audit_result" to emptyMap(),
+          "feature_flag_audit_receipt" to evaluatorReceipt("skipped"),
+          "code_review_receipt" to evaluatorReceipt("pass"),
+          "unit_test_value_receipt" to evaluatorReceipt("pass"),
+          "completeness_audit_receipt" to evaluatorReceipt("pass"),
+          "diff_projection" to mapOf(
+            "checkpoint" to "noop-repository-fingerprint",
+            "comparison_scope" to "branch_diff",
+            "changed_files" to emptyList<String>(),
+          ),
         ),
       ),
       dbOverride = null,
@@ -1825,6 +1880,7 @@ private class FakeDatabaseSessionFactory(
   private val telemetryOutbox: TelemetryOutboxRepository = NoopTelemetryOutboxRepository,
   private val telemetryReconciliation: TelemetryReconciliationRepository = NoopTelemetryReconciliationRepository,
   private val workflows: WorkflowStateRepository = NoopWorkflowStateRepository,
+  private val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository,
 ) : DatabaseSessionFactory {
   val calls = mutableListOf<String>()
   private val dbPath = Path.of("/fake/metrics.db")
@@ -1847,13 +1903,23 @@ private class FakeDatabaseSessionFactory(
     override val dbPath: Path = this@FakeDatabaseSessionFactory.dbPath
     override val reviews: ReviewRepository = this@FakeDatabaseSessionFactory.reviews
     override val learnings: LearningRepository = this@FakeDatabaseSessionFactory.learnings
-    override val lifecycleTelemetry: LifecycleTelemetryRepository = NoopLifecycleTelemetryRepository
+    override val lifecycleTelemetry: LifecycleTelemetryRepository = this@FakeDatabaseSessionFactory.lifecycleTelemetry
     override val telemetryReconciliation: TelemetryReconciliationRepository =
       this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+  }
+}
+
+@Suppress("TooManyFunctions")
+private class RecordingProjectionLifecycleTelemetryRepository : LifecycleTelemetryRepository by
+NoopLifecycleTelemetryRepository {
+  val projectionMeasurements = mutableListOf<FeatureTaskRuntimeProjectionMeasurement>()
+
+  override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) {
+    projectionMeasurements += record
   }
 }
 
@@ -2647,7 +2713,7 @@ private class InMemoryWorkflowStateRepository(
 private class FakeWorkflowGitOperations(
   private val commitSha: String = "commit-sha",
   private val commitError: String = "",
-) : WorkflowGitOperations {
+) : WorkflowGitOperations, RepositoryFingerprintGitOperationsProvider {
   val checkouts = mutableListOf<String>()
   val baseValidations = mutableListOf<String>()
   val commits = mutableListOf<String>()
@@ -2693,7 +2759,31 @@ private class FakeWorkflowGitOperations(
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(status = "ok")
+
+  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
+    object : RepositoryFingerprintGitOperations {
+      override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(status = "ok", value = "test-repository-fingerprint")
+    }
 }
+
+private fun evaluatorReceipt(verdict: String): Map<String, Any?> = mapOf(
+  "contract_version" to "0.3",
+  "verdict" to verdict,
+  "findings" to emptyList<Any>(),
+)
+
+private fun validationRequest(): Map<String, Any?> = mapOf(
+  "validation_strategy" to listOf("Run focused and repository gates."),
+  "changed_paths" to listOf("src/Changed.kt"),
+  "required_checks" to listOf("test"),
+  "repository_checkpoint" to mapOf("fingerprint" to "test-repository-fingerprint"),
+)
+
+private fun auditClearance(): Map<String, Any?> = mapOf(
+  "contract_version" to "0.1",
+  "verdict" to "approved",
+)
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(
   id = id,
@@ -2722,6 +2812,7 @@ private fun testPhaseRecorder(database: DatabaseSessionFactory) = FeatureTaskRun
   database,
   WorkflowSnapshotValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
+  FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter(),
 )
 
 private fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (

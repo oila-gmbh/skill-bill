@@ -79,6 +79,17 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
+  fun `a validation receipt with a string checkpoint re-enters validate instead of blocking write history`() {
+    val outcome = runBlockingProducer("validate", VALIDATION_CHECKPOINT_AS_STRING)
+
+    assertEquals("validate", outcome.blocked.lastIncompletePhase)
+    assertEquals(cap, outcome.launchCount("validate"))
+    assertContains(outcome.blocked.blockedReason, "repository_checkpoint")
+    assertContains(outcome.blocked.blockedReason, "non-blank fingerprint")
+    assertTrue(outcome.launchedNever("write_history"))
+  }
+
+  @Test
   fun `an implement re-entry under the implement phase id is gated by the same producer branch`() {
     // The remediation loop re-enters PHASE_IMPLEMENT itself; the re-run's output is the receipt audit
     // and review parse, so the producer gate must reject a malformed re-run exactly as it rejects a
@@ -372,4 +383,10 @@ private val IMPLEMENT_DEVIATIONS_AS_STRINGS: String = envelope(
     """"deviations":["free-text deviation instead of a ref and note object"],""" +
     """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
     """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}""",
+)
+
+private val VALIDATION_CHECKPOINT_AS_STRING: String = envelope(
+  "validate",
+  """{"validation_result":{"validation_status":"passed","checks":[{"name":"check","status":"passed"}],""" +
+    """"repository_checkpoint":"repository_checkpoint=fixture-checkpoint-1"}}""",
 )

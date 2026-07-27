@@ -48,8 +48,10 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
@@ -155,6 +157,7 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -183,6 +186,7 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
@@ -499,6 +503,12 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewSpecialistContractProvider(
+    adapter: ClasspathReviewSpecialistContractProvider,
+  ): ReviewSpecialistContractProvider = adapter
+
+  @Provides
+  @JvmSynthetic
   internal fun featureTaskRuntimeRunInvariantsSource(
     adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
   ): FeatureTaskRuntimeRunInvariantsSource = adapter
@@ -586,6 +596,12 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeHandoffEnvelopeValidator(
     adapter: FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter,
   ): FeatureTaskRuntimeHandoffEnvelopeValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeHandoffFoundationValidator(
+    adapter: FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter,
+  ): FeatureTaskRuntimeHandoffFoundationValidator = adapter
 
   // SKILL-140: the canonical quarantine schema gate. The recorder's append and read seams call this
   // port so a malformed private-evidence store fails loudly rather than round-tripping silently.

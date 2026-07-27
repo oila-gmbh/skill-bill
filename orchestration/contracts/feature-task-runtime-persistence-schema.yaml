@@ -1,0 +1,134 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.yaml"
+title: Feature-task-runtime handoff persistence records
+description: Strict wire records keeping private phase evidence separate from exact delivered projections.
+oneOf:
+  - $ref: "#/$defs/private_phase_record"
+  - $ref: "#/$defs/delivered_projection"
+$defs:
+  checkpoint:
+    type: object
+    additionalProperties: false
+    required: [fingerprint]
+    properties:
+      fingerprint:
+        type: string
+        minLength: 1
+      base_ref:
+        type: string
+        minLength: 1
+      head_ref:
+        type: string
+        minLength: 1
+      working_tree_owned_paths:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+  private_phase_record:
+    type: object
+    additionalProperties: false
+    required:
+      - contract_version
+      - record_kind
+      - phase_id
+      - status
+      - attempt_count
+      - started_at
+      - first_started_at
+      - resolved_agent_id
+      - execution_origin
+    properties:
+      contract_version:
+        const: "0.2"
+      record_kind:
+        const: private_phase_record
+      phase_id:
+        type: string
+        minLength: 1
+      status:
+        type: string
+        minLength: 1
+      attempt_count:
+        type: integer
+        minimum: 1
+      started_at:
+        type: string
+        minLength: 1
+      first_started_at:
+        type: string
+        minLength: 1
+      finished_at: { type: string, minLength: 1 }
+      duration_millis: { type: integer, minimum: 0 }
+      resolved_agent_id: { type: string, minLength: 1 }
+      execution_origin: { enum: [agent-executed, goal-planning-hydrated] }
+      output_artifact: { type: string }
+      rejected_output: { type: string }
+      blocked_reason: { type: string }
+      failure_disposition:
+        enum: [retryable, non_retryable_policy_conflict, needs_user_action, process_failure, invalid_output]
+      file_manifest_before:
+        type: array
+        items: { type: string }
+      file_manifest_after:
+        type: array
+        items: { type: string }
+      file_manifest_introduced:
+        type: array
+        items: { type: string }
+      loop_id: { type: string, minLength: 1 }
+      edge_iteration: { type: integer, minimum: 1 }
+      review_pass_number: { type: integer, minimum: 1, maximum: 2 }
+  delivered_projection:
+    type: object
+    additionalProperties: false
+    required:
+      - contract_version
+      - record_kind
+      - workflow_id
+      - consumer_phase_id
+      - consumer_delivery_iteration
+      - source_producer_iterations
+      - repository_checkpoint
+      - handoff_envelope
+    properties:
+      contract_version:
+        const: "0.2"
+      record_kind:
+        const: delivered_projection
+      workflow_id:
+        type: string
+        minLength: 1
+      consumer_phase_id:
+        type: string
+        minLength: 1
+      consumer_delivery_iteration:
+        type: integer
+        minimum: 1
+      source_producer_iterations:
+        type: array
+        uniqueItems: true
+        items:
+          type: object
+          additionalProperties: false
+          required: [phase_id, iteration]
+          properties:
+            phase_id:
+              type: string
+              minLength: 1
+            iteration:
+              type: integer
+              minimum: 1
+      repository_checkpoint:
+        $ref: "#/$defs/checkpoint"
+      handoff_envelope:
+        type: object
+        description: Validated separately against the handoff-envelope schema before typed decoding.
+x-coherence-checks:
+  - id: exact-delivery
+    description: The serialized envelope bytes are the exact validated prompt-visible projection.
+  - id: separate-read-apis
+    description: Private phase records and delivered projections use distinct models, keys, and read APIs.
+  - id: incompatible-legacy-version
+    description: Missing record kind, identity, or version is a typed loud failure; no implicit migration occurs.

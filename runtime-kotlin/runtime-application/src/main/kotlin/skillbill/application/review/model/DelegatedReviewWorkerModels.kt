@@ -3,6 +3,7 @@ package skillbill.application.review.model
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.GovernedReviewLaunch
@@ -38,6 +39,7 @@ data class DelegatedReviewLaunchRequest(
   val logicalWorkerName: String? = null,
   val repoRoot: Path,
   val namedDependencies: Set<String> = emptySet(),
+  val prelaunchExpansions: List<ReviewExpansionAuthorizationRequest> = emptyList(),
 )
 
 data class DelegatedReviewLaunch(
@@ -46,6 +48,7 @@ data class DelegatedReviewLaunch(
   val isolation: ReviewLaunchIsolationStrategy,
   val evidenceBroker: ReviewEvidenceBroker,
   val rubricIsAuthoritative: Boolean,
+  val preauthorizedEvidenceRequests: List<skillbill.ports.review.model.ReviewEvidenceRequest> = emptyList(),
 )
 
 sealed interface DelegatedReviewLaunchOutcome {

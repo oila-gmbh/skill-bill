@@ -9,11 +9,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -27,6 +29,53 @@ private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
 
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
+  @Test
+  fun `projection byte budget counts the complete canonical delivered representation`() {
+    val valueOnlyBytes = """{"plan":"ok"}""".toByteArray(Charsets.UTF_8).size
+    val declaration = declaration(
+      budget = FeatureTaskRuntimeHandoffProjectionBudget(
+        maxUtf8Bytes = valueOnlyBytes,
+        maxCollectionItems = 1,
+      ),
+    )
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs(declarations = listOf(declaration)))
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
+  }
+
+  @Test
+  fun `projection byte size equals its canonical delivered rendering`() {
+    val projection = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())
+      .projections.single()
+
+    assertEquals(
+      projection.canonicalDeliveredRendering.toByteArray(Charsets.UTF_8).size,
+      projection.utf8ByteSize,
+    )
+  }
+
+  @Test
+  fun `projection identity uses the resolved producer attempt`() {
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            PRODUCER to FeatureTaskRuntimePhaseOutput(
+              phaseId = PRODUCER,
+              iteration = 7,
+              payload = """{"plan":"ok"}""",
+            ),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals(FeatureTaskRuntimeProducerIteration(PRODUCER, 7), envelope.projections.single().producerIteration)
+  }
+
   @Test
   fun `a declared upstream receipt is projected within budget`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())
@@ -54,6 +103,233 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `phase request projection resolves fields from its governed result container`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+      declaredFieldNames = listOf("commit_sha", "branch", "pushed"),
+    )
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(declaration),
+        resolvedUpstream = upstream(
+          """{"produced_outputs":{"commit_push_result":{"commit_sha":"abc123","branch":"feat/x","pushed":true}}}""",
+        ),
+      ),
+    )
+
+    assertEquals(listOf("commit_sha", "branch", "pushed"), envelope.projections.single().fields.map { it.name })
+  }
+
+  @Test
+  fun `review repair projection keeps only unresolved Blocker findings and exact reviewed checkpoint`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      ),
+      projectionName = "review_repair_request",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+      declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree")
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              1,
+              """{"produced_outputs":{"findings":[""" +
+                """{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},""" +
+                """{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"}]}}""",
+            ),
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+        expectedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields
+    assertEquals(listOf("unresolved_blocker_findings", "repository_checkpoint"), fields.map { it.name })
+    val blockers = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
+    assertEquals(1, blockers.items.size)
+    assertContains(blockers.items.single(), "F-001")
+    assertFalse(blockers.items.single().contains("F-002"))
+  }
+
+  @Test
+  fun `change receipt derives changed paths from the runtime checkpoint`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+      declaredFieldNames = listOf(
+        "changed_paths",
+        "tests_added",
+        "tests_updated",
+        "deviations",
+        "repository_checkpoint",
+      ),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "current-tree",
+      workingTreeOwnedPaths = listOf("src/Foo.kt", "src/FooTest.kt"),
+    )
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(declaration),
+        resolvedUpstream = upstream("""{"produced_outputs":{}}"""),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    val changedPaths = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+      fields.getValue("changed_paths").value,
+    )
+    assertEquals(listOf("src/Foo.kt", "src/FooTest.kt"), changedPaths.items)
+    assertEquals(
+      emptyList(),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+        fields.getValue("tests_added").value,
+      ).items,
+    )
+  }
+
+  @Test
+  fun `finalization inventory reconciles receipt claims to runtime owned paths`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      ),
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+      declaredFieldNames = listOf(
+        "path_inventory",
+        "required_inclusions",
+        "required_exclusions",
+        "branch_identity",
+        "gate_attestations",
+        "repository_checkpoint",
+      ),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "current-tree",
+      baseRef = "base",
+      headRef = "head",
+      workingTreeOwnedPaths = listOf("src/Owned.kt", "src/OwnedTest.kt"),
+    )
+    val implementation = FeatureTaskRuntimePhaseOutput(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      iteration = 1,
+      payload = """{"produced_outputs":{"changed_paths":["src/Owned.kt","src/ClaimOnly.kt"]}}""",
+    )
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to implementation),
+        ),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    assertEquals(
+      listOf("src/Owned.kt", "src/OwnedTest.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("path_inventory").value).items,
+    )
+    assertEquals(
+      listOf("src/Owned.kt", "src/OwnedTest.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_inclusions").value).items,
+    )
+    assertEquals(
+      listOf("src/ClaimOnly.kt"),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_exclusions").value).items,
+    )
+  }
+
+  @Test
+  fun `audit clearance derives gate status scope and checkpoint from runtime-owned facts`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    val producer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producer),
+      projectionName = "audit_clearance",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      declaredFieldNames = listOf("clearance_status", "review_scope", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("runtime-tree")
+
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            producer to FeatureTaskRuntimePhaseOutput(
+              phaseId = producer,
+              iteration = 2,
+              payload = """{"produced_outputs":{"unmet_criteria":[],"audit_result":{""" +
+                """"clearance_status":"agent-claim","review_scope":"agent-scope",""" +
+                """"repository_checkpoint":{"fingerprint":"agent-tree"}}}}""",
+            ),
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+
+    val fields = envelope.projections.single().fields.associateBy { it.name }
+    assertEquals(
+      FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(fields.getValue("clearance_status").value).text,
+    )
+    assertEquals(
+      "branch_diff",
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(fields.getValue("review_scope").value).text,
+    )
+    assertEquals(
+      "runtime-tree",
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.CompactReference>(
+        fields.getValue("repository_checkpoint").value,
+      ).value,
+    )
+  }
+
+  @Test
+  fun `phase request projection rejects a required field missing from the producer result`() {
+    val declaration = declaration(
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+      declaredFieldNames = listOf("commit_sha", "branch"),
+    )
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(declaration),
+          resolvedUpstream = upstream(
+            """{"produced_outputs":{"commit_push_result":{"commit_sha":"abc123"}}}""",
+          ),
+        ),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD, error.failureKind)
+    assertContains(error.message.orEmpty(), "declared field 'branch' resolved to no value")
+  }
+
+  @Test
   fun `a non-required missing source is omitted rather than rejected`() {
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
@@ -63,6 +339,30 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     )
 
     assertTrue(envelope.projections.isEmpty())
+  }
+
+  @Test
+  fun `budget enforcement measures the exact prompt-visible rendering`() {
+    val payload = """{"items":["${"x".repeat(80)}"]}"""
+    val wireOnlyBytes = payload.toByteArray(Charsets.UTF_8).size
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          declarations = listOf(
+            declaration(
+              budget = FeatureTaskRuntimeHandoffProjectionBudget(
+                maxUtf8Bytes = wireOnlyBytes + 1,
+                maxCollectionItems = 64,
+              ),
+            ),
+          ),
+          resolvedUpstream = upstream(payload),
+        ),
+      )
+    }
+
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
+    assertContains(error.message.orEmpty(), "UTF-8 bytes")
   }
 
   @Test
@@ -160,8 +460,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `must_match rejects a stale checkpoint and accepts a matching one`() {
-    val stale = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+  fun `must_match rejects repository movement`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
         inputs(
           declarations = listOf(
@@ -172,20 +472,12 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
         ),
       )
     }
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, stale.failureKind)
-
-    val matched = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      inputs(
-        declarations = listOf(declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH)),
-        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
-        expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
-      ),
-    )
-    assertEquals("head-abc", matched.repositoryCheckpoint?.fingerprint)
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
+    assertContains(error.message.orEmpty(), "expected checkpoint 'head-def' but resolved 'head-abc'")
   }
 
   @Test
-  fun `must_match without a recorded checkpoint is rejected`() {
+  fun `must_match requires a recorded checkpoint`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
         inputs(
@@ -196,8 +488,21 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
         ),
       )
     }
-
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
+    assertContains(error.message.orEmpty(), "durable expected repository checkpoint")
+  }
+
+  @Test
+  fun `must_match accepts identical runtime checkpoints`() {
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc")
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH)),
+        resolvedCheckpoint = checkpoint,
+        expectedCheckpoint = checkpoint,
+      ),
+    )
+    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
   }
 
   @Test
@@ -296,6 +601,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     sourceRef: FeatureTaskRuntimeHandoffSourceRef =
       FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(PRODUCER),
     projectionName: String = "plan_receipt",
+    projectionContractId: String = "test.upstream_phase_receipt",
     contractVersion: String = "0.1",
     promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility =
       FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
@@ -311,7 +617,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     consumerPhaseId = consumerPhaseId,
     sourceRef = sourceRef,
     projectionName = projectionName,
-    projectionContractId = "test.upstream_phase_receipt",
+    projectionContractId = projectionContractId,
     projectionContractVersion = contractVersion,
     promptVisibility = promptVisibility,
     budget = budget,
@@ -332,14 +638,16 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     mandatesAndOverrides = emptyList(),
   )
 
+  @Suppress("LongParameterList")
   private fun inputs(
+    consumerPhaseId: String = CONSUMER,
     declarations: List<PhaseHandoffProjectionDeclaration> = listOf(declaration()),
     resolvedUpstream: FeatureTaskRuntimeResolvedUpstreamOutputs = upstream(),
     runInvariants: FeatureTaskRuntimeRunInvariants = runInvariants(),
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
-    consumerPhaseId = CONSUMER,
+    consumerPhaseId = consumerPhaseId,
     declarations = declarations,
     resolvedUpstream = resolvedUpstream,
     runInvariants = runInvariants,

@@ -27,9 +27,13 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
+import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
@@ -45,7 +49,51 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+@Suppress("LargeClass")
 class AgentRunLauncherTest {
+  @Test
+  fun `claude and codex native reviews launch with prompt-only identity`() {
+    listOf("claude", "codex").forEach { agentId ->
+      val runner = RecordingAgentRunProcessRunner()
+      val launcher = FileSystemAgentRunLauncher(runner)
+      val broker = Proxy.newProxyInstance(
+        ReviewEvidenceBroker::class.java.classLoader,
+        arrayOf(ReviewEvidenceBroker::class.java),
+      ) { _, method, _ ->
+        when (method.returnType) {
+          java.lang.Boolean.TYPE -> false
+          java.lang.Integer.TYPE -> 0
+          java.lang.Long.TYPE -> 0L
+          else -> null
+        }
+      } as ReviewEvidenceBroker
+
+      val outcome = launcher.launchNativeReview(
+        NativeReviewWorkerRequest(
+          agentId = agentId,
+          logicalWorkerName = null,
+          issueKey = "SKILL-146",
+          repoRoot = Files.createTempDirectory("native-review-source"),
+          timeout = 1.seconds,
+          prompt = """{"kind":"launch"}""",
+          modelOverride = null,
+          isolation = if (agentId == "codex") {
+            skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
+          } else {
+            skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_PROCESS
+          },
+          broker = broker,
+          operations = BrokerBackedNativeReviewOperationProtocol(broker),
+        ),
+      )
+
+      assertFalse(outcome is UnsupportedAgentRunLaunch)
+      assertEquals(1, runner.requests.size)
+      assertNotNull(runner.requests.single().nativeReviewOperations)
+      assertFalse(runner.requests.single().command.any { it.startsWith("agent=") || it == "--agent" })
+    }
+  }
+
   // A phase-briefing prompt override still drives the per-agent CLI directly (not the
   // goal-continuation skill-bill command), with delivery mechanics unchanged per agent.
   @Test

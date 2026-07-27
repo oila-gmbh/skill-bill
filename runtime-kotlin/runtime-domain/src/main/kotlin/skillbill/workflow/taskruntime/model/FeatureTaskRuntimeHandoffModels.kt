@@ -154,6 +154,8 @@ data class FeatureTaskRuntimePhaseHandoff(
   val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   /** Checkpoint recorded in durable state, compared against the resolved one under `must_match`. */
   val expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  val branchIdentity: String? = null,
+  val baseBranch: String = "main",
   /**
    * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
    * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still

@@ -188,15 +188,16 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
     "settled implementation.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address the carried review Blocker AND Major findings on the CURRENT working tree as incremental " +
-    "reconciliation: fix every Blocker and Major finding using the review findings, the latest implement " +
-    "output, and the intended state from the briefing. Minor and Nit findings are recorded in the " +
-    "unaddressed-findings ledger and are NOT in scope for this pass. Do NOT re-apply the plan from " +
-    "scratch and do not expand scope beyond the Blocker and Major findings. Treat any fix already " +
+    "Address only the carried unresolved actionable Blocker findings on the CURRENT working tree as " +
+    "incremental reconciliation. Approved, Major, Minor, and Nit findings, specialist narratives, " +
+    "raw review output, and prior repair history are not in this briefing and are not in scope. Do not " +
+    "re-apply the plan from scratch or expand scope beyond the carried Blockers. Treat any fix already " +
     "present as a no-op. See the mutating-phase idempotency contract below.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
-    "and report defects with concrete file references.",
+    "and report defects with concrete file references. Emit produced_outputs.findings with only unresolved " +
+    "actionable Blocker findings and the exact repository_checkpoint reviewed; keep approved and " +
+    "non-blocking findings, specialist narration, and telemetry outside that repair projection.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
     "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
@@ -205,20 +206,24 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
     "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
     "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
-    "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap.",
+    "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
+    "Emit audit_result with clearance_status, review_scope, and the exact repository_checkpoint; " +
+    "keep audit reasoning and repair history outside the clearance.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
     "Run tests written during the implement phase, then run the repository validation gate " +
     "relevant to the change. Fix validation findings at their root cause and rerun the gate " +
-    "until it passes; validation findings are repair work, not a reason to block the phase.",
+    "until it passes; validation findings are repair work, not a reason to block the phase. Emit a " +
+    "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
+    "do not embed raw command output or telemetry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
-    "runtime change. Emit a produced_outputs object containing history_result with whether " +
-    "history was written or skipped and the affected path when written.",
+    "runtime change. Emit a bounded history_result containing changed_paths and decisions_recorded " +
+    "alongside whether history was written or skipped; do not forward implementation or validation reports.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
     "Stage and commit the implemented, reviewed, audited, validated, and history-updated " +
     "changes on the resolved feature branch, then push the branch. Stage by explicit enumerated " +
     "path; never run `git add -A` or `git add .`. Emit commit_push_result " +
-    "with the commit SHA, branch name, and pushed status. If goal-continuation suppresses PR, " +
+    "with commit_sha, branch, base_branch, and pushed status. If goal-continuation suppresses PR, " +
     "this successful phase is the terminal success signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
     "Invoke bill-pr-description, honor any repo-native PR template, create or reuse the open " +

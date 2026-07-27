@@ -2,8 +2,10 @@ package skillbill.application.review
 
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
+import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -34,6 +36,7 @@ import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
@@ -77,7 +80,8 @@ class ReviewRecorder {
   val savedAccounting: MutableList<ReviewAccountingRecord> = mutableListOf()
   val refusedOperations: MutableList<ForbiddenReviewOperation> = mutableListOf()
 
-  val launchedSpecialists: List<String> get() = nativeLaunches.mapNotNull { it.logicalWorkerName }
+  val launchedSpecialists: List<String>
+    get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
 }
 
 /**
@@ -89,6 +93,8 @@ class ObservingReviewEvidenceBroker(
   private val recorder: ReviewRecorder,
   private val delegate: ReviewEvidenceBroker,
 ) : ReviewEvidenceBroker {
+  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest) = delegate.authorizeExpansion(request)
+
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     recorder.evidenceBatches += request
     return delegate.readBatch(request).also { result ->
@@ -159,8 +165,9 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
           ObservingReviewEvidenceBroker(recorder, FileSystemReviewEvidenceBroker(binding))
         },
         isolationResolver = { ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE },
+        envelopeValidator = { _, _ -> },
       ),
-      DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)),
+      DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)) { _, _ -> },
     ),
     parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
       recorder.parentLaunches += request
@@ -189,6 +196,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
+    reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
     nativeAgentPreflight = ReviewNativeAgentPreflightPort { request ->
       recorder.preflightRequests += request
       config.preflight(request)
@@ -317,6 +325,7 @@ fun harnessRequest(
   agent2Id: String = "claude",
   timeout: Duration? = null,
   reviewRunId: String? = null,
+  prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
   agent2Id = agent2Id,
@@ -325,6 +334,9 @@ fun harnessRequest(
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   reviewRunId = reviewRunId,
+  baseRevision = "base-revision",
+  headRevision = "head-revision",
+  prelaunchExpansions = prelaunchExpansions,
 )
 
 fun reviewPack(

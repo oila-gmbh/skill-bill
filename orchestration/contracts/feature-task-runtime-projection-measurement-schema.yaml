@@ -1,0 +1,46 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+title: Feature-task-runtime content-free projection measurement
+description: Privacy-safe telemetry for projection delivery and rejection.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - consumer_phase_id
+  - projection_contract_id
+  - producer_iteration
+  - repository_checkpoint_fingerprint
+  - projected_utf8_bytes
+  - projected_collection_items
+  - estimated_tokens
+  - private_evidence_utf8_bytes
+  - delivered_projection_utf8_bytes
+properties:
+  contract_version:
+    const: "0.1"
+  workflow_id: { type: string, minLength: 1 }
+  consumer_phase_id: { type: string, minLength: 1 }
+  projection_contract_id: { type: string, minLength: 1 }
+  producer_iteration:
+    type: object
+    additionalProperties: false
+    required: [phase_id, iteration]
+    properties:
+      phase_id: { type: string, minLength: 1 }
+      iteration: { type: integer, minimum: 1 }
+  repository_checkpoint_fingerprint: { type: string, minLength: 1 }
+  projected_utf8_bytes: { type: integer, minimum: 0 }
+  projected_collection_items: { type: integer, minimum: 0 }
+  estimated_tokens: { type: integer, minimum: 0 }
+  private_evidence_utf8_bytes: { type: integer, minimum: 0 }
+  delivered_projection_utf8_bytes: { type: integer, minimum: 0 }
+  failure_classification:
+    enum:
+      - invalid_contract
+      - unsupported_version
+      - unprojectable_source
+      - budget_overflow
+      - stale_checkpoint
+      - stale_producer_iteration
+      - sibling_context

@@ -61,7 +61,9 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "expansions" to expansions.sortedWith(compareBy({ it.sequence }, { it.expansionId })).map { it.toEnvelope() },
   ),
 )
-fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
+fun GovernedReviewLaunch.toLaunchEnvelope(
+  brokeredEvidence: List<Pair<String, String>> = emptyList(),
+): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
     "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "launch",
@@ -73,14 +75,24 @@ fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewConte
     "base_revision" to assignment.baseRevision,
     "head_revision" to assignment.headRevision,
     "specialist_contract" to specialistContract,
+    "consumer_contract" to ReviewPacketConsumerContract.CONSUMER_CONTRACT,
     "rubric" to rubric,
     "assigned_paths" to assignment.assignedPaths.sorted(),
     "assigned_hunks" to assignment.assignedHunks.sorted(),
+    "assigned_hunk_bodies" to packet.changedHunks
+      .filter { it.hunkId in assignment.assignedHunks }
+      .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
+      .map { it.toEnvelope() },
+    "brokered_evidence" to brokeredEvidence.map { (path, content) ->
+      linkedMapOf("path" to path, "content" to content)
+    },
     "criteria_references" to assignment.criteriaReferences.sorted(),
     "matched_rules" to assignment.matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to assignment.evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
     "dependency_allowlist" to assignment.dependencyAllowlist.normalized.sorted(),
     "forbidden_rediscovery" to ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
+    "evidence_surface_rules" to ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES,
+    "report_structure" to ReviewPacketConsumerContract.REPORT_STRUCTURE,
     "broker_id" to brokerId,
     "isolation" to isolation.name.lowercase(),
     "budget" to budget.toEnvelope(),

@@ -17,7 +17,7 @@ class FeatureImplementWorkflowRuntimeTest {
     private val delegate = CanonicalWorkflowStateSchemaValidator()
     override fun validate(snapshot: Map<String, Any?>, slug: String) = delegate.validate(snapshot, slug)
   }
-  private val engine = WorkflowEngine(validator)
+  private val engine = WorkflowEngine(validator) { "abc123" }
 
   @Test
   fun `implement open starts only the requested step`() {
@@ -59,7 +59,7 @@ class FeatureImplementWorkflowRuntimeTest {
   }
 
   @Test
-  fun `implement continue blocks missing artifacts and reopens blocked step`() {
+  fun `implement continue rejects missing projection and reopens blocked step once complete`() {
     val opened = engine.openRecord(definition, "wfl-001", "fis-001", "assess")
     val blocked =
       engine.updateRecord(
@@ -74,10 +74,11 @@ class FeatureImplementWorkflowRuntimeTest {
         ),
       )
 
-    val blockedDecision = engine.continueDecision(definition, blocked)
-    assertEquals("blocked", blockedDecision.view.continueStatus)
-    assertEquals(listOf("plan"), blockedDecision.view.resume.missingArtifacts)
-    assertFalse(blockedDecision.shouldReopen)
+    val missingProjection = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      engine.continueDecision(definition, blocked)
+    }
+    assertContains(missingProjection.message.orEmpty(), "missing required artifact keys: plan")
+    assertFalse(missingProjection.message.orEmpty().contains("preplan_digest"))
 
     val resumable =
       engine.updateRecord(

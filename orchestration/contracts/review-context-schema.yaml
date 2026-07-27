@@ -136,7 +136,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
     properties:
-      contract_version: { const: "0.6" }
+      contract_version: { const: "0.7" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -170,7 +170,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
     properties:
-      contract_version: { const: "0.6" }
+      contract_version: { const: "0.7" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -190,9 +190,9 @@ $defs:
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, rubric, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.6" }
+      contract_version: { const: "0.7" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -202,14 +202,29 @@ $defs:
       base_revision: { $ref: "#/$defs/identifier" }
       head_revision: { $ref: "#/$defs/identifier" }
       specialist_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
+      consumer_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
       rubric: { type: string, minLength: 1, pattern: '.*\S.*' }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
       assigned_hunks: { $ref: "#/$defs/hunk_ids" }
+      assigned_hunk_bodies:
+        type: array
+        items: { $ref: "#/$defs/hunk" }
+      brokered_evidence:
+        type: array
+        items:
+          type: object
+          required: [path, content]
+          properties:
+            path: { $ref: "#/$defs/path" }
+            content: { type: string }
+          additionalProperties: false
       criteria_references: { $ref: "#/$defs/strings" }
       matched_rules: { $ref: "#/$defs/rule_references" }
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
       dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
       forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
+      evidence_surface_rules: { type: string, minLength: 1, pattern: '.*\S.*' }
+      report_structure: { type: string, minLength: 1, pattern: '.*\S.*' }
       broker_id: { $ref: "#/$defs/identifier" }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
@@ -242,7 +257,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.6" }
+      contract_version: { const: "0.7" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -270,7 +285,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
-      contract_version: { const: "0.6" }
+      contract_version: { const: "0.7" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }

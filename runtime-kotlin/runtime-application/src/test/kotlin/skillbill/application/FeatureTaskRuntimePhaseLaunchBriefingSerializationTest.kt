@@ -30,7 +30,8 @@ class FeatureTaskRuntimePhaseLaunchBriefingSerializationTest {
     }
 
     assertContains(error.message.orEmpty(), "upstream_outputs_by_phase_id")
-    assertContains(error.message.orEmpty(), "handoff_envelope")
+    assertContains(error.message.orEmpty(), "Restart")
+    assertContains(error.message.orEmpty(), "migrate")
   }
 
   @Test
@@ -39,6 +40,31 @@ class FeatureTaskRuntimePhaseLaunchBriefingSerializationTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(rowWithoutEnvelope)
+    }
+  }
+
+  @Test
+  fun `an unknown briefing field loud-fails with restart or migration guidance`() {
+    val incompatible = briefing().toArtifactMap() + ("future_field" to "private body")
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(incompatible)
+    }
+
+    assertContains(error.message.orEmpty(), "unsupported fields")
+    assertContains(error.message.orEmpty(), "Restart")
+    assertContains(error.message.orEmpty(), "migrate")
+  }
+
+  @Test
+  fun `a missing or incompatible briefing version loud-fails`() {
+    listOf(
+      briefing().toArtifactMap() - "contract_version",
+      briefing().toArtifactMap() + ("contract_version" to "9.9"),
+    ).forEach { incompatible ->
+      assertFailsWith<InvalidWorkflowStateSchemaError> {
+        FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap(incompatible)
+      }
     }
   }
 

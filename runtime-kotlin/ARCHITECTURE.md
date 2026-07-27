@@ -422,7 +422,9 @@ runtime-ports
     - `skillbill.workflow.WorkflowEngine.continueMap`
     - `skillbill.workflow.WorkflowEngine.compactContinueMap`
     - `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+    - `skillbill.workflow.WorkflowEngine.inputProjectionMap`
     - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
+    - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
     - `skillbill.install.model.InstallPlanWireValidator.validate`
@@ -472,12 +474,19 @@ runtime-ports
     - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
+    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
     - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
@@ -713,6 +722,33 @@ skillbill.workflow.verify
 
 ## Phase Context Boundary (SKILL-137 handoff projections)
 
+SKILL-146 makes this boundary explicitly four-part: complete producer output is
+private evidence; a named consumer projection is the only prompt-visible
+derivative; repository state has an immutable checkpoint identity; and
+phase-local instructions use workflow-owned invariant allowlists. Declaration
+and persistence wires have independent incompatible `0.2` contracts. Delivered
+records identify the workflow, consumer, producer iteration, and checkpoint;
+the versioned, exact-decoded `FeatureTaskRuntimePhaseRecord` wire is the
+authoritative durable private-evidence record written and read by the phase
+recorder. It remains under the private phase-record artifact key, separate from
+the delivered-projection key and prompt-facing read API. Unknown fields,
+missing record identity, and unsupported versions are incompatible rather than
+defaulted.
+legacy records missing that identity loud-fail with restart or explicit
+out-of-band migration guidance. The operator action is deliberately identical at
+workflow, briefing, handoff, private-evidence, and delivered-projection read
+seams: restart the active run or use the documented out-of-band migration
+procedure. Unsupported versions are never defaulted or interpreted as the
+current least-context shape.
+
+Budgets are enforced before launch against serialized UTF-8 bytes and
+collection items. The runtime never truncates, drops fields, or falls back to a
+complete artifact. Measurements contain identifiers, byte/item counts, token
+estimates, and failure classifications only, never prompt or evidence bodies.
+They are written only through lifecycle telemetry and progress stores; no
+measurement or diagnostic field is added to a phase receipt or other
+prompt-consumable domain artifact.
+
 A feature-task-runtime phase no longer receives the complete output of its
 upstream phases. Context reaching a phase is split into four parts with distinct
 owners, storage, and failure modes.
@@ -761,12 +797,24 @@ model-driven retrieval.
 
 **3. Repository-derived context.** `FeatureTaskRuntimeRepositoryCheckpoint`
 carries a deterministic fingerprint, optional base/head refs, and working-tree
-ownership. Policies are `not_required`, `must_match` (resolved and recorded
-fingerprints must be equal), and `refresh_from_repository` (a freshly resolved
-checkpoint is required). The domain stays git-agnostic: the application layer
-resolves the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
+ownership. Policies are `not_required`, `must_match`, and
+`refresh_from_repository`. Both checkpoint-aware policies require and carry a
+freshly resolved checkpoint. `must_match` also requires the durable expected
+checkpoint and rejects repository movement before launch; it is used for the
+review-to-`implement_fix` edge so remediation targets the exact reviewed tree.
+`refresh_from_repository` deliberately accepts movement and re-derives the
+consumer scope. The domain stays git-agnostic: the application layer resolves
+the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
 `WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
 the audit-repair path already depends on. No new git port was introduced.
+
+Finalization path inventories come from the checkpoint's runtime-resolved
+base/head and scoped owned-path comparison. Implementation receipt paths are
+claims only: validation scope, boundary candidates, commit inclusions and
+exclusions, and PR changed paths are derived from the resolved inventory. Both
+runtime and prose continuation expose bounded validation, boundary, history,
+commit, and PR requests or receipts; they never substitute the private audit,
+review, implementation, validation, or history artifacts.
 
 **4. Phase-local instructions.** Run identity remains durable state on every
 briefing, but prompt rendering is selected per phase by
@@ -1108,7 +1156,9 @@ Categories:
 - `skillbill.workflow.WorkflowEngine.continueMap`
 - `skillbill.workflow.WorkflowEngine.compactContinueMap`
 - `skillbill.workflow.WorkflowEngine.updateAcknowledgementMap`
+- `skillbill.workflow.WorkflowEngine.inputProjectionMap`
 - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
+- `skillbill.workflow.model.WorkflowInputProjection.artifacts`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
@@ -1142,12 +1192,19 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
+- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
 - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`

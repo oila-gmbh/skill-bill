@@ -158,6 +158,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
       "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator",
       "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator",

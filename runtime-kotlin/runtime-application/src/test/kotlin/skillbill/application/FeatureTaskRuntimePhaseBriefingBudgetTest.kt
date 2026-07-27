@@ -4,7 +4,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssemble
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
@@ -33,42 +32,8 @@ private val CEILING = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNT
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `audit remediation briefing exposes an ordered checklist without cumulative historical payloads`() {
-    val repairItem = FeatureTaskRuntimeRepairItem(
-      repairItemId = "ac-004-gap-2-item-1",
-      intendedOutcome = "Strict durable state",
-      implementationActions = listOf("Implement strict decoding"),
-      affectedPathsOrSymbols = listOf("FeatureTaskRuntimeAuditRepairWireMapper"),
-      requiredVerification = listOf("Run focused tests"),
-      dependsOn = emptyList(),
-    )
-    val plan = FeatureTaskRuntimeAuditRepairPlan(
-      contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
-      gaps = listOf(
-        FeatureTaskRuntimeAuditGap(
-          gapId = "ac-004-gap-2",
-          acceptanceCriterionRef = "AC-004",
-          acceptanceCriterionText = "Durable state is strict.",
-          failureEvidence = FeatureTaskRuntimeEvidence(
-            FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH,
-            "FeatureTaskRuntimeAuditRepairWireMapper",
-            "AC-004",
-          ),
-          diagnosis = "Tighten the read seam.",
-          affectedBoundary = "runtime application",
-          repairItems = listOf(repairItem),
-        ),
-      ),
-    )
-    val state = FeatureTaskRuntimeAuditRepairState(
-      acceptedPlans = listOf(plan),
-      repairItemResults = emptyList(),
-      priorGapDispositions = emptyList(),
-      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
-        listOf(FeatureTaskRuntimeUnresolvedGap("ac-004-gap-2", "AC-004", 2)),
-      ),
-      repositoryFingerprint = "digest",
-      progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
-    )
+    val plan = remediationPlanFixture()
+    val state = remediationStateFixture(plan)
     val handoff = FeatureTaskRuntimePhaseHandoff(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       runInvariants = FeatureTaskRuntimeRunInvariants(
@@ -86,6 +51,18 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     assertEquals(listOf("ac-004-gap-2-item-1"), briefing.auditRepairItemIds)
     assertContains(briefing.briefingText, "exhaustive execution checklist")
+    assertContains(
+      briefing.briefingText,
+      "original failure_evidence check no longer failing",
+      false,
+      "fixed requires discharging the gap's original check, not generic inspection",
+    )
+    assertContains(
+      briefing.briefingText,
+      "Builds and tests stay deferred to validate",
+      false,
+      "the repair loop never runs builds or tests",
+    )
     assertContains(briefing.briefingText, "audit_remediation_context")
     assertContains(briefing.briefingText, "prior_terminal_result_count")
     assertFalse(briefing.briefingText.contains("execution_history"))
@@ -95,11 +72,16 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `an oversized upstream projection is rejected, never truncated into the briefing`() {
     val oversizedBytes = 400_000
+    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+      "fixture-checkpoint",
+    )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = multiUpstreamOutputs(oversizedBytes),
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
     )
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
@@ -119,10 +101,13 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   }
 
   @Test
-  fun `normal-size upstream projections are delivered verbatim and within the framing ceiling`() {
+  fun `normal-size review repair projection excludes unrelated upstream bodies`() {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
+    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+      "fixture-checkpoint",
+    )
     val recordedOutputs = listOf(
       phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"$planBody"}"""),
       phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, """{"implement":"$implementBody"}"""),
@@ -133,15 +118,17 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
       recordedOutputs = recordedOutputs,
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    assertContains(briefing.briefingText, """{"plan":"$planBody"}""")
-    assertContains(briefing.briefingText, """{"implement":"$implementBody"}""")
-    assertContains(briefing.briefingText, """{"review":"$reviewBody"}""")
-    assertContains(briefing.briefingText, "### from: ${FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN}")
-    assertEquals("""{"plan":"$planBody"}""", briefing.requireUpstreamReceipt("plan"))
+    assertFalse(briefing.briefingText.contains(planBody))
+    assertFalse(briefing.briefingText.contains(implementBody))
+    assertFalse(briefing.briefingText.contains(reviewBody))
+    assertContains(briefing.briefingText, "unresolved_blocker_findings")
+    assertContains(briefing.briefingText, "repository_checkpoint")
   }
 
   @Test
@@ -179,17 +166,18 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       derivedContextKeys = emptyList(),
     )
 
-    // F-001: the framing ceiling must throw a TYPED error the launch seam catches, not a bare
-    // IllegalArgumentException that would unwind past the STATUS_RUNNING persist and wedge the row.
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseBriefingFramingError> {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
     }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
     assertEquals("wftr-1", error.workflowId)
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, error.consumerPhaseId)
-    assertTrue(error.framingBytes > error.ceilingBytes, "the error must report the measured overflow")
+    assertEquals("run_invariant_acceptance_criteria", error.projectionName)
+    assertContains(error.reason, "bytes")
+    assertContains(error.reason, "budget")
     assertFalse(
       error.message.orEmpty().contains("x".repeat(64)),
-      "a framing rejection must name the measured size, never echo the contract content it refused to deliver",
+      "a projection rejection must name the measured size, never echo the contract content it refused to deliver",
     )
   }
 
@@ -216,7 +204,6 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
     ).forEach { phaseId ->
       val briefing = briefingFor(phaseId)
       assertFalse(
@@ -233,6 +220,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       assertEquals(invariants.acceptanceCriteria, briefing.acceptanceCriteria)
       assertContains(briefing.briefingText, "spec_reference:")
     }
+    assertContains(
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR).briefingText,
+      "acceptance_criteria:",
+    )
   }
 
   @Test
@@ -273,7 +264,10 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       """{"implement":"${"i".repeat(bodyBytes)}"}""",
     ),
-    phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"${"r".repeat(bodyBytes)}"}"""),
+    phaseOutput(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      """{"produced_outputs":{"findings":[{"severity":"blocker","message":"${"r".repeat(bodyBytes)}"}]}}""",
+    ),
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =
@@ -284,4 +278,43 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   private fun planProjectionOutput(): String = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":""" +
     PlanningProjectionFixtures.EXECUTABLE_PLAN + "}"
+
+  private fun remediationPlanFixture() = FeatureTaskRuntimeAuditRepairPlan(
+    contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
+    gaps = listOf(
+      FeatureTaskRuntimeAuditGap(
+        gapId = "ac-004-gap-2",
+        acceptanceCriterionRef = "AC-004",
+        acceptanceCriterionText = "Durable state is strict.",
+        failureEvidence = FeatureTaskRuntimeEvidence(
+          FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH,
+          "FeatureTaskRuntimeAuditRepairWireMapper",
+          "AC-004",
+        ),
+        diagnosis = "Tighten the read seam.",
+        affectedBoundary = "runtime application",
+        repairItems = listOf(
+          FeatureTaskRuntimeRepairItem(
+            repairItemId = "ac-004-gap-2-item-1",
+            intendedOutcome = "Strict durable state",
+            implementationActions = listOf("Implement strict decoding"),
+            affectedPathsOrSymbols = listOf("FeatureTaskRuntimeAuditRepairWireMapper"),
+            requiredVerification = listOf("Run focused tests"),
+            dependsOn = emptyList(),
+          ),
+        ),
+      ),
+    ),
+  )
+
+  private fun remediationStateFixture(plan: FeatureTaskRuntimeAuditRepairPlan) = FeatureTaskRuntimeAuditRepairState(
+    acceptedPlans = listOf(plan),
+    repairItemResults = emptyList(),
+    priorGapDispositions = emptyList(),
+    unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+      listOf(FeatureTaskRuntimeUnresolvedGap("ac-004-gap-2", "AC-004", 2)),
+    ),
+    repositoryFingerprint = "digest",
+    progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
+  )
 }

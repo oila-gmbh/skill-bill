@@ -1908,7 +1908,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.WorkflowEngine.continueMap",
       "skillbill.workflow.WorkflowEngine.compactContinueMap",
       "skillbill.workflow.WorkflowEngine.updateAcknowledgementMap",
+      "skillbill.workflow.WorkflowEngine.inputProjectionMap",
       "skillbill.workflow.model.WorkflowContinuationArtifactSummary.value",
+      "skillbill.workflow.model.WorkflowInputProjection.artifacts",
       // SKILL-52.2 subtask 4: domain-owned workflow-snapshot validator port.
       // The map is the canonical schema-validated wire snapshot envelope; the
       // port stays raw-map at the validation seam because the schema itself
@@ -1989,6 +1991,10 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap",
+      "skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap",
       // SKILL-140: durable append-only quarantine evidence store (private, prompt-invisible) and its
       // domain-owned schema validator port (infra-fs adapter bound in DI).
       "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord",
@@ -1997,6 +2003,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap",
@@ -2215,7 +2224,7 @@ class RuntimeArchitectureTest {
     val scopeDeclarationPattern: Regex =
       Regex(
         """^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|open\s+|sealed\s+""" +
-          """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+)*""" +
+          """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+|fun\s+)*""" +
           """(?:class|object|interface)\s+([A-Za-z0-9_]+)""",
       )
   }

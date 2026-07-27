@@ -130,37 +130,50 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
+    validateExpandedAuditRepairPlan(expandCompactAuditOutput(parsed, sourceLabel), sourceLabel)
   }
 
   fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
-    return expandCompactAuditOutput(parsed, sourceLabel)
+    return expandCompactAuditOutput(parsed, sourceLabel).also {
+      validateExpandedAuditRepairPlan(it, sourceLabel)
+    }
   }
 
   fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
     val node = readPhaseOutputObjectNode(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
     validate(parsed, sourceLabel)
+    val expanded = expandCompactAuditOutput(parsed, sourceLabel)
+    validateExpandedAuditRepairPlan(expanded, sourceLabel)
     return NormalizedFeatureTaskRuntimePhaseOutput(
       canonicalJson = mapper.writeValueAsString(parsed),
-      envelope = expandCompactAuditOutput(parsed, sourceLabel),
+      envelope = expanded,
     )
+  }
+
+  private fun validateExpandedAuditRepairPlan(phaseOutput: Map<String, Any?>, sourceLabel: String) {
+    validateAuditRepairPlan(mapper.valueToTree(phaseOutput), sourceLabel)
   }
 
   private fun expandCompactAuditOutput(phaseOutput: Map<String, Any?>, sourceLabel: String): Map<String, Any?> {
     if (sourceLabel != "audit") return phaseOutput
     val produced = phaseOutput["produced_outputs"] as? Map<*, *> ?: return phaseOutput
     val compactGaps = produced["gaps"] as? List<*> ?: return phaseOutput
-    val expandedGaps = compactGaps.map(::compactGapToRepairGap)
+    val expandedGaps = compactGaps
+      .groupBy { compactGapCriterion(it) }
+      .map { (_, criterionGaps) -> compactGapsToRepairGap(criterionGaps) }
     val normalizedProduced = linkedMapOf<String, Any?>().apply {
       produced.forEach { (key, value) ->
         if (key is String && key != "gaps") put(key, value)
       }
       put(
         "unmet_criteria",
-        compactGaps.map(::compactGapToUnmetCriterion),
+        compactGaps
+          .groupBy { compactGapCriterion(it) }
+          .map { (_, criterionGaps) -> compactGapsToUnmetCriterion(criterionGaps) },
       )
       if (expandedGaps.isNotEmpty()) {
         put(
@@ -175,16 +188,27 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     return LinkedHashMap(phaseOutput).apply { put("produced_outputs", normalizedProduced) }
   }
 
-  private fun compactGapToRepairGap(value: Any?): Map<String, Any?> {
+  private fun compactGapCriterion(value: Any?): String {
     @Suppress("UNCHECKED_CAST")
     val gap = value as Map<String, Any?>
-    val criterion = gap.getValue("criterion") as String
-    val location = gap.getValue("location") as String
-    val issue = gap.getValue("issue") as String
-    val fix = gap.getValue("fix") as String
+    return gap.getValue("criterion") as String
+  }
+
+  private fun compactGapsToRepairGap(values: List<Any?>): Map<String, Any?> {
+    @Suppress("UNCHECKED_CAST")
+    val gaps = values.map { it as Map<String, Any?> }
+    val first = gaps.first()
+    val criterion = first.getValue("criterion") as String
+    val location = first.getValue("location") as String
+    val issue = first.getValue("issue") as String
     val gapId = "${criterion.lowercase()}-gap-1"
-    val repairItemId = "$gapId-item-1"
-    val artifactRef = (gap["file"] as? String)?.let { "$it:$location" } ?: location
+    val artifactRef = "$criterion:" + gaps.joinToString("--") { gap ->
+      val gapLocation = gap.getValue("location") as String
+      listOfNotNull(gap["file"] as? String, gapLocation)
+        .joinToString("-")
+        .replace('/', '-')
+        .replace(':', '-')
+    }
     return mapOf(
       "gap_id" to gapId,
       "acceptance_criterion_ref" to criterion,
@@ -195,28 +219,32 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         "check_ref" to criterion,
       ),
       "diagnosis" to issue,
-      "affected_boundary" to location,
-      "repair_items" to listOf(
+      "affected_boundary" to gaps.joinToString(" | ") { it.getValue("location") as String },
+      "repair_items" to gaps.mapIndexed { index, gap ->
+        val itemLocation = gap.getValue("location") as String
+        val itemFix = gap.getValue("fix") as String
+        val itemArtifactRef = (gap["file"] as? String)?.let { "$it:$itemLocation" } ?: itemLocation
         mapOf(
-          "repair_item_id" to repairItemId,
-          "intended_outcome" to fix,
-          "implementation_actions" to listOf(fix),
-          "affected_paths_or_symbols" to listOf(artifactRef),
-          "required_verification" to listOf("Verify $criterion at $location"),
+          "repair_item_id" to "$gapId-item-${index + 1}",
+          "intended_outcome" to itemFix,
+          "implementation_actions" to listOf(itemFix),
+          "affected_paths_or_symbols" to listOf(itemArtifactRef),
+          "required_verification" to listOf("Verify $criterion at $itemLocation"),
           "depends_on" to emptyList<String>(),
           "status" to "pending",
-        ),
-      ),
+        )
+      },
     )
   }
 
-  private fun compactGapToUnmetCriterion(value: Any?): Map<String, Any?> {
+  private fun compactGapsToUnmetCriterion(values: List<Any?>): Map<String, Any?> {
     @Suppress("UNCHECKED_CAST")
-    val gap = value as Map<String, Any?>
+    val gaps = values.map { it as Map<String, Any?> }
+    val first = gaps.first()
     return mapOf(
-      "acceptance_criterion_ref" to gap.getValue("criterion"),
-      "severity" to gap.getValue("severity"),
-      "message" to gap.getValue("issue"),
+      "acceptance_criterion_ref" to first.getValue("criterion"),
+      "severity" to if (gaps.any { it["severity"] == "blocker" }) "blocker" else "major",
+      "message" to gaps.joinToString("; ") { it.getValue("issue") as String },
     )
   }
 

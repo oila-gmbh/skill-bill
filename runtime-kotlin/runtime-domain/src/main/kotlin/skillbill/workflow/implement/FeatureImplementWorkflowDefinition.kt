@@ -1,8 +1,69 @@
 package skillbill.workflow.implement
 
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
 object FeatureImplementWorkflowDefinition {
+  private val implementationReceiptFields = setOf(
+    "tasks_completed",
+    "files_created",
+    "files_modified",
+    "tests_written",
+    "plan_deviation_notes",
+    "criteria_to_file_map",
+    "notes_for_review",
+    "stopped_early",
+    "stopped_reason",
+  )
+  private val validationRequestFields =
+    setOf("validation_strategy", "changed_paths", "required_checks", "repository_checkpoint")
+  private val validationReceiptFields = setOf("validation_status", "checks", "repository_checkpoint")
+  private val boundaryCandidateFields = setOf("changed_paths", "boundary_candidates")
+  private val historyReceiptFields = setOf("changed_paths", "decisions_recorded")
+  private val commitRequestFields = setOf(
+    "path_inventory",
+    "required_inclusions",
+    "required_exclusions",
+    "branch_identity",
+    "gate_attestations",
+    "repository_checkpoint",
+  )
+  private val commitReceiptFields = setOf("commit_sha", "branch", "base_branch", "pushed")
+  private val prRequestFields = setOf(
+    "completed_task_ids",
+    "changed_paths",
+    "tests_added",
+    "tests_updated",
+    "deviations",
+    "validation_summary",
+    "base_branch",
+    "diff_reference",
+  )
+
+  private val privateArtifactKeys = setOf(
+    "step_artifacts",
+    "telemetry_payload",
+    "progress",
+    "prompt",
+    "logs",
+    "source_body",
+    "complete_diff",
+    "progress_write_failures",
+  )
+
+  private fun projection(
+    vararg keys: String,
+    typedFields: Map<String, Set<String>> = emptyMap(),
+    repositoryCheckpointArtifactKey: String = "repository_evidence",
+  ) = WorkflowInputProjectionDeclaration(
+    requiredArtifactKeys = keys.toList(),
+    projectedFieldsByArtifactKey = typedFields,
+    forbiddenArtifactKeys = privateArtifactKeys,
+    maxUtf8Bytes = 64 * 1024,
+    maxCollectionItems = 512,
+    repositoryCheckpointArtifactKey = repositoryCheckpointArtifactKey,
+  )
+
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-task",
     workflowName = "bill-feature-task",
@@ -20,8 +81,8 @@ object FeatureImplementWorkflowDefinition {
       "preplan",
       "plan",
       "implement",
-      "review",
       "audit",
+      "review",
       "validate",
       "write_history",
       "commit_push",
@@ -35,8 +96,8 @@ object FeatureImplementWorkflowDefinition {
       "preplan" to "Step 2: Pre-Planning",
       "plan" to "Step 3: Create Implementation Plan or Decompose",
       "implement" to "Step 4: Execute Plan",
-      "review" to "Step 5: Code Review",
-      "audit" to "Step 6: Completeness Audit",
+      "audit" to "Step 5: Completeness Audit",
+      "review" to "Step 6: Code Review",
       "validate" to "Step 6b: Quality Check",
       "write_history" to "Step 7: Boundary History",
       "commit_push" to "Step 8: Commit and Push",
@@ -50,12 +111,12 @@ object FeatureImplementWorkflowDefinition {
       "preplan" to listOf("assessment", "branch"),
       "plan" to listOf("assessment", "preplan_digest"),
       "implement" to listOf("plan"),
-      "review" to listOf("implementation_summary"),
-      "audit" to listOf("implementation_summary", "review_result"),
-      "validate" to listOf("audit_report"),
-      "write_history" to listOf("implementation_summary", "validation_result"),
-      "commit_push" to listOf("implementation_summary", "validation_result", "history_result"),
-      "pr_description" to listOf("implementation_summary", "branch"),
+      "audit" to listOf("plan", "implementation_summary", "repository_evidence"),
+      "review" to listOf("acceptance_criteria", "review_scope", "audit_clearance"),
+      "validate" to listOf("validation_request", "audit_clearance", "repository_evidence"),
+      "write_history" to listOf("boundary_candidates", "validation_receipt", "repository_evidence"),
+      "commit_push" to listOf("commit_request", "validation_receipt", "history_receipt", "repository_evidence"),
+      "pr_description" to listOf("acceptance_criteria", "pr_request", "commit_receipt", "repository_evidence"),
       "finish" to listOf("pr_result"),
     ),
     resumeActions =
@@ -70,15 +131,17 @@ object FeatureImplementWorkflowDefinition {
       "implement" to
         "Resume implementation from the persisted plan, then refresh implementation_summary.",
       "review" to
-        "Resume code review from the latest implementation_summary and persist review_result after each pass.",
+        "Resume code review from acceptance_criteria, the exact checkpointed review_scope, and audit_clearance.",
       "audit" to
-        "Resume the completeness audit from implementation_summary and review_result, then persist audit_report.",
-      "validate" to "Resume final validation from the latest audit_report, then persist validation_result.",
+        "Resume the completeness audit from the executable plan, implementation receipt, acceptance criteria, " +
+        "and checkpoint-scoped repository evidence; review_result is not an audit input.",
+      "validate" to
+        "Resume final validation from validation_request and audit_clearance, then persist validation_receipt.",
       "write_history" to
-        "Resume boundary history from implementation_summary and validation_result, then persist history_result.",
+        "Resume boundary history from boundary_candidates and validation_receipt, then persist history_receipt.",
       "commit_push" to
-        "Resume commit/push after verifying implementation_summary, validation_result, and history_result are current.",
-      "pr_description" to "Resume PR creation using the branch and implementation_summary, then persist pr_result.",
+        "Resume commit/push from commit_request, validation_receipt, and history_receipt.",
+      "pr_description" to "Resume PR creation from pr_request and commit_receipt, then persist pr_result.",
       "finish" to "Close the workflow by marking finish completed and setting the final workflow_status.",
     ),
     continuationReferenceSections =
@@ -111,13 +174,13 @@ object FeatureImplementWorkflowDefinition {
       ),
       "review" to listOf(
         "content.md :: Continuation Mode",
-        "content.md :: Step 5: Code Review (orchestrator)",
-        "content.md :: Fix-loop briefing (used by Step 5 review loop)",
+        "content.md :: Step 6: Code Review (orchestrator)",
+        "content.md :: Fix-loop briefing (used by Step 6 review loop)",
       ),
       "audit" to listOf(
         "content.md :: Continuation Mode",
         "content.md :: Durable Progress Write Contract",
-        "content.md :: Step 6: Completeness Audit (subagent)",
+        "content.md :: Step 5: Completeness Audit (subagent)",
         "content.md :: Completeness audit subagent briefing",
       ),
       "validate" to listOf(
@@ -167,24 +230,25 @@ object FeatureImplementWorkflowDefinition {
         "then resume the implementation subagent from Step 4. Require durable progress writes at task boundaries and " +
         "heartbeat intervals using workflow_id, step_id=implement, and the resumed attempt_count.",
       "review" to
-        "Do not re-run implementation first unless the review loop sends work back. Start from the latest " +
-        "implementation_summary artifact and run Step 5 inline in the orchestrator.",
+        "Do not re-run implementation first unless the review loop sends work back. Start from acceptance_criteria, " +
+        "the exact checkpointed review_scope, and compact audit_clearance, then run Step 6 inline.",
       "audit" to
-        "Resume at the completeness audit using the latest implementation_summary and review_result artifacts. Only " +
-        "loop back to planning if the audit actually finds gaps. Require durable progress writes using workflow_id, " +
+        "Resume at the completeness audit using the executable plan, implementation receipt, acceptance criteria, " +
+        "and checkpoint-scoped repository evidence. Never inject review_result. Only loop back to implementation " +
+        "when the audit finds gaps. Require durable progress writes using workflow_id, " +
         "step_id=audit, and the resumed attempt_count.",
       "validate" to
-        "Resume the final validation gate from the latest audit_report artifact, then continue the normal " +
+        "Resume the final validation gate from validation_request and audit_clearance, then continue the normal " +
         "finalization sequence without pausing unless validation fails. Require durable progress writes using " +
         "workflow_id, step_id=validate, and the resumed attempt_count.",
       "write_history" to
-        "Skip directly to boundary history writing using the persisted implementation_summary and validation_result " +
-        "artifacts, then continue with commit and PR creation.",
+        "Skip directly to boundary history writing using boundary_candidates and validation_receipt, then continue " +
+        "with commit and PR creation.",
       "commit_push" to
-        "Do not revisit earlier steps. Verify the persisted implementation_summary, validation_result, and " +
-        "history_result artifacts are still current, then run commit/push.",
+        "Do not revisit earlier steps. Use commit_request, validation_receipt, and history_receipt, then run " +
+        "commit/push.",
       "pr_description" to
-        "Resume directly at PR creation using the saved branch and implementation_summary artifacts, then finish the " +
+        "Resume directly at PR creation using pr_request and commit_receipt, then finish the " +
         "workflow and telemetry sequence. Require durable progress writes using workflow_id, " +
         "step_id=pr_description, and the resumed attempt_count.",
       "finish" to
@@ -195,5 +259,67 @@ object FeatureImplementWorkflowDefinition {
     openPriorStepsCompleted = false,
     completedTerminalSummaryArtifact = "pr_result",
     workflowMode = "prose",
+    inputProjectionsByStep = mapOf(
+      "implement" to projection("plan", "repository_evidence"),
+      "audit" to projection(
+        "plan",
+        "implementation_summary",
+        "repository_evidence",
+        typedFields = mapOf(
+          "implementation_summary" to implementationReceiptFields,
+        ),
+      ),
+      "review" to projection(
+        "acceptance_criteria",
+        "review_scope",
+        "audit_clearance",
+        typedFields = mapOf(
+          "acceptance_criteria" to setOf("criteria"),
+          "review_scope" to setOf("fingerprint", "comparison_scope", "changed_paths"),
+          "audit_clearance" to setOf("contract_version", "verdict"),
+        ),
+        repositoryCheckpointArtifactKey = "review_scope",
+      ),
+      "validate" to projection(
+        "validation_request",
+        "audit_clearance",
+        "repository_evidence",
+        typedFields = mapOf(
+          "validation_request" to validationRequestFields,
+          "audit_clearance" to setOf("contract_version", "verdict"),
+        ),
+      ),
+      "write_history" to projection(
+        "boundary_candidates",
+        "validation_receipt",
+        "repository_evidence",
+        typedFields = mapOf(
+          "boundary_candidates" to boundaryCandidateFields,
+          "validation_receipt" to validationReceiptFields,
+        ),
+      ),
+      "commit_push" to projection(
+        "commit_request",
+        "validation_receipt",
+        "history_receipt",
+        "repository_evidence",
+        typedFields = mapOf(
+          "commit_request" to commitRequestFields,
+          "validation_receipt" to validationReceiptFields,
+          "history_receipt" to historyReceiptFields,
+        ),
+      ),
+      "pr_description" to projection(
+        "acceptance_criteria",
+        "pr_request",
+        "commit_receipt",
+        "repository_evidence",
+        typedFields = mapOf(
+          "acceptance_criteria" to setOf("criteria"),
+          "pr_request" to prRequestFields,
+          "commit_receipt" to commitReceiptFields,
+        ),
+      ),
+    ),
   )
 }

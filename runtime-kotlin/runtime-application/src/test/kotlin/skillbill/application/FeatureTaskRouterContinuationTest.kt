@@ -68,7 +68,7 @@ class FeatureTaskRouterContinuationTest {
     assertEquals(SESSION_ID, continued.resume.snapshot.sessionId)
     assertEquals("implement", continued.continueStepId)
     assertEquals(listOf("plan"), continued.compact.requiredArtifactKeys)
-    assertEquals(listOf("plan"), continued.compact.currentStepArtifacts.map { it.key })
+    assertEquals(listOf("plan", "repository_evidence"), continued.compact.currentStepArtifacts.map { it.key })
     assertFalse(continued.stepArtifacts.containsKey("preplan_digest"))
     val repeatedLookup = assertIs<FeatureTaskContinuationLookupResult.AlreadyRunning>(
       lookup.lookup("SKILL-120", REPOSITORY_IDENTITY),

@@ -1,14 +1,17 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -27,6 +30,33 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
+  @Test fun `assigned reads return only projected hunk bodies and normalized target is single use`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
+    val base = assignment(listOf("A.kt"))
+    val scoped = base.copy(assignedHunks = listOf(hunk.hunkId))
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        scoped,
+        "security",
+        policy(),
+        projectedHunks = listOf(hunk),
+      ),
+    )
+
+    val first = broker.readBatch(batch("A.kt")).results.single()
+    val repeated = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", offset = 1, limit = 1, paginationToken = "next"),
+      ),
+    ).results.single()
+
+    assertEquals(hunk.content, first.content)
+    assertEquals(hunk.content.toByteArray(Charsets.UTF_8).size.toLong(), first.bytes)
+    assertEquals("repeated_evidence_read", repeated.forbidden?.category)
+  }
+
   @Test fun `filesystem unsafe assigned path is rejected while broker is constructed`() {
     val root = repo("A.kt" to "assigned")
     assertFailsWith<IllegalArgumentException> {
@@ -37,7 +67,7 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `supplementary Unicode path maps with exact Git identity`() {
     val path = "src/rocket-\uD83D\uDE80.kt"
     val root = repo(path to "assigned")
-    val broker = broker(root, assignment(listOf(path)))
+    val broker = projectedBroker(root, assignment(listOf(path)))
 
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest("security", listOf(ReviewEvidenceRequest("security", path))),
@@ -83,7 +113,7 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `batched assigned reads are measured in one pass`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "second")
-    val broker = broker(root, assignment(listOf("A.kt", "B.kt")))
+    val broker = projectedBroker(root, assignment(listOf("A.kt", "B.kt")))
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest(
         "security",
@@ -98,7 +128,7 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `literal backslash and slash paths remain distinct evidence identities`() {
     val root = repo("dir/name.kt" to "slash", "dir\\name.kt" to "backslash")
-    val backslashBroker = broker(root, assignment(listOf("dir\\name.kt")))
+    val backslashBroker = projectedBroker(root, assignment(listOf("dir\\name.kt")))
 
     assertEquals("backslash", backslashBroker.readBatch(batch("dir\\name.kt")).results.single().content)
     assertEquals(
@@ -107,9 +137,15 @@ class FileSystemReviewEvidenceBrokerTest {
     )
   }
 
-  @Test fun `missing assigned files are omitted without bypassing evidence accounting`() {
+  @Test fun `deleted assigned files return projected hunks without filesystem access`() {
     val root = repo("A.kt" to "assigned")
-    val broker = broker(root, assignment(listOf("A.kt", "Deleted.kt")))
+    val existing = ReviewChangedHunk("A.kt", 1, 1, 1, 1, "assigned")
+    val deleted = ReviewChangedHunk("Deleted.kt", 1, 1, 0, 0, "@@ -1 +0,0 @@\n-deleted")
+    val base = assignment(listOf("A.kt", "Deleted.kt"))
+    val assigned = base.copy(assignedHunks = listOf(existing.hunkId, deleted.hunkId))
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(root, assigned, "security", policy(), projectedHunks = listOf(existing, deleted)),
+    )
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest(
         "security",
@@ -117,15 +153,15 @@ class FileSystemReviewEvidenceBrokerTest {
       ),
     )
 
-    assertEquals(listOf("assigned", null), result.results.map { it.content })
-    assertEquals(listOf(8L, 0L), result.results.map { it.bytes })
-    assertEquals(8, result.cumulativeBytes)
-    assertEquals(8, broker.accounting().evidenceBytes)
+    assertEquals(listOf(existing.content, deleted.content), result.results.map { it.content })
+    val expectedBytes = listOf(existing, deleted).sumOf { it.content.toByteArray(Charsets.UTF_8).size.toLong() }
+    assertEquals(expectedBytes, result.cumulativeBytes)
+    assertEquals(expectedBytes, broker.accounting().evidenceBytes)
   }
 
   @Test fun `per-result excess terminates the lane and the rest of the batch`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "second")
-    val broker = broker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 4, cumulative = 8))
+    val broker = projectedBroker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 4, cumulative = 8))
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest(
         "security",
@@ -141,7 +177,7 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `cumulative evidence excess terminates the lane`() {
     val root = repo("A.kt" to "12345", "B.kt" to "67890")
-    val broker = broker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 8, cumulative = 8))
+    val broker = projectedBroker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 8, cumulative = 8))
     val result = broker.readBatch(
       ReviewEvidenceBatchRequest(
         "security",
@@ -169,6 +205,89 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals("exp-1", expansion.expansionId)
     assertEquals(assignment.digest, expansion.assignmentDigest)
     assertEquals(result.expansions, broker.accounting().expansions)
+  }
+
+  @Test fun `authorized expansion of assigned path returns the complete file`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
+    val assigned = assignment(listOf("A.kt")).copy(assignedHunks = listOf(hunk.hunkId))
+    val boundExpansion = ReviewExpansionRecord(
+      "exp-assigned",
+      assigned.digest,
+      "A.kt",
+      "caller is outside hunk",
+      true,
+      0,
+    )
+    val authorized = assigned.copy(expansions = listOf(boundExpansion))
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        authorized,
+        "security",
+        policy(),
+        trustedExpansionLedger = authorized.expansions,
+        projectedHunks = listOf(hunk),
+      ),
+    )
+
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", boundExpansion.reachabilityReason, boundExpansion),
+      ),
+    )
+
+    assertEquals("outside\nowned\noutside", result.results.single().content)
+    assertEquals(listOf(boundExpansion), result.expansions)
+  }
+
+  @Test fun `complete-file expansion rejects content drift after launch checkpoint binding`() {
+    val root = repo("A.kt" to "checkpoint content")
+    val assignment = assignment(listOf("A.kt"))
+    val broker = broker(root, assignment)
+    val expansion = broker.authorizeExpansion(
+      ReviewExpansionAuthorizationRequest("security", "A.kt", "definition is outside the projected hunk"),
+    )
+    Files.writeString(root.resolve("A.kt"), "newer working-tree content")
+
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      broker.readBatch(
+        ReviewEvidenceBatchRequest.of(
+          ReviewEvidenceRequest("security", "A.kt", expansion.reachabilityReason, expansion),
+        ),
+      )
+    }
+
+    assertTrue(failure.reason.contains("changed after the immutable launch checkpoint"))
+    assertEquals(0, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `broker authorizes expansion with assignment digest and nonblank reason`() {
+    val root = repo("A.kt" to "outside\nowned\noutside")
+    val assignment = assignment(listOf("A.kt"))
+    val broker = broker(root, assignment)
+
+    val expansion = broker.authorizeExpansion(
+      ReviewExpansionAuthorizationRequest("security", "A.kt", "definition reaches beyond projected hunk"),
+    )
+    val result = broker.readBatch(
+      ReviewEvidenceBatchRequest.of(
+        ReviewEvidenceRequest("security", "A.kt", expansion.reachabilityReason, expansion),
+      ),
+    )
+
+    assertEquals(assignment.digest, expansion.assignmentDigest)
+    assertEquals("outside\nowned\noutside", result.results.single().content)
+    assertEquals(listOf(expansion), result.expansions)
+  }
+
+  @Test fun `absolute scratch rediscovery is typed before repository path validation`() {
+    val root = repo("A.kt" to "assigned")
+    val result = broker(root, assignment(listOf("A.kt"))).readBatch(
+      ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "/tmp/review.diff")),
+    )
+
+    assertEquals("diff_artifact_rediscovery", result.results.single().forbidden?.category)
   }
 
   @Test fun `lane accepts its expansion at a later global packet sequence`() {
@@ -280,8 +399,8 @@ class FileSystemReviewEvidenceBrokerTest {
   @Test fun `tool-call budget excess terminates the lane`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")), policy(toolCalls = 1))
-    assertTrue(broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security")).admitted)
-    val second = broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security"))
+    assertTrue(broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.FILE_READ, "A.kt")).admitted)
+    val second = broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.FILE_READ, "A.kt"))
     assertEquals("specialist_tool_calls", second.budgetExceeded?.budgetKind)
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, second.budgetExceeded?.type)
   }
@@ -315,7 +434,7 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `non-enforceable provider excess reports a regression without terminating`() {
     val root = repo("A.kt" to "assigned")
-    val broker = broker(root, assignment(listOf("A.kt")))
+    val broker = projectedBroker(root, assignment(listOf("A.kt")))
     val outcome = broker.evaluateProviderUsage(ProviderTokenUsage(totalTokens = 500_000), enforceable = false)
     assertEquals(REVIEW_BUDGET_REGRESSION, outcome?.type)
     assertEquals(false, outcome?.enforceable)
@@ -341,9 +460,9 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `an ordinary bounded review completes with full accounting and no termination`() {
     val root = repo("A.kt" to "assigned")
-    val broker = broker(root, assignment(listOf("A.kt")))
+    val broker = projectedBroker(root, assignment(listOf("A.kt")))
     broker.recordModelTurn()
-    broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.RUBRIC_READ, "security"))
+    broker.recordToolCall(ReviewToolCall("security", ReviewOperationKind.FILE_READ, "A.kt"))
     broker.readBatch(batch("A.kt"))
     assertNull(broker.validateLaneResult("- [F-001] Minor | Low | A.kt:1 | bounded finding"))
     val accounting = broker.accounting()
@@ -382,6 +501,20 @@ class FileSystemReviewEvidenceBrokerTest {
   ) = FileSystemReviewEvidenceBroker(
     ReviewEvidenceBrokerBinding(root, assignment, "security", budget, namedDependencies, trustedExpansionLedger),
   )
+
+  private fun projectedBroker(
+    root: Path,
+    assignment: ReviewAssignment,
+    budget: ReviewContextBudgetPolicy = policy(),
+  ): FileSystemReviewEvidenceBroker {
+    val hunks = assignment.assignedPaths.map { path ->
+      ReviewChangedHunk(path, 1, 1, 1, 1, Files.readString(root.resolve(path)))
+    }
+    val projectedAssignment = assignment.copy(assignedHunks = hunks.map { it.hunkId })
+    return FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(root, projectedAssignment, "security", budget, projectedHunks = hunks),
+    )
+  }
 
   private fun assignment(paths: List<String>, dependencies: List<String> = emptyList()) = ReviewAssignment(
     "review",

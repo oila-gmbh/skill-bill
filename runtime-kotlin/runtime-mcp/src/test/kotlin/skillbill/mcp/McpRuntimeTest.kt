@@ -16,6 +16,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpToolDispatcher
@@ -31,6 +32,7 @@ import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -571,26 +573,17 @@ class McpRuntimeTest {
     assertSqliteTimestampShape(opened["started_at"].toString(), "implement started_at")
     assertEquals(opened["started_at"], opened["updated_at"])
 
-    val updated =
-      McpWorkflowRuntime.update(
-        WorkflowFamilyKind.TASK_PROSE,
-        WorkflowUpdateRequest(
-          workflowId = workflowId,
-          workflowStatus = "blocked",
-          currentStepId = "implement",
-          stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
-          artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
-        ),
-        context,
-      )
+    val updated = blockImplementWorkflow(workflowId, context)
     val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_PROSE, context = context)
     val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context)
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
     val updatedAt = got["updated_at"].toString()
+    val continuedAt = continued["updated_at"].toString()
 
     assertSqliteTimestampShape(updatedAt, "implement updated_at")
+    assertSqliteTimestampShape(continuedAt, "implement continued_at")
     assertEquals(opened["started_at"], got["started_at"])
     assertTrue(updatedAt >= opened["started_at"].toString())
 
@@ -609,14 +602,17 @@ class McpRuntimeTest {
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
+      "<CONTINUED_AT>" to continuedAt,
+      "<CHECKPOINT>" to GitWorkflowGitOperations()
+        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
     )
     assertEquals("blocked", updated["workflow_status"])
     assertEquals(1, listed["workflow_count"])
     assertEquals(workflowId, latest["workflow_id"])
     assertEquals(workflowId, got["workflow_id"])
-    assertEquals(listOf("plan"), resumed["missing_artifacts"])
-    assertEquals("error", continued["status"])
-    assertEquals("blocked", continued["continue_status"])
+    assertEquals(emptyList<String>(), resumed["missing_artifacts"])
+    assertEquals("ok", continued["status"])
+    assertEquals("reopened", continued["continue_status"])
     assertCompactContinuationPayload(continued, "implement")
   }
 
@@ -661,6 +657,8 @@ class McpRuntimeTest {
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
       "<CONTINUED_AT>" to continued["updated_at"].toString(),
+      "<CHECKPOINT>" to GitWorkflowGitOperations()
+        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
     )
     assertCompactUpdateAcknowledgementPayload(updated, listOf("verdict"))
     assertEquals(1, listed["workflow_count"])
@@ -932,6 +930,8 @@ class McpTokenEstimationTest {
 private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
   "feature_task_runtime_phase_records" to linkedMapOf(
     "preplan" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "preplan",
       "status" to "completed",
       "attempt_count" to 1,
@@ -940,11 +940,14 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "finished_at" to "2026-06-03T10:00:00Z",
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
       "output_artifact" to
         "{\"contract_version\":\"0.2\",\"phase_id\":\"preplan\",\"status\":\"completed\"," +
         "\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}",
     ),
     "plan" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "plan",
       "status" to "completed",
       "attempt_count" to 1,
@@ -953,17 +956,21 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
       "finished_at" to "2026-06-03T10:01:00Z",
       "duration_millis" to 60000,
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
       "output_artifact" to
         "{\"contract_version\":\"0.2\",\"phase_id\":\"plan\",\"status\":\"completed\"," +
         "\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}",
     ),
     "implement" to linkedMapOf(
+      "contract_version" to "0.2",
+      "record_kind" to "private_phase_record",
       "phase_id" to "implement",
       "status" to "running",
       "attempt_count" to 1,
       "started_at" to "2026-06-03T10:01:00Z",
       "first_started_at" to "2026-06-03T10:01:00Z",
       "resolved_agent_id" to "claude",
+      "execution_origin" to "agent-executed",
     ),
   ),
   "feature_task_runtime_phase_ledger" to listOf(
@@ -1019,15 +1026,42 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
       stepUpdates = listOf(mapOf("step_id" to "verdict", "status" to "blocked", "attempt_count" to 1)),
       artifactsPatch =
       mapOf(
-        "criteria_summary" to emptyMap<String, Nothing?>(),
-        "diff_summary" to emptyMap(),
-        "review_result" to emptyMap(),
-        "unit_test_value_result" to emptyMap(),
-        "completeness_audit_result" to emptyMap(),
+        "diff_projection" to mapOf(
+          "checkpoint" to GitWorkflowGitOperations()
+            .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
+          "comparison_scope" to "base..head",
+          "changed_files" to emptyList<String>(),
+        ),
+        "feature_flag_audit_receipt" to evaluatorReceipt(),
+        "code_review_receipt" to evaluatorReceipt(),
+        "unit_test_value_receipt" to evaluatorReceipt(),
+        "completeness_audit_receipt" to evaluatorReceipt(),
       ),
     ),
     context = context,
   )
+
+private fun blockImplementWorkflow(workflowId: String, context: McpRuntimeContext): Map<String, *> =
+  McpWorkflowRuntime.update(
+    WorkflowFamilyKind.TASK_PROSE,
+    WorkflowUpdateRequest(
+      workflowId = workflowId,
+      workflowStatus = "blocked",
+      currentStepId = "implement",
+      stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
+      artifactsPatch = mapOf(
+        "plan" to mapOf("mode" to "implement", "task_count" to 1),
+        "preplan_digest" to mapOf("ok" to true),
+      ),
+    ),
+    context,
+  )
+
+private fun evaluatorReceipt(): Map<String, Any?> = mapOf(
+  "contract_version" to "0.1",
+  "verdict" to "approved",
+  "findings" to emptyList<Map<String, Any?>>(),
+)
 
 private fun enabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
   val configPath = tempDir.resolve("config.json")

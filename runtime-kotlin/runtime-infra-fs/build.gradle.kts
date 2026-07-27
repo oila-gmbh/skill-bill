@@ -45,6 +45,25 @@ val copyAgentAddonSchema =
 val canonicalReviewContextSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
+
+val canonicalSpecialistContractPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/review-orchestrator/specialist-contract.md")
+    .absolutePath
+
+val copySpecialistContract =
+  tasks.register<Copy>("copySpecialistContract") {
+    val contractPath = canonicalSpecialistContractPath
+    from(contractPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/review"))
+    inputs.file(contractPath)
+    doFirst {
+      require(File(contractPath).isFile) {
+        "Authoritative delegated-review specialist contract is missing at $contractPath."
+      }
+    }
+  }
+
 val copyReviewContextSchema =
   tasks.register<Copy>("copyReviewContextSchema") {
     val schemaPath = canonicalReviewContextSchemaPath
@@ -301,6 +320,78 @@ val copyFeatureTaskRuntimeHandoffEnvelopeSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimePhaseLaunchBriefingSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePhaseLaunchBriefingSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseLaunchBriefingSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseLaunchBriefingSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical phase-launch-briefing schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val canonicalFeatureTaskRuntimePhaseHandoffSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePhaseHandoffSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseHandoffSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseHandoffSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical phase-handoff schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val canonicalFeatureTaskRuntimePersistenceSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-persistence-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimePersistenceSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePersistenceSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePersistenceSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical feature-task-runtime persistence schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val canonicalFeatureTaskRuntimeProjectionMeasurementSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeProjectionMeasurementSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeProjectionMeasurementSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeProjectionMeasurementSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-146: canonical projection-measurement schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml")
@@ -378,6 +469,7 @@ sourceSets.named("main") {
 }
 
 tasks.named("processResources") {
+  dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
@@ -392,6 +484,10 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
+  dependsOn(copyFeatureTaskRuntimePersistenceSchema)
+  dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -400,6 +496,7 @@ tasks.named("processResources") {
 }
 
 tasks.named("processTestResources") {
+  dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
   dependsOn(copyPlatformPackSchema)
@@ -414,6 +511,10 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
+  dependsOn(copyFeatureTaskRuntimePersistenceSchema)
+  dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

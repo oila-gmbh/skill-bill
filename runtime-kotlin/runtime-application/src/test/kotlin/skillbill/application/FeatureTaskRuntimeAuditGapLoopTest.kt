@@ -68,13 +68,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       launched.indexOf("review") > launched.indexOfLast { it == "audit" },
       "review runs only after the final satisfied audit",
     )
-    // (e) the re-entered implement briefing carries immutable planning context and the latest gaps.
+    // (e) the re-entered implement briefing carries the immutable executable plan and latest gaps,
+    // without restoring the discarded preplan narrative.
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val planBriefing = requireNotNull(briefings["plan"]).briefingText
     val implementBriefing = requireNotNull(briefings["implement"]).briefingText
     assertTrue(!planBriefing.contains(AUDIT_GAP_MESSAGE))
     assertContains(implementBriefing, AUDIT_GAP_MESSAGE)
-    assertContains(implementBriefing, "### from: preplan")
+    assertTrue(!implementBriefing.contains("### from: preplan"))
     assertContains(implementBriefing, "### from: plan")
     val planningRecords = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     assertEquals(1, requireNotNull(planningRecords["preplan"]).attemptCount)
@@ -97,6 +98,33 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(emptyList(), repairState.unresolvedGapLedger.unresolvedGaps)
     assertEquals(listOf("ac-002-gap-1"), repairState.priorGapDispositions.map { it.gapId })
     assertTrue(repairState.priorGapDispositions.all { it.status.name == "RESOLVED" })
+  }
+
+  @Test
+  fun `final audit repair iteration is committed before review`() {
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").apply {
+      worktreeStatusValue = " M src/Foo.kt"
+    }
+    val delegate = auditGapLauncher(convergeOnAudit = 2)
+    var commitMessagesObservedAtReview: List<String> = emptyList()
+    val launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "review") {
+        commitMessagesObservedAtReview = git.createCommitMessages.toList()
+      }
+      delegate.launch(request)
+    }
+    val harness = runnerHarness(
+      launcher = launcher,
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(2, commitMessagesObservedAtReview.size)
+    assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
+    assertContains(commitMessagesObservedAtReview[1], "audited implementation checkpoint")
+    assertEquals(2, git.stageAllCalls)
   }
 
   @Test
@@ -200,7 +228,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals(6, git.repositoryFingerprintCalls)
+    assertTrue(
+      git.repositoryFingerprintCalls >= 6,
+      "projection refreshes may resolve the same repository checkpoint at multiple launch seams",
+    )
     assertEquals(3, harness.launchedPromptPhaseOrder().count { it == "audit" })
     assertTrue(harness.launchedPromptPhaseOrder().any { it == "validate" })
   }

@@ -6,6 +6,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
@@ -30,6 +31,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -412,7 +414,7 @@ class WorkflowServiceTest {
   }
 
   @Test
-  fun `continueWorkflow with missing artifacts returns Standard with continue_status blocked`() {
+  fun `continueWorkflow rejects a missing declared projection with a typed error`() {
     val service = newService()
     val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
     service.update(
@@ -427,18 +429,11 @@ class WorkflowServiceTest {
         artifactsPatch = mapOf("preplan_digest" to mapOf("ok" to true)),
       ),
     )
-    val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
-    val standard = assertIs<WorkflowContinueResult.Standard>(continued)
-    assertEquals("blocked", standard.view.continueStatus)
-    assertEquals(listOf("plan"), standard.view.resume.missingArtifacts)
-    assertEquals(listOf("plan"), standard.view.compact.missingArtifactKeys)
-    val missingSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
-    assertFalse(missingSummary.present)
-    assertEquals("missing_required_artifact", missingSummary.omissionReason)
-    assertEquals(
-      "Use workflow show for read-only full-state inspection, including the complete durable artifacts map.",
-      standard.view.compact.readOnlyFullStateGuidance,
-    )
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
+    }
+    assertContains(error.message.orEmpty(), "missing required artifact keys: plan")
+    assertFalse(error.message.orEmpty().contains("preplan_digest"))
   }
 
   @Test
@@ -1184,6 +1179,7 @@ class WorkflowGoalStatusProjectionTest {
         database,
         testWorkflowSnapshotValidator,
         AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+        AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
       ),
     )
   }
@@ -1955,21 +1951,15 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
           "feature_task_runtime_phase_records" to mapOf(
-            "preplan" to mapOf(
-              "phase_id" to "preplan",
-              "status" to "completed",
-              "attempt_count" to 1,
-              "started_at" to "2026-06-18T10:00:00Z",
-              "finished_at" to "2026-06-18T10:01:00Z",
-              "resolved_agent_id" to "agent-preplan",
+            "preplan" to completedRuntimePhaseRecord(
+              "preplan",
+              "2026-06-18T10:00:00Z",
+              "2026-06-18T10:01:00Z",
             ),
-            "plan" to mapOf(
-              "phase_id" to "plan",
-              "status" to "completed",
-              "attempt_count" to 1,
-              "started_at" to "2026-06-18T10:02:00Z",
-              "finished_at" to "2026-06-18T10:03:00Z",
-              "resolved_agent_id" to "agent-plan",
+            "plan" to completedRuntimePhaseRecord(
+              "plan",
+              "2026-06-18T10:02:00Z",
+              "2026-06-18T10:03:00Z",
             ),
           ),
         ),
@@ -2105,6 +2095,20 @@ class WorkflowGoalRunnerReconciliationTest {
     )
     assertEquals(setOf("implement_fix"), WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds)
   }
+
+  private fun completedRuntimePhaseRecord(phaseId: String, startedAt: String, finishedAt: String): Map<String, Any?> =
+    mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+      "record_kind" to "private_phase_record",
+      "phase_id" to phaseId,
+      "status" to "completed",
+      "attempt_count" to 1,
+      "started_at" to startedAt,
+      "first_started_at" to startedAt,
+      "finished_at" to finishedAt,
+      "resolved_agent_id" to "agent-$phaseId",
+      "execution_origin" to "agent-executed",
+    )
 }
 
 // Goal-runner progress projection, progress/session/ledger persistence, and subtask resume

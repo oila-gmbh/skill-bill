@@ -209,6 +209,7 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
 class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
   val sourceLabel: String,
   val reason: String,
+  val projectionName: String? = null,
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime planning projection '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
@@ -226,6 +227,33 @@ class InvalidFeatureTaskRuntimeQuarantineSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime quarantine record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+class InvalidFeatureTaskRuntimePhaseHandoffSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime phase handoff '$sourceLabel' fails schema validation: $reason",
+  cause,
+)
+
+class InvalidFeatureTaskRuntimePersistenceSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime persistence record '$sourceLabel' fails schema validation: $reason",
+  cause,
+)
+
+class InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime projection measurement '$sourceLabel' fails schema validation: $reason",
   cause,
 )
 

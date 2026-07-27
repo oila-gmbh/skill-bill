@@ -17,10 +17,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
@@ -31,7 +33,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjection
  * oversized projection can never be truncated, silently dropped, or swapped for its full source
  * artifact — it fails the launch with a typed error naming the projection and its contract.
  */
-@Suppress("TooManyFunctions") // one cohesive validation seam; each function is a named rejection rule
+@Suppress("TooManyFunctions", "LargeClass")
 object FeatureTaskRuntimeHandoffProjectionValidator {
   const val COMPACT_REFERENCE_MAX_LENGTH: Int = 512
 
@@ -53,6 +55,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         projectionContractVersion = declaration.projectionContractVersion,
         promptVisibility = declaration.promptVisibility,
         fields = fields,
+        producerIteration = resolvedProducerIteration(inputs, declaration),
       )
       enforceBudget(inputs, declaration, projection)
       projection
@@ -62,6 +65,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       projections = projections,
       repositoryCheckpoint = inputs.resolvedCheckpoint,
     )
+  }
+
+  private fun resolvedProducerIteration(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): FeatureTaskRuntimeProducerIteration = when (val source = declaration.sourceRef) {
+    is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput -> {
+      val output = inputs.resolvedUpstream.outputsByPhaseId[source.producingPhaseId]
+      if (output == null) {
+        declaration.producerIteration
+      } else {
+        FeatureTaskRuntimeProducerIteration(source.producingPhaseId, output.iteration)
+      }
+    }
+    else -> declaration.producerIteration
   }
 
   private fun rejectDuplicateProjectionNames(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {
@@ -115,48 +133,74 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * would reject or "refresh" on producer phrasing rather than on repository movement, so the carried
    * value is treated as an opaque claim throughout.
    *
-   * `must_match` therefore compares only the two runtime-produced fingerprints — the freshly resolved
-   * one and the one recorded earlier for this run — which is the comparison that actually detects a
-   * moved tree. `refresh_from_repository` keeps the producer's claim fields untouched and rewrites the
-   * repository-derived checkpoint field to the resolved fingerprint, appending the producer's claim so
-   * the substitution is visible rather than silent (AC-012).
+   * `must_match` compares two runtime-owned fingerprints: the checkpoint recorded for the producer
+   * edge and a fresh resolution immediately before launch. The agent-authored receipt claim remains
+   * provenance and is never used for that comparison.
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
     fields: List<FeatureTaskRuntimeHandoffProjectionField>,
   ): List<FeatureTaskRuntimeHandoffProjectionField> {
-    val carried = receiptCarriedCheckpointFingerprint(fields)
-    val violation = when (declaration.checkpointPolicy) {
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY ->
-        if (inputs.resolvedCheckpoint == null) {
-          "policy refresh_from_repository requires a freshly resolved repository checkpoint, none was supplied."
-        } else {
-          null
-        }
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> mustMatchViolation(inputs)
+    val carried = if (
+      declaration.projectionContractId ==
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE
+    ) {
+      null
+    } else {
+      receiptCarriedCheckpointFingerprint(fields)
     }
-    if (violation != null) {
+    checkpointPolicyViolation(inputs, declaration)?.let { violation ->
       reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, violation)
     }
-    if (declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY) {
+    if (declaration.checkpointPolicy == FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED) {
       return fields
     }
     val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint ?: return fields
     return fields.map { field ->
-      if (field.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
-        field.copy(
-          value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
-            kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
-            value = resolvedFingerprint + (carried?.let { CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it }.orEmpty()),
-          ),
-        )
-      } else {
-        field
-      }
+      resolvedCheckpointField(field, resolvedFingerprint, carried)
     }
   }
+
+  private fun checkpointPolicyViolation(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): String? = when (declaration.checkpointPolicy) {
+    FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED -> null
+    FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY ->
+      if (inputs.resolvedCheckpoint == null) {
+        "checkpoint-aware policy requires a freshly resolved repository checkpoint, none was supplied."
+      } else {
+        null
+      }
+    FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> when {
+      inputs.resolvedCheckpoint == null ->
+        "must_match requires a freshly resolved repository checkpoint, none was supplied."
+      inputs.expectedCheckpoint == null ->
+        "must_match requires the durable expected repository checkpoint, none was supplied."
+      inputs.resolvedCheckpoint.fingerprint != inputs.expectedCheckpoint.fingerprint ->
+        "must_match expected checkpoint '${inputs.expectedCheckpoint.fingerprint}' but resolved " +
+          "'${inputs.resolvedCheckpoint.fingerprint}'."
+      else -> null
+    }
+  }
+
+  private fun resolvedCheckpointField(
+    field: FeatureTaskRuntimeHandoffProjectionField,
+    resolvedFingerprint: String,
+    carriedFingerprint: String?,
+  ): FeatureTaskRuntimeHandoffProjectionField =
+    if (field.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
+      field.copy(
+        value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+          kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+          value = resolvedFingerprint +
+            (carriedFingerprint?.let { CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it }.orEmpty()),
+        ),
+      )
+    } else {
+      field
+    }
 
   // Re-projecting an already-substituted field must keep the producer's original claim rather than
   // promote the runtime fingerprint written over it, so an appended claim wins over the whole value.
@@ -169,18 +213,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       ?.substringAfter(CHECKPOINT_PRODUCER_CLAIM_SEPARATOR)
       ?.takeIf(String::isNotBlank)
 
-  private fun mustMatchViolation(inputs: FeatureTaskRuntimeHandoffProjectionInputs): String? {
-    val resolved = inputs.resolvedCheckpoint
-      ?: return "policy must_match requires a resolved repository checkpoint, none was supplied."
-    val expected = inputs.expectedCheckpoint
-      ?: return "policy must_match requires a recorded repository checkpoint to compare against, none was supplied."
-    return if (resolved.fingerprint == expected.fingerprint) {
-      null
-    } else {
-      "policy must_match requires the resolved repository fingerprint to equal the recorded one; they differ."
-    }
-  }
-
   // Returns null when a non-required source has no recorded value, so an optional projection is
   // omitted rather than delivered empty. A required source with no value is a hard rejection.
   private fun resolveFields(
@@ -191,6 +223,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
         inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
           planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
+            ?: phaseProjectionFields(inputs, declaration, output)
             ?: listOf(
               FeatureTaskRuntimeHandoffProjectionField(
                 name = PHASE_OUTPUT_RECEIPT_FIELD,
@@ -202,7 +235,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
                 } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
               ),
             )
-        }
+        } ?: durableAuditRepairProjectionFields(inputs, declaration)
       is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
         runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
       FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> listOf(
@@ -234,6 +267,26 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
     }
     return fields
+  }
+
+  private fun durableAuditRepairProjectionFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
+    if (
+      declaration.projectionContractId !=
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST ||
+      inputs.auditRepairPlan == null ||
+      inputs.auditRepairState == null
+    ) {
+      return null
+    }
+    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, emptyMap())
+    return declaration.declaredFieldNames.mapNotNull { name ->
+      runtimeOwned[name]?.let { value ->
+        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, value, inputs, declaration))
+      }
+    }
   }
 
   private fun runInvariantFields(
@@ -379,8 +432,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   /**
    * Joins the authoritative runtime fingerprint to the producer's own checkpoint claim. The two are
-   * not comparable values — see `enforceCheckpointPolicy` — so the claim is carried as provenance, not
-   * as a superseded fingerprint. Single-token, so the field stays a compact reference.
+   * not comparable values — see `enforceCheckpointPolicy` — so the claim is carried as provenance,
+   * not as a superseded fingerprint. Single-token, so the field stays a compact reference.
    */
   const val CHECKPOINT_PRODUCER_CLAIM_SEPARATOR: String = "+producer-claimed:"
 
@@ -397,6 +450,327 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
     FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
   )
+
+  private val PHASE_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
+  )
+
+  /**
+   * Selects named values from the validated phase envelope. The declaration is the allowlist:
+   * summary, narration, raw output, reports, progress and telemetry have no route into this method.
+   * Structured list entries are independently serialized so collection budgets count every item.
+   */
+  private fun phaseProjectionFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
+    if (declaration.projectionContractId !in PHASE_PROJECTION_CONTRACT_IDS) return null
+    val envelope = output.normalizedOutput?.envelope
+      ?: JsonSupport.parseObjectOrNull(output.payload)?.let { JsonSupport.jsonElementToValue(it) }
+        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: reject(
+        inputs,
+        declaration,
+        FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+        "validated producer output could not be decoded as an object.",
+      )
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced)
+    return declaration.declaredFieldNames.mapNotNull { name ->
+      val value = runtimeOwned[name] ?: if (name == "verdict") {
+        envelope[name]
+      } else {
+        resolveDeclaredPhaseField(produced, name)
+      }
+      value?.let {
+        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
+      }
+    }
+  }
+
+  private fun runtimeOwnedPhaseProjectionValues(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    produced: Map<String, Any?>,
+  ): Map<String, Any?> = when (declaration.projectionContractId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE -> mapOf(
+      "clearance_status" to auditClearanceStatus(produced),
+      "review_scope" to FeatureTaskRuntimePhaseWorkflowDefinition
+        .ceremonyScaling(inputs.runInvariants.featureSize)
+        .reviewScope
+        .wireValue,
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "verdict" to auditClearanceStatus(produced),
+    )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> {
+      val plan = inputs.auditRepairPlan
+      val state = inputs.auditRepairState
+      mapOf(
+        "audit_repair_plan" to plan?.let(::auditRepairPlanProjection),
+        "prior_terminal_repair_outcomes" to state?.repairItemResults?.map { result ->
+          mapOf(
+            "repair_item_id" to result.repairItemId,
+            "outcome" to result.outcome.name.lowercase(),
+          )
+        }.orEmpty(),
+        "unresolved_gap_ids" to state?.unresolvedGapLedger?.unresolvedGaps?.map { it.gapId }
+          .orEmpty()
+          .ifEmpty { plan?.gaps?.map { it.gapId }.orEmpty() },
+        "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      )
+    }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
+      "unresolved_blocker_findings" to reviewBlockerProjection(produced),
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
+      "changed_paths" to inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty(),
+      "tests_added" to (produced["tests_added"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "tests_updated" to (produced["tests_updated"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "deviations" to (produced["deviations"] as? List<*>).orEmpty().filterIsInstance<String>(),
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
+    else -> finalizationProjectionValues(inputs, declaration)
+  }.filterValues { it != null }
+
+  private fun auditClearanceStatus(produced: Map<String, Any?>): String? {
+    val unmetCriteria = produced["unmet_criteria"] as? List<*>
+    return when {
+      unmetCriteria == null -> resolveDeclaredPhaseField(produced, "clearance_status")?.toString()
+      unmetCriteria.isEmpty() -> FeatureTaskRuntimeVerdict.SATISFIED.wireValue
+      else -> FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue
+    }
+  }
+
+  private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
+    (produced["findings"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .filter { finding -> (finding["severity"] as? String)?.equals("blocker", ignoreCase = true) == true }
+      .map { finding ->
+        mapOf(
+          "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
+          "severity" to "blocker",
+          "location" to (
+            finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
+            ),
+          "expected_outcome" to (
+            finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the Blocker."
+            ),
+          "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
+          "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
+        ).filterValues { it != null }
+      }
+
+  private fun auditRepairPlanProjection(
+    plan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan,
+  ): Map<String, Any?> = mapOf(
+    "contract_version" to plan.contractVersion,
+    "gaps" to plan.gaps.map { gap ->
+      mapOf(
+        "gap_id" to gap.gapId,
+        "acceptance_criterion_ref" to gap.acceptanceCriterionRef,
+        "acceptance_criterion_text" to gap.acceptanceCriterionText,
+        "diagnosis" to gap.diagnosis,
+        "affected_boundary" to gap.affectedBoundary,
+        "repair_items" to gap.repairItems.map { item ->
+          mapOf(
+            "repair_item_id" to item.repairItemId,
+            "intended_outcome" to item.intendedOutcome,
+            "implementation_actions" to item.implementationActions,
+            "affected_paths_or_symbols" to item.affectedPathsOrSymbols,
+            "required_verification" to item.requiredVerification,
+            "depends_on" to item.dependsOn,
+            "status" to item.status.name.lowercase(),
+          )
+        },
+      )
+    },
+  )
+
+  private fun finalizationProjectionValues(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): Map<String, Any?> {
+    val context = finalizationProjectionContext(inputs)
+    return when (declaration.projectionContractId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST -> mapOf(
+        "validation_strategy" to (context.plan["validation_strategy"] ?: emptyList<String>()),
+        "changed_paths" to context.changedPaths,
+        "required_checks" to context.requiredChecks,
+        "repository_checkpoint" to context.checkpoint,
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES -> mapOf(
+        "changed_paths" to context.changedPaths,
+        "boundary_candidates" to context.changedPaths
+          .map { it.substringBeforeLast('/', "") }
+          .filter(String::isNotBlank)
+          .distinct(),
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST -> mapOf(
+        "path_inventory" to context.changedPaths,
+        "required_inclusions" to context.changedPaths,
+        "required_exclusions" to context.excludedClaims,
+        "branch_identity" to context.branch,
+        "gate_attestations" to listOf("audit", "review", "validate", "write_history"),
+        "repository_checkpoint" to context.checkpoint,
+      )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST ->
+        prRequestProjection(context)
+      else -> emptyMap()
+    }
+  }
+
+  private fun finalizationProjectionContext(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+  ): FinalizationProjectionContext {
+    val outputs = inputs.resolvedUpstream.outputsByPhaseId
+    val plan = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN]?.let {
+      planningProducedOutputs(it)
+    }.orEmpty()
+    val implementation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]?.let {
+      planningProducedOutputs(it)
+    }.orEmpty()
+    val validation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE]?.let {
+      genericProducedOutputs(it)
+    }.orEmpty()
+    val checkpoint = inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
+    val claimedChangedPaths = (implementation["changed_paths"] as? List<*>).orEmpty()
+      .filterIsInstance<String>()
+      .distinct()
+    val changedPaths = inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty()
+      .distinct()
+      .sorted()
+    val excludedClaims = claimedChangedPaths.filterNot { it in changedPaths }.sorted()
+    val requiredChecks = (
+      (plan["validation_strategy"] as? List<*>).orEmpty() +
+        (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
+          JsonSupport.anyToStringAnyMap(task)?.get("test_obligations") as? List<*> ?: emptyList<Any?>()
+        }
+      ).filterIsInstance<String>().distinct()
+    return FinalizationProjectionContext(
+      plan = plan,
+      implementation = implementation,
+      validation = validation,
+      checkpoint = checkpoint,
+      changedPaths = changedPaths,
+      excludedClaims = excludedClaims,
+      requiredChecks = requiredChecks,
+      branch = inputs.branchIdentity ?: "unknown",
+      base = inputs.baseBranch,
+      checkpointFingerprint = inputs.resolvedCheckpoint?.fingerprint,
+    )
+  }
+
+  private fun prRequestProjection(context: FinalizationProjectionContext): Map<String, Any?> = mapOf(
+    "completed_task_ids" to (context.implementation["completed_task_ids"] ?: emptyList<String>()),
+    "changed_paths" to context.changedPaths,
+    "tests_added" to (context.implementation["tests_added"] ?: emptyList<String>()),
+    "tests_updated" to (context.implementation["tests_updated"] ?: emptyList<String>()),
+    "deviations" to (context.implementation["deviations"] ?: emptyList<String>()),
+    "validation_summary" to (
+      context.validation["validation_result"]
+        ?: context.validation["validation_summary"]
+        ?: context.validation["summary"]
+        ?: "completed"
+      ),
+    "base_branch" to context.base,
+    "diff_reference" to (context.checkpointFingerprint ?: "repository-checkpoint-unavailable"),
+  )
+
+  private data class FinalizationProjectionContext(
+    val plan: Map<String, Any?>,
+    val implementation: Map<String, Any?>,
+    val validation: Map<String, Any?>,
+    val checkpoint: Map<String, String>?,
+    val changedPaths: List<String>,
+    val excludedClaims: List<String>,
+    val requiredChecks: List<String>,
+    val branch: String,
+    val base: String,
+    val checkpointFingerprint: String?,
+  )
+
+  private fun planningProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> =
+    genericProducedOutputs(output)
+
+  private fun genericProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> {
+    val envelope = output.normalizedOutput?.envelope
+      ?: JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyMap()
+    return JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+  }
+
+  /**
+   * Phase producers own named result objects (`validation_result`, `history_result`,
+   * `commit_push_result`, and `pr_result`). Resolve only those governed containers; searching every
+   * nested object would turn a closed projection into an accidental context-discovery mechanism.
+   */
+  private fun resolveDeclaredPhaseField(produced: Map<String, Any?>, name: String): Any? {
+    produced[name]?.let { return it }
+    val resultContainers = listOf(
+      "audit_result",
+      "review_result",
+      "validation_result",
+      "history_result",
+      "commit_push_result",
+      "pr_result",
+    )
+    return resultContainers.firstNotNullOfOrNull { container ->
+      JsonSupport.anyToStringAnyMap(produced[container])?.get(name)
+    }
+  }
+
+  private fun projectionValue(
+    name: String,
+    value: Any,
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): FeatureTaskRuntimeHandoffProjectionValue {
+    if (name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT) {
+      val checkpoint = JsonSupport.anyToStringAnyMap(value)
+      val fingerprint = (checkpoint?.get("fingerprint") as? String)?.takeIf(String::isNotBlank)
+        ?: reject(
+          inputs,
+          declaration,
+          FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+          "repository_checkpoint must contain a non-blank fingerprint.",
+        )
+      return FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+        FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+        fingerprint,
+      )
+    }
+    return when (value) {
+      is Iterable<*> -> FeatureTaskRuntimeHandoffProjectionValue.TextList(
+        value.map { item ->
+          when (item) {
+            is String -> item
+            is Map<*, *> -> JsonSupport.mapToJsonString(
+              item.entries.associate { (key, entryValue) -> key.toString() to entryValue },
+            )
+            else -> item.toString()
+          }
+        },
+      )
+      is Map<*, *> -> FeatureTaskRuntimeHandoffProjectionValue.Text(
+        JsonSupport.mapToJsonString(value.entries.associate { (key, entryValue) -> key.toString() to entryValue }),
+      )
+      else -> FeatureTaskRuntimeHandoffProjectionValue.Text(value.toString())
+    }
+  }
 
   /**
    * Resolves the concrete bounded planning projection fields for a declared upstream edge, or null when
@@ -424,12 +798,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
       else -> FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
     }
-    val projection = featureTaskRuntimePlanningProjectionFromEnvelope(
-      envelope = phaseOutputEnvelope(output, producingPhaseId),
-      producingPhaseId = producingPhaseId,
-      expectedKind = expectedKind,
-      schemaValidator = inputs.planningProjectionValidator,
-    )
+    val projection = try {
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = phaseOutputEnvelope(output, producingPhaseId),
+        producingPhaseId = producingPhaseId,
+        expectedKind = expectedKind,
+        schemaValidator = inputs.planningProjectionValidator,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+        sourceLabel = error.sourceLabel,
+        reason = error.reason,
+        projectionName = declaration.projectionName,
+        cause = error,
+      )
+    }
     // Exhaustive narrowing on the parsed type: no cast, so a shape the declaration did not ask for is
     // a typed rejection rather than a ClassCastException on an already-completed producing phase.
     return when {

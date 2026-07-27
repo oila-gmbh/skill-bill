@@ -111,9 +111,9 @@ class ReviewOperationPolicyTest {
     }
   }
 
-  @Test fun `only the lane rubric may be read`() {
-    assertNull(policy.classify(ReviewRequestedOperation(ReviewOperationKind.RUBRIC_READ, "security")))
-    assertEquals("unrelated_rubric_read", category(ReviewOperationKind.RUBRIC_READ, "performance"))
+  @Test fun `every rubric read is forbidden because the launch projection is authoritative`() {
+    assertEquals("rubric_rediscovery", category(ReviewOperationKind.RUBRIC_READ, "security"))
+    assertEquals("rubric_rediscovery", category(ReviewOperationKind.RUBRIC_READ, "performance"))
   }
 
   @Test fun `unselected mcp tools and unscoped shell are forbidden`() {
@@ -149,6 +149,9 @@ class ReviewOperationPolicyTest {
       category(ReviewOperationKind.FILE_READ, "src/Elsewhere.kt"),
       category(ReviewOperationKind.MCP_TOOL, "notion_search"),
       category(ReviewOperationKind.SHELL_COMMAND, "curl https://example.test"),
+      category(ReviewOperationKind.CONTRACT_READ, "specialist-contract"),
+      category(ReviewOperationKind.RULES_READ, "review-rules"),
+      category(ReviewOperationKind.FILE_READ, ".scratch/review.diff"),
     )
     categories.forEach { category ->
       assertEquals(true, category in ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, "undeclared: $category")

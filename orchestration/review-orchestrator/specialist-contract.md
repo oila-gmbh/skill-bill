@@ -29,6 +29,10 @@ Do not reference this repo-relative path directly from installable skills — us
 
 Every downstream routed layer and delegated specialist consumes the authoritative review packet exactly as launched. The packet is the single source of scope, routing, guidance, and measurement facts; a consumer that re-derives any of them produces a divergent review and breaks digest-backed attribution.
 
+```authoritative-launch-contract
+Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, recompute, or read sibling-lane or parent review context.
+```
+
 Consumers must not rediscover any of the following:
 
 - `review_status` — the packet already carries the resolved review status
@@ -43,13 +47,19 @@ Consumers must not rediscover any of the following:
 - `telemetry_ownership_determination` — telemetry ownership is decided by the orchestrator
 - `broad_repository_search` — searches must stay within assigned paths or named dependencies
 - `unrelated_rubric_read` — the single governed rubric in the launch is authoritative
+- `rubric_rediscovery` — the launch-supplied rubric must not be reloaded from a native-agent or disk artifact
 - `unassigned_file_access` — reads outside the assignment require an authorized expansion
 - `unselected_mcp_tool_call` — only tools explicitly projected by the parent may be called
 - `unscoped_shell_command` — shell commands outside the measured evidence surface are forbidden
+- `diff_artifact_rediscovery` — complete-diff files and references are never part of a lane
+- `scratch_path_rediscovery` — scratch review artifacts are outside the governed evidence surface
+- `contract_rediscovery` — specialist and consumer contracts are supplied directly at launch
+- `rules_rediscovery` — review rules are supplied directly at launch
+- `repeated_evidence_read` — a normalized evidence target may be read only once
 
-Evidence reads are batched and measured. Additional file reads are limited to the launch
-`dependency_allowlist` and the governed expansion path, and every expansion carries a nonblank
-reachability reason in the audit ledger; anything else is out of contract.
+```evidence-surface-rules
+Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once.
+```
 
 ## Shared Report Structure
 
@@ -69,9 +79,9 @@ After Section 1 in a stack-specific review skill, use:
 - `### 3. Action Items (Max 10, prioritized)`
 - `### 4. Verdict`
 
-Every finding in `### 2. Risk Register` must use this exact machine-readable bullet format:
+Every finding in `### 2. Risk Register` must use this authoritative machine-readable bullet format:
 
-```text
+```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
 ```
 

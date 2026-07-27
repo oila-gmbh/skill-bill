@@ -1,3 +1,66 @@
+## [2026-07-27] SKILL-146 least-context end-to-end validation (subtask 7)
+Areas: runtime-kotlin/runtime-{domain,application}, skills/bill-feature-task-prose
+- Finalization handoffs now derive bounded validation, history, commit, and PR projections from typed upstream receipts; PR composition receives acceptance criteria without exposing private implementation or validation reports.
+- Repository-checkpoint policy validation and substitution remain one reusable projection path, preserving the producer claim while replacing repository-derived evidence with the resolved runtime fingerprint. reusable
+- Cross-surface tests prove required-field presence and forbidden-context absence through selection, validation, retries, resume, and the full runtime loop.
+- Governed prose guidance matches the runtime phase order and least-context handoff boundaries without widening continuation inputs.
+- Known limitation: finalization projections intentionally carry compact receipts and references, not full upstream artifacts.
+Feature flag: N/A
+Acceptance criteria: subtask 7: 9/9 implemented
+
+## [2026-07-26] SKILL-146 telemetry compatibility and contract integration (subtask 6)
+Areas: runtime-kotlin/runtime-{domain,contracts,application,core,infra-fs,infra-sqlite,cli,mcp}, orchestration/{contracts,telemetry-contract,review-delegation}, skills/bill-feature-verify
+- Runtime persistence records privacy-safe byte/token estimates and typed counters while keeping prompt, diff, source, receipt, raw tool content, telemetry, and progress diagnostics outside domain artifacts.
+- Versioned persistence and handoff contracts, pinned schema paths/constants, typed incompatibility failures, mappings, fixtures, and continuation goldens now loud-fail legacy records with restart or out-of-band migration guidance.
+- Documentation and governed sources describe durable private-versus-delivered separation, privacy guarantees, compatibility behavior, and the single authoritative delegated-review rules source.
+- Delegated review preparation consumes the authoritative rules contract through parity-tested runtime wiring instead of restating rules. reusable
+- Contract, persistence, privacy-absence, measurement-presence, CLI/MCP, architecture, and generated-artifact regressions keep schemas, models, mappings, docs, and surfaces aligned.
+- Known limitation: legacy records are not silently migrated; incompatible state requires an explicit restart or documented out-of-band migration.
+Feature flag: N/A
+Acceptance criteria: subtask 6: 7/7 implemented
+
+## [2026-07-26] SKILL-146 delegated-review least-context lane projection (subtask 5)
+Areas: runtime-kotlin/runtime-{domain,ports,application,infra-fs,infra-sqlite,core,cli}, orchestration/{contracts,review-orchestrator}
+- Delegated review lanes now receive only their assigned hunk content plus authoritative rubric, consumer contract, evidence policy, and report structure; whole-diff and scratch-artifact rediscovery are typed forbidden outcomes.
+- A reusable evidence broker admits bounded hunk windows, requires a nonblank reachability reason for complete-file expansion, and rejects repeat reads across pagination variants. reusable
+- Claude, Codex, and CLI launch paths share one semantic packet projection without a complete-diff path or artifact; authoritative rule restatements are parity-tested byte for byte.
+- Durable review accounting and regression coverage keep private evidence, sibling lane content, and forbidden retrieval details outside prompt-visible and persisted summaries.
+- Known limitation: this subtask does not reduce review lanes, alter rubric severity, or permit unreasoned complete-file access.
+Feature flag: N/A
+Acceptance criteria: subtask 5: 6/6 implemented
+
+## [2026-07-26] SKILL-146 prose and verification least-context projections (subtask 4)
+Areas: runtime-kotlin/runtime-{domain,application,core,cli,infra-fs,mcp}, skills/bill-feature-{task-prose,verify}
+- Prose feature work now runs `implement -> audit -> review -> validate`; each fresh or resumed step receives the same declared, budgeted projection, and audit no longer consumes review output. reusable
+- Runtime-owned checkpoint evidence is injected at launch and replaces producer claims, while finalization receipts remain stable after later repository changes. reusable
+- Feature verification evaluators run independently from criteria, policy, and checkpointed diff projections; the verdict consolidates only compact typed receipts, with telemetry and sibling outputs excluded. reusable
+- Governed prose/verification sources, continuation surfaces, fixtures, goldens, and projection tests enforce required/forbidden fields, UTF-8 budgets, and explicit private diagnostics.
+- Known limitation: delegated review delivery and end-to-end compatibility work remain scoped to later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 6/6 implemented
+
+## [2026-07-26] SKILL-146 runtime projection engine and least-context launch handoffs (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application,contracts,ports,cli}
+- One launch-assembly path now selects exact producer iterations, validates declared planning projections, persists the delivered least-context handoff, and applies the same behavior to fresh, resumed, retried, crash-recovered, and remediating launches. reusable
+- Repository checkpoints use immutable base/head refs plus workflow-owned paths, isolate goal siblings, and establish an audited implementation commit before review so review measures the final audited tree. reusable
+- Projection budgets reject overflow before launch without truncation or full-artifact fallback; incompatible durable briefing/workflow records loud-fail or enter the bounded producer-owned regeneration path according to ownership. reusable
+- Launch-seam rejection measurements retain the exact rejected projection declaration, contract, current producer iteration, checkpoint fingerprint, and typed failure class without recording private content. reusable
+- The handoff validator, run loop, persistence mappings, prompt assertions, and runtime/CLI surfaces share the versioned contract machinery introduced in subtask 1; no provider-specific or agent-controlled retrieval path was added.
+- Known limitation: phase-specific receipt payloads and delegated review delivery remain scoped to later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 6/6 implemented
+
+## [2026-07-26] SKILL-146 versioned handoff contract and durable evidence boundary (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,application,core,contracts,infra-fs,infra-sqlite,ports,cli}, orchestration/contracts
+- Phase handoffs now use closed-world, versioned declarations and typed models for consumer/source identity, projection contract/version, prompt visibility, UTF-8 byte and item budgets, and repository-checkpoint policy; arbitrary agent maps cannot widen the boundary. reusable
+- Durable storage separates complete private source evidence from the exact prompt-visible delivered projection, and validates both production writes and legacy reads with typed loud failures. reusable
+- The runtime-contract recipe is applied across the handoff, envelope, projection-measurement, and persistence schemas: pinned Kotlin constants, parity tests, typed schema errors, strict parsing, and classpath bundling. reusable
+- Projection validation enforces declared fields, compact references, checkpoint identity, pre-launch budgets, and explicit incompatibility; the application recorder and composition root share the infrastructure validator through the domain port. reusable
+- Measurement and telemetry models are content-free and tests lock sensitive-field absence, schema/model/mapping/fixture alignment, exact durable round trips, UTF-8 accounting, and collection limits.
+- Known limitation: phase-specific projectors, prose/verification projections, delegated review delivery, compatibility documentation, and end-to-end validation remain in later SKILL-146 subtasks.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 5/5 implemented
+
 ## [2026-07-24] SKILL-140 lease-based crash reconciliation for killed children (subtask 5)
 Areas: runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-application, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-mcp, orchestration/contracts
 - A workflow row left non-terminal by a killed child (expired lease + dead process) self-heals to the typed resumable interrupted state on the next runner startup, so a crashed feature-task child no longer wedges the loop and resume continues from that phase; the goal parent treats such a row as resumable instead of emitting a terminal `NO_TERMINAL_STORE_OUTCOME`-class block. reusable

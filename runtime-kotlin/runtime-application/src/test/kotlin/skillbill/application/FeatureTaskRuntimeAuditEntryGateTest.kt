@@ -73,7 +73,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     val launched = harness.launchedPhaseOrder()
     assertTrue(launched.contains("audit"), "the gating audit must run on the reordered graph")
     assertTrue(
@@ -120,10 +120,9 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       "the gate-invalidated review must relaunch as pass one, not inherit the pre-reorder pass number",
     )
     assertContains(reviewPrompts[1], PASS_TWO_REMEDIATION_SCOPE)
-    assertContains(
-      reviewPrompts[1],
-      FRESH_IMPLEMENT_FIX_MARKER,
-      message = "the verification review must consume the newly produced implement_fix output",
+    assertFalse(
+      reviewPrompts[1].contains(FRESH_IMPLEMENT_FIX_MARKER),
+      "the verification review must use runtime-derived changed paths rather than an agent-authored marker",
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])

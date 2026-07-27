@@ -418,8 +418,6 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
           add(it)
         }
         if (request.reviewEvidenceBroker != null) {
-          add("--agent")
-          add(requireNotNull(request.nativeReviewWorkerName))
           add("--tools")
           add("")
         }
@@ -482,8 +480,6 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("tools.web_search=false")
           add("--config")
           add("tools.shell=false")
-          add("--config")
-          add("agent=${requireNotNull(request.nativeReviewWorkerName)}")
         }
         request.modelOverride?.let {
           add("--model")

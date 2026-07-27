@@ -1,0 +1,55 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
+title: Feature Task Runtime Phase Launch Briefing
+description: Strict durable wire contract for the complete prompt-visible phase launch briefing.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - phase_id
+  - spec_reference
+  - feature_size
+  - acceptance_criteria
+  - mandates_and_overrides
+  - handoff_envelope
+  - derived_context_keys
+  - briefing_text
+properties:
+  contract_version:
+    const: "0.1"
+  phase_id:
+    type: string
+    minLength: 1
+  spec_reference:
+    type: string
+    minLength: 1
+  feature_size:
+    type: string
+    minLength: 1
+  acceptance_criteria:
+    type: array
+    minItems: 1
+    items: { type: string }
+  mandates_and_overrides:
+    type: array
+    items: { type: string }
+  handoff_envelope:
+    type: object
+  derived_context_keys:
+    type: array
+    items: { type: string }
+  briefing_text:
+    type: string
+    minLength: 1
+  driving_verdict:
+    type: string
+    minLength: 1
+  audit_repair_item_ids:
+    type: array
+    items: { type: string }
+  unresolved_audit_gap_ids:
+    type: array
+    items: { type: string }
+  durably_closed_criterion_refs:
+    type: array
+    items: { type: string }

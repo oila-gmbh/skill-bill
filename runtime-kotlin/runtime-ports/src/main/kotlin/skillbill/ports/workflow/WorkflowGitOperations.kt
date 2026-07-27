@@ -49,6 +49,17 @@ interface WorkflowGitOperations {
 
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult
+
+  /**
+   * Fingerprints one workflow-owned comparison scope. Implementations must not allow unrelated
+   * working-tree paths to influence this value.
+   */
+  fun repositoryCheckpointFingerprint(
+    repoRoot: Path,
+    baseCommit: String?,
+    headCommit: String,
+    ownedPaths: List<String>,
+  ): WorkflowGitOperationResult = repositoryFingerprint(repoRoot)
 }
 
 interface RepositoryFingerprintGitOperationsProvider {
@@ -63,6 +74,16 @@ fun WorkflowGitOperations.repositoryFingerprint(repoRoot: Path): WorkflowGitOper
     ?.repositoryFingerprintOperations
     ?.repositoryFingerprint(repoRoot)
     ?: error("WorkflowGitOperations must provide a repository fingerprint implementation.")
+
+fun WorkflowGitOperations.repositoryCheckpointFingerprint(
+  repoRoot: Path,
+  baseCommit: String?,
+  headCommit: String,
+  ownedPaths: List<String>,
+): WorkflowGitOperationResult = (this as? RepositoryFingerprintGitOperationsProvider)
+  ?.repositoryFingerprintOperations
+  ?.repositoryCheckpointFingerprint(repoRoot, baseCommit, headCommit, ownedPaths)
+  ?: error("WorkflowGitOperations must provide a repository checkpoint fingerprint implementation.")
 
 /**
  * SKILL-137: the working-tree paths a run owns, for the audit repository checkpoint.

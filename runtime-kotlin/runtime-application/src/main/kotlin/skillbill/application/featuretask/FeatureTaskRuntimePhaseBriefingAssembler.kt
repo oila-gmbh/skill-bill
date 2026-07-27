@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
@@ -8,14 +9,15 @@ import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
 import java.nio.charset.StandardCharsets
 
@@ -49,11 +51,15 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
   private val FINALIZATION_PHASE_IDS: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
   )
 
-  fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> =
-    if (phaseId in FINALIZATION_PHASE_IDS) FINALIZATION else ACCEPTANCE_CONTRACT_PHASES
+  fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> = when (phaseId) {
+    in FINALIZATION_PHASE_IDS -> FINALIZATION
+    // The bounded PR request explicitly carries the acceptance contract; it still excludes
+    // planning, audit, review, history, and raw validation context.
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> ACCEPTANCE_CONTRACT_PHASES
+    else -> ACCEPTANCE_CONTRACT_PHASES
+  }
 }
 
 /**
@@ -84,20 +90,46 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     workflowId: String? = null,
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+    agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   ): FeatureTaskRuntimePhaseLaunchBriefing {
+    val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
+      handoff.phaseId,
+      agentAddonSelection,
+    )
+    val promptDeclarations = handoff.projectionDeclarations +
+      invariantDeclarations(handoff.phaseId) +
+      boundedAddonSelection.entries.map { entry ->
+        val slug = entry.persisted.slug
+        PhaseHandoffProjectionDeclaration(
+          consumerPhaseId = handoff.phaseId,
+          sourceRef = FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(slug),
+          projectionName = "agent_addon_${slug.replace('-', '_')}",
+          projectionContractId = "feature_task_runtime.agent_addon_content",
+          projectionContractVersion = "0.1",
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+          budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT,
+          declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD),
+        )
+      }
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       FeatureTaskRuntimeHandoffProjectionInputs(
         consumerPhaseId = handoff.phaseId,
-        declarations = handoff.projectionDeclarations,
+        declarations = promptDeclarations,
         resolvedUpstream = handoff.upstreamOutputs,
         runInvariants = handoff.runInvariants,
         resolvedCheckpoint = handoff.repositoryCheckpoint,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
+        auditRepairPlan = handoff.auditRepairPlan,
+        auditRepairState = handoff.auditRepairState,
+        branchIdentity = handoff.branchIdentity,
+        baseBranch = handoff.baseBranch,
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
+        addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
       ),
     )
-    val briefingText = serialize(handoff, envelope, workflowId)
+    val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
+    val briefingText = serialize(projectedHandoff, envelope, workflowId)
     return FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = handoff.phaseId,
       specReference = handoff.runInvariants.specReference,
@@ -115,6 +147,30 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
+
+  private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =
+    FeatureTaskRuntimeRunInvariantPromptAllowlist.forPhase(phaseId).map { field ->
+      val source = if (field == FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING) {
+        FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
+      } else {
+        FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(field)
+      }
+      val projectedField = if (field == FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING) {
+        FeatureTaskRuntimeHandoffProjectionValidator.CEREMONY_SCALING_FIELD
+      } else {
+        field.wireValue
+      }
+      PhaseHandoffProjectionDeclaration(
+        consumerPhaseId = phaseId,
+        sourceRef = source,
+        projectionName = "run_invariant_${field.wireValue}",
+        projectionContractId = "feature_task_runtime.run_invariant",
+        projectionContractVersion = "0.1",
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+        budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+        declaredFieldNames = listOf(projectedField),
+      )
+    }
 
   private fun serialize(
     handoff: FeatureTaskRuntimePhaseHandoff,
@@ -160,15 +216,16 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     appendLine("# Feature-task-runtime phase briefing")
     appendLine("phase: ${handoff.phaseId}")
     handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
+    appendLine()
+    appendAllowlistedRunInvariants(handoff)
+    appendLine()
     // Only rendered on an audit_gap re-entry; a forward launch and a review_fix re-entry both carry
     // no gap criteria, so their briefings stay byte-for-byte identical.
     if (handoff.reentryGapCriteria.isNotEmpty()) {
       appendLine("audit_gaps:")
       handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
     }
-    handoff.auditRepairPlan?.let { plan ->
-      appendLine("audit_repair_plan:")
-      JsonSupport.mapToJsonString(auditRepairPlanToWire(plan)).lineSequence().forEach { appendLine("  $it") }
+    handoff.auditRepairPlan?.let {
       appendLine("audit_remediation_execution_rules:")
       appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
       appendLine(
@@ -178,6 +235,12 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       appendLine("  - Honor dependency order internally without deferring any runnable item to another round.")
       appendLine(
         "  - After each item, verify its repository outcome and record its terminal result before continuing.",
+      )
+      appendLine(
+        "  - A fixed outcome requires executed_verification to show the gap's original failure_evidence " +
+          "check no longer failing at its recorded artifact_ref: re-read the repaired symbols and state " +
+          "the concrete repository fact that discharges that exact check. Generic inspection notes or " +
+          "git diff output alone never justify fixed. Builds and tests stay deferred to validate.",
       )
       appendLine("  - Do not finish until every carried repair_item_id has exactly one terminal result.")
       appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")
@@ -202,8 +265,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         ),
       ).lineSequence().forEach { appendLine("  $it") }
     }
-    appendLine()
-    appendAllowlistedRunInvariants(handoff)
     appendLine()
     appendLine("## Upstream projections (layer 2, declared and validated)")
     appendProjections(envelope)
@@ -261,35 +322,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       return
     }
     visible.forEach { projection ->
-      val sourceRef = projection.sourceRef
-      // The upstream heading stays keyed by producing phase so a consumer reads "from: plan", not a
-      // projection name it has no topology for.
-      if (sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
-        appendLine("### from: ${sourceRef.producingPhaseId}")
-      } else {
-        appendLine("### ${projection.projectionName} (${sourceRef.wireValue})")
-      }
-      projection.fields.forEach { field -> appendProjectionField(projection, field) }
-    }
-  }
-
-  private fun StringBuilder.appendProjectionField(
-    projection: FeatureTaskRuntimeHandoffProjection,
-    field: FeatureTaskRuntimeHandoffProjectionField,
-  ) {
-    val single = projection.fields.size == 1 &&
-      field.name == FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD
-    when (val value = field.value) {
-      is FeatureTaskRuntimeHandoffProjectionValue.Text -> {
-        val text = escapeBriefingLineBreaks(value.text)
-        if (single) appendLine(text) else appendLine("${field.name}: $text")
-      }
-      is FeatureTaskRuntimeHandoffProjectionValue.TextList -> {
-        appendLine("${field.name}:")
-        value.items.forEach { item -> appendLine("  - ${escapeBriefingLineBreaks(item)}") }
-      }
-      is FeatureTaskRuntimeHandoffProjectionValue.CompactReference ->
-        appendLine("${field.name}: ${value.kind.wireValue}=${value.value}")
+      append(projection.canonicalDeliveredRendering)
     }
   }
 

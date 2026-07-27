@@ -45,6 +45,59 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-handoff-envelope-schema.yaml"
 }
 
+const val FEATURE_TASK_RUNTIME_PHASE_LAUNCH_BRIEFING_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimePhaseLaunchBriefingSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-phase-launch-briefing-schema.yaml"
+}
+
+/**
+ * The declaration contract is intentionally versioned independently from the delivered envelope.
+ * Version 0.2 is incompatible with the pre-SKILL-146 implicit declaration shape: source, budget,
+ * visibility, checkpoint policy, and producer iteration are all mandatory closed-world fields.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION: String = "0.2"
+
+object FeatureTaskRuntimePhaseHandoffSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-phase-handoff-schema.yaml"
+}
+
+/**
+ * Pins the durable private-phase-record/delivered-projection wire split. Legacy phase records
+ * without the explicit record kind and version are not compatible.
+ */
+const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
+
+object FeatureTaskRuntimePersistenceSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-persistence-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-persistence-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-persistence-schema.yaml"
+}
+
+const val FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-projection-measurement-schema.yaml"
+}
+
 /**
  * Runtime-side mirror of the planning-projections schema's `contract_version`;
  * `FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest` fails the build if they diverge.

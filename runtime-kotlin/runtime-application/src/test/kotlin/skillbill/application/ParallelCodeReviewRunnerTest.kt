@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.DelegatedReviewExecutionBroker
@@ -11,6 +12,7 @@ import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
+import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -30,6 +32,7 @@ import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
@@ -100,6 +103,37 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `invalid prelaunch expansion is translated to the typed review context error`() {
+    val repo = createGitRepo()
+    createStagedFile(repo)
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runnerWithEvidenceBroker(
+      launcher,
+      ReviewEvidenceBrokerFactory { binding ->
+        object : TestReviewEvidenceBroker(binding) {
+          override fun authorizeExpansion(
+            request: skillbill.ports.review.model.ReviewExpansionAuthorizationRequest,
+          ): skillbill.review.context.model.ReviewExpansionRecord =
+            throw IllegalArgumentException("expansion path escaped the measured evidence surface")
+        }
+      },
+    )
+
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      runner.run(
+        baseRequest(repoRoot = repo).copy(
+          prelaunchExpansions = listOf(
+            ReviewPrelaunchExpansion("parallel-code-review", "Other.kt", "reachable caller"),
+          ),
+        ),
+      )
+    }
+
+    assertContains(failure.reason, "expansion path escaped")
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
   fun `unsupported agent id throws UsageValidationException`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher)
@@ -153,6 +187,26 @@ class ParallelCodeReviewRunnerTest {
     assertTrue(result.lane2.success)
     assertEquals(1, result.mergeResult.findings.size)
     assertEquals(listOf("claude", "codex"), result.mergeResult.findings[0].agentIds)
+  }
+
+  @Test
+  fun `delegated review obtains specialist contract independently of reviewed checkout`() {
+    val reviewedRepo = createGitRepo()
+    createStagedFile(reviewedRepo)
+    val unrelatedWorkingDirectory = Files.createTempDirectory("unrelated-working-directory")
+    val originalWorkingDirectory = System.getProperty("user.dir")
+    try {
+      System.setProperty("user.dir", unrelatedWorkingDirectory.toString())
+
+      val result = runner(alwaysSuccessLauncher()).run(
+        baseRequest(scope = ParallelReviewScope.STAGED, repoRoot = reviewedRepo),
+      )
+
+      assertTrue(result.lane1.success)
+      assertTrue(result.lane2.success)
+    } finally {
+      System.setProperty("user.dir", originalWorkingDirectory)
+    }
   }
 
   @Test
@@ -271,16 +325,30 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "assigned_paths:")
-      assertContains(prompt, "- Child.kt")
-      assertContains(prompt, "specialist_contract:")
-      assertContains(prompt, "rubric:")
-      assertContains(prompt, "evidence_surface:")
-      assertContains(prompt, "brokered_evidence:")
+      assertContains(prompt, "\"contract_version\":\"0.7\"")
+      assertContains(prompt, "\"kind\":\"launch\"")
+      assertContains(prompt, "\"base_revision\":\"base-revision\"")
+      assertContains(prompt, "\"head_revision\":\"head-revision\"")
+      assertContains(prompt, "\"assigned_paths\":[\"Child.kt\"]")
+      assertContains(prompt, "\"specialist_contract\":")
+      assertContains(prompt, "Shared Contract For Every Specialist")
+      assertContains(prompt, "Evidence is mandatory")
+      assertContains(prompt, "Keep each specialist review pass to at most 7 findings")
+      assertContains(prompt, "Shared Report Structure")
+      assertContains(prompt, "\"consumer_contract\":\"Consume only the immutable lane projection")
+      assertContains(prompt, "\"rubric\":")
+      assertContains(prompt, "\"evidence_surface_rules\":")
+      assertContains(prompt, "\"assigned_hunk_bodies\":")
+      assertContains(prompt, "\"brokered_evidence\":[]")
       assertContains(prompt, "+owned change")
+      assertTrue(prompt.startsWith("{") && prompt.endsWith("}"), "provider input must be one JSON envelope")
+      assertFalse(prompt.contains("brokered_evidence:"), "brokered evidence must not be appended after JSON")
+      assertFalse(prompt.contains("complete_diff"))
+      assertFalse(prompt.contains("\"scratch_path\":"))
+      assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
       assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
       assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
-      assertContains(prompt, "assignment_digest:")
+      assertContains(prompt, "\"assignment_digest\":")
       assertFalse(prompt.contains("fork_turns:"))
       assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
       assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
@@ -797,6 +865,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
         isolationResolver = { agentId ->
           ReviewLaunchIsolationStrategy.FRESH_PROCESS
         },
+        envelopeValidator = { _, _ -> },
       ),
       DelegatedReviewWorkerLauncher(
         NativeReviewWorkerLauncher { request ->
@@ -827,6 +896,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
             ),
           )
         },
+        { _, _ -> },
       ),
     ),
     parentReviewLauncher = launcher,
@@ -841,6 +911,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = config.rubricResolver,
+    reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     nativeAgentPreflight = config.nativeAgentPreflight,
     database = NoopReviewDatabase,
   )
@@ -873,6 +944,13 @@ private object NoopReviewDatabase : DatabaseSessionFactory {
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
 }
 
+private const val TEST_SPECIALIST_CONTRACT: String =
+  "## Shared Contract For Every Specialist\n" +
+    "- Evidence is mandatory\n" +
+    "- Keep each specialist review pass to at most 7 findings\n\n" +
+    "## Shared Report Structure\n" +
+    "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
+
 private fun baseRequest(
   agent1Id: String = "claude",
   agent2Id: String = "codex",
@@ -886,6 +964,8 @@ private fun baseRequest(
   repoRoot = repoRoot,
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+  baseRevision = "base-revision",
+  headRevision = "head-revision",
 )
 
 private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
@@ -1027,7 +1107,7 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
 
 private fun diffFor(path: String): String = "+++ b/$path"
 
-private class TestReviewEvidenceBroker(
+private open class TestReviewEvidenceBroker(
   private val binding: ReviewEvidenceBrokerBinding,
 ) : ReviewEvidenceBroker {
   private val identity = ReviewLaneIdentity.of(binding.assignment)

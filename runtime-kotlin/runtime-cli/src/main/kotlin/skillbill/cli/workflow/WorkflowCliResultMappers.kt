@@ -32,6 +32,7 @@ internal fun WorkflowOpenResult.toCliMap(
   goalObservabilityEventValidator: GoalObservabilityEventValidator,
 ): Map<String, Any?> = when (this) {
   is WorkflowOpenResult.Ok -> workflowSnapshotCliMap(snapshot, goalObservabilityEventValidator).apply {
+    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
     put("status", "ok")
     put("db_path", dbPath)
   }
@@ -44,6 +45,7 @@ internal fun WorkflowOpenResult.toCliMap(
 
 internal fun WorkflowUpdateResult.toCliMap(): Map<String, Any?> = when (this) {
   is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
+    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
     val workflowCommand = if (acknowledgement.workflowName == "bill-feature-verify") "verify-workflow" else "workflow"
     val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
     val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"

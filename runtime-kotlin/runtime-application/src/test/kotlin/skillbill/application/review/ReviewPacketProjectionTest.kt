@@ -184,7 +184,7 @@ class ReviewPacketProjectionTest {
     assertEquals(assignment.digest, reordered.digest)
   }
 
-  @Test fun `launch envelope carries the forbidden rediscovery list`() {
+  @Test fun `launch envelope carries the closed world lane projection`() {
     val base = packet()
     val assignment = ReviewAssignment(
       reviewId = base.reviewId,
@@ -204,6 +204,15 @@ class ReviewPacketProjectionTest {
       GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
         .toLaunchEnvelope().asWireMap()
     assertEquals(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, envelope["forbidden_rediscovery"])
+    assertEquals(ReviewPacketConsumerContract.CONSUMER_CONTRACT, envelope["consumer_contract"])
+    assertEquals(ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES, envelope["evidence_surface_rules"])
+    assertEquals(ReviewPacketConsumerContract.REPORT_STRUCTURE, envelope["report_structure"])
+    val bodies = envelope["assigned_hunk_bodies"] as List<*>
+    assertEquals(2, bodies.size)
+    assertEquals(setOf(hunkA.content, hunkB.content), bodies.map { (it as Map<*, *>)["content"] }.toSet())
+    assertEquals(false, envelope.containsKey("complete_diff"))
+    assertEquals(false, envelope.containsKey("diff_path"))
+    assertEquals(false, envelope.containsKey("parent_packet"))
     assertEquals("fresh", envelope["isolation"])
     assertEquals(mapOf("session_id" to "rvs-1", "run_revision" to 3), envelope["review_revision"])
   }

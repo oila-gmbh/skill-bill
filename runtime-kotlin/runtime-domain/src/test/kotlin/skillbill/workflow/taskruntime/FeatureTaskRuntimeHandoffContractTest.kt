@@ -76,12 +76,12 @@ class FeatureTaskRuntimeHandoffContractTest {
     val reviewDeclaration =
       FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-    val recorded = listOf(FeatureTaskRuntimePhaseOutput("implement", iteration = 3, payload = "impl-v3"))
+    val recorded = listOf(FeatureTaskRuntimePhaseOutput("audit", iteration = 3, payload = "audit-v3"))
     val handoff =
       FeatureTaskRuntimeHandoffContract.assembleHandoff(reviewDeclaration, runInvariants, recorded)
     assertEquals("review", handoff.phaseId)
     assertEquals(runInvariants, handoff.runInvariants)
-    assertEquals("impl-v3", handoff.upstreamOutputs.outputsByPhaseId.getValue("implement").payload)
+    assertEquals("audit-v3", handoff.upstreamOutputs.outputsByPhaseId.getValue("audit").payload)
     assertEquals(listOf("diff"), handoff.derivedContextKeys)
   }
 

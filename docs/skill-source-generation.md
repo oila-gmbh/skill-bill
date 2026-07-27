@@ -477,6 +477,15 @@ custom-agent location.
 
 Generated provider artifacts are never committed to the repo.
 
+Delegated-review worker rules are authored once in
+`orchestration/review-orchestrator/specialist-contract.md`. Its marked launch,
+evidence-surface, and report-structure blocks plus forbidden-rediscovery list
+are projected into runtime, prose, CLI, and provider-native launches. Generated
+support pointers and provider artifacts may deliver those rules, but governed
+`content.md` and delegation playbooks must not maintain divergent copies.
+`ReviewPacketConsumerContractParityTest` owns byte/list parity with the runtime
+constants.
+
 ## Scaffolding
 
 The scaffolder is the supported way to create new governed source.
@@ -672,3 +681,12 @@ Generated `SKILL.md` wrappers, support pointers, provider-native output
 directories, native-agent sources, and arbitrary sidecars are forbidden in an
 agent add-on source directory. Agent add-ons are distinct from governed skills
 under `skills/` and pack-owned add-ons under `platform-packs/<slug>/addons/`.
+
+## Runtime Handoff Terminology
+
+Governed feature-task content describes four distinct inputs: private producer
+evidence, the exact prompt-visible consumer projection, repository checkpoint
+state, and allowlisted phase-local instructions. Do not describe these as
+complete artifact inheritance or agent-selected retrieval. Handoff declarations
+and delivered persistence records are versioned runtime contracts; projection
+budgets are enforced before launch without truncation or full-artifact fallback.

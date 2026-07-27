@@ -30,13 +30,16 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.NoopGoalObservabilityEventValidator
+import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -53,6 +56,13 @@ import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.random.Random
+
+private val resolveEffectiveSessionId =
+  { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
+    sessionId.ifBlank {
+      if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
+    }
+  }
 
 @Inject
 @Suppress("TooManyFunctions")
@@ -72,7 +82,11 @@ class WorkflowService(
   // `runtime-infra-fs`). The validator caches the compiled JSON Schema
   // instance, so a single shared engine amortises schema parse + compile
   // cost across every call.
-  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
+    val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())
+    check(resolved.ok) { resolved.error }
+    resolved.value.orEmpty()
+  }
 
   @Suppress("LongParameterList")
   fun open(
@@ -102,13 +116,7 @@ class WorkflowService(
     val family = kind.workflowFamily()
     val stepId = currentStepId ?: family.definition.defaultInitialStepId
     val workflowId = generateWorkflowId(family.definition.workflowIdPrefix)
-    val effectiveSessionId = if (
-      sessionId.isBlank() && kind == WorkflowFamilyKind.TASK_RUNTIME
-    ) {
-      "${family.definition.defaultSessionPrefix}-$workflowId"
-    } else {
-      sessionId
-    }
+    val effectiveSessionId = resolveEffectiveSessionId(kind, sessionId, family.definition, workflowId)
     WorkflowEngine.validateOpen(family.definition, stepId)?.let { error ->
       return WorkflowOpenResult.Error(workflowId, error)
     }
@@ -132,10 +140,19 @@ class WorkflowService(
       )
       executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
       val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
+      val currentStep = engine.snapshotView(family.definition, saved).steps
+        .firstOrNull { it.stepId == stepId }
+      val launchProjection = launchProjectionIfReady(
+        family.definition,
+        engine.snapshotView(family.definition, saved),
+        stepId,
+        currentStep?.attemptCount ?: 0,
+      )
       WorkflowOpenResult.Ok(
         workflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
         snapshot = engine.snapshotView(family.definition, saved),
+        launchProjection = launchProjection,
       )
     }
   }
@@ -640,6 +657,7 @@ class WorkflowService(
     dbPath: String,
   ): WorkflowUpdateResult.Ok {
     val snapshot = engine.snapshotView(definition, updated)
+    val currentStep = snapshot.steps.firstOrNull { it.stepId == snapshot.currentStepId }
     return WorkflowUpdateResult.Ok(
       workflowId = updated.workflowId,
       dbPath = dbPath,
@@ -647,8 +665,27 @@ class WorkflowService(
         snapshot = snapshot,
         input = effectiveInput,
       ),
+      launchProjection = launchProjectionIfReady(
+        definition,
+        snapshot,
+        snapshot.currentStepId,
+        currentStep?.attemptCount ?: 0,
+      ),
     )
   }
+
+  private fun launchProjectionIfReady(
+    definition: WorkflowDefinition,
+    snapshot: WorkflowSnapshotView,
+    stepId: String,
+    producerIteration: Int,
+  ) = definition.inputProjectionsByStep[stepId]
+    ?.takeIf { declaration ->
+      declaration.requiredArtifactKeys.all { artifactKey ->
+        artifactKey == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY || snapshot.artifacts.containsKey(artifactKey)
+      }
+    }
+    ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
 
 private fun WorkflowEngine.syncDecompositionParentRuntime(

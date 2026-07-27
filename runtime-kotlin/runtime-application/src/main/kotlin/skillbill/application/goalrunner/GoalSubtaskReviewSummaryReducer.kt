@@ -104,9 +104,8 @@ internal object GoalSubtaskReviewSummaryReducer {
   /**
    * Parse seam for the reserved remediation pass's per-Blocker dispositions. An entry without
    * location-bearing evidence is rejected here rather than persisted unevidenced, and — when the
-   * prior pass's Blocker ids are known — the emitted ids are cross-checked against them. Without
-   * that cross-check a single fabricated `resolved` entry would advance the child to validate with
-   * live unresolved Blockers, because any non-empty disposition list counts as a disposed pass.
+   * prior pass's Blocker ids are known — emitted ids are cross-checked against them. Dispositions
+   * are optional because review findings are durable advisory records and cannot block advancement.
    */
   fun blockerDispositions(
     output: Map<String, Any?>,
@@ -128,13 +127,6 @@ internal object GoalSubtaskReviewSummaryReducer {
           "emitted (expected ${expected.sorted().joinToString()}).",
       )
     }
-    (expected - emitted).sorted().takeIf { it.isNotEmpty() }?.let { missing ->
-      reviewStateError(
-        "produced_outputs.blocker_dispositions",
-        "every prior Blocker requires exactly one evidenced disposition; " +
-          "${missing.joinToString()} ${if (missing.size == 1) "is" else "are"} undisposed.",
-      )
-    }
     return dispositions
   }
 
@@ -145,32 +137,25 @@ internal object GoalSubtaskReviewSummaryReducer {
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
-    // Only Blocker reopens implement_fix, so it drives both the durable unresolved count and the
-    // changes_requested routing verdict. Major, Minor, and Nit findings advance and are recorded in
-    // the ledger without triggering a fix pass.
-    val structuredUnresolved = findings.count { finding -> finding.severity == "blocker" }
+    // Structured findings of every severity are durable advisory records. They remain available in
+    // the findings ledger, but no individual review finding can reopen implementation or halt the
+    // workflow.
     val hasStructuredFindings = findings.isNotEmpty()
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      hasStructuredFindings && structuredUnresolved > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
       else -> FeatureTaskRuntimeVerdict.APPROVED
     }
-    // unresolvedFindingCount is the advance-blocking (Blocker) count that gates the terminal cap
-    // block, not the remediation-routing signal. An itemised review reports its true Blocker count
-    // (0 for a Major-only review, which routes to a fix pass via the verdict but never hard-blocks);
-    // only a compact changes_requested summary with no itemised findings coerces to a conservative 1
-    // so an un-itemised block is not silently advanced.
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
-        verdict == FeatureTaskRuntimeVerdict.APPROVED ||
-          verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER -> structuredUnresolved
-        hasStructuredFindings -> structuredUnresolved
-        else -> structuredUnresolved.coerceAtLeast(1)
+        hasStructuredFindings ||
+          verdict == FeatureTaskRuntimeVerdict.APPROVED ||
+          verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER -> 0
+        else -> 1
       },
     )
   }

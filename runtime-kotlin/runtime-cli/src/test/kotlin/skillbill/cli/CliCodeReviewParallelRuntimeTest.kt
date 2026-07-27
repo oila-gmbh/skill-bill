@@ -28,6 +28,87 @@ class CliCodeReviewParallelRuntimeTest {
     assertContains(help.stdout, "--agent1")
     assertContains(help.stdout, "--agent2")
     assertContains(help.stdout, "--scope")
+    assertContains(help.stdout, "--base-revision")
+    assertContains(help.stdout, "--expand-file")
+  }
+
+  @Test
+  fun `diff file requires paired immutable revisions`() {
+    val tempDir = createGitRepo()
+    val diff = Files.createTempFile("parallel-review", ".diff")
+    Files.writeString(diff, "+++ b/Test.kt\n+change\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1", "claude",
+        "--agent2", "codex",
+        "--diff-file", diff.toString(),
+        "--repo-root", tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = NoOpAgentRunLauncher()),
+    )
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "paired baseRevision and headRevision")
+  }
+
+  @Test
+  fun `diff file expansion is brokered into real claude and codex launches`() {
+    val tempDir = createGitRepo()
+    Files.writeString(tempDir.resolve("Test.kt"), "fun expandedEvidence() = true\n")
+    val diff = Files.createTempFile("parallel-review", ".diff")
+    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
+    val launcher = RecordingParallelLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1", "claude",
+        "--agent2", "codex",
+        "--diff-file", diff.toString(),
+        "--base-revision", "immutable-base",
+        "--head-revision", "immutable-head",
+        "--expand-file", "parallel-code-review:Test.kt=called by assigned hunk",
+        "--execution-mode", "delegated",
+        "--repo-root", tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(setOf("claude", "codex"), launcher.promptsByAgent.keys)
+    launcher.promptsByAgent.values.forEach { prompt ->
+      assertContains(prompt, "fun expandedEvidence() = true")
+      assertContains(prompt, "\"base_revision\":\"immutable-base\"")
+      assertContains(prompt, "\"head_revision\":\"immutable-head\"")
+    }
+  }
+
+  @Test
+  fun `diff file expansion rejects an unmatched selector instead of silently dropping it`() {
+    val tempDir = createGitRepo()
+    Files.writeString(tempDir.resolve("Test.kt"), "fun evidence() = true\n")
+    val diff = Files.createTempFile("parallel-review", ".diff")
+    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
+
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1", "claude",
+        "--agent2", "codex",
+        "--diff-file", diff.toString(),
+        "--base-revision", "immutable-base",
+        "--head-revision", "immutable-head",
+        "--expand-file", "unknown-lane:Test.kt=called by assigned hunk",
+        "--execution-mode", "delegated",
+        "--repo-root", tempDir.toString(),
+      ),
+      CliRuntimeContext(agentRunLauncher = RecordingParallelLauncher()),
+    )
+
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "Prelaunch expansion selector 'unknown-lane' does not match")
   }
 
   @Test
@@ -315,16 +396,28 @@ class CliCodeReviewParallelRuntimeTest {
 
 private fun createGitRepo(): Path {
   val dir = Files.createTempDirectory("cli-parallel-review-git")
-  ProcessBuilder("git", "init", dir.toString()).start().waitFor()
-  ProcessBuilder("git", "-C", dir.toString(), "config", "user.email", "test@test.com").start().waitFor()
-  ProcessBuilder("git", "-C", dir.toString(), "config", "user.name", "Test").start().waitFor()
+  runGit("init", dir.toString())
+  runGit("-C", dir.toString(), "config", "user.email", "test@test.com")
+  runGit("-C", dir.toString(), "config", "user.name", "Test")
+  runGit("-C", dir.toString(), "config", "commit.gpgSign", "false")
+  runGit("-C", dir.toString(), "commit", "--allow-empty", "-m", "initial")
   return dir
 }
 
 private fun createStagedFile(dir: Path) {
   val file = dir.resolve("Test.kt")
   Files.writeString(file, "fun main() {}\n")
-  ProcessBuilder("git", "-C", dir.toString(), "add", "Test.kt").start().waitFor()
+  runGit("-C", dir.toString(), "add", "Test.kt")
+}
+
+private fun runGit(vararg args: String) {
+  val process = ProcessBuilder("git", *args)
+    .redirectErrorStream(true)
+    .start()
+  val output = process.inputStream.bufferedReader().use { it.readText() }
+  check(process.waitFor() == 0) {
+    "git ${args.joinToString(" ")} failed: $output"
+  }
 }
 
 private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher {
@@ -415,12 +508,14 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
   private val lock = Any()
   val agentIds: MutableList<String> = mutableListOf()
   val modelsByAgent: MutableMap<String, String?> = mutableMapOf()
+  val promptsByAgent: MutableMap<String, String> = mutableMapOf()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
     // Lanes launch on concurrent threads; guard the recording collections.
     synchronized(lock) {
       agentIds += request.agentId
       modelsByAgent[request.agentId] = request.skillRunRequest.modelOverride
+      promptsByAgent[request.agentId] = request.skillRunRequest.promptOverride.orEmpty()
     }
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),

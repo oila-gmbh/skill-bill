@@ -82,6 +82,7 @@ class FeatureTaskRuntimeHandoffEnvelopeSchemaValidatorTest {
         "projection_contract_id" to "feature_task_runtime.upstream_phase_receipt",
         "projection_contract_version" to "0.1",
         "prompt_visibility" to "prompt_visible",
+        "producer_iteration" to mapOf("phase_id" to "plan", "iteration" to 1),
         "fields" to listOf(field),
       ),
     ),

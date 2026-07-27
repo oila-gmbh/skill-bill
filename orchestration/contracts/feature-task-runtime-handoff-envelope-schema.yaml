@@ -99,6 +99,7 @@ $defs:
       - projection_contract_id
       - projection_contract_version
       - prompt_visibility
+      - producer_iteration
       - fields
     properties:
       projection_name:
@@ -122,6 +123,17 @@ $defs:
         enum:
           - prompt_visible
           - private_evidence_only
+      producer_iteration:
+        type: object
+        additionalProperties: false
+        required: [phase_id, iteration]
+        properties:
+          phase_id:
+            type: string
+            minLength: 1
+          iteration:
+            type: integer
+            minimum: 1
       fields:
         type: array
         items:
@@ -230,9 +242,9 @@ x-coherence-checks:
       reference introduces arbitrary model-driven retrieval.
   - id: repository-checkpoint-policy
     description: >-
-      not_required ignores the checkpoint; must_match requires both a resolved and an expected
-      checkpoint with equal fingerprints; refresh_from_repository requires a freshly resolved
-      checkpoint. Any other combination is a CHECKPOINT_POLICY_VIOLATION rejection.
+      not_required ignores the checkpoint. must_match is a legacy durable wire value and, like
+      refresh_from_repository, refreshes from a freshly resolved checkpoint without rejecting
+      repository movement. A missing resolved checkpoint is a CHECKPOINT_POLICY_VIOLATION rejection.
   - id: contract-version-parity
     description: >-
       contract_version.const equals FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION, pinned by

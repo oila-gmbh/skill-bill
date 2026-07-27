@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_LAUNCH_BRIEFING_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 
@@ -50,6 +51,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   /** Serializes the briefing for the durable artifact store, preserving all three handoff layers. */
   @OpenBoundaryMap("Feature-task-runtime per-phase launch briefing artifact map at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to CONTRACT_VERSION,
     "phase_id" to phaseId,
     "spec_reference" to specReference,
     "feature_size" to featureSize,
@@ -73,6 +75,21 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
     /** Strict decode of one persisted briefing map; loud-fails on any missing/malformed field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase launch briefing decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseLaunchBriefing {
+      val unknownFields = raw.keys - ALLOWED_FIELDS
+      if (unknownFields.isNotEmpty()) {
+        schemaError(
+          "Feature-task-runtime briefing artifact contains unsupported fields " +
+            "${unknownFields.sorted().joinToString()}. Restart this workflow or migrate the durable row " +
+            "to briefing contract $CONTRACT_VERSION before retrying.",
+        )
+      }
+      val version = raw["contract_version"]
+      if (version != CONTRACT_VERSION) {
+        schemaError(
+          "Feature-task-runtime briefing artifact contract_version must be '$CONTRACT_VERSION', was " +
+            "'${version ?: "missing"}'. Restart this workflow or migrate the durable row before retrying.",
+        )
+      }
       // A row still carrying the complete upstream payload map predates the projection boundary.
       // Silently migrating it would deliver private evidence as if it were a validated projection,
       // so the read seam rejects it and the operator recovers the row out of band.
@@ -146,5 +163,23 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
 
     private fun missingMessage(key: String, kind: String): String =
       "Feature-task-runtime briefing artifact map is missing required $kind field '$key'."
+
+    const val CONTRACT_VERSION: String = FEATURE_TASK_RUNTIME_PHASE_LAUNCH_BRIEFING_CONTRACT_VERSION
+
+    private val ALLOWED_FIELDS: Set<String> = setOf(
+      "contract_version",
+      "phase_id",
+      "spec_reference",
+      "feature_size",
+      "acceptance_criteria",
+      "mandates_and_overrides",
+      "handoff_envelope",
+      "derived_context_keys",
+      "briefing_text",
+      "driving_verdict",
+      "audit_repair_item_ids",
+      "unresolved_audit_gap_ids",
+      "durably_closed_criterion_refs",
+    )
   }
 }

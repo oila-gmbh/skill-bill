@@ -1,7 +1,11 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
+import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
+import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 
@@ -68,6 +72,14 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
       value.startsWith(ADDON_CONTENT_PREFIX) -> AddonContentRef(value.removePrefix(ADDON_CONTENT_PREFIX))
       else -> throw IllegalArgumentException("Unknown feature-task-runtime handoff source ref '$value'.")
     }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime phase-handoff declaration source wire seam")
+  fun toDeclarationMap(): Map<String, String> = when (this) {
+    is UpstreamPhaseOutput -> mapOf("kind" to "upstream_phase_output", "id" to producingPhaseId)
+    is RunInvariantField -> mapOf("kind" to "run_invariant_field", "id" to invariantField.wireValue)
+    DerivedCeremonyScaling -> mapOf("kind" to "derived_ceremony_scaling", "id" to "ceremony_scaling")
+    is AddonContentRef -> mapOf("kind" to "addon_content", "id" to slug)
   }
 }
 
@@ -336,6 +348,14 @@ data class PhaseHandoffProjectionDeclaration(
    * is a deterministic runtime operation — never a model-driven retrieval.
    */
   val inlineAlternative: FeatureTaskRuntimeCompactReferenceKind? = null,
+  val producerIteration: FeatureTaskRuntimeProducerIteration =
+    FeatureTaskRuntimeProducerIteration(
+      phaseId = (sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput)?.producingPhaseId
+        ?: consumerPhaseId,
+      iteration = 1,
+    ),
+  val authorizedReferenceKinds: Set<FeatureTaskRuntimeCompactReferenceKind> =
+    listOfNotNull(inlineAlternative).toSet(),
 ) {
   init {
     require(consumerPhaseId.isNotBlank()) { "PhaseHandoffProjectionDeclaration.consumerPhaseId must be non-blank." }
@@ -359,6 +379,106 @@ data class PhaseHandoffProjectionDeclaration(
     require(declaredFieldNames.none { it in FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES }) {
       "PhaseHandoffProjectionDeclaration '$projectionName' declares a forbidden raw-context field name."
     }
+    require(inlineAlternative == null || inlineAlternative in authorizedReferenceKinds) {
+      "PhaseHandoffProjectionDeclaration '$projectionName' inline alternative must be explicitly authorized."
+    }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime phase-handoff declaration wire seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
+    "consumer_phase_id" to consumerPhaseId,
+    "projection_name" to projectionName,
+    "source" to sourceRef.toDeclarationMap(),
+    "projection_contract" to mapOf("id" to projectionContractId, "version" to projectionContractVersion),
+    "prompt_visibility" to promptVisibility.wireValue,
+    "budget" to mapOf(
+      "max_utf8_bytes" to budget.maxUtf8Bytes,
+      "max_collection_items" to budget.maxCollectionItems,
+    ),
+    "checkpoint_policy" to checkpointPolicy.wireValue,
+    "producer_iteration" to mapOf(
+      "phase_id" to producerIteration.phaseId,
+      "iteration" to producerIteration.iteration,
+    ),
+    "declared_fields" to declaredFieldNames,
+    "required" to required,
+    "allows_private_artifact_reference" to allowsPrivateArtifactReference,
+  ).apply {
+    inlineAlternative?.let { put("inline_alternative", it.wireValue) }
+    if (authorizedReferenceKinds.isNotEmpty()) {
+      put("authorized_reference_kinds", authorizedReferenceKinds.map { it.wireValue }.sorted())
+    }
+  }
+
+  companion object {
+    @OpenBoundaryMap("Strict feature-task-runtime phase-handoff declaration decode")
+    fun fromArtifactMap(
+      raw: Map<String, Any?>,
+      foundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
+    ): PhaseHandoffProjectionDeclaration {
+      foundationValidator.validateDeclaration(raw, "phase-handoff-declaration")
+      val allowed = setOf(
+        "contract_version", "consumer_phase_id", "projection_name", "source", "projection_contract",
+        "prompt_visibility", "budget", "checkpoint_policy", "producer_iteration", "declared_fields",
+        "required", "allows_private_artifact_reference", "inline_alternative", "authorized_reference_kinds",
+      )
+      invalidIf(
+        raw.keys.any { it !in allowed } ||
+          raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
+      )
+      val source = raw["source"] as? Map<*, *> ?: invalid()
+      val sourceRef = when (source["kind"]) {
+        "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
+        "run_invariant_field" -> FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(
+          FeatureTaskRuntimeRunInvariantPromptField.fromWire(source.string("id")),
+        )
+        "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
+        "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
+        else -> invalid()
+      }
+      val contract = raw["projection_contract"] as? Map<*, *> ?: invalid()
+      val budget = raw["budget"] as? Map<*, *> ?: invalid()
+      val producer = raw["producer_iteration"] as? Map<*, *> ?: invalid()
+      val references = (raw["authorized_reference_kinds"] as? List<*>).orEmpty().map {
+        FeatureTaskRuntimeCompactReferenceKind.fromWire(it as? String ?: invalid())
+      }.toSet()
+      val inlineAlternative = (raw["inline_alternative"] as? String)
+        ?.let(FeatureTaskRuntimeCompactReferenceKind::fromWire)
+      return PhaseHandoffProjectionDeclaration(
+        consumerPhaseId = raw.string("consumer_phase_id"),
+        sourceRef = sourceRef,
+        projectionName = raw.string("projection_name"),
+        projectionContractId = contract.string("id"),
+        projectionContractVersion = contract.string("version"),
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.fromWire(raw.string("prompt_visibility")),
+        budget = FeatureTaskRuntimeHandoffProjectionBudget(
+          maxUtf8Bytes = budget.int("max_utf8_bytes"),
+          maxCollectionItems = budget.int("max_collection_items"),
+        ),
+        declaredFieldNames = (raw["declared_fields"] as? List<*>)?.map { it as? String ?: invalid() } ?: invalid(),
+        checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.fromWire(raw.string("checkpoint_policy")),
+        required = raw.boolean("required"),
+        allowsPrivateArtifactReference = raw.boolean("allows_private_artifact_reference"),
+        producerIteration = FeatureTaskRuntimeProducerIteration(
+          phaseId = producer.string("phase_id"),
+          iteration = producer.int("iteration"),
+        ),
+        inlineAlternative = inlineAlternative,
+        authorizedReferenceKinds = references,
+      )
+    }
+
+    private fun Map<*, *>.string(key: String): String = (this[key] as? String)?.takeIf(String::isNotBlank) ?: invalid()
+    private fun Map<*, *>.int(key: String): Int = (this[key] as? Number)?.toInt() ?: invalid()
+    private fun Map<*, *>.boolean(key: String): Boolean = this[key] as? Boolean ?: invalid()
+    private fun invalidIf(condition: Boolean) {
+      if (condition) invalid()
+    }
+    private fun invalid(): Nothing = throw InvalidFeatureTaskRuntimePhaseHandoffSchemaError(
+      sourceLabel = "phase-handoff-declaration",
+      reason = "unsupported version, unknown field, or malformed closed-world value",
+    )
   }
 }
 
@@ -370,9 +490,48 @@ data class FeatureTaskRuntimeHandoffProjection(
   val projectionContractVersion: String,
   val promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility,
   val fields: List<FeatureTaskRuntimeHandoffProjectionField>,
+  val producerIteration: FeatureTaskRuntimeProducerIteration =
+    FeatureTaskRuntimeProducerIteration(
+      phaseId = (sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput)?.producingPhaseId
+        ?: "runtime",
+      iteration = 1,
+    ),
 ) {
-  val utf8ByteSize: Int get() = fields.sumOf { it.value.utf8ByteSize }
+  /**
+   * Exact UTF-8 size of the representation delivered to the consumer. Prompt-visible projections
+   * use their canonical line rendering; private projections use their durable wire representation.
+   */
+  val utf8ByteSize: Int
+    get() = canonicalDeliveredRendering.toByteArray(Charsets.UTF_8).size
   val itemCount: Int get() = fields.sumOf { it.value.itemCount }
+  val canonicalDeliveredRendering: String
+    get() = if (promptVisibility == FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE) {
+      buildString {
+        if (sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
+          appendLine("### from: ${sourceRef.producingPhaseId}")
+        } else {
+          appendLine("### $projectionName (${sourceRef.wireValue})")
+        }
+        fields.forEach { field ->
+          val singleReceipt = fields.size == 1 &&
+            field.name == "phase_output_receipt"
+          when (val value = field.value) {
+            is FeatureTaskRuntimeHandoffProjectionValue.Text -> {
+              val text = value.text.escapeProjectionLineBreaks()
+              if (singleReceipt) appendLine(text) else appendLine("${field.name}: $text")
+            }
+            is FeatureTaskRuntimeHandoffProjectionValue.TextList -> {
+              appendLine("${field.name}:")
+              value.items.forEach { item -> appendLine("  - ${item.escapeProjectionLineBreaks()}") }
+            }
+            is FeatureTaskRuntimeHandoffProjectionValue.CompactReference ->
+              appendLine("${field.name}: ${value.kind.wireValue}=${value.value}")
+          }
+        }
+      }
+    } else {
+      JsonSupport.mapToJsonString(toEnvelopeMap())
+    }
 
   @OpenBoundaryMap("Feature-task-runtime handoff projection at the durable envelope wire seam")
   fun toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
@@ -381,6 +540,10 @@ data class FeatureTaskRuntimeHandoffProjection(
     "projection_contract_id" to projectionContractId,
     "projection_contract_version" to projectionContractVersion,
     "prompt_visibility" to promptVisibility.wireValue,
+    "producer_iteration" to mapOf(
+      "phase_id" to producerIteration.phaseId,
+      "iteration" to producerIteration.iteration,
+    ),
     "fields" to fields.map { field ->
       linkedMapOf<String, Any?>("name" to field.name).apply {
         when (val value = field.value) {
@@ -402,6 +565,8 @@ data class FeatureTaskRuntimeHandoffProjection(
     },
   )
 }
+
+private fun String.escapeProjectionLineBreaks(): String = replace("\r", "\\r").replace("\n", "\\n")
 
 /**
  * The durable, prompt-visible handoff envelope: named typed projections and compact references only.
@@ -462,6 +627,13 @@ data class FeatureTaskRuntimeHandoffEnvelope(
         projectionContractVersion = projection.requireString("projection_contract_version"),
         promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility
           .fromWire(projection.requireString("prompt_visibility")),
+        producerIteration = (projection["producer_iteration"] as? Map<*, *>)?.let {
+          FeatureTaskRuntimeProducerIteration(
+            phaseId = it.requireString("phase_id"),
+            iteration = (it["iteration"] as? Number)?.toInt()
+              ?: decodeError("field 'producer_iteration.iteration' must be an integer."),
+          )
+        } ?: decodeError("field 'producer_iteration' must decode to an object."),
         fields = (projection["fields"] as? List<*>).orEmpty().map(::fieldFromWire),
       )
     }
@@ -506,6 +678,12 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   /** Checkpoint recorded in durable state, compared against the resolved one under `must_match`. */
   val expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  /** Durable runtime-owned repair state used to construct audit-remediation projections. */
+  val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
+  val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  /** Runtime-owned branch identity used only by bounded finalization request projectors. */
+  val branchIdentity: String? = null,
+  val baseBranch: String = "main",
   val addonContentBySlug: Map<String, String> = emptyMap(),
   val workflowId: String? = null,
   /**

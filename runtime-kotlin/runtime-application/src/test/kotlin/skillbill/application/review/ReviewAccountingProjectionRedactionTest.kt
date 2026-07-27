@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.context.ReviewTreeAccounting
@@ -123,7 +124,17 @@ class ReviewAccountingProjectionRedactionTest {
         rubricBody = { "RUBRIC_SECRET ".repeat(8) },
       ),
       recorder,
-    ).run(harnessRequest())
+    ).run(
+      harnessRequest(
+        prelaunchExpansions = listOf(
+          ReviewPrelaunchExpansion(
+            "parallel-code-review",
+            "src/DIFF_SECRET.kt",
+            "The redaction test measures one explicitly authorized complete-file expansion.",
+          ),
+        ),
+      ),
+    )
 
     return recorder to assertNotNull(result.accountingSummary)
   }

@@ -35,8 +35,8 @@ class ParallelCodeReviewEndToEndTest {
     )
     assertEquals(kotlinAreas.size * 2, recorder.nativeLaunches.size, "Each top-level lane runs every specialist once.")
     assertTrue(
-      recorder.nativeLaunches.none { it.logicalWorkerName == "bill-kotlin-code-review" },
-      "A flattened plan never launches the baseline skill as a nested orchestrator.",
+      recorder.nativeLaunches.all { it.logicalWorkerName == null },
+      "A flattened prompt-only plan never exposes logical worker identities.",
     )
     assertTrue(result.lane1.success && result.lane2.success)
   }
@@ -95,22 +95,21 @@ class ParallelCodeReviewEndToEndTest {
       listOf("git diff", "gh pr", "merge-base", "AGENTS.md", "platform-packs/").forEach { affordance ->
         assertTrue(
           !launch.prompt.contains(affordance),
-          "Specialist prompt for '${launch.logicalWorkerName}' leaked '$affordance'.",
+          "Specialist prompt leaked '$affordance'.",
         )
       }
     }
   }
 
-  @Test fun `evidence is requested in one bounded batch per specialist lane`() {
+  @Test fun `ordinary assigned evidence is carried only in prompt hunk envelopes`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
-    assertEquals(recorder.nativeLaunches.size, recorder.evidenceBatches.size)
-    recorder.evidenceBatches.forEach { batch ->
-      assertTrue(batch.requests.isNotEmpty())
-      assertEquals(batch.requests.map { it.path }.distinct(), batch.requests.map { it.path })
-      assertTrue(batch.requests.all { it.lane == batch.lane })
+    assertTrue(recorder.evidenceBatches.isEmpty(), "Ordinary assigned paths must not be reread through the broker.")
+    recorder.nativeLaunches.forEach { launch ->
+      assertTrue(launch.prompt.contains("assigned_hunk_bodies"))
+      assertTrue(launch.prompt.contains("src/Repo.kt"))
     }
   }
 
@@ -125,12 +124,12 @@ class ParallelCodeReviewEndToEndTest {
       ).sorted()
     assertEquals(expected, recorder.launchedSpecialists.distinct().sorted())
     assertTrue(
-      recorder.nativeLaunches.none { it.logicalWorkerName in setOf("bill-kmp-code-review", "bill-kotlin-code-review") },
-      "A composed root never launches a baseline review skill as a nested orchestrator.",
+      recorder.nativeLaunches.all { it.logicalWorkerName == null },
+      "Composed prompt-only lanes do not expose baseline or specialist worker identities.",
     )
   }
 
-  @Test fun `native agent preflight verifies every assignment before any launch`() {
+  @Test fun `prompt-only assignments bypass logical-name preflight and still launch`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(
@@ -138,12 +137,9 @@ class ParallelCodeReviewEndToEndTest {
       recorder,
     ).run(harnessRequest())
 
-    val preflight = recorder.preflightRequests.single()
-    assertEquals(
-      recorder.launchedSpecialists.distinct().sorted(),
-      preflight.assignments.map { it.logicalName }.distinct().sorted(),
-    )
-    assertEquals(setOf("codex", "claude"), preflight.assignments.map { it.agentId }.toSet())
+    assertTrue(recorder.preflightRequests.isEmpty())
+    assertTrue(recorder.nativeLaunches.isNotEmpty())
+    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName == null })
   }
 
   @Test fun `repeated layered runs produce identical findings and accounting`() {
@@ -151,9 +147,9 @@ class ParallelCodeReviewEndToEndTest {
     fun run(): ParallelCodeReviewResult {
       val recorder = ReviewRecorder()
       return reviewHarness(
-        kmpConfig { request ->
+        kmpConfig {
           RecordedWorkerResponse(
-            stdout = finding("src/main/kotlin/App.kt", specialist = request.logicalWorkerName),
+            stdout = finding("src/main/kotlin/App.kt"),
             usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
@@ -189,7 +185,7 @@ class ParallelCodeReviewEndToEndTest {
     assertEquals(kotlinAreas.size * 2, specialists.size)
     specialists.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
-      assertTrue(lane.counters.evidenceBytes > 0)
+      assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
       assertTrue(lane.counters.resultBytes > 0)
       assertTrue(lane.counters.modelTurns > 0)
       assertEquals(1_000, lane.directUsage.inputTokens)
