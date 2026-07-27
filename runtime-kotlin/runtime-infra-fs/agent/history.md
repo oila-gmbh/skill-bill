@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-27] SKILL-132 Orphan runtime contract asset audit (subtask 3)
+Areas: runtime-kotlin/runtime-infra-fs, .feature-specs/SKILL-132-runtime-kotlin-dead-code-sweep
+- Audited four bundled contract schemas (execution-identity, worker-ownership, goal-subtask-review-state, review-context) for orphan status; all four reached an `active` disposition, so nothing was removed.
+- Producer-consumer-validation traces are recorded in the spec's evidence ledger; absence of file-name references was explicitly rejected as removal evidence.
+- Added `FeatureTaskExecutionIdentitySchemaContractVersionTest`, closing the last retained-schema gap in version-parity coverage (pattern: `PlatformPackSchemaContractVersionTest`).
+- Reusable: audit shape for contract assets — trace read seams, durable records, migrations, copy tasks, and `jar tf` bundling before proposing deletion; clean-rebuild + jar inspection proves the removal delta.
+- Known limitation: removal delta was vacuous this subtask; configuration-cache and migration surfaces were untouched.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-27] SKILL-138 Cursor MCP install/uninstall, replay, and smoke tests (subtask 3)
 Areas: runtime-kotlin/runtime-{cli,infra-fs}, scripts
 - Cursor MCP registration targets `~/.cursor/mcp.json` with standard `mcpServers` merge semantics; register/unregister/config-path branches now cover CURSOR case in `McpJsonConfig` and `McpRegistrationOperations`.
