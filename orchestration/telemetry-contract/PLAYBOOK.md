@@ -67,7 +67,7 @@ Blocked telemetry reasons use a category prefix so analysis can bucket outcomes.
 `limit:`, `validation:`, `fix_loop:`, `git:`, `store_lock:`, `needs_human:`, `schema:`, `runtime:`,
 and `unknown:`.
 
-`feature_task_runtime_finished.last_incomplete_phase` is non-empty for blocked and error outcomes.
+`skillbill_feature_task_runtime_finished.last_incomplete_phase` is non-empty for blocked and error outcomes.
 Completed outcomes emit `completed`; planning decompositions emit `decomposed_at_planning`.
 
 `goal_started.status` is emitted as `running`.

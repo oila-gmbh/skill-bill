@@ -10,7 +10,6 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
 class RuntimeArchitectureTest {
-  private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/core/ReadianMcpRuntime.kt"
   private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/scaffold/McpScaffoldRuntime.kt"
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
@@ -373,13 +372,12 @@ class RuntimeArchitectureTest {
     assertNoBannedSourceReferences(
       files =
       mcpFiles.filterNot { file ->
-        file.relativePath in setOf(mcpScaffoldRuntime, readianMcpRuntime)
+        file.relativePath == mcpScaffoldRuntime
       },
       bannedReferences = listOf("java.nio.file.Files", "Files."),
       description = "direct filesystem dependency",
     )
     assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles)
-    assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles)
   }
 
   @Test
@@ -1786,26 +1784,6 @@ class RuntimeArchitectureTest {
         "import java.nio.file.Files",
         "val hasSettings = Files.isRegularFile(current.resolve(\"runtime-kotlin/settings.gradle.kts\"))",
         "val hasSkills = Files.isDirectory(current.resolve(\"skills\"))",
-      ),
-      filesReferenceLines,
-    )
-  }
-
-  private fun assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles: List<SourceFile>) {
-    val readianFile =
-      mcpFiles.first { file ->
-        file.relativePath == readianMcpRuntime
-      }
-    val filesReferenceLines =
-      readianFile.source.lines()
-        .filter { line -> "java.nio.file.Files" in line || "Files." in line }
-        .map(String::trim)
-
-    assertEquals(
-      listOf(
-        "import java.nio.file.Files",
-        "if (!Files.isDirectory(versions)) return null",
-        "return Files.list(versions).use { paths ->",
       ),
       filesReferenceLines,
     )

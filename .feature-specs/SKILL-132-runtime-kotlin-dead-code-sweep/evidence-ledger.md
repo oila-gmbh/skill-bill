@@ -309,3 +309,53 @@ database table, column, or historical migration was touched (AC-005 holds by sco
 verifiable in the branch diff). AC-006's evidence is that the retained resource set and the contract,
 persistence, workflow, migration, and configuration-cache suites stay green with the added parity
 test.
+
+## Subtask 4 — MCP and deprecated CLI compatibility surfaces
+
+### Method
+
+Every advertised MCP tool in `McpToolRegistry.toolNames`, every hidden alias in
+`McpToolDispatcher.legacyToolAliases`, and the two deprecated CLI aliases were checked against:
+governed skill sources under `skills/`, `docs/`, `scripts/`, `orchestration/` playbooks and
+contracts, desktop wiring under `runtime-kotlin/runtime-desktop/src`, telemetry schema branches in
+`orchestration/contracts/telemetry-event-schema.yaml`, and the live installed tool listing. Build
+output trees and `.git/rr-cache` were excluded as non-authoritative.
+
+In-flight self-consumption: this sweep runs inside a feature-task-runtime goal loop, which executes
+the *installed* `skill-bill` binary, not the branch sources. Removing a source-side MCP tool
+therefore cannot strand the running loop. The binding requirement is instead that no governed skill
+or native-agent source instructs an agent to call a removed name — verified by the `skills/` and
+`native-agents/` searches below, which returned no hits for any removed name.
+
+### Dispositions
+
+| name | consumers checked | disposition | verification |
+| --- | --- | --- | --- |
+| `feature_task_runtime_started` / `_finished` | skills, docs, scripts, orchestration, desktop, telemetry, CLI | removable | `FeatureTaskRuntimeLifecycleTelemetry` (runtime-application) constructs `FeatureTaskRuntimeStartedRequest` / `FinishedRequest` and calls `LifecycleTelemetryService` directly; the MCP handlers were a second door onto the same service. Outbox emission of `skillbill_feature_task_runtime_*` comes from `LifecycleTelemetryEmitSupport` (runtime-infra-sqlite), independent of MCP. |
+| `feature_task_runtime_stats` | as above | removable | Duplicates the CLI `feature-task-runtime-stats` command (`ReviewCliCommands.kt:167`), which reaches `ReviewService.featureTaskRuntimeStats` directly. |
+| `feature_task_runtime_workflow_{open,get,latest,list,update,resume,continue}` | as above | removable | The foreground driver uses `WorkflowService` through `RuntimeComponent`; the MCP entries only re-dispatched the shared `workflow*` helpers with `WorkflowFamilyKind.TASK_RUNTIME`. Those helpers stay for the prose and verify families. |
+| `feature_task_continuation_lookup` | as above | removable | `FeatureTaskContinuationLookupService` is consumed by `FeatureTaskRuntimeCliCommands` (five call sites) and stays. No governed skill, script, or doc invokes the MCP name; its only non-code reference was its own telemetry schema branch. |
+| `readian_auth_status`, `readian_get_article`, `readian_get_articles_for_topic_query`, `readian_get_spotlight`, `readian_mark_story_status`, `readian_save_candidate` | as above | removable | Zero Skill Bill consumers. Only references were `docs/getting-started.md` (an "optional when configured" listing), the six telemetry schema branches, and Readian-only tests. `ReadianMcpRuntime` and `ReadianSecretRedactor` had no other callers. No Gradle coordinate in `runtime-mcp/build.gradle.kts` or `gradle/libs.versions.toml` was Readian-exclusive — the bridge shelled out via `ProcessBuilder` — so no dependency was dropped. `SkillMdShapeValidator`'s `readian-mcp` regex is a governed authoring lint forbidding MCP-install instructions in skill content, not bridge code, and is retained. |
+| `doctor`, `new_skill_scaffold`, `review_stats`, `goal_stats`, `telemetry_proxy_capabilities`, `telemetry_remote_stats` | as above | compatibility-retained | All six are advertised published interfaces in `docs/getting-started.md` §MCP Server and `docs/capabilities.md`. They duplicate CLI commands, but duplication of a *documented agent-native surface* is the stated purpose of the MCP server, and the spec Non-Goals forbid treating low observed usage as sufficient evidence to break a published interface. Removal condition: a documented deprecation notice plus one release carrying migration guidance to the equivalent CLI command. |
+| 10 hidden `feature_implement_*` aliases | as above | compatibility-retained | No documented removal window or version policy exists anywhere in `docs/`, `orchestration/`, `ARCHITECTURE.md`, release notes, or code comments. `scripts/agent_nesting_smoke_test.sh:56` is a live consumer calling `feature_implement_workflow_list` / `feature_implement_workflow_get`, and `docs/cloudflare-telemetry-proxy/worker.js` still counts the legacy event names. Removal condition: publish a deprecation window with migration guidance to `feature_task_prose_*`, then delete after that window closes. |
+| CLI `feature-task-runtime` alias | as above | compatibility-retained | Hidden alias emitting a stderr deprecation note (`FeatureTaskRuntimeCliCommands.kt:663`). No removal window is documented. Removal condition: same as above, migrating callers to `skill-bill feature-task`. |
+| CLI `runtime-stats` alias | as above | compatibility-retained | Hidden alias emitting a stderr deprecation note (`ReviewCliCommands.kt:171`). No removal window is documented. Removal condition: same as above, migrating callers to `skill-bill feature-task-stats`. |
+
+### Removals applied
+
+Registry entries, descriptions, strict input schemas, dispatcher handlers, exclusive
+application-facing wrappers (`McpRuntime.featureTaskRuntimeStarted/Finished/Stats`,
+`McpWorkflowRuntime.featureTaskContinuationLookup` and its three payload mappers,
+`McpLifecycleToolHandlers.featureTaskRuntimeStarted/Finished`,
+`ReviewMcpResultMappers.FeatureTaskRuntimeStatsResult.toMcpMap`), the
+`McpRuntimeServices.featureTaskContinuationLookupService` DI field, `ReadianMcpRuntime.kt`,
+`ReadianSecretRedactor.kt`, 17 telemetry schema branches with their `oneOf` refs, the three
+now-orphaned task-runtime schema `$defs` shapes, and the corresponding tests and doc lines were
+deleted together. `TelemetryTaskRuntimeStepIdEnumParityTest` was deleted with the
+`workflowTaskRuntimeStepIdEnum` it pinned. The telemetry contract version was not bumped: the schema
+is a discriminated union keyed by `event_name`, and dropping branches for events no longer emitted
+neither changes the shape of a retained event nor invalidates a durable record.
+
+Behavioral coverage that previously drove `LifecycleTelemetryService` through the removed MCP tools
+(runtime token persistence, blocked-reason reconciliation, runtime stats aggregation) was relocated
+in `McpRuntimeTest` to call the service seam directly rather than deleted.

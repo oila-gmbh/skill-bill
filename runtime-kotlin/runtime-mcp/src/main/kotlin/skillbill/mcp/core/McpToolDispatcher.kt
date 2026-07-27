@@ -3,8 +3,6 @@ package skillbill.mcp.core
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.mcp.lifecycle.featureImplementFinished
 import skillbill.mcp.lifecycle.featureImplementStarted
-import skillbill.mcp.lifecycle.featureTaskRuntimeFinished
-import skillbill.mcp.lifecycle.featureTaskRuntimeStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.goalProseFinished
@@ -32,14 +30,6 @@ object McpToolDispatcher {
       "feature_task_prose_finished" to ::featureImplementFinished,
       "feature_task_prose_started" to ::featureImplementStarted,
       "feature_task_prose_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
-      "feature_task_continuation_lookup" to { arguments, context ->
-        McpWorkflowRuntime.featureTaskContinuationLookup(
-          issueKey = arguments.string("issue_key"),
-          repositoryIdentity = arguments.string("repository_identity"),
-          workflowId = arguments.optionalString("workflow_id"),
-          context = context,
-        )
-      },
       "feature_task_prose_workflow_continue" to
         { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_task_prose_workflow_get" to
@@ -88,23 +78,6 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.VERIFY, arguments, context) },
       "feature_verify_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.VERIFY, arguments, context) },
-      "feature_task_runtime_finished" to ::featureTaskRuntimeFinished,
-      "feature_task_runtime_started" to ::featureTaskRuntimeStarted,
-      "feature_task_runtime_stats" to { _, context -> McpRuntime.featureTaskRuntimeStats(context) },
-      "feature_task_runtime_workflow_continue" to
-        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_runtime_workflow_get" to
-        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_runtime_workflow_latest" to
-        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context) },
-      "feature_task_runtime_workflow_list" to
-        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_runtime_workflow_open" to
-        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_runtime_workflow_resume" to
-        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
-      "feature_task_runtime_workflow_update" to
-        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_RUNTIME, arguments, context) },
       "goal_prose_finished" to ::goalProseFinished,
       "goal_prose_started" to ::goalProseStarted,
       "goal_prose_subtask_finished" to ::goalProseSubtaskFinished,
@@ -114,17 +87,6 @@ object McpToolDispatcher {
       "pr_description_generated" to ::prDescriptionGenerated,
       "quality_check_finished" to ::qualityCheckFinished,
       "quality_check_started" to ::qualityCheckStarted,
-      "readian_auth_status" to { _, context -> ReadianMcpRuntime.authStatus(context) },
-      "readian_get_article" to
-        { arguments, context -> ReadianMcpRuntime.call("readian_get_article", arguments, context) },
-      "readian_get_articles_for_topic_query" to
-        { arguments, context -> ReadianMcpRuntime.call("readian_get_articles_for_topic_query", arguments, context) },
-      "readian_get_spotlight" to
-        { arguments, context -> ReadianMcpRuntime.call("readian_get_spotlight", arguments, context) },
-      "readian_mark_story_status" to
-        { arguments, context -> ReadianMcpRuntime.call("readian_mark_story_status", arguments, context) },
-      "readian_save_candidate" to
-        { arguments, context -> ReadianMcpRuntime.call("readian_save_candidate", arguments, context) },
       "resolve_learnings" to ::resolveLearnings,
       "review_stats" to
         { arguments, context -> McpRuntime.reviewStats(arguments.optionalString("review_run_id"), context) },

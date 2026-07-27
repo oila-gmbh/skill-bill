@@ -641,10 +641,13 @@ skillbill.workflow.verify
   `workflow_name=bill-feature-task`, `mode=prose`, and
   `implementation_skill=bill-feature-task-prose`; its stable prose step ids and
   artifact names remain unchanged.
-- The `feature_task_runtime_*` and `feature_implement_*` CLI/MCP names are
-  compatibility aliases to `bill-feature-task mode=runtime` and
-  `bill-feature-task mode=prose` respectively. They are not separate
-  authoritative workflow stores. `bill-feature`
+- The `feature_implement_*` MCP names are hidden compatibility aliases to
+  `bill-feature-task mode=prose`. They are not a separate authoritative workflow
+  store. SKILL-132 removed the duplicate `feature_task_runtime_*` MCP tools: the
+  foreground runtime driver calls `WorkflowService`,
+  `LifecycleTelemetryService`, and `FeatureTaskContinuationLookupService`
+  directly, and `skill-bill feature-task` / `feature-task-stats` remain the CLI
+  surface. `bill-feature`
   routes single-spec work to the canonical `bill-feature-task` router without
   hardcoding a mode. The
   authoritative recorded promote decision lives in
@@ -941,8 +944,8 @@ overflow, and an audit's own `audit_repair_state` drift keep their
 first-occurrence durable block: re-running a producer cannot fix them.
 Out-of-band row deletion or migration is the corruption fallback for records the
 edge cannot regenerate. Per-run regeneration telemetry records activation counts,
-attempt counts, and outcome-class tallies on the `feature_task_runtime_finished`
-event — counts and class labels only, never record contents.
+attempt counts, and outcome-class tallies on the
+`skillbill_feature_task_runtime_finished` event — counts and class labels only, never record contents.
 
 Canonicalization and reconciliation of malformed durable projection records
 beyond this recovery edge belong to later SKILL-140 subtasks.

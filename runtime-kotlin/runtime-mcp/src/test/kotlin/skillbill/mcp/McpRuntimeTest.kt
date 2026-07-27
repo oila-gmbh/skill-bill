@@ -5,6 +5,8 @@ import skillbill.SkillBillVersion
 import skillbill.ZERO_FINDING_REVIEW
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
+import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -12,6 +14,7 @@ import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.review.toFeatureTaskRuntimeStatsPayload
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -31,6 +34,7 @@ import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
+import skillbill.mcp.core.services
 import skillbill.mcp.lifecycle.qualityCheckStarted
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
@@ -167,7 +171,7 @@ class McpRuntimeTest {
     val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
 
     recordFeatureTaskRuntimeLifecycle(context)
-    val stats = McpToolDispatcher.call("feature_task_runtime_stats", emptyMap(), context)
+    val stats = featureTaskRuntimeStatsPayload(context)
 
     assertEquals("feature-task-runtime", stats["workflow"])
     assertEquals(1, stats["total_runs"])
@@ -821,39 +825,38 @@ class McpTokenEstimationTest {
     val tempDir = Files.createTempDirectory("skillbill-mcp-runtime-tokens")
     val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
 
-    val started = McpToolDispatcher.call(
-      "feature_task_runtime_started",
-      mapOf(
-        "feature_size" to "MEDIUM",
-        "issue_key" to "SKILL-91",
-        "feature_name" to "token-estimation",
+    val lifecycle = services(context).lifecycleTelemetryService
+    val started = lifecycle.featureTaskRuntimeStarted(
+      FeatureTaskRuntimeStartedRequest(
+        featureSize = "MEDIUM",
+        issueKey = "SKILL-91",
+        featureName = "token-estimation",
       ),
-      context,
     )
-    McpToolDispatcher.call(
-      "feature_task_runtime_finished",
-      mapOf(
-        "session_id" to started["session_id"] as String,
-        "completion_status" to "completed",
-        "completed_phase_ids" to listOf("preplan", "plan", "implement"),
-        "phase_outcomes" to mapOf(
+    lifecycle.featureTaskRuntimeFinished(
+      FeatureTaskRuntimeFinishedRequest(
+        sessionId = started["session_id"] as String,
+        completionStatus = "completed",
+        completedPhaseIds = listOf("preplan", "plan", "implement"),
+        phaseOutcomes = mapOf(
           "preplan" to "completed",
           "plan" to "completed",
           "implement" to "completed",
         ),
-        "last_incomplete_phase" to "",
-        "blocked_reason" to "",
-        "resolved_branch" to "feat/SKILL-91",
-        "estimated_phase_tokens" to mapOf(
-          "preplan" to mapOf("estimated_input_tokens" to 800, "estimated_output_tokens" to 400),
-          "plan" to mapOf("estimated_input_tokens" to 1200, "estimated_output_tokens" to 600),
-          "implement" to mapOf("estimated_input_tokens" to 3000, "estimated_output_tokens" to 1500),
+        lastIncompletePhase = "",
+        blockedReason = "",
+        resolvedBranch = "feat/SKILL-91",
+        estimatedPhaseTokenBreakdownJson = JsonSupport.mapToJsonString(
+          mapOf(
+            "preplan" to mapOf("estimated_input_tokens" to 800, "estimated_output_tokens" to 400),
+            "plan" to mapOf("estimated_input_tokens" to 1200, "estimated_output_tokens" to 600),
+            "implement" to mapOf("estimated_input_tokens" to 3000, "estimated_output_tokens" to 1500),
+          ),
         ),
-        "estimated_total_tokens" to 7500,
+        estimatedTotalTokens = 7500,
       ),
-      context,
     )
-    val stats = McpToolDispatcher.call("feature_task_runtime_stats", emptyMap(), context)
+    val stats = featureTaskRuntimeStatsPayload(context)
 
     assertEquals(1, stats["estimated_token_runs_with_value"])
     assertEquals(7500.0, stats["average_estimated_total_tokens"])
@@ -1216,31 +1219,35 @@ private fun recordFeatureImplementLifecycle(context: McpRuntimeContext) {
   )
 }
 
+// SKILL-132 subtask 4: the feature_task_runtime_* MCP endpoints were duplicates of the
+// services the foreground runtime driver already calls directly, so the behavioral coverage
+// drives LifecycleTelemetryService at that seam instead of through a removed tool.
 private fun recordFeatureTaskRuntimeLifecycle(context: McpRuntimeContext) {
-  val started =
-    McpToolDispatcher.call(
-      "feature_task_runtime_started",
-      mapOf(
-        "feature_size" to "MEDIUM",
-        "issue_key" to "SKILL-65.1",
-        "feature_name" to "lifecycle-telemetry-and-stats",
-      ),
-      context,
-    )
-  McpToolDispatcher.call(
-    "feature_task_runtime_finished",
-    mapOf(
-      "session_id" to started["session_id"] as String,
-      "completion_status" to "completed",
-      "completed_phase_ids" to listOf("preplan", "plan", "implement"),
-      "phase_outcomes" to mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-      "last_incomplete_phase" to "",
-      "blocked_reason" to "",
-      "resolved_branch" to "feat/SKILL-65.1",
+  val lifecycle = services(context).lifecycleTelemetryService
+  val started = lifecycle.featureTaskRuntimeStarted(
+    FeatureTaskRuntimeStartedRequest(
+      featureSize = "MEDIUM",
+      issueKey = "SKILL-65.1",
+      featureName = "lifecycle-telemetry-and-stats",
     ),
-    context,
+  )
+  lifecycle.featureTaskRuntimeFinished(
+    FeatureTaskRuntimeFinishedRequest(
+      sessionId = started["session_id"] as String,
+      completionStatus = "completed",
+      completedPhaseIds = listOf("preplan", "plan", "implement"),
+      phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
+      lastIncompletePhase = "",
+      blockedReason = "",
+      resolvedBranch = "feat/SKILL-65.1",
+    ),
   )
 }
+
+private fun featureTaskRuntimeStatsPayload(context: McpRuntimeContext): Map<String, Any?> =
+  services(context).reviewService.featureTaskRuntimeStats(dbOverride = null)
+    .toFeatureTaskRuntimeStatsPayload()
+    .toPayload()
 
 private fun recordBlockedFeatureTaskRuntimeFinished(
   context: McpRuntimeContext,
@@ -1248,34 +1255,30 @@ private fun recordBlockedFeatureTaskRuntimeFinished(
   lastIncompletePhase: String,
   blockedReason: String,
 ): String {
-  val started =
-    McpToolDispatcher.call(
-      "feature_task_runtime_started",
-      mapOf(
-        "feature_size" to "MEDIUM",
-        "issue_key" to issueKey,
-        "feature_name" to "blocked-runtime-finish",
-      ),
-      context,
-    )
+  val lifecycle = services(context).lifecycleTelemetryService
+  val started = lifecycle.featureTaskRuntimeStarted(
+    FeatureTaskRuntimeStartedRequest(
+      featureSize = "MEDIUM",
+      issueKey = issueKey,
+      featureName = "blocked-runtime-finish",
+    ),
+  )
   val sessionId = started["session_id"] as String
-  McpToolDispatcher.call(
-    "feature_task_runtime_finished",
-    mapOf(
-      "session_id" to sessionId,
-      "completion_status" to "blocked",
-      "completed_phase_ids" to listOf("preplan", "plan", "implement"),
-      "phase_outcomes" to mapOf(
+  lifecycle.featureTaskRuntimeFinished(
+    FeatureTaskRuntimeFinishedRequest(
+      sessionId = sessionId,
+      completionStatus = "blocked",
+      completedPhaseIds = listOf("preplan", "plan", "implement"),
+      phaseOutcomes = mapOf(
         "preplan" to "completed",
         "plan" to "completed",
         "implement" to "completed",
         "review" to "blocked",
       ),
-      "last_incomplete_phase" to lastIncompletePhase,
-      "blocked_reason" to blockedReason,
-      "resolved_branch" to "feat/SKILL-109",
+      lastIncompletePhase = lastIncompletePhase,
+      blockedReason = blockedReason,
+      resolvedBranch = "feat/SKILL-109",
     ),
-    context,
   )
   return sessionId
 }

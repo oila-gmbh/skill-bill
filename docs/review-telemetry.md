@@ -424,7 +424,7 @@ Fields always excluded (both levels): repo name, branch name, raw spec content, 
 
 ## Audit-repair counters
 
-Runtime-mode feature-task sessions report their own terminal event through the `feature_task_runtime_finished` MCP tool, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
+Runtime-mode feature-task sessions report their own terminal event directly from the foreground runtime driver's lifecycle telemetry, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
 
 | Field | Type | Description |
 |-------|------|-------------|

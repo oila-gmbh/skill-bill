@@ -1,7 +1,6 @@
 package skillbill.mcp.core
 
 import skillbill.application.telemetry.specInputTypes
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 data class McpToolSpec(
   val name: String,
@@ -39,7 +38,6 @@ object McpToolRegistry {
       "feature_task_prose_finished",
       "feature_task_prose_stats",
       "feature_task_prose_started",
-      "feature_task_continuation_lookup",
       "feature_task_prose_workflow_get",
       "feature_task_prose_workflow_latest",
       "feature_task_prose_workflow_list",
@@ -57,16 +55,6 @@ object McpToolRegistry {
       "feature_verify_workflow_open",
       "feature_verify_workflow_resume",
       "feature_verify_workflow_update",
-      "feature_task_runtime_finished",
-      "feature_task_runtime_started",
-      "feature_task_runtime_stats",
-      "feature_task_runtime_workflow_get",
-      "feature_task_runtime_workflow_latest",
-      "feature_task_runtime_workflow_list",
-      "feature_task_runtime_workflow_continue",
-      "feature_task_runtime_workflow_open",
-      "feature_task_runtime_workflow_resume",
-      "feature_task_runtime_workflow_update",
       "goal_prose_finished",
       "goal_prose_started",
       "goal_prose_subtask_finished",
@@ -76,12 +64,6 @@ object McpToolRegistry {
       "pr_description_generated",
       "quality_check_finished",
       "quality_check_started",
-      "readian_auth_status",
-      "readian_get_article",
-      "readian_get_articles_for_topic_query",
-      "readian_get_spotlight",
-      "readian_mark_story_status",
-      "readian_save_candidate",
       "resolve_learnings",
       "review_stats",
       "telemetry_proxy_capabilities",
@@ -96,8 +78,6 @@ object McpToolRegistry {
       "feature_task_prose_finished" to "Record completion of a feature-task prose session.",
       "feature_task_prose_stats" to "Show aggregate feature-task prose metrics.",
       "feature_task_prose_started" to "Record start of a feature-task prose session.",
-      "feature_task_continuation_lookup" to
-        "Read-only repository-scoped lookup of DB-authoritative feature-task continuation state.",
       "feature_task_prose_workflow_continue" to "Continue durable feature-task prose workflow state.",
       "feature_task_prose_workflow_get" to
         "Fetch read-only full durable feature-task prose workflow state.",
@@ -118,20 +98,6 @@ object McpToolRegistry {
       "feature_verify_workflow_resume" to "Summarize bill-feature-verify workflow resume state.",
       "feature_verify_workflow_update" to
         "Update durable bill-feature-verify workflow state and return a compact acknowledgement.",
-      "feature_task_runtime_finished" to "Record completion of a feature-task runtime session.",
-      "feature_task_runtime_started" to "Record start of a feature-task runtime session.",
-      "feature_task_runtime_stats" to "Show aggregate feature-task runtime metrics.",
-      "feature_task_runtime_workflow_continue" to
-        "Continue durable feature-task runtime workflow state.",
-      "feature_task_runtime_workflow_get" to
-        "Fetch read-only full durable feature-task runtime workflow state.",
-      "feature_task_runtime_workflow_latest" to "Fetch the latest feature-task runtime workflow.",
-      "feature_task_runtime_workflow_list" to "List feature-task runtime workflows.",
-      "feature_task_runtime_workflow_open" to "Open durable feature-task runtime workflow state.",
-      "feature_task_runtime_workflow_resume" to
-        "Summarize feature-task runtime workflow resume state.",
-      "feature_task_runtime_workflow_update" to
-        "Update durable feature-task runtime workflow state and return a compact acknowledgement.",
       "goal_prose_finished" to "Record completion of a prose goal run.",
       "goal_prose_started" to "Record start of a prose goal run.",
       "goal_prose_subtask_finished" to "Record completion of a prose goal subtask.",
@@ -141,13 +107,6 @@ object McpToolRegistry {
       "pr_description_generated" to "Record PR description generation telemetry.",
       "quality_check_finished" to "Record completion of a quality-check session.",
       "quality_check_started" to "Record start of a quality-check session.",
-      "readian_auth_status" to "Report whether the Readian MCP boundary has an authenticated session.",
-      "readian_get_article" to "Fetch a Readian article through the authenticated MCP boundary.",
-      "readian_get_articles_for_topic_query" to
-        "Fetch Readian articles for a topic query through the authenticated MCP boundary.",
-      "readian_get_spotlight" to "Fetch Readian Spotlight articles through the authenticated MCP boundary.",
-      "readian_mark_story_status" to "Mark story status through the authenticated Readian MCP boundary.",
-      "readian_save_candidate" to "Save an editorial candidate through the authenticated Readian MCP boundary.",
       "resolve_learnings" to "Resolve active learnings for a review context.",
       "review_stats" to "Show review acceptance metrics.",
       "telemetry_proxy_capabilities" to "Show configured telemetry proxy capabilities.",
@@ -250,14 +209,6 @@ object McpToolRegistry {
       "feature_task_prose_workflow_open" to workflowOpenSchema(
         required = listOf("issue_key", "repository_identity", "governed_spec_path"),
       ),
-      "feature_task_continuation_lookup" to objectSchema(
-        required = listOf("issue_key", "repository_identity"),
-        properties = mapOf(
-          "issue_key" to stringSchema(),
-          "repository_identity" to repositoryIdentitySchema,
-          "workflow_id" to stringSchema(),
-        ),
-      ),
       "feature_task_prose_workflow_resume" to workflowIdSchema(),
       "feature_task_prose_workflow_update" to workflowUpdateSchema(
         workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
@@ -336,64 +287,6 @@ object McpToolRegistry {
           "verdict",
           "finish",
         ),
-      ),
-      "feature_task_runtime_started" to objectSchema(
-        required = listOf(
-          "feature_size",
-          "issue_key",
-          "feature_name",
-        ),
-        properties = mapOf(
-          "feature_size" to stringSchema(enum = listOf("SMALL", "MEDIUM", "LARGE")),
-          "issue_key" to stringSchema(),
-          "feature_name" to stringSchema(),
-          "session_id" to stringSchema(),
-        ),
-      ),
-      "feature_task_runtime_finished" to objectSchema(
-        required = listOf(
-          "session_id",
-          "completion_status",
-          "completed_phase_ids",
-        ),
-        properties = mapOf(
-          "session_id" to stringSchema(),
-          "completion_status" to stringSchema(
-            enum = listOf("completed", "blocked", "decomposed_at_planning", "error"),
-          ),
-          "completed_phase_ids" to arraySchema(stringSchema()),
-          "phase_outcomes" to freeObjectSchema,
-          "review_fix_iteration_count" to integerSchema,
-          "audit_gap_iteration_count" to integerSchema,
-          "audit_first_pass_convergence" to booleanSchema,
-          "audit_recurring_gap_count" to integerSchema,
-          "audit_new_gap_count" to integerSchema,
-          "audit_attempted_repair_item_count" to integerSchema,
-          "audit_resolved_repair_item_count" to integerSchema,
-          "regeneration_activation_count" to integerSchema,
-          "regeneration_attempt_count" to integerSchema,
-          "regeneration_outcome_counts" to freeObjectSchema,
-          "crash_reconciliation_count" to integerSchema,
-          "crash_reconciliation_reason_counts" to freeObjectSchema,
-          "last_incomplete_phase" to stringSchema(),
-          "blocked_reason" to stringSchema(),
-          "resolved_branch" to stringSchema(),
-          "duration_seconds" to integerSchema,
-          "estimated_phase_tokens" to freeObjectSchema,
-          "estimated_total_tokens" to integerSchema,
-        ),
-      ),
-      "feature_task_runtime_workflow_continue" to workflowIdSchema(),
-      "feature_task_runtime_workflow_get" to workflowIdSchema(),
-      "feature_task_runtime_workflow_latest" to emptyObjectSchema,
-      "feature_task_runtime_workflow_list" to workflowListSchema(),
-      "feature_task_runtime_workflow_open" to workflowOpenSchema(
-        required = listOf("issue_key", "repository_identity", "governed_spec_path"),
-      ),
-      "feature_task_runtime_workflow_resume" to workflowIdSchema(),
-      "feature_task_runtime_workflow_update" to workflowUpdateSchema(
-        workflowStatusEnum = listOf("pending", "running", "completed", "failed", "abandoned", "blocked"),
-        stepIdEnum = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds,
       ),
       "goal_prose_started" to objectSchema(
         required = listOf(
@@ -563,43 +456,6 @@ object McpToolRegistry {
           "review_run_id" to stringSchema(),
           "decisions" to arraySchema(stringSchema()),
           "orchestrated" to booleanSchema,
-        ),
-      ),
-      "readian_get_article" to passthroughObjectSchema(
-        required = listOf("article_id"),
-        properties = mapOf(
-          "article_id" to stringSchema(),
-        ),
-      ),
-      "readian_get_articles_for_topic_query" to passthroughObjectSchema(
-        required = listOf("topic_query"),
-        properties = mapOf(
-          "topic_query" to stringSchema(),
-          "date" to stringSchema(),
-          "start_date" to stringSchema(),
-          "end_date" to stringSchema(),
-          "subscribed_only" to booleanSchema,
-          "limit" to integerSchema,
-        ),
-      ),
-      "readian_get_spotlight" to passthroughObjectSchema(
-        properties = mapOf(
-          "date" to stringSchema(),
-          "limit" to integerSchema,
-        ),
-      ),
-      "readian_save_candidate" to passthroughObjectSchema(
-        required = listOf("candidate_id"),
-        properties = mapOf(
-          "candidate_id" to stringSchema(),
-          "notes" to stringSchema(),
-        ),
-      ),
-      "readian_mark_story_status" to passthroughObjectSchema(
-        required = listOf("story_id", "status"),
-        properties = mapOf(
-          "story_id" to stringSchema(),
-          "status" to stringSchema(),
         ),
       ),
       "telemetry_remote_stats" to remoteStatsSchema(),

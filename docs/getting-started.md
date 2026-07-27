@@ -534,7 +534,8 @@ Primary MCP groups:
 - quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
 - scaffold tool: `new_skill_scaffold`
 - health tool: `doctor`
-- optional Readian bridge tools when configured: `readian_auth_status`, `readian_get_article`, `readian_get_articles_for_topic_query`, `readian_get_spotlight`, `readian_mark_story_status`, `readian_save_candidate`
+
+The foreground `mode:runtime` feature-task driver owns its own durable state, lifecycle telemetry, and continuation lookup in-process. It has no MCP endpoints; use `skill-bill feature-task` and `skill-bill feature-task-stats` instead.
 
 ## Validation Gate
 

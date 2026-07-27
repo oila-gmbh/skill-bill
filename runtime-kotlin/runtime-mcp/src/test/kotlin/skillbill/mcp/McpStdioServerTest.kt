@@ -186,7 +186,6 @@ class McpStdioServerTest {
     listOf(
       "feature_task_prose_workflow_latest",
       "feature_verify_workflow_latest",
-      "feature_task_runtime_workflow_latest",
     ).forEach { toolName ->
       val schema = tools.schemaFor(toolName)
 
@@ -254,45 +253,6 @@ class McpStdioServerTest {
 
     assertEquals(true, result["isError"])
     assertContains(errorPayload["error"].toString(), "step_updates[0].unexpected")
-  }
-
-  @Test
-  fun `canonical feature_task_runtime tools dispatch to the task runtime family and validate payloads`() {
-    // SKILL-86 (AC4): the runtime leaf feature_task_runtime_* is canonical, dispatches correctly, and
-    // validates payloads.
-    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    val started =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 1,
-            name = "feature_task_runtime_started",
-            arguments = mapOf(
-              "feature_size" to "SMALL",
-              "issue_key" to "SKILL-650",
-              "feature_name" to "canonical runtime surface",
-            ),
-          ),
-          context,
-        ),
-      )
-    assertEquals(false, started.fieldMap("result")["isError"], started.toString())
-
-    // Missing-required payloads must fail validation exactly as before.
-    val invalid =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 2,
-            name = "feature_task_runtime_started",
-            arguments = mapOf("feature_size" to "SMALL"),
-          ),
-          context,
-        ),
-      )
-    assertEquals(true, invalid.fieldMap("result")["isError"], invalid.toString())
   }
 
   @Test
@@ -387,121 +347,19 @@ class McpStdioServerTest {
   }
 
   @Test
-  fun `runtime leaf workflow tools round-trip a lifecycle in the TASK_RUNTIME family`() {
-    // SKILL-86: the runtime leaf is the canonical feature_task_runtime_* family. Round-trip a workflow_*
-    // lifecycle (open -> latest -> get -> update -> get) and assert externally meaningful persisted
-    // outcomes (workflow_id continuity + workflow_status + current_step_id), not telemetry.
-    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-runtime")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    var nextId = 0
-    fun call(name: String, arguments: Map<String, Any?> = emptyMap()): Map<String, Any?> =
-      dispatchTool(id = ++nextId, name = name, arguments = arguments, context = context).also {
-        assertEquals("ok", it["status"], it.toString())
-      }
-
-    val openedId = call(
-      "feature_task_runtime_workflow_open",
-      mapOf(
-        "issue_key" to "SKILL-120",
-        "repository_identity" to "repo-root-realpath-v1:/test/repository",
-        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
-      ),
-    )["workflow_id"].toString()
-    assertEquals(openedId, call("feature_task_runtime_workflow_latest")["workflow_id"])
-    assertEquals(
-      openedId,
-      call("feature_task_runtime_workflow_get", mapOf("workflow_id" to openedId))["workflow_id"],
-    )
-
-    val firstStep = featureTaskWorkflowStepIds().first()
-    call(
-      "feature_task_runtime_workflow_update",
-      mapOf(
-        "workflow_id" to openedId,
-        "workflow_status" to "running",
-        "current_step_id" to firstStep,
-        "step_updates" to listOf(
-          mapOf("step_id" to firstStep, "status" to "running", "attempt_count" to 1),
-        ),
-      ),
-    )
-
-    val afterUpdate = call("feature_task_runtime_workflow_get", mapOf("workflow_id" to openedId))
-    assertEquals("running", afterUpdate["workflow_status"], afterUpdate.toString())
-    assertEquals(firstStep, afterUpdate["current_step_id"], afterUpdate.toString())
-  }
-
-  @Test
-  fun `continuation lookup returns the bounded repository-scoped resumable projection`() {
-    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-lookup")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-    val repositoryIdentity = "repo-root-realpath-v1:/test/repository"
-    val opened = dispatchTool(
-      id = 1,
-      name = "feature_task_runtime_workflow_open",
-      arguments = mapOf(
-        "issue_key" to "SKILL-120",
-        "repository_identity" to repositoryIdentity,
-        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
-      ),
-      context = context,
-    )
-    val workflowId = opened.getValue("workflow_id").toString()
-    dispatchTool(
-      id = 2,
-      name = "feature_task_runtime_workflow_update",
-      arguments = mapOf(
-        "workflow_id" to workflowId,
-        "workflow_status" to "blocked",
-        "current_step_id" to "implement",
-      ),
-      context = context,
-    )
-
-    val lookup = dispatchTool(
-      id = 3,
-      name = "feature_task_continuation_lookup",
-      arguments = mapOf("issue_key" to "SKILL-120", "repository_identity" to repositoryIdentity),
-      context = context,
-    )
-
-    assertEquals("resumable", lookup["result"])
-    val candidate = lookup["candidate"] as Map<*, *>
-    assertEquals(workflowId, candidate["workflow_id"])
-    assertEquals("runtime", candidate["mode"])
-    assertEquals("blocked", candidate["status"])
-    assertEquals("implement", candidate["current_step"])
-    assertEquals(".feature-specs/SKILL-120/spec.md", candidate["governed_spec_path"])
-  }
-
-  @Test
-  fun `prose and runtime canonical leaves expose strict input schemas`() {
-    // SKILL-86: the two record-owning leaves (feature_task_prose_* and feature_task_runtime_*) are
-    // each registered with their own strict schemas. Assert every paired prose/runtime lifecycle tool
-    // publishes a strict object schema so neither leaf silently degrades to the open-object fallback.
+  fun `the prose canonical leaf exposes strict input schemas`() {
     val tools = toolsList()
 
-    canonicalTaskRuntimeToolNames
-      .filterNot { it.endsWith("_stats") }
-      .forEach { runtime ->
-        val prose = runtime.replaceFirst("feature_task_runtime_", "feature_task_prose_")
-        assertEquals(false, tools.schemaFor(runtime)["additionalProperties"], runtime)
-        assertEquals(false, tools.schemaFor(prose)["additionalProperties"], prose)
-      }
+    proseLifecycleToolNames.forEach { prose ->
+      assertEquals(false, tools.schemaFor(prose)["additionalProperties"], prose)
+    }
   }
 
   @Test
   fun `canonical leaves carry no deprecation language and legacy families are absent from the registry`() {
-    // SKILL-86 (AC2/AC3/AC4): feature_task_prose_* and feature_task_runtime_* are canonical leaves with
-    // no deprecation/EXPERIMENTAL language; the legacy feature_implement_* family and the bare
-    // feature_task_* family are absent from the registry / tools-list entirely.
     val tools = toolsList()
 
-    canonicalTaskRuntimeToolNames.forEach { runtime ->
-      val prose = runtime.replaceFirst("feature_task_runtime_", "feature_task_prose_")
-      assertFalse(tools.descriptionFor(runtime).contains("Deprecated"), runtime)
-      assertFalse(tools.descriptionFor(runtime).contains("EXPERIMENTAL"), runtime)
+    proseLifecycleToolNames.forEach { prose ->
       assertFalse(tools.descriptionFor(prose).contains("Deprecated"), prose)
       assertFalse(tools.descriptionFor(prose).contains("EXPERIMENTAL"), prose)
     }
@@ -510,6 +368,49 @@ class McpStdioServerTest {
     assertNull(tools.toolNamedOrNull("feature_implement_workflow_update"))
     assertNull(tools.toolNamedOrNull("feature_task_started"))
     assertNull(tools.toolNamedOrNull("feature_task_workflow_update"))
+  }
+
+  @Test
+  fun `SKILL-132 removed tools are absent from discovery`() {
+    // SKILL-132 subtask 4: the duplicate feature_task_runtime_* MCP endpoints, the
+    // CLI-duplicated continuation lookup, and the Readian bridge are gone. The foreground
+    // runtime driver owns those services directly, so no MCP surface may advertise them.
+    val tools = toolsList()
+
+    removedToolNames.forEach { removed ->
+      assertNull(tools.toolNamedOrNull(removed), removed)
+    }
+  }
+
+  @Test
+  fun `SKILL-132 removed tools report the typed unknown-tool error on dispatch`() {
+    removedToolNames.forEach { removed ->
+      val response = decodeResponse(
+        McpStdioServer.handleLine(toolCallRequest(id = 1, name = removed, arguments = emptyMap())),
+      )
+      val result = response.fieldMap("result")
+      val content = result["content"] as List<*>
+      val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
+
+      assertEquals(true, result["isError"], removed)
+      assertContains(textContent["text"].toString(), "Unknown MCP tool '$removed'", removed)
+    }
+  }
+
+  @Test
+  fun `SKILL-132 retained compatibility aliases still dispatch`() {
+    // AC-002: no documented removal window or migration guidance exists for the hidden
+    // feature_implement_* aliases, so they stay callable.
+    val tempDir = Files.createTempDirectory("skillbill-stdio-retained-aliases")
+    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
+
+    val response = decodeResponse(
+      McpStdioServer.handleLine(
+        toolCallRequest(id = 1, name = "feature_implement_workflow_list", arguments = emptyMap()),
+        context,
+      ),
+    )
+    assertEquals(false, response.fieldMap("result")["isError"], response.toString())
   }
 
   @Test
@@ -632,148 +533,6 @@ class McpStdioServerTest {
   }
 
   @Test
-  fun `readian spotlight tool reports unavailable when standalone boundary cannot launch`() {
-    val tempDir = Files.createTempDirectory("skillbill-readian-auth-required")
-    val context =
-      McpRuntimeContext(
-        environment = mapOf("SKILL_BILL_READIAN_MCP_COMMAND" to tempDir.resolve("missing-readian-mcp").toString()),
-        userHome = tempDir,
-      )
-
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 1,
-            name = "readian_get_spotlight",
-            arguments = mapOf("beat" to "pc-games"),
-          ),
-          context,
-        ),
-      )
-    val result = response.fieldMap("result")
-    val payload = toolPayload(result)
-
-    assertEquals(false, result["isError"], payload.toString())
-    assertEquals("error", payload["status"])
-    assertEquals("readian_mcp_unavailable", payload["error_type"])
-  }
-
-  @Test
-  fun `readian topic query bridges skill bill arguments to standalone mcp query arguments`() {
-    val tempDir = Files.createTempDirectory("skillbill-readian-bridge")
-    val capturedInput = tempDir.resolve("captured-stdin.jsonl")
-    val bridgeResponse =
-      """{"jsonrpc":"2.0","id":2,"result":{"isError":false,"structuredContent":""" +
-        """{"status":"ok","tool":"readian_get_articles_for_topic_query","query":"pc gaming"}}}"""
-    val script = fakeReadianMcpScript(
-      tempDir,
-      bridgeResponse,
-    )
-    val context =
-      McpRuntimeContext(
-        environment = mapOf(
-          "SKILL_BILL_READIAN_MCP_COMMAND" to script.toString(),
-          "CAPTURE_FILE" to capturedInput.toString(),
-        ),
-        userHome = tempDir,
-      )
-
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 2,
-            name = "readian_get_articles_for_topic_query",
-            arguments = mapOf(
-              "topic_query" to "pc gaming",
-              "date" to "2026-04-26",
-              "subscribed_only" to true,
-            ),
-          ),
-          context,
-        ),
-      )
-    val payload = toolPayload(response.fieldMap("result"))
-    val captured = Files.readString(capturedInput)
-
-    assertEquals("ok", payload["status"])
-    assertEquals("pc gaming", payload["query"])
-    assertTrue(captured.contains(""""query":"pc gaming""""))
-    assertFalse(captured.contains(""""topic_query":"""))
-  }
-
-  @Test
-  fun `readian topic query tool exposes authenticated topic arguments`() {
-    val tempDir = Files.createTempDirectory("skillbill-readian-topic-query")
-    val context =
-      McpRuntimeContext(
-        environment = mapOf("SKILL_BILL_READIAN_AUTHENTICATED" to "true"),
-        userHome = tempDir,
-      )
-
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 2,
-            name = "readian_get_articles_for_topic_query",
-            arguments = mapOf(
-              "topic_query" to "pc gaming",
-              "date" to "2026-04-26",
-              "subscribed_only" to true,
-            ),
-          ),
-          context,
-        ),
-      )
-    val payload = toolPayload(response.fieldMap("result"))
-    val data = requireNotNull(JsonSupport.anyToStringAnyMap(payload["data"]))
-
-    assertEquals("ok", payload["status"])
-    assertEquals("readian_get_articles_for_topic_query", payload["tool"])
-    assertEquals("topic_query", data["feed_source"])
-    assertEquals("pc gaming", data["topic_query"])
-    assertEquals(true, data["subscribed_only"])
-  }
-
-  @Test
-  fun `readian tool responses redact token and session material from log safe payloads`() {
-    val tempDir = Files.createTempDirectory("skillbill-readian-redaction")
-    val context =
-      McpRuntimeContext(
-        environment = mapOf("SKILL_BILL_READIAN_AUTHENTICATED" to "true"),
-        userHome = tempDir,
-      )
-
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 2,
-            name = "readian_save_candidate",
-            arguments = mapOf(
-              "candidate_id" to "candidate-1",
-              "refresh_token" to "readian_rt_supersecret",
-              "notes" to "authorization=readian_token_should_not_leak Bearer abc.def.ghi",
-              "nested" to mapOf("session_cookie" to "readian_session_supersecret"),
-            ),
-          ),
-          context,
-        ),
-      )
-    val payload = toolPayload(response.fieldMap("result"))
-    val serialized = JsonSupport.mapToJsonString(payload)
-
-    assertEquals("ok", payload["status"])
-    assertFalse(serialized.contains("readian_rt_supersecret"), serialized)
-    assertFalse(serialized.contains("readian_token_should_not_leak"), serialized)
-    assertFalse(serialized.contains("readian_session_supersecret"), serialized)
-    assertFalse(serialized.contains("abc.def.ghi"), serialized)
-    assertTrue(serialized.contains("[REDACTED]"), serialized)
-  }
-
-  @Test
   fun `goal_stats dispatch returns populated payload for a seeded store`() {
     val tempDir = Files.createTempDirectory("skillbill-stdio-goal-stats-seeded")
     val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
@@ -827,7 +586,6 @@ private val expectedToolInventory =
     "feature_task_prose_finished",
     "feature_task_prose_stats",
     "feature_task_prose_started",
-    "feature_task_continuation_lookup",
     "feature_task_prose_workflow_get",
     "feature_task_prose_workflow_latest",
     "feature_task_prose_workflow_list",
@@ -845,16 +603,6 @@ private val expectedToolInventory =
     "feature_verify_workflow_open",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_update",
-    "feature_task_runtime_finished",
-    "feature_task_runtime_started",
-    "feature_task_runtime_stats",
-    "feature_task_runtime_workflow_get",
-    "feature_task_runtime_workflow_latest",
-    "feature_task_runtime_workflow_list",
-    "feature_task_runtime_workflow_continue",
-    "feature_task_runtime_workflow_open",
-    "feature_task_runtime_workflow_resume",
-    "feature_task_runtime_workflow_update",
     "goal_prose_finished",
     "goal_prose_started",
     "goal_prose_subtask_finished",
@@ -864,12 +612,6 @@ private val expectedToolInventory =
     "pr_description_generated",
     "quality_check_finished",
     "quality_check_started",
-    "readian_auth_status",
-    "readian_get_article",
-    "readian_get_articles_for_topic_query",
-    "readian_get_spotlight",
-    "readian_mark_story_status",
-    "readian_save_candidate",
     "resolve_learnings",
     "review_stats",
     "telemetry_proxy_capabilities",
@@ -882,8 +624,6 @@ private val priorityStrictToolNames =
   listOf(
     "feature_task_prose_started",
     "feature_task_prose_finished",
-    "feature_task_runtime_started",
-    "feature_task_runtime_finished",
     "feature_verify_started",
     "feature_verify_finished",
     "quality_check_started",
@@ -906,18 +646,25 @@ private val priorityStrictToolNames =
     "feature_verify_workflow_latest",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_continue",
-    "feature_task_runtime_workflow_open",
-    "feature_task_runtime_workflow_update",
-    "feature_task_runtime_workflow_get",
-    "feature_task_runtime_workflow_list",
-    "feature_task_runtime_workflow_latest",
-    "feature_task_runtime_workflow_resume",
-    "feature_task_runtime_workflow_continue",
     "new_skill_scaffold",
   )
 
-private val canonicalTaskRuntimeToolNames =
+private val proseLifecycleToolNames =
   listOf(
+    "feature_task_prose_started",
+    "feature_task_prose_finished",
+    "feature_task_prose_workflow_get",
+    "feature_task_prose_workflow_latest",
+    "feature_task_prose_workflow_list",
+    "feature_task_prose_workflow_continue",
+    "feature_task_prose_workflow_open",
+    "feature_task_prose_workflow_resume",
+    "feature_task_prose_workflow_update",
+  )
+
+private val removedToolNames =
+  listOf(
+    "feature_task_continuation_lookup",
     "feature_task_runtime_started",
     "feature_task_runtime_finished",
     "feature_task_runtime_stats",
@@ -928,6 +675,12 @@ private val canonicalTaskRuntimeToolNames =
     "feature_task_runtime_workflow_open",
     "feature_task_runtime_workflow_resume",
     "feature_task_runtime_workflow_update",
+    "readian_auth_status",
+    "readian_get_article",
+    "readian_get_articles_for_topic_query",
+    "readian_get_spotlight",
+    "readian_mark_story_status",
+    "readian_save_candidate",
   )
 
 private fun dispatchTool(
@@ -939,10 +692,6 @@ private fun dispatchTool(
   val response = decodeResponse(McpStdioServer.handleLine(toolCallRequest(id, name, arguments), context))
   return toolPayload(response.fieldMap("result"))
 }
-
-private fun featureTaskWorkflowStepIds(): List<String> =
-  toolsList().schemaFor("feature_task_runtime_workflow_update").properties()
-    .enumFor("current_step_id").map { it.toString() }
 
 private fun toolsList(): List<*> {
   val response =
@@ -1022,25 +771,6 @@ private fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>)
     ),
   ),
 )
-
-private fun fakeReadianMcpScript(directory: Path, response: String): Path {
-  val script = directory.resolve("fake-readian-mcp")
-  Files.writeString(
-    script,
-    """
-    #!/bin/sh
-    : > "${'$'}CAPTURE_FILE"
-    count=0
-    while [ "${'$'}count" -lt 3 ] && IFS= read -r line; do
-      printf '%s\n' "${'$'}line" >> "${'$'}CAPTURE_FILE"
-      count="${'$'}((count + 1))"
-    done
-    printf '%s\n' '$response'
-    """.trimIndent() + "\n",
-  )
-  script.toFile().setExecutable(true)
-  return script
-}
 
 private fun toolPayload(result: Map<String, Any?>): Map<String, Any?> {
   val content = result["content"] as List<*>
