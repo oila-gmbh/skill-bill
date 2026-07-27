@@ -51,7 +51,15 @@ class ProcessAgentRunAdapter(
         },
       ),
     )
-    val decoded = (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
+    val decoded = runCatching {
+      (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
+    }.getOrElse { error ->
+      if (error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError) {
+        DecodedAgentRunOutput(result.stdout)
+      } else {
+        throw error
+      }
+    }
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
