@@ -224,14 +224,64 @@ invoking agent — not a hardcoded default — drives child subtask runs. Only u
 
 Do not ask the user to run this command manually. The confirmation gate is the only user interaction required before execution starts.
 
-Keep live output enabled unless the user asks for quieter output.
+Launch `skill-bill goal` with `--no-live-output`. Goal live output scales with
+wall-clock duration, so suppressing it avoids an unbounded stream being captured
+and charged to the agent context; feature-task-runtime `--monitor` is different
+because it scales only with phase count.
 
 ## Watching Long Runs (orchestrator pattern)
 
-The runtime owns live progress and writes it to the terminal. The invoking agent
-does not attach an observer to the progress stream and does not relay transitions
-into the conversation; the user reads the runtime's own output, and asks for
-status when they want a summary.
+The terminal monitoring block is the user's live feed. The invoking agent does
+not attach an observer to the progress stream and does not relay transitions
+into the conversation. There is no in-session transition relay; agent silence
+during the run is deliberate, not a failure, and ends only when a sanctioned
+completion signal or error reaches the session.
+
+While a foreground or detached run is in flight:
+
+1. Do not run `skill-bill goal watch` in-session, at any interval or refresh count.
+2. Do not call `skill-bill goal status` on a timer or repeatedly to observe change.
+3. Do not sleep, wait, or otherwise idle in order to re-read progress.
+4. Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or
+   changed files to infer progress.
+5. Do not re-invoke the runtime or launch an observer process or subagent to
+   observe a run that is already executing.
+
+These prohibitions apply to shell loops, scheduled wake-ups, repeated tool
+calls, and delegated observers. The cost rule is request count, not output size:
+one completion signal beats any number of short polls, and trimming a poll's
+output does not make polling acceptable.
+
+The only permitted in-session surface is exactly one completion line, errors
+such as launch failures, loud-fails, or non-zero exits, and one
+`skill-bill goal status` call made in direct response to an explicit user
+request.
+
+### Completion Signal
+
+Use the completion signal for the launch mode:
+
+1. For a foreground run within the harness timeout, wait for the blocking call
+   to return its structured result.
+2. For a detached run where the harness provides background-exit notification,
+   let that notification re-invoke the agent once with the result; do not poll.
+3. For a detached run where the harness provides no background-exit
+   notification, print the monitoring block, state that the run continues,
+   and end the turn. When the user next addresses the session, make one
+   `skill-bill goal status` call and report the result.
+
+When the outcome reaches the session, emit exactly one completion line. Compose
+it only from the structured result fields `status`, completed/pending/blocked
+counts, `pull_request_url`, and `blocked_reason`:
+
+```text
+goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241
+goal SKILL-146: blocked at subtask 2 — <blocked_reason>
+goal SKILL-146: failed — <blocked_reason>
+```
+
+Do not read back, summarize, or paraphrase run stdout to compose the completion
+line. Do not emit progress or transition lines around it.
 
 ### Required: print the terminal monitoring command
 
@@ -303,7 +353,8 @@ skill-bill goal status <issue_key>
 
 Report complete, pending, and blocked counts, the current subtask and step, and the active agent exactly as returned by the command. Do not mutate workflow state during a status-only request.
 
-For live polling without launching child runs:
+For the user to follow the goal in their own terminal without launching child
+runs:
 
 ```bash
 skill-bill goal watch <issue_key> --interval-seconds 5
