@@ -24,6 +24,7 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> McpTomlConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.OPENCODE -> McpOpenCodeConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.JUNIE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
+      InstallAgent.CURSOR -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.ZCODE -> McpZcodeConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
     }
   }
@@ -42,6 +43,7 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> McpTomlConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.OPENCODE -> McpOpenCodeConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.JUNIE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
+      InstallAgent.CURSOR -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.ZCODE -> McpZcodeConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
     }
   }
@@ -52,6 +54,7 @@ object McpRegistrationOperations {
     InstallAgent.CODEX -> home.resolve(".codex/config.toml")
     InstallAgent.OPENCODE -> home.resolve(".config/opencode/opencode.json")
     InstallAgent.JUNIE -> home.resolve(".junie/mcp/mcp.json")
+    InstallAgent.CURSOR -> home.resolve(".cursor/mcp.json")
     InstallAgent.ZCODE -> home.resolve(".zcode/cli/config.json")
   }
 

@@ -338,7 +338,7 @@ abstract class InstallRequestCommand(
     .default("detected")
   private val agents by option(
     "--agent",
-    help = "Manual agent to include. Repeat for copilot, claude, codex, opencode, or junie.",
+    help = "Manual agent to include. Repeat for ${InstallAgent.supportedIds.joinToString(", ")}.",
   ).multiple()
   private val agentTargets by option(
     "--agent-target",

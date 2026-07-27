@@ -2,7 +2,9 @@ package skillbill.contracts.install
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.install.model.InstallAgent
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -46,6 +48,19 @@ class InstallPlanSchemaContractVersionTest {
   }
 
   @Test
+  fun `schema agentId enum matches InstallAgent supportedIds in order`() {
+    val schema = readSchema()
+    val agentIds = schema.path("\$defs").path("agentId").path("enum").map(JsonNode::asText)
+
+    assertEquals(
+      InstallAgent.supportedIds,
+      agentIds,
+      "Schema `\$defs.agentId.enum` must list exactly the InstallAgent ids, in the same order.",
+    )
+    assertContains(agentIds, "cursor")
+  }
+
+  @Test
   fun `schema id matches InstallPlanSchemaPaths EXPECTED_SCHEMA_ID`() {
     val resourceStream = InstallPlanSchemaValidator::class.java.classLoader
       .getResourceAsStream(InstallPlanSchemaPaths.CLASSPATH_RESOURCE)
@@ -63,5 +78,16 @@ class InstallPlanSchemaContractVersionTest {
       idNode.asText(),
       "Schema `\$id` must equal InstallPlanSchemaPaths.EXPECTED_SCHEMA_ID.",
     )
+  }
+
+  private fun readSchema(): JsonNode {
+    val resourceStream = InstallPlanSchemaValidator::class.java.classLoader
+      .getResourceAsStream(InstallPlanSchemaPaths.CLASSPATH_RESOURCE)
+    assertNotNull(
+      resourceStream,
+      "Canonical install-plan schema is missing from the classpath at " +
+        "'${InstallPlanSchemaPaths.CLASSPATH_RESOURCE}'.",
+    )
+    return YAMLMapper().readTree(resourceStream.use { it.readBytes().toString(Charsets.UTF_8) })
   }
 }

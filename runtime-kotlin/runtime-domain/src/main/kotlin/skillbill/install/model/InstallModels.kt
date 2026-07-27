@@ -15,6 +15,7 @@ enum class InstallAgent(
   CODEX("codex"),
   OPENCODE("opencode"),
   JUNIE("junie"),
+  CURSOR("cursor"),
   ZCODE("zcode"),
   ;
 
@@ -407,6 +408,7 @@ enum class NativeAgentProviderId(
   CODEX("codex"),
   OPENCODE("opencode"),
   JUNIE("junie"),
+  CURSOR("cursor"),
   ZCODE("zcode"),
 }
 
