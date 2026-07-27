@@ -6,8 +6,8 @@ import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.model.EnvironmentContext
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.InstalledReviewCatalogPort
+import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
-import skillbill.review.plan.ReviewPathMatcher
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
@@ -39,10 +39,7 @@ class FileSystemDeclaredReviewSpecialists(
       val owned = changedFiles.filter { it.path in routing.ownedPathsBySlug[slug].orEmpty() }
       ReviewLaunchPlanPolicy.flatten(slug, manifests, selectedAreas).lanes
         .filter { lane ->
-          lane.required ||
-            lane.pathSignals.any { signal -> owned.any { ReviewPathMatcher.matches(it.path, signal) } } ||
-            lane.contentSignals.any { signal -> owned.any { it.changedContent.contains(signal, ignoreCase = true) } } ||
-            (lane.pathSignals.isEmpty() && lane.contentSignals.isEmpty())
+          owned.any { ReviewLaneInclusionPolicy.ownsChangedFile(lane, it.path, it.changedContent) }
         }
         .map { it.skillName }
     }.distinct()

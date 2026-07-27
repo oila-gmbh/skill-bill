@@ -55,7 +55,7 @@ import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
-import skillbill.review.plan.ReviewContentMatcher
+import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
@@ -720,8 +720,7 @@ class ParallelCodeReviewRunner(
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {
     return files.filter { file ->
-      lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
-        lane.contentSignals.any { ReviewContentMatcher.contains(file.changedContent, it) }
+      ReviewLaneInclusionPolicy.ownsChangedFile(lane, file.path, file.changedContent)
     }.map { it.path }
   }
 

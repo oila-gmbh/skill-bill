@@ -76,6 +76,18 @@ class FileSystemDeclaredReviewSpecialistsTest {
   }
 
   @Test
+  fun `preflight excludes an unconditioned non-required specialist that launch does not own`() {
+    val repoRoot = Files.createTempDirectory("declared-specialists-unconditioned")
+    val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    writePack(packsRoot, "kotlin", listOf(".kt", "*.kt"), listOf("architecture"))
+
+    val specialists = FileSystemDeclaredReviewSpecialists()
+      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+
+    assertEquals(emptyList(), specialists)
+  }
+
+  @Test
   fun `a vendored pack that no changed path routes to is never required`() {
     val repoRoot = repoWithPacks()
     val specialists = FileSystemDeclaredReviewSpecialists()
