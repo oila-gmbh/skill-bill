@@ -192,7 +192,7 @@ foreground driver directly in the current agent session, always passing
 `--agent` set to the agent currently executing this skill:
 
 ```bash
-skill-bill goal <issue_key> --agent <currently-executing-agent>
+skill-bill goal <issue_key> --agent <currently-executing-agent> --no-live-output
 ```
 
 Append `--code-review-mode <auto|inline|delegated>` and, when requested,
@@ -302,9 +302,9 @@ snapshot. Also state that the user can ask this session for status at any point;
 when they do, run `goal status` and report what it returns.
 
 Long goal runs may exceed a foreground command timeout. When that risk exists,
-run `skill-bill goal <issue_key> --agent <agent>` detached (background) rather
-than holding the foreground call open, hand the user the block above, and report
-the terminal result when the run ends.
+run `skill-bill goal <issue_key> --agent <agent> --no-live-output` detached
+(background) rather than holding the foreground call open, hand the user the
+block above, and emit the single structured completion line when the run ends.
 
 The `goal_event:` transition stream below is the stable contract those read-only
 commands and any user-owned tooling consume. Heartbeats are high-frequency
@@ -337,7 +337,7 @@ completion, and sparse liveness events. Debug/raw child stdout and stderr remain
 explicit opt-in via `--debug-child-output`; default output keeps raw child streams
 hidden and surfaces only compact progress, observability, and transition lines.
 
-During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, surface it loudly and immediately, do not continue the loop manually, and summarize the stopped subtask, reason, workflow id when present, and resumable step. On a clean finish, report the terminal per-subtask summary — complete, pending, and blocked counts and the final outcome — from the authoritative workflow state.
+During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, surface it loudly and immediately, do not continue the loop manually, and emit only the single structured completion line defined above. On a clean finish, emit only that same structured completion line.
 
 `skill-bill goal <issue_key>` remains consumer-only. It does not synthesize
 decomposition from prose and should loud-fail when the decomposition manifest is

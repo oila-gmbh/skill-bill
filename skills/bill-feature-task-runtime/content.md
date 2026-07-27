@@ -171,11 +171,11 @@ skill-bill feature-task lookup SKILL-141 --repo-root .
 
 Two obligations survive:
 
-- Report the terminal result. On a clean finish, report the per-phase summary. On
-  a blocked or failed gate, surface it loudly and immediately and stop — never
-  narrate a blocked run as if it were progressing. Validation findings are the
-  exception: the runtime reopens `validate` for repair instead of persisting a
-  blocked phase.
+- Report the terminal result only through the single structured completion line
+  defined above. On a blocked or failed gate, surface that line loudly and
+  immediately and stop — never narrate a blocked run as if it were progressing.
+  Validation findings are the exception: the runtime reopens `validate` for
+  repair instead of persisting a blocked phase.
 - Never re-derive or re-order the phase loop. The durable workflow state is
   authoritative over any terminal line.
 
