@@ -350,32 +350,49 @@ class GoalWatchCommand(
   ).int().default(DEFAULT_GOAL_WATCH_INTERVAL_SECONDS)
   private val maxRefreshes by option(
     "--max-refreshes",
-    help = "Stop after this many refreshes. Defaults to one refresh for non-interactive automation.",
+    help = "Stop after this many refreshes. Zero follows until the goal finishes and is the default.",
   ).int().default(DEFAULT_GOAL_WATCH_REFRESHES)
+  private val showUnchanged by option(
+    "--show-unchanged",
+    help = "Print every refresh, including unchanged output. Useful as a debugging aid.",
+  ).flag(default = false)
 
   override fun run() {
     require(intervalSeconds >= 0) { "--interval-seconds must be non-negative." }
-    require(maxRefreshes > 0) { "--max-refreshes must be positive." }
+    require(maxRefreshes >= 0) { "--max-refreshes must be non-negative." }
     var latestRefresh: Map<String, Any?>? = null
-    for (refreshIndex in 1..maxRefreshes) {
+    var refreshCount = 0
+    var stopReason = ""
+    var lastPrintedRefresh: String? = null
+    while (true) {
+      refreshCount += 1
       val projection = goalRunnerStatusService.statusRefresh(
         state.goalStatusRequest(statusCliRequestOptions()),
       )
-      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshIndex)
+      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
       latestRefresh = refresh
-      if (refreshIndex < maxRefreshes) {
-        state.liveStdout(goalWatchRefreshText(refresh))
+      stopReason = refresh.goalWatchStopReason(refreshCount, maxRefreshes) ?: ""
+      val renderedRefresh = goalWatchRefreshText(refresh)
+      val normalizedRefresh = renderedRefresh.normalizeWatchRefreshIndex()
+      val endsLoop = stopReason.isNotEmpty()
+      if (!endsLoop && (showUnchanged || lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh)) {
+        state.liveStdout(renderedRefresh)
+        lastPrintedRefresh = normalizedRefresh
       }
-      if (refreshIndex < maxRefreshes && intervalSeconds > 0) {
+      if (endsLoop) {
+        break
+      }
+      if (intervalSeconds > 0) {
         Thread.sleep(intervalSeconds * MILLIS_PER_SECOND)
       }
     }
     val payload = linkedMapOf<String, Any?>(
       "status" to latestRefresh?.get("status"),
       "issue_key" to issueKey,
-      "refresh_count" to maxRefreshes,
+      "refresh_count" to refreshCount,
       "interval_seconds" to intervalSeconds,
       "latest_refresh" to latestRefresh,
+      "stop_reason" to stopReason,
     )
     state.completeText(goalWatchText(payload), payload, exitCode = payload.goalStatusExitCode())
   }
@@ -923,11 +940,22 @@ private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
 
+private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int): String? = when {
+  this["status"] == "not_found" -> "not_found"
+  (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
+  maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
+  else -> null
+}
+
+private fun String.normalizeWatchRefreshIndex(): String =
+  replace(Regex("""(?<![\w])index=\d+"""), "index=<refresh_index>")
+
 private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
   appendLine("status: ${payload["status"]}")
   appendLine("refresh_count: ${payload["refresh_count"]}")
   appendLine("interval_seconds: ${payload["interval_seconds"]}")
+  appendLine("stop_reason: ${payload["stop_reason"]}")
   val latestRefresh = payload["latest_refresh"] as? Map<*, *> ?: return@buildString
   append(goalWatchRefreshText(latestRefresh))
 }
@@ -1160,7 +1188,7 @@ private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"
 private const val GOAL_LIVENESS_IDLE = "idle"
 private const val DEFAULT_GOAL_WATCH_INTERVAL_SECONDS = 5
-private const val DEFAULT_GOAL_WATCH_REFRESHES = 1
+private const val DEFAULT_GOAL_WATCH_REFRESHES = 0
 private const val MILLIS_PER_SECOND = 1_000L
 private const val RUNTIME_EXECUTABLE_ENV = "SKILL_BILL_RUNTIME_EXECUTABLE"
 private const val RUNTIME_CLASSPATH_ENV = "SKILL_BILL_RUNTIME_CLASSPATH"

@@ -306,8 +306,10 @@ Report complete, pending, and blocked counts, the current subtask and step, and 
 For live polling without launching child runs:
 
 ```bash
-skill-bill goal watch <issue_key> --interval-seconds 5 --max-refreshes 12
+skill-bill goal watch <issue_key> --interval-seconds 5
 ```
+
+`goal watch` follows until the goal finishes.
 
 Default goal execution emits compact progress and observability lines while raw
 child streams stay hidden:
@@ -321,7 +323,7 @@ Status and watch can include current git activity on demand:
 
 ```bash
 skill-bill goal status SKILL-901 --diff-stat
-skill-bill goal watch SKILL-901 --diff-stat --interval-seconds 5 --max-refreshes 3
+skill-bill goal watch SKILL-901 --diff-stat --interval-seconds 5
 ```
 
 Expected text includes one bounded stat snapshot per status/refresh:

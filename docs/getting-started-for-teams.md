@@ -81,9 +81,9 @@ worker model. `skill-bill goal <issue-key>` selects one runnable subtask, opens
 or resumes that child workflow, starts one fresh child process, and advances
 from durable workflow state. Nested/native subagents inside that child are an
 optional debugging and context-management convenience, not the reliability
-contract. Use `skill-bill goal status <issue-key>` and
-`skill-bill goal watch <issue-key> --interval-seconds 5 --max-refreshes 3` for
-read-only progress; add `--diff-stat` for a bounded worktree summary or
+contract. Use `skill-bill goal status <issue-key>` for a single read-only snapshot.
+`skill-bill goal watch <issue-key> --interval-seconds 5` follows until the goal
+finishes; use it for live read-only progress. Add `--diff-stat` for a bounded worktree summary or
 `--diff-hunk <path> --diff-hunk-max-hunks 2 --diff-hunk-max-lines 20 --diff-hunk-max-bytes 4000`
 for path-scoped hunk output. Expected lines include `goal_observability:`,
 `latest_observability:`, `diff_stat:`, `watch_diff_stat:`, and

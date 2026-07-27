@@ -69,6 +69,9 @@ class CliGoalRuntimeTest {
     assertEquals(0, watch.exitCode, watch.stdout)
     assertContains(watch.stdout, "--interval-seconds")
     assertContains(watch.stdout, "repeated git cost")
+    assertContains(watch.stdout, "--show-unchanged")
+    assertContains(watch.stdout, "debugging aid")
+    assertContains(watch.stdout, "Zero follows until the goal finishes")
   }
 
   @Test
@@ -533,7 +536,199 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_diff_stat: index=2 files_changed=1 insertions=2 deletions=1")
     assertEquals(null, watch.payload?.get("refreshes"))
     assertEquals(2, (watch.payload?.get("latest_refresh") as? Map<*, *>)?.get("refresh_index"))
+    assertEquals(2, watch.payload?.get("refresh_count"))
+    assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
     assertEquals(emptyList(), launcher.requests)
+  }
+
+  @Test
+  fun `goal watch explicit one shot preserves payload and does not sleep`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--interval-seconds",
+        "60",
+        "--max-refreshes",
+        "1",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, watch.exitCode, watch.stdout)
+    assertEquals("ok", watch.payload?.get("status"))
+    assertEquals("SKILL-901", watch.payload?.get("issue_key"))
+    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals(60, watch.payload?.get("interval_seconds"))
+    assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
+    assertEquals(1, (watch.payload?.get("latest_refresh") as? Map<*, *>)?.get("refresh_index"))
+    assertEquals(emptyList(), launcher.requests)
+  }
+
+  @Test
+  fun `goal watch accepts zero refresh bound and stops when goal is not found`() {
+    val fixture = goalFixture(subtaskCount = 1)
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-404",
+        "--interval-seconds",
+        "60",
+        "--max-refreshes",
+        "0",
+      ),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+
+    assertEquals(1, watch.exitCode, watch.stdout)
+    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals("not_found", watch.payload?.get("stop_reason"))
+    assertContains(watch.stdout, "watch_refresh: index=1 status=not_found")
+  }
+
+  @Test
+  fun `goal watch rejects negative refresh bound`() {
+    val fixture = goalFixture(subtaskCount = 1)
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--max-refreshes",
+        "-1",
+      ),
+      fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+    )
+
+    assertEquals(1, watch.exitCode, watch.stdout)
+    assertContains(watch.stdout, "--max-refreshes must be non-negative")
+  }
+
+  @Test
+  fun `goal watch default follows until the first terminal projection`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    assertEquals(0, run.exitCode, run.stdout)
+    val launchCount = launcher.requests.size
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--interval-seconds",
+        "60",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, watch.exitCode, watch.stdout)
+    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals("goal_terminal", watch.payload?.get("stop_reason"))
+    assertEquals(launchCount, launcher.requests.size)
+  }
+
+  @Test
+  fun `goal watch blocked but pending continues until its explicit bound`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 1)
+    val run = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    assertEquals(1, run.exitCode, run.stdout)
+    val launchCount = launcher.requests.size
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--interval-seconds",
+        "0",
+        "--max-refreshes",
+        "2",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    val latest = watch.payload?.get("latest_refresh") as? Map<*, *>
+    assertEquals(2, watch.payload?.get("refresh_count"))
+    assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
+    assertEquals(1, latest?.get("blocked_count"))
+    assertEquals(1, latest?.get("pending_count"))
+    assertEquals(launchCount, launcher.requests.size)
+  }
+
+  @Test
+  fun `goal watch suppresses unchanged refreshes and show unchanged prints each refresh`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val suppressedOutput = StringBuilder()
+    val shownOutput = StringBuilder()
+
+    val suppressed = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--interval-seconds",
+        "0",
+        "--max-refreshes",
+        "3",
+      ),
+      fixture.context(
+        launcher = NoopGoalTestAgentRunLauncher,
+        liveStdout = { suppressedOutput.append(it) },
+      ),
+    )
+    val shown = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--interval-seconds",
+        "0",
+        "--max-refreshes",
+        "3",
+        "--show-unchanged",
+      ),
+      fixture.context(
+        launcher = NoopGoalTestAgentRunLauncher,
+        liveStdout = { shownOutput.append(it) },
+      ),
+    )
+
+    assertEquals(1, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertEquals(2, shownOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertContains(suppressed.stdout, "watch_refresh: index=3 status=ok")
+    assertContains(shown.stdout, "watch_refresh: index=3 status=ok")
+    assertEquals(3, suppressed.payload?.get("refresh_count"))
+    assertEquals(3, shown.payload?.get("refresh_count"))
   }
 
   @Test
