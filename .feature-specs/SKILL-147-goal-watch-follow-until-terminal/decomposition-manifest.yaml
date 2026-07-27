@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Forbid in-session monitoring loops"
   spec_path: ".feature-specs/SKILL-147-goal-watch-follow-until-terminal/spec_subtask_2_forbid-in-session-monitoring-loops.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-073209-uzog"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

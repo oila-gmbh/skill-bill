@@ -113,7 +113,7 @@ output does not make polling acceptable.
 
 The only permitted in-session surface is exactly one completion line, errors
 such as launch failures, loud-fails, or non-zero exits, and one
-`skill-bill goal status` call made in direct response to an explicit user
+`skill-bill feature-task status <workflow_id>` call made in direct response to an explicit user
 request.
 
 `--monitor` remains required for feature-task-runtime because its output scales
@@ -131,16 +131,18 @@ Use the completion signal for the launch mode:
 3. For a detached run where the harness provides no background-exit
    notification, print the monitoring block, state that the run continues,
    and end the turn. When the user next addresses the session, make one
-   `skill-bill goal status` call and report the result.
+   `skill-bill feature-task status <workflow_id>` call and report that read-only
+   snapshot. A status snapshot is not a terminal completion signal; if it is
+   still nonterminal, end the turn without polling.
 
 When the outcome reaches the session, emit exactly one completion line. Compose
-it only from the structured result fields `status`, completed/pending/blocked
-counts, `pull_request_url`, and `blocked_reason`:
+it only from the feature-task structured result fields `status`, `workflow_id`,
+`completed_phases`, `last_incomplete_phase`, and `blocked_reason`:
 
 ```text
-goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241
-goal SKILL-146: blocked at subtask 2 — <blocked_reason>
-goal SKILL-146: failed — <blocked_reason>
+feature-task ft-run-01J8Z0-SKILL-141: complete — 9 phases completed
+feature-task ft-run-01J8Z0-SKILL-141: blocked at review — <blocked_reason>
+feature-task ft-run-01J8Z0-SKILL-141: failed — <error>
 ```
 
 Do not read back, summarize, or paraphrase run stdout to compose the completion
