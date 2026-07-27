@@ -24,37 +24,49 @@ object ReviewStackRouting {
       manifest.routingSignals.path.distinct().map { it to manifest.slug }
     }.groupBy({ it.first }, { it.second })
 
-    val scores = concreteManifests.associateWith { manifest ->
-      val pathScore = changedFiles.sumOf { changed ->
-        manifest.routingSignals.path.distinct().sumOf { signal ->
-          if (!ReviewPathMatcher.matches(changed.path, signal)) 0
-          else if (signalOwners.getValue(signal).size == 1) UNIQUE_PATH_SIGNAL_SCORE else 1
+    val fallback by lazy { resolveFallback(manifests) }
+    if (changedFiles.isEmpty()) {
+      return ReviewStackRoutingResult(emptySet(), emptyMap())
+    }
+    val routedSlugs = linkedSetOf<String>()
+    val ownedPathsBySlug = linkedMapOf<String, LinkedHashSet<String>>()
+
+    changedFiles.forEach { changed ->
+      val scores = concreteManifests.associateWith { manifest ->
+        val pathScore = manifest.routingSignals.path.distinct().sumOf { signal ->
+          if (!ReviewPathMatcher.matches(changed.path, signal)) {
+            0
+          } else if (signalOwners.getValue(signal).size == 1) {
+            UNIQUE_PATH_SIGNAL_SCORE
+          } else {
+            1
+          }
         }
-      }
-      val contentScore = changedFiles.sumOf { changed ->
-        manifest.routingSignals.content.distinct().count { signal ->
+        val contentScore = manifest.routingSignals.content.distinct().count { signal ->
           changed.changedContent.contains(signal, ignoreCase = true)
         } * CONTENT_SIGNAL_SCORE
+        pathScore to contentScore
+      }.filterValues { (pathScore, _) -> pathScore > 0 }
+
+      val resolved = scores.takeIf { it.isNotEmpty() }?.let {
+        val strongestPath = it.values.maxOf { score -> score.first }
+        val pathWinners = it.filterValues { score -> score.first == strongestPath }
+        val strongestContent = pathWinners.values.maxOf { score -> score.second }
+        resolveComposition(pathWinners.filterValues { score -> score.second == strongestContent }.keys)
       }
-      pathScore to contentScore
-    }.filterValues { (pathScore, _) -> pathScore > 0 }
+      val owners = if (resolved == null) {
+        setOf(fallback.slug)
+      } else {
+        linkedSetOf(resolved.slug).apply {
+          resolved.codeReviewComposition?.baselineLayers?.mapTo(this) { it.platform }
+        }
+      }
+      owners.forEach { slug ->
+        routedSlugs += slug
+        ownedPathsBySlug.getOrPut(slug, ::linkedSetOf) += changed.path
+      }
+    }
 
-    if (scores.isEmpty()) return fallbackResult(resolveFallback(manifests), changedFiles)
-    val strongestPath = scores.values.maxOf { it.first }
-    val pathWinners = scores.filterValues { it.first == strongestPath }
-    val strongestContent = pathWinners.values.maxOf { it.second }
-    val winners = pathWinners.filterValues { it.second == strongestContent }.keys
-    val resolved = resolveComposition(winners)
-    if (resolved == null) return fallbackResult(resolveFallback(manifests), changedFiles)
-
-    val routedSlugs = linkedSetOf(resolved.slug)
-    resolved.codeReviewComposition?.baselineLayers?.mapTo(routedSlugs) { it.platform }
-    val ownedPathsBySlug = routedSlugs.associateWith { slug ->
-      val manifest = manifests.single { it.slug == slug }
-      changedFiles.filter { changed ->
-        manifest.routingSignals.path.any { ReviewPathMatcher.matches(changed.path, it) }
-      }.mapTo(linkedSetOf()) { it.path }
-    }.filterValues { it.isNotEmpty() }
     return ReviewStackRoutingResult(routedSlugs, ownedPathsBySlug)
   }
 
@@ -83,14 +95,6 @@ object ReviewStackRouting {
     }
     return owner
   }
-
-  private fun fallbackResult(
-    fallback: PlatformManifest,
-    changedFiles: List<ReviewRoutingChangedFile>,
-  ): ReviewStackRoutingResult = ReviewStackRoutingResult(
-    setOf(fallback.slug),
-    mapOf(fallback.slug to changedFiles.mapTo(linkedSetOf()) { it.path }),
-  )
 
   private const val CODE_REVIEW_CAPABILITY = "code-review"
   private const val UNIQUE_PATH_SIGNAL_SCORE = 10

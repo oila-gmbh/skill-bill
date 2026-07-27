@@ -4,8 +4,8 @@ package skillbill.scaffold.platformpack
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.InvalidFallbackCapabilityError
+import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
@@ -322,14 +322,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   val manifest = requireManifestMap(slug, manifestPath, raw)
   val typedManifest = validateAgainstCanonicalSchema(slug, manifest)
 
-  val declaredPlatform = requireStringField(manifest, slug, "platform")
-  if (declaredPlatform != slug) {
-    // Coherence: slug-parity.
-    throw InvalidManifestSchemaError(
-      "Platform pack '$slug': manifest 'platform' field is '$declaredPlatform', " +
-        "expected '$slug' to match the directory name.",
-    )
-  }
+  validatePlatformSlug(slug, requireStringField(manifest, slug, "platform"))
 
   val contractVersion = requireStringField(manifest, slug, "contract_version")
   val declaredAreas = parseDeclaredAreas(manifest, slug)
@@ -366,22 +359,7 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
     pointers = pointers,
   )
 
-  // SKILL-48 Subtask 3: anchored top-level keys (those the runtime consumes by name) are
-  // already captured in the typed fields above. Every remaining top-level YAML key flows
-  // verbatim into `customFields` so repo authors can extend `platform.yaml` with
-  // fork-specific fields without patching the canonical schema or the Kotlin runtime.
-  // The anchored set is sourced from the schema (`x-runtime-anchored: true`) — never
-  // hardcoded here — so the schema stays the single source of truth.
-  val customFields = extractCustomFields(typedManifest)
-
-  // SKILL-48 A5(b): required anchored fields (e.g. `platform`, `routing_signals`) catch typos
-  // via JSON Schema `required`, but OPTIONAL anchored fields (`display_name`, `notes`,
-  // `declared_files`, `declared_quality_check_file`, `area_metadata`, `pointers`) do not —
-  // a mis-spelled optional key would silently flow into `customFields` and the omitted
-  // anchored field would just default. Walk every customFields key and loud-fail when it is
-  // exactly one edit away from an anchored top-level field name. The check is case-sensitive
-  // and runs entirely in Kotlin so the canonical schema stays unchanged.
-  guardAgainstAnchoredFieldTypos(slug, manifestPath, customFields.keys, anchoredTopLevelFieldNames())
+  val customFields = validatedCustomFields(slug, manifestPath, typedManifest)
 
   return PlatformManifest(
     slug = slug,
@@ -404,6 +382,15 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
   )
 }
 
+private fun validatePlatformSlug(slug: String, declaredPlatform: String) {
+  if (declaredPlatform != slug) {
+    throw InvalidManifestSchemaError(
+      "Platform pack '$slug': manifest 'platform' field is '$declaredPlatform', " +
+        "expected '$slug' to match the directory name.",
+    )
+  }
+}
+
 private fun parseFallbackCapabilities(manifest: Map<*, *>, slug: String): Set<String> {
   val raw = manifest["fallback_capabilities"] ?: return emptySet()
   val values = raw as? List<*> ?: throw InvalidManifestSchemaError(
@@ -420,6 +407,12 @@ internal const val CODE_REVIEW_FALLBACK_CAPABILITY = "code-review"
 
 private fun extractCustomFields(manifest: Map<String, Any?>): Map<String, Any?> =
   manifest.filterKeys { it !in anchoredTopLevelFieldNames() }
+
+private fun validatedCustomFields(slug: String, manifestPath: Path, manifest: Map<String, Any?>): Map<String, Any?> {
+  val customFields = extractCustomFields(manifest)
+  guardAgainstAnchoredFieldTypos(slug, manifestPath, customFields.keys, anchoredTopLevelFieldNames())
+  return customFields
+}
 
 private fun requireManifestMap(slug: String, manifestPath: Path, raw: Any?): Map<*, *> = raw as? Map<*, *>
   ?: throw InvalidManifestSchemaError(

@@ -13,7 +13,6 @@ import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class ReviewStackRoutingTest {
   @Test
@@ -152,6 +151,56 @@ class ReviewStackRoutingTest {
   }
 
   @Test
+  fun `mixed concrete files route to each clear owner`() {
+    val result = ReviewStackRouting.route(
+      listOf(
+        pack("kotlin", path = listOf("*.kt"), content = emptyList()),
+        pack("typescript", path = listOf("*.ts"), content = emptyList()),
+        pack("neutral", path = emptyList(), content = emptyList(), fallback = true),
+      ),
+      listOf(
+        ReviewRoutingChangedFile("src/Main.kt", "class Main"),
+        ReviewRoutingChangedFile("web/main.ts", "export class Main {}"),
+      ),
+    )
+
+    assertEquals(setOf("kotlin", "typescript"), result.routedSlugs)
+    assertEquals(
+      mapOf(
+        "kotlin" to setOf("src/Main.kt"),
+        "typescript" to setOf("web/main.ts"),
+      ),
+      result.ownedPathsBySlug,
+    )
+  }
+
+  @Test
+  fun `fallback owns only unresolved files alongside clear concrete owners`() {
+    val result = ReviewStackRouting.route(
+      listOf(
+        pack("kotlin", path = listOf("*.kt"), content = emptyList()),
+        pack("first", path = listOf("shared/*"), content = emptyList()),
+        pack("second", path = listOf("shared/*"), content = emptyList()),
+        pack("neutral", path = emptyList(), content = emptyList(), fallback = true),
+      ),
+      listOf(
+        ReviewRoutingChangedFile("src/Main.kt", "class Main"),
+        ReviewRoutingChangedFile("shared/model.txt", "shared model"),
+        ReviewRoutingChangedFile("docs/readme.md", "documentation"),
+      ),
+    )
+
+    assertEquals(setOf("kotlin", "neutral"), result.routedSlugs)
+    assertEquals(
+      mapOf(
+        "kotlin" to setOf("src/Main.kt"),
+        "neutral" to setOf("shared/model.txt", "docs/readme.md"),
+      ),
+      result.ownedPathsBySlug,
+    )
+  }
+
+  @Test
   fun `fallback-required routing fails loudly without an owner`() {
     assertFailsWith<InvalidFallbackCapabilityError> {
       ReviewStackRouting.route(
@@ -161,37 +210,51 @@ class ReviewStackRoutingTest {
     }
   }
 
+  @Test
+  fun `ignored files produce no route without requiring fallback discovery`() {
+    val result = ReviewStackRouting.route(
+      listOf(pack("typescript", path = listOf("*.ts"), content = emptyList())),
+      listOf(
+        ReviewRoutingChangedFile("node_modules/library/index.ts", "export class Library"),
+        ReviewRoutingChangedFile("dist/app.ts", "export class App"),
+        ReviewRoutingChangedFile("src/generated/client.ts", "export class Client"),
+      ),
+    )
+
+    assertEquals(emptySet(), result.routedSlugs)
+    assertEquals(emptyMap(), result.ownedPathsBySlug)
+  }
+
   private fun pack(
     slug: String,
     path: List<String>,
     content: List<String>,
     baselinePlatform: String? = null,
     fallback: Boolean = false,
-  ) =
-    PlatformManifest(
-      slug = slug,
-      packRoot = Path.of("platform-packs", slug),
-      contractVersion = "1.2",
-      routingSignals = RoutingSignals(strong = path, tieBreakers = emptyList(), path = path, content = content),
-      declaredCodeReviewAreas = emptyList(),
-      declaredFiles = DeclaredFiles(
-        baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
-        areas = emptyMap(),
-      ),
-      areaMetadata = emptyMap(),
-      codeReviewComposition = baselinePlatform?.let {
-        CodeReviewComposition(
-          listOf(
-            CodeReviewBaselineLayer(
-              platform = it,
-              skill = "bill-$it-code-review",
-              scope = CodeReviewCompositionScope.SameReviewScope,
-              required = true,
-              mode = CodeReviewCompositionMode.KmpBaseline,
-            ),
+  ) = PlatformManifest(
+    slug = slug,
+    packRoot = Path.of("platform-packs", slug),
+    contractVersion = "1.2",
+    routingSignals = RoutingSignals(strong = path, tieBreakers = emptyList(), path = path, content = content),
+    declaredCodeReviewAreas = emptyList(),
+    declaredFiles = DeclaredFiles(
+      baseline = Path.of("platform-packs", slug, "code-review", "bill-$slug-code-review", "content.md"),
+      areas = emptyMap(),
+    ),
+    areaMetadata = emptyMap(),
+    codeReviewComposition = baselinePlatform?.let {
+      CodeReviewComposition(
+        listOf(
+          CodeReviewBaselineLayer(
+            platform = it,
+            skill = "bill-$it-code-review",
+            scope = CodeReviewCompositionScope.SameReviewScope,
+            required = true,
+            mode = CodeReviewCompositionMode.KmpBaseline,
           ),
-        )
-      },
-      fallbackCapabilities = if (fallback) setOf("code-review") else emptySet(),
-    )
+        ),
+      )
+    },
+    fallbackCapabilities = if (fallback) setOf("code-review") else emptySet(),
+  )
 }

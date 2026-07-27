@@ -71,9 +71,10 @@ class PlatformPackSubstanceAuditTest {
     assertEquals(PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION, first.contractVersion)
     assertTrue(first.packs.isNotEmpty())
     assertTrue(first.violations.isEmpty(), first.violations.joinToString("\n") { it.format() })
-    assertTrue(first.packs.all { it.qualityCheckFile != null })
+    assertTrue(first.packs.filterNot { it.pack == "generic" }.all { it.qualityCheckFile != null })
+    assertEquals(null, first.packs.single { it.pack == "generic" }.qualityCheckFile)
     assertEquals(
-      setOf("go", "ios", "kotlin", "php", "python", "rust", "typescript"),
+      setOf("generic", "go", "ios", "kotlin", "php", "python", "rust", "typescript"),
       first.packs.filter { it.physicalAreas.toSet() == APPROVED_CODE_REVIEW_AREAS }.map { it.pack }.toSet(),
     )
     val kmp = first.packs.single { it.pack == "kmp" }

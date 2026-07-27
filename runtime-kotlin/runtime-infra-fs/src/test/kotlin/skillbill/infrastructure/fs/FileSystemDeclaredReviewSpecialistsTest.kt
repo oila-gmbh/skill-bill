@@ -95,8 +95,8 @@ class FileSystemDeclaredReviewSpecialistsTest {
     val repoRoot = Files.createTempDirectory("declared-specialists-duplicate-fallback")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
     writePack(packsRoot, "kotlin", listOf("*.kt"), listOf("architecture"))
-    writePack(packsRoot, "first-neutral", emptyList(), listOf("architecture"), fallback = true)
-    writePack(packsRoot, "second-neutral", emptyList(), listOf("security"), fallback = true)
+    writePack(packsRoot, "first-neutral", emptyList(), listOf("architecture"))
+    writePack(packsRoot, "second-neutral", emptyList(), listOf("security"))
 
     assertFailsWith<InvalidFallbackCapabilityError> {
       FileSystemDeclaredReviewSpecialists()
@@ -118,20 +118,23 @@ class FileSystemDeclaredReviewSpecialistsTest {
     pathSignals: List<String>,
     areas: List<String>,
     contentSignals: List<String> = emptyList(),
-    fallback: Boolean = false,
   ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
       packDir.resolve("platform.yaml"),
       buildString {
+        val fallback = pathSignals.isEmpty()
+        val strongSignals = pathSignals.ifEmpty { listOf("manifest-declared code-review fallback") }
         appendLine("platform: $slug")
         appendLine("contract_version: \"1.2\"")
         appendLine("display_name: $slug")
         appendLine("routing_signals:")
         appendLine("  strong:")
-        pathSignals.forEach { appendLine("    - \"$it\"") }
+        strongSignals.forEach { appendLine("    - \"$it\"") }
         appendLine("  tie_breakers: []")
-        appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
+        if (pathSignals.isNotEmpty()) {
+          appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
+        }
         appendLine("  content: [${contentSignals.joinToString(", ") { "\"$it\"" }}]")
         if (fallback) appendLine("fallback_capabilities: [code-review]")
         appendLine("declared_code_review_areas:")

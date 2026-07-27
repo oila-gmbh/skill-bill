@@ -790,7 +790,9 @@ class ParallelCodeReviewRunnerFailureTest {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(
       launcher,
-      catalogGateway = stubCatalogGateway(listOf(platformManifest("typescript", listOf("*.ts", ".ts")))),
+      catalogGateway = stubCatalogGateway(
+        listOf(platformManifest("typescript", listOf("*.ts", ".ts")), fallbackManifest()),
+      ),
       diffResolver = RecordingDiffResolver(
         default = listOf(
           "node_modules/library/index.ts",
@@ -1103,6 +1105,16 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
     "architecture" to ReviewLaneCondition(required = true),
     "testing" to ReviewLaneCondition(path = listOf("Test.kt")),
   ),
+)
+
+private fun fallbackManifest(): PlatformManifest = platformManifest("generic", listOf("fallback-only")).copy(
+  routingSignals = RoutingSignals(
+    strong = listOf("fallback-only"),
+    tieBreakers = emptyList(),
+    path = emptyList(),
+    content = emptyList(),
+  ),
+  fallbackCapabilities = setOf("code-review"),
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"
