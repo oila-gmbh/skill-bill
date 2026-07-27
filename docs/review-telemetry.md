@@ -25,7 +25,7 @@ Skill Bill can record a measurement loop for code-review usefulness. Telemetry u
 - each finding in `### 2. Risk Register` should use `- [F-001] Severity | Confidence | file:line | description`
 - feedback history and learnings stay local in SQLite regardless of telemetry state
 
-The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes review, learning, workflow-state, workflow-stats, telemetry, scaffold, quality-check, PR-description, health, and optional Readian bridge tools. The CLI provides the same runtime functionality plus learnings CRUD, install primitives, validation, and telemetry management.
+The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes review, learning, workflow-state, workflow-stats, telemetry, scaffold, quality-check, PR-description, and health tools. The CLI provides the same runtime functionality plus learnings CRUD, install primitives, validation, and telemetry management.
 
 ```bash
 skill-bill --help
