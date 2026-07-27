@@ -373,7 +373,9 @@ class GoalWatchCommand(
       latestRefresh = refresh
       stopReason = refresh.goalWatchStopReason(refreshCount, maxRefreshes) ?: ""
       val renderedRefresh = goalWatchRefreshText(refresh)
-      val normalizedRefresh = renderedRefresh.normalizeWatchRefreshIndex()
+      val normalizedRefresh = goalWatchRefreshText(
+        refresh.toMutableMap().apply { this["refresh_index"] = "<refresh_index>" },
+      )
       val endsLoop = stopReason.isNotEmpty()
       if (!endsLoop && (showUnchanged || lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh)) {
         state.liveStdout(renderedRefresh)
@@ -946,9 +948,6 @@ private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshe
   maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
   else -> null
 }
-
-private fun String.normalizeWatchRefreshIndex(): String =
-  replace(Regex("""(?<![\w])index=\d+"""), "index=<refresh_index>")
 
 private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
