@@ -8,6 +8,7 @@ import java.nio.file.Path
 
 internal object McpJsonConfig {
   fun register(agent: String, path: Path, command: String): McpMutationResult {
+    val beforeContent = if (Files.exists(path)) Files.readString(path) else ""
     val settings = readJsonObject(path).toMutableMap()
     val servers = mutableStringAnyMap(settings["mcpServers"])
     servers["skill-bill"] = linkedMapOf(
@@ -16,8 +17,12 @@ internal object McpJsonConfig {
       "args" to emptyList<String>(),
     )
     settings["mcpServers"] = servers
-    writeJson(path, settings)
-    return McpMutationResult(agent, path, changed = true)
+    val afterContent = JsonSupport.mapToJsonString(settings) + "\n"
+    val changed = beforeContent != afterContent
+    if (changed) {
+      writeJson(path, settings)
+    }
+    return McpMutationResult(agent, path, changed = changed)
   }
 
   fun unregister(agent: String, path: Path): McpMutationResult {

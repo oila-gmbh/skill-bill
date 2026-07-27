@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-27] SKILL-138 Cursor MCP install/uninstall, replay, and smoke tests (subtask 3)
+Areas: runtime-kotlin/runtime-{cli,infra-fs}, scripts
+- Cursor MCP registration targets `~/.cursor/mcp.json` with standard `mcpServers` merge semantics; register/unregister/config-path branches now cover CURSOR case in `McpJsonConfig` and `McpRegistrationOperations`.
+- UninstallCommand extended to remove only managed Cursor skill links, native links, and Skill Bill's MCP entry while preserving user-owned Cursor content.
+- Selection replay round-trips Cursor state and malformed input fails loudly through typed validation.
+- Install-plan/apply and shell delegation allowlists now include Cursor in canonical order.
+- Test coverage: MCP registration operations (idempotency, unrelated-key preservation, malformed-input failure), install plan application, and smoke test expectations all pass with isolated homes.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-27] SKILL-138 Cursor native agents, inventory, CLI, and removal (subtask 2)
 Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,ports,desktop}, orchestration/contracts, docs, AGENTS.md
 - NativeAgentProvider.Cursor renders valid YAML-frontmatter Markdown targeting ~/.cursor/agents; provider loops now exhaustively cover Cursor in link/unlink operations, inventory schema, validation preflight, and skill removal execution.
