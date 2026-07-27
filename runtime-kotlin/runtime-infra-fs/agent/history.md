@@ -1,5 +1,25 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-07-27] SKILL-138 Cursor MCP install/uninstall, replay, and smoke tests (subtask 3)
+Areas: runtime-kotlin/runtime-{cli,infra-fs}, scripts
+- Cursor MCP registration targets `~/.cursor/mcp.json` with standard `mcpServers` merge semantics; register/unregister/config-path branches now cover CURSOR case in `McpJsonConfig` and `McpRegistrationOperations`.
+- UninstallCommand extended to remove only managed Cursor skill links, native links, and Skill Bill's MCP entry while preserving user-owned Cursor content.
+- Selection replay round-trips Cursor state and malformed input fails loudly through typed validation.
+- Install-plan/apply and shell delegation allowlists now include Cursor in canonical order.
+- Test coverage: MCP registration operations (idempotency, unrelated-key preservation, malformed-input failure), install plan application, and smoke test expectations all pass with isolated homes.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-07-27] SKILL-138 Cursor native agents, inventory, CLI, and removal (subtask 2)
+Areas: runtime-kotlin/runtime-{application,cli,domain,infra-fs,ports,desktop}, orchestration/contracts, docs, AGENTS.md
+- NativeAgentProvider.Cursor renders valid YAML-frontmatter Markdown targeting ~/.cursor/agents; provider loops now exhaustively cover Cursor in link/unlink operations, inventory schema, validation preflight, and skill removal execution.
+- Added cursor-agents-path, link-cursor-agents, and unlink-cursor-agents CLI commands registered through runtime-surface with continuation guards and platform-aware path resolution.
+- Repository validation rejects committed cursor-agents output and packaging excludes it while retaining provider-neutral native-agent sources under native-agents/.
+- Desktop removal previews/mappings include Cursor with typed failure handling; uninstall primitives exhaustively cover cursor-agents cleanup.
+- Pattern: new native-agent provider addition updates six enums (InstallAgent, NativeAgentProviderId, NativeAgentProvider, NativeAgentLinkProvider, FirstRunSetupAgent, AgentSymlinkProvider) plus link/unlink operations and inventory/preflight coverage. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-22] SKILL-129 native-agent reconciliation and preflight (subtask 4)
 Areas: runtime-kotlin/runtime-{application,domain,infra-fs,ports}, platform-packs/{kotlin,kmp}/code-review
 - Provider-neutral declarations and flattened launch plans now share one complete logical worker set; undeclared workers, duplicate provider targets, and misleading baseline identities fail before launch.

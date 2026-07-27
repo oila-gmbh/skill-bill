@@ -55,7 +55,7 @@ registration, replacement cleanup, and structured failure reporting.
 Installer prompts cover:
 
 - agent selection: manual or detected `copilot`, `claude`, `codex`,
-  `opencode`, and `junie`
+  `cursor`, `opencode`, and `junie`
 - platform packs: all packs, selected packs, or base skills only; selected
   packs are discovered from `platform-packs/` manifests
 - telemetry: `anonymous`, `full`, or `off`
@@ -94,6 +94,8 @@ Supported install targets:
 | Claude Code (native subagent markdown)     | `~/.claude/agents/`                       |
 | OpenAI Codex (skills)                      | `~/.codex/skills/` or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs)       | `~/.codex/agents/`                        |
+| Cursor (skills)                            | `~/.cursor/skills/`                       |
+| Cursor (native subagent markdown)          | `~/.cursor/agents/`                       |
 | OpenCode (skills)                          | `~/.config/opencode/skills/`              |
 | OpenCode (native subagent markdown)        | `~/.config/opencode/agents/`              |
 | JetBrains Junie (skills)                   | `~/.junie/skills/`                        |

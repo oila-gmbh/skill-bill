@@ -22,6 +22,22 @@ class GeneratedArtifactGuardTest {
   }
 
   @Test
+  fun `guard rejects generated cursor agent addon output`() {
+    val repoRoot = tempRoot.resolve("agent-addon-cursor-output")
+    val addon = repoRoot.resolve("agent-addons/review-helper/cursor-agents")
+    Files.createDirectories(addon)
+    Files.writeString(addon.resolve("bill-review-helper-worker.md"), "generated")
+
+    val report = validateGeneratedArtifactGuard(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any { it.contains("cursor-agents") && it.contains("generated agent add-on output") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `guard rejects generated agent addon output`() {
     val repoRoot = tempRoot.resolve("agent-addon-output")
     val addon = repoRoot.resolve("agent-addons/review-helper")

@@ -44,7 +44,8 @@ Generated files forbidden in source:
 
 - governed `SKILL.md` wrappers under `skills/` or platform-pack skill directories
 - generated support pointers such as `shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation pointers, and add-on pointers
-- provider-specific `claude-agents/`, `codex-agents/`, `opencode-agents/`, and `junie-agents/` outputs
+- provider-specific `claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, and
+  `cursor-agents/` outputs
 
 Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered sources include `contract_version`; the parser still accepts older sources for fixture migration.
 

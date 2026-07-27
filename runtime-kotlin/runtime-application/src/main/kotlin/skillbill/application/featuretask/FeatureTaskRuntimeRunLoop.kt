@@ -22,6 +22,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -3043,6 +3044,20 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+
+    // Cursor requires model and effort to be merged into bracket syntax at the request level
+    val (modelOverride, effortOverride) = if (run.resolvedAgent.resolvedAgentId == InstallAgent.CURSOR.id) {
+      val model = run.modelDirective?.model
+      val effort = run.modelDirective?.effort
+      if (model != null && effort != null) {
+        "$model[effort=$effort]" to effort
+      } else {
+        model to effort
+      }
+    } else {
+      run.modelDirective?.model to run.modelDirective?.effort
+    }
+
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -3052,8 +3067,8 @@ internal class FeatureTaskRuntimeRunLoop(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
-          modelOverride = run.modelDirective?.model,
-          effortOverride = run.modelDirective?.effort,
+          modelOverride = modelOverride,
+          effortOverride = effortOverride,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
           readOnlyPhase = isReviewPhase,

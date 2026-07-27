@@ -952,6 +952,16 @@ class HeadlessAgentRunAdapterTest {
     goalContinuation = null,
   ).copy(promptOverride = "Phase: preplan")
 
+  private fun skillRunRequest(): SkillRunRequest = SkillRunRequest(
+    issueKey = "SKILL-88",
+    repoRoot = Path.of("/tmp/skillbill-agent-run"),
+    subtaskId = 1,
+    timeout = 3.seconds,
+    goalContinuation = null,
+    promptOverride = "Test prompt",
+    streamOutputForLiveness = true,
+  )
+
   @Test
   fun `opencode is not registered as a headless runtime adapter`() {
     // SKILL-95 AC5 / SKILL-103 AC6: opencode and zcode are prose-only. Neither may appear in the
@@ -964,9 +974,8 @@ class HeadlessAgentRunAdapterTest {
     RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
     assertFalse(adapters.keys.contains(InstallAgent.OPENCODE), "opencode must not be a headless adapter")
     assertFalse(adapters.keys.contains(InstallAgent.ZCODE), "zcode must not be a headless adapter")
-    assertTrue(
-      adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE)),
-    )
+    val expectedAgents = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR)
+    assertTrue(adapters.keys.containsAll(expectedAgents))
   }
 
   @Test
@@ -1032,6 +1041,99 @@ class HeadlessAgentRunAdapterTest {
     runner.requests.forEach { req ->
       assertEquals(false, req.usePtyStdio, "supported adapter must thread usePtyStdio=false")
     }
+  }
+
+  @Test
+  fun `cursor is registered as a headless adapter with correct builder and decoder`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val adapters = headlessAgentRunAdapters(runner)
+
+    val cursorAdapter = adapters[InstallAgent.CURSOR]
+    assertNotNull(cursorAdapter, "cursor must be registered as a headless adapter")
+    assertTrue(cursorAdapter is ProcessAgentRunAdapter, "cursor adapter must be ProcessAgentRunAdapter")
+
+    val request = phaseRunRequest()
+    cursorAdapter.launch(request)
+
+    val captured = runner.requests.single()
+    assertEquals("agent", captured.command.first())
+    assertTrue(captured.command.contains("--workspace"))
+    assertEquals(false, captured.usePtyStdio)
+  }
+
+  @Test
+  fun `cursor launch is not refused and succeeds`() {
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+
+    val outcome = launcher.launch(
+      AgentRunLaunchRequest(
+        agentId = "cursor",
+        skillRunRequest = skillRunRequest(),
+      ),
+    )
+
+    assertFalse(outcome is UnsupportedAgentRunLaunch, "cursor launch must not be refused")
+  }
+
+  @Test
+  fun `cursor process launch honors timeout expiry with streamed output`() {
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = null,
+        stdout = "partial output",
+        stderr = "slow",
+        timedOut = true,
+        interrupted = false,
+        spawnFailed = false,
+      ),
+    )
+    val adapters = headlessAgentRunAdapters(runner)
+    val request = skillRunRequest().copy(
+      promptOverride = "Run timeout test",
+      timeout = 100.milliseconds,
+    )
+
+    requireNotNull(adapters[InstallAgent.CURSOR]).launch(request)
+
+    val captured = runner.requests.single()
+    assertEquals(100.milliseconds, captured.timeout)
+    assertTrue(captured.command.contains("--stream-partial-output"))
+  }
+
+  @Test
+  fun `cursor process launch honors interruption`() {
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = null,
+        stdout = "partial",
+        stderr = "interrupted",
+        timedOut = false,
+        interrupted = true,
+        spawnFailed = false,
+      ),
+    )
+    val adapters = headlessAgentRunAdapters(runner)
+
+    val outcome = requireNotNull(adapters[InstallAgent.CURSOR]).launch(skillRunRequest())
+
+    assertTrue(outcome.interrupted)
+    assertFalse(outcome.timedOut)
+    assertEquals("interrupted", outcome.stderr)
+  }
+
+  @Test
+  fun `cursor durable-progress policies remain in force with streamed output`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val adapters = headlessAgentRunAdapters(runner)
+    val request = skillRunRequest().copy(
+      promptOverride = "Test progress policies",
+      streamOutputForLiveness = true,
+    )
+
+    requireNotNull(adapters[InstallAgent.CURSOR]).launch(request)
+
+    val captured = runner.requests.single()
+    assertEquals(false, captured.usePtyStdio, "cursor must use separate stdout/stderr, not PTY")
   }
 }
 

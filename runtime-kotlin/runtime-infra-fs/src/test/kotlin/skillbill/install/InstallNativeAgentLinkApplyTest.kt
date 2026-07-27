@@ -27,6 +27,7 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -196,6 +197,121 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
         logicalNames = listOf("bill-code-review-worker"),
       ),
     )
+  }
+
+  @Test
+  fun `cursor apply links workers, inventories them, is idempotent, and preserves user files`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val agentDir = fixture.home.resolve(".cursor/agents")
+    Files.createDirectories(agentDir)
+    val userFile = agentDir.resolve("user-owned.md")
+    Files.writeString(userFile, "user cursor file\n")
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CURSOR)),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val linked = result.nativeAgents.filter { native -> native.status == NativeAgentApplyStatus.LINKED }
+    assertTrue(linked.isNotEmpty(), "cursor apply linked nothing: ${result.nativeAgents}")
+    assertEquals(setOf(NativeAgentProviderId.CURSOR), linked.map { native -> native.provider }.toSet())
+    assertEquals("user cursor file\n", Files.readString(userFile))
+
+    val currentRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val entries = NativeAgentLinkInventory.read(fixture.home, listOf(currentRoot), fixture.repoRoot)
+      .filter { entry -> entry.provider == "cursor" }
+    assertTrue(entries.isNotEmpty(), "cursor links were not inventoried")
+    entries.forEach { entry ->
+      assertEquals(agentDir, entry.installedPath.parent)
+      assertEquals(
+        NativeAgentProvider.Cursor.cacheArtifactPath(currentRoot, entry.logicalName),
+        entry.cacheTargetPath,
+      )
+      assertTrue(entry.contentDigest.matches(Regex("[0-9a-f]{64}")))
+      assertEquals(fixture.repoRoot.toAbsolutePath().normalize(), entry.sourceRoot)
+      assertTrue(Files.isSymbolicLink(entry.installedPath))
+    }
+
+    val repeat = InstallOperations.applyInstall(
+      InstallOperations.planInstall(
+        fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CURSOR)),
+      ),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, repeat.status)
+    assertEquals(
+      entries.map { entry -> entry.installedPath to entry.cacheTargetPath }.toSet(),
+      NativeAgentLinkInventory.read(fixture.home, listOf(currentRoot), fixture.repoRoot)
+        .filter { entry -> entry.provider == "cursor" }
+        .map { entry -> entry.installedPath to entry.cacheTargetPath }
+        .toSet(),
+    )
+    assertEquals("user cursor file\n", Files.readString(userFile))
+  }
+
+  @Test
+  fun `cursor apply reconciles a stale managed link from an obsolete generation`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val agentDir = fixture.home.resolve(".cursor/agents")
+    Files.createDirectories(agentDir)
+    val logicalName = "bill-code-review-worker"
+    val obsoleteRoot = fixture.home.resolve(
+      ".skill-bill/installed-skills/native-agents-old-checkout-0123456789abcdef",
+    )
+    val obsoleteTarget = NativeAgentProvider.Cursor.cacheArtifactPath(obsoleteRoot, logicalName)
+    Files.createDirectories(obsoleteTarget.parent)
+    Files.writeString(obsoleteTarget, "---\nname: $logicalName\n---\n")
+    val installed = agentDir.resolve(NativeAgentProvider.Cursor.fileName(logicalName))
+    createSymlinkOrSkip(installed, obsoleteTarget)
+
+    val result = InstallOperations.applyInstall(
+      InstallOperations.planInstall(
+        fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CURSOR)),
+      ),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val currentRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    assertEquals(
+      NativeAgentProvider.Cursor.cacheArtifactPath(currentRoot, logicalName),
+      readSymlinkTarget(installed),
+    )
+  }
+
+  @Test
+  fun `cursor preflight fails with the repair command when a managed link is deleted`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CURSOR)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+    val installed = fixture.home.resolve(".cursor/agents")
+      .resolve(NativeAgentProvider.Cursor.fileName("bill-code-review-worker"))
+    Files.delete(installed)
+
+    val failure = assertFailsWith<MissingInstalledNativeAgentError> {
+      FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+        ReviewNativeAgentPreflightRequest(
+          repoRoot = fixture.repoRoot,
+          agentIds = listOf("cursor"),
+          logicalNames = listOf("bill-code-review-worker"),
+        ),
+      )
+    }
+
+    assertContains(failure.message.orEmpty(), "skill-bill install apply")
   }
 
   @Test

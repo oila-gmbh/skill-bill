@@ -251,8 +251,12 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     refuseUnsupportedRuntimeAgent(environment)
     val repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize()
     val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
+    val phaseAgentMap = parsePhaseAgents(phaseAgents).toMutableMap()
+    parallelReviewAgent?.takeIf(String::isNotBlank)?.let {
+      phaseAgentMap[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW] = it
+    }
     val agentAssignment = FeatureTaskRuntimeAgentAssignment(
-      perPhaseAgentIds = parsePhaseAgents(phaseAgents),
+      perPhaseAgentIds = phaseAgentMap,
       override = agentOverride?.takeIf(String::isNotBlank),
     )
     val modelAssignment = FeatureTaskRuntimeModelAssignment(

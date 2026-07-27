@@ -32,6 +32,7 @@ internal fun discoverAgentAddonGeneratedArtifacts(root: Path): List<Path> {
     "codex-agents",
     "opencode-agents",
     "junie-agents",
+    "cursor-agents",
   )
   return Files.walk(addonsRoot).use { stream ->
     stream.filter { it.name in generatedNames }.sorted().toList()

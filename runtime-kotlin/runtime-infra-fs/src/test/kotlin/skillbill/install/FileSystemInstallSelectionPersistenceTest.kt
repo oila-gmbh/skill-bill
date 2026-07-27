@@ -242,6 +242,34 @@ class FileSystemInstallSelectionPersistenceTest {
   }
 
   @Test
+  fun `manually selected cursor round trips without a detected cursor home`() {
+    val home = Files.createTempDirectory("skillbill-install-selection-cursor")
+    val store = FileSystemInstallSelectionPersistence()
+    val selection = selection(
+      selectedAgents = setOf(InstallAgent.CURSOR, InstallAgent.CLAUDE),
+      platformPackSelection = PlatformPackSelection(
+        mode = PlatformPackSelectionMode.SELECTED,
+        selectedSlugs = setOf("kotlin"),
+      ),
+      telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
+      mcpRegistrationChoice = McpRegistrationChoice(
+        register = true,
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
+      ),
+    )
+
+    store.writeLatestSuccessfulSelection(
+      WriteLatestSuccessfulInstallSelectionRequest(installHome = home, selection = selection),
+    )
+    val replayed = store.readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(home)).selection
+
+    assertFalse(Files.exists(home.resolve(".cursor")))
+    assertEquals(selection, replayed)
+    assertContains(replayed.selectedAgents, InstallAgent.CURSOR)
+    assertContains(Files.readString(home.resolve(".skill-bill/install-selection.json")), "cursor")
+  }
+
+  @Test
   fun `missing install selection record fails loudly`() {
     val home = Files.createTempDirectory("skillbill-install-selection-missing")
     val store = FileSystemInstallSelectionPersistence()

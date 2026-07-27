@@ -401,7 +401,40 @@ private fun createGitRepo(): Path {
   runGit("-C", dir.toString(), "config", "user.name", "Test")
   runGit("-C", dir.toString(), "config", "commit.gpgSign", "false")
   runGit("-C", dir.toString(), "commit", "--allow-empty", "-m", "initial")
+
+  // Copy platform-packs directory for platform pack discovery
+  val repoRoot = findRepoRoot()
+  val platformPacksSource = repoRoot.resolve("platform-packs")
+  if (Files.isDirectory(platformPacksSource)) {
+    val platformPacksDest = dir.resolve("platform-packs")
+    Files.createDirectories(platformPacksDest)
+    Files.walk(platformPacksSource).use { paths ->
+      paths.forEach { source ->
+        val relative = platformPacksSource.relativize(source)
+        val dest = platformPacksDest.resolve(relative)
+        if (Files.isDirectory(source)) {
+          Files.createDirectories(dest)
+        } else {
+          Files.copy(source, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+      }
+    }
+  }
+
   return dir
+}
+
+private fun findRepoRoot(): Path {
+  var current = Path.of(".").toAbsolutePath()
+  while (current != null) {
+    if (Files.exists(current.resolve("build.gradle.kts")) ||
+      Files.exists(current.resolve("settings.gradle.kts"))
+    ) {
+      return current
+    }
+    current = current.parent
+  }
+  return Path.of(".").toAbsolutePath()
 }
 
 private fun createStagedFile(dir: Path) {

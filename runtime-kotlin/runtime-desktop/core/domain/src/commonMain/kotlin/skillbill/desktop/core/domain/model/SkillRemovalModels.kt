@@ -89,6 +89,7 @@ enum class DesktopAgentSymlinkProvider {
   CODEX,
   OPENCODE,
   JUNIE,
+  CURSOR,
   ZCODE,
 }
 
