@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-138-cursor-full-agent-support"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Cursor native agents, inventory, CLI, and removal"
   spec_path: ".feature-specs/SKILL-138-cursor-full-agent-support/spec_subtask_2_native-agents-removal.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-143540-w44o"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -47,7 +47,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260727-153714-z3yt"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

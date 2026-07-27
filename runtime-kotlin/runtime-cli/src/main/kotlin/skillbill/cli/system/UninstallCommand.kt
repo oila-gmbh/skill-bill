@@ -89,7 +89,7 @@ class UninstallCommand(
       legacyNames = legacyNames,
       agentTargets = agentTargets.distinct(),
       nativeSourceRoots = listOf(stateRoot.resolve("platform-packs"), stateRoot.resolve("skills")),
-      mcpAgents = listOf("copilot", "claude", "codex", "opencode", "junie"),
+      mcpAgents = listOf("copilot", "claude", "codex", "opencode", "junie", "cursor"),
       launchers = listOf(
         LauncherRemoval(binDir.resolve("skill-bill"), stateRuntimeRoot.resolve("runtime-cli/bin/runtime-cli")),
         LauncherRemoval(binDir.resolve("skill-bill-mcp"), stateRuntimeRoot.resolve("runtime-mcp/bin/runtime-mcp")),

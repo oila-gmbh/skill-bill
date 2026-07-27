@@ -190,6 +190,7 @@ class McpRegistrationOperationsTest {
       "codex" to home.resolve(".codex/config.toml"),
       "opencode" to home.resolve(".config/opencode/opencode.json"),
       "junie" to home.resolve(".junie/mcp/mcp.json"),
+      "cursor" to home.resolve(".cursor/mcp.json"),
       "zcode" to home.resolve(".zcode/cli/config.json"),
       "copilot" to home.resolve(".copilot/mcp-config.json"),
     )
@@ -203,6 +204,121 @@ class McpRegistrationOperationsTest {
       assertEquals(expected, unregistered.configPath, agent)
       assertTrue(unregistered.profiles.isEmpty(), agent)
     }
+  }
+
+  @Test
+  fun `cursor register creates mcp json with unrelated keys preserved`() {
+    val home = Files.createTempDirectory("mcp-cursor-register")
+    Files.createDirectories(home.resolve(".cursor"))
+    val configPath = home.resolve(".cursor/mcp.json")
+    val existingContent = """
+    {
+      "unrelatedKey": "unrelatedValue",
+      "mcpServers": {
+        "other-server": {
+          "command": "other-command",
+          "args": ["--arg1"]
+        }
+      }
+    }
+    """.trimIndent()
+    Files.writeString(configPath, existingContent)
+
+    val result = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+
+    assertEquals(configPath, result.configPath)
+    assertTrue(result.changed)
+
+    val updated = decode(configPath)
+    assertEquals("unrelatedValue", updated["unrelatedKey"])
+    val servers = updated["mcpServers"] as Map<*, *>
+    assertTrue(servers.containsKey("other-server"))
+    assertTrue(servers.containsKey("skill-bill"))
+    val skillBillServer = servers["skill-bill"] as Map<*, *>
+    assertEquals("stdio", skillBillServer["type"])
+    assertEquals("/tmp/runtime-mcp", skillBillServer["command"])
+    assertEquals(emptyList<String>(), skillBillServer["args"])
+  }
+
+  @Test
+  fun `cursor register is idempotent`() {
+    val home = Files.createTempDirectory("mcp-cursor-idempotent")
+    Files.createDirectories(home.resolve(".cursor"))
+    val configPath = home.resolve(".cursor/mcp.json")
+
+    McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+    val firstContent = Files.readString(configPath)
+
+    val result = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+    assertFalse(result.changed)
+    assertEquals(firstContent, Files.readString(configPath))
+  }
+
+  @Test
+  fun `cursor unregister removes only skill bill entry`() {
+    val home = Files.createTempDirectory("mcp-cursor-unregister")
+    Files.createDirectories(home.resolve(".cursor"))
+    val configPath = home.resolve(".cursor/mcp.json")
+    val content = """
+    {
+      "unrelatedKey": "unrelatedValue",
+      "mcpServers": {
+        "other-server": {
+          "command": "other-command"
+        },
+        "skill-bill": {
+          "command": "runtime-mcp"
+        }
+      }
+    }
+    """.trimIndent()
+    Files.writeString(configPath, content)
+
+    val result = McpRegistrationOperations.unregister("cursor", home)
+
+    assertTrue(result.changed)
+    assertEquals(configPath, result.configPath)
+
+    val updated = decode(configPath)
+    assertEquals("unrelatedValue", updated["unrelatedKey"])
+    val servers = updated["mcpServers"] as Map<*, *>
+    assertTrue(servers.containsKey("other-server"))
+    assertFalse(servers.containsKey("skill-bill"))
+  }
+
+  @Test
+  fun `cursor malformed json fails loudly`() {
+    val home = Files.createTempDirectory("mcp-cursor-malformed")
+    Files.createDirectories(home.resolve(".cursor"))
+    val configPath = home.resolve(".cursor/mcp.json")
+    Files.writeString(configPath, "{ not valid json")
+
+    val error = assertFailsWith<IllegalArgumentException> {
+      McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+    }
+    assertTrue(error.message?.contains("mcp.json") == true)
+    assertTrue(error.message?.contains("JSON") == true || error.message?.contains("json") == true)
+  }
+
+  @Test
+  fun `cursor register handles absent and empty config`() {
+    val home = Files.createTempDirectory("mcp-cursor-absent")
+    Files.createDirectories(home.resolve(".cursor"))
+    val configPath = home.resolve(".cursor/mcp.json")
+
+    val resultAbsent = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+    assertTrue(resultAbsent.changed)
+    assertEquals(configPath, resultAbsent.configPath)
+    val serverAbsent = skillBillServer(configPath)
+    assertEquals("stdio", serverAbsent["type"])
+    assertEquals("/tmp/runtime-mcp", serverAbsent["command"])
+
+    Files.writeString(configPath, "{}")
+    val resultEmpty = McpRegistrationOperations.register("cursor", runtimeMcpBin, home)
+    assertTrue(resultEmpty.changed)
+    val serverEmpty = skillBillServer(configPath)
+    assertEquals("stdio", serverEmpty["type"])
+    assertEquals("/tmp/runtime-mcp", serverEmpty["command"])
   }
 
   private fun assertContains(haystack: String, needle: String) {
