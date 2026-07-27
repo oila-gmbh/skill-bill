@@ -439,7 +439,8 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor normal launch emits documented flags, workspace, prompt, timeout, environment, non-PTY, inherited approvals`() {
+  fun `cursor normal launch emits flags, workspace, prompt, timeout, environment, non-PTY, approvals`() {
+
     val builder = CursorAgentRunCommandBuilder()
     val command = builder.build(request())
 
@@ -539,9 +540,12 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor decoder extracts result and usage from happy-path JSONL`() {
-    val jsonl = """{"type":"partial","delta":"increment"}
-{"type":"result","result":"PLAN-OK","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"total_tokens":150}}"""
+  fun `cursor decoder extracts result and usage from JSONL`() {
+    val jsonl =
+      """
+      {"type":"partial","delta":"increment"}
+      {"type":"result","result":"PLAN-OK","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"total_tokens":150}}
+      """.trimIndent()
 
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
 

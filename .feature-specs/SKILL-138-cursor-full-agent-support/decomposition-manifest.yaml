@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-138-cursor-full-agent-support"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 5
   action: "resume"
 subtasks:
 - id: 1
@@ -63,12 +63,12 @@ subtasks:
 - id: 4
   name: "Cursor headless runtime, decoding, models, and continuation"
   spec_path: ".feature-specs/SKILL-138-cursor-full-agent-support/spec_subtask_4_runtime-headless.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-155203-3in3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -82,7 +82,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260727-164354-dk3k"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

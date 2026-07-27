@@ -338,7 +338,7 @@ The first-run wizard is the desktop adapter over the reusable install contract.
 It asks for:
 
 - agents: detected or manually selected `copilot`, `claude`, `codex`,
-  `opencode`, and `junie`
+  `cursor`, `opencode`, and `junie`
 - platform packs: all, selected, or none; packs are discovered from
   `platform-packs/` manifests
 - telemetry: `anonymous`, `full`, or `off`, matching CLI behavior
@@ -384,7 +384,7 @@ Parent SKILL-45 acceptance criteria are closed as follows:
 4. Platform packs are discovered dynamically from `platform-packs/` manifests;
    base skills are always included by install planning.
 5. Telemetry choices are `anonymous`, `full`, and `off`.
-6. Supported agents are `copilot`, `claude`, `codex`, `opencode`, and `junie`,
+6. Supported agents are `copilot`, `claude`, `codex`, `cursor`, `opencode`, and `junie`,
    with detection plus manual selection.
 7. Install apply preserves staging under `~/.skill-bill/installed-skills/`.
 8. CLI, shell, and desktop use reusable install plan/apply contracts rather than

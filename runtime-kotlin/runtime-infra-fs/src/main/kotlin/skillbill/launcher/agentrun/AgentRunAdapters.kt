@@ -173,32 +173,72 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   )
 }
 
+@Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
+  if (stdout.isBlank()) {
+    return DecodedAgentRunOutput("")
+  }
+
   var terminalText: String? = null
   var usage: com.fasterxml.jackson.databind.JsonNode? = null
   var decodedEnvelope = false
   var errorEvent = false
+  var errorType: String? = null
+  var errorMessage: String? = null
   var totalByteCount = 0
-  val maxTotalBytes = 10_000_000
+  val maxTotalBytes = 10_000_000 // 10MB limit for Cursor stream processing
+  val cursorStreamPreviewLength = 100 // Characters to show in error messages
+  val lines = stdout.lineSequence().toList()
 
-  stdout.lineSequence().asSequence().takeWhile { line ->
+  if (lines.isEmpty()) {
+    return DecodedAgentRunOutput("")
+  }
+
+  lines.asSequence().takeWhile { line ->
     totalByteCount += line.toByteArray().size
     totalByteCount <= maxTotalBytes
   }.filter(String::isNotBlank).forEach { line ->
-    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
-      decodedEnvelope = true
-      when (event.path("type").takeIf { it.isTextual }?.asText()) {
-        "error" -> errorEvent = true
-        "result" -> {
-          terminalText = event.path("result").takeIf { it.isTextual }?.asText()
-          event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
-        }
+    val event =
+      runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
+        throw skillbill.infrastructure.fs.CursorReviewStreamMalformedError(
+          "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
+          it,
+        )
+    }
+    decodedEnvelope = true
+    when (event.path("type").takeIf { it.isTextual }?.asText()) {
+      "error" -> {
+        errorEvent = true
+        errorType = event.path("error_type").takeIf { it.isTextual }?.asText()
+        errorMessage = event.path("message").takeIf { it.isTextual }?.asText()
+        // Error is stored and thrown later after parsing completes
+      }
+      "result" -> {
+        terminalText = event.path("result").takeIf { it.isTextual }?.asText()
+        event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
       }
     }
   }
 
+  // Throw cursor-specific errors after parsing is complete (reduces throw count)
+  if (errorEvent) {
+    throw when (errorType) {
+      "forbidden_operation" -> skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError(
+        errorMessage ?: "Cursor reported a forbidden operation",
+      )
+      "provider_failure" -> skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError(
+        errorMessage ?: "Cursor reported a provider failure",
+      )
+      "termination" -> skillbill.infrastructure.fs.CursorReviewStreamTerminationError(
+        errorMessage ?: "Cursor process terminated prematurely",
+      )
+      else -> skillbill.infrastructure.fs.CursorReviewStreamError(
+        errorMessage ?: "Cursor reported an unknown error",
+      )
+    }
+  }
+
   return when {
-    errorEvent -> DecodedAgentRunOutput("")
     decodedEnvelope && terminalText == null -> DecodedAgentRunOutput("")
     !decodedEnvelope -> DecodedAgentRunOutput(stdout)
     else -> DecodedAgentRunOutput(

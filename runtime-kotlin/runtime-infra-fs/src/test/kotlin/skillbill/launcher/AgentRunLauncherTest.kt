@@ -974,9 +974,8 @@ class HeadlessAgentRunAdapterTest {
     RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
     assertFalse(adapters.keys.contains(InstallAgent.OPENCODE), "opencode must not be a headless adapter")
     assertFalse(adapters.keys.contains(InstallAgent.ZCODE), "zcode must not be a headless adapter")
-    assertTrue(
-      adapters.keys.containsAll(setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR)),
-    )
+    val expectedAgents = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR)
+    assertTrue(adapters.keys.containsAll(expectedAgents))
   }
 
   @Test

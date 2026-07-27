@@ -5,7 +5,7 @@ Under one `curl` command is a full system. Each capability below is doing real w
 <details>
 <summary><b>1. One-shot multi-agent install via symlinks</b></summary>
 
-`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Copilot, Codex, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
+`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Codex, Cursor, Copilot, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
 
 </details>
 
