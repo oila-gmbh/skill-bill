@@ -7,6 +7,7 @@ import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformManifest
+import skillbill.scaffold.platformpack.validatePlatformPackFallbacks
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -48,6 +49,6 @@ class FileSystemDeclaredReviewSpecialists : DeclaredReviewSpecialistsPort {
       } catch (_: MissingManifestError) {
         null
       }
-    }
+    }.also(::validatePlatformPackFallbacks)
   }
 }

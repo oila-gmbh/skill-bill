@@ -102,6 +102,28 @@ class ReviewStackRoutingTest {
   }
 
   @Test
+  fun `composition does not discard an unrelated equal positive owner`() {
+    val kotlin = pack("kotlin", path = listOf("*.shared"), content = emptyList())
+    val kmp = pack(
+      "kmp",
+      path = listOf("*.shared"),
+      content = emptyList(),
+      baselinePlatform = "kotlin",
+    )
+    val result = ReviewStackRouting.route(
+      listOf(
+        kmp,
+        kotlin,
+        pack("unrelated", path = listOf("*.shared"), content = emptyList()),
+        pack("neutral", path = emptyList(), content = emptyList(), fallback = true),
+      ),
+      listOf(ReviewRoutingChangedFile("src/Example.shared", "shared implementation")),
+    )
+
+    assertEquals(setOf("neutral"), result.routedSlugs)
+  }
+
+  @Test
   fun `clear concrete ownership excludes fallback and weaker content match`() {
     val result = ReviewStackRouting.route(
       listOf(

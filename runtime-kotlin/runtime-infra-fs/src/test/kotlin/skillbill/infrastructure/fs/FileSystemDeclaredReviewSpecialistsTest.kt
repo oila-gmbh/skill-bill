@@ -1,9 +1,11 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.InvalidFallbackCapabilityError
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FileSystemDeclaredReviewSpecialistsTest {
@@ -88,6 +90,20 @@ class FileSystemDeclaredReviewSpecialistsTest {
     assertEquals(listOf("bill-kmp-code-review-platform-correctness"), specialists)
   }
 
+  @Test
+  fun `preflight rejects duplicate fallback owners before concrete routing`() {
+    val repoRoot = Files.createTempDirectory("declared-specialists-duplicate-fallback")
+    val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    writePack(packsRoot, "kotlin", listOf("*.kt"), listOf("architecture"))
+    writePack(packsRoot, "first-neutral", emptyList(), listOf("architecture"), fallback = true)
+    writePack(packsRoot, "second-neutral", emptyList(), listOf("security"), fallback = true)
+
+    assertFailsWith<InvalidFallbackCapabilityError> {
+      FileSystemDeclaredReviewSpecialists()
+        .routedSpecialists(repoRoot, listOf("src/main/kotlin/Runner.kt"))
+    }
+  }
+
   private fun repoWithPacks(): Path {
     val repoRoot = Files.createTempDirectory("declared-specialists-routed")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
@@ -102,6 +118,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     pathSignals: List<String>,
     areas: List<String>,
     contentSignals: List<String> = emptyList(),
+    fallback: Boolean = false,
   ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
@@ -116,6 +133,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
         appendLine("  tie_breakers: []")
         appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
         appendLine("  content: [${contentSignals.joinToString(", ") { "\"$it\"" }}]")
+        if (fallback) appendLine("fallback_capabilities: [code-review]")
         appendLine("declared_code_review_areas:")
         areas.forEach { appendLine("  - $it") }
         appendLine("declared_files:")

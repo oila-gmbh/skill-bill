@@ -60,12 +60,12 @@ object ReviewStackRouting {
 
   private fun resolveComposition(winners: Set<PlatformManifest>): PlatformManifest? {
     if (winners.size == 1) return winners.single()
-    val composedRoots = winners.filter { it.codeReviewComposition != null }
-    val baselineSlugs = composedRoots.flatMap { root ->
-      root.codeReviewComposition!!.baselineLayers.map { it.platform }
-    }.toSet()
-    val nonRootWinners = winners.filterNot { it in composedRoots }
-    return nonRootWinners.singleOrNull { it.slug in baselineSlugs }
+    val survivors = winners.filterNot { candidate ->
+      candidate.codeReviewComposition?.baselineLayers?.any { baseline ->
+        winners.any { it.slug == baseline.platform }
+      } == true
+    }
+    return survivors.singleOrNull()
   }
 
   private fun resolveFallback(manifests: List<PlatformManifest>): PlatformManifest {
