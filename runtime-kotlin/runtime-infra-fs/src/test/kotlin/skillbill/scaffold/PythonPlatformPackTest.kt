@@ -21,6 +21,7 @@ import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.substance.Fraction
 import skillbill.scaffold.substance.PlatformPackSubstanceAudit
+import skillbill.testing.assertConcreteAndManifestFallbackSelected
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -258,7 +259,7 @@ class PythonPlatformPackTest {
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
 
     assertContains(plan.discoveredPlatformPacks.map { pack -> pack.slug }, "python")
-    assertEquals(listOf("python"), plan.selectedPlatformSlugs)
+    assertConcreteAndManifestFallbackSelected(plan, "python")
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-python-code-check").kind)
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->

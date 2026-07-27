@@ -1,7 +1,6 @@
 package skillbill.review.plan
 
 import org.junit.jupiter.api.Test
-import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition

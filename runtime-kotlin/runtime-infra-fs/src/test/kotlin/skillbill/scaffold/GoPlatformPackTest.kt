@@ -19,6 +19,7 @@ import skillbill.install.runtime.InstallOperations
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.testing.assertConcreteAndManifestFallbackSelected
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -215,7 +216,7 @@ class GoPlatformPackTest {
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
 
     assertContains(plan.discoveredPlatformPacks.map { pack -> pack.slug }, "go")
-    assertEquals(listOf("go"), plan.selectedPlatformSlugs)
+    assertConcreteAndManifestFallbackSelected(plan, "go")
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-go-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-go-code-check").kind)
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->

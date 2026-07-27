@@ -33,6 +33,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   @Test
   fun `inventory rejects a logical name whose installed filename identifies another worker`() {
@@ -647,6 +648,34 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
 
     assertFalse(Files.exists(catalog.resolve("kmp"), LinkOption.NOFOLLOW_LINKS))
     assertTrue(Files.isDirectory(catalog.resolve("kotlin")))
+  }
+
+  @Test
+  fun `installed review catalog contains only manifest and declared review content`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val sourcePack = fixture.repoRoot.resolve("platform-packs/kotlin")
+    Files.createDirectories(sourcePack.resolve("agent"))
+    Files.writeString(sourcePack.resolve("agent/history.md"), "boundary history")
+    Files.writeString(sourcePack.resolve("unrelated-custom-file.txt"), "not review runtime content")
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val installedPack = cacheRoot.resolve("review-catalog/platform-packs/kotlin")
+    assertTrue(Files.isRegularFile(installedPack.resolve("platform.yaml")))
+    assertTrue(
+      Files.isRegularFile(installedPack.resolve("code-review/bill-kotlin-code-review/content.md")),
+    )
+    assertFalse(Files.exists(installedPack.resolve("agent/history.md"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(installedPack.resolve("unrelated-custom-file.txt"), LinkOption.NOFOLLOW_LINKS))
   }
 
   @Test

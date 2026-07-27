@@ -1,3 +1,14 @@
+## [2026-07-27] SKILL-144 generic review fallback installation and launch (subtask 2)
+Areas: runtime-kotlin/runtime-{domain,application,ports,core,infra-fs,cli}, docs, orchestration/stack-routing
+- Install planning resolves the unique manifest-declared review fallback without a hard-coded slug; zero declarations preserve horizontal base review and multiple declarations fail loudly.
+- Native-agent staging and managed-link inventory include the selected fallback specialists for supported providers, while the installed review catalog copies only manifest-declared runtime files and remains independent of the source checkout. reusable
+- Review routing, preflight, and delegated launch share the declared specialist authority: unsupported or ambiguous stacks launch fallback lanes, concrete owners launch only concrete lanes, and unrelated packs are not required.
+- Tests cover fallback replacement/removal, provider artifacts, source-checkout deletion, repository independence, dynamic pack fixtures, concrete/fallback lane isolation, and horizontal-base behavior.
+- Documentation distinguishes positive path ownership from content tie-breaking and explains fallback selection, customization, and removal.
+- Known limitation: providers without native review-worker support continue through their existing non-native review path.
+Feature flag: N/A
+Acceptance criteria: subtask 2: 10/10 implemented
+
 ## [2026-07-27] SKILL-147 idle goal-watch stop (subtask 3)
 Areas: runtime-kotlin/runtime-{domain,application,cli}
 - Goal status now projects worker-lease execution liveness as `live`, `idle`, or `unknown`; prose workflows, missing workflow identity, and read failures remain unknown so absent runtime leases cannot create false idle stops.

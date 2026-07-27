@@ -11,6 +11,7 @@ import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -274,19 +275,37 @@ object InstallNativeAgentOperations {
         }
     }
     desiredPacks.forEach { source ->
-      Files.walk(source).use { paths ->
-        paths.forEach { path ->
-          val target = catalogRoot.resolve(source.fileName.toString()).resolve(source.relativize(path)).normalize()
-          require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
-          if (Files.isDirectory(path)) {
-            journal.beforeMutation(target)
-            Files.createDirectories(target)
-          } else if (Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
-            journal.beforeMutation(target)
-            target.parent?.let(Files::createDirectories)
-            Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      val targetPack = catalogRoot.resolve(source.fileName.toString())
+      if (Files.exists(targetPack, LinkOption.NOFOLLOW_LINKS)) {
+        Files.walk(targetPack).use { paths ->
+          paths.sorted(Comparator.reverseOrder()).forEach { path ->
+            journal.beforeMutation(path)
+            Files.delete(path)
           }
         }
+      }
+      val manifest = loadPlatformManifest(source)
+      val runtimeFiles = buildList {
+        add(source.resolve("platform.yaml"))
+        manifest.declaredFiles.baseline?.let(::add)
+        addAll(manifest.declaredFiles.areas.values)
+      }.distinct()
+      runtimeFiles.forEach { path ->
+        val relative = source.relativize(path.toAbsolutePath().normalize())
+        require(!relative.startsWith("..")) {
+          "Installed review catalog path escapes platform pack '${manifest.slug}'."
+        }
+        val target = targetPack.resolve(relative).normalize()
+        require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
+        require(Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
+          "Installed review catalog source must be a regular manifest-declared file: '$path'."
+        }
+        journal.beforeMutation(target)
+        target.parent?.let {
+          journal.beforeMutation(it)
+          Files.createDirectories(it)
+        }
+        Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
       }
     }
   }

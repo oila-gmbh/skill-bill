@@ -27,8 +27,8 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.InstalledReviewCatalogPort
+import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -260,6 +260,29 @@ class ParallelCodeReviewRunner(
     return base to head
   }
 
+  private fun horizontalPlannedRubrics(evidence: ReviewDiffEvidence): List<PlannedReviewRubric> {
+    val rubric = reviewRubricResolver.resolve(null)
+    return listOf(
+      PlannedReviewRubric(
+        ReviewLaunchLane(
+          rubric.rubricId,
+          "horizontal",
+          rubric.area ?: "generic",
+          0,
+          listOf("horizontal"),
+          true,
+          emptyList(),
+          0,
+          "horizontal base behavior",
+          ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
+          changedHunkIds = evidence.hunks.map { it.hunkId },
+        ),
+        ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
+        workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
+      ),
+    )
+  }
+
   @Suppress("LongMethod")
   private fun resolvePlannedRubrics(
     evidence: ReviewDiffEvidence,
@@ -273,33 +296,18 @@ class ParallelCodeReviewRunner(
         installed,
         evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) },
       )
-      resolvePlannedRubrics(
-        evidence,
-        installed.filter { it.slug in routing.routedSlugs },
-        installed,
-        routing.ownedPathsBySlug,
-      )
+      if (routing.routedSlugs.isEmpty()) {
+        horizontalPlannedRubrics(evidence)
+      } else {
+        resolvePlannedRubrics(
+          evidence,
+          installed.filter { it.slug in routing.routedSlugs },
+          installed,
+          routing.ownedPathsBySlug,
+        )
+      }
     } else {
-      val rubric = reviewRubricResolver.resolve(null)
-      listOf(
-        PlannedReviewRubric(
-          ReviewLaunchLane(
-            rubric.rubricId,
-            "horizontal",
-            rubric.area ?: "generic",
-            0,
-            listOf("horizontal"),
-            true,
-            emptyList(),
-            0,
-            "horizontal base behavior",
-            ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
-            changedHunkIds = evidence.hunks.map { it.hunkId },
-          ),
-          ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
-          workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
-        ),
-      )
+      horizontalPlannedRubrics(evidence)
     }
   } else {
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()

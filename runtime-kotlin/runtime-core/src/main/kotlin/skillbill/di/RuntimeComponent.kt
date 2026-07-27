@@ -59,7 +59,6 @@ import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
-import skillbill.infrastructure.fs.FileSystemInstalledReviewCatalog
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
@@ -77,6 +76,7 @@ import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
+import skillbill.infrastructure.fs.FileSystemInstalledReviewCatalog
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
@@ -403,9 +403,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun installedReviewCatalogPort(
-    adapter: FileSystemInstalledReviewCatalog,
-  ): InstalledReviewCatalogPort = adapter
+  internal fun installedReviewCatalogPort(adapter: FileSystemInstalledReviewCatalog): InstalledReviewCatalogPort =
+    adapter
 
   @Provides
   @JvmSynthetic

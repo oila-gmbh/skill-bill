@@ -17,7 +17,6 @@ import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SharedInstallSelection
 import skillbill.install.model.SkillReconciliationOutcome
 import skillbill.install.policy.InstallPlanPolicy
-import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
@@ -32,6 +31,7 @@ import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.review.plan.ReviewFallbackResolver
 import java.nio.file.Path
 
 @Inject

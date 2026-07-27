@@ -85,7 +85,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
       "kotlin",
       listOf(".kt", "*.kt"),
       listOf("architecture"),
-      includeLaneConditions = false,
+      options = PackOptions(includeLaneConditions = false),
     )
 
     val specialists = FileSystemDeclaredReviewSpecialists()
@@ -121,7 +121,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
       "kmp",
       listOf(".kt", "*.kt"),
       listOf("platform-correctness"),
-      contentSignals = listOf("expect class"),
+      options = PackOptions(contentSignals = listOf("expect class")),
     )
     val source = repoRoot.resolve("src/commonMain/kotlin/Shared.kt")
     Files.createDirectories(source.parent)
@@ -155,16 +155,19 @@ class FileSystemDeclaredReviewSpecialistsTest {
     return repoRoot
   }
 
-  private fun changed(path: String, content: String = "") =
-    listOf(ReviewRoutingChangedFile(path, content))
+  private fun changed(path: String, content: String = "") = listOf(ReviewRoutingChangedFile(path, content))
+
+  private data class PackOptions(
+    val contentSignals: List<String> = emptyList(),
+    val includeLaneConditions: Boolean = true,
+  )
 
   private fun writePack(
     packsRoot: Path,
     slug: String,
     pathSignals: List<String>,
     areas: List<String>,
-    contentSignals: List<String> = emptyList(),
-    includeLaneConditions: Boolean = true,
+    options: PackOptions = PackOptions(),
   ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
@@ -182,7 +185,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
         if (pathSignals.isNotEmpty()) {
           appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
         }
-        appendLine("  content: [${contentSignals.joinToString(", ") { "\"$it\"" }}]")
+        appendLine("  content: [${options.contentSignals.joinToString(", ") { "\"$it\"" }}]")
         if (fallback) appendLine("fallback_capabilities: [code-review]")
         appendLine("declared_code_review_areas:")
         areas.forEach { appendLine("  - $it") }
@@ -190,7 +193,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
         appendLine("  baseline: code-review/bill-$slug-code-review/content.md")
         appendLine("  areas:")
         areas.forEach { appendLine("    $it: code-review/bill-$slug-code-review-$it/content.md") }
-        if (includeLaneConditions) {
+        if (options.includeLaneConditions) {
           appendLine("lane_conditions:")
           areas.forEach {
             appendLine("  $it:")
