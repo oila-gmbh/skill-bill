@@ -285,9 +285,23 @@ private fun selectedPlatformSlugs(input: InstallPolicyInput): List<String> {
     selection = input.request.platformPackSelection,
     discoveredSlugs = input.platformPacks.map(InstallPlatformPackSnapshot::slug),
   )
-  if (input.baseSkills.none { it.name == "bill-code-review" }) return explicitlySelected
-  return input.platformPacks.map(InstallPlatformPackSnapshot::slug)
-    .filter { it in explicitlySelected || it == input.resolvedReviewFallbackSlug }
+  val selected = explicitlySelected.toMutableSet()
+  if (input.baseSkills.any { it.name == "bill-code-review" }) {
+    input.resolvedReviewFallbackSlug?.let(selected::add)
+  }
+  var changed: Boolean
+  do {
+    changed = false
+    input.platformPacks.forEach { pack ->
+      val selectedRequiredBaseline = pack.baselineLayers.any { layer ->
+        layer.required && layer.platform in selected
+      }
+      if (selectedRequiredBaseline && selected.add(pack.slug)) {
+        changed = true
+      }
+    }
+  } while (changed)
+  return input.platformPacks.map(InstallPlatformPackSnapshot::slug).filter(selected::contains)
 }
 
 private fun selectedPlatformSlugs(selection: PlatformPackSelection, discoveredSlugs: List<String>): List<String> =

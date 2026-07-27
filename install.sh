@@ -2168,6 +2168,7 @@ display_platform_name() {
 build_platform_packages() {
   local pack_dir
   local package
+  local manifest
 
   PLATFORM_PACKAGES=()
   if [[ ! -d "$PLATFORM_PACKS_DIR" ]]; then
@@ -2176,6 +2177,15 @@ build_platform_packages() {
 
   while IFS= read -r pack_dir; do
     package="$(basename "$pack_dir")"
+    manifest="$pack_dir/platform.yaml"
+    # Fallback packs are installed with the horizontal review base. Packs with a required
+    # baseline layer are selected transitively with that baseline, so neither is a direct choice.
+    if grep -q '^fallback_capabilities:' "$manifest"; then
+      continue
+    fi
+    if grep -q '^  baseline_layers:' "$manifest" && grep -q '^      required: true' "$manifest"; then
+      continue
+    fi
     if [[ ${#PLATFORM_PACKAGES[@]} -eq 0 ]] || ! array_contains "$package" "${PLATFORM_PACKAGES[@]}"; then
       PLATFORM_PACKAGES+=("$package")
     fi
@@ -2283,7 +2293,8 @@ prompt_for_platform_selection() {
     none_option_number=$(( ${#PLATFORM_PACKAGES[@]} + 2 ))
     printf "  %s. all (install every platform pack)\n" "$option_number"
     printf "  %s. base only (skip optional platform packs)\n" "$none_option_number"
-    info "Base skills are always installed by the runtime plan."
+    info "Base skills and the manifest-declared generic review fallback are always installed."
+    info "Required composed packs are installed with their selectable baseline pack."
     info "Optional platform packs are resolved by the runtime from platform-packs/ manifests."
     info "Choose one or more optional platform numbers (comma-separated). Names still work if you prefer them."
     printf "${CYAN}▸${NC} Enter platforms [base only] (e.g. 1,3 or %s): " "$option_number"

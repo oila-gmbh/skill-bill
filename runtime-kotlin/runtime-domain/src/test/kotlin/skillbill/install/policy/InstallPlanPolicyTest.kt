@@ -374,6 +374,29 @@ class InstallPlanPolicyTest {
   }
 
   @Test
+  fun `selecting a baseline pack installs required composed packs transitively`() {
+    val kotlinPack = platformPack(slug = "kotlin")
+    val kmpPack = platformPack(
+      slug = "kmp",
+      skills = listOf(platformSkill("bill-kmp-code-review", platformSlug = "kmp")),
+      baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+    )
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(
+          mode = PlatformPackSelectionMode.SELECTED,
+          selectedSlugs = setOf("kotlin"),
+        ),
+      ),
+      platformPacks = listOf(kmpPack, kotlinPack),
+    )
+
+    val draft = InstallPlanPolicy.buildPlanDraft(input)
+
+    assertEquals(listOf("kmp", "kotlin"), draft.selectedPlatformSlugs)
+  }
+
+  @Test
   fun `PD8 guard passes under ALL selection even when a baseline layer points to another pack`() {
     val kmpPack = platformPack(
       slug = "kmp",
