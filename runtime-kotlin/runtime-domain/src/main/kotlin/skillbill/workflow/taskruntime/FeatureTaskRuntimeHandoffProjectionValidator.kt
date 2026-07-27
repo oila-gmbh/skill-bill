@@ -133,9 +133,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
    * would reject or "refresh" on producer phrasing rather than on repository movement, so the carried
    * value is treated as an opaque claim throughout.
    *
-   * `must_match` compares two runtime-owned fingerprints: the checkpoint recorded for the producer
-   * edge and a fresh resolution immediately before launch. The agent-authored receipt claim remains
-   * provenance and is never used for that comparison.
+   * `must_match` is retained as a legacy durable wire value. Like `refresh_from_repository`, it
+   * requires and substitutes a freshly resolved checkpoint without rejecting repository movement.
    */
   private fun enforceCheckpointPolicy(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -173,16 +172,12 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       } else {
         null
       }
-    FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH -> when {
-      inputs.resolvedCheckpoint == null ->
+    FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH ->
+      if (inputs.resolvedCheckpoint == null) {
         "must_match requires a freshly resolved repository checkpoint, none was supplied."
-      inputs.expectedCheckpoint == null ->
-        "must_match requires the durable expected repository checkpoint, none was supplied."
-      inputs.resolvedCheckpoint.fingerprint != inputs.expectedCheckpoint.fingerprint ->
-        "must_match expected checkpoint '${inputs.expectedCheckpoint.fingerprint}' but resolved " +
-          "'${inputs.resolvedCheckpoint.fingerprint}'."
-      else -> null
-    }
+      } else {
+        null
+      }
   }
 
   private fun resolvedCheckpointField(
