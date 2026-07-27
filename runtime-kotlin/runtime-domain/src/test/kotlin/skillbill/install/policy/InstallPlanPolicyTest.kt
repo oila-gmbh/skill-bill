@@ -213,13 +213,17 @@ class InstallPlanPolicyTest {
           ),
         ),
         platformPacks = listOf(
-          InstallPlatformPackDiscoverySnapshot(slug = "kmp", packRoot = path("/repo/platform-packs/kmp")),
+          InstallPlatformPackDiscoverySnapshot(
+            slug = "kmp",
+            packRoot = path("/repo/platform-packs/kmp"),
+            baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+          ),
           InstallPlatformPackDiscoverySnapshot(slug = "kotlin", packRoot = path("/repo/platform-packs/kotlin")),
         ),
       ),
     )
 
-    assertEquals(listOf("kotlin"), plan.selectedPlatformSlugs)
+    assertEquals(listOf("kmp", "kotlin"), plan.selectedPlatformSlugs)
 
     val duplicateDiscovery = assertFailsWith<IllegalArgumentException> {
       InstallPlanPolicy.planPlatformSkillMaterialization(
@@ -370,6 +374,29 @@ class InstallPlanPolicyTest {
     )
 
     val draft = InstallPlanPolicy.buildPlanDraft(input)
+    assertEquals(listOf("kmp", "kotlin"), draft.selectedPlatformSlugs)
+  }
+
+  @Test
+  fun `selecting a baseline pack installs required composed packs transitively`() {
+    val kotlinPack = platformPack(slug = "kotlin")
+    val kmpPack = platformPack(
+      slug = "kmp",
+      skills = listOf(platformSkill("bill-kmp-code-review", platformSlug = "kmp")),
+      baselineLayers = listOf(baselineLayer(platform = "kotlin", skill = "bill-kotlin-code-review")),
+    )
+    val input = policyInput(
+      request = request(
+        platformPackSelection = PlatformPackSelection(
+          mode = PlatformPackSelectionMode.SELECTED,
+          selectedSlugs = setOf("kotlin"),
+        ),
+      ),
+      platformPacks = listOf(kmpPack, kotlinPack),
+    )
+
+    val draft = InstallPlanPolicy.buildPlanDraft(input)
+
     assertEquals(listOf("kmp", "kotlin"), draft.selectedPlatformSlugs)
   }
 

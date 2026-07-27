@@ -27,6 +27,7 @@ import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.substance.Fraction
 import skillbill.scaffold.substance.PlatformPackSubstanceAudit
+import skillbill.testing.assertConcreteAndManifestFallbackSelected
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -361,7 +362,7 @@ class TypeScriptPlatformPackTest {
 
     val skillsByName = plan.skills.associateBy { it.name }
     assertContains(plan.discoveredPlatformPacks.map { it.slug }, "typescript")
-    assertEquals(listOf("typescript"), plan.selectedPlatformSlugs)
+    assertConcreteAndManifestFallbackSelected(plan, "typescript")
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-typescript-code-review").kind)
     assertEquals(InstallPlanSkillKind.PLATFORM_PACK, skillsByName.getValue("bill-typescript-code-check").kind)
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->

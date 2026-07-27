@@ -381,9 +381,14 @@ class ReviewSkillStructureConformanceTest {
 
       val strongSignals = (routingSignals["strong"] as? List<*>)?.filterIsInstance<String>().orEmpty()
       val tieBreakers = (routingSignals["tie_breakers"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+      val fallbackOnly = (manifest["fallback_capabilities"] as? List<*>)
+        ?.filterIsInstance<String>()
+        ?.isNotEmpty() == true
 
       assertTrue(strongSignals.isNotEmpty(), "Pack ${pack.fileName} should have strong routing signals")
-      assertTrue(tieBreakers.isNotEmpty(), "Pack ${pack.fileName} should have tie-breaker rules")
+      if (!fallbackOnly) {
+        assertTrue(tieBreakers.isNotEmpty(), "Pack ${pack.fileName} should have tie-breaker rules")
+      }
     }
   }
 

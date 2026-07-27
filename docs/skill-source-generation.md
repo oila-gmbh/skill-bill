@@ -436,6 +436,14 @@ optional platform packs are selected from manifests; generated wrappers,
 support pointers, provider-native agent files, and packaged desktop outputs
 remain install/render artifacts instead of authored source.
 
+Review-capable install plans include the unique manifest-declared
+`code-review` fallback pack in addition to explicitly selected concrete packs.
+The fallback slug is never inferred. Zero declarations preserve the horizontal
+base installation and multiple declarations fail manifest coherence checks.
+Provider-neutral native-agent declarations from the resolved selection are
+rendered into an installed cache and recorded in durable link inventory;
+preflight resolves logical workers exclusively from that inventory.
+
 ## Native-Agent Generation
 
 Provider-neutral native-agent sources live under `native-agents/` in source

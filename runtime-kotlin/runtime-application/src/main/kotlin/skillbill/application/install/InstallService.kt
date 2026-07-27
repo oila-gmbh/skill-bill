@@ -31,6 +31,7 @@ import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.review.plan.ReviewFallbackResolver
 import java.nio.file.Path
 
 @Inject
@@ -44,6 +45,9 @@ class InstallService(
 ) {
   fun planInstall(request: InstallPlanRequest): InstallPlan {
     val facts = planningPorts.planningFactsPort.collectPlanningFacts(InstallPlanningFactsRequest(request)).facts
+    val resolvedReviewFallback = facts.baseSkills
+      .takeIf { skills -> skills.any { it.name == "bill-code-review" } }
+      ?.let { ReviewFallbackResolver.resolveOptional(facts.platformManifests) }
     val materializationPlan = InstallPlanPolicy.planPlatformSkillMaterialization(
       InstallPlatformSkillMaterializationRequest(
         installRequest = request,
@@ -51,6 +55,7 @@ class InstallService(
           InstallPlatformPackDiscoverySnapshot(
             slug = manifest.slug,
             packRoot = manifest.packRoot,
+            baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
           )
         },
       ),
@@ -59,10 +64,15 @@ class InstallService(
       InstallPlatformSkillMaterializationPortRequest(
         installRequest = request,
         platformManifests = facts.platformManifests,
-        selectedPlatformSlugs = materializationPlan.selectedPlatformSlugs,
+        selectedPlatformSlugs = (
+          materializationPlan.selectedPlatformSlugs +
+            listOfNotNull(resolvedReviewFallback?.slug)
+          ).distinct(),
       ),
     ).platformPacks
-    val draft = InstallPlanPolicy.buildPlanDraft(facts.toPolicyInput(request, platformPacks))
+    val draft = InstallPlanPolicy.buildPlanDraft(
+      facts.toPolicyInput(request, platformPacks, resolvedReviewFallback?.slug),
+    )
     val staging = planningPorts.stagingIntentPort.buildStagingIntent(
       InstallStagingIntentRequest(
         installRequest = request,

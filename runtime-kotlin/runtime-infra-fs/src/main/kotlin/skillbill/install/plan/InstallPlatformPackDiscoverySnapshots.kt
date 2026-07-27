@@ -15,5 +15,6 @@ internal fun List<PlatformManifest>.toDiscoverySnapshots(): List<InstallPlatform
     InstallPlatformPackDiscoverySnapshot(
       slug = manifest.slug,
       packRoot = manifest.packRoot,
+      baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
     )
   }

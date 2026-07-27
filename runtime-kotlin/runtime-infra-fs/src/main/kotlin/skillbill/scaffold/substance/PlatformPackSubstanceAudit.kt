@@ -11,6 +11,7 @@
 package skillbill.scaffold.substance
 
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.platformpack.CODE_REVIEW_FALLBACK_CAPABILITY
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import java.math.BigDecimal
@@ -156,14 +157,16 @@ object PlatformPackSubstanceAudit {
       val sections = qualityText?.let(::qualitySections).orEmpty()
       val facets = qualityText?.let(::qualityFacets).orEmpty()
       if (qualityPath == null) {
-        rawViolations += packViolation(
-          pack.slug,
-          "quality-check",
-          emptyList(),
-          "absent",
-          "present",
-          "maintained pack must declare a quality checker",
-        )
+        if (CODE_REVIEW_FALLBACK_CAPABILITY !in pack.fallbackCapabilities) {
+          rawViolations += packViolation(
+            pack.slug,
+            "quality-check",
+            emptyList(),
+            "absent",
+            "present",
+            "maintained pack must declare a quality checker",
+          )
+        }
       } else {
         if (sections.size < REQUIRED_QUALITY_SECTIONS.size) {
           rawViolations += packViolation(

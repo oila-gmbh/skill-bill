@@ -71,7 +71,7 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(result.mergeResult.formattedOutput.isNotBlank())
   }
 
-  @Test fun `prompt-only specialist launches do not rediscover installed native agents`() {
+  @Test fun `provider-native specialist launches preflight installed logical workers`() {
     val recorder = ReviewRecorder()
     var preflightCalled = false
     val runner = reviewHarness(
@@ -85,10 +85,10 @@ class ParallelCodeReviewRegressionTest {
 
     runner.run(harnessRequest())
 
-    assertFalse(preflightCalled)
-    assertTrue(recorder.preflightRequests.isEmpty())
+    assertTrue(preflightCalled)
+    assertTrue(recorder.preflightRequests.isNotEmpty())
     assertTrue(recorder.nativeLaunches.isNotEmpty())
-    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName == null })
+    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName != null })
   }
 
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {

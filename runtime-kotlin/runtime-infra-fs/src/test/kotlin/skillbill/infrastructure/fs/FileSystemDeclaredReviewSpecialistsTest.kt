@@ -1,16 +1,43 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.InvalidFallbackCapabilityError
+import skillbill.ports.review.InstalledReviewCatalogPort
+import skillbill.review.plan.model.ReviewRoutingChangedFile
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FileSystemDeclaredReviewSpecialistsTest {
   @Test
+  fun `installed catalog routes fallback specialists when reviewed repository has no pack tree`() {
+    val installedRoot = Files.createTempDirectory("installed-review-catalog")
+    val packsRoot = Files.createDirectories(installedRoot.resolve("platform-packs"))
+    writePack(packsRoot, "neutral-review", emptyList(), listOf("architecture", "security"))
+    val catalog = InstalledReviewCatalogPort {
+      listOf(loadPlatformManifest(packsRoot.resolve("neutral-review")))
+    }
+    val reviewedRepo = Files.createTempDirectory("external-reviewed-repo")
+
+    val specialists = FileSystemDeclaredReviewSpecialists(catalog)
+      .routedSpecialists(reviewedRepo, changed("docs/guide.md"))
+
+    assertEquals(
+      listOf(
+        "bill-neutral-review-code-review-architecture",
+        "bill-neutral-review-code-review-security",
+      ),
+      specialists,
+    )
+  }
+
+  @Test
   fun `no platform-packs directory yields no specialists`() {
     val repoRoot = Files.createTempDirectory("declared-specialists-empty")
-    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     assertEquals(emptyList(), specialists)
   }
 
@@ -19,7 +46,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     val repoRoot = Files.createTempDirectory("declared-specialists-absent")
     val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
     Files.createDirectory(packsRoot.resolve("kotlin"))
-    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     assertEquals(emptyList(), specialists)
   }
 
@@ -31,7 +58,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
     Files.writeString(packDir.resolve("platform.yaml"), "areas: [unclosed")
     var threw = false
     try {
-      FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, listOf("src/Main.kt"))
+      FileSystemDeclaredReviewSpecialists().routedSpecialists(repoRoot, changed("src/Main.kt"))
     } catch (_: Exception) {
       threw = true
     }
@@ -42,7 +69,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
   fun `only packs the changed paths route to contribute specialists`() {
     val repoRoot = repoWithPacks()
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
     assertEquals(
       listOf("bill-kotlin-code-review-architecture", "bill-kotlin-code-review-security"),
       specialists.sorted(),
@@ -50,10 +77,28 @@ class FileSystemDeclaredReviewSpecialistsTest {
   }
 
   @Test
+  fun `preflight excludes an unconditioned non-required specialist that launch does not own`() {
+    val repoRoot = Files.createTempDirectory("declared-specialists-unconditioned")
+    val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    writePack(
+      packsRoot,
+      "kotlin",
+      listOf(".kt", "*.kt"),
+      listOf("architecture"),
+      options = PackOptions(includeLaneConditions = false),
+    )
+
+    val specialists = FileSystemDeclaredReviewSpecialists()
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
+
+    assertEquals(emptyList(), specialists)
+  }
+
+  @Test
   fun `a vendored pack that no changed path routes to is never required`() {
     val repoRoot = repoWithPacks()
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("runtime/src/main/kotlin/Runner.kt"))
+      .routedSpecialists(repoRoot, changed("runtime/src/main/kotlin/Runner.kt"))
     assertTrue(
       specialists.none { it.startsWith("bill-go-") },
       "a Kotlin-only delta must not demand the vendored Go pack's specialists: $specialists",
@@ -76,16 +121,30 @@ class FileSystemDeclaredReviewSpecialistsTest {
       "kmp",
       listOf(".kt", "*.kt"),
       listOf("platform-correctness"),
-      contentSignals = listOf("expect class"),
+      options = PackOptions(contentSignals = listOf("expect class")),
     )
     val source = repoRoot.resolve("src/commonMain/kotlin/Shared.kt")
     Files.createDirectories(source.parent)
     Files.writeString(source, "expect class Shared")
 
     val specialists = FileSystemDeclaredReviewSpecialists()
-      .routedSpecialists(repoRoot, listOf("src/commonMain/kotlin/Shared.kt"))
+      .routedSpecialists(repoRoot, changed("src/commonMain/kotlin/Shared.kt", "expect class Shared"))
 
     assertEquals(listOf("bill-kmp-code-review-platform-correctness"), specialists)
+  }
+
+  @Test
+  fun `preflight rejects duplicate fallback owners before concrete routing`() {
+    val repoRoot = Files.createTempDirectory("declared-specialists-duplicate-fallback")
+    val packsRoot = Files.createDirectories(repoRoot.resolve("platform-packs"))
+    writePack(packsRoot, "kotlin", listOf("*.kt"), listOf("architecture"))
+    writePack(packsRoot, "first-neutral", emptyList(), listOf("architecture"))
+    writePack(packsRoot, "second-neutral", emptyList(), listOf("security"))
+
+    assertFailsWith<InvalidFallbackCapabilityError> {
+      FileSystemDeclaredReviewSpecialists()
+        .routedSpecialists(repoRoot, changed("src/main/kotlin/Runner.kt"))
+    }
   }
 
   private fun repoWithPacks(): Path {
@@ -96,32 +155,51 @@ class FileSystemDeclaredReviewSpecialistsTest {
     return repoRoot
   }
 
+  private fun changed(path: String, content: String = "") = listOf(ReviewRoutingChangedFile(path, content))
+
+  private data class PackOptions(
+    val contentSignals: List<String> = emptyList(),
+    val includeLaneConditions: Boolean = true,
+  )
+
   private fun writePack(
     packsRoot: Path,
     slug: String,
     pathSignals: List<String>,
     areas: List<String>,
-    contentSignals: List<String> = emptyList(),
+    options: PackOptions = PackOptions(),
   ) {
     val packDir = Files.createDirectories(packsRoot.resolve(slug))
     Files.writeString(
       packDir.resolve("platform.yaml"),
       buildString {
+        val fallback = pathSignals.isEmpty()
+        val strongSignals = pathSignals.ifEmpty { listOf("manifest-declared code-review fallback") }
         appendLine("platform: $slug")
         appendLine("contract_version: \"1.2\"")
         appendLine("display_name: $slug")
         appendLine("routing_signals:")
         appendLine("  strong:")
-        pathSignals.forEach { appendLine("    - \"$it\"") }
+        strongSignals.forEach { appendLine("    - \"$it\"") }
         appendLine("  tie_breakers: []")
-        appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
-        appendLine("  content: [${contentSignals.joinToString(", ") { "\"$it\"" }}]")
+        if (pathSignals.isNotEmpty()) {
+          appendLine("  path: [${pathSignals.joinToString(", ") { "\"$it\"" }}]")
+        }
+        appendLine("  content: [${options.contentSignals.joinToString(", ") { "\"$it\"" }}]")
+        if (fallback) appendLine("fallback_capabilities: [code-review]")
         appendLine("declared_code_review_areas:")
         areas.forEach { appendLine("  - $it") }
         appendLine("declared_files:")
         appendLine("  baseline: code-review/bill-$slug-code-review/content.md")
         appendLine("  areas:")
         areas.forEach { appendLine("    $it: code-review/bill-$slug-code-review-$it/content.md") }
+        if (options.includeLaneConditions) {
+          appendLine("lane_conditions:")
+          areas.forEach {
+            appendLine("  $it:")
+            appendLine("    required: true")
+          }
+        }
       },
     )
   }

@@ -7,7 +7,6 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Two top-level lanes reuse the same optimized flow without sharing state or counting each other. */
@@ -20,7 +19,7 @@ class ParallelLaneIsolationTest {
     reviewHarness(config(), recorder).run(harnessRequest())
 
     assertEquals(1, recorder.diffCommands.count { it.contains("diff") })
-    assertTrue(recorder.preflightRequests.isEmpty(), "Prompt-only lanes expose no logical identities to preflight.")
+    assertEquals(areas.size * 2, recorder.preflightRequests.flatMap { it.assignments }.size)
     assertEquals(areas.sorted(), recorder.rubricResolutions.distinct().sorted().map { it.substringAfterLast('-') })
     assertEquals(areas.size, recorder.rubricResolutions.size, "Rubrics resolve once, not once per lane.")
     assertEquals(
@@ -40,11 +39,11 @@ class ParallelLaneIsolationTest {
     assertTrue(recorder.parentLaunches.isEmpty(), "Delegated review never starts an inline parent lane.")
     val allSpecialists = areas.map { "bill-kotlin-code-review-$it" }
     recorder.nativeLaunches.forEach { launch ->
-      assertNull(launch.logicalWorkerName, "Provider launches do not receive a rediscoverable logical worker identity.")
       val envelope = requireNotNull(JsonSupport.parseObjectOrNull(launch.prompt))
         .let(JsonSupport::jsonElementToValue)
         .let { requireNotNull(JsonSupport.anyToStringAnyMap(it)) }
       val worker = requireNotNull(envelope["lane"] as? String).substringAfter(':')
+      assertEquals(worker, launch.logicalWorkerName)
       assertTrue(worker in allSpecialists, "Prompt carried an unexpected specialist lane '$worker'.")
       (allSpecialists - worker).forEach { sibling ->
         assertTrue(!launch.prompt.contains(sibling), "Prompt for '$worker' named sibling lane '$sibling'.")

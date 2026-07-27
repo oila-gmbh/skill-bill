@@ -147,6 +147,18 @@ Start from reference packs when they fit:
 
 Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP composes seven Kotlin baseline areas with three KMP delta lanes. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
 
+The shipped `generic` pack is the manifest-declared review fallback for unsupported,
+documentation-only, and unresolved paths. It is not appended after a concrete or
+composed pack wins positive path ownership. Content matches cannot create ownership;
+they only break ties among equal positive path matches.
+
+Fallback ownership is replaceable: remove the shipped declaration and add
+`fallback_capabilities: [code-review]` to one conforming team pack. With no declaration,
+installation retains only the horizontal `bill-code-review` base behavior. Multiple
+declarations fail validation. Installed provider-native workers and their digests are
+recorded in durable managed inventory, so review preflight and launch do not inspect the
+reviewed repository or require the original Skill Bill checkout to remain available.
+
 - `kotlin`: Kotlin baseline review and quality-check behavior
 - `kmp`: Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
 - `ios`: native iOS review and direct Xcode/SPM-aware quality-check behavior

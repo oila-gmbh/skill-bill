@@ -27,6 +27,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -786,11 +787,40 @@ class ParallelCodeReviewRunnerFailureTest {
   }
 
   @Test
+  fun `unsupported delta with installed concrete pack uses horizontal base rubric`() {
+    val launcher = ParallelSubtaskLauncher()
+    var resolvedSlug: String? = "unresolved"
+    val runner = createRunner(
+      launcher,
+      RunnerFixtureConfig(
+        diffResolver = RecordingDiffResolver(default = diffFor("README.md")),
+        rubricResolver = ReviewRubricResolver { manifest ->
+          resolvedSlug = manifest?.slug
+          ResolvedReviewRubric("parallel-code-review", "horizontal base rubric")
+        },
+        installedReviewCatalog = InstalledReviewCatalogPort {
+          listOf(platformManifest("typescript", listOf("*.ts", ".ts")))
+        },
+      ),
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertEquals(null, resolvedSlug)
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "horizontal base rubric")
+    }
+  }
+
+  @Test
   fun `stack detection excludes generated dependency and build paths`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(
       launcher,
-      catalogGateway = stubCatalogGateway(listOf(platformManifest("typescript", listOf("*.ts", ".ts")))),
+      catalogGateway = stubCatalogGateway(
+        listOf(platformManifest("typescript", listOf("*.ts", ".ts")), fallbackManifest()),
+      ),
       diffResolver = RecordingDiffResolver(
         default = listOf(
           "node_modules/library/index.ts",
@@ -822,6 +852,7 @@ private data class RunnerFixtureConfig(
   val evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
   val nativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort =
     skillbill.ports.review.ReviewNativeAgentPreflightPort { },
+  val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 )
 
 private fun runner(
@@ -914,6 +945,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     nativeAgentPreflight = config.nativeAgentPreflight,
     database = NoopReviewDatabase,
+    installedReviewCatalog = config.installedReviewCatalog,
   )
 
 private object NoopReviewDatabase : DatabaseSessionFactory {
@@ -1103,6 +1135,16 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
     "architecture" to ReviewLaneCondition(required = true),
     "testing" to ReviewLaneCondition(path = listOf("Test.kt")),
   ),
+)
+
+private fun fallbackManifest(): PlatformManifest = platformManifest("generic", listOf("fallback-only")).copy(
+  routingSignals = RoutingSignals(
+    strong = listOf("fallback-only"),
+    tieBreakers = emptyList(),
+    path = emptyList(),
+    content = emptyList(),
+  ),
+  fallbackCapabilities = setOf("code-review"),
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"

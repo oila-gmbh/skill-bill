@@ -1,11 +1,29 @@
 package skillbill.testing
 
+import skillbill.install.model.InstallPlan
+import skillbill.scaffold.platformpack.CODE_REVIEW_FALLBACK_CAPABILITY
+import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.rendering.areaReviewContent
 import skillbill.scaffold.rendering.baselineReviewContent
 import skillbill.scaffold.rendering.qualityCheckContent
 import skillbill.scaffold.rendering.renderFrontmatter
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.test.assertEquals
+
+internal fun assertConcreteAndManifestFallbackSelected(
+  plan: InstallPlan,
+  concreteSlug: String,
+  additionalSlugs: Set<String> = emptySet(),
+) {
+  val fallbackSlugs = plan.discoveredPlatformPacks
+    .filter { pack ->
+      CODE_REVIEW_FALLBACK_CAPABILITY in loadPlatformPack(pack.packRoot).fallbackCapabilities
+    }
+    .map { it.slug }
+  assertEquals(1, fallbackSlugs.size)
+  assertEquals((fallbackSlugs + concreteSlug + additionalSlugs).sorted(), plan.selectedPlatformSlugs)
+}
 
 internal fun seedConformingPlatformPack(
   repoRoot: Path,

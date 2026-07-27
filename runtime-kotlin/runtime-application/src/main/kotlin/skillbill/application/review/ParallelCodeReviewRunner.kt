@@ -27,6 +27,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
@@ -54,7 +55,7 @@ import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
-import skillbill.review.plan.ReviewContentMatcher
+import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
@@ -79,6 +80,7 @@ class ParallelCodeReviewRunner(
   private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
   private val database: DatabaseSessionFactory,
+  private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 ) {
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     var request = originalRequest
@@ -258,26 +260,20 @@ class ParallelCodeReviewRunner(
     return base to head
   }
 
-  @Suppress("LongMethod")
-  private fun resolvePlannedRubrics(
-    evidence: ReviewDiffEvidence,
-    routedManifests: List<PlatformManifest>,
-    manifests: List<PlatformManifest>,
-    ownedPathsBySlug: Map<String, Set<String>>,
-  ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
+  private fun horizontalPlannedRubrics(evidence: ReviewDiffEvidence): List<PlannedReviewRubric> {
     val rubric = reviewRubricResolver.resolve(null)
-    listOf(
+    return listOf(
       PlannedReviewRubric(
         ReviewLaunchLane(
           rubric.rubricId,
-          "generic",
+          "horizontal",
           rubric.area ?: "generic",
           0,
-          listOf("generic"),
+          listOf("horizontal"),
           true,
           emptyList(),
           0,
-          "generic fallback",
+          "horizontal base behavior",
           ownedPaths = evidence.hunks.map { it.path }.distinct().sorted(),
           changedHunkIds = evidence.hunks.map { it.hunkId },
         ),
@@ -285,6 +281,34 @@ class ParallelCodeReviewRunner(
         workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
       ),
     )
+  }
+
+  @Suppress("LongMethod")
+  private fun resolvePlannedRubrics(
+    evidence: ReviewDiffEvidence,
+    routedManifests: List<PlatformManifest>,
+    manifests: List<PlatformManifest>,
+    ownedPathsBySlug: Map<String, Set<String>>,
+  ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
+    val installed = installedReviewCatalog.manifests()
+    if (installed.isNotEmpty()) {
+      val routing = ReviewStackRouting.route(
+        installed,
+        evidence.files.map { ReviewRoutingChangedFile(it.path, it.changedContent) },
+      )
+      if (routing.routedSlugs.isEmpty()) {
+        horizontalPlannedRubrics(evidence)
+      } else {
+        resolvePlannedRubrics(
+          evidence,
+          installed.filter { it.slug in routing.routedSlugs },
+          installed,
+          routing.ownedPathsBySlug,
+        )
+      }
+    } else {
+      horizontalPlannedRubrics(evidence)
+    }
   } else {
     val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     // Each root pack only owns the files that actually routed to it; a required baseline lane
@@ -400,7 +424,9 @@ class ParallelCodeReviewRunner(
     // invalid composition) throws; surface that loudly instead of silently dropping the
     // stack-specific specialists, per the shell's "never silently fall back" contract.
     val manifests = try {
-      scaffoldCatalogService.discoverPlatformManifests(packsRoot)
+      installedReviewCatalog.manifests().ifEmpty {
+        scaffoldCatalogService.discoverPlatformManifests(packsRoot)
+      }
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
       val displayPath = runCatching { repoRoot.relativize(packsRoot) }.getOrDefault(packsRoot)
       throw StackDetectionException(
@@ -702,8 +728,7 @@ class ParallelCodeReviewRunner(
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {
     return files.filter { file ->
-      lane.pathSignals.any { RoutingSignalPathMatcher.matches(file.path, it) } ||
-        lane.contentSignals.any { ReviewContentMatcher.contains(file.changedContent, it) }
+      ReviewLaneInclusionPolicy.ownsChangedFile(lane, file.path, file.changedContent)
     }.map { it.path }
   }
 

@@ -76,6 +76,7 @@ import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
+import skillbill.infrastructure.fs.FileSystemInstalledReviewCatalog
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
@@ -149,6 +150,7 @@ import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
+import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
@@ -398,6 +400,11 @@ abstract class RuntimeComponent(
   internal fun declaredReviewSpecialistsPort(
     adapter: FileSystemDeclaredReviewSpecialists,
   ): DeclaredReviewSpecialistsPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun installedReviewCatalogPort(adapter: FileSystemInstalledReviewCatalog): InstalledReviewCatalogPort =
+    adapter
 
   @Provides
   @JvmSynthetic

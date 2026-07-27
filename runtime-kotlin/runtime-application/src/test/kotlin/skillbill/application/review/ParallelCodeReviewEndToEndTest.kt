@@ -35,8 +35,8 @@ class ParallelCodeReviewEndToEndTest {
     )
     assertEquals(kotlinAreas.size * 2, recorder.nativeLaunches.size, "Each top-level lane runs every specialist once.")
     assertTrue(
-      recorder.nativeLaunches.all { it.logicalWorkerName == null },
-      "A flattened prompt-only plan never exposes logical worker identities.",
+      recorder.nativeLaunches.all { it.logicalWorkerName in recorder.launchedSpecialists },
+      "Every provider-native launch carries its resolved specialist identity.",
     )
     assertTrue(result.lane1.success && result.lane2.success)
   }
@@ -124,12 +124,12 @@ class ParallelCodeReviewEndToEndTest {
       ).sorted()
     assertEquals(expected, recorder.launchedSpecialists.distinct().sorted())
     assertTrue(
-      recorder.nativeLaunches.all { it.logicalWorkerName == null },
-      "Composed prompt-only lanes do not expose baseline or specialist worker identities.",
+      recorder.nativeLaunches.all { it.logicalWorkerName in expected },
+      "Composed lanes preserve each resolved specialist worker identity.",
     )
   }
 
-  @Test fun `prompt-only assignments bypass logical-name preflight and still launch`() {
+  @Test fun `provider-native assignments preflight resolved logical names before launch`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(
@@ -137,9 +137,9 @@ class ParallelCodeReviewEndToEndTest {
       recorder,
     ).run(harnessRequest())
 
-    assertTrue(recorder.preflightRequests.isEmpty())
+    assertTrue(recorder.preflightRequests.isNotEmpty())
     assertTrue(recorder.nativeLaunches.isNotEmpty())
-    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName == null })
+    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName != null })
   }
 
   @Test fun `repeated layered runs produce identical findings and accounting`() {

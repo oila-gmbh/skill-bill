@@ -11,6 +11,7 @@ import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -177,6 +178,12 @@ object InstallNativeAgentOperations {
         ),
       )
       val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
+      publishInstalledReviewCatalog(
+        request.platformPacksRoot,
+        request.selectedPlatforms,
+        generated.cacheRoot,
+        journal,
+      )
       val linked = mutableListOf<Path>()
       val skipped = mutableListOf<NativeAgentSkippedLink>()
       val artifactsByPath = generated.artifacts.associateBy { it.path }
@@ -236,6 +243,70 @@ object InstallNativeAgentOperations {
     } catch (error: Throwable) {
       journal.restore().forEach(error::addSuppressed)
       throw error
+    }
+  }
+
+  private fun publishInstalledReviewCatalog(
+    platformPacksRoot: Path,
+    selectedPlatforms: List<String>?,
+    cacheRoot: Path,
+    journal: ProviderMutationJournal,
+  ) {
+    val catalogRoot = cacheRoot.resolve("review-catalog/platform-packs")
+    val selected = selectedPlatforms?.toSet()
+    val desiredPacks = Files.list(platformPacksRoot).use { packs ->
+      packs.filter(Files::isDirectory)
+        .filter { selected == null || it.fileName.toString() in selected }
+        .toList()
+    }
+    val desiredSlugs = desiredPacks.mapTo(mutableSetOf()) { it.fileName.toString() }
+    journal.beforeMutation(catalogRoot)
+    Files.createDirectories(catalogRoot)
+    Files.list(catalogRoot).use { installed ->
+      installed.filter(Files::isDirectory)
+        .filter { it.fileName.toString() !in desiredSlugs }
+        .forEach { stalePack ->
+          Files.walk(stalePack).use { paths ->
+            paths.sorted(Comparator.reverseOrder()).forEach { path ->
+              journal.beforeMutation(path)
+              Files.delete(path)
+            }
+          }
+        }
+    }
+    desiredPacks.forEach { source ->
+      val targetPack = catalogRoot.resolve(source.fileName.toString())
+      if (Files.exists(targetPack, LinkOption.NOFOLLOW_LINKS)) {
+        Files.walk(targetPack).use { paths ->
+          paths.sorted(Comparator.reverseOrder()).forEach { path ->
+            journal.beforeMutation(path)
+            Files.delete(path)
+          }
+        }
+      }
+      val manifest = loadPlatformManifest(source)
+      val runtimeFiles = buildList {
+        add(source.resolve("platform.yaml"))
+        manifest.declaredFiles.baseline?.let(::add)
+        addAll(manifest.declaredFiles.areas.values)
+      }.distinct()
+      runtimeFiles.forEach { path ->
+        val relative = source.relativize(path.toAbsolutePath().normalize())
+        require(!relative.startsWith("..")) {
+          "Installed review catalog path escapes platform pack '${manifest.slug}'."
+        }
+        val target = targetPack.resolve(relative).normalize()
+        require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
+        require(Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
+          "Installed review catalog source must be a regular manifest-declared file: '$path'."
+        }
+        journal.beforeMutation(target)
+        target.parent?.let {
+          journal.beforeMutation(it)
+          Files.createDirectories(it)
+        }
+        Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      }
     }
   }
 

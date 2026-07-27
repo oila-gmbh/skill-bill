@@ -176,7 +176,9 @@ internal object ParallelReviewPreparationCompiler {
         budget = budget,
         agentId = route.agentId,
         workerKind = route.workerKind,
-        logicalWorkerName = null,
+        logicalWorkerName = route.descriptor.skillName.takeIf {
+          route.workerKind == ReviewWorkerKind.PROVIDER_NATIVE
+        },
         repoRoot = input.repoRoot,
         prelaunchExpansions = input.prelaunchExpansions
           .filter {

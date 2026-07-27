@@ -24,6 +24,7 @@ data class InstallPlatformPackSnapshot(
 data class InstallPlatformPackDiscoverySnapshot(
   val slug: String,
   val packRoot: Path,
+  val baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
 )
 
 data class InstallPlatformSkillMaterializationRequest(
@@ -39,6 +40,7 @@ data class InstallPolicyInput(
   val request: InstallPlanRequest,
   val baseSkills: List<InstallPlanSkill>,
   val platformPacks: List<InstallPlatformPackSnapshot>,
+  val resolvedReviewFallbackSlug: String? = null,
   val detectedAgentTargets: List<InstallAgentTarget>,
   val defaultAgentTargets: List<InstallAgentDefaultTarget>,
 )

@@ -658,6 +658,8 @@ class CliInstallRuntimeTest {
   }
 
   private fun writeInstallFixtureFiles(fixture: InstallFixture) {
+    writeMinimalPackManifest(fixture.platformPacks.resolve("kotlin"), "*.kt")
+    writeMinimalPackManifest(fixture.platformPacks.resolve("kmp"), "commonMain")
     writeNativeAgentSet(fixture.baseCodexToml, "bill-code-review-worker", "Review changed code.")
     writeNativeAgentSet(fixture.codexToml, "bill-kotlin-code-review-testing", "Review Kotlin tests.")
     writeNativeAgentSet(fixture.kmpCodexToml, "bill-kmp-code-review-ui", "Review KMP UI.")
@@ -692,6 +694,19 @@ class CliInstallRuntimeTest {
           .map { path -> root.relativize(path).toString() to Files.readString(path) }
       }
     }.toMap()
+}
+
+private fun writeMinimalPackManifest(packRoot: Path, strongSignal: String) {
+  Files.writeString(
+    packRoot.resolve("platform.yaml"),
+    """
+    platform: ${packRoot.fileName}
+    contract_version: "1.2"
+    routing_signals:
+      strong: ["$strongSignal"]
+    declared_code_review_areas: []
+    """.trimIndent(),
+  )
 }
 
 private data class InstallFixture(

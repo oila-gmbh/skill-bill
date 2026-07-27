@@ -257,7 +257,7 @@ run_interactive_install_with_blank_defaults() {
     SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
     SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
     bash "$INSTALL_SH" --no-desktop-app \
-    <<< $'\n\n\n\n'
+    <<< $'\n\n\n\n\n\n\n\n'
 }
 
 run_piped_install_with_eof_defaults() {
@@ -358,6 +358,14 @@ if [[ "$INTERACTIVE_OUTPUT" == *"Platforms:      base only"* ]]; then
   pass "blank platform selection defaults to base only"
 else
   fail "blank platform selection summary unexpected"
+fi
+
+if [[ "$INTERACTIVE_OUTPUT" != *" generic (generic)"* &&
+  "$INTERACTIVE_OUTPUT" != *" kmp (kmp)"* &&
+  "$INTERACTIVE_OUTPUT" == *" kotlin (kotlin)"* ]]; then
+  pass "implicit generic and composed KMP packs are hidden from optional choices"
+else
+  fail "interactive platform choices exposed an implicit pack or omitted Kotlin"
 fi
 
 echo ""

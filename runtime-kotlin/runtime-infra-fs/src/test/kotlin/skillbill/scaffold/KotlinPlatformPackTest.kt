@@ -21,6 +21,7 @@ import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.substance.Fraction
 import skillbill.scaffold.substance.PlatformPackSubstanceAudit
+import skillbill.testing.assertConcreteAndManifestFallbackSelected
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -322,7 +323,7 @@ class KotlinPlatformPackTest {
     val skillsByName = plan.skills.associateBy { skill -> skill.name }
 
     assertContains(plan.discoveredPlatformPacks.map { pack -> pack.slug }, "kotlin")
-    assertEquals(listOf("kotlin"), plan.selectedPlatformSlugs)
+    assertConcreteAndManifestFallbackSelected(plan, "kotlin", additionalSlugs = setOf("kmp"))
     assertEquals(
       InstallPlanSkillKind.PLATFORM_PACK,
       skillsByName.getValue("bill-kotlin-code-review").kind,

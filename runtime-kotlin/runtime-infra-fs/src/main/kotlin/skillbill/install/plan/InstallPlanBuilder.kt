@@ -15,6 +15,7 @@ import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.install.support.claudeSkillTargets
 import skillbill.ports.install.plan.model.InstallPlanningFacts
+import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
@@ -46,6 +47,10 @@ private fun buildInstallPolicyInput(
   request: InstallPlanRequest,
   platformManifests: List<PlatformManifest>,
 ): InstallPolicyInput {
+  val baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot)
+  val resolvedReviewFallback = baseSkills
+    .takeIf { skills -> skills.any { it.name == "bill-code-review" } }
+    ?.let { ReviewFallbackResolver.resolveOptional(platformManifests) }
   val discoveredPlatformPacks = platformManifests.toDiscoverySnapshots()
   val materializationPlan = InstallPlanPolicy.planPlatformSkillMaterialization(
     InstallPlatformSkillMaterializationRequest(
@@ -53,10 +58,14 @@ private fun buildInstallPolicyInput(
       platformPacks = discoveredPlatformPacks,
     ),
   )
-  val selectedPlatformSlugs = materializationPlan.selectedPlatformSlugs.toSet()
+  val selectedPlatformSlugs = (
+    materializationPlan.selectedPlatformSlugs +
+      listOfNotNull(resolvedReviewFallback?.slug)
+    ).toSet()
   return InstallPolicyInput(
     request = request,
-    baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot),
+    baseSkills = baseSkills,
+    resolvedReviewFallbackSlug = resolvedReviewFallback?.slug,
     platformPacks = platformManifests.map { manifest ->
       InstallPlatformPackSnapshot(
         slug = manifest.slug,
