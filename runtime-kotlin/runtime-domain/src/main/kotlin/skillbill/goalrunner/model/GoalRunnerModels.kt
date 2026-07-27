@@ -262,6 +262,12 @@ enum class GoalPlanningStatusState(val wireValue: String) {
   PREPARED("prepared"),
 }
 
+enum class ExecutionLiveness(val wireValue: String) {
+  LIVE("live"),
+  IDLE("idle"),
+  UNKNOWN("unknown"),
+}
+
 data class GoalPlanningStatusSnapshot(
   val state: GoalPlanningStatusState,
   val sharedPreplanPrepared: Boolean,
@@ -279,6 +285,7 @@ data class GoalRunnerStatusProjection(
   val currentSubtaskId: Int?,
   val currentStep: String?,
   val activeAgent: String?,
+  val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
@@ -307,6 +314,7 @@ data class GoalRunnerAcceptedSubtask(
 )
 
 data class GoalRunnerStatusProjectionExtras(
+  val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
   /**
@@ -359,6 +367,7 @@ object GoalRunnerStatusProjector {
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
+      executionLiveness = extras.executionLiveness,
       planning = extras.planning,
       latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleBlockSignal },
       latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleBlockSignal },

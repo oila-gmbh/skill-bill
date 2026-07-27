@@ -88,13 +88,75 @@ Do not ask the user to run this command manually. Keep the run in the foreground
 unless the user asks otherwise; pass `--monitor` to tee phase transitions to the
 terminal.
 
+For a goal-continuation child, durable `install_sync_result.status=deferred`
+means the parent owns install refresh after the active goal exits. Never run an
+installer, uninstaller, or install-sync command from the child, and never block
+subtask completion solely because install sync is deferred. Record the deferred
+work in the phase result or review notes and continue evaluating every other
+acceptance criterion normally.
+
 ### Progress Visibility
 
-The runtime owns live progress and writes it straight to the terminal. The
-invoking agent does not attach an observer to the progress stream and does not
-relay per-phase events into the conversation. `--monitor` gives the user the
-transitions directly, at no cost, without a paraphrasing layer between the
-runtime and what they read.
+The terminal monitoring block is the user's live feed. The invoking agent does
+not attach an observer to the progress stream and does not relay transitions
+into the conversation. There is no in-session transition relay; agent silence
+during the run is deliberate, not a failure, and ends only when a sanctioned
+completion signal or error reaches the session.
+
+While a foreground or detached run is in flight:
+
+1. Do not run `skill-bill goal watch` in-session, at any interval or refresh count.
+2. Do not call `skill-bill feature-task status <workflow_id>` on a timer or
+   repeatedly to observe change.
+3. Do not sleep, wait, or otherwise idle in order to re-read progress.
+4. Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or
+   changed files to infer progress.
+5. Do not re-invoke the runtime or launch an observer process or subagent to
+   observe a run that is already executing.
+
+These prohibitions apply to shell loops, scheduled wake-ups, repeated tool
+calls, and delegated observers. The cost rule is request count, not output size:
+one completion signal beats any number of short polls, and trimming a poll's
+output does not make polling acceptable.
+
+The only permitted in-session surface is exactly one completion line, errors
+such as launch failures, loud-fails, or non-zero exits, and one
+`skill-bill feature-task status <workflow_id>` call made in direct response to an explicit user
+request.
+
+`--monitor` remains required for feature-task-runtime because its output scales
+with phase count. Quiet `--no-live-output` launch applies only to `goal`, whose
+live output scales with wall-clock duration.
+
+#### Completion Signal
+
+Use the completion signal for the launch mode:
+
+1. For a foreground run within the harness timeout, wait for the blocking call
+   to return its structured result.
+2. For a detached run where the harness provides background-exit notification,
+   let that notification re-invoke the agent once with the result; do not poll.
+3. For a detached run where the harness provides no background-exit
+   notification, print the monitoring block, state that the run continues,
+   and end the turn. When the user next addresses the session, retrieve the
+   original detached command's return once. If it has completed, report its
+   structured result; if it is still running, state that the run continues and
+   end the turn without polling. Do not substitute a
+   `skill-bill feature-task status <workflow_id>` snapshot for the structured
+   terminal result.
+
+When the outcome reaches the session, emit exactly one completion line. Compose
+it only from the feature-task structured result fields `status`, `workflow_id`,
+`completed_phases`, `last_incomplete_phase`, and `blocked_reason`:
+
+```text
+feature-task ft-run-01J8Z0-SKILL-141: complete — 9 phases completed
+feature-task ft-run-01J8Z0-SKILL-141: blocked at review — <blocked_reason>
+feature-task ft-run-01J8Z0-SKILL-141: failed — <error>
+```
+
+Do not read back, summarize, or paraphrase run stdout to compose the completion
+line. Do not emit progress or transition lines around it.
 
 #### Required: print the terminal monitoring command
 
@@ -121,11 +183,11 @@ skill-bill feature-task lookup SKILL-141 --repo-root .
 
 Two obligations survive:
 
-- Report the terminal result. On a clean finish, report the per-phase summary. On
-  a blocked or failed gate, surface it loudly and immediately and stop — never
-  narrate a blocked run as if it were progressing. Validation findings are the
-  exception: the runtime reopens `validate` for repair instead of persisting a
-  blocked phase.
+- Report the terminal result only through the single structured completion line
+  defined above. On a blocked or failed gate, surface that line loudly and
+  immediately and stop — never narrate a blocked run as if it were progressing.
+  Validation findings are the exception: the runtime reopens `validate` for
+  repair instead of persisting a blocked phase.
 - Never re-derive or re-order the phase loop. The durable workflow state is
   authoritative over any terminal line.
 

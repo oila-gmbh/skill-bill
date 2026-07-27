@@ -438,8 +438,10 @@ Use read-only status or watch commands when checking an in-flight run:
 
 ```bash
 skill-bill goal status SKILL-901
-skill-bill goal watch SKILL-901 --interval-seconds 5 --max-refreshes 3
+skill-bill goal watch SKILL-901 --interval-seconds 5
 ```
+
+The watch command follows until the goal finishes.
 
 ```text
 latest_observability: phase=implement role=phase_subagent liveness=durable_progress sequence=8

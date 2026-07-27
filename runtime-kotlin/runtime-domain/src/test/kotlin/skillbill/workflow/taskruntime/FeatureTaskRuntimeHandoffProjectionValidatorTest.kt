@@ -460,36 +460,30 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `must_match rejects repository movement`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(
-        inputs(
-          declarations = listOf(
-            declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
-          ),
-          resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
-          expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-def"),
+  fun `must_match refreshes instead of rejecting repository movement`() {
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(
+          declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
         ),
-      )
-    }
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
-    assertContains(error.message.orEmpty(), "expected checkpoint 'head-def' but resolved 'head-abc'")
+        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+        expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-def"),
+      ),
+    )
+    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
   }
 
   @Test
-  fun `must_match requires a recorded checkpoint`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(
-        inputs(
-          declarations = listOf(
-            declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
-          ),
-          resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+  fun `must_match does not require a recorded checkpoint`() {
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(
+          declaration(checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH),
         ),
-      )
-    }
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.CHECKPOINT_POLICY_VIOLATION, error.failureKind)
-    assertContains(error.message.orEmpty(), "durable expected repository checkpoint")
+        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("head-abc"),
+      ),
+    )
+    assertEquals("head-abc", envelope.repositoryCheckpoint?.fingerprint)
   }
 
   @Test

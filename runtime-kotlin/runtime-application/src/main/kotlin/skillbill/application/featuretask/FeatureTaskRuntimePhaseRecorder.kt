@@ -16,6 +16,7 @@ import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
@@ -882,6 +883,11 @@ class FeatureTaskRuntimePhaseRecorder(
   fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
     database.read(dbOverride) { unitOfWork ->
       unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
+    }
+
+  fun workerOwnership(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeWorkerOwnership? =
+    database.read(dbOverride) { unitOfWork ->
+      unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     }
 
   /**

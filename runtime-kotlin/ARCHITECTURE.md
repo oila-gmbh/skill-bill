@@ -799,11 +799,9 @@ model-driven retrieval.
 carries a deterministic fingerprint, optional base/head refs, and working-tree
 ownership. Policies are `not_required`, `must_match`, and
 `refresh_from_repository`. Both checkpoint-aware policies require and carry a
-freshly resolved checkpoint. `must_match` also requires the durable expected
-checkpoint and rejects repository movement before launch; it is used for the
-review-to-`implement_fix` edge so remediation targets the exact reviewed tree.
-`refresh_from_repository` deliberately accepts movement and re-derives the
-consumer scope. The domain stays git-agnostic: the application layer resolves
+freshly resolved checkpoint. `must_match` is retained as a legacy durable wire
+value and, like `refresh_from_repository`, accepts repository movement and
+re-derives the consumer scope. The domain stays git-agnostic: the application layer resolves
 the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
 `WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
 the audit-repair path already depends on. No new git port was introduced.

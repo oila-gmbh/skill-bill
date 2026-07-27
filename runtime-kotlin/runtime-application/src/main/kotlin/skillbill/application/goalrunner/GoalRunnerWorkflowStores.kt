@@ -460,8 +460,10 @@ class WorkflowGoalRunnerManifestStore(
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
     ).toArtifactMap(),
     "install_sync_result" to mapOf(
-      "status" to "skipped",
-      "reason" to "goal-continuation forbids installer, uninstall, and install-sync flows",
+      "status" to "deferred",
+      "reason" to
+        "goal-continuation defers installer, uninstall, and install-sync flows until the parent goal exits; " +
+        "deferred install sync must not block subtask completion",
     ),
   )
 

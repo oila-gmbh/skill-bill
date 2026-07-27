@@ -33,6 +33,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.contracts.system.RuntimeProvenanceContract
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
@@ -350,32 +351,63 @@ class GoalWatchCommand(
   ).int().default(DEFAULT_GOAL_WATCH_INTERVAL_SECONDS)
   private val maxRefreshes by option(
     "--max-refreshes",
-    help = "Stop after this many refreshes. Defaults to one refresh for non-interactive automation.",
+    help = "Stop after this many refreshes. Zero follows until the goal finishes and is the default.",
   ).int().default(DEFAULT_GOAL_WATCH_REFRESHES)
+  private val showUnchanged by option(
+    "--show-unchanged",
+    help = "Print every refresh, including unchanged output. Useful as a debugging aid.",
+  ).flag(default = false)
 
   override fun run() {
     require(intervalSeconds >= 0) { "--interval-seconds must be non-negative." }
-    require(maxRefreshes > 0) { "--max-refreshes must be positive." }
+    require(maxRefreshes >= 0) { "--max-refreshes must be non-negative." }
     var latestRefresh: Map<String, Any?>? = null
-    for (refreshIndex in 1..maxRefreshes) {
+    var refreshCount = 0
+    var stopReason = ""
+    var lastPrintedRefresh: String? = null
+    var consecutiveIdleRefreshes = 0
+    while (true) {
+      refreshCount += 1
       val projection = goalRunnerStatusService.statusRefresh(
         state.goalStatusRequest(statusCliRequestOptions()),
       )
-      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshIndex)
+      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
       latestRefresh = refresh
-      if (refreshIndex < maxRefreshes) {
-        state.liveStdout(goalWatchRefreshText(refresh))
+      consecutiveIdleRefreshes = if (projection?.executionLiveness == ExecutionLiveness.IDLE) {
+        consecutiveIdleRefreshes + 1
+      } else {
+        0
       }
-      if (refreshIndex < maxRefreshes && intervalSeconds > 0) {
+      stopReason = refresh.goalWatchStopReason(
+        refreshCount = refreshCount,
+        maxRefreshes = maxRefreshes,
+        idleStop = consecutiveIdleRefreshes >= IDLE_STOP_CONSECUTIVE_REFRESHES,
+      ) ?: ""
+      val renderedRefresh = goalWatchRefreshText(refresh)
+      val normalizedRefresh = goalWatchRefreshText(
+        refresh.toMutableMap().apply { this["refresh_index"] = "<refresh_index>" },
+      )
+      val endsLoop = stopReason.isNotEmpty()
+      val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
+      val shouldPrintRefresh = endsLoop || showUnchanged || refreshChanged
+      if (shouldPrintRefresh) {
+        state.liveStdout(renderedRefresh)
+        lastPrintedRefresh = normalizedRefresh
+      }
+      if (endsLoop) {
+        break
+      }
+      if (intervalSeconds > 0) {
         Thread.sleep(intervalSeconds * MILLIS_PER_SECOND)
       }
     }
     val payload = linkedMapOf<String, Any?>(
-      "status" to latestRefresh?.get("status"),
+      "status" to latestRefresh.get("status"),
       "issue_key" to issueKey,
-      "refresh_count" to maxRefreshes,
+      "refresh_count" to refreshCount,
       "interval_seconds" to intervalSeconds,
       "latest_refresh" to latestRefresh,
+      "stop_reason" to stopReason,
     )
     state.completeText(goalWatchText(payload), payload, exitCode = payload.goalStatusExitCode())
   }
@@ -835,6 +867,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "current_subtask" to it.currentSubtaskId,
     "current_step" to it.currentStep,
     "active_agent" to it.activeAgent,
+    "execution_liveness" to it.executionLiveness.wireValue,
     "latest_liveness_signal" to it.latestLivenessSignal,
   ).apply {
     it.planning?.let { planning ->
@@ -865,6 +898,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "current_subtask" to null,
   "current_step" to null,
   "active_agent" to null,
+  "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
   "latest_liveness_signal" to null,
 )
 
@@ -899,6 +933,7 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
+  appendLine("execution_liveness: ${payload["execution_liveness"]}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
   (payload["planning"] as? Map<*, *>)?.let { planning ->
     appendLine(
@@ -923,11 +958,21 @@ private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
 
+private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
+  when {
+    this["status"] == "not_found" -> "not_found"
+    (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
+    idleStop -> "goal_idle"
+    maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
+    else -> null
+  }
+
 private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
   appendLine("status: ${payload["status"]}")
   appendLine("refresh_count: ${payload["refresh_count"]}")
   appendLine("interval_seconds: ${payload["interval_seconds"]}")
+  appendLine("stop_reason: ${payload["stop_reason"]}")
   val latestRefresh = payload["latest_refresh"] as? Map<*, *> ?: return@buildString
   append(goalWatchRefreshText(latestRefresh))
 }
@@ -937,6 +982,7 @@ private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
     "watch_refresh: index=${refresh["refresh_index"]} status=${refresh["status"]} " +
       "current_subtask=${refresh["current_subtask"] ?: "none"} " +
       "current_step=${refresh["current_step"] ?: "none"} " +
+      "execution_liveness=${refresh["execution_liveness"] ?: "unknown"} " +
       "liveness=${refresh["latest_liveness_signal"] ?: "none"}",
   )
   (refresh["latest_observability_event"] as? Map<*, *>)?.let { event ->
@@ -1160,7 +1206,8 @@ private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
 private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"
 private const val GOAL_LIVENESS_IDLE = "idle"
 private const val DEFAULT_GOAL_WATCH_INTERVAL_SECONDS = 5
-private const val DEFAULT_GOAL_WATCH_REFRESHES = 1
+private const val DEFAULT_GOAL_WATCH_REFRESHES = 0
+internal const val IDLE_STOP_CONSECUTIVE_REFRESHES = 3
 private const val MILLIS_PER_SECOND = 1_000L
 private const val RUNTIME_EXECUTABLE_ENV = "SKILL_BILL_RUNTIME_EXECUTABLE"
 private const val RUNTIME_CLASSPATH_ENV = "SKILL_BILL_RUNTIME_CLASSPATH"

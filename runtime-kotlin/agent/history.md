@@ -1,3 +1,23 @@
+## [2026-07-27] SKILL-147 idle goal-watch stop (subtask 3)
+Areas: runtime-kotlin/runtime-{domain,application,cli}
+- Goal status now projects worker-lease execution liveness as `live`, `idle`, or `unknown`; prose workflows, missing workflow identity, and read failures remain unknown so absent runtime leases cannot create false idle stops.
+- The application resolves liveness through a read-only ownership lookup and an injected clock; watch does not reclaim, reconcile, fence, or otherwise mutate lease state.
+- `goal watch` stops with `goal_idle` only after three consecutive idle refreshes, while live or unknown samples reset the debounce. reusable
+- Loop-ending refreshes are printed and skip the following sleep, preserving the terminal-watch ordering contract.
+- Known limitation: usage-limit pauses stop watch only after the runner exits and its lease expires; a worker that keeps heartbeating remains live.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
+## [2026-07-27] SKILL-147 follow-until-terminal goal watch
+Areas: runtime-kotlin/runtime-cli, skills/bill-feature-goal, docs
+- `goal watch` now follows by default until a terminal or missing projection; `--max-refreshes 0` is the unlimited sentinel, while positive bounds remain available for automation.
+- Refresh rendering suppresses unchanged projections after normalizing only `refresh_index`; the first and loop-ending refresh remain visible, and `--show-unchanged` restores a debugging pulse. reusable
+- Terminal detection depends only on `status` and `pending_count`, so blocked-but-pending goals continue; payloads report performed refreshes and a typed stop reason.
+- Governed skill and onboarding examples now use the unbounded monitoring command and state that it follows until completion.
+- Known limitation: change-only output intentionally emits no synthetic keepalive during a quiet phase.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-07-27] SKILL-146 least-context end-to-end validation (subtask 7)
 Areas: runtime-kotlin/runtime-{domain,application}, skills/bill-feature-task-prose
 - Finalization handoffs now derive bounded validation, history, commit, and PR projections from typed upstream receipts; PR composition receives acceptance criteria without exposing private implementation or validation reports.
