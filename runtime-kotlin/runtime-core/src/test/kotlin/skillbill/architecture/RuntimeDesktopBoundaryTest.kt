@@ -22,6 +22,19 @@ class RuntimeDesktopBoundaryTest {
     assertTrue(specialCases.isEmpty(), "desktop production must discover agent add-ons dynamically: $specialCases")
   }
 
+  @Test
+  fun `desktop packaging excludes provider-specific native agent output and keeps neutral sources`() {
+    val buildScript = Files.readString(runtimeRoot.resolve("runtime-desktop/build.gradle.kts"))
+
+    listOf("claude-agents", "codex-agents", "opencode-agents", "junie-agents", "cursor-agents").forEach { directory ->
+      assertTrue(
+        buildScript.contains("""exclude("**/$directory/**")"""),
+        "desktop packaging must exclude generated $directory output",
+      )
+    }
+    assertFalse(buildScript.contains("""exclude("**/native-agents/**")"""))
+  }
+
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
       if (workingDir.fileName.toString().startsWith("runtime-")) {

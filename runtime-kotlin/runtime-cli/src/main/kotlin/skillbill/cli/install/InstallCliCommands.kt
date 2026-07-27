@@ -583,6 +583,16 @@ class InstallJunieAgentsPathCommand(
 }
 
 @Inject
+class InstallCursorAgentsPathCommand(
+  private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
+) : DocumentedCliCommand("cursor-agents-path", "Print the Cursor native subagent markdown directory.") {
+  override fun run() {
+    state.completeText(installAgentService.cursorAgentsPath(state.userHome).toString(), emptyMap())
+  }
+}
+
+@Inject
 class InstallZcodeAgentsPathCommand(
   private val state: CliRunState,
   private val installAgentService: InstallAgentService,
@@ -803,6 +813,61 @@ class InstallUnlinkJunieAgentsCommand(
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.JUNIE,
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
+      )
+    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
+  }
+}
+
+@Inject
+class InstallLinkCursorAgentsCommand(
+  private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
+) : DocumentedCliCommand("link-cursor-agents", "Render and link Cursor native subagent markdown from source agents.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("link-cursor-agents")) {
+      return
+    }
+    completeNativeAgentLinkOutcome(
+      state,
+      nativeAgentInstallService.linkNativeAgents(
+        NativeAgentLinkProvider.CURSOR,
+        NativeAgentLinkRequest(
+          platformPacksRoot = Path.of(platformPacks),
+          skillsRoot = skills?.let(Path::of),
+          home = state.userHome,
+          selectedPlatforms = platforms.ifEmpty { null },
+        ),
+      ),
+    )
+  }
+}
+
+@Inject
+class InstallUnlinkCursorAgentsCommand(
+  private val state: CliRunState,
+  private val nativeAgentInstallService: NativeAgentInstallService,
+) : DocumentedCliCommand("unlink-cursor-agents", "Remove Cursor native subagent markdown symlinks.") {
+  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
+  private val skills by option("--skills", help = "skills root.")
+  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
+
+  override fun run() {
+    if (state.refuseInstallMutationDuringGoalContinuation("unlink-cursor-agents")) {
+      return
+    }
+    val removed =
+      nativeAgentInstallService.unlinkNativeAgents(
+        NativeAgentLinkProvider.CURSOR,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),

@@ -893,6 +893,27 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation rejects checked-in generated cursor native agent artifact`() {
+    val repoRoot = Files.createTempDirectory("skillbill-native-agent-cursor-checked-in")
+    createRepoValidationSkillFixture(repoRoot)
+    writeNativeAgentFixture(repoRoot.resolve("skills/bill-code-review"), "bill-code-review-worker")
+    val generatedCursor = repoRoot.resolve("skills/bill-code-review/cursor-agents/bill-code-review-worker.md")
+    Files.createDirectories(generatedCursor.parent)
+    Files.writeString(generatedCursor, "checked-in cursor file\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(report.passed)
+    assertTrue(
+      report.issues.any {
+        it.contains("cursor-agents/bill-code-review-worker.md") &&
+          it.contains("must not be checked in")
+      },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation rejects checked-in generated junie native agent artifact`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-junie-checked-in")
     createRepoValidationSkillFixture(repoRoot)

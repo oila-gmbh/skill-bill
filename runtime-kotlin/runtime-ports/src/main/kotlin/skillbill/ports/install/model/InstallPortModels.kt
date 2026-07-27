@@ -12,6 +12,7 @@ enum class NativeAgentLinkProvider {
   CODEX,
   OPENCODE,
   JUNIE,
+  CURSOR,
   ZCODE,
 }
 

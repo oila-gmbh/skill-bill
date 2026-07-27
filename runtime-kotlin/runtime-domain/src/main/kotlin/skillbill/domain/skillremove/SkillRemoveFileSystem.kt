@@ -36,7 +36,7 @@ interface SkillRemoveFileSystem {
   /** Manifest edits required for the cascade. */
   fun planManifestEdits(request: SkillRemovalRequest, cascadedSkillNames: List<String>): List<ManifestEdit>
 
-  /** Agent-symlink unlinks across Claude/Codex/Opencode/Junie for every removed skill. */
+  /** Agent-symlink unlinks across every agent symlink provider for each removed skill. */
   fun planAgentSymlinkUnlinks(request: SkillRemovalRequest, cascadedSkillNames: List<String>): List<AgentSymlinkUnlink>
 
   /** README catalog edits required for horizontal-skill scope. */

@@ -78,6 +78,7 @@ class UninstallCommand(
       home.resolve(".agents/skills"),
       home.resolve(".config/opencode/skills"),
       home.resolve(".junie/skills"),
+      home.resolve(".cursor/skills"),
     ) + claudeTargets
     val stateRuntimeRoot = stateRoot.resolve("runtime")
     val binDir = state.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")

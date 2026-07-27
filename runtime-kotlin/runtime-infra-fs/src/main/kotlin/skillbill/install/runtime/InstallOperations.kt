@@ -56,6 +56,11 @@ object InstallOperations {
     return resolvedHome.resolve(".junie/agents")
   }
 
+  fun cursorAgentsPath(home: Path? = null): Path {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return resolvedHome.resolve(".cursor/agents")
+  }
+
   fun zcodeAgentsPath(home: Path? = null): Path {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
     return resolvedHome.resolve(".zcode/agents")

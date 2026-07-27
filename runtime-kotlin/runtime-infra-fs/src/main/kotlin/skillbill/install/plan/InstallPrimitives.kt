@@ -22,6 +22,7 @@ internal const val CODEX_AGENTS_KIND: String = "codex-agents"
 internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
 internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
+internal const val CURSOR_AGENTS_KIND: String = "cursor-agents"
 internal const val ZCODE_AGENTS_KIND: String = "zcode-agents"
 
 internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {

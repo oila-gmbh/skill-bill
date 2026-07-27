@@ -40,6 +40,71 @@ class CliInstallRuntimeTest {
   }
 
   @Test
+  fun `cursor native subagent commands link and unlink authored agent files`() {
+    val fixture = installFixture()
+    val target = fixture.home.resolve(".cursor/agents/${fixture.cursorMd.fileName}")
+
+    assertEquals(0, runInstall(fixture, "link-cursor-agents").exitCode)
+    assertGeneratedAgentLinked(target, fixture.cursorMd)
+
+    assertEquals(0, runInstall(fixture, "unlink-cursor-agents").exitCode)
+    assertFalse(Files.exists(target))
+  }
+
+  @Test
+  fun `cursor agents path prints the cursor agents directory`() {
+    val fixture = installFixture()
+
+    val result = runInstall(fixture, "cursor-agents-path")
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, fixture.home.resolve(".cursor/agents").toString())
+  }
+
+  @Test
+  fun `cursor native subagent link is idempotent across repeated applies`() {
+    val fixture = installFixture()
+    val target = fixture.home.resolve(".cursor/agents/${fixture.cursorMd.fileName}")
+
+    assertEquals(0, runInstall(fixture, "link-cursor-agents").exitCode)
+    val first = target.toRealPath()
+    assertEquals(0, runInstall(fixture, "link-cursor-agents").exitCode)
+
+    assertGeneratedAgentLinked(target, fixture.cursorMd)
+    assertEquals(first, target.toRealPath())
+  }
+
+  @Test
+  fun `cursor native subagent link preserves user-authored target files`() {
+    val fixture = installFixture()
+    val target = fixture.home.resolve(".cursor/agents/${fixture.cursorMd.fileName}")
+    Files.createDirectories(target.parent)
+    Files.writeString(target, "user cursor file\n")
+
+    assertEquals(0, runInstall(fixture, "link-cursor-agents").exitCode)
+
+    assertFalse(Files.isSymbolicLink(target))
+    assertEquals("user cursor file\n", Files.readString(target))
+  }
+
+  @Test
+  fun `cursor native subagent link replaces stale install cache symlinks`() {
+    val fixture = installFixture()
+    val target = fixture.home.resolve(".cursor/agents/${fixture.cursorMd.fileName}")
+    val oldCache = fixture.home.resolve(".skill-bill/native-agents/old-cache-key")
+    val stale = oldCache.resolve("cursor-agents/${fixture.cursorMd.fileName}")
+    Files.createDirectories(stale.parent)
+    Files.writeString(stale, "stale cache artifact\n")
+    Files.createDirectories(target.parent)
+    Files.createSymbolicLink(target, stale)
+
+    assertEquals(0, runInstall(fixture, "link-cursor-agents").exitCode)
+
+    assertGeneratedAgentLinked(target, fixture.cursorMd)
+    assertFalse(target.toRealPath().startsWith(oldCache))
+  }
+
+  @Test
   fun `claude native subagent commands link and unlink authored agent files`() {
     val fixture = installFixture()
     val sourcePath = fixture.codexToml.parent.parent
@@ -613,6 +678,7 @@ class CliInstallRuntimeTest {
     Files.createDirectories(home.resolve(".codex"))
     Files.createDirectories(home.resolve(".config/opencode"))
     Files.createDirectories(home.resolve(".junie"))
+    Files.createDirectories(home.resolve(".cursor"))
     val platformPacks = home.resolve("platform-packs")
     val skills = home.resolve("skills")
     val baseCodexAgents = skills.resolve("bill-code-review/codex-agents")
@@ -636,6 +702,8 @@ class CliInstallRuntimeTest {
     val codexToml = codexAgents.resolve("bill-kotlin-code-review-testing.toml")
     val opencodeMd = opencodeAgents.resolve("bill-kotlin-code-review-testing.md")
     val junieMd = junieAgents.resolve("bill-kotlin-code-review-testing.md")
+    val cursorMd = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/cursor-agents")
+      .resolve("bill-kotlin-code-review-testing.md")
     val kmpCodexToml = kmpCodexAgents.resolve("bill-kmp-code-review-ui.toml")
     val kmpOpencodeMd = kmpOpencodeAgents.resolve("bill-kmp-code-review-ui.md")
     val kmpJunieMd = kmpJunieAgents.resolve("bill-kmp-code-review-ui.md")
@@ -652,6 +720,7 @@ class CliInstallRuntimeTest {
       kmpCodexToml,
       kmpOpencodeMd,
       kmpJunieMd,
+      cursorMd,
     )
     writeInstallFixtureFiles(fixture)
     return fixture
@@ -722,6 +791,7 @@ private data class InstallFixture(
   val kmpCodexToml: Path,
   val kmpOpencodeMd: Path,
   val kmpJunieMd: Path,
+  val cursorMd: Path,
 )
 
 private data class McpCase(

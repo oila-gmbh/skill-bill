@@ -215,4 +215,35 @@ class NativeAgentRenderingTest {
     }
     return raw
   }
+
+  @Test
+  fun `cursor renders a byte-equivalent governed body from a provider-neutral source`() {
+    val source = NativeAgentSource(
+      name = "bill-cursor-worker",
+      description = "Cursor worker.",
+      body = "# Worker\n\nDo the work.",
+    )
+
+    val rendered = NativeAgentProvider.Cursor.render(source)
+
+    assertContains(rendered, "name: bill-cursor-worker")
+    assertContains(rendered, "description: Cursor worker.")
+    assertContains(rendered, "# Worker\n\nDo the work.")
+    assertFalse("mode: subagent" in rendered)
+    assertEquals(NativeAgentProvider.Claude.render(source), rendered)
+  }
+
+  @Test
+  fun `cursor activates only when an isolated home has a cursor root`() {
+    val home = Files.createTempDirectory("skillbill-cursor-activation")
+
+    assertTrue(NativeAgentProvider.Cursor.activeHomeAgentDirs(home).isEmpty())
+
+    Files.createDirectories(home.resolve(".cursor"))
+
+    assertEquals(
+      listOf(home.resolve(".cursor/agents").toAbsolutePath().normalize()),
+      NativeAgentProvider.Cursor.activeHomeAgentDirs(home),
+    )
+  }
 }

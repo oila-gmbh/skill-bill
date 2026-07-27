@@ -82,6 +82,7 @@ enum class AgentSymlinkProvider {
   CODEX,
   OPENCODE,
   JUNIE,
+  CURSOR,
   ZCODE,
 }
 

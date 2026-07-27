@@ -45,6 +45,7 @@ class RuntimeSurfaceContractTest {
         "claude-agents-path",
         "opencode-agents-path",
         "junie-agents-path",
+        "cursor-agents-path",
         "link-skill",
         "cleanup-agent-target",
         "link-claude-agents",
@@ -55,6 +56,8 @@ class RuntimeSurfaceContractTest {
         "unlink-opencode-agents",
         "link-junie-agents",
         "unlink-junie-agents",
+        "link-cursor-agents",
+        "unlink-cursor-agents",
         "rollback-links",
       ),
     )

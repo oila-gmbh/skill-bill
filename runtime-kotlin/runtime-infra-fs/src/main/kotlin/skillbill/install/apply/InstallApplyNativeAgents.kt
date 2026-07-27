@@ -191,6 +191,12 @@ private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
     unlink = InstallNativeAgentOperations::unlinkJunieAgents,
   ),
   NativeAgentInstaller(
+    agent = InstallAgent.CURSOR,
+    provider = NativeAgentProviderId.CURSOR,
+    link = InstallNativeAgentOperations::linkCursorAgents,
+    unlink = InstallNativeAgentOperations::unlinkCursorAgents,
+  ),
+  NativeAgentInstaller(
     agent = InstallAgent.ZCODE,
     provider = NativeAgentProviderId.ZCODE,
     link = InstallNativeAgentOperations::linkZcodeAgents,
