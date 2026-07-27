@@ -55,7 +55,7 @@ Accounting preserves direct and inclusive ownership. Direct usage belongs to one
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - `auto` resolves through exactly one named rule, reported in review metadata alongside the inline tier. `auto` never resolves silently.
 - `auto_depth_by_pass_number` is authoritative wherever a review pass number exists and resolves every pass to `inline`.
-- `auto_depth_by_size_and_risk_eligibility` remains the named standalone rule for compatibility and telemetry, but also resolves every scope to `inline`, including oversized, high-risk, mixed-stack, and layered scopes.
+- `auto_depth_default` is the named standalone fallback rule and resolves every scope to `inline`, including oversized, high-risk, mixed-stack, and layered scopes.
 - Inline mode must walk every area declared by the routed manifest and required baseline composition deliberately, using each area's governed rubric as a checklist in the current context; do not collapse the review into a generic skim or omit an area because its specialist would not have been selected.
 
 ## Shared Learnings Context

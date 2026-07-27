@@ -1,5 +1,20 @@
 # Subtask 2: Remove the Dormant Review Pilot
 
+## Outcome
+
+Complete. Re-tracing every candidate against `main` found the review-context slice largely **active**,
+not dormant: `ReviewAssignment`, `ReviewContextPacket`, `GovernedReviewLaunch`, `ReviewEvidenceBroker`
+(+ binding, `FileSystemReviewEvidenceBroker`), and the whole review-context schema family are
+DI-bound and invoked on the live parallel-review path. All nine `review_context_budget` sub-keys
+reach an active consumer, so AC-002 resolves on the proven-active branch and no configuration key is
+removed; the strict/tolerant config contract is now covered in both directions (AC-003).
+
+The genuinely dormant residue removed is the auto-eligibility path: `ReviewAutoEligibility`, the
+`eligibility` parameter on `ReviewExecutionModePolicy`, the constant-returning
+`resolveAutoByEligibility`, and `ParallelCodeReviewRunner.HIGH_RISK_SIGNAL`. Resolved review depth is
+unchanged in every case. Per-candidate evidence lives in `evidence-ledger.md`, section
+"Subtask 2 Entries — dormant review pilot".
+
 ## Scope
 
 Remove review-context and evidence-broker code that has no production construction or execution route, while preserving active parallel review and telemetry behavior.

@@ -169,3 +169,80 @@ Three assertions failed on the injected edge:
 
 The catalog was restored byte-for-byte from a backup copy and the working tree confirmed clean of
 the probe. Relocating the catalog into test sources preserved assertion strength.
+
+## Subtask 2 Entries — dormant review pilot
+
+Re-traced against `main` (`69c97d01`) from every composition root (`RuntimeComponent`, CLI dispatch,
+MCP registry) with word-boundary `grep -rnw` over `*.kt`, `*.kts`, `*.md`, `*.yaml`, `*.json`, `*.sh`,
+excluding `build/` and `.feature-specs/`. Most spec-named candidates re-traced to **active**; the
+removable slice is the ignored auto-eligibility path.
+
+### Candidate dispositions (AC-001, AC-002, AC-004, AC-005)
+
+| declaration | consumers checked | disposition | verification |
+| --- | --- | --- | --- |
+| `skillbill.review.context.ReviewExecutionModePolicy` (runtime-domain/.../ReviewExecutionModePolicy.kt) | Kotlin, DI, docs | active (signature narrowed) | `ParallelCodeReviewRunner.kt:99,103` call `resolveWithRule`/`resolve` on the live parallel-review path |
+| `ResolvedReviewDepth`, `ResolvedReviewExecutionMode` (ReviewContextModels.kt) | Kotlin, durable state, docs | active | `ResolvedReviewExecutionMode` gates `preflightDelegatedWorkers`; `ResolvedReviewDepth.decidingRule` is persisted via `GoalSubtaskReviewState.deciding_rule` |
+| `ReviewAutoEligibility` (ReviewContextModels.kt) | Kotlin, DI, serialization, resources, docs, skills, scripts | **removable** | Sole consumer `resolveAutoByEligibility` carried `@Suppress("UNUSED_PARAMETER")` and returned a constant; `grep -rnw ReviewAutoEligibility` after deletion returns no hits outside `.feature-specs/` |
+| `ParallelCodeReviewRunner.HIGH_RISK_SIGNAL` regex | Kotlin | **removable** | Only fed `ReviewAutoEligibility.highRisk`, whose value was discarded |
+| `ReviewAssignment` (ReviewContextModels.kt) | Kotlin, DI, serialization | active | Composed by `ReviewPreparationService.composeAssignments`, launched by `DelegatedReviewWorkerLauncher`, projected by `ReviewPacketProjection` |
+| `ReviewContextPacket` (ReviewContextModels.kt) | Kotlin, DI, serialization | active | Produced by `ReviewPreparationService.composePacket`, consumed by `ReviewPacketProjection` and `DelegatedReviewLaunchBroker` |
+| `GovernedReviewLaunch` (ReviewContextModels.kt) | Kotlin, DI | active | `ReviewPacketProjection` and `DelegatedReviewLaunchBroker` construct it on the delegated launch path |
+| `skillbill.ports.review.ReviewEvidenceBroker` + `ReviewEvidenceBrokerBinding` | Kotlin, DI, launch wire | active | Bound at `RuntimeComponent.kt:636-637`; consumed by `DelegatedReviewLaunchBroker`, `NativeReviewOperationProtocol`, `AgentRunProcessRunner` |
+| `FileSystemReviewEvidenceBroker(+Factory)` | Kotlin, DI, Gradle | active | Bound in `RuntimeComponent`; `runtime-application/build.gradle.kts` references the factory |
+| `review_context_budget` parsing (`FileSystemRepoLocalConfig`) | Kotlin, config file, docs | active — all nine sub-keys consumed | See sub-key table below |
+| `ReviewContextSchemaPaths` + `orchestration/contracts/review-context-schema.yaml` + `ReviewContextSchemaValidator` + `ReviewContextEnvelopeValidatorAdapter` + runtime-infra-fs `Copy` task | Kotlin, DI, classpath resource, Gradle | active — retained atomically | `RuntimeComponent.kt:629-631` binds the adapter as `ReviewContextEnvelopeValidator`; `ReviewPreparationService.prepare` and `DelegatedReviewLaunchBroker` invoke `validate` on every packet and assignment envelope. Not orphaned, so AC-005's removal branch does not apply and nothing is deleted |
+
+### `review_context_budget` sub-key consumption (AC-002)
+
+Every parsed sub-key reaches an active consumer, so AC-002 resolves on the proven-active branch and
+no key is removed. No silently-ignored key remains: `validateBudgetKeys` rejects anything outside
+this set.
+
+| sub-key | active consumer | behavior-affecting test |
+| --- | --- | --- |
+| `max_parent_packet_bytes` | `ReviewPreparationService.kt:139`, `DelegatedReviewLaunchBroker.kt:154` | added `ReviewPreparationServiceTest` "a configured parent-packet bound the default would accept rejects the same packet" |
+| `max_lane_launch_bytes` | `ReviewContextModels.kt:611` (`budgetOutcomeOrNull`), `DelegatedReviewWorkerLauncher.kt:66` | `ReviewContextModelsTest` "oversized compact launch returns typed budget evidence" |
+| `max_lane_evidence_bytes` | `FileSystemReviewEvidenceBroker.kt:313` | `ParallelCodeReviewRegressionTest.kt:170` |
+| `max_evidence_result_bytes` | `FileSystemReviewEvidenceBroker.kt:309` | `ParallelCodeReviewRegressionTest.kt:143` |
+| `max_lane_result_bytes` | `ReviewBudgetEvaluator.laneResultOutcome` | `ParallelCodeReviewRegressionTest.kt:98`, `ParallelLaneIsolationTest.kt:85` |
+| `max_assignment_expansions` | `ReviewPreparationService.kt:71`, `FileSystemReviewEvidenceBroker.kt:159` | `ReviewPreparationServiceTest` "an assignment exceeding the configured expansion bound is rejected" |
+| `max_specialist_tool_calls` | `FileSystemReviewEvidenceBroker.kt:243` | `FileSystemReviewEvidenceBrokerTest.kt:553` |
+| `max_specialist_model_turns` | `FileSystemReviewEvidenceBroker.kt:256` | `ParallelCodeReviewRegressionTest.kt:122` |
+| `provider_token_thresholds.*` | `FileSystemReviewEvidenceBroker.kt:284` | `ParallelCodeReviewRegressionTest.kt:197,223` |
+
+### Legacy-configuration contract (AC-003)
+
+No `review_context_budget` key was removed, so the removal branch is vacuous. The contract is strict
+inside the object and tolerant at the document root, and both directions are now covered:
+
+- strict: `validateBudgetKeys` raises `MalformedRepoLocalConfigError` naming `review_context_budget.<key>`
+  — `FileSystemRepoLocalConfigTest` "review context budget rejects an unsupported nested key naming it"
+  and the pre-existing "rejects unknown nested keys before launch".
+- accepted set: `FileSystemRepoLocalConfigTest` "review context budget accepts exactly the consumed key set"
+  pins all nine keys with non-default values, so a future removal cannot pass silently.
+- tolerant root: pre-existing "unknown future keys are tolerated without error".
+
+### Deletion and rename record
+
+- Deleted `ReviewAutoEligibility` and the `eligibility` parameter from
+  `ReviewExecutionModePolicy.resolve` / `resolveWithRule`; deleted the private
+  `resolveAutoByEligibility` and `ParallelCodeReviewRunner.HIGH_RISK_SIGNAL`.
+- Renamed `ELIGIBILITY_RULE` (`auto_depth_by_size_and_risk_eligibility`) to `DEFAULT_RULE`
+  (`auto_depth_default`). The string is behavior-neutral: `ParallelCodeReviewRunner` keeps only
+  `.resolvedMode`, and the persisted `deciding_rule` values come from
+  `FeatureTaskRuntimeReviewPassSequence`, which is untouched and still emits
+  `auto_depth_by_pass_number:*`. `goal-subtask-review-state-schema.yaml` stores `deciding_rule` as a
+  free string with no enum.
+- Resolved depth is unchanged in every case: `auto` still resolves to `inline`.
+- Docs reconciled: `orchestration/review-orchestrator/PLAYBOOK.md:58`, `README.md:111`,
+  `docs/capabilities.md:67`, `docs/getting-started.md:253`,
+  `docs/getting-started-for-teams.md:63`. `docs/review-telemetry.md` needed no change because the
+  accepted key set did not change.
+- Post-change sweep: `grep -rn "auto_depth"` and `grep -rnw ReviewAutoEligibility` show no stale
+  reference outside `.feature-specs/`.
+
+### Known pre-existing failure
+
+`CliCodeReviewParallelRuntimeTest`'s 8 install-staging failures reproduce on a clean `main` worktree
+and are recorded in the subtask 1 triage above. They are not attributed to this slice.

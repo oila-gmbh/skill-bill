@@ -250,7 +250,7 @@ Choose standalone review execution explicitly with:
 /bill-code-review mode:delegated
 ```
 
-Omitting `mode:` is equivalent to `mode:delegated`. Pass `mode:auto` explicitly for automatic eligibility-based selection. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
+Omitting `mode:` is equivalent to `mode:delegated`. Pass `mode:auto` explicitly to resolve depth through the named auto rules. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
 
 ## Runtime Fallback Boundary
 

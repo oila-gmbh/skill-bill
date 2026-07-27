@@ -190,8 +190,6 @@ data class ReviewExpansionRecord(
     ).let { canonicalFields(*it.toTypedArray()) }
 }
 
-data class ReviewAutoEligibility(val oversized: Boolean, val highRisk: Boolean, val layeredStack: Boolean)
-
 data class ProviderTokenThresholds(
   val inputTokens: Long = 40_000,
   val cachedInputTokens: Long = 30_000,
