@@ -6,6 +6,7 @@ import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
+import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.launcher.agentrun.NativeReviewOperationBoundary
 import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
@@ -22,6 +23,7 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -431,5 +433,237 @@ class AgentRunCommandBuildersTest {
     ) = error("unused")
     override fun accounting() = error("unused")
     override fun terminalOutcome() = error("unused")
+  }
+
+  @Test
+  fun `cursor normal launch emits documented flags, workspace, prompt, timeout, environment, non-PTY, inherited approvals`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request())
+
+    assertEquals(
+      listOf(
+        "agent",
+        "--print",
+        "--force",
+        "--trust",
+        "--approve-mcps",
+        "--workspace",
+        "/tmp/skillbill-agent-run",
+        "--output-format",
+        "stream-json",
+      ),
+      command.command,
+    )
+    assertEquals(InstallAgent.CURSOR.id, command.command.first())
+    assertEquals("/tmp/skillbill-agent-run", command.workingDirectory.toString())
+    assertEquals(3.seconds, command.timeout)
+    assertEquals("Phase: implement", command.stdinText)
+    assertFalse(command.usePtyStdio)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, command.idlePolicy)
+    assertEquals("1", command.environment["SKILL_BILL_GOAL_CONTINUATION"])
+    assertTrue(command.inheritEnvironment)
+    assertTrue(command.environmentPassthroughKeys.isEmpty())
+  }
+
+  @Test
+  fun `cursor streaming launch adds --stream-partial-output and OUTPUT_EXTENDED idle policy`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request().copy(streamOutputForLiveness = true))
+
+    assertTrue(command.command.contains("--stream-partial-output"))
+    assertEquals(AgentRunIdlePolicy.OUTPUT_EXTENDED, command.idlePolicy)
+  }
+
+  @Test
+  fun `cursor read-only phase uses HEARTBEAT_EXTENDED idle policy`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request().copy(readOnlyPhase = true))
+
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, command.idlePolicy)
+  }
+
+  @Test
+  fun `cursor model-only directive emits --model flag`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request(model = "claude-opus-4-8"))
+
+    assertTrue(command.command.contains("--model"))
+    val modelIndex = command.command.indexOf("--model")
+    assertEquals("claude-opus-4-8", command.command[modelIndex + 1])
+  }
+
+  @Test
+  fun `cursor model-plus-effort directive merges into bracket syntax`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request(model = "claude-opus-4-8", effort = "high"))
+
+    assertTrue(command.command.contains("--model"))
+    val modelIndex = command.command.indexOf("--model")
+    assertEquals("claude-opus-4-8[effort=high]", command.command[modelIndex + 1])
+  }
+
+  @Test
+  fun `cursor effort directive without model fails loudly`() {
+    val builder = CursorAgentRunCommandBuilder()
+
+    val exception = assertFailsWith<IllegalArgumentException> {
+      builder.build(request(effort = "high"))
+    }
+
+    assertContains(exception.message ?: "", "effort directive requires a model directive")
+  }
+
+  @Test
+  fun `cursor model already with bracket parameters accepts identical duplicate effort`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request(model = "claude-opus-4-8[effort=high]", effort = "high"))
+
+    val modelIndex = command.command.indexOf("--model")
+    assertEquals("claude-opus-4-8[effort=high]", command.command[modelIndex + 1])
+  }
+
+  @Test
+  fun `cursor model already with bracket parameters rejects conflicting effort loudly`() {
+    val builder = CursorAgentRunCommandBuilder()
+
+    val exception = assertFailsWith<IllegalArgumentException> {
+      builder.build(request(model = "claude-opus-4-8[effort=high]", effort = "medium"))
+    }
+
+    assertContains(exception.message ?: "", "Conflicting effort directive")
+    assertContains(exception.message ?: "", "effort='high'")
+    assertContains(exception.message ?: "", "effort='medium'")
+  }
+
+  @Test
+  fun `cursor decoder extracts result and usage from happy-path JSONL`() {
+    val jsonl = """{"type":"partial","delta":"increment"}
+{"type":"result","result":"PLAN-OK","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"total_tokens":150}}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("PLAN-OK", decoded.text)
+    assertEquals(100, decoded.inputTokens)
+    assertEquals(20, decoded.cachedInputTokens)
+    assertEquals(50, decoded.outputTokens)
+    assertEquals(150, decoded.totalTokens)
+  }
+
+  @Test
+  fun `cursor decoder terminal result wins over partial deltas`() {
+    val jsonl = """{"type":"partial","delta":"partial"}
+{"type":"partial","delta":" delta"}
+{"type":"result","result":"final","usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15}}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("final", decoded.text)
+    assertEquals("final", decoded.text)
+    assertEquals(15, decoded.totalTokens)
+  }
+
+  @Test
+  fun `cursor decoder tolerates malformed lines and falls back to raw stdout`() {
+    val jsonl = """invalid line
+{"type":"result","result":"success","usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}
+more invalid"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("success", decoded.text)
+    assertEquals(8, decoded.totalTokens)
+  }
+
+  @Test
+  fun `cursor decoder on fully malformed input returns raw stdout`() {
+    val malformed = "not json at all"
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(malformed)
+
+    assertEquals(malformed, decoded.text)
+  }
+
+  @Test
+  fun `cursor decoder on empty stream returns empty text`() {
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode("")
+
+    assertEquals("", decoded.text)
+  }
+
+  @Test
+  fun `cursor decoder on error event returns empty text`() {
+    val jsonl = """{"type":"error","error":"Provider error occurred"}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("", decoded.text)
+  }
+
+  @Test
+  fun `cursor decoder on decoded envelope with no terminal result returns empty text`() {
+    val jsonl = """{"type":"partial","delta":"only"}
+{"type":"system","message":"done"}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("", decoded.text)
+  }
+
+  @Test
+  fun `cursor decoder bounds oversized input and stops processing`() {
+    val hugeLine = "x".repeat(15_000_000)
+    val jsonl = """{"type":"result","result":"early"}
+$hugeLine
+{"type":"result","result":"late","usage":{"total_tokens":1}}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("early", decoded.text)
+  }
+
+  @Test
+  fun `cursor isolated review forwards provider passthrough keys`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
+    )
+    val command = builder.build(isolated)
+
+    assertTrue(
+      command.environmentPassthroughKeys.contains("CURSOR_API_KEY"),
+      "Isolated cursor review worker must forward CURSOR_API_KEY",
+    )
+    assertTrue(
+      command.environmentPassthroughKeys.contains("HTTP_PROXY"),
+      "Isolated cursor review worker must forward proxy keys",
+    )
+  }
+
+  @Test
+  fun `cursor builder sets empty passthrough keys when review evidence broker is absent`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request())
+
+    assertTrue(
+      command.environmentPassthroughKeys.isEmpty(),
+      "Non-isolated cursor run must not passthrough provider keys",
+    )
+  }
+
+  @Test
+  fun `governed specialist ConversationIsolation request follows requireProcessLaunch contract for cursor`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
+    )
+
+    assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
+    assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
   }
 }

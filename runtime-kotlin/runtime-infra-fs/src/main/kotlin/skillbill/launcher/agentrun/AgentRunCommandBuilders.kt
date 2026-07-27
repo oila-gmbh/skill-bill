@@ -364,6 +364,10 @@ private val CODEX_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
 
 private val JUNIE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = PROXY_PASSTHROUGH_KEYS
 
+private val CURSOR_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+  "CURSOR_API_KEY",
+) + PROXY_PASSTHROUGH_KEYS
+
 /**
  * Claude Code sizes its own auto-compaction trigger against the model's context window, so a phase
  * on a 1M-context model never compacts at the few-hundred-thousand tokens a phase actually reaches.
@@ -535,6 +539,84 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
       environmentPassthroughKeys =
       if (request.reviewEvidenceBroker != null) JUNIE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
+  }
+}
+
+class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
+  override val agent: InstallAgent = InstallAgent.CURSOR
+  override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
+  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
+
+  override fun build(request: SkillRunRequest): AgentRunCommand {
+    requireProcessLaunch(request, reviewIsolation)
+    val streaming = request.streamOutputForLiveness
+    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
+      command = buildList {
+        add("agent")
+        add("--print")
+        add("--force")
+        add("--trust")
+        add("--approve-mcps")
+        add("--workspace")
+        add(request.repoRoot.toString())
+        add("--output-format")
+        add("stream-json")
+        if (streaming) add("--stream-partial-output")
+        request.modelOverride?.let { model ->
+          val modelArg = if (request.effortOverride != null) {
+            mergeModelEffort(model, request.effortOverride)
+          } else {
+            model
+          }
+          add("--model")
+          add(modelArg)
+        }
+        request.effortOverride?.let { effort ->
+          if (request.modelOverride == null) {
+            require(false) {
+              "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
+            }
+          }
+        }
+      },
+      workingDirectory = request.repoRoot,
+      timeout = request.timeout,
+      stdinText = launchPrompt(request),
+      environment = goalContinuationEnvironment(request),
+      inheritEnvironment = request.reviewEvidenceBroker == null,
+      conversationIsolation = request.conversationIsolation,
+      idlePolicy = when {
+        streaming -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+        else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
+      },
+      environmentPassthroughKeys =
+      if (request.reviewEvidenceBroker != null) CURSOR_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
+    )
+  }
+
+  private fun mergeModelEffort(model: String, effort: String): String {
+    val effortPrefix = "[effort="
+    val effortSuffix = "]"
+
+    fun extractExistingEffort(modelString: String): String? {
+      val effortStart = modelString.indexOf(effortPrefix)
+      if (effortStart == -1) return null
+      val effortEnd = modelString.indexOf(effortSuffix, effortStart)
+      if (effortEnd == -1) return null
+      return modelString.substring(effortStart + effortPrefix.length, effortEnd)
+    }
+
+    val existingEffort = extractExistingEffort(model)
+    return when {
+      existingEffort == null -> "$model$effortPrefix$effort$effortSuffix"
+      existingEffort == effort -> model
+      else -> {
+        require(false) {
+          "Conflicting effort directive: model string '$model' declares effort='$existingEffort', but directive specifies effort='$effort'. Remove the conflict from the execution_matrix or phase assignment."
+        }
+      }
+    }
   }
 }
 

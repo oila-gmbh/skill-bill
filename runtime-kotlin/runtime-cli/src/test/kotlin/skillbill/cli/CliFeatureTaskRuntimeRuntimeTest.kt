@@ -2216,3 +2216,123 @@ private class FakeRuntimeGitOperations(
       )
     }
 }
+
+class CursorAgentRuntimeCliTest {
+  @Test
+  fun `cursor is accepted for feature-task run`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "cursor")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
+    assertTrue(
+      launcher.requests.all { it.agentId == "cursor" },
+      "All phases should use cursor agent",
+    )
+  }
+
+  @Test
+  fun `cursor is accepted for feature-task resume`() {
+    val fixture = runtimeFixture()
+    val interruptedLauncher = InterruptAtImplementLauncher()
+
+    val firstRun = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "cursor")),
+      fixture.context(interruptedLauncher),
+    )
+    assertEquals(1, firstRun.exitCode, firstRun.stdout)
+    val workflowId = firstRun.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+
+    val resumedLauncher = RecordingPhaseLauncher()
+    val resumed = CliRuntime.run(
+      fixture.resumeCommand(workflowId),
+      fixture.context(resumedLauncher),
+    )
+
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    assertEquals(ALL_PHASES.dropWhile { it != "implement" }, resumedLauncher.phaseOrder())
+    assertTrue(
+      resumedLauncher.requests.all { it.agentId == "cursor" },
+      "All resumed phases should use cursor agent",
+    )
+  }
+
+  @Test
+  fun `cursor goal-child invocation route succeeds`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.goalChildCommand(agentId = "cursor"),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(1, launcher.requests.size)
+    assertEquals("cursor", launcher.requests.single().agentId)
+  }
+
+  @Test
+  fun `cursor accepted for phase-agent override`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--phase-agent", "plan=cursor")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(ALL_PHASES.size, launcher.requests.size)
+
+    val planRequest = launcher.requests.single { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "plan" }
+    assertEquals("cursor", planRequest.agentId)
+
+    val nonPlanRequests = launcher.requests.filter { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) != "plan" }
+    assertTrue(nonPlanRequests.all { it.agentId != "cursor" }, "Non-plan phases should not use cursor")
+  }
+
+  @Test
+  fun `cursor accepted for run-wide agent override`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent-override", "cursor")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertTrue(
+      launcher.requests.all { it.agentId == "cursor" },
+      "All phases should use cursor override",
+    )
+  }
+
+  @Test
+  fun `cursor accepted for parallel review agent selection`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(
+        extra = listOf(
+          "--code-review-mode",
+          "delegated",
+          "--parallel-review-agent",
+          "cursor",
+        ),
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val reviewRequest = launcher.requests.single { phaseIdFromPrompt(it.skillRunRequest.promptOverride.orEmpty()) == "review" }
+    assertEquals("cursor", reviewRequest.agentId)
+  }
+}

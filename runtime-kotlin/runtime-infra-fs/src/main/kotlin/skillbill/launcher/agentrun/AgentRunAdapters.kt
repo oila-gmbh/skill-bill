@@ -111,6 +111,7 @@ fun interface AgentRunOutputDecoder {
     val CLAUDE_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeJson(stdout) }
     val CLAUDE_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeStreamJson(stdout) }
     val CODEX_JSONL = AgentRunOutputDecoder { stdout -> decodeCodexJsonl(stdout) }
+    val CURSOR_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeCursorStreamJson(stdout) }
   }
 }
 
@@ -172,6 +173,45 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   )
 }
 
+private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
+  var terminalText: String? = null
+  var usage: com.fasterxml.jackson.databind.JsonNode? = null
+  var decodedEnvelope = false
+  var errorEvent = false
+  var totalByteCount = 0
+  val maxTotalBytes = 10_000_000
+
+  stdout.lineSequence().asSequence().takeWhile { line ->
+    totalByteCount += line.toByteArray().size
+    totalByteCount <= maxTotalBytes
+  }.filter(String::isNotBlank).forEach { line ->
+    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
+      decodedEnvelope = true
+      when (event.path("type").takeIf { it.isTextual }?.asText()) {
+        "error" -> errorEvent = true
+        "result" -> {
+          terminalText = event.path("result").takeIf { it.isTextual }?.asText()
+          event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
+        }
+      }
+    }
+  }
+
+  return when {
+    errorEvent -> DecodedAgentRunOutput("")
+    decodedEnvelope && terminalText == null -> DecodedAgentRunOutput("")
+    !decodedEnvelope -> DecodedAgentRunOutput(stdout)
+    else -> DecodedAgentRunOutput(
+      text = terminalText ?: "",
+      inputTokens = usage?.longOrNull("input_tokens"),
+      cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
+      outputTokens = usage?.longOrNull("output_tokens"),
+      reasoningTokens = usage?.longOrNull("reasoning_tokens"),
+      totalTokens = usage?.longOrNull("total_tokens"),
+    )
+  }
+}
+
 private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
@@ -190,6 +230,7 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
   ClaudeAgentRunCommandBuilder(),
   CodexAgentRunCommandBuilder(),
   JunieAgentRunCommandBuilder(),
+  CursorAgentRunCommandBuilder(),
 ).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
   .associate { builder ->
     builder.agent to ProcessAgentRunAdapter(
