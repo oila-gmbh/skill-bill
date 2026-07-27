@@ -246,3 +246,66 @@ inside the object and tolerant at the document root, and both directions are now
 
 `CliCodeReviewParallelRuntimeTest`'s 8 install-staging failures reproduce on a clean `main` worktree
 and are recorded in the subtask 1 triage above. They are not attributed to this slice.
+
+## Subtask 3 — orphan contract assets
+
+Scope: the four suspect schema families named in `spec.md:21`. Each was traced
+producer -> serialization/persistence seam -> resource copy -> parser -> validator -> consumers
+before any disposition. Verification command shared by every family (word-boundary symbol and
+wire-name sweep across Kotlin, Gradle, resources, contracts, skills, docs, scripts, manifests,
+excluding `build/`):
+
+```
+grep -rn "<schema-file-name>\|<SchemaPaths symbol>\|<CONTRACT_VERSION const>\|<$id>" \
+  runtime-kotlin orchestration skills docs scripts --include="*.kt" --include="*.kts" \
+  --include="*.yaml" --include="*.md" --include="*.sh" | grep -v "/build/"
+```
+
+### Family dispositions (AC-001, AC-002, AC-004)
+
+| family | producer | persistence seam | resource copy | runtime validator | parity coverage | disposition |
+| --- | --- | --- | --- | --- | --- | --- |
+| `feature-task-execution-identity` | `GoalRunnerWorkflowStores.kt:302-303`, `FeatureTaskContinuationLookupService` | `FeatureTaskExecutionIdentity.contractVersion` persisted via `saveFeatureTaskExecutionIdentity`; re-validated on read at `GoalRunnerWorkflowStores.kt:280,302` | `copyFeatureTaskExecutionIdentitySchema` (`runtime-infra-fs/build.gradle.kts:278`), consumed at `:491,:518` | none reads the YAML; `FeatureTaskExecutionIdentityPolicy` validates in Kotlin against `FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION` | **added** `FeatureTaskExecutionIdentitySchemaContractVersionTest` | **active — blocker** |
+| `feature-task-runtime-worker-ownership` | `FeatureTaskRuntimeWorkerCoordinator` lease claim path | `FeatureTaskRuntimeWorkerOwnership.contractVersion` persisted and loud-failed on read at `WorkflowStateStore.kt:494-531` (`InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError`); crash reconciliation replays these rows | `copyFeatureTaskRuntimeWorkerOwnershipSchema` (`build.gradle.kts:265`), consumed at `:492,:519` | none reads the YAML; `WorkflowStateStore.kt:510` validates in Kotlin against the const | `FeatureTaskRuntimeWorkerOwnershipSchemaContractVersionTest` | **active — blocker** |
+| `goal-subtask-review-state` | `FeatureTaskRuntimeGoalContinuationRecorder`, `GoalRunnerWorkflowStores.kt:1711` | `GoalSubtaskReviewState.contractVersion` (`GoalSubtaskReviewState.kt:343-346`) persisted per subtask; `GoalSubtaskReviewStateLegacyContractTest` pins the 0.1 -> 0.2 record migration | `copyGoalSubtaskReviewStateSchema` (`build.gradle.kts:236`) | none reads the YAML; `GoalSubtaskReviewState` parses and loud-fails in Kotlin | `GoalSubtaskReviewStateContractVersionTest` (scaffold) + `GoalSubtaskReviewStateSchemaContractVersionTest` (contracts) | **active — blocker** |
+| `review-context` | `ReviewPreparationService.composePacket` | packet/assignment envelopes | `copyReviewContextSchema` (`build.gradle.kts:47`) | **yes** — `ReviewContextSchemaValidator` reads `ReviewContextSchemaPaths.CLASSPATH_RESOURCE` and is bound as `ReviewContextEnvelopeValidator` at `RuntimeComponent.kt:629-631` | `ReviewContextSchemaContractVersionTest` | **active** (subtask 2 decision, not reversed) |
+
+### Blockers: why the three durable-record schemas are not removable (AC-004, AC-002)
+
+Lexical reachability of the YAML asset is parity-test-only for all three, but AC-002's veto list is
+not lexical. Each family fails the removal test on a concrete durable-record dependency:
+
+- **execution-identity** — every continued feature-task workflow persists a
+  `feature_task_execution_identity` row carrying `contract_version: "0.1"`, and
+  `FeatureTaskExecutionIdentityPolicy.validate` rejects any other value on read. Existing databases
+  in the field already hold these rows. The YAML is the only specification of that on-disk shape.
+- **worker-ownership** — worker-lease rows carry `contract_version: "0.1"`, enforced at the
+  `WorkflowStateStore` read seam that crash reconciliation depends on. `CliGoalRuntimeTest:1396`
+  writes the const directly when seeding a lease row.
+- **goal-subtask-review-state** — this very run persists goal-subtask review state at
+  `contract_version: "0.2"`, and a legacy-record migration path from `0.1` is live and tested.
+
+In all three cases the `..._CONTRACT_VERSION` const is live product surface, not schema residue:
+deleting the YAML would leave a durable, version-gated record with no contract of record, and would
+break the governed contract recipe in `AGENTS.md` ("Every YAML under `orchestration/contracts/` is a
+runtime contract", with a mandated Kotlin const plus parity test). Removal, and any decision to add a
+YAML-backed runtime validation seam in place of the hand-written Kotlin checks, requires a separate
+contract-versioning decision with a record-migration plan — out of scope for a dead-code sweep and
+forbidden here by AC-005.
+
+Gap closed in this subtask: execution-identity was the one family with neither a runtime validator
+nor parity coverage, so its schema could drift from
+`FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION` silently. Added
+`runtime-kotlin/runtime-infra-fs/src/test/kotlin/skillbill/contracts/workflow/FeatureTaskExecutionIdentitySchemaContractVersionTest.kt`,
+mirroring the worker-ownership parity test, which also completes step 3 of the `AGENTS.md` contract
+recipe for that family. No validation seam was added and no loud-fail behavior was weakened.
+
+### Removals (AC-003, AC-005, AC-006)
+
+None. No family reached the `removable` disposition, so the deletion unit, the post-deletion residue
+sweep, and the JAR-bundling delta are vacuous for this subtask: the bundled resource set under
+`skillbill/contracts/` is unchanged by design, and the four schemas must all still be present. No
+database table, column, or historical migration was touched (AC-005 holds by scope exclusion,
+verifiable in the branch diff). AC-006's evidence is that the retained resource set and the contract,
+persistence, workflow, migration, and configuration-cache suites stay green with the added parity
+test.
