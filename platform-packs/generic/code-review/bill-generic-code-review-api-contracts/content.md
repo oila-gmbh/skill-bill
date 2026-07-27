@@ -6,10 +6,21 @@ internal-for: bill-code-review
 
 # Generic API Contracts Review
 
-## Review Focus
+## Focus
 
 Inspect request, response, event, command, and file-format boundaries. Verify required and optional fields, nullability, defaults, versioning, validation, error identity, pagination, idempotency, and backward compatibility for existing consumers.
 
-## Evidence
+## Ignore
 
-Identify the consumer expectation and the exact changed representation or behavior that breaks it. Treat internal refactors as non-findings when the external contract is preserved.
+- Internal representation changes with no consumer-visible contract effect.
+
+## Applicability
+
+Use when changes affect requests, responses, validation, schemas, serialization, or errors.
+
+## Project-Specific Rules
+
+### Contract Rules
+
+- Require each changed `external contract` to preserve documented compatibility and validation; reject silent representation drift that breaks a consumer.
+- For Blocker or Major findings, describe the concrete compatibility or validation failure scenario.

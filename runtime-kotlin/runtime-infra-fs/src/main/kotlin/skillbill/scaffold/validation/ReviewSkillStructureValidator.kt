@@ -86,11 +86,15 @@ internal object ReviewSkillStructureValidator {
     val routing = manifest["routing_signals"] as? Map<*, *> ?: emptyMap<Any?, Any?>()
     val strongSignals = (routing["strong"] as? List<*>)?.filterIsInstance<String>().orEmpty()
     val tieBreakers = (routing["tie_breakers"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+    val fallbackOnly = (manifest["fallback_capabilities"] as? List<*>)
+      ?.filterIsInstance<String>()
+      ?.isNotEmpty() == true
     return buildList {
       strongSignals.filter { it.matches(Regex("\\*?\\.[A-Za-z0-9]+")) }.forEach { signal ->
         val counterpart = if (signal.startsWith("*.")) signal.removePrefix("*") else "*$signal"
         if (counterpart !in strongSignals) add(violation(manifestFile, "routing bare/glob pair"))
       }
+      if (fallbackOnly) return@buildList
       if (tieBreakers.none(::statesPositivePackDominance)) {
         add(violation(manifestFile, "routing positive pack dominance"))
       }

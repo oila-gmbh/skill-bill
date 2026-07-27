@@ -6,10 +6,21 @@ internal-for: bill-code-review
 
 # Generic Platform Correctness Review
 
-## Review Focus
+## Focus
 
 Check value and state transitions, ordering, cancellation, cleanup, error propagation, and lifecycle boundaries. Look for stale state, lost updates, duplicate effects, unsafe retries, invalid defaults, and behavior that depends on unspecified ordering.
 
-## Evidence
+## Ignore
 
-Construct a concrete execution sequence from the diff. Report only when that sequence reaches an incorrect observable result, leak, crash, hang, or invariant violation.
+- Style preferences that do not violate runtime or lifecycle behavior.
+
+## Applicability
+
+Use when changes affect lifecycle, concurrency, state transitions, errors, or ordering.
+
+## Project-Specific Rules
+
+### Correctness Rules
+
+- Require each changed `state transition` to preserve its documented invariant; reject races or ordering gaps that make an invalid state reachable.
+- For Blocker or Major findings, describe the concrete invalid-state or ordering failure scenario.

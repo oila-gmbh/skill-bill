@@ -6,10 +6,21 @@ internal-for: bill-code-review
 
 # Generic UX and Accessibility Review
 
-## Review Focus
+## Focus
 
 Verify essential tasks work with keyboard or equivalent non-pointer input, meaningful names and roles, predictable focus, readable scaling, sufficient non-color cues, localized text, stable announcements, and recoverable errors.
 
-## Evidence
+## Ignore
 
-Name the affected user, blocked or degraded task, interaction sequence, and missing semantic or behavioral contract. Do not require a specific UI toolkit.
+- UI rendering correctness and security concerns owned by their respective specialists.
+
+## Applicability
+
+Use when changes affect task completion, semantics, keyboard input, focus, or localization.
+
+## Project-Specific Rules
+
+### UX and Accessibility Rules
+
+- Require each changed `interaction` to expose semantic state and a complete keyboard path; reject focus loss or unlabeled controls that block the task.
+- For Blocker or Major findings, describe the concrete accessibility or task-completion failure scenario.

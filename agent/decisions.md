@@ -24,3 +24,4 @@ Decision: Add a governed workflow contract under `orchestration/workflow-contrac
 Reason: Durable workflow state belongs above reusable skills. This keeps stack routing and rubrics in standalone skills while giving long-running parent flows one authoritative place for step ids, artifacts, resume semantics, and parent-owned telemetry.
 Alternatives considered: Turning every skill into a workflow was rejected because it would duplicate leaf-skill contracts and blur the stable user-facing command surface.
 Revisit when: Skill Bill is ready to persist workflow state in runtime code or when a second top-level orchestrator adopts the contract.
+[.mailmap](../.mailmap)

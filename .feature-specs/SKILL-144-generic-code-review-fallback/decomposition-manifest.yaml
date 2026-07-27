@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Define the fallback contract, generic pack, and routing"
   spec_path: ".feature-specs/SKILL-144-generic-code-review-fallback/spec_subtask_1_fallback_contract_and_routing.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-100002-2fdk"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
