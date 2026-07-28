@@ -103,12 +103,6 @@ data class ReviewFinishedTelemetry(
   val reviewContextAccounting: Map<String, Any?>? = null,
 )
 
-data class ReviewStatsSnapshot(
-  val stats: ReviewFindingStats,
-  val health: ReviewHealthStats,
-  val reviewRunId: String?,
-)
-
 data class FeatureImplementChildStepCoverageStats(
   val runsWithChildSteps: Int,
   val reviewChildStepRuns: Int,

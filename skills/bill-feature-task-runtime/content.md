@@ -136,12 +136,13 @@ Use the completion signal for the launch mode:
    to return its structured result.
 2. For a detached run where the harness provides background-exit notification,
    let that notification re-invoke the agent once with the result; do not poll.
-3. For a detached run where the harness provides no background-exit
-   notification, print the monitoring block, state that the run continues,
-   and end the turn. When the user next addresses the session, retrieve the
-   original detached command's return once. If it has completed, report its
-   structured result; if it is still running, state that the run continues and
-   end the turn without polling. Do not substitute a
+3. When the harness provides no background-exit notification, do not detach.
+   Keep ownership of the original foreground process and use the harness's
+   blocking process-completion primitive to await that process's exit. Waiting
+   on the original process is a completion signal, not progress polling: do not
+   re-read status, logs, workflow state, or process output while it runs. If the
+   harness cannot keep or await the original process, loud-fail before launch
+   because the session cannot guarantee terminal delivery. Do not substitute a
    `skill-bill feature-task status <workflow_id>` snapshot for the structured
    terminal result.
 

@@ -225,12 +225,6 @@ data class GoalRunnerStopReport(
   val lastResumableStep: String,
 )
 
-data class GoalRunnerCompletedReport(
-  val issueKey: String,
-  val pullRequestUrl: String?,
-  val subtasksCompleted: Int,
-)
-
 sealed interface GoalRunnerRunReport {
   val issueKey: String
   val attemptedSubtasks: List<Int>

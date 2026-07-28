@@ -37,10 +37,9 @@ dependencies {
   implementation(libs.jackson.dataformat.yaml)
   ksp(libs.kotlin.inject.compiler)
   // SKILL-52.2 subtask 5: runtime-infra-fs / runtime-infra-http stay on the
-  // test classpath because `RuntimeModuleSmokeTest` imports concrete runtime
-  // classes (`InstallRuntime`, `LauncherRuntime`, `NativeAgentRuntime`,
-  // `ScaffoldRuntime`, `TelemetryRuntime`). Test code crossing module boundaries
-  // for fixtures is expected; main source must not.
+  // test classpath because adapter-side tests import concrete runtime classes.
+  // Test code crossing module boundaries for fixtures is expected; main source
+  // must not.
   testImplementation(project(":runtime-infra-fs"))
   testImplementation(project(":runtime-infra-http"))
   testImplementation(project(":runtime-cli"))

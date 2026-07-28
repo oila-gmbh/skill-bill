@@ -21,6 +21,147 @@ if [[ $# -gt 0 ]]; then AGENTS=("$@"); else AGENTS=(copilot claude codex opencod
 declare -a RESULTS
 overall=0
 
+MCP_SMOKE_ROOT="$(mktemp -d)"
+python3 - "$MCP_BIN" "$MCP_SMOKE_ROOT" <<'PY'
+import json
+import os
+import subprocess
+import sys
+
+mcp_bin, smoke_root = sys.argv[1:]
+db_path = os.path.join(smoke_root, "metrics.db")
+env = os.environ.copy()
+env["SKILL_BILL_REVIEW_DB"] = db_path
+requests = [
+    {"jsonrpc": "2.0", "id": "initialize", "method": "initialize", "params": {}},
+    {"jsonrpc": "2.0", "id": "list", "method": "tools/list", "params": {}},
+    {
+        "jsonrpc": "2.0",
+        "id": "valid",
+        "method": "tools/call",
+        "params": {"name": "doctor", "arguments": {}},
+    },
+    {
+        "jsonrpc": "2.0",
+        "id": "invalid",
+        "method": "tools/call",
+        "params": {"name": "feature_task_prose_workflow_get", "arguments": {"unexpected": True}},
+    },
+    {
+        "jsonrpc": "2.0",
+        "id": "open",
+        "method": "tools/call",
+        "params": {
+            "name": "feature_task_prose_workflow_open",
+            "arguments": {
+                "issue_key": "SMOKE-1",
+                "repository_identity": "repo-root-realpath-v1:/install-smoke",
+                "governed_spec_path": ".feature-specs/SMOKE-1/spec.md",
+            },
+        },
+    },
+    {
+        "jsonrpc": "2.0",
+        "id": "unknown",
+        "method": "tools/call",
+        "params": {"name": "feature_task_runtime_stats", "arguments": {}},
+    },
+]
+
+def payload(response):
+    result = response["result"]
+    text = result["content"][0]["text"]
+    return result, json.loads(text)
+
+try:
+    completed = subprocess.run(
+        [mcp_bin],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        text=True,
+        capture_output=True,
+        env=env,
+        timeout=30,
+        check=False,
+    )
+    responses = {response["id"]: response for response in map(json.loads, completed.stdout.splitlines())}
+    checks = []
+    checks.append(("process_exit_0", completed.returncode == 0))
+    checks.append(("initialize", responses["initialize"]["result"]["serverInfo"]["name"] == "skill-bill"))
+    names = [tool["name"] for tool in responses["list"]["result"]["tools"]]
+    checks.append(("tools_list", "doctor" in names and "feature_task_runtime_stats" not in names))
+    valid_result, valid_payload = payload(responses["valid"])
+    checks.append(
+        (
+            "valid_tool_call",
+            valid_result["isError"] is False and valid_payload["version"] and valid_payload["db_path"] == db_path,
+        )
+    )
+    invalid_result, invalid_payload = payload(responses["invalid"])
+    checks.append(
+        (
+            "invalid_arguments",
+            invalid_result["isError"] is True and "unexpected" in invalid_payload["error"],
+        )
+    )
+    open_result, open_payload = payload(responses["open"])
+    workflow_id = open_payload["workflow_id"]
+    checks.append(("persisting_tool_call", open_result["isError"] is False and os.path.isfile(db_path)))
+
+    get_request = {
+        "jsonrpc": "2.0",
+        "id": "get",
+        "method": "tools/call",
+        "params": {
+            "name": "feature_task_prose_workflow_get",
+            "arguments": {"workflow_id": workflow_id},
+        },
+    }
+    persisted = subprocess.run(
+        [mcp_bin],
+        input=json.dumps(get_request) + "\n",
+        text=True,
+        capture_output=True,
+        env=env,
+        timeout=30,
+        check=False,
+    )
+    get_result, get_payload = payload(json.loads(persisted.stdout.strip()))
+    checks.append(
+        (
+            "persistence_round_trip",
+            persisted.returncode == 0
+            and get_result["isError"] is False
+            and get_payload["workflow_id"] == workflow_id,
+        )
+    )
+    unknown_result, unknown_payload = payload(responses["unknown"])
+    checks.append(
+        (
+            "typed_unknown_tool",
+            unknown_result["isError"] is True
+            and "Unknown MCP tool 'feature_task_runtime_stats'" in unknown_payload["error"],
+        )
+    )
+except Exception as error:
+    checks = [("installed_runtime_mcp_json_rpc", False)]
+    print(f"    diagnostic: {error}", file=sys.stderr)
+
+all_ok = all(ok for _, ok in checks)
+for name, ok in checks:
+    print(f"    [{'PASS' if ok else 'FAIL'}] {name}")
+print(f"  INSTALLED MCP RESULT: {'PASS' if all_ok else 'FAIL'}")
+sys.exit(0 if all_ok else 1)
+PY
+mcp_smoke_rc=$?
+rm -rf "$MCP_SMOKE_ROOT"
+if [[ $mcp_smoke_rc -eq 0 ]]; then
+  RESULTS+=("installed runtime-mcp JSON-RPC: PASS")
+else
+  RESULTS+=("installed runtime-mcp JSON-RPC: FAIL")
+  overall=1
+fi
+echo
+
 for agent in "${AGENTS[@]}"; do
   W="$(mktemp -d)"; FAKE="$W/home"; mkdir -p "$FAKE"
   # seed the agent's root so canonical (non-fallback) paths resolve, as if it were installed

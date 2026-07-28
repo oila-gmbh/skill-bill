@@ -47,15 +47,6 @@ class ImplementationOwnershipArchitectureTest {
         "runtime-infra-fs must own moved filesystem implementation $packagePath",
       )
     }
-
-    assertTrue(
-      Files.isRegularFile(
-        runtimeRoot.resolve(
-          "runtime-application/src/main/kotlin/skillbill/workflow/implement/FeatureImplementWorkflowRuntime.kt",
-        ),
-      ),
-      "workflow runtime-surface metadata must be owned outside runtime-core",
-    )
   }
 
   @Test
@@ -118,13 +109,13 @@ class ImplementationOwnershipArchitectureTest {
     val runtimeCoreBuild = runtimeRoot.resolve("runtime-core/build.gradle.kts").readText()
     assertNoRuntimeCorePublicProjectEdges(runtimeCoreBuild)
 
-    val allowedPackages = setOf("skillbill", "skillbill.di")
+    val allowedPackages = setOf("skillbill.di")
     val runtimeCoreSourceFiles = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))
     val runtimeCorePackages = runtimeCoreSourceFiles.mapNotNull(::packageName).toSet()
     assertEquals(
       allowedPackages,
       runtimeCorePackages,
-      "runtime-core source must stay limited to module metadata and DI composition.",
+      "runtime-core source must stay limited to DI composition.",
     )
     val nonCompositionPackages = runtimeCoreSourceFiles
       .mapNotNull { sourceFile ->
@@ -139,7 +130,7 @@ class ImplementationOwnershipArchitectureTest {
     assertEquals(
       emptyList(),
       nonCompositionPackages,
-      "runtime-core must reject every non-composition package beyond skillbill and skillbill.di.",
+      "runtime-core must reject every non-composition package beyond skillbill.di.",
     )
 
     val bannedImplementationImports = listOf(

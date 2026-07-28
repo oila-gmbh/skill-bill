@@ -355,7 +355,11 @@ class GoalWatchCommand(
   ).int().default(DEFAULT_GOAL_WATCH_REFRESHES)
   private val showUnchanged by option(
     "--show-unchanged",
-    help = "Print every refresh, including unchanged output. Useful as a debugging aid.",
+    help = "Compatibility option. Every refresh, including unchanged output, is shown by default.",
+  ).flag(default = false)
+  private val suppressUnchanged by option(
+    "--suppress-unchanged",
+    help = "Print only changed refreshes. The first and loop-ending refresh are always shown.",
   ).flag(default = false)
 
   override fun run() {
@@ -389,7 +393,7 @@ class GoalWatchCommand(
       )
       val endsLoop = stopReason.isNotEmpty()
       val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
-      val shouldPrintRefresh = endsLoop || showUnchanged || refreshChanged
+      val shouldPrintRefresh = endsLoop || showUnchanged || !suppressUnchanged || refreshChanged
       if (shouldPrintRefresh) {
         state.liveStdout(renderedRefresh)
         lastPrintedRefresh = normalizedRefresh

@@ -382,4 +382,23 @@ class ReviewPreparationServiceTest {
     assertEquals("assignment_expansions", failure.outcome.budgetKind)
     assertEquals("review_context_budget_exceeded", failure.outcome.type)
   }
+
+  @Test fun `a configured parent-packet bound the default would accept rejects the same packet`() {
+    val counting = ports()
+    val factPorts = ReviewFactPorts(counting, counting, counting, counting, counting, counting)
+    val defaults = ReviewPreparationService(factPorts, RecordingValidator())
+    val observedBytes = defaults.prepare(request()).packet.canonicalBytes
+
+    val bounded = ReviewPreparationService(
+      factPorts,
+      RecordingValidator(),
+      ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
+    )
+    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
+      bounded.prepare(request())
+    }
+    assertEquals("parent_packet_bytes", failure.outcome.budgetKind)
+    assertEquals(observedBytes - 1, failure.outcome.configuredLimit)
+    assertEquals(observedBytes, failure.outcome.observedValue)
+  }
 }

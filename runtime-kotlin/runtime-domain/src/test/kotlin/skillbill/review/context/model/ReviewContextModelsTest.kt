@@ -260,19 +260,18 @@ class ReviewContextModelsTest {
   }
 
   @Test fun `explicit mode is authoritative`() {
-    val risky = ReviewAutoEligibility(true, true, true)
     assertEquals(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.DEFAULT)
     assertEquals(
       ResolvedReviewExecutionMode.INLINE,
-      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.INLINE, risky),
+      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.INLINE),
     )
     assertEquals(
       ResolvedReviewExecutionMode.DELEGATED,
-      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.DELEGATED, ReviewAutoEligibility(false, false, false)),
+      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.DELEGATED),
     )
     assertEquals(
       ResolvedReviewExecutionMode.INLINE,
-      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.AUTO, risky),
+      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.AUTO),
     )
   }
 }

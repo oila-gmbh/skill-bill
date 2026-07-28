@@ -39,7 +39,7 @@ class RepositoryIdentitySchemaAdvertisementTest {
   @Test
   fun `the advertised pattern accepts canonical identities and rejects bare paths`() {
     val schema = requireNotNull(
-      McpToolRegistry.toolNamed("feature_task_continuation_lookup")
+      McpToolRegistry.toolNamed("feature_task_prose_workflow_open")
         ?.inputSchema
         ?.let(::repositoryIdentitySchemaOf),
     )

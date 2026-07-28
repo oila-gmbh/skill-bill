@@ -17,7 +17,6 @@ private const val LOW_EMPHASIS_ALPHA = 0.86f
 private const val DISABLED_CONTENT_ALPHA = 0.70f
 
 val SkillBillYellow = Color(0xFFF4C430)
-internal val SkillBillYellowDeep = Color(0xFFC99717)
 internal val SkillBillInk = Color(0xFF0B0B0D)
 val SkillBillOnYellow = SkillBillInk
 
@@ -29,10 +28,7 @@ val SkillBillFrameColor = Color(0xFF0D0D10)
 val SkillBillPanel = Color(0xFF121216)
 val SkillBillPanelRaised = Color(0xFF15151A)
 val SkillBillLine = Color(0xFF2A2A31)
-internal val SkillBillLineRaised = Color(0xFF34343B)
 val SkillBillText = Color(0xFFF6F3E7)
-internal val SkillBillTextWarm = Color(0xFFF7EFD3)
-internal val SkillBillTextSoft = Color(0xFFDDD8C7)
 val SkillBillMuted = Color(0xFFB7B1A0)
 val SkillBillSteel = Color(0xFFCFD4D8)
 val SkillBillSteelDark = Color(0xFF6F7882)
@@ -40,9 +36,7 @@ val SkillBillGreen = Color(0xFF60D394)
 val SkillBillRed = Color(0xFFFF5F57)
 val SkillBillAmber = Color(0xFFFFBD2E)
 val SkillBillTransparent = Color.Transparent
-internal val SkillBillMacGreen = Color(0xFF28C840)
 internal val SkillBillHeroGold = Color(0xFFE1AF1D)
-internal val SkillBillNodeText = Color(0xFFF5E8AE)
 internal val SkillBillLightBackground = Color(0xFFFAF8F1)
 internal val SkillBillLightSurface = Color(0xFFFFFFFF)
 internal val SkillBillLightSurfaceVariant = Color(0xFFF2EEE2)
@@ -53,16 +47,6 @@ internal val SkillBillLightSteel = Color(0xFF4E5A64)
 internal val SkillBillLightGreen = Color(0xFF146C43)
 internal val SkillBillLightRed = Color(0xFFBA1A1A)
 internal val SkillBillLightAmber = Color(0xFF755B00)
-
-object SkillBillBrandColors {
-  val Yellow = SkillBillYellow
-  val YellowDeep = SkillBillYellowDeep
-  val Green = SkillBillGreen
-  val Steel = SkillBillSteel
-  val SteelDark = SkillBillSteelDark
-
-  val all = listOf(Yellow, YellowDeep, Green, Steel, SteelDark)
-}
 
 internal val SkillBillLightColorScheme = lightColorScheme(
   primary = SkillBillLightAmber,
@@ -337,7 +321,6 @@ fun defaultSkillBillColors(
   warning = warning,
   statusAttention = statusAttention,
   info = info,
-  isMediaTheme = false,
 )
 
 fun defaultSkillBillLightColors(
@@ -366,36 +349,6 @@ fun defaultSkillBillLightColors(
   scrim = scrim,
   statusAttention = statusAttention,
   info = info,
-  isMediaTheme = false,
-)
-
-fun defaultSkillBillMediaColors(
-  backgroundVariant: Color = SkillBillBlack,
-  surfaceVariant: Color = SkillBillPanel,
-  onSurface: Color = SkillBillText,
-  outlineNormal: Color = SkillBillMuted,
-  outlineDisabled: Color = SkillBillMuted.copy(alpha = 0.6f),
-  onSurfaceInverted: Color = SkillBillInk,
-  separator: Color = SkillBillLine,
-  scrim: Color = Color.Black.copy(alpha = 0.54f),
-  positive: Color = SkillBillGreen,
-  warning: Color = SkillBillAmber,
-  statusAttention: Color = SkillBillRed,
-  info: Color = SkillBillSteel,
-): SkillBillColors = createSkillBillColors(
-  backgroundVariant = backgroundVariant,
-  surfaceVariant = surfaceVariant,
-  onSurface = onSurface,
-  outlineNormal = outlineNormal,
-  outlineDisabled = outlineDisabled,
-  onSurfaceInverted = onSurfaceInverted,
-  separator = separator,
-  scrim = scrim,
-  positive = positive,
-  warning = warning,
-  statusAttention = statusAttention,
-  info = info,
-  isMediaTheme = true,
 )
 
 @Suppress("LongParameterList")
@@ -412,7 +365,6 @@ private fun createSkillBillColors(
   warning: Color,
   statusAttention: Color,
   info: Color,
-  isMediaTheme: Boolean,
 ): SkillBillColors = SkillBillColors(
   backgroundVariant = backgroundVariant,
   surfaceVariant = surfaceVariant,
@@ -426,7 +378,6 @@ private fun createSkillBillColors(
   scrim = scrim,
   statusAttention = statusAttention,
   info = info,
-  isMediaTheme = isMediaTheme,
 )
 
 @Suppress("LongParameterList")
@@ -443,7 +394,6 @@ class SkillBillColors(
   info: Color,
   scrim: Color,
   statusAttention: Color,
-  isMediaTheme: Boolean,
 ) {
   var backgroundVariant by mutableStateOf(backgroundVariant, structuralEqualityPolicy())
     internal set
@@ -465,8 +415,6 @@ class SkillBillColors(
     internal set
   var scrim by mutableStateOf(scrim, structuralEqualityPolicy())
     internal set
-  var isMediaTheme by mutableStateOf(isMediaTheme, structuralEqualityPolicy())
-    internal set
   var statusAttention by mutableStateOf(statusAttention, structuralEqualityPolicy())
     internal set
   var info by mutableStateOf(info, structuralEqualityPolicy())
@@ -484,7 +432,6 @@ class SkillBillColors(
     warning: Color = this.warning,
     scrim: Color = this.scrim,
     statusAttention: Color = this.statusAttention,
-    isMediaTheme: Boolean = this.isMediaTheme,
     info: Color = this.info,
   ): SkillBillColors = SkillBillColors(
     backgroundVariant = backgroundVariant,
@@ -498,7 +445,6 @@ class SkillBillColors(
     warning = warning,
     scrim = scrim,
     statusAttention = statusAttention,
-    isMediaTheme = isMediaTheme,
     info = info,
   )
 }

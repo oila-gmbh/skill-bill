@@ -1,6 +1,5 @@
 package skillbill.architecture
 
-import skillbill.RuntimeModule
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -42,7 +41,6 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "versioned database migrations")
     assertContains(architecture, "contract DTOs")
     assertContains(architecture, "typed CLI presenter models")
-    assertContains(architecture, "RuntimeSurfaceContract")
     assertContains(architecture, "RuntimeContext")
     assertContains(architecture, "skillbill.model")
     assertContains(architecture, "`model` packages")
@@ -114,7 +112,7 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.workflow.implement",
         "skillbill.workflow.verify",
       ),
-      RuntimeModule.declaredSubsystemPackages.toSet(),
+      RuntimeModuleCatalog.declaredSubsystemPackages.toSet(),
     )
   }
 
@@ -124,19 +122,19 @@ class RuntimeArchitectureDocumentationTest {
     val settings = Files.readString(runtimeRoot.resolve("settings.gradle.kts"))
 
     assertEquals(
-      RuntimeModule.declaredGradleModules,
+      RuntimeModuleCatalog.declaredGradleModules,
       architecture.fencedTextListAfter("The Gradle module set is:"),
-      "ARCHITECTURE.md Gradle module list must match RuntimeModule.declaredGradleModules.",
+      "ARCHITECTURE.md Gradle module list must match RuntimeModuleCatalog.declaredGradleModules.",
     )
     assertEquals(
-      RuntimeModule.declaredGradleModules,
+      RuntimeModuleCatalog.declaredGradleModules,
       settings.includedGradleModules(),
-      "settings.gradle.kts include list must match RuntimeModule.declaredGradleModules.",
+      "settings.gradle.kts include list must match RuntimeModuleCatalog.declaredGradleModules.",
     )
     assertEquals(
-      RuntimeModule.declaredSubsystemPackages.toSet(),
+      RuntimeModuleCatalog.declaredSubsystemPackages.toSet(),
       architecture.fencedTextListAfter("The subsystem package set is:").toSet(),
-      "ARCHITECTURE.md subsystem package list must match RuntimeModule.declaredSubsystemPackages.",
+      "ARCHITECTURE.md subsystem package list must match RuntimeModuleCatalog.declaredSubsystemPackages.",
     )
   }
 

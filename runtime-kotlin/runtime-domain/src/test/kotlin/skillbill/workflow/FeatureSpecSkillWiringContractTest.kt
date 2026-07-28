@@ -315,6 +315,13 @@ class FeatureSpecSkillWiringContractTest {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
     val surfaces = mapOf("goal" to goal, "runtime" to runtime)
+
+    assertSharedCompletionRules(surfaces)
+    assertGoalCompletionRules(goal)
+    assertRuntimeCompletionRules(runtime)
+  }
+
+  private fun assertSharedCompletionRules(surfaces: Map<String, String>) {
     val sharedRules = listOf(
       "Do not run `skill-bill goal watch` in-session, at any interval or refresh count.",
       "Do not sleep, wait, or otherwise idle in order to re-read progress.",
@@ -324,26 +331,51 @@ class FeatureSpecSkillWiringContractTest {
       "one completion signal beats any number of short polls",
       "trimming a poll's\noutput does not make polling acceptable.",
       "There is no in-session transition relay; agent silence",
-      "The only permitted in-session surface is exactly one completion line, errors",
       "For a foreground run within the harness timeout",
       "where the harness provides background-exit notification",
-      "where the harness provides no background-exit",
-      "emit exactly one completion line",
+      "When the harness provides no background-exit notification, do not detach.",
+      "use the harness's\n   blocking process-completion primitive",
+      "Waiting\n   on the original process is a completion signal, not progress polling",
+      "loud-fail before launch",
       "Do not read back, summarize, or paraphrase run stdout",
     )
 
     surfaces.forEach { (name, content) ->
       sharedRules.forEach { rule -> assertContains(content, rule, message = "$name missing shared rule") }
       assertContains(content, "The terminal monitoring block is the user's live feed.")
-      assertContains(content, "retrieve the\n   original detached command's return once")
+      assertFalse(
+        content.contains("retrieve the\n   original detached command's return once"),
+        "$name must not defer terminal delivery until the user speaks",
+      )
       assertContains(content, "Do not substitute")
     }
+  }
 
+  private fun assertGoalCompletionRules(goal: String) {
     assertContains(goal, "Do not call `skill-bill goal status` on a timer or repeatedly to observe change.")
-    assertContains(goal, "`status`, completed/pending/blocked\ncounts, `pull_request_url`, and `blocked_reason`")
-    assertContains(goal, "goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241")
+    assertContains(goal, "The only permitted in-session surface is one bounded terminal notification")
+    assertContains(goal, "always emit a terminal notification")
+    assertContains(goal, "For\na clean completion, emit exactly two lines")
+    assertContains(goal, "goal SKILL-146: finished")
+    assertContains(
+      goal,
+      "summary: Example feature — 3/3 subtasks complete; PR https://github.com/…/pull/241",
+    )
+    assertContains(goal, "Keep the clean summary to one line")
+    assertContains(goal, "Do not reread files or\ninvoke another command to build it.")
     assertContains(goal, "goal SKILL-146: blocked at subtask 2 — <blocked_reason>")
     assertContains(goal, "goal SKILL-146: failed — <blocked_reason>")
+    assertContains(goal, "Launch `skill-bill goal` with `--no-live-output`.")
+    assertContains(goal, "Goal live output scales with\nwall-clock duration")
+    assertContains(goal, "feature-task-runtime `--monitor` is different")
+    assertFalse(goal.contains("Keep live output enabled"))
+    assertContains(goal, "For the user to follow the goal in their own terminal")
+    assertFalse(goal.contains("--max-refreshes"))
+  }
+
+  private fun assertRuntimeCompletionRules(runtime: String) {
+    assertContains(runtime, "The only permitted in-session surface is exactly one completion line, errors")
+    assertContains(runtime, "emit exactly one completion line")
     assertContains(
       runtime,
       "Do not call `skill-bill feature-task status <workflow_id>` on a timer or\n   repeatedly to observe change.",
@@ -359,12 +391,6 @@ class FeatureSpecSkillWiringContractTest {
       runtime,
       "never block\nsubtask completion solely because install sync is deferred",
     )
-    assertContains(goal, "Launch `skill-bill goal` with `--no-live-output`.")
-    assertContains(goal, "Goal live output scales with\nwall-clock duration")
-    assertContains(goal, "feature-task-runtime `--monitor` is different")
-    assertFalse(goal.contains("Keep live output enabled"))
-    assertContains(goal, "For the user to follow the goal in their own terminal")
-    assertFalse(goal.contains("--max-refreshes"))
     assertContains(runtime, "pass `--monitor` to tee phase transitions to the\nterminal")
     assertContains(runtime, "feature-task-runtime because its output scales\nwith phase count")
     assertContains(runtime, "goal`, whose\nlive output scales with wall-clock duration")

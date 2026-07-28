@@ -76,7 +76,8 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "--interval-seconds")
     assertContains(watch.stdout, "repeated git cost")
     assertContains(watch.stdout, "--show-unchanged")
-    assertContains(watch.stdout, "debugging aid")
+    assertContains(watch.stdout, "shown by default")
+    assertContains(watch.stdout, "--suppress-unchanged")
     assertContains(watch.stdout.replace(Regex("""\s+"""), " "), "Zero follows until the goal finishes")
   }
 
@@ -763,7 +764,7 @@ class CliGoalWatchRuntimeTest {
   }
 
   @Test
-  fun `goal watch suppresses unchanged refreshes and show unchanged prints each refresh`() {
+  fun `goal watch shows unchanged refreshes by default and supports opt in suppression`() {
     val fixture = goalFixture(subtaskCount = 1)
     val childWorkflowId = startRunningGoalChild(fixture)
     recordRunningGoalChildProgress(fixture, childWorkflowId, sequence = 1)
@@ -782,6 +783,7 @@ class CliGoalWatchRuntimeTest {
         "0",
         "--max-refreshes",
         "3",
+        "--suppress-unchanged",
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,
@@ -804,7 +806,6 @@ class CliGoalWatchRuntimeTest {
         "0",
         "--max-refreshes",
         "3",
-        "--show-unchanged",
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,

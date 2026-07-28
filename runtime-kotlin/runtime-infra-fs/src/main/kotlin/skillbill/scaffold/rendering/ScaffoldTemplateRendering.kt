@@ -2,7 +2,6 @@ package skillbill.scaffold.rendering
 
 import skillbill.error.SkillBillRuntimeException
 import skillbill.nativeagent.rendering.YAML_DOUBLE_QUOTE_ESCAPES
-import skillbill.scaffold.runtime.CANONICAL_EXECUTION_SECTION
 import skillbill.scaffold.runtime.TemplateContext
 
 private val FRONTMATTER_BLOCK_LEADING = Regex("""(?s)\A---\n.*?\n---\n""")
@@ -120,17 +119,6 @@ internal fun renderContentBody(
     appendLine(body.trimEnd())
   }
 }
-
-internal fun renderSkillBody(context: TemplateContext, description: String, areaFocus: String = ""): String =
-  buildString {
-    append(renderFrontmatter(context.skillName, description))
-    appendLine()
-    append(renderDescriptorSection(context, areaFocus))
-    appendLine()
-    append(CANONICAL_EXECUTION_SECTION)
-    appendLine()
-    append(renderCeremonySection(skillClass = null))
-  }
 
 internal fun renderAddonBody(skillName: String, description: String, explicitBody: String?): String {
   val body = explicitBody ?: buildString {

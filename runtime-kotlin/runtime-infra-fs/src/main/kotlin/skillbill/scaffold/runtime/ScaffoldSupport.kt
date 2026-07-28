@@ -49,22 +49,6 @@ internal val PLATFORM_PACK_PRESETS: Map<String, String> get() = POLICY_PLATFORM_
 internal val REQUIRED_GOVERNED_SECTIONS: List<String> =
   listOf("## Descriptor", "## Execution", "## Ceremony")
 
-internal val REQUIRED_CONTENT_SECTIONS: List<String> =
-  listOf(
-    "## Description",
-    "## Specialist Scope",
-    "## Inputs",
-    "## Outputs Contract",
-    "## Execution Mode Reporting",
-    "## Telemetry Ceremony Hooks",
-  )
-
-internal const val CANONICAL_EXECUTION_SECTION: String =
-  "## Execution\n\nFollow the instructions in [content.md](content.md).\n"
-
-internal const val CANONICAL_CEREMONY_SECTION: String =
-  "## Ceremony\n\nFollow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).\n"
-
 internal data class TemplateContext(
   val skillName: String,
   val family: String,
@@ -147,11 +131,6 @@ internal fun requireSupportingFileTarget(
   ?: throw MissingSupportingFileTargetError(
     "Runtime supporting file '$fileName' is not registered for '$skillName'.",
   )
-
-internal fun selectedFeatureAddonSupportTargets(
-  skillName: String,
-  selectedPlatformManifests: List<PlatformManifest>,
-): Map<String, PointerSpec> = featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).associateBy { it.name }
 
 private fun featureAddonPointerSpecsFor(
   skillName: String,

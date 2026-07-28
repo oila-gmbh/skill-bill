@@ -2,7 +2,6 @@ package skillbill.mcp.core
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ReviewService
 import skillbill.application.system.SystemService
@@ -22,7 +21,6 @@ abstract class McpComponent(
 @Inject
 @Suppress("LongParameterList") // DI aggregate: one cohesive bundle for all MCP runtime services
 class McpRuntimeServices(
-  val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService,
   val learningService: LearningService,
   val lifecycleTelemetryService: LifecycleTelemetryService,
   val reviewService: ReviewService,

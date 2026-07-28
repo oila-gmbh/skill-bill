@@ -29,6 +29,23 @@ class CliTelemetryStatsWorkflowTest {
   }
 
   @Test
+  fun `deprecated runtime-stats alias stays registered`() {
+    // SKILL-132 subtask 4 (AC-002): no documented removal window or migration guidance exists
+    // for this published alias, so it is compatibility-retained rather than deleted.
+    val dbPath = Files.createTempDirectory("skillbill-cli-runtime-stats-alias").resolve("metrics.db")
+
+    val result =
+      CliRuntime.run(
+        listOf("--db", dbPath.toString(), "runtime-stats", "--format", "json"),
+        CliRuntimeContext(),
+      )
+
+    val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
+    val payload = requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+    assertEquals("feature-task-runtime", payload["workflow"])
+  }
+
+  @Test
   fun `telemetry remote stats accepts goal workflow`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-goal-remote-stats")
     val configPath = tempDir.resolve("telemetry.json")

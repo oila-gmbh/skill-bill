@@ -2,13 +2,8 @@
 
 package skillbill.mcp.core
 
-import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
-import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
-import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.GoalFinishedRequest
@@ -29,8 +24,6 @@ import skillbill.di.create
 import skillbill.mcp.learning.toMcpPayload
 import skillbill.mcp.lifecycle.featureImplementFinished
 import skillbill.mcp.lifecycle.featureImplementStarted
-import skillbill.mcp.lifecycle.featureTaskRuntimeFinished
-import skillbill.mcp.lifecycle.featureTaskRuntimeStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
@@ -156,21 +149,8 @@ object McpRuntime {
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.featureVerifyStats(dbOverride = null).toMcpMap()
 
-  fun featureTaskRuntimeStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.featureTaskRuntimeStats(dbOverride = null).toMcpMap()
-
   fun goalStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.goalStats(dbOverride = null).toMcpMap()
-
-  fun featureTaskRuntimeStarted(
-    request: FeatureTaskRuntimeStartedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureTaskRuntimeStarted(request) }
-
-  fun featureTaskRuntimeFinished(
-    request: FeatureTaskRuntimeFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureTaskRuntimeFinished(request) }
 
   fun featureImplementStarted(
     request: FeatureImplementStartedRequest,
@@ -285,15 +265,6 @@ object McpRuntime {
 }
 
 object McpWorkflowRuntime {
-  fun featureTaskContinuationLookup(
-    issueKey: String,
-    repositoryIdentity: String,
-    workflowId: String? = null,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).featureTaskContinuationLookupService
-    .lookup(issueKey, repositoryIdentity, workflowId)
-    .toMcpPayload()
-
   @Suppress("LongParameterList")
   fun open(
     kind: WorkflowFamilyKind,
@@ -379,50 +350,6 @@ object McpWorkflowRuntime {
     dbOverride = null,
   ).toMcpMap()
 }
-
-private fun FeatureTaskContinuationLookupResult.toMcpPayload(): Map<String, Any?> = when (this) {
-  FeatureTaskContinuationLookupResult.NoMatch -> mapOf("result" to "no_match")
-  is FeatureTaskContinuationLookupResult.Resumable ->
-    mapOf("result" to "resumable", "candidate" to candidate.toMcpPayload())
-  is FeatureTaskContinuationLookupResult.AlreadyRunning ->
-    mapOf("result" to "already_running", "candidate" to candidate.toMcpPayload())
-  is FeatureTaskContinuationLookupResult.Ambiguous ->
-    mapOf("result" to "ambiguous", "candidates" to candidates.map { it.toMcpPayload() })
-  is FeatureTaskContinuationLookupResult.TerminalOnly ->
-    mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMcpPayload() })
-  is FeatureTaskContinuationLookupResult.GoalContinuation ->
-    mapOf("result" to "goal_continuation", "goal" to candidate.toMcpPayload())
-}
-
-private fun GoalContinuationCandidate.toMcpPayload(): Map<String, Any?> = mapOf(
-  "parent_workflow_id" to parentWorkflowId,
-  "issue_key" to issueKey,
-  "status" to status,
-  "current_subtask_id" to currentSubtaskId,
-  "current_action" to currentAction,
-  "complete_count" to completeCount,
-  "pending_count" to pendingCount,
-  "blocked_count" to blockedCount,
-  "updated_at" to updatedAt,
-  "summary" to summary,
-)
-
-private fun FeatureTaskContinuationCandidate.toMcpPayload(): Map<String, Any?> = mapOf(
-  "workflow_id" to workflowId,
-  "mode" to mode.wireValue,
-  "status" to status,
-  "current_step" to currentStep,
-  "governed_spec_path" to governedSpecPath,
-  "updated_at" to updatedAt,
-  "liveness" to liveness?.let {
-    mapOf(
-      "classification" to it.classification,
-      "last_evidence_at" to it.lastEvidenceAt,
-      "evidence" to it.evidence,
-    )
-  },
-  "summary" to summary,
-)
 
 internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
   val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))

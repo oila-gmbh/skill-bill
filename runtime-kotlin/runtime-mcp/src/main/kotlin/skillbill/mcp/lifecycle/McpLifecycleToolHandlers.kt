@@ -2,8 +2,6 @@ package skillbill.mcp.lifecycle
 
 import skillbill.application.model.FeatureImplementFinishedRequest
 import skillbill.application.model.FeatureImplementStartedRequest
-import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
-import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
@@ -14,7 +12,6 @@ import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.boolean
 import skillbill.mcp.core.int
-import skillbill.mcp.core.map
 import skillbill.mcp.core.optionalInt
 import skillbill.mcp.core.optionalListMap
 import skillbill.mcp.core.optionalMap
@@ -63,41 +60,6 @@ internal fun featureImplementFinished(arguments: Map<String, Any?>, context: Mcp
       boundaryHistoryValue = arguments.optionalString("boundary_history_value") ?: "none",
       planDeviationNotes = arguments.string("plan_deviation_notes"),
       childSteps = arguments.optionalListMap("child_steps").orEmpty(),
-      estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
-        ?.let { JsonSupport.mapToJsonString(it) },
-      estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),
-    ),
-    context,
-  )
-
-internal fun featureTaskRuntimeStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureTaskRuntimeStarted(
-    FeatureTaskRuntimeStartedRequest(
-      featureSize = arguments.string("feature_size"),
-      issueKey = arguments.string("issue_key"),
-      featureName = arguments.string("feature_name"),
-      sessionId = arguments.string("session_id"),
-    ),
-    context,
-  )
-
-internal fun featureTaskRuntimeFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureTaskRuntimeFinished(
-    FeatureTaskRuntimeFinishedRequest(
-      sessionId = arguments.string("session_id"),
-      completionStatus = arguments.string("completion_status"),
-      completedPhaseIds = arguments.stringList("completed_phase_ids"),
-      phaseOutcomes = arguments.map("phase_outcomes").mapValues { (_, value) -> value?.toString().orEmpty() },
-      lastIncompletePhase = arguments.string("last_incomplete_phase"),
-      blockedReason = arguments.string("blocked_reason"),
-      resolvedBranch = arguments.string("resolved_branch"),
-      reviewFixIterationCount = arguments.int("review_fix_iteration_count", 0),
-      auditGapIterationCount = arguments.int("audit_gap_iteration_count", 0),
-      auditFirstPassConvergence = arguments.boolean("audit_first_pass_convergence"),
-      auditRecurringGapCount = arguments.int("audit_recurring_gap_count", 0),
-      auditNewGapCount = arguments.int("audit_new_gap_count", 0),
-      auditAttemptedRepairItemCount = arguments.int("audit_attempted_repair_item_count", 0),
-      auditResolvedRepairItemCount = arguments.int("audit_resolved_repair_item_count", 0),
       estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
         ?.let { JsonSupport.mapToJsonString(it) },
       estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),

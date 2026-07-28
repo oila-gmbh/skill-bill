@@ -49,7 +49,6 @@ import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewAssignment
-import skillbill.review.context.model.ReviewAutoEligibility
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
@@ -97,14 +96,11 @@ class ParallelCodeReviewRunner(
     val detection = detectStack(evidence, request.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
-    val lane1ResolvedMode = resolvedMode(request, diffText, detection.routed, budget.maxLaneLaunchBytes)
+    val lane1ResolvedMode = resolvedMode(request)
     // Pin lane 1's depth onto the request before either lane starts, so lane 2 inherits it and a
     // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
     request = request.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
-    val resolvedMode = ReviewExecutionModePolicy.resolve(
-      requested = request.lane2Tier,
-      eligibility = ReviewAutoEligibility(oversized = false, highRisk = false, layeredStack = false),
-    )
+    val resolvedMode = ReviewExecutionModePolicy.resolve(request.lane2Tier)
     val launchRequests = prepare(
       request,
       diffText,
@@ -164,20 +160,10 @@ class ParallelCodeReviewRunner(
     delegatedReviewExecutionBroker.preflight(launchRequests)
   }
 
-  private fun resolvedMode(
-    request: ParallelCodeReviewRequest,
-    diffText: String,
-    manifests: List<PlatformManifest>,
-    maxLaneLaunchBytes: Long,
-  ) = ReviewExecutionModePolicy.resolveWithRule(
+  private fun resolvedMode(request: ParallelCodeReviewRequest) = ReviewExecutionModePolicy.resolveWithRule(
     // A pinned resolvedTier is lane 1's already-decided depth; honoring it here is what makes both
     // lanes share one tier instead of each re-resolving auto independently.
     requested = request.resolvedTier ?: request.codeReviewMode,
-    eligibility = ReviewAutoEligibility(
-      oversized = diffText.toByteArray().size > maxLaneLaunchBytes,
-      highRisk = HIGH_RISK_SIGNAL.containsMatchIn(diffText),
-      layeredStack = manifests.any { it.codeReviewComposition != null },
-    ),
   ).resolvedMode
 
   private fun runLanes(
@@ -761,9 +747,6 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
-    val HIGH_RISK_SIGNAL = Regex(
-      "(?i)(auth|authorization|secret|token|migration|transaction|process|subprocess|network|ssrf|unsafe)",
-    )
   }
 
   private data class StackDetection(

@@ -1,10 +1,7 @@
-package skillbill
+package skillbill.architecture
 
-/** Declaration of the enforced JVM runtime module and subsystem graph. */
-object RuntimeModule {
-  const val NAME: String = "runtime-kotlin"
-  const val TOOLCHAIN_JDK: Int = 17
-
+/** Expected JVM runtime module and subsystem graph the architecture tests assert against. */
+object RuntimeModuleCatalog {
   val declaredGradleModules: List<String> =
     listOf(
       "runtime-application",

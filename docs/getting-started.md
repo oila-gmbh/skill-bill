@@ -250,7 +250,7 @@ Choose standalone review execution explicitly with:
 /bill-code-review mode:delegated
 ```
 
-Omitting `mode:` is equivalent to `mode:delegated`. Pass `mode:auto` explicitly for automatic eligibility-based selection. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
+Omitting `mode:` is equivalent to `mode:delegated`. Pass `mode:auto` explicitly to resolve depth through the named auto rules. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
 
 ## Runtime Fallback Boundary
 
@@ -450,7 +450,9 @@ skill-bill goal status SKILL-901
 skill-bill goal watch SKILL-901 --interval-seconds 5
 ```
 
-The watch command follows until the goal finishes.
+The watch command follows until the goal finishes and prints every refresh,
+including unchanged status, at the selected interval. Use
+`--suppress-unchanged` when repeated heartbeat output is undesirable.
 
 ```text
 latest_observability: phase=implement role=phase_subagent liveness=durable_progress sequence=8
@@ -534,7 +536,8 @@ Primary MCP groups:
 - quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
 - scaffold tool: `new_skill_scaffold`
 - health tool: `doctor`
-- optional Readian bridge tools when configured: `readian_auth_status`, `readian_get_article`, `readian_get_articles_for_topic_query`, `readian_get_spotlight`, `readian_mark_story_status`, `readian_save_candidate`
+
+The foreground `mode:runtime` feature-task driver owns its own durable state, lifecycle telemetry, and continuation lookup in-process. It has no MCP endpoints; use `skill-bill feature-task` and `skill-bill feature-task-stats` instead.
 
 ## Validation Gate
 

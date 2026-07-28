@@ -1,6 +1,5 @@
 package skillbill.architecture
 
-import skillbill.RuntimeModule
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -11,7 +10,6 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // central architecture-test suite; splitting would dilute coverage discovery
 class RuntimeArchitectureTest {
-  private val readianMcpRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/core/ReadianMcpRuntime.kt"
   private val mcpScaffoldRuntime = "runtime-mcp/src/main/kotlin/skillbill/mcp/scaffold/McpScaffoldRuntime.kt"
   private val runtimeRoot: Path =
     Path.of("").toAbsolutePath().normalize().let { workingDir ->
@@ -374,13 +372,12 @@ class RuntimeArchitectureTest {
     assertNoBannedSourceReferences(
       files =
       mcpFiles.filterNot { file ->
-        file.relativePath in setOf(mcpScaffoldRuntime, readianMcpRuntime)
+        file.relativePath == mcpScaffoldRuntime
       },
       bannedReferences = listOf("java.nio.file.Files", "Files."),
       description = "direct filesystem dependency",
     )
     assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles)
-    assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles)
   }
 
   @Test
@@ -1388,7 +1385,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `every main source package is declared under an owned subsystem`() {
-    val ownershipPrefixes = RuntimeModule.declaredSubsystemPackages.sortedByDescending(String::length)
+    val ownershipPrefixes = RuntimeModuleCatalog.declaredSubsystemPackages.sortedByDescending(String::length)
     val unowned = declaredMainSourceFiles()
       .filter { file -> file.packageName.isNotBlank() }
       .filterNot { file -> file.packageName == "skillbill" }
@@ -1401,7 +1398,7 @@ class RuntimeArchitectureTest {
     assertEquals(
       emptyList(),
       unowned,
-      "Every real main-source package must be owned by RuntimeModule.declaredSubsystemPackages.",
+      "Every real main-source package must be owned by RuntimeModuleCatalog.declaredSubsystemPackages.",
     )
   }
 
@@ -1792,31 +1789,11 @@ class RuntimeArchitectureTest {
     )
   }
 
-  private fun assertReadianMcpRuntimeOnlyUsesFilesForCommandDiscovery(mcpFiles: List<SourceFile>) {
-    val readianFile =
-      mcpFiles.first { file ->
-        file.relativePath == readianMcpRuntime
-      }
-    val filesReferenceLines =
-      readianFile.source.lines()
-        .filter { line -> "java.nio.file.Files" in line || "Files." in line }
-        .map(String::trim)
-
-    assertEquals(
-      listOf(
-        "import java.nio.file.Files",
-        "if (!Files.isDirectory(versions)) return null",
-        "return Files.list(versions).use { paths ->",
-      ),
-      filesReferenceLines,
-    )
-  }
-
   private fun sourceFiles(): List<SourceFile> = sourceRoots.flatMap { sourceRoot ->
     sourceFilesIn(sourceRoot)
   }
 
-  private fun declaredMainSourceFiles(): List<SourceFile> = RuntimeModule.declaredGradleModules
+  private fun declaredMainSourceFiles(): List<SourceFile> = RuntimeModuleCatalog.declaredGradleModules
     .flatMap { moduleName -> mainSourceRoots(moduleName) }
     .flatMap { sourceRoot -> sourceFilesIn(sourceRoot) }
 

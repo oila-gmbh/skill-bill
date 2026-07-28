@@ -60,7 +60,7 @@ The Gradle command validates the Kotlin runtime for maintainers. It is not how i
 
 Start with `/bill-feature` when introducing Skill Bill to a team, or `/bill-feature-spec` when you want a prep-only session before implementation. The other commands are reusable phases inside that workflow and direct shortcuts when the team only needs one phase. The commands route by dominant stack first, then apply platform-pack behavior and add-ons.
 
-For a standalone review, use `/bill-code-review mode:inline` to run the light depth tier in the current context — one agent covering the routed areas at reduced depth under a bounded budget, not equivalent coverage to delegated — or `/bill-code-review mode:delegated` to require delegated routing. Omit the argument for delegated review, or pass `mode:auto` explicitly for automatic eligibility-based selection. Feature callers instead use `/bill-feature <issue-key> code-review:auto|inline|delegated`; `mode:runtime|prose` remains the independent feature-engine selector.
+For a standalone review, use `/bill-code-review mode:inline` to run the light depth tier in the current context — one agent covering the routed areas at reduced depth under a bounded budget, not equivalent coverage to delegated — or `/bill-code-review mode:delegated` to require delegated routing. Omit the argument for delegated review, or pass `mode:auto` explicitly to resolve depth through the named auto rules. Feature callers instead use `/bill-feature <issue-key> code-review:auto|inline|delegated`; `mode:runtime|prose` remains the independent feature-engine selector.
 
 ## Runtime Expectations
 
@@ -82,7 +82,8 @@ or resumes that child workflow, starts one fresh child process, and advances
 from durable workflow state. Nested/native subagents inside that child are an
 optional debugging and context-management convenience, not the reliability
 contract. Use `skill-bill goal status <issue-key>` for a single read-only snapshot.
-`skill-bill goal watch <issue-key> --interval-seconds 5` follows until the goal
+`skill-bill goal watch <issue-key> --interval-seconds 5` prints every refresh,
+including unchanged status, and follows until the goal
 finishes; use it for live read-only progress. Add `--diff-stat` for a bounded worktree summary or
 `--diff-hunk <path> --diff-hunk-max-hunks 2 --diff-hunk-max-lines 20 --diff-hunk-max-bytes 4000`
 for path-scoped hunk output. Expected lines include `goal_observability:`,

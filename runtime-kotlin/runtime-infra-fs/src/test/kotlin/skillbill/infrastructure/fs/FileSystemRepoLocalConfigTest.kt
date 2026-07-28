@@ -122,6 +122,66 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
+  /**
+   * The accepted key set is the contract: every key here is parsed and consumed by an active review
+   * path, and anything outside it is rejected by the sibling unknown-key case rather than ignored.
+   */
+  @Test
+  fun `review context budget accepts exactly the consumed key set`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_parent_packet_bytes: 700000
+        max_lane_launch_bytes: 70000
+        max_lane_evidence_bytes: 300000
+        max_evidence_result_bytes: 70000
+        max_lane_result_bytes: 70000
+        max_assignment_expansions: 5
+        max_specialist_tool_calls: 50
+        max_specialist_model_turns: 30
+        provider_token_thresholds:
+          input_tokens: 41000
+          cached_input_tokens: 31000
+          output_tokens: 9000
+          reasoning_tokens: 11000
+          total_tokens: 57000
+      """.trimIndent(),
+    )
+
+    val budget = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
+
+    assertEquals(700_000, budget.maxParentPacketBytes)
+    assertEquals(70_000, budget.maxLaneLaunchBytes)
+    assertEquals(300_000, budget.maxLaneEvidenceBytes)
+    assertEquals(70_000, budget.maxEvidenceResultBytes)
+    assertEquals(70_000, budget.maxLaneResultBytes)
+    assertEquals(5, budget.maxAssignmentExpansions)
+    assertEquals(50, budget.maxSpecialistToolCalls)
+    assertEquals(30, budget.maxSpecialistModelTurns)
+    assertEquals(41_000, budget.providerTokenThresholds.inputTokens)
+    assertEquals(31_000, budget.providerTokenThresholds.cachedInputTokens)
+    assertEquals(9_000, budget.providerTokenThresholds.outputTokens)
+    assertEquals(11_000, budget.providerTokenThresholds.reasoningTokens)
+    assertEquals(57_000, budget.providerTokenThresholds.totalTokens)
+  }
+
+  @Test
+  fun `review context budget rejects an unsupported nested key naming it`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        review_context_pilot_mode: delegated
+      """.trimIndent(),
+    )
+
+    val error = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+    }
+
+    assertEquals("review_context_budget.review_context_pilot_mode", error.key)
+    assertContains(error.message.orEmpty(), "is not a recognized key")
+  }
+
   @Test
   fun `review context budget overrides merge over governed defaults`() {
     val repoRoot = writeConfig(

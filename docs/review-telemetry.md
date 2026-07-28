@@ -25,7 +25,7 @@ Skill Bill can record a measurement loop for code-review usefulness. Telemetry u
 - each finding in `### 2. Risk Register` should use `- [F-001] Severity | Confidence | file:line | description`
 - feedback history and learnings stay local in SQLite regardless of telemetry state
 
-The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes review, learning, workflow-state, workflow-stats, telemetry, scaffold, quality-check, PR-description, health, and optional Readian bridge tools. The CLI provides the same runtime functionality plus learnings CRUD, install primitives, validation, and telemetry management.
+The `skill-bill` CLI and MCP server are installed automatically by `./install.sh`. The MCP server exposes review, learning, workflow-state, workflow-stats, telemetry, scaffold, quality-check, PR-description, and health tools. The CLI provides the same runtime functionality plus learnings CRUD, install primitives, validation, and telemetry management.
 
 ```bash
 skill-bill --help
@@ -424,7 +424,7 @@ Fields always excluded (both levels): repo name, branch name, raw spec content, 
 
 ## Audit-repair counters
 
-Runtime-mode feature-task sessions report their own terminal event through the `feature_task_runtime_finished` MCP tool, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
+Runtime-mode feature-task sessions report their own terminal event directly from the foreground runtime driver's lifecycle telemetry, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
 
 | Field | Type | Description |
 |-------|------|-------------|

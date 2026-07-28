@@ -14,6 +14,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -158,7 +159,35 @@ object FeatureTaskRuntimePhasePromptComposer {
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
     return base + remediationCorrection +
-      unparseableRootCorrection(briefing, priorSchemaFailure)
+      unparseableRootCorrection(briefing, priorSchemaFailure) +
+      boundedReferenceCorrection(priorSchemaFailure)
+  }
+
+  private fun boundedReferenceCorrection(priorSchemaFailure: String): String {
+    val field = when {
+      priorSchemaFailure.contains("artifact_ref") -> "artifact_ref"
+      priorSchemaFailure.contains("check_ref") -> "check_ref"
+      else -> return ""
+    }
+    val reportsLengthViolation = priorSchemaFailure.contains("must be at most") ||
+      priorSchemaFailure.contains("allows at most") ||
+      priorSchemaFailure.contains("maxLength")
+    if (!reportsLengthViolation) {
+      return ""
+    }
+    val replacement = if (field == "artifact_ref") {
+      "one repository-relative path, optionally followed by one :symbol, such as " +
+        "runtime-kotlin/runtime-mcp/src/test/kotlin/skillbill/mcp/McpStdioServerTest.kt"
+    } else {
+      "one acceptance-criterion, finding, test, or check identifier, such as AC-005 or McpStdioServerTest"
+    }
+    return """
+
+      The rejected $field is a bounded pointer, not an evidence container. Replace it with $replacement.
+      It MUST be at most $MAX_AUDIT_REPAIR_REF_LENGTH characters. Do not concatenate multiple paths,
+      symbols, findings, commands, or explanations into this field. Put necessary detail in the issue,
+      fix, or other schema-authorized descriptive fields.
+    """.trimIndent()
   }
 
   // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY

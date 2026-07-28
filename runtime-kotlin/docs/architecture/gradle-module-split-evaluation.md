@@ -115,7 +115,6 @@ and useful now:
   filesystem, or HTTP APIs.
 - Telemetry compatibility facades depend on ports rather than infrastructure
   adapters.
-- Reserved runtime surfaces expose documented `RuntimeSurfaceContract` metadata.
 - CLI and MCP are independently compiled adapter modules.
 - The optional desktop Skill Bill app compiles as an isolated JVM desktop module and
   does not own governed runtime behavior. Its nested desktop modules preserve
