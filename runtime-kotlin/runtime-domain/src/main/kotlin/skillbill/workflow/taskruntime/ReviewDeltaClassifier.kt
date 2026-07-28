@@ -22,12 +22,7 @@ data class ReviewDeltaChange(
   val runtimeOwnedManifestFields: Set<String> = emptySet(),
 ) {
   init {
-    require(
-      runtimeOwnedManifestFields.all {
-        it in ReviewDeltaClassifier.RUNTIME_OWNED_MANIFEST_FIELDS ||
-          it in ReviewDeltaClassifier.RUNTIME_OWNED_MANIFEST_LEAF_FIELDS
-      },
-    ) {
+    require(runtimeOwnedManifestFields.all { it in ReviewDeltaClassifier.RUNTIME_OWNED_MANIFEST_FIELDS }) {
       "Review delta contains an ungoverned runtime-owned manifest field."
     }
   }
@@ -73,7 +68,7 @@ class ReviewDeltaClassifier(
       val governedFields = if (
         currentPath.endsWith("/decomposition-manifest.yaml") &&
         changedKeys.isNotEmpty() &&
-        changedKeys.all { it in RUNTIME_OWNED_MANIFEST_LEAF_FIELDS }
+        changedKeys.all { it in RUNTIME_OWNED_MANIFEST_FIELDS }
       ) {
         changedKeys
       } else {
@@ -132,19 +127,7 @@ class ReviewDeltaClassifier(
     val RUNTIME_OWNED_MANIFEST_FIELDS: Set<String> = setOf(
       "status",
       "current_subtask_intent",
-      "subtasks.status",
-      "subtasks.workflow_id",
-      "subtasks.blocked_reason",
-      "subtasks.last_resumable_step",
-      "subtasks.commit_sha",
-      "subtasks.finalizing_agent_id",
-      "subtasks.participating_agent_ids",
-    )
-    internal val RUNTIME_OWNED_MANIFEST_LEAF_FIELDS: Set<String> = setOf(
-      "status",
-      "current_subtask_intent",
       "current_subtask_intent.subtask_id",
-      "workflow_id",
       "subtasks.status",
       "subtasks.workflow_id",
       "subtasks.blocked_reason",
@@ -152,11 +135,6 @@ class ReviewDeltaClassifier(
       "subtasks.commit_sha",
       "subtasks.finalizing_agent_id",
       "subtasks.participating_agent_ids",
-      "blocked_reason",
-      "last_resumable_step",
-      "commit_sha",
-      "finalizing_agent_id",
-      "participating_agent_ids",
     )
   }
 }

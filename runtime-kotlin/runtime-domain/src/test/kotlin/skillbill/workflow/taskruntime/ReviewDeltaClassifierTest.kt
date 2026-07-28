@@ -86,6 +86,22 @@ class ReviewDeltaClassifierTest {
   }
 
   @Test
+  fun `same named field outside its governed manifest ancestry remains semantic`() {
+    val header =
+      "diff --git a/.feature-specs/SKILL-150/decomposition-manifest.yaml " +
+        "b/.feature-specs/SKILL-150/decomposition-manifest.yaml\n"
+    val diff = header +
+      " authored_metadata:\n" +
+      "-  workflow_id: old\n" +
+      "+  workflow_id: new\n"
+
+    assertEquals(
+      ReviewDeltaClassification.SEMANTIC,
+      classifier.classifyUnifiedDiff(diff).classification,
+    )
+  }
+
+  @Test
   fun `mixed changes create exactly one semantic successor decision`() {
     val result = classifier.classify(
       listOf(
