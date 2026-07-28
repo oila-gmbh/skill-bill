@@ -12,6 +12,11 @@ internal object ConvergenceDatabaseMigrations {
       name = "retain-convergence-evidence-and-classification",
       operation = ::retainConvergenceEvidenceAndClassification,
     ),
+    DatabaseMigration(
+      version = 18,
+      name = "add-audit-convergence-tables",
+      operation = ::createAuditConvergenceTables,
+    ),
   )
 }
 
@@ -119,5 +124,11 @@ private fun retainConvergenceEvidenceAndClassification(connection: java.sql.Conn
     ConvergenceDatabaseSchema.statements
       .filter { it.startsWith("CREATE INDEX") }
       .forEach(statement::execute)
+  }
+}
+
+private fun createAuditConvergenceTables(connection: java.sql.Connection) {
+  connection.createStatement().use { statement ->
+    AuditConvergenceDatabaseSchema.statements.forEach(statement::execute)
   }
 }

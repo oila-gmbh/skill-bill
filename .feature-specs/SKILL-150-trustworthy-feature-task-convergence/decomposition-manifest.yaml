@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-150-trustworthy-feature-task-convergence"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Truthful implementation completion"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_2_truthful_implementation_completion.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260728-161722-yjes"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -47,7 +47,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260728-173921-vqy5"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
