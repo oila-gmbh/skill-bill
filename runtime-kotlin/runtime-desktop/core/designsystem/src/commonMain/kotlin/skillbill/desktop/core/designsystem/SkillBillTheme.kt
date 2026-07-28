@@ -41,22 +41,6 @@ fun SkillBillAppTheme(content: @Composable () -> Unit) {
   SkillBillMaterialTheme(content = content)
 }
 
-@Composable
-fun SkillBillMediaTheme(content: @Composable () -> Unit) {
-  CompositionLocalProvider(
-    LocalSkillBillColors provides defaultSkillBillMediaColors(),
-    LocalSkillBillThemeTokens provides SkillBillDarkThemeTokens,
-    LocalSkillBillGradientColors provides GradientColors(),
-  ) {
-    MaterialTheme(
-      colorScheme = SkillBillDarkColorScheme,
-      typography = SkillBillTypography,
-      shapes = SkillBillShapes,
-      content = content,
-    )
-  }
-}
-
 object SkillBillTheme {
   val colors: ColorScheme
     @Composable get() = MaterialTheme.colorScheme
@@ -102,11 +86,6 @@ object SkillBillTheme {
 
   val textFieldColors: TextFieldColors
     @Composable get() = skillBillTextFieldColors()
-}
-
-enum class SkillBillSystemBarsTheme {
-  Light,
-  Dark,
 }
 
 internal val LocalSkillBillThemeTokens = staticCompositionLocalOf { SkillBillDarkThemeTokens }

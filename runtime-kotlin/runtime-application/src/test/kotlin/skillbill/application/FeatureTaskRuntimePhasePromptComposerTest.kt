@@ -678,6 +678,23 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `an oversized audit artifact reference receives structural retry guidance`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure =
+      "produced_outputs.audit_repair_plan: gaps[0].failure_evidence.artifact_ref: " +
+        "must be at most 256 characters long",
+    )
+
+    assertContains(retry, "artifact_ref is a bounded pointer, not an evidence container")
+    assertContains(retry, "It MUST be at most 256 characters")
+    assertContains(retry, "Do not concatenate multiple paths")
+    assertContains(retry, "Put necessary detail in the issue")
+    assertContains(retry, "fix, or other schema-authorized descriptive fields")
+  }
+
+  @Test
   fun `audit remediation output contract names every carried item and required evidence field`() {
     val briefing = briefingFor("implement").copy(
       auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),

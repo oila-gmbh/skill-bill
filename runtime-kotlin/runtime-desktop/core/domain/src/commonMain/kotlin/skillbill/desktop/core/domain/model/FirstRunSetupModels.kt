@@ -52,11 +52,6 @@ enum class FirstRunPlatformSelectionMode {
   ALL,
 }
 
-data class FirstRunDetectedAgent(
-  val agentId: String,
-  val path: String,
-)
-
 data class FirstRunAgentOption(
   val agentId: String,
   val displayName: String,
