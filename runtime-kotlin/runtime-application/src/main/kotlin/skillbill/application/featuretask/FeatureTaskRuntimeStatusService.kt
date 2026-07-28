@@ -8,6 +8,7 @@ import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.model.FeatureTaskRuntimeReviewGenerationStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -34,6 +35,7 @@ class FeatureTaskRuntimeStatusService(
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
     val auditRepairProgress = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
+    val reviewSummary = recorder.reviewGenerationSummary(request.workflowId, request.dbPathOverride)
     // Blocked-ness is derived primarily from the DURABLE per-phase records (a blocked phase
     // persists a terminal `blocked` record that survives ledger pruning); the append-only ledger
     // is supplementary detail only. A later non-blocked ledger entry from a resumed run can still
@@ -81,6 +83,15 @@ class FeatureTaskRuntimeStatusService(
         )
       },
       auditRepair = auditRepairStatus(records, auditRepairProgress),
+      reviewGeneration = reviewSummary?.let {
+        FeatureTaskRuntimeReviewGenerationStatus(
+          generationId = it.currentGenerationId,
+          pass = it.currentPass,
+          carriedBlockerCount = it.carriedBlockerCount,
+          newBlockerCount = it.newBlockerCount,
+          terminalDispositionCounts = it.terminalDispositionCounts,
+        )
+      },
     )
   }
 

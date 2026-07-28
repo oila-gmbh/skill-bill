@@ -14,6 +14,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding
 import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
 
 /**
@@ -37,6 +38,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     resolvedReviewTier: CodeReviewExecutionMode? = null,
     reviewDecidingRule: String? = null,
     priorBlockerFindingIds: List<String> = emptyList(),
+    carriedBlockerFindings: List<GoalSubtaskReviewFinding> = emptyList(),
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
@@ -65,7 +67,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
-      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
+      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds, carriedBlockerFindings),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -329,6 +331,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
+    carriedBlockerFindings: List<GoalSubtaskReviewFinding>,
   ): String {
     val phaseId = briefing.phaseId
     return """
@@ -348,7 +351,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       result for downstream phases (for example plan steps, changed files, findings, or
       validation results)${producedOutputsAddendum(
       briefing,
-    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds)}
+    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds, carriedBlockerFindings)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
@@ -369,6 +372,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
+    carriedBlockerFindings: List<GoalSubtaskReviewFinding>,
   ): String {
     if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || reviewPassNumber != 2) {
       return ""
@@ -381,10 +385,15 @@ object FeatureTaskRuntimePhasePromptComposer {
       "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
         "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
     }
+    val carried = carriedBlockerFindings.joinToString(separator = "\n") {
+      "      - ${it.findingId}: severity=${it.severity}; category=${it.category}; " +
+        "location=${it.location}; summary=${it.summary}; source_generation=${it.sourceGenerationId}"
+    }
     return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
       "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
       "      emitted — these ids, all of them, no more and no fewer:\n" +
       "      ${priorBlockerFindingIds.joinToString()}.\n" +
+      "      Durable carried Blockers requiring re-verification:\n$carried\n" +
       "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
       "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
       "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +

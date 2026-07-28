@@ -32,7 +32,7 @@ class UnaddressedFindingsRuntimeTest {
   }
 
   @Test
-  fun `re-recording a review pass replaces its ledger rows`() {
+  fun `re-recording a review pass never deletes its first durable row`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
@@ -42,12 +42,12 @@ class UnaddressedFindingsRuntimeTest {
       repository.replaceLedgerForPass("workflow-1", 1, listOf(first))
       repository.replaceLedgerForPass("workflow-1", 1, listOf(replacement))
 
-      assertEquals(listOf(replacement), repository.fetchLedger("SKILL-135"))
+      assertEquals(listOf(first), repository.fetchLedger("SKILL-135"))
     }
   }
 
   @Test
-  fun `a later review pass supersedes findings an earlier pass reported`() {
+  fun `a later review pass appends without deleting earlier evidence`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-later-pass").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
@@ -58,12 +58,12 @@ class UnaddressedFindingsRuntimeTest {
 
       repository.replaceLedgerForPass("workflow-1", 2, listOf(stillOpen))
 
-      assertEquals(listOf(stillOpen), repository.fetchLedger("SKILL-135"))
+      assertEquals(listOf(addressedBlocker, deferred, stillOpen), repository.fetchLedger("SKILL-135"))
     }
   }
 
   @Test
-  fun `an approving later pass retracts every finding the fix loop addressed`() {
+  fun `an approving later pass retains historical findings`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-approving-pass").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
@@ -75,7 +75,10 @@ class UnaddressedFindingsRuntimeTest {
 
       repository.replaceLedgerForPass("workflow-1", 2, emptyList())
 
-      assertEquals(emptyList(), repository.fetchLedger("SKILL-135"))
+      assertEquals(
+        listOf(finding(1, "blocker", "src/First.kt:7"), finding(2, "minor", "src/Deferred.kt:8")),
+        repository.fetchLedger("SKILL-135"),
+      )
     }
   }
 
@@ -90,12 +93,15 @@ class UnaddressedFindingsRuntimeTest {
 
       repository.replaceLedgerForPass("workflow-1", 2, emptyList())
 
-      assertEquals(listOf(sibling), repository.fetchLedger("SKILL-135"))
+      assertEquals(
+        listOf(sibling, finding(1, "blocker", "src/First.kt:7")),
+        repository.fetchLedger("SKILL-135"),
+      )
     }
   }
 
   @Test
-  fun `clearing a workflow ledger drops every pass of that workflow and spares its siblings`() {
+  fun `legacy clear request preserves append-only workflow and sibling history`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-clear-workflow").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
@@ -110,7 +116,14 @@ class UnaddressedFindingsRuntimeTest {
 
       repository.clearWorkflowLedger("workflow-1")
 
-      assertEquals(listOf(sibling), repository.fetchLedger("SKILL-135"))
+      assertEquals(
+        listOf(
+          sibling,
+          finding(1, "blocker", "src/First.kt:7"),
+          finding(1, "blocker", "src/Second.kt:9").copy(reviewPassNumber = 2),
+        ),
+        repository.fetchLedger("SKILL-135"),
+      )
     }
   }
 

@@ -18,6 +18,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.persistence.UnavailableReviewGenerationRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
@@ -63,8 +64,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
@@ -324,13 +331,18 @@ class FeatureTaskRuntimePhaseRecorder(
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
       )
       GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state?.let { state ->
+        val priorResults = (artifacts[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
+          ?.entries
+          ?.associate { (key, value) -> key.toString() to value }
+          .orEmpty()
+        patch[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] =
+          priorResults + reviewArtifactsHistoryEntry(state, artifacts)
         patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = GoalSubtaskReviewState.initial(
           reviewBaseSha = state.reviewBaseSha,
           baselineUntrackedPaths = state.baselineUntrackedPaths,
           codeReviewMode = state.codeReviewMode,
         ).toArtifactMap()
         patch[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = emptyMap<String, String>()
-        unitOfWork.unaddressedFindings.clearWorkflowLedger(workflowId)
       }
       persistPatch(
         unitOfWork.workflowStates,
@@ -344,6 +356,19 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  private fun reviewArtifactsHistoryEntry(
+    state: GoalSubtaskReviewState,
+    artifacts: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val identity = state.reviewedDeltaDigest ?: "legacy-pass-${state.completedPassCount}"
+    return mapOf(
+      identity to linkedMapOf(
+        "state" to state.toArtifactMap(),
+        "raw_results" to artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY],
+      ),
+    )
+  }
 
   /**
    * SKILL-140: durably invalidates a quarantined producer's settled `completed` status so its rejected
@@ -415,6 +440,67 @@ class FeatureTaskRuntimePhaseRecorder(
         blockerDispositions = completion.blockerDispositions,
       )
       val passNumber = completedState.completedPassCount.toString()
+      val reviewedDeltaDigest = requireNotNull(completedState.reviewedDeltaDigest) {
+        "Goal review completion requires the durable reviewed delta digest."
+      }
+      val repositoryCheckpoint = requireNotNull(request.repositoryFingerprint) {
+        "Goal review completion requires the runtime repository checkpoint."
+      }
+      val generationId = "review-${reviewedDeltaDigest.take(16)}-$repositoryCheckpoint".take(512)
+      val generation = GoalSubtaskReviewGeneration(
+        identity = GoalSubtaskReviewGenerationIdentity(
+          workflowId = request.workflowId,
+          generationId = generationId,
+          reviewBase = completedState.reviewBaseSha,
+          reviewedDeltaDigest = reviewedDeltaDigest,
+          repositoryCheckpoint = repositoryCheckpoint,
+        ),
+      )
+      unitOfWork.reviewGenerations.appendGeneration(generation)
+      unitOfWork.reviewGenerations.appendPass(
+        request.workflowId,
+        generationId,
+        passNumber.toInt(),
+        repositoryCheckpoint,
+      )
+      val carried = unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId)
+      if (passNumber.toInt() > 1 || completion.blockerDispositions.isNotEmpty()) {
+        require(completion.blockerDispositions.map { it.findingId }.toSet() == carried.map { it.findingId }.toSet()) {
+          "Remediation must disposition exactly the durable carried Blocker set."
+        }
+        completion.blockerDispositions.forEach { disposition ->
+          unitOfWork.reviewGenerations.appendDisposition(
+            GoalSubtaskReviewFindingDispositionRecord(
+              workflowId = request.workflowId,
+              generationId = generationId,
+              findingId = disposition.findingId,
+              disposition = disposition.verdict.toGenerationDisposition(),
+              evidence = disposition.evidence,
+            ),
+          )
+        }
+      }
+      completion.findings.forEachIndexed { index, finding ->
+        val findingId = finding.findingId ?: "$generationId-${passNumber}-${index + 1}"
+        unitOfWork.reviewGenerations.appendFinding(
+          request.workflowId,
+          generationId,
+          passNumber.toInt(),
+          GoalSubtaskReviewFinding(
+            findingId = findingId,
+            severity = finding.severity,
+            category = finding.label,
+            location = finding.label,
+            summary = finding.text,
+            sourceGenerationId = generationId,
+          ),
+        )
+      }
+      if (completion.verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+        require(unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId).isEmpty()) {
+          "Review approval requires durable proof of zero unresolved Blockers across generations."
+        }
+      }
       val existingRecords = phaseRecordsFrom(artifacts)
       val phaseRecord = phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString())
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
@@ -456,6 +542,18 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
   }
+
+  internal fun unresolvedReviewBlockers(workflowId: String, dbOverride: String? = null) =
+    database.read(dbOverride) {
+      if (it.reviewGenerations === UnavailableReviewGenerationRepository) emptyList()
+      else it.reviewGenerations.unresolvedBlockers(workflowId)
+    }
+
+  internal fun reviewGenerationSummary(workflowId: String, dbOverride: String? = null) =
+    database.read(dbOverride) {
+      if (it.reviewGenerations === UnavailableReviewGenerationRepository) null
+      else it.reviewGenerations.summary(workflowId)
+    }
 
   private fun persistUnaddressedFindings(
     unitOfWork: UnitOfWork,
@@ -1080,6 +1178,7 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private companion object {
     const val STATUS_RUNNING = "running"
+    const val GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY = "goal_subtask_review_result_history"
   }
 }
 
@@ -1092,6 +1191,13 @@ internal fun reconcileLatestRepairResults(
   currentResults.forEach { put(it.repairItemId, it) }
   keys.retainAll(latestPlanItemIds)
 }.values.toList()
+
+private fun GoalSubtaskBlockerDispositionVerdict.toGenerationDisposition(): GoalSubtaskReviewFindingDisposition =
+  when (this) {
+    GoalSubtaskBlockerDispositionVerdict.RESOLVED -> GoalSubtaskReviewFindingDisposition.RESOLVED
+    GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> GoalSubtaskReviewFindingDisposition.STILL_PRESENT
+    GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> GoalSubtaskReviewFindingDisposition.SUPERSEDED
+  }
 
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,

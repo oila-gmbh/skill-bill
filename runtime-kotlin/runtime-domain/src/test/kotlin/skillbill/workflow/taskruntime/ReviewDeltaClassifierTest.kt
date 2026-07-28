@@ -10,7 +10,7 @@ class ReviewDeltaClassifierTest {
   fun `bookkeeping-only changes retain the current generation`() {
     val result = classifier.classify(
       listOf(
-        ".feature-specs/SKILL-150/decomposition-manifest.yaml",
+        ".feature-specs/runtime-manifest-status/SKILL-150.json",
         ".skill-bill/runtime/checkpoint.json",
       ),
     )
@@ -20,10 +20,19 @@ class ReviewDeltaClassifierTest {
   }
 
   @Test
+  fun `authored feature specs are semantic review input`() {
+    val result = classifier.classify(
+      listOf(".feature-specs/SKILL-150/decomposition-manifest.yaml"),
+    )
+
+    assertEquals(ReviewDeltaClassification.SEMANTIC, result.classification)
+  }
+
+  @Test
   fun `mixed changes create exactly one semantic successor decision`() {
     val result = classifier.classify(
       listOf(
-        ".feature-specs/SKILL-150/decomposition-manifest.yaml",
+        ".feature-specs/runtime-manifest-status/SKILL-150.json",
         "runtime-kotlin/runtime-domain/src/main/kotlin/Review.kt",
         "runtime-kotlin/runtime-domain/src/main/kotlin/Review.kt",
       ),

@@ -5,10 +5,9 @@ import java.sql.Connection
 
 internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) {
-    deletePassesUpTo(workflowId, reviewPassNumber)
     connection.prepareStatement(
       """
-      INSERT INTO unaddressed_findings (
+      INSERT OR IGNORE INTO unaddressed_findings (
         issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
         severity, issue_category, location, summary
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -31,28 +30,9 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     }
   }
 
-  /**
-   * Every pass of one workflow reviews the same immutable base-to-current delta, so the newest pass
-   * is a complete re-observation of that scope and supersedes its predecessors. Retaining an earlier
-   * pass would keep reporting findings the fix loop has since addressed — and because an unresolved
-   * Blocker stops advancement, every Blocker surviving into a completed subtask would be one that
-   * was addressed.
-   */
   fun clearWorkflowLedger(workflowId: String) {
-    connection.prepareStatement("DELETE FROM unaddressed_findings WHERE workflow_id = ?").use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeUpdate()
-    }
-  }
-
-  private fun deletePassesUpTo(workflowId: String, reviewPassNumber: Int) {
-    connection.prepareStatement(
-      "DELETE FROM unaddressed_findings WHERE workflow_id = ? AND review_pass_number <= ?",
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setInt(2, reviewPassNumber)
-      statement.executeUpdate()
-    }
+    // Historical review evidence is append-only. Legacy callers may request a clear while reopening,
+    // but generation settlement and dispositions determine authority.
   }
 
   fun fetchLedger(issueKey: String): List<UnaddressedFinding> = connection.prepareStatement(

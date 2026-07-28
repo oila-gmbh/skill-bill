@@ -1203,20 +1203,11 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  /**
-   * The pass-two prompt must key one disposition per Blocker the prior pass emitted, so the ids it
-   * dispositions against are minted here from the durable pass-one result rather than invented by the
-   * agent. Empty for pass one, which has no prior pass to dispose.
-   */
+  /** The pass-two prompt keys one disposition per Blocker in the durable cross-generation ledger. */
   private fun priorBlockerFindingIds(passNumber: Int?): List<String> {
     if (passNumber != GOAL_SUBTASK_REVIEW_MAX_PASSES) return emptyList()
-    val priorPass = goalReviewStateOrNull()?.passResults?.firstOrNull { it.passNumber == 1 } ?: return emptyList()
-    return priorPass.findings
-      .filter { it.severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY }
-      // Prefer the id the pass-one output actually carried, so the ids the prompt asks the agent to
-      // disposition against are the ids it saw. The positional id is only a fallback for records
-      // written before the review output's own id was captured.
-      .mapIndexed { index, finding -> finding.findingId ?: "pass1-blocker-${index + 1}" }
+    return recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
+      .map { it.findingId }
   }
 
   /**
@@ -1238,7 +1229,9 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun unresolvedBlockerDispositionPresent(): Boolean =
     FeatureTaskRuntimeOperatorRetryGrant.pausesOnUnresolvedBlocker(
       grantActive = operatorRetryGrantActive(),
-      unresolvedBlockerPresent = goalReviewStateOrNull()?.unresolvedBlockerDispositions?.isNotEmpty() == true,
+      unresolvedBlockerPresent = recorder
+        .unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
+        .isNotEmpty(),
     )
 
   /**
@@ -1248,8 +1241,9 @@ internal class FeatureTaskRuntimeRunLoop(
    * `accept_and_advance`, and `abandon_subtask` is what releases it.
    */
   private fun pauseOnUnresolvedBlocker(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalPause) {
-    val reviewState = goalReviewStateOrNull()
-    val unresolvedCount = reviewState?.unresolvedBlockerDispositions?.size ?: 0
+    val unresolvedCount = recorder
+      .unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
+      .size
     val reason = "Goal-subtask review pass ${transition.edgeIteration} left $unresolvedCount Blocker " +
       "disposition(s) unresolved after the single bounded fix attempt. The subtask is paused and " +
       "resumable; choose retry_fix, accept_and_advance, or abandon_subtask to continue."
@@ -3212,6 +3206,7 @@ internal class FeatureTaskRuntimeRunLoop(
             outputArtifact = outputText,
             fileManifest = fileManifest,
             normalizedOutput = normalizedOutput,
+            repositoryFingerprint = reviewedCheckpointFingerprint(),
           ),
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
@@ -3406,6 +3401,11 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedReviewTier = depthResolution?.resolvedTier,
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(passNumber),
+      carriedBlockerFindings = if (passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES) {
+        recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
+      } else {
+        emptyList()
+      },
       specSource = run.specSource,
       priorSchemaFailure = priorSchemaFailure,
       operatorBlockRetry = operatorBlockRetry

@@ -43,8 +43,9 @@ class ReviewDeltaClassifier(
 
   companion object {
     val DEFAULT_BOOKKEEPING_PATH_PREFIXES: Set<String> = setOf(
-      ".feature-specs",
       ".skill-bill/runtime",
+      ".feature-specs/runtime-manifest-status",
+      ".feature-specs/repository-checkpoints",
     )
   }
 }

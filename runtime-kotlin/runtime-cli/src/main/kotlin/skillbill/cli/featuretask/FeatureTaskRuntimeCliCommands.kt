@@ -1158,6 +1158,15 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
           "audit_gap_iteration_count" to progress.auditGapIterationCount,
         )
       },
+      "review_generation" to it.reviewGeneration?.let { review ->
+        linkedMapOf(
+          "generation_id" to review.generationId,
+          "pass" to review.pass,
+          "carried_blocker_count" to review.carriedBlockerCount,
+          "new_blocker_count" to review.newBlockerCount,
+          "terminal_disposition_counts" to review.terminalDispositionCounts,
+        )
+      },
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
         linkedMapOf(
           "reason" to terminal.reason,

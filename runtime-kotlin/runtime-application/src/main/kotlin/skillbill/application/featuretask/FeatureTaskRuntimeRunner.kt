@@ -22,6 +22,8 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.ReviewDeltaClassification
+import skillbill.workflow.taskruntime.ReviewDeltaClassifier
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -251,7 +253,12 @@ class FeatureTaskRuntimeRunner(
       GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
       goalBranch,
     ).input
-    return current != null && current.deltaDigest != judgedDigest
+    if (current == null || current.deltaDigest == judgedDigest) return false
+    val changedPaths = current.reviewText.lineSequence()
+      .filter { it.startsWith("diff --git a/") }
+      .mapNotNull { line -> line.substringAfter(" b/", "").takeIf(String::isNotBlank) }
+      .toList()
+    return ReviewDeltaClassifier().classify(changedPaths).classification == ReviewDeltaClassification.SEMANTIC
   }
 
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =

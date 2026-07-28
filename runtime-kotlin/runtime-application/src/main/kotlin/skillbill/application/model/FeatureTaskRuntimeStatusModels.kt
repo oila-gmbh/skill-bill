@@ -45,6 +45,15 @@ data class FeatureTaskRuntimeStatusProjection(
   val finalizingAgentId: String? = null,
   val decomposeTerminal: FeatureTaskRuntimeDecomposeTerminalStatus? = null,
   val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
+  val reviewGeneration: FeatureTaskRuntimeReviewGenerationStatus? = null,
+)
+
+data class FeatureTaskRuntimeReviewGenerationStatus(
+  val generationId: String?,
+  val pass: Int,
+  val carriedBlockerCount: Int,
+  val newBlockerCount: Int,
+  val terminalDispositionCounts: Map<String, Int>,
 )
 
 data class FeatureTaskRuntimeAuditRepairStatus(
