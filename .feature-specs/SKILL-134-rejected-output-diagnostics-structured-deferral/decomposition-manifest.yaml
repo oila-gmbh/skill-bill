@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Rejected output diagnostics"
   spec_path: ".feature-specs/SKILL-134-rejected-output-diagnostics-structured-deferral/spec_subtask_1_rejected_output_diagnostics.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260728-082254-34hv"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

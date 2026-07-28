@@ -18,6 +18,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
@@ -108,6 +109,17 @@ class FeatureTaskRuntimePhaseRecorder(
       ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
     RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator).record(request)
   }
+
+  fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =
+    database.transaction(dbOverride) {
+      it.rejectedOutputDiagnostics?.retainProducerOutput(evidence)
+        ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+    }
+
+  fun producerOutput(workflowId: String, phaseId: String, attempt: Int, dbOverride: String? = null) =
+    database.read(dbOverride) {
+      it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt)
+    }
 
   /**
    * Persists one per-phase record. A `running` transition for a new attempt re-mints

@@ -29,6 +29,7 @@ internal object DatabaseSchema {
       "telemetry_reconciliation_state",
       "unaddressed_findings",
       "rejected_output_diagnostics",
+      "producer_output_evidence",
     )
 
   val indexNames: Set<String> =
@@ -62,6 +63,15 @@ internal object DatabaseSchema {
 
   private val statements: List<String> =
     listOf(
+      """
+      CREATE TABLE IF NOT EXISTS producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, attempt)
+      )
+      """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS rejected_output_diagnostics (
         identity TEXT PRIMARY KEY,

@@ -61,17 +61,20 @@ class ProcessAgentRunAdapter(
       }
     }
     val normalizedStdout = normalizeStdout(agent, decoded.text)
+    val decodedBodyBytes = normalizedStdout.encodeToByteArray()
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
       stdout = normalizedStdout,
-      stdoutBytes = result.stdoutBytes,
+      stdoutBytes = decodedBodyBytes,
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,
       spawnFailed = result.spawnFailed,
       liveness = result.liveness,
       stdoutTruncated = result.stdoutTruncated,
+      stdoutByteSize = if (result.stdoutTruncated) result.stdoutByteSize else decodedBodyBytes.size.toLong(),
+      stdoutSha256 = if (result.stdoutTruncated) result.stdoutSha256 else sha256(decodedBodyBytes),
       // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
       // descriptors derived from launch context the launcher controls — the
       // child working directory (session path) and a deterministic, non-secret
@@ -103,6 +106,9 @@ class ProcessAgentRunAdapter(
       append(workingDirectory.fileName?.toString() ?: workingDirectory.toString())
     }
 }
+
+private fun sha256(bytes: ByteArray): String =
+  java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 data class DecodedAgentRunOutput(
   val text: String,

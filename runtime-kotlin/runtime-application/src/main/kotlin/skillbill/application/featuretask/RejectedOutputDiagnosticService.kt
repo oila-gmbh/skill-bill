@@ -37,6 +37,9 @@ data class RejectedOutputDiagnosticRequest(
   val agentId: String,
   val model: String,
   val rawResponse: ByteArray,
+  val observedByteSize: Long = rawResponse.size.toLong(),
+  val observedSha256: String = RejectedOutputDiagnosticService.sha256(rawResponse),
+  val truncated: Boolean = false,
 )
 
 class RejectedOutputDiagnosticService(
@@ -48,9 +51,9 @@ class RejectedOutputDiagnosticService(
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
+    cleanup()
     val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt)
-    val digest = sha256(request.rawResponse)
-    val oversized = request.rawResponse.size.toLong() > config.maximumPayloadBytes
+    val oversized = request.truncated || request.observedByteSize > config.maximumPayloadBytes
     val metadata = RejectedOutputDiagnostic(
       identity = identity,
       workflowId = request.workflowId,
@@ -62,8 +65,8 @@ class RejectedOutputDiagnosticService(
       agentId = request.agentId,
       model = request.model,
       recordedAt = clock.instant(),
-      byteSize = request.rawResponse.size.toLong(),
-      sha256 = digest,
+      byteSize = request.observedByteSize,
+      sha256 = request.observedSha256,
       lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
     )
     metadataValidator.validate(metadata)
@@ -80,9 +83,10 @@ class RejectedOutputDiagnosticService(
   }
 
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
-    repository.select(validate(selector)).onEach(metadataValidator::validate)
+    repository.select(validate(selector).also { cleanup() }).onEach(metadataValidator::validate)
 
   fun readRaw(identity: String): ByteArray {
+    cleanup()
     val record = repository.read(identity)
     metadataValidator.validate(record.metadata)
     when (record.metadata.lifecycle) {
@@ -97,8 +101,10 @@ class RejectedOutputDiagnosticService(
     return payload
   }
 
-  fun cleanup(now: Instant = clock.instant()): Int =
-    repository.markExpired(now.minus(config.retention))
+  fun cleanup(now: Instant = clock.instant()): Int {
+    val cutoff = now.minus(config.retention)
+    return repository.markExpired(cutoff) + repository.deleteProducerOutputsBefore(cutoff)
+  }
 
   fun delete(selector: RejectedOutputDiagnosticSelector): Int =
     repository.delete(validate(selector))
@@ -119,6 +125,18 @@ class RejectedOutputDiagnosticService(
     if (request.attempt <= 0) {
       throw RejectedOutputDiagnosticError.InvalidRequest("attempt must be positive")
     }
+    if (request.observedByteSize < request.rawResponse.size || request.observedByteSize < 0) {
+      throw RejectedOutputDiagnosticError.InvalidRequest("observedByteSize must include all retained bytes")
+    }
+    if (!Regex("[0-9a-f]{64}").matches(request.observedSha256)) {
+      throw RejectedOutputDiagnosticError.InvalidRequest("observedSha256 must be a lowercase SHA-256 digest")
+    }
+    if (!request.truncated &&
+      (request.observedByteSize != request.rawResponse.size.toLong() ||
+        request.observedSha256 != sha256(request.rawResponse))
+    ) {
+      throw RejectedOutputDiagnosticError.InvalidRequest("complete response evidence does not match its bytes")
+    }
   }
 
   private fun validate(selector: RejectedOutputDiagnosticSelector): RejectedOutputDiagnosticSelector {
@@ -128,7 +146,7 @@ class RejectedOutputDiagnosticService(
     if (selector.phaseId?.isBlank() == true) {
       throw RejectedOutputDiagnosticError.InvalidRequest("phaseId must be non-blank when present")
     }
-    if (selector.attempt != null && selector.attempt <= 0) {
+    if (selector.attempt?.let { it <= 0 } == true) {
       throw RejectedOutputDiagnosticError.InvalidRequest("attempt must be positive when present")
     }
     return selector

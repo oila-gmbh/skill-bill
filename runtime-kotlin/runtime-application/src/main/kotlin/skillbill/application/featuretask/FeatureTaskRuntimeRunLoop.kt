@@ -29,6 +29,8 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -2050,15 +2052,25 @@ internal class FeatureTaskRuntimeRunLoop(
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
-    val rejectedPayload = rejectedRecord?.payload ?: state.recordFor(producer)?.outputArtifact ?: "<unavailable>"
+    val producerEvidence = recorder.producerOutput(
+      request.workflowId, producer, producingIteration, request.dbPathOverride,
+    ) ?: throw RejectedOutputDiagnosticError.Retrieval(
+      "original producer output is unavailable for $producer attempt $producingIteration",
+    )
+    val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     recordRejectedOutput(
       run = run,
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
       reason = rejection.rejectionDetail,
-      outputBytes = rejectedPayload.encodeToByteArray(),
+      outputBytes = rejectedPayload,
       phaseId = producer,
-      agentId = state.recordFor(producer)?.resolvedAgentId ?: run.resolvedAgent.resolvedAgentId,
+      agentId = producerEvidence.agentId,
+      model = producerEvidence.model,
+      path = rejectionPath(rejection.rejectionDetail),
+      outputByteSize = producerEvidence.byteSize,
+      outputSha256 = producerEvidence.sha256,
+      outputTruncated = producerEvidence.payload == null,
     )
     val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
     recorder.appendQuarantineEntry(
@@ -2071,7 +2083,7 @@ internal class FeatureTaskRuntimeRunLoop(
         rejectionDetail = boundedRejectionDetail(rejection.rejectionDetail),
         regenerationAttempt = regenerationAttempt,
         quarantinedAtIteration = iteration.coerceAtLeast(1),
-        rejectedRecordPayload = rejectedPayload,
+        rejectedRecordPayload = rejectedRecord?.payload ?: "<unavailable>",
       ),
       request.dbPathOverride,
     )
@@ -2092,6 +2104,7 @@ internal class FeatureTaskRuntimeRunLoop(
       rule = "reconciliation-${rejection.rejectionClass}",
       reason = rejection.rejectionDetail,
       outputBytes = detail.encodeToByteArray(),
+      path = rejectionPath(rejection.rejectionDetail),
     )
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
@@ -2121,6 +2134,13 @@ internal class FeatureTaskRuntimeRunLoop(
       trimmed.take(RECORD_REJECTION_DETAIL_MAX_CHARS) + "…(truncated)"
     }
   }
+
+  private fun rejectionPath(detail: String): String =
+    Regex("""(?:instance location|path|pointer)\s*[:=]\s*['"]?(/[^\s,'"]*)""", RegexOption.IGNORE_CASE)
+      .find(detail)
+      ?.groupValues
+      ?.get(1)
+      ?: "/"
 
   @Suppress("LongParameterList")
   private fun attemptOnce(
@@ -2154,6 +2174,9 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration,
       requireNotNull(launch.capturedStdout),
       requireNotNull(launch.capturedStdoutBytes),
+      launch.capturedStdoutTruncated,
+      requireNotNull(launch.capturedStdoutByteSize),
+      requireNotNull(launch.capturedStdoutSha256),
       observability,
       fileManifest,
     )
@@ -2164,20 +2187,43 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     outputText: String,
     outputBytes: ByteArray,
+    outputTruncated: Boolean,
+    outputByteSize: Long,
+    outputSha256: String,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
+    recorder.retainProducerOutput(
+      ProducerOutputEvidence(
+        request.workflowId,
+        run.phaseId,
+        iteration,
+        run.resolvedAgent.resolvedAgentId,
+        run.modelDirective?.model ?: "unspecified",
+        java.time.Instant.now(),
+        outputByteSize,
+        outputSha256,
+        outputBytes.takeUnless { outputTruncated },
+      ),
+      run.request.dbPathOverride,
+    )
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    recordRejectedOutput(run, iteration, "phase-output-schema", error.reason, outputBytes)
+    recordRejectedOutput(
+      run, iteration, "phase-output-schema", error.reason, outputBytes,
+      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+    )
     schemaInvalidAttempt(
       error.reason,
       fileManifest,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    recordRejectedOutput(run, iteration, "audit-repair-plan-schema", error.reason, outputBytes)
+    recordRejectedOutput(
+      run, iteration, "audit-repair-plan-schema", error.reason, outputBytes,
+      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+    )
     schemaInvalidAttempt(error.reason, fileManifest)
   }
 
@@ -2189,6 +2235,11 @@ internal class FeatureTaskRuntimeRunLoop(
     outputBytes: ByteArray,
     phaseId: String = run.phaseId,
     agentId: String = run.resolvedAgent.resolvedAgentId,
+    model: String = run.modelDirective?.model ?: "unspecified",
+    path: String = "/",
+    outputTruncated: Boolean = false,
+    outputByteSize: Long = outputBytes.size.toLong(),
+    outputSha256: String = RejectedOutputDiagnosticService.sha256(outputBytes),
   ) {
     recorder.recordRejectedOutput(
       RejectedOutputDiagnosticRequest(
@@ -2196,11 +2247,14 @@ internal class FeatureTaskRuntimeRunLoop(
         phaseId = phaseId,
         attempt = iteration.coerceAtLeast(1),
         rule = rule,
-        path = "/",
+        path = path,
         reason = reason,
         agentId = agentId,
-        model = run.modelDirective?.model ?: "unspecified",
+        model = model,
         rawResponse = outputBytes,
+        observedByteSize = outputByteSize,
+        observedSha256 = outputSha256,
+        truncated = outputTruncated,
       ),
       run.request.dbPathOverride,
     )
@@ -2217,22 +2271,22 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
     terminalAuditRepairReason?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     if (!isCompactAuditOutput(run.phaseId, outputText)) {
       auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-        return schemaInvalidAttempt(reason, fileManifest, outputText)
+        return schemaInvalidAttempt(reason, fileManifest)
       }
     }
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -2273,7 +2327,7 @@ internal class FeatureTaskRuntimeRunLoop(
       planningProjectionValidator,
       allowDecompositionPackage = true,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     immediateConsumerProjectionGateReason(
       run,
@@ -2281,10 +2335,10 @@ internal class FeatureTaskRuntimeRunLoop(
       normalizedOutput,
       repositoryFingerprint,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return schemaInvalidAttempt(reason, fileManifest)
     }
     return persistAcceptedOutput(
       run,
@@ -2565,7 +2619,7 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition.retryOnResume &&
       FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
     ) {
-      AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(outputText))
+      AttemptResult.schemaInvalid(reason, fileManifest, null, false)
     } else {
       AttemptResult.settled(
         blockAndPersistInPhase(
@@ -3392,7 +3446,14 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     is AgentRunLaunchFacts -> infraFailureReason(phaseId, outcome)
       ?.let { LaunchResult.infraFailure(it, fileManifest) }
-      ?: LaunchResult.captured(outcome.stdout, outcome.stdoutBytes, fileManifest)
+      ?: LaunchResult.captured(
+        outcome.stdout,
+        outcome.stdoutBytes,
+        outcome.stdoutTruncated,
+        outcome.stdoutByteSize,
+        outcome.stdoutSha256,
+        fileManifest,
+      )
   }
 
   private data class PhaseRun(
@@ -3426,6 +3487,9 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class Captured(
       val stdout: String,
       val stdoutBytes: ByteArray,
+      val stdoutTruncated: Boolean,
+      val stdoutByteSize: Long,
+      val stdoutSha256: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : LaunchResult
     private data class InfraFailure(
@@ -3440,6 +3504,9 @@ internal class FeatureTaskRuntimeRunLoop(
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val capturedStdoutBytes: ByteArray? get() = (this as? Captured)?.stdoutBytes
+    val capturedStdoutTruncated: Boolean get() = (this as? Captured)?.stdoutTruncated == true
+    val capturedStdoutByteSize: Long? get() = (this as? Captured)?.stdoutByteSize
+    val capturedStdoutSha256: String? get() = (this as? Captured)?.stdoutSha256
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
@@ -3450,8 +3517,13 @@ internal class FeatureTaskRuntimeRunLoop(
       fun captured(
         stdout: String,
         stdoutBytes: ByteArray,
+        stdoutTruncated: Boolean,
+        stdoutByteSize: Long,
+        stdoutSha256: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
-      ): LaunchResult = Captured(stdout, stdoutBytes, fileManifest)
+      ): LaunchResult = Captured(
+        stdout, stdoutBytes, stdoutTruncated, stdoutByteSize, stdoutSha256, fileManifest,
+      )
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
         InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
 

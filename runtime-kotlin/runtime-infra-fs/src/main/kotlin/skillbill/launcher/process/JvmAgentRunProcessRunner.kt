@@ -167,6 +167,8 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       spawnFailed = false,
       liveness = wait.liveness,
       stdoutTruncated = stdout.wasTruncated(),
+      stdoutByteSize = stdout.totalByteSize(),
+      stdoutSha256 = stdout.sha256(),
     )
   }
 
@@ -196,6 +198,9 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
         processState = "killed",
         lastOutputAt = outputTracker.lastObservedAt()?.toIsoUtc(),
       ),
+      stdoutTruncated = stdout.wasTruncated(),
+      stdoutByteSize = stdout.totalByteSize(),
+      stdoutSha256 = stdout.sha256(),
     )
   }
 
@@ -794,6 +799,8 @@ private class CappedUtf8Drain(
   )
 
   @Volatile private var truncated = false
+  private var totalByteSize = 0L
+  private val digest = java.security.MessageDigest.getInstance("SHA-256")
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
@@ -809,6 +816,8 @@ private class CappedUtf8Drain(
           if (read == -1) {
             break
           }
+          totalByteSize += read
+          digest.update(buffer, 0, read)
           // Whether the retention cap still has room at the START of this read: sink forwarding
           // stops once the cap is exhausted, independent of onChunkRead's lifecycle decoding, which
           // must keep observing output regardless of the cap to enforce provider budgets correctly.
@@ -863,6 +872,10 @@ private class CappedUtf8Drain(
 
   /** True once more bytes arrived than the retention cap could keep, so [text] is incomplete. */
   fun wasTruncated(): Boolean = truncated
+
+  fun totalByteSize(): Long = totalByteSize
+
+  fun sha256(): String = digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 private class OutputObservationTracker {

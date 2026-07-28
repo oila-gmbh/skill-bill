@@ -6,6 +6,7 @@ import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
+import skillbill.ports.persistence.ProducerOutputEvidence
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.Instant
@@ -119,6 +120,60 @@ class SqliteRejectedOutputDiagnosticRepository(
     }
   }
 
+  override fun retainProducerOutput(evidence: ProducerOutputEvidence) {
+    persistence("retain-producer-output") {
+      connection.prepareStatement(
+        """
+        INSERT OR IGNORE INTO producer_output_evidence
+        (workflow_id, phase_id, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+      ).use {
+        it.setString(1, evidence.workflowId)
+        it.setString(2, evidence.phaseId)
+        it.setInt(3, evidence.attempt)
+        it.setString(4, evidence.agentId)
+        it.setString(5, evidence.model)
+        it.setString(6, evidence.recordedAt.toString())
+        it.setLong(7, evidence.byteSize)
+        it.setString(8, evidence.sha256)
+        it.setBytes(9, evidence.payload)
+        it.executeUpdate()
+      }
+      val retained = requireNotNull(readProducerOutput(evidence.workflowId, evidence.phaseId, evidence.attempt))
+      if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
+        !payloadsEqual(retained.payload, evidence.payload)
+      ) {
+        throw RejectedOutputDiagnosticError.Conflict("${evidence.workflowId}:${evidence.phaseId}:${evidence.attempt}")
+      }
+    }
+  }
+
+  override fun readProducerOutput(workflowId: String, phaseId: String, attempt: Int): ProducerOutputEvidence? =
+    persistence("read-producer-output") {
+      connection.prepareStatement(
+        "SELECT * FROM producer_output_evidence WHERE workflow_id = ? AND phase_id = ? AND attempt = ?",
+      ).use {
+        it.setString(1, workflowId)
+        it.setString(2, phaseId)
+        it.setInt(3, attempt)
+        it.executeQuery().use { row ->
+          if (!row.next()) null else ProducerOutputEvidence(
+            row.getString("workflow_id"), row.getString("phase_id"), row.getInt("attempt"),
+            row.getString("agent_id"), row.getString("model"), Instant.parse(row.getString("recorded_at")),
+            row.getLong("byte_size"), row.getString("sha256"), row.getBytes("payload"),
+          )
+        }
+      }
+    }
+
+  override fun deleteProducerOutputsBefore(before: Instant): Int = persistence("delete-producer-outputs") {
+    connection.prepareStatement("DELETE FROM producer_output_evidence WHERE recorded_at < ?").use {
+      it.setString(1, before.toString())
+      it.executeUpdate()
+    }
+  }
+
   private fun find(identity: String): RejectedOutputDiagnosticRecord? = connection.prepareStatement(
     "${selectColumns()} WHERE identity = ?",
   ).use { statement ->
@@ -172,3 +227,6 @@ private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
 private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: RejectedOutputDiagnosticRecord): Boolean =
   metadata.copy(recordedAt = other.metadata.recordedAt) == other.metadata &&
     ((payload == null && other.payload == null) || (payload != null && other.payload != null && payload.contentEquals(other.payload)))
+
+private fun payloadsEqual(left: ByteArray?, right: ByteArray?): Boolean =
+  (left == null && right == null) || (left != null && right != null && left.contentEquals(right))

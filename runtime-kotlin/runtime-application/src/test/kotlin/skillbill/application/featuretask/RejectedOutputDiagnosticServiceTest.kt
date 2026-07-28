@@ -1,13 +1,13 @@
 package skillbill.application.featuretask
 
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
-import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -52,6 +52,30 @@ class RejectedOutputDiagnosticServiceTest {
   }
 
   @Test
+  fun `truncated capture stores deterministic full stream oversized evidence`() {
+    val service = service(MemoryRepository())
+    val metadata = service.record(
+      request(byteArrayOf(1)).copy(
+        observedByteSize = 1_048_577,
+        observedSha256 = "a".repeat(64),
+        truncated = true,
+      ),
+    )
+
+    assertEquals(RejectedOutputLifecycle.OVERSIZED, metadata.lifecycle)
+    assertEquals(1_048_577, metadata.byteSize)
+    assertEquals("a".repeat(64), metadata.sha256)
+  }
+
+  @Test
+  fun `record executes configured retention before inserting new evidence`() {
+    val repository = MemoryRepository()
+    service(repository).record(request(byteArrayOf(1)))
+
+    assertEquals(1, repository.expiryCalls)
+  }
+
+  @Test
   fun `corrupt payload fails without returning content`() {
     val repository = MemoryRepository()
     val service = service(repository)
@@ -90,7 +114,11 @@ class RejectedOutputDiagnosticServiceTest {
     RejectedOutputDiagnosticService(
       repository,
       permissions = { },
-      metadataValidator = RejectedOutputDiagnosticMetadataValidatorAdapter(),
+      metadataValidator = RejectedOutputDiagnosticMetadataValidator { metadata ->
+        if (!Regex("[0-9a-f]{64}").matches(metadata.sha256)) {
+          throw InvalidRejectedOutputDiagnosticSchemaError("sha256 is invalid")
+        }
+      },
       config = RejectedOutputDiagnosticConfig(maximumPayloadBytes = maximumPayloadBytes),
       clock = Clock.fixed(now, ZoneOffset.UTC),
     )
@@ -110,6 +138,7 @@ class RejectedOutputDiagnosticServiceTest {
 
 private class MemoryRepository : RejectedOutputDiagnosticRepository {
   val records = linkedMapOf<String, RejectedOutputDiagnosticRecord>()
+  var expiryCalls: Int = 0
 
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord =
     records.getOrPut(record.metadata.identity) { record }
@@ -124,7 +153,10 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
   override fun read(identity: String): RejectedOutputDiagnosticRecord =
     records[identity] ?: throw RejectedOutputDiagnosticError.Absent(identity)
 
-  override fun markExpired(before: Instant): Int = 0
+  override fun markExpired(before: Instant): Int {
+    expiryCalls += 1
+    return 0
+  }
 
   override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
 }

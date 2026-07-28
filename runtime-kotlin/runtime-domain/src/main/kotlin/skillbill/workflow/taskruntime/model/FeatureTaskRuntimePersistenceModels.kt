@@ -467,7 +467,7 @@ data class FeatureTaskRuntimePhaseRecord(
       val allowed = required + setOf(
         "finished_at", "duration_millis", "output_artifact", "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
-        "loop_id", "edge_iteration", "review_pass_number",
+        "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
       )
       val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
       val hasCompatibleIdentity =

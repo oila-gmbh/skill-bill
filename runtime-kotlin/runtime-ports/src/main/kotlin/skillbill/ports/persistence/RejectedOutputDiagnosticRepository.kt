@@ -33,6 +33,21 @@ data class RejectedOutputDiagnosticRecord(
   override fun toString(): String = "RejectedOutputDiagnosticRecord(metadata=$metadata, payload=<hidden>)"
 }
 
+data class ProducerOutputEvidence(
+  val workflowId: String,
+  val phaseId: String,
+  val attempt: Int,
+  val agentId: String,
+  val model: String,
+  val recordedAt: Instant,
+  val byteSize: Long,
+  val sha256: String,
+  val payload: ByteArray?,
+) {
+  override fun toString(): String =
+    "ProducerOutputEvidence(workflowId=$workflowId, phaseId=$phaseId, attempt=$attempt, payload=<hidden>)"
+}
+
 sealed class RejectedOutputDiagnosticError(message: String) : RuntimeException(message) {
   class Absent(identity: String) : RejectedOutputDiagnosticError("Rejected output diagnostic '$identity' is absent.")
   class Expired(identity: String) : RejectedOutputDiagnosticError("Rejected output diagnostic '$identity' has expired.")
@@ -65,6 +80,11 @@ interface RejectedOutputDiagnosticRepository {
   fun read(identity: String): RejectedOutputDiagnosticRecord
   fun markExpired(before: Instant): Int
   fun delete(selector: RejectedOutputDiagnosticSelector): Int
+  fun retainProducerOutput(evidence: ProducerOutputEvidence) {
+    throw RejectedOutputDiagnosticError.Persistence("producer-evidence-unavailable")
+  }
+  fun readProducerOutput(workflowId: String, phaseId: String, attempt: Int): ProducerOutputEvidence? = null
+  fun deleteProducerOutputsBefore(before: Instant): Int = 0
 }
 
 fun interface RejectedOutputDiagnosticMetadataValidator {

@@ -471,6 +471,25 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 15,
+        name = "add-private-producer-output-evidence",
+        operation = { connection ->
+          connection.createStatement().use {
+            it.execute(
+              """
+              CREATE TABLE IF NOT EXISTS producer_output_evidence (
+                workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK (attempt > 0),
+                agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+                byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+                PRIMARY KEY (workflow_id, phase_id, attempt)
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

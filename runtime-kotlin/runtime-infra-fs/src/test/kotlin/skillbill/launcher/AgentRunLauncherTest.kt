@@ -215,7 +215,7 @@ class AgentRunLauncherTest {
   }
 
   @Test
-  fun `launch facts retain exact process stdout bytes independently of decoded text`() {
+  fun `plain launch facts retain decoded body bytes`() {
     val rawBytes = byteArrayOf(0, 13, 10, -1, 42)
     val runner = RecordingAgentRunProcessRunner(
       result = AgentRunProcessResult(
@@ -231,7 +231,27 @@ class AgentRunLauncherTest {
 
     val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
 
-    assertContentEquals(rawBytes, facts.stdoutBytes)
+    assertContentEquals("\u0000\r\n�*".encodeToByteArray(), facts.stdoutBytes)
+  }
+
+  @Test
+  fun `structured provider launch facts expose the decoded response body bytes not envelope bytes`() {
+    val envelope = """{"type":"result","result":"{\"status\":\"blocked\"}","usage":{}}"""
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = 0,
+        stdout = envelope,
+        stderr = "",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      ),
+    )
+
+    val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(skillRunRequest())
+
+    assertEquals("""{"status":"blocked"}""", facts.stdout)
+    assertContentEquals(facts.stdout.encodeToByteArray(), facts.stdoutBytes)
   }
 
   @Test

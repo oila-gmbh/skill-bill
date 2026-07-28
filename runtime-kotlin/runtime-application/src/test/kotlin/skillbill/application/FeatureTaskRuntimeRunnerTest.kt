@@ -116,6 +116,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -441,6 +442,8 @@ class FeatureTaskRuntimeRunnerTest {
       listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history"),
       harness.launchedPhaseOrder(),
     )
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "write_history" }
+    assertContentEquals(validJsonOutput("write_history").encodeToByteArray(), diagnostic.payload)
   }
 
   @Test
@@ -5304,6 +5307,13 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
   val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
+  private val diagnosticRecords =
+    linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
+  private val producerEvidence =
+    linkedMapOf<Triple<String, String, Int>, skillbill.ports.persistence.ProducerOutputEvidence>()
+
+  fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
+    diagnosticRecords.values.toList()
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -5324,6 +5334,42 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+    override val rejectedOutputDiagnosticPermissions =
+      skillbill.ports.persistence.RejectedOutputDiagnosticPermissions { }
+    override val rejectedOutputDiagnostics = object : skillbill.ports.persistence.RejectedOutputDiagnosticRepository {
+      override fun insert(
+        record: skillbill.ports.persistence.RejectedOutputDiagnosticRecord,
+      ): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
+        diagnosticRecords.getOrPut(record.metadata.identity) { record }
+
+      override fun select(
+        selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector,
+      ): List<skillbill.ports.persistence.RejectedOutputDiagnostic> = diagnosticRecords.values
+        .map { it.metadata }
+        .filter {
+          it.workflowId == selector.workflowId &&
+            (selector.phaseId == null || it.phaseId == selector.phaseId) &&
+            (selector.attempt == null || it.attempt == selector.attempt)
+        }
+
+      override fun read(identity: String): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
+        diagnosticRecords[identity] ?: throw skillbill.ports.persistence.RejectedOutputDiagnosticError.Absent(identity)
+
+      override fun markExpired(before: java.time.Instant): Int = 0
+
+      override fun delete(selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector): Int = 0
+
+      override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+        producerEvidence.putIfAbsent(Triple(evidence.workflowId, evidence.phaseId, evidence.attempt), evidence)
+      }
+
+      override fun readProducerOutput(
+        workflowId: String,
+        phaseId: String,
+        attempt: Int,
+      ): skillbill.ports.persistence.ProducerOutputEvidence? =
+        producerEvidence[Triple(workflowId, phaseId, attempt)]
+    }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(
         workflowId: String,
