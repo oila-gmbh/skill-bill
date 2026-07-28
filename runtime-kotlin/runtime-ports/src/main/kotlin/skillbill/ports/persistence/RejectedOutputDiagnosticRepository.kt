@@ -51,6 +51,10 @@ sealed class RejectedOutputDiagnosticError(message: String) : RuntimeException(m
     }
   }
   class Retrieval(reason: String) : RejectedOutputDiagnosticError("Rejected output diagnostic retrieval failed: $reason")
+  class InvalidRequest(reason: String) :
+    RejectedOutputDiagnosticError("Rejected output diagnostic request is invalid: $reason")
+  class InvalidConfiguration(reason: String) :
+    RejectedOutputDiagnosticError("Rejected output diagnostic configuration is invalid: $reason")
   class Conflict(identity: String) :
     RejectedOutputDiagnosticError("Rejected output diagnostic '$identity' conflicts with immutable evidence.")
 }

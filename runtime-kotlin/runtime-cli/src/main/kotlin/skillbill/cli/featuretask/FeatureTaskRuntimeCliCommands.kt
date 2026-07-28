@@ -420,6 +420,8 @@ class FeatureTaskRuntimeRunCommand(
   featureTaskRuntimeRetryBlockedCommand: FeatureTaskRuntimeRetryBlockedCommand,
   featureTaskRuntimeRepairIdentityCommand: FeatureTaskRuntimeRepairIdentityCommand,
   featureTaskLookupCommand: FeatureTaskLookupCommand,
+  rejectedOutputInspectCliCommand: RejectedOutputInspectCliCommand,
+  rejectedOutputCleanupCliCommand: RejectedOutputCleanupCliCommand,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "feature-task",
   "Run the runtime-driven feature-task phase loop in the foreground.",
@@ -438,6 +440,8 @@ class FeatureTaskRuntimeRunCommand(
       featureTaskRuntimeRetryBlockedCommand,
       featureTaskRuntimeRepairIdentityCommand,
       featureTaskLookupCommand,
+      rejectedOutputInspectCliCommand,
+      rejectedOutputCleanupCliCommand,
     )
   }
 

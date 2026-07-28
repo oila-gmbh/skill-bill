@@ -106,7 +106,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
       "the regeneration loop id is stamped durably, seeding the resume watermark before the ledger write",
     )
     assertEquals(1, plan.edgeIteration, "the per-edge iteration is stamped durably so the cap cannot reset")
-    assertEquals(legacyPlan, plan.rejectedOutput, "the rejected record is retained as evidence, not a usable output")
+    assertEquals(null, plan.rejectedOutput, "raw rejected evidence must remain outside workflow artifacts")
     assertEquals(null, plan.outputArtifact, "the rejected payload is no longer selectable as the producer output")
   }
 

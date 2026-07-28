@@ -207,6 +207,24 @@ class FeatureTaskRuntimePersistenceModelsTest {
   }
 
   @Test
+  fun `rejected raw output never enters the artifact map`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "blocked",
+      attemptCount = 1,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-implement-1",
+      rejectedOutput = "sentinel-private-body",
+    )
+
+    val artifact = record.toArtifactMap()
+
+    assertEquals(false, artifact.containsKey("rejected_output"))
+    assertEquals(false, artifact.toString().contains("sentinel-private-body"))
+    assertNull(FeatureTaskRuntimePhaseRecord.fromArtifactMap(artifact).rejectedOutput)
+  }
+
+  @Test
   fun `per-phase record rejects missing legacy first started at`() {
     val current = FeatureTaskRuntimePhaseRecord(
       phaseId = "plan",

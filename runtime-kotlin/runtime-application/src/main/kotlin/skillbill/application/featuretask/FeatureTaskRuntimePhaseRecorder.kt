@@ -16,6 +16,7 @@ import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
@@ -94,6 +95,17 @@ class FeatureTaskRuntimePhaseRecorder(
   private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+
+  fun recordRejectedOutput(
+    request: RejectedOutputDiagnosticRequest,
+    dbOverride: String? = null,
+  ) = database.transaction(dbOverride) { unitOfWork ->
+    val repository = unitOfWork.rejectedOutputDiagnostics
+      ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+    val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
+      ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
+    RejectedOutputDiagnosticService(repository, permissions).record(request)
+  }
 
   /**
    * Persists one per-phase record. A `running` transition for a new attempt re-mints

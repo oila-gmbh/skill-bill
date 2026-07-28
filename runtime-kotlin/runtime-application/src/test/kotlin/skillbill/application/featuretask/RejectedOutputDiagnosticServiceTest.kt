@@ -59,6 +59,19 @@ class RejectedOutputDiagnosticServiceTest {
     assertFailsWith<RejectedOutputDiagnosticError.Corrupt> { service.readRaw(metadata.identity) }
   }
 
+  @Test
+  fun `invalid request and configuration failures are typed`() {
+    assertFailsWith<RejectedOutputDiagnosticError.InvalidConfiguration> {
+      RejectedOutputDiagnosticConfig(maximumPayloadBytes = -1)
+    }
+    assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
+      service(MemoryRepository()).record(request(byteArrayOf(1)).copy(workflowId = ""))
+    }
+    assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
+      service(MemoryRepository()).inspect(RejectedOutputDiagnosticSelector(""))
+    }
+  }
+
   private fun service(repository: MemoryRepository, maximumPayloadBytes: Long = 100) =
     RejectedOutputDiagnosticService(
       repository,

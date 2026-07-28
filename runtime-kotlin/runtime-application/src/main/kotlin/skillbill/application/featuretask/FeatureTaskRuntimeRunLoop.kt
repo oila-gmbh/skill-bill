@@ -2051,6 +2051,15 @@ internal class FeatureTaskRuntimeRunLoop(
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
     val rejectedPayload = rejectedRecord?.payload ?: state.recordFor(producer)?.outputArtifact ?: "<unavailable>"
+    recordRejectedOutput(
+      run = run,
+      iteration = producingIteration,
+      rule = "reconciliation-${rejection.rejectionClass}",
+      reason = rejection.rejectionDetail,
+      outputText = rejectedPayload,
+      phaseId = producer,
+      agentId = state.recordFor(producer)?.resolvedAgentId ?: run.resolvedAgent.resolvedAgentId,
+    )
     val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
     recorder.appendQuarantineEntry(
       request.workflowId,
@@ -2077,6 +2086,13 @@ internal class FeatureTaskRuntimeRunLoop(
     producer: String?,
   ): PhaseOutcome {
     val detail = boundedRejectionDetail(rejection.rejectionDetail)
+    recordRejectedOutput(
+      run = run,
+      iteration = iteration,
+      rule = "reconciliation-${rejection.rejectionClass}",
+      reason = rejection.rejectionDetail,
+      outputText = detail,
+    )
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
         "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
@@ -2152,14 +2168,40 @@ internal class FeatureTaskRuntimeRunLoop(
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    recordRejectedOutput(run, iteration, "phase-output-schema", error.reason, outputText)
     schemaInvalidAttempt(
       error.reason,
       fileManifest,
-      outputText,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    schemaInvalidAttempt(error.reason, fileManifest, outputText)
+    recordRejectedOutput(run, iteration, "audit-repair-plan-schema", error.reason, outputText)
+    schemaInvalidAttempt(error.reason, fileManifest)
+  }
+
+  private fun recordRejectedOutput(
+    run: PhaseRun,
+    iteration: Int,
+    rule: String,
+    reason: String,
+    outputText: String,
+    phaseId: String = run.phaseId,
+    agentId: String = run.resolvedAgent.resolvedAgentId,
+  ) {
+    recorder.recordRejectedOutput(
+      RejectedOutputDiagnosticRequest(
+        workflowId = run.request.workflowId,
+        phaseId = phaseId,
+        attempt = iteration.coerceAtLeast(1),
+        rule = rule,
+        path = "/",
+        reason = reason,
+        agentId = agentId,
+        model = run.modelDirective?.model ?: "unspecified",
+        rawResponse = outputText.encodeToByteArray(),
+      ),
+      run.request.dbPathOverride,
+    )
   }
 
   @Suppress("ReturnCount")
@@ -2865,11 +2907,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun isGoalReviewRun(run: PhaseRun): Boolean =
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
 
-  // A rejected output is the only evidence of why a contract gate refused it. Persisting it bounded
-  // keeps the durable record diagnosable without letting a runaway agent payload into workflow state.
-  private fun boundedRejectedOutput(rejectedOutput: String?): String? =
-    rejectedOutput?.takeIf(String::isNotBlank)?.take(REJECTED_OUTPUT_MAX_CHARS)
-
   // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
   // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid
   // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
@@ -2877,12 +2914,11 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun schemaInvalidAttempt(
     reason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
-    rejectedOutput: String? = null,
     malformedOutput: Boolean = false,
   ): AttemptResult = AttemptResult.schemaInvalid(
     reason,
     fileManifest,
-    boundedRejectedOutput(rejectedOutput),
+    null,
     malformedOutput,
   )
 
@@ -3491,7 +3527,6 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
-private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
 
 // The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
 // planning projection. The current seam quarantines the record and regenerates its producer instead,

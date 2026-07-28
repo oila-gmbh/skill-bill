@@ -1,6 +1,14 @@
 package skillbill.cli.featuretask
 
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.types.int
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
+import skillbill.cli.core.CliRunState
+import skillbill.cli.core.DocumentedCliCommand
+import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
@@ -46,6 +54,60 @@ class RejectedOutputCleanupCommand(
   fun execute(request: RejectedOutputCleanupRequest): Int =
     service.delete(request.selector())
 }
+
+@Inject
+class RejectedOutputInspectCliCommand(
+  private val database: DatabaseSessionFactory,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "rejected-output",
+  "Inspect rejected phase output metadata, or emit one exact stored body with --raw-output.",
+) {
+  private val workflowId by option("--workflow", help = "Workflow identifier.").required()
+  private val phaseId by option("--phase", help = "Optional phase selector.")
+  private val attempt by option("--attempt", help = "Optional attempt selector.").int()
+  private val rawOutput by option(
+    "--raw-output",
+    help = "Write the exact stored response bytes; the selector must resolve to one record.",
+  ).flag(default = false)
+
+  override fun run() {
+    database.read(state.dbOverride) { unitOfWork ->
+      RejectedOutputInspectCommand(unitOfWork.diagnosticService()).execute(
+        RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput),
+        System.out,
+      )
+    }
+  }
+}
+
+@Inject
+class RejectedOutputCleanupCliCommand(
+  private val database: DatabaseSessionFactory,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "rejected-output-cleanup",
+  "Delete rejected-output diagnostics selected within one workflow.",
+) {
+  private val workflowId by option("--workflow", help = "Workflow identifier.").required()
+  private val phaseId by option("--phase", help = "Optional phase selector.")
+  private val attempt by option("--attempt", help = "Optional attempt selector.").int()
+
+  override fun run() {
+    val deleted = database.transaction(state.dbOverride) { unitOfWork ->
+      RejectedOutputCleanupCommand(unitOfWork.diagnosticService()).execute(
+        RejectedOutputCleanupRequest(workflowId, phaseId, attempt),
+      )
+    }
+    echo("deleted=$deleted")
+  }
+}
+
+private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(): RejectedOutputDiagnosticService =
+  RejectedOutputDiagnosticService(
+    rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
+    rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),
+  )
 
 private fun RejectedOutputInspectRequest.selector() =
   RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)

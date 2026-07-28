@@ -2639,7 +2639,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("blocked", reviewRecord.status)
-    assertNotNull(reviewRecord.rejectedOutput)
+    assertNull(reviewRecord.rejectedOutput)
     assertNull(
       reviewRecord.outputArtifact,
       "rejected evidence must never land in output_artifact, which resume hydration re-validates",

@@ -14,7 +14,13 @@ class SqliteRejectedOutputDiagnosticRepository(
   private val connection: Connection,
 ) : RejectedOutputDiagnosticRepository {
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord {
-    val existing = find(record.metadata.identity)
+    val existing = try {
+      find(record.metadata.identity)
+    } catch (error: RejectedOutputDiagnosticError) {
+      throw error
+    } catch (error: Exception) {
+      throw RejectedOutputDiagnosticError.Persistence("insert-read-existing", error)
+    }
     if (existing != null) {
       if (!existing.sameImmutableEvidence(record)) {
         throw RejectedOutputDiagnosticError.Conflict(record.metadata.identity)
@@ -58,42 +64,51 @@ class SqliteRejectedOutputDiagnosticRepository(
   }
 
   override fun select(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> {
-    require(selector.workflowId.isNotBlank())
-    val clauses = mutableListOf("workflow_id = ?")
-    if (selector.phaseId != null) clauses += "phase_id = ?"
-    if (selector.attempt != null) clauses += "attempt = ?"
-    return connection.prepareStatement(
-      "${selectColumns()} WHERE ${clauses.joinToString(" AND ")} ORDER BY phase_id, attempt",
-    ).use { statement ->
-      var index = 1
-      statement.setString(index++, selector.workflowId)
-      selector.phaseId?.let { statement.setString(index++, it) }
-      selector.attempt?.let { statement.setInt(index, it) }
-      statement.executeQuery().use { rows ->
-        buildList { while (rows.next()) add(rows.toRecord().metadata) }
+    return persistence("select") {
+      val clauses = mutableListOf("workflow_id = ?")
+      if (selector.phaseId != null) clauses += "phase_id = ?"
+      if (selector.attempt != null) clauses += "attempt = ?"
+      connection.prepareStatement(
+        "${selectColumns()} WHERE ${clauses.joinToString(" AND ")} ORDER BY phase_id, attempt",
+      ).use { statement ->
+        var index = 1
+        statement.setString(index++, selector.workflowId)
+        selector.phaseId?.let { statement.setString(index++, it) }
+        selector.attempt?.let { statement.setInt(index, it) }
+        statement.executeQuery().use { rows ->
+          buildList { while (rows.next()) add(rows.toRecord().metadata) }
+        }
       }
     }
   }
 
   override fun read(identity: String): RejectedOutputDiagnosticRecord =
-    find(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
+    try {
+      find(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
+    } catch (error: RejectedOutputDiagnosticError) {
+      throw error
+    } catch (error: Exception) {
+      throw RejectedOutputDiagnosticError.Corrupt(identity)
+    }
 
-  override fun markExpired(before: Instant): Int = connection.prepareStatement(
-    """
-    UPDATE rejected_output_diagnostics
-    SET lifecycle = 'expired', payload = NULL
-    WHERE lifecycle = 'stored' AND recorded_at < ?
-    """.trimIndent(),
-  ).use { statement ->
-    statement.setString(1, before.toString())
-    statement.executeUpdate()
+  override fun markExpired(before: Instant): Int = persistence("mark-expired") {
+    connection.prepareStatement(
+      """
+      UPDATE rejected_output_diagnostics
+      SET lifecycle = 'expired', payload = NULL
+      WHERE lifecycle = 'stored' AND recorded_at < ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, before.toString())
+      statement.executeUpdate()
+    }
   }
 
-  override fun delete(selector: RejectedOutputDiagnosticSelector): Int {
+  override fun delete(selector: RejectedOutputDiagnosticSelector): Int = persistence("delete") {
     val clauses = mutableListOf("workflow_id = ?")
     if (selector.phaseId != null) clauses += "phase_id = ?"
     if (selector.attempt != null) clauses += "attempt = ?"
-    return connection.prepareStatement(
+    connection.prepareStatement(
       "DELETE FROM rejected_output_diagnostics WHERE ${clauses.joinToString(" AND ")}",
     ).use { statement ->
       var index = 1
@@ -119,24 +134,40 @@ class SqliteRejectedOutputDiagnosticRepository(
     """.trimIndent()
 }
 
-private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord = RejectedOutputDiagnosticRecord(
-  metadata = RejectedOutputDiagnostic(
-    identity = getString("identity"),
-    workflowId = getString("workflow_id"),
-    phaseId = getString("phase_id"),
-    attempt = getInt("attempt"),
-    rule = getString("rule"),
-    path = getString("rejection_path"),
-    reason = getString("reason"),
-    agentId = getString("agent_id"),
-    model = getString("model"),
-    recordedAt = Instant.parse(getString("recorded_at")),
-    byteSize = getLong("byte_size"),
-    sha256 = getString("sha256"),
-    lifecycle = RejectedOutputLifecycle.valueOf(getString("lifecycle").uppercase()),
-  ),
-  payload = getBytes("payload"),
-)
+private inline fun <T> persistence(operation: String, block: () -> T): T =
+  try {
+    block()
+  } catch (error: RejectedOutputDiagnosticError) {
+    throw error
+  } catch (error: Exception) {
+    throw RejectedOutputDiagnosticError.Persistence(operation, error)
+  }
+
+private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
+  val identity = runCatching { getString("identity") }.getOrNull() ?: "<invalid>"
+  return try {
+    RejectedOutputDiagnosticRecord(
+      metadata = RejectedOutputDiagnostic(
+        identity = identity,
+        workflowId = getString("workflow_id"),
+        phaseId = getString("phase_id"),
+        attempt = getInt("attempt"),
+        rule = getString("rule"),
+        path = getString("rejection_path"),
+        reason = getString("reason"),
+        agentId = getString("agent_id"),
+        model = getString("model"),
+        recordedAt = Instant.parse(getString("recorded_at")),
+        byteSize = getLong("byte_size"),
+        sha256 = getString("sha256"),
+        lifecycle = RejectedOutputLifecycle.valueOf(getString("lifecycle").uppercase()),
+      ),
+      payload = getBytes("payload"),
+    )
+  } catch (error: Exception) {
+    throw RejectedOutputDiagnosticError.Corrupt(identity)
+  }
+}
 
 private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: RejectedOutputDiagnosticRecord): Boolean =
   metadata.copy(recordedAt = other.metadata.recordedAt) == other.metadata &&

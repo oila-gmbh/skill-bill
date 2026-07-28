@@ -113,11 +113,8 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
 
     assertEquals("implement", blocked.lastIncompletePhase)
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    val persisted = requireNotNull(implementRecord.rejectedOutput) {
-      "a rejected output must stay on the durable record so the failure is diagnosable"
-    }
-    assertContains(persisted, marker)
-    assertEquals(20_000, persisted.length, "the persisted rejected output stays bounded")
+    assertEquals(null, implementRecord.rejectedOutput)
+    assertEquals(false, implementRecord.toArtifactMap().toString().contains(marker))
   }
 
   // The audit-repair-plan schema permits an uppercase AC- prefix and plan ingest lowercases it, so a
