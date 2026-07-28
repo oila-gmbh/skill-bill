@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.workflow.REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION
+import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
@@ -64,7 +66,7 @@ class RejectedOutputDiagnosticService(
       sha256 = digest,
       lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
     )
-    validate(metadata)
+    validateCanonicalMetadata(metadata)
     try {
       permissions.applyRestrictivePermissions()
     } catch (error: RejectedOutputDiagnosticError) {
@@ -78,11 +80,11 @@ class RejectedOutputDiagnosticService(
   }
 
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
-    repository.select(validate(selector)).onEach(::validate)
+    repository.select(validate(selector)).onEach(::validateCanonicalMetadata)
 
   fun readRaw(identity: String): ByteArray {
     val record = repository.read(identity)
-    validate(record.metadata)
+    validateCanonicalMetadata(record.metadata)
     when (record.metadata.lifecycle) {
       RejectedOutputLifecycle.EXPIRED -> throw RejectedOutputDiagnosticError.Expired(identity)
       RejectedOutputLifecycle.OVERSIZED -> throw RejectedOutputDiagnosticError.Oversized(identity)
@@ -132,7 +134,11 @@ class RejectedOutputDiagnosticService(
     return selector
   }
 
-  private fun validate(metadata: RejectedOutputDiagnostic) {
+  /**
+   * Mirrors the canonical rejected-output-diagnostic schema at the application record/read seams.
+   * Keeping raw bytes out of this projection is the privacy boundary enforced by that contract.
+   */
+  private fun validateCanonicalMetadata(metadata: RejectedOutputDiagnostic) {
     val required = listOf(
       metadata.identity,
       metadata.workflowId,
@@ -149,7 +155,10 @@ class RejectedOutputDiagnosticService(
       required.any(String::isBlank) || !validIdentity || metadata.attempt <= 0 ||
       metadata.byteSize < 0 || !validDigest
     ) {
-      throw RejectedOutputDiagnosticError.Corrupt(metadata.identity.ifBlank { "<invalid>" })
+      throw InvalidRejectedOutputDiagnosticSchemaError(
+        "Rejected output diagnostic '${metadata.identity.ifBlank { "<invalid>" }}' fails canonical " +
+          "contract $REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION.",
+      )
     }
   }
 

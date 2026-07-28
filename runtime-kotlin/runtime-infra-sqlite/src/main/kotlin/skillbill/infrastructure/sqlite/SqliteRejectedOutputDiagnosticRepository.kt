@@ -57,7 +57,7 @@ class SqliteRejectedOutputDiagnosticRepository(
     } catch (error: RejectedOutputDiagnosticError) {
       throw error
     } catch (error: Exception) {
-      val raced = find(record.metadata.identity)
+      val raced = persistence("insert-read-raced") { find(record.metadata.identity) }
       if (raced != null && raced.sameImmutableEvidence(record)) return raced
       throw RejectedOutputDiagnosticError.Persistence("insert", error)
     }

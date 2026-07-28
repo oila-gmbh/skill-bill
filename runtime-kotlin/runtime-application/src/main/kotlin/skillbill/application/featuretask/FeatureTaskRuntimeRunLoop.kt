@@ -2056,7 +2056,7 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
       reason = rejection.rejectionDetail,
-      outputText = rejectedPayload,
+      outputBytes = rejectedPayload.encodeToByteArray(),
       phaseId = producer,
       agentId = state.recordFor(producer)?.resolvedAgentId ?: run.resolvedAgent.resolvedAgentId,
     )
@@ -2091,7 +2091,7 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration = iteration,
       rule = "reconciliation-${rejection.rejectionClass}",
       reason = rejection.rejectionDetail,
-      outputText = detail,
+      outputBytes = detail.encodeToByteArray(),
     )
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
@@ -2153,6 +2153,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       iteration,
       requireNotNull(launch.capturedStdout),
+      requireNotNull(launch.capturedStdoutBytes),
       observability,
       fileManifest,
     )
@@ -2162,20 +2163,21 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     outputText: String,
+    outputBytes: ByteArray,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    recordRejectedOutput(run, iteration, "phase-output-schema", error.reason, outputText)
+    recordRejectedOutput(run, iteration, "phase-output-schema", error.reason, outputBytes)
     schemaInvalidAttempt(
       error.reason,
       fileManifest,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    recordRejectedOutput(run, iteration, "audit-repair-plan-schema", error.reason, outputText)
+    recordRejectedOutput(run, iteration, "audit-repair-plan-schema", error.reason, outputBytes)
     schemaInvalidAttempt(error.reason, fileManifest)
   }
 
@@ -2184,7 +2186,7 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     rule: String,
     reason: String,
-    outputText: String,
+    outputBytes: ByteArray,
     phaseId: String = run.phaseId,
     agentId: String = run.resolvedAgent.resolvedAgentId,
   ) {
@@ -2198,7 +2200,7 @@ internal class FeatureTaskRuntimeRunLoop(
         reason = reason,
         agentId = agentId,
         model = run.modelDirective?.model ?: "unspecified",
-        rawResponse = outputText.encodeToByteArray(),
+        rawResponse = outputBytes,
       ),
       run.request.dbPathOverride,
     )
@@ -3390,7 +3392,7 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     is AgentRunLaunchFacts -> infraFailureReason(phaseId, outcome)
       ?.let { LaunchResult.infraFailure(it, fileManifest) }
-      ?: LaunchResult.captured(outcome.stdout, fileManifest)
+      ?: LaunchResult.captured(outcome.stdout, outcome.stdoutBytes, fileManifest)
   }
 
   private data class PhaseRun(
@@ -3423,6 +3425,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
+      val stdoutBytes: ByteArray,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : LaunchResult
     private data class InfraFailure(
@@ -3436,6 +3439,7 @@ internal class FeatureTaskRuntimeRunLoop(
     ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
+    val capturedStdoutBytes: ByteArray? get() = (this as? Captured)?.stdoutBytes
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
@@ -3443,8 +3447,11 @@ internal class FeatureTaskRuntimeRunLoop(
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
-      fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
-        Captured(stdout, fileManifest)
+      fun captured(
+        stdout: String,
+        stdoutBytes: ByteArray,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      ): LaunchResult = Captured(stdout, stdoutBytes, fileManifest)
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
         InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
 

@@ -207,6 +207,7 @@ data class AgentRunLaunchFacts(
   val timedOut: Boolean,
   val interrupted: Boolean = false,
   val spawnFailed: Boolean,
+  val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val liveness: AgentRunLivenessSnapshot? = null,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,

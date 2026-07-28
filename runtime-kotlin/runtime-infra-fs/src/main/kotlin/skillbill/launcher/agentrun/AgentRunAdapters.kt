@@ -60,10 +60,12 @@ class ProcessAgentRunAdapter(
         throw error
       }
     }
+    val normalizedStdout = normalizeStdout(agent, decoded.text)
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
-      stdout = normalizeStdout(agent, decoded.text),
+      stdout = normalizedStdout,
+      stdoutBytes = normalizedStdout.encodeToByteArray(),
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,

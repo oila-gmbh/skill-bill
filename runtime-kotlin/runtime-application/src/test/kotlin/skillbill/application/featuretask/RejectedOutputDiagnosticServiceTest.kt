@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
@@ -57,6 +58,18 @@ class RejectedOutputDiagnosticServiceTest {
     repository.records[metadata.identity] = repository.records.getValue(metadata.identity).copy(payload = byteArrayOf(9))
 
     assertFailsWith<RejectedOutputDiagnosticError.Corrupt> { service.readRaw(metadata.identity) }
+  }
+
+  @Test
+  fun `record and read seams reject metadata outside the canonical schema with typed error`() {
+    val repository = MemoryRepository()
+    val service = service(repository)
+    val metadata = service.record(request(byteArrayOf(1, 2)))
+    repository.records[metadata.identity] = repository.records.getValue(metadata.identity).copy(
+      metadata = metadata.copy(sha256 = "not-a-digest"),
+    )
+
+    assertFailsWith<InvalidRejectedOutputDiagnosticSchemaError> { service.readRaw(metadata.identity) }
   }
 
   @Test
