@@ -337,9 +337,14 @@ or native-agent source instructs an agent to call a removed name — verified by
 | `feature_task_continuation_lookup` | as above | removable | `FeatureTaskContinuationLookupService` is consumed by `FeatureTaskRuntimeCliCommands` (five call sites) and stays. No governed skill, script, or doc invokes the MCP name; its only non-code reference was its own telemetry schema branch. |
 | `readian_auth_status`, `readian_get_article`, `readian_get_articles_for_topic_query`, `readian_get_spotlight`, `readian_mark_story_status`, `readian_save_candidate` | as above | removable | Zero Skill Bill consumers. Only references were `docs/getting-started.md` (an "optional when configured" listing) and `docs/review-telemetry.md` (the installed-surface sentence), the six telemetry schema branches, and Readian-only tests. `ReadianMcpRuntime` and `ReadianSecretRedactor` had no other callers. No Gradle coordinate in `runtime-mcp/build.gradle.kts` or `gradle/libs.versions.toml` was Readian-exclusive — the bridge shelled out via `ProcessBuilder` — so no dependency was dropped. `SkillMdShapeValidator`'s `readian-mcp` regex is a governed authoring lint forbidding MCP-install instructions in skill content, not bridge code, and is retained. |
 | `doctor`, `new_skill_scaffold`, `review_stats`, `goal_stats`, `telemetry_proxy_capabilities`, `telemetry_remote_stats` | as above | compatibility-retained | All six are advertised published interfaces in `docs/getting-started.md` §MCP Server and `docs/capabilities.md`. They duplicate CLI commands, but duplication of a *documented agent-native surface* is the stated purpose of the MCP server, and the spec Non-Goals forbid treating low observed usage as sufficient evidence to break a published interface. Removal condition: a documented deprecation notice plus one release carrying migration guidance to the equivalent CLI command. |
+| `feature_task_prose_{started,finished,stats,workflow_open,workflow_get,workflow_latest,workflow_list,workflow_update,workflow_resume,workflow_continue}` | as above | retained-current | These ten tools are the governed in-session prose workflow surface used by `bill-feature-task-runtime` when it selects `mode:prose`; their schemas, persistence handlers, telemetry branches, and installed dispatch remain live. Removal condition: replacement or retirement of the governed prose workflow with a documented migration and compatibility window. |
+| `feature_verify_{started,finished,stats,workflow_open,workflow_get,workflow_latest,workflow_list,workflow_update,workflow_resume,workflow_continue}` | as above | retained-current | These ten tools are the governed `bill-feature-verify` lifecycle and durable-workflow surface. Removal condition: replacement or retirement of that governed workflow with a documented migration and compatibility window. |
+| `goal_prose_started`, `goal_prose_subtask_finished`, `goal_prose_finished` | as above | retained-current | These lifecycle tools persist the governed prose goal/subtask telemetry consumed by goal reporting. Removal condition: replacement of the prose goal telemetry protocol with schema-compatible migration guidance and a compatibility window. |
+| `import_review`, `triage_findings`, `resolve_learnings` | as above | retained-current | These tools form the review import, triage, and learning-resolution flow used by governed review skills and backed by strict schemas and persistence. Removal condition: replacement of the review workflow with migration guidance and a compatibility window. |
+| `quality_check_started`, `quality_check_finished`, `pr_description_generated`, `update_check` | as above | retained-current | These are the live lifecycle/update endpoints for governed quality-check, PR-description, and update-check skills. Removal condition: replacement or retirement of the consuming governed skill plus documented migration and a compatibility window. |
 | 10 hidden `feature_implement_*` aliases | as above | compatibility-retained | No documented removal window or version policy exists anywhere in `docs/`, `orchestration/`, `ARCHITECTURE.md`, release notes, or code comments. `scripts/agent_nesting_smoke_test.sh:56` is a live consumer calling `feature_implement_workflow_list` / `feature_implement_workflow_get`, and `docs/cloudflare-telemetry-proxy/worker.js` still counts the legacy event names. Removal condition: publish a deprecation window with migration guidance to `feature_task_prose_*`, then delete after that window closes. |
 | CLI `feature-task-runtime` alias | as above | compatibility-retained | Hidden alias emitting a stderr deprecation note (`FeatureTaskRuntimeCliCommands.kt:663`). No removal window is documented. Removal condition: same as above, migrating callers to `skill-bill feature-task`. |
-| CLI `runtime-stats` alias | as above | compatibility-retained | Hidden alias emitting a stderr deprecation note (`ReviewCliCommands.kt:171`). No removal window is documented. Removal condition: same as above, migrating callers to `skill-bill feature-task-stats`. |
+| CLI `runtime-stats` / `feature-task-runtime-stats` aliases | as above | compatibility-retained | `feature-task-stats` is canonical. `FeatureTaskRuntimeStatsCommand` implements hidden deprecated `runtime-stats`, and `SkillBillCommand.aliases` also maps the live `feature-task-runtime-stats` spelling to that command. Neither alias has a documented removal window. Removal condition: publish a deprecation window and migration guidance to `skill-bill feature-task-stats`, then remove both aliases only after that window closes. |
 
 ### Removals applied
 
@@ -353,9 +358,20 @@ application-facing wrappers (`McpRuntime.featureTaskRuntimeStarted/Finished/Stat
 now-orphaned task-runtime schema `$defs` shapes, and the corresponding tests and doc lines were
 deleted together. `TelemetryTaskRuntimeStepIdEnumParityTest` was deleted with the
 `workflowTaskRuntimeStepIdEnum` it pinned. The telemetry contract version was not bumped: the schema
-is a discriminated union keyed by `event_name`, and dropping branches for events no longer emitted
-neither changes the shape of a retained event nor invalidates a durable record.
+is a discriminated union keyed by `event_name`, and dropping branches for names no longer accepted
+at the MCP seam neither changes the shape of a retained event nor invalidates a durable record.
+Foreground runtime lifecycle telemetry remains independent: runtime-infra-sqlite still emits and
+persists `skillbill_feature_task_runtime_started` / `_finished` outbox events.
 
 Behavioral coverage that previously drove `LifecycleTelemetryService` through the removed MCP tools
 (runtime token persistence, blocked-reason reconciliation, runtime stats aggregation) was relocated
 in `McpRuntimeTest` to call the service seam directly rather than deleted.
+
+### Validate-phase repairs
+
+- Split the new feature-surface wiring contract test into focused assertion helpers after Detekt
+  rejected the original 70-line test method. Every assertion remains active.
+- Kept runtime lifecycle duration and stale-reconciliation assertions in
+  `TelemetryReliabilityContractTest`, but stopped validating those independent outbox events against
+  the MCP tool schema branches deleted by this sweep.
+- Applied the repository formatter to the changed MCP test import order.

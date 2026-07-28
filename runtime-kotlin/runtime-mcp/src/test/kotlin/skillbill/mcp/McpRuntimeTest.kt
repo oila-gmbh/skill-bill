@@ -27,6 +27,7 @@ import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.core.importReview
 import skillbill.mcp.core.newSkillScaffold
 import skillbill.mcp.core.resolveLearnings
+import skillbill.mcp.core.services
 import skillbill.mcp.core.triageFindings
 import skillbill.mcp.lifecycle.featureImplementFinished
 import skillbill.mcp.lifecycle.featureImplementStarted
@@ -34,7 +35,6 @@ import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
-import skillbill.mcp.core.services
 import skillbill.mcp.lifecycle.qualityCheckStarted
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY

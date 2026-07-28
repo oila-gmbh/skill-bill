@@ -63,16 +63,16 @@ class TelemetryReliabilityContractTest {
 
   @Test
   fun `representative finished telemetry carries nonblank routing labels and plausible durations`() {
-    val durationEnvelopes = listOf(
+    val schemaEnvelopes = listOf(
       goalFinishedEnvelope(),
       goalIssueFinishedEnvelope(),
       qualityCheckFinishedEnvelope(),
       featureTaskProseFinishedEnvelope(),
-      featureTaskRuntimeFinishedEnvelope(),
     )
+    val runtimeEnvelope = featureTaskRuntimeFinishedEnvelope()
 
-    durationEnvelopes.forEach { envelope ->
-      assertPositiveBoundedDuration(envelope)
+    (schemaEnvelopes + runtimeEnvelope).forEach(::assertPositiveBoundedDuration)
+    schemaEnvelopes.forEach { envelope ->
       TelemetryEventSchemaValidator.validate(envelope = envelope, eventName = envelope["event_name"] as String)
     }
 
@@ -173,14 +173,15 @@ class TelemetryReliabilityContractTest {
 
   @Test
   fun `stale reconciled terminal payloads validate against the canonical schema`() {
-    val staleEnvelopes = listOf(
+    val schemaEnvelopes = listOf(
       featureTaskProseFinishedEnvelope("completion_status" to "stale"),
       featureVerifyFinishedEnvelope("completion_status" to "stale"),
-      featureTaskRuntimeFinishedEnvelope("completion_status" to "stale"),
       qualityCheckFinishedEnvelope().apply { put("result", "stale") },
     )
+    val runtimeEnvelope = featureTaskRuntimeFinishedEnvelope("completion_status" to "stale")
 
-    staleEnvelopes.forEach { envelope ->
+    assertEquals("stale", runtimeEnvelope["completion_status"])
+    schemaEnvelopes.forEach { envelope ->
       TelemetryEventSchemaValidator.validate(envelope = envelope, eventName = envelope["event_name"] as String)
     }
   }

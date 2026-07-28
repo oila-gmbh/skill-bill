@@ -1,3 +1,15 @@
+## [2026-07-28] SKILL-132 MCP and CLI compatibility surface sweep (subtask 4)
+Areas: runtime-kotlin/runtime-{mcp,cli,core,domain}, orchestration/{contracts,telemetry-contract}, docs, scripts, skills/bill-feature-{goal,task-runtime}
+- Removed the duplicate `feature_task_runtime_*` MCP family, continuation lookup endpoint, and six-consumerless-tool Readian bridge together with registry, dispatch, schemas, mappers, composition, tests, telemetry branches, and documentation.
+- Foreground feature-task runtime keeps persistence, lifecycle telemetry, continuation lookup, and stats through direct service/CLI seams; installed stdio smoke tests cover retained discovery, strict arguments, dispatch, persistence, and typed errors.
+- Compatibility decisions use one evidence ledger spanning governed and installed skills, scripts, docs, desktop wiring, telemetry, and release policy; each retained alias records its consumer or removal condition. reusable
+- Published CLI-duplicated MCP tools, ten hidden `feature_implement_*` aliases, and deprecated CLI aliases remain until a documented deprecation window and migration path permit removal.
+- Runtime lifecycle behavioral coverage moved to the direct service seam where the removed MCP tests had duplicated it. reusable
+- Breaking change: removed MCP names are no longer advertised or dispatched; migration guidance points runtime callers to `skill-bill feature-task` and `skill-bill feature-task-stats`.
+- Known limitation: compatibility-retained aliases still require a future versioned deprecation window before deletion.
+Feature flag: N/A
+Acceptance criteria: subtask 4: 7/7 implemented
+
 ## [2026-07-27] SKILL-132 runtime-kotlin dead-code sweep (subtask 1)
 Areas: runtime-kotlin/runtime-{contracts,core,domain,application,ports,infra-fs,mcp,cli}, runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/docs/architecture
 - Deleted the runtime-surface metadata system (`RuntimeSurfaceContract`, `RuntimeSurfaceStatus`, `*Runtime` marker objects) and the generic contract wrappers (`ContractEnvelope`, `ContractResult`, `RuntimeContract`, `ContractViolationException`) together with the tests that only exercised them; no production consumer existed.
