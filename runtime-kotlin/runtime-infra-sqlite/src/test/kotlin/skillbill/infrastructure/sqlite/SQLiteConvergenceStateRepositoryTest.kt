@@ -81,6 +81,56 @@ class SQLiteConvergenceStateRepositoryTest {
     )
   }
 
+  @Test
+  fun `legacy relationships use the complete source and quarantine missing parents`() = withRepository { repository ->
+    val parent = record("a".repeat(64), stableKey = "AC-007")
+    val repair = record(
+      "b".repeat(64),
+      kind = ConvergenceRecordKind.AUDIT_REPAIR,
+      stableKey = "AC-007-repair",
+      parentLogicalId = parent.logicalId,
+      status = ConvergenceStatus.RESOLVED,
+    )
+    assertEquals(
+      LegacyReconciliation.Imported(2),
+      repository.reconcileLegacy("workflow-1", "e".repeat(64), legacySource(repair, parent)),
+    )
+
+    val missingParent = record(
+      "c".repeat(64),
+      kind = ConvergenceRecordKind.AUDIT_REPAIR,
+      stableKey = "AC-008-repair",
+      parentLogicalId = ConvergenceIdentities.logical("workflow-1", ConvergenceRecordKind.AUDIT_GAP, "AC-008"),
+    )
+    assertEquals(
+      LegacyReconciliation.Quarantined("invalid_relationship"),
+      repository.reconcileLegacy("workflow-1", "f".repeat(64), legacySource(missingParent)),
+    )
+  }
+
+  private fun legacySource(vararg records: ConvergenceRecord): String =
+    """{"contract_version":"0.1","records":[${records.joinToString(",") { recordJson(it) }}]}"""
+
+  private fun recordJson(record: ConvergenceRecord): String {
+    val fields = buildList {
+      add(""""contract_version":"0.1"""")
+      add(""""record_id":"${record.recordId}"""")
+      add(""""workflow_id":"${record.provenance.workflowId}"""")
+      add(""""kind":"${record.kind.name.lowercase()}"""")
+      add(""""generation":${record.provenance.generation}""")
+      add(""""logical_id":"${record.logicalId}"""")
+      record.parentLogicalId?.let { add(""""parent_logical_id":"$it"""") }
+      add(""""phase_id":"${record.provenance.phaseId}"""")
+      record.provenance.attempt?.let { add(""""attempt":$it""") }
+      record.provenance.reviewPass?.let { add(""""review_pass":$it""") }
+      add(""""status":"${record.status.name.lowercase()}"""")
+      add(""""summary":"${record.summary}"""")
+      add(""""evidence_digest":"${record.evidenceDigest}"""")
+      add(""""created_at":"${record.createdAt}"""")
+    }
+    return "{${fields.joinToString(",")}}"
+  }
+
   private fun record(
     digest: String,
     kind: ConvergenceRecordKind = ConvergenceRecordKind.AUDIT_GAP,

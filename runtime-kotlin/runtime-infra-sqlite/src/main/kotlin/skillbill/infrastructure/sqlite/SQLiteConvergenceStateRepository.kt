@@ -103,7 +103,17 @@ class SQLiteConvergenceStateRepository(private val connection: Connection) : Con
       recordLegacy(workflowId, sourceDigest, "quarantined", "workflow_identity_mismatch")
       return LegacyReconciliation.Quarantined("workflow_identity_mismatch")
     }
-    records.forEach { record ->
+    if (!legacyRelationshipsAreCompatible(workflowId, records)) {
+      recordLegacy(workflowId, sourceDigest, "quarantined", "invalid_relationship")
+      return LegacyReconciliation.Quarantined("invalid_relationship")
+    }
+    if (!legacyEvidenceIsCompatible(records) ||
+      records.any { findByIdentity(it)?.let { existingRecord -> existingRecord != it } == true }
+    ) {
+      recordLegacy(workflowId, sourceDigest, "quarantined", "conflicting_evidence")
+      return LegacyReconciliation.Quarantined("conflicting_evidence")
+    }
+    records.sortedBy { expectedParentKind(it.kind) != null }.forEach { record ->
       if (append(record) is ReplayResult.Conflict) {
         recordLegacy(workflowId, sourceDigest, "quarantined", "conflicting_evidence")
         return LegacyReconciliation.Quarantined("conflicting_evidence")
@@ -111,6 +121,24 @@ class SQLiteConvergenceStateRepository(private val connection: Connection) : Con
     }
     recordLegacy(workflowId, sourceDigest, "imported", null)
     return LegacyReconciliation.Imported(records.size)
+  }
+
+  private fun legacyRelationshipsAreCompatible(workflowId: String, records: List<ConvergenceRecord>): Boolean {
+    val availableParents = (history(workflowId) + records).groupBy(ConvergenceRecord::logicalId)
+    return records.all { record ->
+      val expectedParentKind = expectedParentKind(record.kind) ?: return@all true
+      availableParents[record.parentLogicalId].orEmpty().any { it.kind == expectedParentKind }
+    }
+  }
+
+  private fun legacyEvidenceIsCompatible(records: List<ConvergenceRecord>): Boolean {
+    fun groupsAreIdentical(groups: Collection<List<ConvergenceRecord>>) =
+      groups.all { group -> group.distinct().size == 1 }
+    val recordIdGroups = records.groupBy(ConvergenceRecord::recordId).values
+    val logicalIdentityGroups = records.groupBy {
+      listOf(it.provenance.workflowId, it.kind.name, it.provenance.generation, it.logicalId)
+    }
+    return groupsAreIdentical(recordIdGroups) && groupsAreIdentical(logicalIdentityGroups.values)
   }
 
   private fun recordLegacy(workflowId: String, digest: String, disposition: String, reason: String?) {
@@ -123,17 +151,19 @@ class SQLiteConvergenceStateRepository(private val connection: Connection) : Con
   }
 
   private fun requireParentRelationship(record: ConvergenceRecord) {
-    val expectedParentKind = when (record.kind) {
-      ConvergenceRecordKind.AUDIT_REPAIR -> ConvergenceRecordKind.AUDIT_GAP
-      ConvergenceRecordKind.REVIEW_DISPOSITION -> ConvergenceRecordKind.REVIEW_FINDING
-      else -> return
-    }
+    val expectedParentKind = expectedParentKind(record.kind) ?: return
     val parent = history(record.provenance.workflowId).lastOrNull {
       it.logicalId == record.parentLogicalId && it.kind == expectedParentKind
     }
     require(parent != null) {
       "${record.kind.name} requires a durable ${expectedParentKind.name} parent identity."
     }
+  }
+
+  private fun expectedParentKind(kind: ConvergenceRecordKind): ConvergenceRecordKind? = when (kind) {
+    ConvergenceRecordKind.AUDIT_REPAIR -> ConvergenceRecordKind.AUDIT_GAP
+    ConvergenceRecordKind.REVIEW_DISPOSITION -> ConvergenceRecordKind.REVIEW_FINDING
+    else -> null
   }
 
   private fun findByIdentity(record: ConvergenceRecord): ConvergenceRecord? = connection.prepareStatement(
