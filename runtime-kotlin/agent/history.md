@@ -1,3 +1,14 @@
+## [2026-07-28] SKILL-150 Truthful Implementation Completion (subtask 2)
+Areas: runtime-kotlin/runtime-{application,domain,core}, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-150-trustworthy-feature-task-convergence
+- Implementation completion is now runtime-verified: a phase reports `completed` only when its receipt closes every plan task ID and has no unresolved item or actionable deviation.
+- Incomplete-work continuation uses a distinct continuation prompt with the complete bounded prior receipt; schema-invalid correction remains on its own bounded path. reusable
+- Retry and resume reconstruct continuation from durable records, not from in-memory prompts or replaceable phase-record snapshots. reusable
+- Status and telemetry distinguish semantic implementation continuation, schema correction, process retry, crash resume, and audit or review re-entry. reusable
+- Tests cover partial implementation, multi-segment completion, crash between receipt persistence and workflow advance, malformed output, explicit replan, and exact completion.
+- Runtime cannot escape incomplete-work loop by changing only the top-level status to `completed`; the completion gate reports the exact missing task or unresolved field. reusable
+Feature flag: N/A
+Acceptance criteria: subtask 2: 10/10 implemented
+
 ## [2026-07-28] SKILL-132 MCP and CLI compatibility surface sweep (subtask 4)
 Areas: runtime-kotlin/runtime-{mcp,cli,core,domain}, orchestration/{contracts,telemetry-contract}, docs, scripts, skills/bill-feature-{goal,task-runtime}
 - Removed the duplicate `feature_task_runtime_*` MCP family, continuation lookup endpoint, and six-consumerless-tool Readian bridge together with registry, dispatch, schemas, mappers, composition, tests, telemetry branches, and documentation.

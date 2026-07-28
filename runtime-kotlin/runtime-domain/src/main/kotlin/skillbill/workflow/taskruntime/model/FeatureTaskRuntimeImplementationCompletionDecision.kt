@@ -31,7 +31,8 @@ data class ImplementationIncomplete(
 
   init {
     require(missingTaskIds.isNotEmpty() || unresolvedItems.isNotEmpty() || actionableDeviations.isNotEmpty()) {
-      "ImplementationIncomplete must specify at least one blocker: missing task ID, unresolved item, or actionable deviation."
+      "ImplementationIncomplete must specify at least one blocker: missing task ID, " +
+        "unresolved item, or actionable deviation."
     }
   }
 }
@@ -122,9 +123,12 @@ data class ImplementationCompletionDecision(
     outcome is ImplementationIncomplete && disposition !is SemanticIncompleteWorkContinuation ->
       when (disposition) {
         is TerminalBlocked -> disposition.reason
-        is GovernedReplan -> "implementation requested governed replan with plan digest ${disposition.planDigest}"
-        is GovernedDecomposition -> "implementation requested governed decomposition with manifest digest ${disposition.manifestDigest}"
-        is SchemaInvalidCorrection -> "implementation has schema-invalid output: ${disposition.schemaViolation}"
+        is GovernedReplan ->
+          "implementation requested governed replan with plan digest ${disposition.planDigest}"
+        is GovernedDecomposition ->
+          "implementation requested governed decomposition with manifest digest ${disposition.manifestDigest}"
+        is SchemaInvalidCorrection ->
+          "implementation has schema-invalid output: ${disposition.schemaViolation}"
       }
     outcome is ImplementationCompleted && !outcome.canAdvance ->
       "implementation reported completed but completion decision denied advancement"
@@ -143,9 +147,7 @@ data class ImplementationCompletionDecision(
   }
 
   companion object {
-    fun complete(
-      completedTaskIds: List<String>,
-    ): ImplementationCompletionDecision = ImplementationCompletionDecision(
+    fun complete(completedTaskIds: List<String>): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationCompleted(completedTaskIds),
       disposition = TerminalBlocked(
         reason = "completion advanced",
@@ -171,9 +173,7 @@ data class ImplementationCompletionDecision(
       ),
     )
 
-    fun schemaInvalid(
-      schemaViolation: String,
-    ): ImplementationCompletionDecision = ImplementationCompletionDecision(
+    fun schemaInvalid(schemaViolation: String): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationCompleted(emptyList()),
       disposition = SchemaInvalidCorrection(schemaViolation),
     )
@@ -190,9 +190,7 @@ data class ImplementationCompletionDecision(
       disposition = TerminalBlocked(reason, disposition),
     )
 
-    fun governedReplan(
-      planDigest: String,
-    ): ImplementationCompletionDecision = ImplementationCompletionDecision(
+    fun governedReplan(planDigest: String): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationIncomplete(
         missingTaskIds = emptyList(),
         unresolvedItems = emptyList(),
@@ -201,16 +199,15 @@ data class ImplementationCompletionDecision(
       disposition = GovernedReplan(planDigest),
     )
 
-    fun governedDecomposition(
-      manifestDigest: String,
-    ): ImplementationCompletionDecision = ImplementationCompletionDecision(
-      outcome = ImplementationIncomplete(
-        missingTaskIds = emptyList(),
-        unresolvedItems = emptyList(),
-        actionableDeviations = emptyList(),
-      ),
-      disposition = GovernedDecomposition(manifestDigest),
-    )
+    fun governedDecomposition(manifestDigest: String): ImplementationCompletionDecision =
+      ImplementationCompletionDecision(
+        outcome = ImplementationIncomplete(
+          missingTaskIds = emptyList(),
+          unresolvedItems = emptyList(),
+          actionableDeviations = emptyList(),
+        ),
+        disposition = GovernedDecomposition(manifestDigest),
+      )
   }
 }
 
@@ -299,7 +296,12 @@ fun validateImplementationReceiptAgainstPlan(
     it.status == ConvergenceStatus.OPEN
   }
 
-  if (missingTaskIds.isNotEmpty() || hasUnresolvedItems || hasActionableDeviations || hasOpenObligations) {
+  val hasAnyBlocker = missingTaskIds.isNotEmpty() ||
+    hasUnresolvedItems ||
+    hasActionableDeviations ||
+    hasOpenObligations
+
+  if (hasAnyBlocker) {
     val blockers = buildList {
       if (missingTaskIds.isNotEmpty()) {
         add("missing plan task IDs: ${missingTaskIds.joinToString()}")

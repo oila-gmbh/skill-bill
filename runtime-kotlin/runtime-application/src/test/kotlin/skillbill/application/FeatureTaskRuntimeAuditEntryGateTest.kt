@@ -8,6 +8,7 @@ import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -390,6 +391,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
         ),
       ),
       outputValidator = AlwaysValidValidator,
+      planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     // Precondition: the legacy generation's watermark is loaded, and its span cannot be completed
     // because review sits behind an audit that never settled.

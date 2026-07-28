@@ -1983,6 +1983,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement",
+      // SKILL-150: durable implementation receipt envelope from phase records. The envelope is the
+      // raw wire map persisted by the producer phase; the caller validates and projects to the typed receipt.
+      "skillbill.application.featuretask.loadPriorImplementationReceiptEnvelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap",

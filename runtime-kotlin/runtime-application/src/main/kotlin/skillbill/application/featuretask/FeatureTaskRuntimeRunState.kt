@@ -493,23 +493,24 @@ internal class FeatureTaskRuntimeRunState(
     ?.get("audit_repair_plan")
     ?.let { auditRepairPlanFromWire(it, "$phaseId.produced_outputs.audit_repair_plan") }
 
-  fun authoritativeExecutablePlan(): FeatureTaskRuntimeExecutablePlan? = outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
-    ?.normalizedOutput
-    ?.envelope
-    ?.let { envelope ->
-      try {
-        featureTaskRuntimePlanningProjectionFromEnvelope(
-          envelope = envelope,
-          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-          expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
-          schemaValidator = planningProjectionValidator,
-        ) as? FeatureTaskRuntimeExecutablePlan
-      } catch (_: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-        null
-      } catch (_: IllegalArgumentException) {
-        null
+  fun authoritativeExecutablePlan(): FeatureTaskRuntimeExecutablePlan? =
+    outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
+      ?.normalizedOutput
+      ?.envelope
+      ?.let { envelope ->
+        try {
+          featureTaskRuntimePlanningProjectionFromEnvelope(
+            envelope = envelope,
+            producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+            expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+            schemaValidator = planningProjectionValidator,
+          ) as? FeatureTaskRuntimeExecutablePlan
+        } catch (_: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+          null
+        } catch (_: IllegalArgumentException) {
+          null
+        }
       }
-    }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =

@@ -9,6 +9,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -939,24 +940,24 @@ class FeatureTaskRuntimePhaseRecorder(
    * Strict read of the unresolved convergence obligations. Returns null only when the workflow row
    * is absent or convergence-state persistence is unavailable.
    */
-  fun loadConvergenceState(workflowId: String, dbOverride: String? = null): skillbill.workflow.taskruntime.model.UnresolvedConvergence? =
-    try {
-      database.read(dbOverride) { unitOfWork ->
-        unitOfWork.convergenceStates.unresolved(workflowId)
-      }
-    } catch (_: IllegalStateException) {
-      null
+  fun loadConvergenceState(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): skillbill.workflow.taskruntime.model.UnresolvedConvergence? = try {
+    database.read(dbOverride) { unitOfWork ->
+      unitOfWork.convergenceStates.unresolved(workflowId)
     }
+  } catch (_: IllegalStateException) {
+    null
+  }
 
   /**
    * Loads the most recent implementation receipt envelope from durable phase records. Returns null when
    * the implementation phase has no completed output or the record is absent. The caller is responsible
    * for parsing the envelope into the typed projection using the appropriate validator.
    */
-  fun loadPriorImplementationReceiptEnvelope(
-    workflowId: String,
-    dbOverride: String? = null,
-  ): Map<String, Any?>? {
+  @OpenBoundaryMap("Implementation receipt wire map at the persistence boundary")
+  fun loadPriorImplementationReceiptEnvelope(workflowId: String, dbOverride: String? = null): Map<String, Any?>? {
     val records = loadPhaseRecords(workflowId, dbOverride) ?: return null
     val record = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
       ?: return null

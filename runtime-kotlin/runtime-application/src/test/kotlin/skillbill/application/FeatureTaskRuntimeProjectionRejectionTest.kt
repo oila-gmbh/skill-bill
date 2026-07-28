@@ -331,7 +331,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
         "produced_outputs": {
           "projection_kind": "implementation_receipt",
           "contract_version": "0.1",
-          "completed_task_ids": ["task-01"],
+          "completed_task_ids": ["task-1"],
           "changed_paths": [${quoted(changedPaths)}],
           "tests_added": [${quoted(tests)}],
           "tests_updated": [${quoted(tests)}],

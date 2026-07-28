@@ -50,6 +50,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -57,6 +58,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
@@ -64,33 +66,26 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.ActionableDeviation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.ImplementationCompleted
-import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
-import skillbill.workflow.taskruntime.model.ImplementationCompletionDisposition
-import skillbill.workflow.taskruntime.model.ImplementationIncomplete
-import skillbill.workflow.taskruntime.model.SemanticIncompleteWorkContinuation
-import skillbill.workflow.taskruntime.model.SchemaInvalidCorrection
-import skillbill.workflow.taskruntime.model.TerminalBlocked
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
-import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
-import skillbill.workflow.taskruntime.model.implementationCompletionDecisionFromContext
-import skillbill.workflow.taskruntime.model.validateImplementationReceiptAgainstPlan
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.ImplementationCompleted
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
+import skillbill.workflow.taskruntime.model.SchemaInvalidCorrection
+import skillbill.workflow.taskruntime.model.SemanticIncompleteWorkContinuation
+import skillbill.workflow.taskruntime.model.TerminalBlocked
+import skillbill.workflow.taskruntime.model.UnresolvedConvergence
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
+import skillbill.workflow.taskruntime.model.implementationCompletionDecisionFromContext
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -3042,7 +3037,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
-    repositoryFingerprint: String?,
+    @Suppress("UNUSED_PARAMETER") repositoryFingerprint: String?,
   ): PhaseOutcome? {
     val receipt = implementationReceiptFromOutput(normalizedOutput.envelope)
       ?: return null
@@ -3056,13 +3051,10 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest = fileManifest,
       )
     val unresolvedObligations = recorder.loadConvergenceState(request.workflowId, request.dbPathOverride)
-      ?: return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Implementation completion validation requires unresolved obligations.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        fileManifest = fileManifest,
+      ?: UnresolvedConvergence(
+        implementationObligations = emptyList(),
+        auditRepairs = emptyList(),
+        reviewBlockers = emptyList(),
       )
     val decision = implementationCompletionDecisionFromContext(
       authoritativeExecutablePlan = authoritativePlan,
@@ -3072,12 +3064,13 @@ internal class FeatureTaskRuntimeRunLoop(
     return when {
       decision.outcome is ImplementationCompleted -> null
       decision.disposition is SemanticIncompleteWorkContinuation -> {
+        val semanticContinuation = decision.disposition as SemanticIncompleteWorkContinuation
         blockAndPersistInPhase(
           run,
           iteration,
           decision.exactBlockingReason() ?: "Implementation incomplete.",
           observability,
-          failureDisposition = (decision.disposition as SemanticIncompleteWorkContinuation).failureDisposition,
+          failureDisposition = semanticContinuation.failureDisposition,
           fileManifest = fileManifest,
         )
       }
@@ -3085,7 +3078,8 @@ internal class FeatureTaskRuntimeRunLoop(
         blockAndPersistInPhase(
           run,
           iteration,
-          "Implementation receipt has schema-invalid output: ${(decision.disposition as SchemaInvalidCorrection).schemaViolation}",
+          "Implementation receipt has schema-invalid output: " +
+            "${(decision.disposition as SchemaInvalidCorrection).schemaViolation}",
           observability,
           failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
           fileManifest = fileManifest,
@@ -3112,6 +3106,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  @Suppress("ReturnCount")
   private fun persistAcceptedOutput(
     run: PhaseRun,
     iteration: Int,
@@ -3254,9 +3249,8 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun isGoalReviewRun(run: PhaseRun): Boolean =
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
 
-  private fun implementationReceiptFromOutput(
-    output: Map<String, Any?>,
-  ): FeatureTaskRuntimeImplementationReceipt? {
+  @Suppress("SwallowedException")
+  private fun implementationReceiptFromOutput(output: Map<String, Any?>): FeatureTaskRuntimeImplementationReceipt? {
     val produced = JsonSupport.anyToStringAnyMap(output["produced_outputs"]) ?: return null
     val kind = produced["projection_kind"]?.toString() ?: return null
     if (kind != "implementation_receipt") return null

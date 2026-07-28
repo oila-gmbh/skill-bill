@@ -561,6 +561,7 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+    - `skillbill.application.featuretask.loadPriorImplementationReceiptEnvelope`
 
     <!-- open-boundary-allowlist:end -->
 
@@ -1271,6 +1272,7 @@ Categories:
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
+- `skillbill.application.featuretask.loadPriorImplementationReceiptEnvelope`
 
 ### private_serializer
 
