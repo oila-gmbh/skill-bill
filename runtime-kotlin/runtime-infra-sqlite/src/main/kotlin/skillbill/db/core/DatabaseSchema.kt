@@ -28,6 +28,10 @@ internal object DatabaseSchema {
       "goal_subtask_plans",
       "telemetry_reconciliation_state",
       "unaddressed_findings",
+      "review_generations",
+      "review_generation_passes",
+      "review_generation_findings",
+      "review_finding_dispositions",
       "rejected_output_diagnostics",
       "producer_output_evidence",
     ).plus(ConvergenceDatabaseSchema.tableNames)
@@ -50,6 +54,7 @@ internal object DatabaseSchema {
       "idx_goal_subtask_plans_ordered",
       "idx_telemetry_reconciliation_completed",
       "idx_unaddressed_findings_issue",
+      "idx_review_findings_unresolved",
       "idx_rejected_output_diagnostics_selector",
     ).plus(ConvergenceDatabaseSchema.indexNames)
 
@@ -157,6 +162,69 @@ internal object DatabaseSchema {
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_generations (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        review_base TEXT NOT NULL,
+        reviewed_delta_digest TEXT NOT NULL,
+        repository_checkpoint TEXT NOT NULL,
+        superseded_by_generation_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id),
+        UNIQUE (workflow_id, review_base, reviewed_delta_digest, repository_checkpoint)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_generation_passes (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 2),
+        repository_checkpoint TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id, pass_number),
+        FOREIGN KEY (workflow_id, generation_id)
+          REFERENCES review_generations(workflow_id, generation_id)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_generation_findings (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        pass_number INTEGER NOT NULL,
+        finding_id TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('blocker', 'major', 'minor', 'nit')),
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        source_generation_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, finding_id),
+        FOREIGN KEY (workflow_id, generation_id, pass_number)
+          REFERENCES review_generation_passes(workflow_id, generation_id, pass_number)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_finding_dispositions (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        finding_id TEXT NOT NULL,
+        disposition TEXT NOT NULL CHECK (
+          disposition IN ('unresolved', 'resolved', 'still_present', 'superseded', 'accepted')
+        ),
+        evidence_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id, finding_id),
+        FOREIGN KEY (workflow_id, generation_id)
+          REFERENCES review_generations(workflow_id, generation_id),
+        FOREIGN KEY (workflow_id, finding_id)
+          REFERENCES review_generation_findings(workflow_id, finding_id)
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_findings_unresolved
+        ON review_generation_findings(workflow_id, severity, finding_id)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS feedback_events (

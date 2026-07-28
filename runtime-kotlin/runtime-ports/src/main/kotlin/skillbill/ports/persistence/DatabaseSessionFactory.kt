@@ -26,6 +26,8 @@ interface UnitOfWork {
     get() = UnavailableConvergenceStateRepository
   val unaddressedFindings: UnaddressedFindingsRepository
     get() = UnavailableUnaddressedFindingsRepository
+  val reviewGenerations: ReviewGenerationRepository
+    get() = UnavailableReviewGenerationRepository
   val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?
     get() = null
   val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions?

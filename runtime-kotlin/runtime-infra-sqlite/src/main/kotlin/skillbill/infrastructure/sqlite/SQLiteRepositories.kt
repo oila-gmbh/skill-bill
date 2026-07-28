@@ -7,6 +7,7 @@ import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
+import skillbill.infrastructure.sqlite.goal.ReviewGenerationRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -28,6 +29,7 @@ import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.ReviewGenerationRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnaddressedFindingsRepository
@@ -68,6 +70,7 @@ class SQLiteUnitOfWork(
     skillbill.db.workflow.GoalPlanningPreparationStore(connection)
   override val convergenceStates: ConvergenceStateRepository = SQLiteConvergenceStateRepository(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
+  override val reviewGenerations: ReviewGenerationRepository = ReviewGenerationRuntime(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)
   override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =
