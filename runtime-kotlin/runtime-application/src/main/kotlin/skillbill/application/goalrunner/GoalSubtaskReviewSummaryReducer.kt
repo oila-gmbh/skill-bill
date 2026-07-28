@@ -48,8 +48,10 @@ internal object GoalSubtaskReviewSummaryReducer {
         label = finding.compactLabel,
         text = sanitize(finding.message),
         findingId = finding.findingId,
+        category = finding.issueCategory,
+        location = finding.location,
       )
-    }.groupBy { finding -> finding.label.lowercase() }
+    }.groupBy { finding -> finding.findingId ?: finding.label.lowercase() }
       .values
       .map { sameLabelFindings ->
         sameLabelFindings.minByOrNull(::severityRank)
@@ -137,14 +139,11 @@ internal object GoalSubtaskReviewSummaryReducer {
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
-    // Structured findings of every severity are durable advisory records. They remain available in
-    // the findings ledger, but no individual review finding can reopen implementation or halt the
-    // workflow.
-    val hasStructuredFindings = findings.isNotEmpty()
+    val hasBlocker = findings.any(GoalSubtaskReviewCompactFinding::isBlocker)
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
+      hasBlocker -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
       else -> FeatureTaskRuntimeVerdict.APPROVED
@@ -152,10 +151,9 @@ internal object GoalSubtaskReviewSummaryReducer {
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
-        hasStructuredFindings ||
-          verdict == FeatureTaskRuntimeVerdict.APPROVED ||
+        verdict == FeatureTaskRuntimeVerdict.APPROVED ||
           verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER -> 0
-        else -> 1
+        else -> findings.count(GoalSubtaskReviewCompactFinding::isBlocker).coerceAtLeast(1)
       },
     )
   }

@@ -374,7 +374,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorBlockerFindingIds: List<String>,
     carriedBlockerFindings: List<GoalSubtaskReviewFinding>,
   ): String {
-    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || reviewPassNumber != 2) {
+    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       return ""
     }
     if (priorBlockerFindingIds.isEmpty()) {

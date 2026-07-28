@@ -98,7 +98,7 @@ class GoalSubtaskPausedStatusWiringTest {
   }
 
   @Test
-  fun `a consumed retry grant is single-use and does not re-reserve a consumed pass`() {
+  fun `a consumed retry grant is single-use and retains the prior capped attempt`() {
     val granted = pausedState().applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
 
     val consumed = granted.consumeOperatorDecision()
@@ -122,6 +122,8 @@ class GoalSubtaskPausedStatusWiringTest {
       ),
     )
     assertEquals(GOAL_SUBTASK_REVIEW_MAX_PASSES, settled.completedPassCount)
+    assertEquals(3, settled.passResults.size, "The prior capped attempt remains in append-only history.")
+    assertEquals(listOf(1, 2, 2), settled.passResults.map { it.passNumber })
     assertTrue(!settled.retryReviewPending, "A settled round is no longer pending.")
     assertTrue(!settled.pausedForOperatorDecision, "Every Blocker resolved, so the subtask advances.")
   }

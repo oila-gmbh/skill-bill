@@ -193,6 +193,9 @@ class FeatureTaskRuntimeRunner(
         auditRepairProgress,
         regenerationTelemetry,
         runRequest.dbPathOverride,
+        reviewGenerationSummary = {
+          recorder.reviewGenerationSummary(runRequest.workflowId, runRequest.dbPathOverride)
+        },
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
         crashReconciliation = { reconciliation },
       )
@@ -209,6 +212,9 @@ class FeatureTaskRuntimeRunner(
       auditRepairProgress,
       regenerationTelemetry,
       runRequest.dbPathOverride,
+      reviewGenerationSummary = {
+        recorder.reviewGenerationSummary(runRequest.workflowId, runRequest.dbPathOverride)
+      },
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
       crashReconciliation = { reconciliation },
     )
@@ -254,11 +260,8 @@ class FeatureTaskRuntimeRunner(
       goalBranch,
     ).input
     if (current == null || current.deltaDigest == judgedDigest) return false
-    val changedPaths = current.reviewText.lineSequence()
-      .filter { it.startsWith("diff --git a/") }
-      .mapNotNull { line -> line.substringAfter(" b/", "").takeIf(String::isNotBlank) }
-      .toList()
-    return ReviewDeltaClassifier().classify(changedPaths).classification == ReviewDeltaClassification.SEMANTIC
+    return ReviewDeltaClassifier().classifyUnifiedDiff(current.reviewText).classification ==
+      ReviewDeltaClassification.SEMANTIC
   }
 
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =

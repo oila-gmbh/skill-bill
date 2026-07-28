@@ -406,8 +406,9 @@ internal class FeatureTaskRuntimeRunLoop(
           normalizedOutput = outputMap,
           blockerDispositions = GoalSubtaskReviewSummaryReducer.blockerDispositions(
             outputMap,
-            priorBlockerFindingIds(GOAL_SUBTASK_REVIEW_MAX_PASSES),
+            priorBlockerFindingIds(),
           ),
+          repositoryCheckpoint = reviewedCheckpointFingerprint(),
         ),
         dbOverride = request.dbPathOverride,
       ) == null
@@ -1203,9 +1204,9 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  /** The pass-two prompt keys one disposition per Blocker in the durable cross-generation ledger. */
-  private fun priorBlockerFindingIds(passNumber: Int?): List<String> {
-    if (passNumber != GOAL_SUBTASK_REVIEW_MAX_PASSES) return emptyList()
+  /** Every generation keys dispositions to the durable cross-generation Blocker ledger. */
+  private fun priorBlockerFindingIds(passNumber: Int? = null): List<String> {
+    if (passNumber == null && !isGoalContinuationRun(request)) return emptyList()
     return recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
       .map { it.findingId }
   }
@@ -3214,7 +3215,7 @@ internal class FeatureTaskRuntimeRunLoop(
           rawReviewResult = outputText,
           blockerDispositions = GoalSubtaskReviewSummaryReducer.blockerDispositions(
             outputMap,
-            priorBlockerFindingIds(GOAL_SUBTASK_REVIEW_MAX_PASSES),
+            priorBlockerFindingIds(),
           ),
         ),
         dbOverride = run.request.dbPathOverride,
@@ -3401,7 +3402,7 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedReviewTier = depthResolution?.resolvedTier,
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(passNumber),
-      carriedBlockerFindings = if (passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES) {
+      carriedBlockerFindings = if (passNumber != null) {
         recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride)
       } else {
         emptyList()

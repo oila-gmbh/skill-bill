@@ -8,6 +8,32 @@ import kotlin.test.assertTrue
 
 class GoalSubtaskReviewSummaryReducerTest {
   @Test
+  fun `structured blocker remains advancement blocking`() {
+    val output = mapOf(
+      "verdict" to "approved",
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "id" to "F-134",
+            "severity" to "blocker",
+            "category" to "producer-attribution",
+            "location" to "runtime-kotlin/Producer.kt:42",
+            "message" to "Producer attribution is missing.",
+          ),
+        ),
+      ),
+    )
+
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
+
+    kotlin.test.assertEquals("producer-attribution", findings.single().category)
+    kotlin.test.assertEquals("runtime-kotlin/Producer.kt:42", findings.single().location)
+    kotlin.test.assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    kotlin.test.assertEquals(1, outcome.unresolvedFindingCount)
+  }
+
+  @Test
   fun `user-directed review skip has no unresolved findings`() {
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(
       mapOf(

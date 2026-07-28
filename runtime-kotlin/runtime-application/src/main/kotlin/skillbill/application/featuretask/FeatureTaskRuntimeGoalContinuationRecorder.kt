@@ -28,6 +28,11 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
 @Inject
@@ -201,6 +206,72 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       request.blockerDispositions,
     )
     val passNumber = completed.completedPassCount.toString()
+    val reviewedDeltaDigest = requireNotNull(completed.reviewedDeltaDigest) {
+      "Goal review reconciliation requires the durable reviewed delta digest."
+    }
+    val repositoryCheckpoint = requireNotNull(request.repositoryCheckpoint) {
+      "Goal review reconciliation requires the runtime repository checkpoint."
+    }
+    val generationId = "review-${reviewedDeltaDigest.take(16)}-$repositoryCheckpoint".take(512)
+    unitOfWork.reviewGenerations.appendGeneration(
+      GoalSubtaskReviewGeneration(
+        GoalSubtaskReviewGenerationIdentity(
+          request.workflowId,
+          generationId,
+          completed.reviewBaseSha,
+          reviewedDeltaDigest,
+          repositoryCheckpoint,
+        ),
+      ),
+    )
+    unitOfWork.reviewGenerations.appendPass(
+      request.workflowId,
+      generationId,
+      passNumber.toInt(),
+      repositoryCheckpoint,
+    )
+    val carried = unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId)
+    require(request.blockerDispositions.map { it.findingId }.toSet() == carried.map { it.findingId }.toSet()) {
+      "Reconciled review must disposition exactly the durable carried Blocker set."
+    }
+    request.blockerDispositions.forEach { disposition ->
+      unitOfWork.reviewGenerations.appendDisposition(
+        GoalSubtaskReviewFindingDispositionRecord(
+          request.workflowId,
+          generationId,
+          disposition.findingId,
+          when (disposition.verdict) {
+            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.RESOLVED ->
+              GoalSubtaskReviewFindingDisposition.RESOLVED
+            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.UNRESOLVED ->
+              GoalSubtaskReviewFindingDisposition.STILL_PRESENT
+            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.SUPERSEDED ->
+              GoalSubtaskReviewFindingDisposition.SUPERSEDED
+          },
+          disposition.evidence,
+        ),
+      )
+    }
+    request.findings.forEachIndexed { index, finding ->
+      unitOfWork.reviewGenerations.appendFinding(
+        request.workflowId,
+        generationId,
+        passNumber.toInt(),
+        GoalSubtaskReviewFinding(
+          finding.findingId ?: "$generationId-$passNumber-${index + 1}",
+          finding.severity,
+          finding.category,
+          finding.location,
+          finding.text,
+          generationId,
+        ),
+      )
+    }
+    if (request.verdict == FeatureTaskRuntimeVerdict.APPROVED) {
+      require(unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId).isEmpty()) {
+        "Review reconciliation approval requires durable proof of zero unresolved Blockers."
+      }
+    }
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
@@ -217,6 +288,16 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       mapOf(
         GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completed.toArtifactMap(),
         GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to (previousResults + (passNumber to request.rawReviewResult)),
+        FeatureTaskRuntimePhaseRecorder.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY to
+          if (state.passResults.any { it.passNumber == passNumber.toInt() }) {
+            (artifacts[FeatureTaskRuntimePhaseRecorder.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
+              .orEmpty()
+              .mapKeys { it.key.toString() } +
+              ("retry-$passNumber-${state.passResults.size}" to previousResults[passNumber])
+          } else {
+            (artifacts[FeatureTaskRuntimePhaseRecorder.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
+              .orEmpty()
+          },
       ),
     )
     completed
@@ -368,6 +449,7 @@ internal data class GoalReviewPassCompletionRequest(
   val rawReviewResult: String,
   val normalizedOutput: Map<String, Any?>,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+  val repositoryCheckpoint: String? = null,
 )
 
 private data class GoalReviewInputRecoveryRequest(

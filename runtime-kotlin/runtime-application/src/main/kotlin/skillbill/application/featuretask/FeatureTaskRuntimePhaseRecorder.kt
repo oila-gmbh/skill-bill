@@ -489,8 +489,8 @@ class FeatureTaskRuntimePhaseRecorder(
           GoalSubtaskReviewFinding(
             findingId = findingId,
             severity = finding.severity,
-            category = finding.label,
-            location = finding.label,
+            category = finding.category,
+            location = finding.location,
             summary = finding.text,
             sourceGenerationId = generationId,
           ),
@@ -525,14 +525,25 @@ class FeatureTaskRuntimePhaseRecorder(
       persistPatch(
         unitOfWork.workflowStates,
         record,
-        mapOf(
+        linkedMapOf<String, Any?>(
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completedState.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to
             (reviewArtifacts.rawResults + (passNumber to completion.rawReviewResult)),
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ),
+        ).apply {
+          if (reviewArtifacts.state.passResults.any { it.passNumber == passNumber.toInt() }) {
+            put(
+              GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY,
+              (artifacts[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
+                .orEmpty()
+                .mapKeys { it.key.toString() } +
+                ("retry-$passNumber-${reviewArtifacts.state.passResults.size}" to
+                  reviewArtifacts.rawResults[passNumber]),
+            )
+          }
+        },
         WorkflowRowAdvance(
           currentStepId = request.phaseId,
           workflowStatus = workflowStatusFor(request),

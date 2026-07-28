@@ -1,6 +1,7 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewSummary
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalObservabilityDiffStat
@@ -293,6 +294,7 @@ data class GoalRunnerStatusProjection(
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
+  val reviewGeneration: GoalSubtaskReviewSummary? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
 )
 
@@ -329,6 +331,7 @@ data class GoalRunnerStatusProjectionExtras(
   val cumulativeFixIterations: Map<String, Int> = emptyMap(),
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
+  val reviewGeneration: GoalSubtaskReviewSummary? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
 )
 
@@ -378,6 +381,7 @@ object GoalRunnerStatusProjector {
       cumulativeFixIterations = extras.cumulativeFixIterations,
       reAttemptCauseCounts = extras.reAttemptCauseCounts,
       findingsInScope = extras.findingsInScope,
+      reviewGeneration = extras.reviewGeneration,
       outOfBandAcceptances = extras.outOfBandAcceptances,
     )
   }

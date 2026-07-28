@@ -892,6 +892,18 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
     putGoalLedgerCliEntries(it)
+    it.reviewGeneration?.let { review ->
+      put(
+        "review_generation",
+        mapOf(
+          "generation_id" to review.currentGenerationId,
+          "pass" to review.currentPass,
+          "carried_blocker_count" to review.carriedBlockerCount,
+          "new_blocker_count" to review.newBlockerCount,
+          "terminal_disposition_counts" to review.terminalDispositionCounts,
+        ),
+      )
+    }
     it.outOfBandAcceptances.toGoalAcceptanceCliList()?.let { list -> put("out_of_band_acceptances", list) }
   }
 } ?: linkedMapOf(

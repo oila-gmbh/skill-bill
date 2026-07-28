@@ -29,6 +29,47 @@ class ReviewDeltaClassifierTest {
   }
 
   @Test
+  fun `runtime owned decomposition manifest fields are bookkeeping but authored fields remain semantic`() {
+    val path = ".feature-specs/SKILL-150/decomposition-manifest.yaml"
+
+    assertEquals(
+      ReviewDeltaClassification.BOOKKEEPING_ONLY,
+      classifier.classifyChanges(
+        listOf(ReviewDeltaChange(path, setOf("status", "subtasks.workflow_id"))),
+      ).classification,
+    )
+    assertEquals(
+      ReviewDeltaClassification.SEMANTIC,
+      classifier.classifyChanges(listOf(ReviewDeltaChange(path))).classification,
+    )
+  }
+
+  @Test
+  fun `ungoverned manifest fields cannot masquerade as bookkeeping`() {
+    kotlin.test.assertFailsWith<IllegalArgumentException> {
+      ReviewDeltaChange(
+        ".feature-specs/SKILL-150/decomposition-manifest.yaml",
+        setOf("subtasks.spec_path"),
+      )
+    }
+  }
+
+  @Test
+  fun `unified manifest status delta is bookkeeping while authored manifest delta is semantic`() {
+    val header =
+      "diff --git a/.feature-specs/SKILL-150/decomposition-manifest.yaml " +
+        "b/.feature-specs/SKILL-150/decomposition-manifest.yaml\n"
+    assertEquals(
+      ReviewDeltaClassification.BOOKKEEPING_ONLY,
+      classifier.classifyUnifiedDiff(header + "-status: pending\n+status: in_progress\n").classification,
+    )
+    assertEquals(
+      ReviewDeltaClassification.SEMANTIC,
+      classifier.classifyUnifiedDiff(header + "-feature_name: old\n+feature_name: new\n").classification,
+    )
+  }
+
+  @Test
   fun `mixed changes create exactly one semantic successor decision`() {
     val result = classifier.classify(
       listOf(

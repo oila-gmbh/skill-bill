@@ -116,6 +116,8 @@ data class GoalSubtaskReviewCompactFinding(
    * id was captured, which fall back to the positional id.
    */
   val findingId: String? = null,
+  val category: String = label,
+  val location: String = label,
 ) {
   val isBlocker: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 
@@ -131,17 +133,21 @@ data class GoalSubtaskReviewCompactFinding(
     "severity" to severity,
     "label" to label,
     "text" to text,
+    "category" to category,
+    "location" to location,
   ).apply { findingId?.let { put("finding_id", it) } }
 
   companion object {
     @OpenBoundaryMap("Compact goal-review finding decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): GoalSubtaskReviewCompactFinding {
-      raw.requireOnlyReviewStateKeys(setOf("severity", "label", "text", "finding_id"), path)
+      raw.requireOnlyReviewStateKeys(setOf("severity", "label", "text", "finding_id", "category", "location"), path)
       return GoalSubtaskReviewCompactFinding(
         severity = raw.requireReviewStateString("severity", path),
         label = raw.requireReviewStateString("label", path),
         text = raw.requireReviewStateString("text", path),
         findingId = raw.optionalReviewStateString("finding_id", path),
+        category = raw.optionalReviewStateString("category", path) ?: raw.requireReviewStateString("label", path),
+        location = raw.optionalReviewStateString("location", path) ?: raw.requireReviewStateString("label", path),
       )
     }
   }
@@ -360,9 +366,8 @@ data class GoalSubtaskReviewState(
       "Baseline untracked paths must be sorted and unique."
     }
     require(completedPassCount in 0..GOAL_SUBTASK_REVIEW_MAX_PASSES) { "Completed review passes must be 0..2." }
-    require(passResults.size == completedPassCount) { "Pass result count must equal completed pass count." }
-    require(passResults.map(GoalSubtaskReviewPassResult::passNumber) == (1..completedPassCount).toList()) {
-      "Pass results must be ordered and contiguous."
+    require(passResults.map(GoalSubtaskReviewPassResult::passNumber).distinct() == (1..completedPassCount).toList()) {
+      "Pass results must retain every ordered pass, including append-only retry attempts."
     }
     passResults.forEach { result ->
       result.executedMode?.let { executedMode ->
@@ -372,8 +377,11 @@ data class GoalSubtaskReviewState(
       }
     }
     reservedPassNumber?.let { reserved ->
-      require(reserved == completedPassCount + 1 && reserved <= GOAL_SUBTASK_REVIEW_MAX_PASSES) {
-        "Reserved pass must be the next permitted review pass."
+      require(
+        reserved <= GOAL_SUBTASK_REVIEW_MAX_PASSES &&
+          (reserved == completedPassCount + 1 || retryReviewPending && reserved == completedPassCount),
+      ) {
+        "Reserved pass must be the next permitted pass or the append-only retry of the capped pass."
       }
     }
     require(emittedPassCount in 0..completedPassCount) { "Emitted pass count cannot exceed completed pass count." }
@@ -406,20 +414,11 @@ data class GoalSubtaskReviewState(
   val reviewSkippedByUser: Boolean get() =
     passResults.lastOrNull()?.verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
 
-  /**
-   * An operator-granted retry round re-opens the already-consumed final pass rather than reserving a
-   * new one: the pass number is unchanged, so `GOAL_SUBTASK_REVIEW_MAX_PASSES` still holds and no
-   * consumed pass is re-reserved. Only the stale result and its pause are dropped, so the granted fix
-   * is genuinely re-reviewed instead of having the overridden verdict replayed at it.
-   */
+  /** A retry reserves the same bounded pass while retaining its prior immutable result as history. */
   fun reserveNextPass(): GoalSubtaskReviewState = when {
     retryReviewPending && reservedPassNumber == null && passResults.isNotEmpty() -> copy(
       reservedPassNumber = completedPassCount,
-      completedPassCount = completedPassCount - 1,
-      passResults = passResults.dropLast(1),
-      emittedPassCount = emittedPassCount.coerceAtMost(completedPassCount - 1),
       disposition = GoalSubtaskReviewDisposition.PENDING,
-      blockerDispositions = emptyList(),
     )
     reviewCapReached -> this
     reviewSkippedByUser -> this

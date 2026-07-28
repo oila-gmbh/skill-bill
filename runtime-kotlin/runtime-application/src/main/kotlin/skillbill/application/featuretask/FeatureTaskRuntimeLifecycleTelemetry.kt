@@ -12,6 +12,7 @@ import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewSummary
 
 private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
   { FeatureTaskRuntimeRegenerationTelemetry() }
@@ -57,6 +58,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
+    reviewGenerationSummary: () -> GoalSubtaskReviewSummary? = { null },
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
     crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
@@ -64,7 +66,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       return
     }
     isolate("finished", Unit) {
-      val outcomes = phaseOutcomes()
+      val outcomes = phaseOutcomes().withReviewGenerationSummary(runCatching(reviewGenerationSummary).getOrNull())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
@@ -113,6 +115,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
+    reviewGenerationSummary: () -> GoalSubtaskReviewSummary? = { null },
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
     crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
   ) {
@@ -129,6 +132,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           )
         }
         .getOrDefault(emptyMap())
+        .withReviewGenerationSummary(runCatching(reviewGenerationSummary).getOrNull())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
@@ -175,6 +179,22 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       )
     }
     .getOrDefault(fallback)
+
+  private fun Map<String, String>.withReviewGenerationSummary(
+    summary: GoalSubtaskReviewSummary?,
+  ): Map<String, String> = if (summary == null) {
+    this
+  } else {
+    this + mapOf(
+      "review.current_generation" to summary.currentGenerationId.orEmpty(),
+      "review.current_pass" to summary.currentPass.toString(),
+      "review.carried_blocker_count" to summary.carriedBlockerCount.toString(),
+      "review.new_blocker_count" to summary.newBlockerCount.toString(),
+      "review.terminal_dispositions" to summary.terminalDispositionCounts.entries
+        .sortedBy { it.key }
+        .joinToString(",") { "${it.key}:${it.value}" },
+    )
+  }
 
   private fun completionStatusOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
     is FeatureTaskRuntimeRunReport.Completed -> "completed"

@@ -100,6 +100,9 @@ class GoalRunnerStatusService(
             cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
             findingsInScope = ledgerSummary?.findingsInScope,
+            reviewGeneration = currentSubtask?.workflowId
+              ?.takeIf(String::isNotBlank)
+              ?.let { phaseRecorder.reviewGenerationSummary(it, request.dbPathOverride) },
             outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
           ),
         )

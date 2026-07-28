@@ -5818,11 +5818,15 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         findings = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.fromOutput(recoveredMap),
         rawReviewResult = recoveredOutput,
         normalizedOutput = recoveredMap,
+        repositoryCheckpoint = "recovered-review-checkpoint",
       ),
     )
 
     assertEquals(2, requireNotNull(recovered).completedPassCount)
     assertEquals(null, recovered.reservedPassNumber)
+    val generation = requireNotNull(harness.recorder.reviewGenerationSummary(WORKFLOW_ID))
+    assertEquals(2, generation.currentPass)
+    assertEquals(1, generation.newBlockerCount)
     assertFullyAssociatedLedgerRows(harness, passNumber = 2, subtaskId = 5)
   }
 }
