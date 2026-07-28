@@ -1,4 +1,4 @@
-package skillbill.workflow.taskruntime
+package skillbill.workflow.taskruntime.model
 
 import java.security.MessageDigest
 import java.time.Instant
@@ -7,6 +7,8 @@ const val CONVERGENCE_STATE_CONTRACT_VERSION: String = "0.1"
 const val CONVERGENCE_ID_MAX_LENGTH: Int = 160
 const val CONVERGENCE_SUMMARY_MAX_LENGTH: Int = 512
 const val CONVERGENCE_CLASSIFICATION_MAX_LENGTH: Int = 64
+const val CONVERGENCE_REFERENCE_MAX_LENGTH: Int = 512
+const val CONVERGENCE_POSITION_MAX: Int = 10_000
 
 enum class ConvergenceRecordKind {
   IMPLEMENTATION_OUTCOME,
@@ -32,8 +34,8 @@ data class ConvergenceProvenance(
     require(workflowId.isSafeIdentity())
     require(generation > 0)
     require(phaseId in setOf("implement", "audit", "review"))
-    require(attempt == null || attempt in 1..10000)
-    require(reviewPass == null || reviewPass in 1..10000)
+    require(attempt == null || attempt in 1..CONVERGENCE_POSITION_MAX)
+    require(reviewPass == null || reviewPass in 1..CONVERGENCE_POSITION_MAX)
   }
 }
 
@@ -53,17 +55,19 @@ data class ConvergenceRecord(
 ) {
   init {
     require(recordId.isSafeIdentity() && logicalId.isSafeIdentity())
-    require(recordId == ConvergenceIdentities.record(logicalId, provenance.generation))
+    require(recordId == ConvergenceIdentities.record(provenance.workflowId, kind, logicalId, provenance.generation))
     require(parentLogicalId == null || parentLogicalId.isSafeIdentity())
     require(evidenceDigest.matches(Regex("[a-f0-9]{64}")))
     require(runCatching { Instant.parse(createdAt) }.isSuccess)
-    require(classification == null || (
-      classification.length in 1..CONVERGENCE_CLASSIFICATION_MAX_LENGTH &&
-        classification.matches(Regex("[a-z][a-z0-9_-]*"))
-      ))
+    require(
+      classification == null || (
+        classification.length in 1..CONVERGENCE_CLASSIFICATION_MAX_LENGTH &&
+          classification.matches(Regex("[a-z][a-z0-9_-]*"))
+        ),
+    )
     require(summary == null || summary.length in 1..CONVERGENCE_SUMMARY_MAX_LENGTH)
-    require(path == null || path.length in 1..512)
-    require(evidenceRef == null || evidenceRef.length in 1..512)
+    require(path == null || path.length in 1..CONVERGENCE_REFERENCE_MAX_LENGTH)
+    require(evidenceRef == null || evidenceRef.length in 1..CONVERGENCE_REFERENCE_MAX_LENGTH)
     when (kind) {
       ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
       ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
@@ -78,7 +82,7 @@ data class ConvergenceRecord(
       )
       ConvergenceRecordKind.REVIEW_FINDING -> require(
         provenance.phaseId == "review" && provenance.attempt == null && provenance.reviewPass != null &&
-          parentLogicalId == null,
+          parentLogicalId == null && status == ConvergenceStatus.OPEN,
       )
       ConvergenceRecordKind.REVIEW_DISPOSITION -> require(
         provenance.phaseId == "review" && provenance.attempt == null && provenance.reviewPass != null &&
@@ -110,8 +114,8 @@ object ConvergenceIdentities {
   fun logical(workflowId: String, kind: ConvergenceRecordKind, stableKey: String): String =
     "logical:${digest("$workflowId|${kind.name}|$stableKey")}"
 
-  fun record(logicalId: String, generation: Int): String =
-    "record:${digest("$logicalId|$generation")}"
+  fun record(workflowId: String, kind: ConvergenceRecordKind, logicalId: String, generation: Int): String =
+    "record:${digest("$workflowId|${kind.name}|$logicalId|$generation")}"
 
   fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray())

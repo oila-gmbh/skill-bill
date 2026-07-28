@@ -1,18 +1,31 @@
 package skillbill.workflow.taskruntime
 
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONVERGENCE_STATE_SCHEMA_RESOURCE
 import skillbill.error.InvalidFeatureTaskRuntimeConvergenceStateSchemaError
+import skillbill.workflow.taskruntime.model.CONVERGENCE_STATE_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+
+fun interface ConvergenceStateSchemaValidator {
+  fun validate(encoded: String, sourceLabel: String)
+}
 
 object ConvergenceStateCodec {
   private val json = Json { ignoreUnknownKeys = false }
 
-  fun decodeRecord(encoded: String, sourceLabel: String): ConvergenceRecord = try {
-    requireBundledContract(sourceLabel)
+  fun decodeRecord(
+    encoded: String,
+    sourceLabel: String,
+    schemaValidator: ConvergenceStateSchemaValidator,
+  ): ConvergenceRecord = try {
+    schemaValidator.validate(encoded, sourceLabel)
     val value = json.parseToJsonElement(encoded) as? JsonObject
       ?: invalid(sourceLabel, "record must be an object")
     val allowed = setOf(
@@ -47,15 +60,19 @@ object ConvergenceStateCodec {
     )
   } catch (error: InvalidFeatureTaskRuntimeConvergenceStateSchemaError) {
     throw error
-  } catch (error: Exception) {
-    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
-      sourceLabel,
-      "record violates the convergence-state contract",
-      error,
-    )
+  } catch (error: SerializationException) {
+    invalidRecord(sourceLabel, error)
+  } catch (error: IllegalArgumentException) {
+    invalidRecord(sourceLabel, error)
+  } catch (error: IllegalStateException) {
+    invalidRecord(sourceLabel, error)
   }
 
-  fun decodeLegacySource(encoded: String, sourceLabel: String): List<ConvergenceRecord> = try {
+  fun decodeLegacySource(
+    encoded: String,
+    sourceLabel: String,
+    schemaValidator: ConvergenceStateSchemaValidator,
+  ): List<ConvergenceRecord> = try {
     val root = json.parseToJsonElement(encoded) as? JsonObject
       ?: invalid(sourceLabel, "legacy source must be an object")
     if (root.keys != setOf("contract_version", "records")) invalid(sourceLabel, "legacy source fields are invalid")
@@ -64,40 +81,42 @@ object ConvergenceStateCodec {
     }
     val records = root["records"] as? kotlinx.serialization.json.JsonArray
       ?: invalid(sourceLabel, "legacy records must be an array")
-    records.mapIndexed { index, element -> decodeRecord(element.toString(), "$sourceLabel.records[$index]") }
+    records.mapIndexed { index, element ->
+      decodeRecord(element.toString(), "$sourceLabel.records[$index]", schemaValidator)
+    }
   } catch (error: InvalidFeatureTaskRuntimeConvergenceStateSchemaError) {
     throw error
-  } catch (error: Exception) {
-    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
-      sourceLabel,
-      "legacy source violates the convergence-state contract",
-      error,
-    )
+  } catch (error: SerializationException) {
+    invalidLegacySource(sourceLabel, error)
+  } catch (error: IllegalArgumentException) {
+    invalidLegacySource(sourceLabel, error)
+  } catch (error: IllegalStateException) {
+    invalidLegacySource(sourceLabel, error)
   }
 
   private fun invalid(source: String, reason: String): Nothing =
     throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(source, reason)
 
-  private fun requireBundledContract(source: String) {
-    val schema = ConvergenceStateCodec::class.java.classLoader
-      .getResourceAsStream(FEATURE_TASK_RUNTIME_CONVERGENCE_STATE_SCHEMA_RESOURCE)
-      ?.bufferedReader()
-      ?.use { it.readText() }
-      ?: invalid(source, "bundled convergence-state schema is missing")
-    if ("const: \"$CONVERGENCE_STATE_CONTRACT_VERSION\"" !in schema) {
-      invalid(source, "bundled convergence-state schema version is incompatible")
-    }
-  }
+  private fun invalidRecord(source: String, error: RuntimeException): Nothing =
+    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
+      source,
+      "record violates the convergence-state contract",
+      error,
+    )
+
+  private fun invalidLegacySource(source: String, error: RuntimeException): Nothing =
+    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
+      source,
+      "legacy source violates the convergence-state contract",
+      error,
+    )
 
   private fun JsonObject.string(name: String): String =
     get(name)?.jsonPrimitive?.contentOrNull ?: error("missing $name")
 
-  private fun JsonObject.optionalString(name: String): String? =
-    get(name)?.jsonPrimitive?.contentOrNull
+  private fun JsonObject.optionalString(name: String): String? = get(name)?.jsonPrimitive?.contentOrNull
 
-  private fun JsonObject.int(name: String): Int =
-    get(name)?.jsonPrimitive?.intOrNull ?: error("missing $name")
+  private fun JsonObject.int(name: String): Int = get(name)?.jsonPrimitive?.intOrNull ?: error("missing $name")
 
-  private fun JsonObject.optionalInt(name: String): Int? =
-    get(name)?.jsonPrimitive?.intOrNull
+  private fun JsonObject.optionalInt(name: String): Int? = get(name)?.jsonPrimitive?.intOrNull
 }

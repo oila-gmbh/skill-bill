@@ -3,14 +3,14 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskConvergenceService
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.ConvergenceStateRepository
-import skillbill.ports.persistence.LegacyReconciliation
-import skillbill.workflow.taskruntime.ConvergenceIdentities
-import skillbill.workflow.taskruntime.ConvergenceProvenance
-import skillbill.workflow.taskruntime.ConvergenceRecord
-import skillbill.workflow.taskruntime.ConvergenceRecordKind
-import skillbill.workflow.taskruntime.ConvergenceStatus
-import skillbill.workflow.taskruntime.ReplayResult
-import skillbill.workflow.taskruntime.UnresolvedConvergence
+import skillbill.ports.persistence.model.LegacyReconciliation
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.ReplayResult
+import skillbill.workflow.taskruntime.model.UnresolvedConvergence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -62,7 +62,12 @@ class FeatureTaskConvergenceServiceTest {
       "implement-attempt-1",
     )
     return ConvergenceRecord(
-      recordId = ConvergenceIdentities.record(logical, 1),
+      recordId = ConvergenceIdentities.record(
+        "workflow-1",
+        ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        logical,
+        1,
+      ),
       logicalId = logical,
       kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
       provenance = ConvergenceProvenance("workflow-1", 1, "implement", attempt = 1),
@@ -97,9 +102,6 @@ private class InMemoryConvergenceRepository : ConvergenceStateRepository {
   override fun unresolved(workflowId: String): UnresolvedConvergence =
     UnresolvedConvergence(emptyList(), emptyList(), emptyList())
 
-  override fun reconcileLegacy(
-    workflowId: String,
-    sourceDigest: String,
-    encodedSource: String,
-  ): LegacyReconciliation = LegacyReconciliation.Imported(0)
+  override fun reconcileLegacy(workflowId: String, sourceDigest: String, encodedSource: String): LegacyReconciliation =
+    LegacyReconciliation.Imported(0)
 }

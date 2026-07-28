@@ -81,7 +81,7 @@ class DatabaseMigrationsTest {
   }
 
   @Test
-  fun `convergence migration retains evidence independently of workflow rows`() {
+  fun `convergence migration enforces workflow and parent identities`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-convergence-v17").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -89,7 +89,7 @@ class DatabaseMigrationsTest {
       listOf("feature_task_convergence_records", "feature_task_convergence_legacy_imports").forEach { table ->
         connection.createStatement().use { statement ->
           statement.executeQuery("PRAGMA foreign_key_list($table)").use { foreignKeys ->
-            assertFalse(foreignKeys.next(), "$table must not cascade when an active workflow row is reset.")
+            assertTrue(foreignKeys.next(), "$table must enforce durable identity relationships.")
           }
         }
       }

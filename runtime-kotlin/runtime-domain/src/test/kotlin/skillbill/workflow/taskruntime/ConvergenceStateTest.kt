@@ -1,17 +1,28 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.error.InvalidFeatureTaskRuntimeConvergenceStateSchemaError
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.currentByLogicalIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
-import skillbill.error.InvalidFeatureTaskRuntimeConvergenceStateSchemaError
 
 class ConvergenceStateTest {
+  private val schemaValidator = ConvergenceStateSchemaValidator { _, _ -> }
+
   @Test
   fun `identities are deterministic and generation specific`() {
     val logical = ConvergenceIdentities.logical("workflow-1", ConvergenceRecordKind.AUDIT_GAP, "AC-004")
     assertEquals(logical, ConvergenceIdentities.logical("workflow-1", ConvergenceRecordKind.AUDIT_GAP, "AC-004"))
-    assertNotEquals(ConvergenceIdentities.record(logical, 1), ConvergenceIdentities.record(logical, 2))
+    assertNotEquals(
+      ConvergenceIdentities.record("workflow-1", ConvergenceRecordKind.AUDIT_GAP, logical, 1),
+      ConvergenceIdentities.record("workflow-1", ConvergenceRecordKind.AUDIT_GAP, logical, 2),
+    )
   }
 
   @Test
@@ -44,15 +55,27 @@ class ConvergenceStateTest {
   @Test
   fun `production codec rejects unknown fields unsupported versions and malformed provenance`() {
     val encoded = encodedRecord()
-    assertEquals(record(), ConvergenceStateCodec.decodeRecord(encoded, "test"))
+    assertEquals(record(), ConvergenceStateCodec.decodeRecord(encoded, "test", schemaValidator))
     assertFailsWith<InvalidFeatureTaskRuntimeConvergenceStateSchemaError> {
-      ConvergenceStateCodec.decodeRecord(encoded.replace("\"contract_version\":\"0.1\"", "\"contract_version\":\"9\""), "test")
+      ConvergenceStateCodec.decodeRecord(
+        encoded.replace("\"contract_version\":\"0.1\"", "\"contract_version\":\"9\""),
+        "test",
+        schemaValidator,
+      )
     }
     assertFailsWith<InvalidFeatureTaskRuntimeConvergenceStateSchemaError> {
-      ConvergenceStateCodec.decodeRecord(encoded.dropLast(1) + ",\"raw_phase_output\":\"private\"}", "test")
+      ConvergenceStateCodec.decodeRecord(
+        encoded.dropLast(1) + ",\"raw_phase_output\":\"private\"}",
+        "test",
+        schemaValidator,
+      )
     }
     assertFailsWith<InvalidFeatureTaskRuntimeConvergenceStateSchemaError> {
-      ConvergenceStateCodec.decodeRecord(encoded.replace("\"phase_id\":\"audit\"", "\"phase_id\":\"review\""), "test")
+      ConvergenceStateCodec.decodeRecord(
+        encoded.replace("\"phase_id\":\"audit\"", "\"phase_id\":\"review\""),
+        "test",
+        schemaValidator,
+      )
     }
   }
 
@@ -63,7 +86,12 @@ class ConvergenceStateTest {
   ): ConvergenceRecord {
     val logical = ConvergenceIdentities.logical("workflow-1", ConvergenceRecordKind.AUDIT_GAP, "AC-004")
     return ConvergenceRecord(
-      recordId = ConvergenceIdentities.record(logical, generation),
+      recordId = ConvergenceIdentities.record(
+        "workflow-1",
+        ConvergenceRecordKind.AUDIT_GAP,
+        logical,
+        generation,
+      ),
       logicalId = logical,
       kind = ConvergenceRecordKind.AUDIT_GAP,
       provenance = ConvergenceProvenance("workflow-1", generation, "audit"),

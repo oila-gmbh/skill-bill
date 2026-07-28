@@ -3,10 +3,10 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LegacyReconciliation
-import skillbill.workflow.taskruntime.ConvergenceRecord
-import skillbill.workflow.taskruntime.ReplayResult
-import skillbill.workflow.taskruntime.UnresolvedConvergence
+import skillbill.ports.persistence.model.LegacyReconciliation
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ReplayResult
+import skillbill.workflow.taskruntime.model.UnresolvedConvergence
 
 @Inject
 class FeatureTaskConvergenceService(private val database: DatabaseSessionFactory) {

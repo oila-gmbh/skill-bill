@@ -137,6 +137,11 @@ class FeatureTaskRuntimePhaseRecorder(
       it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt)
     }
 
+  fun latestProducerOutputAttempt(workflowId: String, phaseId: String, dbOverride: String? = null): Int =
+    database.read(dbOverride) {
+      it.rejectedOutputDiagnostics?.latestProducerOutputAttempt(workflowId, phaseId) ?: 0
+    }
+
   /**
    * Persists one per-phase record. A `running` transition for a new attempt re-mints
    * `started_at` so `duration_millis` measures only the current run (never spanning a

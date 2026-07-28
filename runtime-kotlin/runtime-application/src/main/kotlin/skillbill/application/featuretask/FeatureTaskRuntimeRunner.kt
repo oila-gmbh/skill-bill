@@ -146,6 +146,13 @@ class FeatureTaskRuntimeRunner(
         transitions,
         recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         outputValidator,
+        (transitions.forwardPhaseIds + transitions.loopOnlyPhaseIds).associateWith { phaseId ->
+          recorder.latestProducerOutputAttempt(
+            runRequest.workflowId,
+            phaseId,
+            runRequest.dbPathOverride,
+          )
+        },
       )
       val loop = FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeRunLoopDependencies(

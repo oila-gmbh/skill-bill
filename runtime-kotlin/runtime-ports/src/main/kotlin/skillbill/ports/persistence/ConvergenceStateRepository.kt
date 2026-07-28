@@ -1,8 +1,9 @@
 package skillbill.ports.persistence
 
-import skillbill.workflow.taskruntime.ConvergenceRecord
-import skillbill.workflow.taskruntime.ReplayResult
-import skillbill.workflow.taskruntime.UnresolvedConvergence
+import skillbill.ports.persistence.model.LegacyReconciliation
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ReplayResult
+import skillbill.workflow.taskruntime.model.UnresolvedConvergence
 
 interface ConvergenceStateRepository {
   fun append(record: ConvergenceRecord): ReplayResult
@@ -10,12 +11,6 @@ interface ConvergenceStateRepository {
   fun current(workflowId: String): Map<String, ConvergenceRecord>
   fun unresolved(workflowId: String): UnresolvedConvergence
   fun reconcileLegacy(workflowId: String, sourceDigest: String, encodedSource: String): LegacyReconciliation
-}
-
-sealed interface LegacyReconciliation {
-  data class Imported(val recordCount: Int) : LegacyReconciliation
-  data object AlreadyImported : LegacyReconciliation
-  data class Quarantined(val reasonCode: String) : LegacyReconciliation
 }
 
 class ConvergenceReplayConflictException(recordId: String) :
@@ -27,9 +22,6 @@ object UnavailableConvergenceStateRepository : ConvergenceStateRepository {
   override fun history(workflowId: String): List<ConvergenceRecord> = unavailable()
   override fun current(workflowId: String): Map<String, ConvergenceRecord> = unavailable()
   override fun unresolved(workflowId: String): UnresolvedConvergence = unavailable()
-  override fun reconcileLegacy(
-    workflowId: String,
-    sourceDigest: String,
-    encodedSource: String,
-  ): LegacyReconciliation = unavailable()
+  override fun reconcileLegacy(workflowId: String, sourceDigest: String, encodedSource: String): LegacyReconciliation =
+    unavailable()
 }

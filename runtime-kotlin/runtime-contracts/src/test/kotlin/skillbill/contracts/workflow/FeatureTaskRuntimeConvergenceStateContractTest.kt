@@ -8,9 +8,11 @@ import kotlin.test.assertFalse
 class FeatureTaskRuntimeConvergenceStateContractTest {
   @Test
   fun `schema resource version matches Kotlin contract version and excludes private bodies`() {
-    val schema = checkNotNull(javaClass.classLoader.getResourceAsStream(
-      FEATURE_TASK_RUNTIME_CONVERGENCE_STATE_SCHEMA_RESOURCE,
-    )).bufferedReader().use { it.readText() }
+    val schema = checkNotNull(
+      javaClass.classLoader.getResourceAsStream(
+        FEATURE_TASK_RUNTIME_CONVERGENCE_STATE_SCHEMA_RESOURCE,
+      ),
+    ).bufferedReader().use { it.readText() }
 
     assertContains(schema, "const: \"$FEATURE_TASK_RUNTIME_CONVERGENCE_STATE_CONTRACT_VERSION\"")
     assertFalse(schema.lineSequence().any { it.trim().startsWith("raw_prompt:") })

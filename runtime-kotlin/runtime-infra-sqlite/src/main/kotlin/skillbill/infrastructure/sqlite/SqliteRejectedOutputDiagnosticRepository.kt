@@ -17,7 +17,9 @@ class SqliteRejectedOutputDiagnosticRepository(
   private val connection: Connection,
 ) : RejectedOutputDiagnosticRepository {
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord {
-    val existing = persistence("insert-read-existing") { find(record.metadata.identity) }
+    val existing = persistence("insert-read-existing") {
+      connection.findRejectedOutputDiagnostic(record.metadata.identity)
+    }
     if (existing != null) {
       if (!existing.sameImmutableEvidence(record)) {
         throw RejectedOutputDiagnosticError.Conflict(record.metadata.identity)
@@ -53,7 +55,9 @@ class SqliteRejectedOutputDiagnosticRepository(
       }
       return record
     } catch (error: SQLException) {
-      val raced = persistence("insert-read-raced") { find(record.metadata.identity) }
+      val raced = persistence("insert-read-raced") {
+        connection.findRejectedOutputDiagnostic(record.metadata.identity)
+      }
       if (raced != null && raced.sameImmutableEvidence(record)) return raced
       throw RejectedOutputDiagnosticError.Persistence("insert", error)
     }
@@ -65,7 +69,7 @@ class SqliteRejectedOutputDiagnosticRepository(
       if (selector.phaseId != null) clauses += "phase_id = ?"
       if (selector.attempt != null) clauses += "attempt = ?"
       connection.prepareStatement(
-        "${selectColumns()} WHERE ${clauses.joinToString(" AND ")} ORDER BY phase_id, attempt",
+        "$REJECTED_OUTPUT_SELECT_COLUMNS WHERE ${clauses.joinToString(" AND ")} ORDER BY phase_id, attempt",
       ).use { statement ->
         var index = 1
         statement.setString(index++, selector.workflowId)
@@ -79,7 +83,7 @@ class SqliteRejectedOutputDiagnosticRepository(
   }
 
   override fun read(identity: String): RejectedOutputDiagnosticRecord = persistence("read") {
-    find(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
+    connection.findRejectedOutputDiagnostic(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
   }
 
   override fun markExpired(before: Instant): Int = persistence("mark-expired") {
@@ -164,26 +168,36 @@ class SqliteRejectedOutputDiagnosticRepository(
       }
     }
 
+  override fun latestProducerOutputAttempt(workflowId: String, phaseId: String): Int =
+    persistence("latest-producer-output-attempt") {
+      connection.prepareStatement(
+        "SELECT COALESCE(MAX(attempt), 0) FROM producer_output_evidence WHERE workflow_id = ? AND phase_id = ?",
+      ).use {
+        it.setString(1, workflowId)
+        it.setString(2, phaseId)
+        it.executeQuery().use { row -> if (row.next()) row.getInt(1) else 0 }
+      }
+    }
+
   override fun deleteProducerOutputsBefore(before: Instant): Int = persistence("delete-producer-outputs") {
     connection.prepareStatement("DELETE FROM producer_output_evidence WHERE recorded_at < ?").use {
       it.setString(1, before.toString())
       it.executeUpdate()
     }
   }
+}
 
-  private fun find(identity: String): RejectedOutputDiagnosticRecord? = connection.prepareStatement(
-    "${selectColumns()} WHERE identity = ?",
-  ).use { statement ->
+private val REJECTED_OUTPUT_SELECT_COLUMNS = """
+  SELECT identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
+         recorded_at, byte_size, sha256, lifecycle, payload
+  FROM rejected_output_diagnostics
+""".trimIndent()
+
+private fun Connection.findRejectedOutputDiagnostic(identity: String): RejectedOutputDiagnosticRecord? =
+  prepareStatement("$REJECTED_OUTPUT_SELECT_COLUMNS WHERE identity = ?").use { statement ->
     statement.setString(1, identity)
     statement.executeQuery().use { rows -> if (rows.next()) rows.toRecord() else null }
   }
-
-  private fun selectColumns(): String = """
-    SELECT identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
-           recorded_at, byte_size, sha256, lifecycle, payload
-    FROM rejected_output_diagnostics
-  """.trimIndent()
-}
 
 private inline fun <T> persistence(operation: String, block: () -> T): T = try {
   block()

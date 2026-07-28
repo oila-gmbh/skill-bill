@@ -20,6 +20,7 @@ internal class FeatureTaskRuntimeRunState(
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val producerEvidenceAttemptCounts: Map<String, Int> = emptyMap(),
 ) {
   private val hasDurableReviewInvalidationTombstone: Boolean = initialRecords[
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
@@ -85,7 +86,9 @@ internal class FeatureTaskRuntimeRunState(
 
   // Durable per-phase attempt count from the loaded record (0 when no record exists).
   private val persistedAttemptCounts: MutableMap<String, Int> =
-    initialRecords.mapValues { (_, record) -> record.attemptCount }.toMutableMap()
+    (initialRecords.keys + producerEvidenceAttemptCounts.keys).associateWith { phaseId ->
+      maxOf(initialRecords[phaseId]?.attemptCount ?: 0, producerEvidenceAttemptCounts[phaseId] ?: 0)
+    }.toMutableMap()
 
   // Phases already persisted with a durable genuine-phase-agent blocked record. Branch-setup-origin
   // blocked records (resolvedAgentId == BRANCH_SETUP_AGENT_ID) are deliberately excluded: branch
@@ -143,10 +146,8 @@ internal class FeatureTaskRuntimeRunState(
   private val fixLoopBudgetBaseByPhase: MutableMap<String, Int> = reconstructFixLoopBudgetBases()
 
   // The generation reset is re-applied on every load that sees a durable tombstone, not just on the
-  // load that minted it. The tombstone is a non-completed record, so it never re-enters the
-  // gate-invalidation set that drives the mint-time reset, and that reset is in-memory only: without
-  // this, the legacy review attempt watermark survives into the fresh generation and re-blocks the
-  // first post-audit review as "fix loop exhausted" before it is ever launched.
+  // load that minted it. The per-visit retry baseline resets below, while durable attempt counts
+  // remain monotonic so immutable producer evidence cannot collide across review generations.
   init {
     if (hasDurableReviewInvalidationTombstone) resetInvalidatedReviewGeneration()
   }
@@ -162,10 +163,8 @@ internal class FeatureTaskRuntimeRunState(
     inFlightReentries.remove(loopId)
     edgeIterationByLoop.remove(loopId)
     liveClaimedLoops.remove(loopId)
-    fixLoopBudgetBaseByPhase.remove(fixPhaseId)
-    fixLoopBudgetBaseByPhase.remove(reviewPhaseId)
-    persistedAttemptCounts.remove(fixPhaseId)
-    persistedAttemptCounts.remove(reviewPhaseId)
+    fixLoopBudgetBaseByPhase[fixPhaseId] = maxOf(nextIteration(fixPhaseId) - 1, 0)
+    fixLoopBudgetBaseByPhase[reviewPhaseId] = maxOf(nextIteration(reviewPhaseId) - 1, 0)
     priorRecords.remove(reviewPhaseId)
     blockedRecords.remove(reviewPhaseId)
     currentReviewPassNumber = null

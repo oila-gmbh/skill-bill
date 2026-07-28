@@ -1,5 +1,17 @@
 # featuretask runtime boundary history
 
+## [2026-07-28] SKILL-150 — Durable convergence state
+Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-ports/persistence, runtime-infra-sqlite, runtime-contracts, orchestration/contracts
+- Added versioned, bounded convergence records for implementation obligations, audit repairs, review blockers, repository generations, and phase provenance
+- Persisted append-only SQLite history with deterministic identities, relationship checks, idempotent replay, conflict detection, and unresolved-state queries
+- Made convergence recording participate in injected database sessions so phase outcomes and workflow advancement can commit or roll back atomically
+- Added schema-validated, once-only legacy reconciliation with typed quarantine outcomes and preserved rejected-output privacy boundaries
+- Pattern: separate immutable convergence evidence from derived current state; resolve children against the parent generation they repair
+- Reusable: convergence repository/service ports, bundled schema validator, database migrations/schema helpers, and deterministic identity codec
+- Breaking changes/limitations: convergence storage contract is version 1.0; this subtask does not change phase advancement policy
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-28] SKILL-134 — Structured audit deferral
 Areas: runtime-application/featuretask, orchestration/contracts, runtime-application tests
 - Replaced recursive free-text deferral detection with explicit `deferred_repairs` and exhaustive per-item `repair_results`

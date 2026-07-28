@@ -19,6 +19,7 @@ interface RejectedOutputDiagnosticRepository {
     throw RejectedOutputDiagnosticError.Persistence("producer-evidence-unavailable")
   }
   fun readProducerOutput(workflowId: String, phaseId: String, attempt: Int): ProducerOutputEvidence? = null
+  fun latestProducerOutputAttempt(workflowId: String, phaseId: String): Int = 0
   fun deleteProducerOutputsBefore(before: Instant): Int = 0
 }
 

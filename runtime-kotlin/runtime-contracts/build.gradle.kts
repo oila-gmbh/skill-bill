@@ -1,5 +1,6 @@
 import org.gradle.api.tasks.testing.Test
 import org.gradle.language.jvm.tasks.ProcessResources
+import java.io.File
 
 plugins {
   id("skillbill.jvm-library")
@@ -12,19 +13,20 @@ dependencies {
   testImplementation(libs.kotlin.test)
 }
 
-val convergenceStateSchema =
-  rootProject.layout.projectDirectory.file(
-    "orchestration/contracts/feature-task-runtime-convergence-state-schema.yaml",
-  )
+val convergenceStateSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-convergence-state-schema.yaml")
+    .absolutePath
 
 tasks.named<ProcessResources>("processResources") {
-  inputs.file(convergenceStateSchema)
+  val schemaPath = convergenceStateSchemaPath
+  inputs.file(schemaPath)
   doFirst {
-    require(convergenceStateSchema.asFile.isFile) {
-      "Missing feature-task-runtime convergence-state contract: ${convergenceStateSchema.asFile}"
+    require(File(schemaPath).isFile) {
+      "Missing feature-task-runtime convergence-state contract: $schemaPath"
     }
   }
-  from(convergenceStateSchema) {
+  from(schemaPath) {
     into("contracts")
   }
 }

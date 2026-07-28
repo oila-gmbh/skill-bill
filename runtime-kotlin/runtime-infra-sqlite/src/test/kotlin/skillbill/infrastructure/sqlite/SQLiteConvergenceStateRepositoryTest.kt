@@ -1,13 +1,13 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
-import skillbill.ports.persistence.LegacyReconciliation
-import skillbill.workflow.taskruntime.ConvergenceIdentities
-import skillbill.workflow.taskruntime.ConvergenceProvenance
-import skillbill.workflow.taskruntime.ConvergenceRecord
-import skillbill.workflow.taskruntime.ConvergenceRecordKind
-import skillbill.workflow.taskruntime.ConvergenceStatus
-import skillbill.workflow.taskruntime.ReplayResult
+import skillbill.ports.persistence.model.LegacyReconciliation
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.ReplayResult
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,11 +25,17 @@ class SQLiteConvergenceStateRepositoryTest {
 
   @Test
   fun `unresolved query spans active generations and legacy import is exactly once`() = withRepository { repository ->
-    val obligation = record("a".repeat(64), ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION, "implement")
+    val obligation = record(
+      "a".repeat(64),
+      RecordOptions(kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION, phase = "implement"),
+    )
     repository.append(obligation)
     assertEquals(listOf(obligation), repository.unresolved("workflow-1").implementationObligations)
     val emptyLegacy = """{"contract_version":"0.1","records":[]}"""
-    assertEquals(LegacyReconciliation.Imported(0), repository.reconcileLegacy("workflow-1", "c".repeat(64), emptyLegacy))
+    assertEquals(
+      LegacyReconciliation.Imported(0),
+      repository.reconcileLegacy("workflow-1", "c".repeat(64), emptyLegacy),
+    )
     assertIs<LegacyReconciliation.AlreadyImported>(
       repository.reconcileLegacy("workflow-1", "c".repeat(64), emptyLegacy),
     )
@@ -39,34 +45,78 @@ class SQLiteConvergenceStateRepositoryTest {
   fun `classification and dispositions drive unresolved review blockers`() = withRepository { repository ->
     val finding = record(
       "a".repeat(64),
-      kind = ConvergenceRecordKind.REVIEW_FINDING,
-      phase = "review",
-      stableKey = "F-001",
-      classification = "blocker",
+      RecordOptions(
+        kind = ConvergenceRecordKind.REVIEW_FINDING,
+        phase = "review",
+        stableKey = "F-001",
+        classification = "blocker",
+      ),
     )
     repository.append(finding)
     assertEquals(listOf(finding), repository.unresolved("workflow-1").reviewBlockers)
     repository.append(
       record(
         "b".repeat(64),
-        kind = ConvergenceRecordKind.REVIEW_DISPOSITION,
-        phase = "review",
-        stableKey = "F-001-disposition",
-        status = ConvergenceStatus.RESOLVED,
-        parentLogicalId = finding.logicalId,
+        RecordOptions(
+          kind = ConvergenceRecordKind.REVIEW_DISPOSITION,
+          phase = "review",
+          stableKey = "F-001-disposition",
+          status = ConvergenceStatus.RESOLVED,
+          parentLogicalId = finding.logicalId,
+        ),
       ),
     )
     assertEquals(emptyList(), repository.unresolved("workflow-1").reviewBlockers)
   }
 
   @Test
-  fun `convergence evidence survives workflow deletion`() = withRepository { repository ->
+  fun `a prior generation disposition does not resolve a reopened blocker`() = withRepository { repository ->
+    val first = record(
+      "a".repeat(64),
+      RecordOptions(
+        kind = ConvergenceRecordKind.REVIEW_FINDING,
+        phase = "review",
+        stableKey = "F-001",
+        classification = "blocker",
+      ),
+    )
+    repository.append(first)
+    repository.append(
+      record(
+        "b".repeat(64),
+        RecordOptions(
+          kind = ConvergenceRecordKind.REVIEW_DISPOSITION,
+          phase = "review",
+          stableKey = "F-001-disposition",
+          status = ConvergenceStatus.RESOLVED,
+          parentLogicalId = first.logicalId,
+        ),
+      ),
+    )
+    val reopened = record(
+      "c".repeat(64),
+      RecordOptions(
+        kind = ConvergenceRecordKind.REVIEW_FINDING,
+        phase = "review",
+        stableKey = "F-001",
+        classification = "blocker",
+        generation = 2,
+        reviewPass = 2,
+      ),
+    )
+    repository.append(reopened)
+
+    assertEquals(listOf(reopened), repository.unresolved("workflow-1").reviewBlockers)
+  }
+
+  @Test
+  fun `workflow deletion cascades convergence evidence for hard reset`() = withRepository { repository ->
     val evidence = record("a".repeat(64))
     repository.append(evidence)
     activeConnection.createStatement().use {
       it.executeUpdate("DELETE FROM feature_task_workflows WHERE workflow_id = 'workflow-1'")
     }
-    assertEquals(listOf(evidence), repository.history("workflow-1"))
+    assertEquals(emptyList(), repository.history("workflow-1"))
   }
 
   @Test
@@ -82,14 +132,32 @@ class SQLiteConvergenceStateRepositoryTest {
   }
 
   @Test
+  fun `schema invalid legacy null is quarantined`() = withRepository { repository ->
+    val invalid = recordJson(record("a".repeat(64))).replace(
+      """"summary":"bounded evidence"""",
+      """"summary":null""",
+    )
+    assertEquals(
+      LegacyReconciliation.Quarantined("invalid_contract"),
+      repository.reconcileLegacy(
+        "workflow-1",
+        "9".repeat(64),
+        """{"contract_version":"0.1","records":[$invalid]}""",
+      ),
+    )
+  }
+
+  @Test
   fun `legacy relationships use the complete source and quarantine missing parents`() = withRepository { repository ->
-    val parent = record("a".repeat(64), stableKey = "AC-007")
+    val parent = record("a".repeat(64), RecordOptions(stableKey = "AC-007"))
     val repair = record(
       "b".repeat(64),
-      kind = ConvergenceRecordKind.AUDIT_REPAIR,
-      stableKey = "AC-007-repair",
-      parentLogicalId = parent.logicalId,
-      status = ConvergenceStatus.RESOLVED,
+      RecordOptions(
+        kind = ConvergenceRecordKind.AUDIT_REPAIR,
+        stableKey = "AC-007-repair",
+        parentLogicalId = parent.logicalId,
+        status = ConvergenceStatus.RESOLVED,
+      ),
     )
     assertEquals(
       LegacyReconciliation.Imported(2),
@@ -98,9 +166,15 @@ class SQLiteConvergenceStateRepositoryTest {
 
     val missingParent = record(
       "c".repeat(64),
-      kind = ConvergenceRecordKind.AUDIT_REPAIR,
-      stableKey = "AC-008-repair",
-      parentLogicalId = ConvergenceIdentities.logical("workflow-1", ConvergenceRecordKind.AUDIT_GAP, "AC-008"),
+      RecordOptions(
+        kind = ConvergenceRecordKind.AUDIT_REPAIR,
+        stableKey = "AC-008-repair",
+        parentLogicalId = ConvergenceIdentities.logical(
+          "workflow-1",
+          ConvergenceRecordKind.AUDIT_GAP,
+          "AC-008",
+        ),
+      ),
     )
     assertEquals(
       LegacyReconciliation.Quarantined("invalid_relationship"),
@@ -131,31 +205,46 @@ class SQLiteConvergenceStateRepositoryTest {
     return "{${fields.joinToString(",")}}"
   }
 
-  private fun record(
-    digest: String,
-    kind: ConvergenceRecordKind = ConvergenceRecordKind.AUDIT_GAP,
-    phase: String = "audit",
-    stableKey: String = "AC-004",
-    classification: String? = null,
-    status: ConvergenceStatus = ConvergenceStatus.OPEN,
-    parentLogicalId: String? = if (kind == ConvergenceRecordKind.AUDIT_REPAIR) "logical:parent" else null,
-  ): ConvergenceRecord {
-    val logical = ConvergenceIdentities.logical("workflow-1", kind, stableKey)
-    val reviewPass = if (phase == "review") 1 else null
+  private fun record(digest: String, options: RecordOptions = RecordOptions()): ConvergenceRecord {
+    val kind = options.kind
+    val phase = options.phase
+    val generation = options.generation
+    val logical = ConvergenceIdentities.logical("workflow-1", kind, options.stableKey)
     val attempt = if (phase == "implement") 1 else null
     return ConvergenceRecord(
-      recordId = ConvergenceIdentities.record(logical, 1),
+      recordId = ConvergenceIdentities.record("workflow-1", kind, logical, generation),
       logicalId = logical,
       kind = kind,
-      provenance = ConvergenceProvenance("workflow-1", 1, phase, attempt = attempt, reviewPass = reviewPass),
+      provenance = ConvergenceProvenance(
+        "workflow-1",
+        generation,
+        phase,
+        attempt = attempt,
+        reviewPass = options.reviewPass,
+      ),
       evidenceDigest = digest,
       createdAt = "2026-07-28T10:00:00Z",
-      status = status,
-      classification = classification,
+      status = options.status,
+      classification = options.classification,
       summary = "bounded evidence",
-      parentLogicalId = parentLogicalId,
+      parentLogicalId = options.parentLogicalId,
     )
   }
+
+  private data class RecordOptions(
+    val kind: ConvergenceRecordKind = ConvergenceRecordKind.AUDIT_GAP,
+    val phase: String = "audit",
+    val stableKey: String = "AC-004",
+    val classification: String? = null,
+    val status: ConvergenceStatus = ConvergenceStatus.OPEN,
+    val parentLogicalId: String? = if (kind == ConvergenceRecordKind.AUDIT_REPAIR) {
+      "logical:parent"
+    } else {
+      null
+    },
+    val generation: Int = 1,
+    val reviewPass: Int? = if (phase == "review") 1 else null,
+  )
 
   private lateinit var activeConnection: java.sql.Connection
 
