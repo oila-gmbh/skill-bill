@@ -1,9 +1,9 @@
 package skillbill.ports.persistence
 
-import skillbill.workflow.taskruntime.model.AuditGeneration
+import skillbill.ports.persistence.model.AuditRepairItemResult
 import skillbill.workflow.taskruntime.model.AuditGap
 import skillbill.workflow.taskruntime.model.AuditGapDisposition
-import skillbill.workflow.taskruntime.model.AuditGapStatus
+import skillbill.workflow.taskruntime.model.AuditGeneration
 import skillbill.workflow.taskruntime.model.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditRepairItem
 
@@ -31,16 +31,6 @@ interface AuditRepairQuery {
   fun getAllGapDispositions(workflowId: String): List<AuditGapDisposition>
   fun getRecurringGaps(workflowId: String): List<AuditGap>
   fun getResolvedGaps(workflowId: String): List<AuditGap>
-}
-
-data class AuditRepairItemResult(
-  val itemId: String,
-  val outcome: Outcome,
-  val evidenceRef: String,
-  val verificationRef: String,
-  val dispositionGeneration: Int,
-) {
-  enum class Outcome { FIXED, ALREADY_SATISFIED, SUPERSEDED }
 }
 
 object UnavailableAuditGenerationStore : AuditGenerationStore {

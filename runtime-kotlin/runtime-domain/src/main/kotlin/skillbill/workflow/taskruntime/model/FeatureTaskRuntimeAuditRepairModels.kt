@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION
 
 data class FeatureTaskRuntimeAuditRepairPlan(
@@ -432,6 +433,29 @@ data class FeatureTaskRuntimeAuditRepairProgress(
     require(!firstPassConvergence || auditGapIterationCount == 0) {
       "first_pass_convergence is true, so audit_gap_iteration_count must be 0, was $auditGapIterationCount."
     }
+  }
+
+  @OpenBoundaryMap("Audit repair progress is serialized as an artifact for persistence and crash recovery")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "first_pass_convergence" to firstPassConvergence,
+    "recurring_gap_count" to recurringGapCount,
+    "new_gap_count" to newGapCount,
+    "attempted_repair_item_count" to attemptedRepairItemCount,
+    "resolved_repair_item_count" to resolvedRepairItemCount,
+    "audit_gap_iteration_count" to auditGapIterationCount,
+  )
+
+  companion object {
+    @OpenBoundaryMap("Audit repair progress is deserialized from artifact during crash recovery")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeAuditRepairProgress =
+      FeatureTaskRuntimeAuditRepairProgress(
+        firstPassConvergence = raw.requireBooleanField("first_pass_convergence"),
+        recurringGapCount = raw.requireIntField("recurring_gap_count"),
+        newGapCount = raw.requireIntField("new_gap_count"),
+        attemptedRepairItemCount = raw.requireIntField("attempted_repair_item_count"),
+        resolvedRepairItemCount = raw.requireIntField("resolved_repair_item_count"),
+        auditGapIterationCount = raw.requireIntField("audit_gap_iteration_count"),
+      )
   }
 }
 

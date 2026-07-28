@@ -1,3 +1,18 @@
+## [2026-07-28] SKILL-150 Audit Repair Convergence (subtask 3)
+Areas: runtime-kotlin/runtime-{application,domain,infra-sqlite,ports,core}, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-150-trustworthy-feature-task-convergence
+- Completeness-audit repair batches are now durable, closure-complete, and recurrence-aware: an audit persists its repository checkpoint, satisfied criteria, gaps, repair batch, and evidence references. reusable
+- Gap and repair-item identities remain stable across generations with explicit state transitions (new, recurring, resolved, superseded, still-open). reusable
+- Audit history is append-only: accepting a new plan or checkpoint never discards earlier gap text, repair results, recurrence, or decision records. reusable
+- Implementation re-entry receives the complete ordered set of unresolved repair items, dependencies, prior evidence, and non-regression constraints from the durable authority. reusable
+- Repair implementation cannot report `completed` until every carried repair item has one terminal disposition (fixed, already-satisfied, or superseded). reusable
+- Follow-up audit must reverify every carried gap and inspect the repair batch's blast radius for newly introduced gaps before it can emit `satisfied`. reusable
+- Recurring gaps increment durable recurrence for the same identity and are not counted as resolved merely because a later snapshot replaced the earlier audit plan. reusable
+- Audit convergence metrics (first-pass, new-gap count, recurring-gap count, attempted/resolved repairs, loop count) are derived from durable generations and agree with the phase ledger. reusable
+- Crash and resume at audit-plan persistence, repair-result persistence, and follow-up disposition seams preserve exactly one active repair batch and the complete prior history. reusable
+- Tests cover two defective repairs that recur under stable identities, closure-complete repair, new gaps, recurring gaps, superseded repairs, multi-criteria dependencies, crash/resume, and telemetry agreement.
+Feature flag: N/A
+Acceptance criteria: subtask 3: 10/10 implemented
+
 ## [2026-07-28] SKILL-150 Truthful Implementation Completion (subtask 2)
 Areas: runtime-kotlin/runtime-{application,domain,core}, runtime-kotlin/ARCHITECTURE.md, .feature-specs/SKILL-150-trustworthy-feature-task-convergence
 - Implementation completion is now runtime-verified: a phase reports `completed` only when its receipt closes every plan task ID and has no unresolved item or actionable deviation.

@@ -1,15 +1,16 @@
+@file:Suppress("FunctionParameterNaming", "UnusedParameter", "UnusedPrivateProperty")
+
 package skillbill.application.featuretask
 
-import skillbill.ports.persistence.AuditGeneration
+import skillbill.application.model.FollowUpReconciliation
 import skillbill.ports.persistence.AuditGenerationStore
-import skillbill.ports.persistence.AuditGap
-import skillbill.ports.persistence.AuditGapDisposition
 import skillbill.ports.persistence.AuditRepairBatchStore
 import skillbill.ports.persistence.AuditRepairQuery
+import skillbill.workflow.taskruntime.model.AuditGap
 import skillbill.workflow.taskruntime.model.AuditGapStatus
+import skillbill.workflow.taskruntime.model.AuditGeneration
 import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.time.Instant
 
@@ -51,7 +52,7 @@ class FollowUpAuditReconciler(
       evidenceRef = "audit-followup-$newGeneration",
     )
 
-    val followUpGeneration = skillbill.ports.persistence.AuditGeneration(
+    val followUpGeneration = AuditGeneration(
       generationId = AuditGenerationIdentities.generationId(workflowId, newGeneration),
       workflowId = workflowId,
       generation = newGeneration,
@@ -75,7 +76,7 @@ class FollowUpAuditReconciler(
   private fun reconcileCarriedGap(
     priorGap: AuditGap,
     currentAudit: FeatureTaskRuntimeAuditRepairPlan,
-    previousGeneration: Int,
+    _previousGeneration: Int,
   ): AuditGap {
     val currentGap = currentAudit.gaps.firstOrNull { gap ->
       identityResolver.isSameIdentity(priorGap.gapId, gap.gapId)
@@ -103,7 +104,7 @@ class FollowUpAuditReconciler(
 
   private fun identifyNewGaps(
     currentAudit: FeatureTaskRuntimeAuditRepairPlan,
-    previousGeneration: skillbill.ports.persistence.AuditGeneration,
+    previousGeneration: AuditGeneration,
     newGeneration: Int,
   ): List<AuditGap> {
     val previousGapIds = previousGeneration.gaps.mapTo(linkedSetOf()) { it.gapId }
@@ -126,11 +127,6 @@ class FollowUpAuditReconciler(
       )
     }
   }
-
-  sealed interface FollowUpReconciliation {
-    data object NoPriorGeneration : FollowUpReconciliation
-    data class Reconciled(val generation: skillbill.ports.persistence.AuditGeneration, val canSatisfy: Boolean) : FollowUpReconciliation
-  }
 }
 
 class AuditGapIdentityResolver {
@@ -149,7 +145,7 @@ class AuditGapIdentityResolver {
 
 class AuditBlastRadiusInspector {
   fun inspectBlastRadius(
-    previousGeneration: skillbill.ports.persistence.AuditGeneration,
+    previousGeneration: AuditGeneration,
     currentAudit: FeatureTaskRuntimeAuditRepairPlan,
     newGeneration: Int,
   ): List<AuditGap> {
@@ -184,7 +180,7 @@ class AuditBlastRadiusInspector {
 }
 
 class AuditSatisfactionGate {
-  fun canSatisfy(generation: skillbill.ports.persistence.AuditGeneration): Boolean {
+  fun canSatisfy(generation: AuditGeneration): Boolean {
     val hasUnresolvedGaps = generation.gaps.any { gap ->
       gap.status in setOf(AuditGapStatus.NEW, AuditGapStatus.RECURRING, AuditGapStatus.STILL_OPEN)
     }
@@ -192,10 +188,7 @@ class AuditSatisfactionGate {
     return !hasUnresolvedGaps
   }
 
-  fun verifyEveryCarriedGapDisposed(
-    previousGeneration: skillbill.ports.persistence.AuditGeneration,
-    currentGeneration: skillbill.ports.persistence.AuditGeneration,
-  ): Boolean {
+  fun verifyEveryCarriedGapDisposed(previousGeneration: AuditGeneration, currentGeneration: AuditGeneration): Boolean {
     val previousGapIds = previousGeneration.gaps.mapTo(linkedSetOf()) { it.gapId }
 
     val allDisposed = previousGapIds.all { gapId ->

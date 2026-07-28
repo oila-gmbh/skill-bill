@@ -104,20 +104,20 @@ internal object AuditConvergenceDatabaseSchema {
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_item_batch_mapping (
-      generation_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
-      PRIMARY KEY(generation_id, item_id),
-      FOREIGN KEY(generation_id) REFERENCES feature_task_audit_repair_batches(generation_id) ON DELETE CASCADE,
+      PRIMARY KEY(batch_id, item_id),
+      FOREIGN KEY(batch_id) REFERENCES feature_task_audit_repair_batches(batch_id) ON DELETE CASCADE,
       FOREIGN KEY(item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_item_dependencies (
-      generation_id TEXT NOT NULL,
+      batch_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
       depends_on_item_id TEXT NOT NULL,
-      PRIMARY KEY(generation_id, item_id, depends_on_item_id),
-      FOREIGN KEY(generation_id, item_id) REFERENCES feature_task_audit_repair_item_batch_mapping(generation_id, item_id) ON DELETE CASCADE,
+      PRIMARY KEY(batch_id, item_id, depends_on_item_id),
+      FOREIGN KEY(batch_id, item_id) REFERENCES feature_task_audit_repair_item_batch_mapping(batch_id, item_id) ON DELETE CASCADE,
       FOREIGN KEY(depends_on_item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE
     )
     """.trimIndent(),

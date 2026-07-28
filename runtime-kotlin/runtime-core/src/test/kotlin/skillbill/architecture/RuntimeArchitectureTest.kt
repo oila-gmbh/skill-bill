@@ -2079,6 +2079,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch",
       "skillbill.ports.validation.model.RepoValidationReport.toPayload",
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
+      // SKILL-150: audit repair progress serialization as durable artifact
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress.fromArtifactMap",
     )
 
     // SKILL-52.3 subtask 5 (AC4): runtime-contracts is a pure DTO/constants/

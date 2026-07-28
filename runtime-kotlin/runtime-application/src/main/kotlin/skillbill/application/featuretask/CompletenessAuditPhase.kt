@@ -1,17 +1,14 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.persistence.AuditGeneration
+import skillbill.application.model.AuditGenerationResult
 import skillbill.ports.persistence.AuditGenerationStore
-import skillbill.ports.persistence.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditGap
 import skillbill.workflow.taskruntime.model.AuditGapStatus
+import skillbill.workflow.taskruntime.model.AuditGeneration
 import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
 import skillbill.workflow.taskruntime.model.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedger
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.time.Instant
 import java.util.UUID
@@ -84,11 +81,6 @@ class CompletenessAuditPhase(
     val allSatisfied = generation.satisfiedCriterionRefs.isNotEmpty()
     return allGapsDisposed || allSatisfied
   }
-
-  data class AuditGenerationResult(
-    val generation: AuditGeneration,
-    val repairBatch: AuditRepairBatch?,
-  )
 }
 
 class AuditGenerationRecorder(

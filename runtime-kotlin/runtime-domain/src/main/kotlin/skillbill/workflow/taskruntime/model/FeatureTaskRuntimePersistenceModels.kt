@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
@@ -583,6 +585,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
   /** Authoritative per-edge trail for a backward-edge re-entry, distinct from [attemptCount]. */
   val loopId: String? = null,
   val edgeIteration: Int? = null,
+  val auditRepairProgress: FeatureTaskRuntimeAuditRepairProgress? = null,
 ) {
   init {
     require(sequenceNumber >= 0) {
@@ -619,6 +622,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
     blockedReason?.let { put("blocked_reason", it) }
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
+    auditRepairProgress?.let { put("audit_repair_progress", it.toArtifactMap()) }
   }
 
   companion object {
@@ -639,7 +643,30 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         blockedReason = raw.optionalStringField("blocked_reason"),
         loopId = raw.optionalStringField("loop_id"),
         edgeIteration = raw.optionalIntField("edge_iteration"),
+        auditRepairProgress = raw.optionalMapField("audit_repair_progress")?.let {
+          FeatureTaskRuntimeAuditRepairProgress.fromArtifactMap(it)
+        },
       )
+  }
+}
+
+/**
+ * Wrapper for the phase ledger entries, providing ordered access to the append-only
+ * history of phase executions and their associated audit repair progress.
+ */
+data class FeatureTaskRuntimePhaseLedger(
+  val entries: List<FeatureTaskRuntimePhaseLedgerEntry>,
+) {
+  init {
+    require(entries.size <= FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT) {
+      "Phase ledger allows at most $FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT entries, had ${entries.size}."
+    }
+    entries.forEachIndexed { index, entry ->
+      require(entry.sequenceNumber == index) {
+        "Phase ledger entries must have monotonically increasing sequenceNumber starting at 0, " +
+          "but entry at index $index had sequenceNumber ${entry.sequenceNumber}."
+      }
+    }
   }
 }
 
@@ -686,6 +713,29 @@ private fun Map<String, Any?>.optionalIntField(key: String): Int? {
   return this[key].asExactIntOrNull()
     ?: throw InvalidWorkflowStateSchemaError(
       "Feature-task-runtime artifact field '$key' must decode to an integer when present.",
+    )
+}
+
+private fun Map<String, Any?>.optionalMapField(key: String): Map<String, Any?>? {
+  if (!containsKey(key) || this[key] == null) {
+    return null
+  }
+  @Suppress("UNCHECKED_CAST")
+  return this[key] as? Map<String, Any?>
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a map when present.",
+    )
+}
+
+internal fun Map<String, Any?>.requireBooleanField(key: String): Boolean {
+  if (!containsKey(key) || this[key] == null) {
+    throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact map is missing required boolean field '$key'.",
+    )
+  }
+  return this[key] as? Boolean
+    ?: throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$key' must decode to a boolean.",
     )
 }
 

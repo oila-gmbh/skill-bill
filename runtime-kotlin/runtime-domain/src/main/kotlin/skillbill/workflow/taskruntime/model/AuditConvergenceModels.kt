@@ -24,7 +24,8 @@ data class AuditGeneration(
     require(workflowId.isSafeIdentity()) { "workflow_id must be a safe identity." }
     require(generation > 0) { "generation must be positive, was $generation." }
     require(satisfiedCriterionRefs.size <= MAX_AUDIT_GENERATION_SATISFIED_CRITERIA) {
-      "satisfied_criterion_refs allows at most $MAX_AUDIT_GENERATION_SATISFIED_CRITERIA entries, had ${satisfiedCriterionRefs.size}."
+      "satisfied_criterion_refs allows at most $MAX_AUDIT_GENERATION_SATISFIED_CRITERIA entries, " +
+        "had ${satisfiedCriterionRefs.size}."
     }
     require(gaps.size <= MAX_AUDIT_GENERATION_GAPS) {
       "gaps allows at most $MAX_AUDIT_GENERATION_GAPS entries, had ${gaps.size}."
@@ -78,7 +79,9 @@ data class AuditGap(
     require(firstSeenGeneration > 0) { "first_seen_generation must be positive, was $firstSeenGeneration." }
     when (status) {
       AuditGapStatus.NEW -> require(recurrence == 0) { "New gaps must have recurrence 0, was $recurrence." }
-      AuditGapStatus.RECURRING -> require(recurrence > 0) { "Recurring gaps must have recurrence > 0, was $recurrence." }
+      AuditGapStatus.RECURRING -> require(recurrence > 0) {
+        "Recurring gaps must have recurrence > 0, was $recurrence."
+      }
       AuditGapStatus.RESOLVED,
       AuditGapStatus.SUPERSEDED,
       -> {}
@@ -177,11 +180,9 @@ object AuditGenerationIdentities {
   fun generationId(workflowId: String, generation: Int): String =
     "audit-generation:${digest("$workflowId|$generation")}"
 
-  fun gapId(criterionRef: String, generation: Int): String =
-    "${criterionRef.lowercase()}-gap-$generation"
+  fun gapId(criterionRef: String, generation: Int): String = "${criterionRef.lowercase()}-gap-$generation"
 
-  fun repairItemId(gapId: String, ordinal: Int): String =
-    "$gapId-item-$ordinal"
+  fun repairItemId(gapId: String, ordinal: Int): String = "$gapId-item-$ordinal"
 
   private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray())
@@ -212,7 +213,7 @@ private fun requireNonBlank(value: String, field: String) {
 private fun requireNonBlankList(values: List<String>, field: String) {
   require(values.isNotEmpty()) { "$field must contain at least one entry, was empty." }
   require(values.all(String::isNotBlank)) {
-    "$field entries must be nonblank; blank at ${values.indexOfFirst(String::isNotBlank).negate()}."
+    "$field entries must be nonblank; blank at ${values.indexOfFirst(String::isBlank)}."
   }
 }
 

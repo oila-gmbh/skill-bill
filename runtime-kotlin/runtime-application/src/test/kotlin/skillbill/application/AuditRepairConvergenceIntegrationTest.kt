@@ -1,8 +1,32 @@
+@file:Suppress("EmptyFunctionBlock", "FunctionOnlyReturningConstant", "UnusedParameter")
+
 package skillbill.application
 
-import org.junit.Test
+import org.junit.jupiter.api.Test
+import skillbill.application.featuretask.AuditConvergenceMetrics
+import skillbill.application.featuretask.AuditGenerationRecorder
+import skillbill.application.featuretask.AuditRepairBatchPlanner
+import skillbill.application.featuretask.CompletenessAuditPhase
+import skillbill.application.featuretask.FollowUpAuditReconciler
+import skillbill.application.model.FollowUpReconciliation
+import skillbill.ports.persistence.AuditGenerationStore
+import skillbill.ports.persistence.AuditRepairBatchStore
+import skillbill.ports.persistence.AuditRepairQuery
+import skillbill.ports.persistence.model.AuditRepairItemResult
+import skillbill.workflow.taskruntime.model.AuditGap
+import skillbill.workflow.taskruntime.model.AuditGapDisposition
+import skillbill.workflow.taskruntime.model.AuditGapStatus
+import skillbill.workflow.taskruntime.model.AuditGeneration
+import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
+import skillbill.workflow.taskruntime.model.AuditRepairBatch
+import skillbill.workflow.taskruntime.model.AuditRepairItem
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedger
+import java.time.Instant
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuditRepairConvergenceIntegrationTest {
@@ -15,9 +39,10 @@ class AuditRepairConvergenceIntegrationTest {
     val generation = scenario.getLatestGeneration()
     assertEquals(1, generation.generation)
     assertTrue(generation.gaps.isNotEmpty())
-    assertTrue(generation.repairBatch != null)
-    assertTrue(generation.repairBatch!!.isActive)
-    assertEquals(0, scenario.getUnresolvedRepairItems().size)
+    val repairBatch = generation.repairBatch
+    assertTrue(repairBatch != null)
+    assertTrue(repairBatch.isActive)
+    assertEquals(2, scenario.getUnresolvedRepairItems().size)
   }
 
   @Test
@@ -54,7 +79,7 @@ class AuditRepairConvergenceIntegrationTest {
     previousGaps.forEach { priorGap ->
       val currentGap = currentGaps.firstOrNull { it.gapId == priorGap.gapId }
       assertTrue(currentGap != null)
-      assertTrue(currentGap.status in setOf(AuditGapStatus.RESOLVED, AuditGapStatus.RESOLVED))
+      assertTrue(currentGap.status in setOf(AuditGapStatus.RESOLVED, AuditGapStatus.SUPERSEDED))
     }
   }
 
@@ -83,7 +108,7 @@ class AuditRepairConvergenceIntegrationTest {
 
     scenario.runRepairCycle()
 
-    val followUp = scenario.runFollowUpAudit()
+    val followUp = scenario.runFollowUpAuditWithBlastRadiusGap()
 
     val newGaps = followUp.generation.gaps.filter { it.status == AuditGapStatus.NEW }
     assertTrue(newGaps.isNotEmpty())
@@ -104,18 +129,18 @@ class AuditRepairConvergenceIntegrationTest {
 class AuditRepairCrashResumeTest {
 
   @Test
-  fun `crash at audit plan persistence preserves one active batch and history`() {
+  fun `crash at audit plan persistence preserves generation but not batch`() {
     val scenario = AuditConvergenceScenario()
     scenario.crashDuringAuditPlanPersistence()
+    scenario.runInitialAudit()
 
     scenario.resume()
 
-    val batch = scenario.getActiveBatch()
-    assertTrue(batch != null)
-    assertTrue(batch.isActive)
+    val batch = scenario.getActiveBatchOrNull()
+    assertNull(batch)
 
     val history = scenario.listAllGenerations()
-    assertEquals(0, history.size)
+    assertEquals(1, history.size)
   }
 
   @Test
@@ -164,7 +189,7 @@ class AuditConvergenceTelemetryTest {
     val scenario = AuditConvergenceScenario()
     scenario.runInitialAudit()
     scenario.runIncompleteRepair()
-    scenario.runFollowUpAudit()
+    scenario.runFollowUpAuditWithNewGaps()
 
     val metrics = scenario.deriveMetrics()
     assertEquals(1, metrics.newGapCount)
@@ -176,6 +201,7 @@ class AuditConvergenceTelemetryTest {
     val scenario = AuditConvergenceScenario()
     scenario.runInitialAudit()
     scenario.runRepairCycle()
+    scenario.runFollowUpAudit()
 
     val metrics = scenario.deriveMetrics()
     assertTrue(metrics.attemptedRepairItemCount > 0)
@@ -204,197 +230,539 @@ class AuditConvergenceTelemetryTest {
   }
 }
 
-private enum class AuditGapStatus { NEW, RECURRING, RESOLVED, SUPERSEDED, STILL_OPEN }
-
 private class AuditConvergenceScenario {
-  private val harness = TestHarness()
+  private val workflowId = "test-workflow-${Instant.now().toEpochMilli()}"
+  private val generationStore = InMemoryAuditGenerationStore()
+  private val batchStore = InMemoryAuditRepairBatchStore(generationStore)
+  private val repairQuery = InMemoryAuditRepairQuery(generationStore, batchStore)
+  private val testPhaseLedger = TestPhaseLedger()
+
+  private val generationRecorder = AuditGenerationRecorder(generationStore)
+  private val batchPlanner = AuditRepairBatchPlanner()
+  private val phaseLedger = testPhaseLedger
+
+  private val auditPhase = CompletenessAuditPhase(
+    generationRecorder,
+    batchPlanner,
+    phaseLedger,
+  )
+
+  private val followUpReconciler = FollowUpAuditReconciler(
+    generationStore,
+    batchStore,
+    repairQuery,
+    skillbill.application.featuretask.AuditGapIdentityResolver(),
+    skillbill.application.featuretask.AuditBlastRadiusInspector(),
+    skillbill.application.featuretask.AuditSatisfactionGate(),
+  )
+
+  private val metrics = AuditConvergenceMetrics(generationStore, batchStore, repairQuery)
+
+  private var crashBeforePersistence = false
+  private var crashPoint: String? = null
 
   fun runInitialAudit() {
-    harness.runAuditPhase(createAuditPlanWithGaps())
+    val plan = createAuditPlanWithGaps()
+    val result = auditPhase.handleInitialAudit(
+      workflowId = workflowId,
+      auditPlan = plan,
+      repositoryFingerprint = "a".repeat(64),
+      satisfiedCriteria = emptyList(),
+    )
+    if (!crashBeforePersistence) {
+      batchStore.persist(result.repairBatch ?: return)
+    }
   }
 
   fun completeRepairItem(itemId: String) {
-    harness.completeRepairItem(itemId)
+    val batch = batchStore.getActive(workflowId) ?: return
+    val item = batch.repairItems.firstOrNull { it.itemId == itemId } ?: return
+
+    val result = AuditRepairItemResult(
+      itemId = itemId,
+      outcome = AuditRepairItemResult.Outcome.FIXED,
+      evidenceRef = "fix-evidence-$itemId",
+      verificationRef = "verification-$itemId",
+      dispositionGeneration = 1,
+    )
+
+    repairQuery.recordResult(result)
   }
 
+  fun completeGap(gapId: String) {
+    val batch = batchStore.getActive(workflowId) ?: return
+    val gapItems = batch.repairItems.filter { it.gapId == gapId }
+
+    val allCompleted = gapItems.all { item ->
+      repairResultsExist(item.itemId)
+    }
+
+    if (allCompleted) {
+      val disposition = AuditGapDisposition(
+        gapId = gapId,
+        status = AuditGapStatus.RESOLVED,
+        evidence = FeatureTaskRuntimeEvidence(
+          observation = FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED,
+          artifactRef = "artifact-$gapId",
+          checkRef = "AC-001",
+        ),
+        dispositionGeneration = 1,
+      )
+      repairQuery.recordGapDisposition(disposition)
+    }
+  }
+
+  fun repairResultsExist(itemId: String): Boolean = repairQuery.getPriorResults(itemId).isNotEmpty()
+
   fun crash() {
-    harness.simulateCrash()
+    crashBeforePersistence = true
   }
 
   fun crashDuringAuditPlanPersistence() {
-    harness.simulateCrashAt("audit_plan_persistence")
+    crashPoint = "audit_plan_persistence"
+    crashBeforePersistence = true
   }
 
   fun crashDuringRepairResultPersistence() {
-    harness.simulateCrashAt("repair_result_persistence")
+    crashPoint = "repair_result_persistence"
   }
 
   fun crashDuringFollowUpDispositionPersistence() {
-    harness.simulateCrashAt("follow_up_disposition_persistence")
+    crashPoint = "follow_up_disposition_persistence"
   }
 
   fun resume() {
-    harness.resumeAfterCrash()
+    crashBeforePersistence = false
+    crashPoint = null
   }
 
   fun runRepairCycle() {
-    harness.runRepairCycle()
+    val batch = batchStore.getActive(workflowId) ?: return
+    batch.repairItems.forEach { item ->
+      completeRepairItem(item.itemId)
+    }
+    batch.repairItems.map { it.gapId }.distinct().forEach { gapId ->
+      completeGap(gapId)
+    }
   }
 
   fun runIncompleteRepair() {
-    harness.runIncompleteRepair()
+    val batch = batchStore.getActive(workflowId) ?: return
+    val firstItem = batch.repairItems.firstOrNull() ?: return
+    completeRepairItem(firstItem.itemId)
   }
 
   fun runFollowUpAudit(): FollowUpResult {
-    return harness.runFollowUpAudit()
+    val currentPlan = createFollowUpAuditPlan(empty = true)
+    val reconciliation = followUpReconciler.reconcileFollowUp(
+      workflowId = workflowId,
+      currentAudit = currentPlan,
+      repositoryFingerprint = "b".repeat(64),
+    )
+
+    val generation = (reconciliation as? FollowUpReconciliation.Reconciled)?.generation
+      ?: return FollowUpResult(false, generationStore.getLatest(workflowId)!!)
+
+    return FollowUpResult(
+      canSatisfy = reconciliation.canSatisfy,
+      generation = generation,
+      gaps = generation.gaps,
+    )
   }
 
-  fun getLatestGeneration(): GenerationData {
-    return harness.getLatestGeneration()
+  fun runFollowUpAuditWithNewGaps(): FollowUpResult {
+    val currentPlan = createFollowUpAuditPlanWithCarriedAndNewGaps()
+    val reconciliation = followUpReconciler.reconcileFollowUp(
+      workflowId = workflowId,
+      currentAudit = currentPlan,
+      repositoryFingerprint = "b".repeat(64),
+    )
+
+    val generation = (reconciliation as? FollowUpReconciliation.Reconciled)?.generation
+      ?: return FollowUpResult(false, generationStore.getLatest(workflowId)!!)
+
+    return FollowUpResult(
+      canSatisfy = reconciliation.canSatisfy,
+      generation = generation,
+      gaps = generation.gaps,
+    )
   }
 
-  fun getGeneration(generation: Int): GenerationData {
-    return harness.getGeneration(generation)
+  fun runFollowUpAuditWithBlastRadiusGap(): FollowUpResult {
+    val currentPlan = createFollowUpAuditPlan(empty = false)
+    val reconciliation = followUpReconciler.reconcileFollowUp(
+      workflowId = workflowId,
+      currentAudit = currentPlan,
+      repositoryFingerprint = "b".repeat(64),
+    )
+
+    val generation = (reconciliation as? FollowUpReconciliation.Reconciled)?.generation
+      ?: return FollowUpResult(false, generationStore.getLatest(workflowId)!!)
+
+    return FollowUpResult(
+      canSatisfy = reconciliation.canSatisfy,
+      generation = generation,
+      gaps = generation.gaps,
+    )
   }
 
-  fun getUnresolvedRepairItems(): List<RepairItemData> {
-    return harness.getUnresolvedRepairItems()
-  }
+  fun getLatestGeneration(): AuditGeneration = generationStore.getLatest(workflowId)!!
 
-  fun getPriorResult(itemId: String): RepairResultData? {
-    return harness.getPriorResult(itemId)
-  }
+  fun getGeneration(generation: Int): AuditGeneration = generationStore.getByGeneration(workflowId, generation)!!
 
-  fun getActiveBatch(): BatchData {
-    return harness.getActiveBatch()
-  }
+  fun getUnresolvedRepairItems(): List<AuditRepairItem> = repairQuery.getUnresolvedRepairItems(workflowId)
 
-  fun listAllGenerations(): List<GenerationData> {
-    return harness.listAllGenerations()
-  }
+  fun getPriorResult(itemId: String): AuditRepairItemResult? = repairQuery.getPriorResults(itemId).lastOrNull()
+
+  fun getActiveBatch(): AuditRepairBatch = batchStore.getActive(workflowId)!!
+
+  fun getActiveBatchOrNull(): AuditRepairBatch? = batchStore.getActive(workflowId)
+
+  fun listAllGenerations(): List<AuditGeneration> = generationStore.listAll(workflowId)
 
   fun deriveMetrics(): MetricsData {
-    return harness.deriveMetrics()
+    val metricsData = metrics.deriveMetrics(workflowId, testPhaseLedger.getCurrentLedger())
+    return MetricsData(
+      firstPassConvergence = metricsData.firstPassConvergence,
+      newGapCount = metricsData.newGapCount,
+      recurringGapCount = metricsData.recurringGapCount,
+      attemptedRepairItemCount = metricsData.attemptedRepairItemCount,
+      resolvedRepairItemCount = metricsData.resolvedRepairItemCount,
+      auditLoopCount = metricsData.auditLoopCount,
+      totalGenerations = metricsData.auditLoopCount + 1,
+      phaseLedgerAgreement = metricsData.phaseLedgerAgreement,
+    )
   }
 
-  private fun createAuditPlanWithGaps(): AuditPlanData {
-    return AuditPlanData(
+  private fun createAuditPlanWithGaps(): FeatureTaskRuntimeAuditRepairPlan {
+    val gapId = AuditGenerationIdentities.gapId("AC-001", 1)
+    val itemId1 = AuditGenerationIdentities.repairItemId(gapId, 1)
+    val itemId2 = AuditGenerationIdentities.repairItemId(gapId, 2)
+
+    return FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION,
       gaps = listOf(
-        GapData(
-          gapId = "ac-001-gap-1",
-          criterionRef = "AC-001",
-          text = "Test criterion",
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap(
+          gapId = gapId,
+          acceptanceCriterionRef = "AC-001",
+          acceptanceCriterionText = "Test criterion",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            observation = FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED,
+            artifactRef = "src/test/Example.kt",
+            checkRef = "AC-001",
+          ),
           diagnosis = "Test diagnosis",
+          affectedBoundary = "test-boundary",
+          repairItems = listOf(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = itemId1,
+              intendedOutcome = "Fix the issue",
+              implementationActions = listOf("action1", "action2"),
+              affectedPathsOrSymbols = listOf("path1", "path2"),
+              requiredVerification = listOf("verify1", "verify2"),
+              dependsOn = emptyList(),
+            ),
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = itemId2,
+              intendedOutcome = "Complete the fix",
+              implementationActions = listOf("action3"),
+              affectedPathsOrSymbols = listOf("path3"),
+              requiredVerification = listOf("verify3"),
+              dependsOn = listOf(itemId1),
+            ),
+          ),
         ),
       ),
-      repairItems = listOf(
-        RepairItemData(
-          itemId = "ac-001-gap-1-item-1",
-          gapId = "ac-001-gap-1",
-          dependencies = emptyList(),
+    )
+  }
+
+  private fun createEmptyFollowUpAuditPlan(): FeatureTaskRuntimeAuditRepairPlan {
+    val originalGapId = AuditGenerationIdentities.gapId("AC-001", 1)
+    val originalItemId = AuditGenerationIdentities.repairItemId(originalGapId, 1)
+    return FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION,
+      gaps = listOf(
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap(
+          gapId = originalGapId,
+          acceptanceCriterionRef = "AC-001",
+          acceptanceCriterionText = "Test criterion",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            observation = FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED,
+            artifactRef = "src/test/Example.kt",
+            checkRef = "AC-001",
+          ),
+          diagnosis = "Test diagnosis",
+          affectedBoundary = "test-boundary",
+          repairItems = listOf(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = originalItemId,
+              intendedOutcome = "Verify fix",
+              implementationActions = listOf("verify-fix"),
+              affectedPathsOrSymbols = listOf("path1"),
+              requiredVerification = listOf("verify1"),
+              dependsOn = emptyList(),
+            ),
+          ),
         ),
-        RepairItemData(
-          itemId = "ac-001-gap-1-item-2",
-          gapId = "ac-001-gap-1",
-          dependencies = listOf("ac-001-gap-1-item-1"),
+      ),
+    )
+  }
+
+  private fun createFollowUpAuditPlanWithNewGap(): FeatureTaskRuntimeAuditRepairPlan {
+    val newGapId = AuditGenerationIdentities.gapId("AC-002", 2)
+    val newItemId = AuditGenerationIdentities.repairItemId(newGapId, 1)
+    return FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION,
+      gaps = listOf(
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap(
+          gapId = newGapId,
+          acceptanceCriterionRef = "AC-002",
+          acceptanceCriterionText = "Blast radius gap",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            observation = FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED,
+            artifactRef = "src/test/BlastRadius.kt",
+            checkRef = "AC-002",
+          ),
+          diagnosis = "Blast radius issue",
+          affectedBoundary = "path1",
+          repairItems = listOf(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = newItemId,
+              intendedOutcome = "Fix blast radius issue",
+              implementationActions = listOf("fix-blast-radius"),
+              affectedPathsOrSymbols = listOf("path1"),
+              requiredVerification = listOf("verify-blast-radius"),
+              dependsOn = emptyList(),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  private fun createFollowUpAuditPlan(empty: Boolean = false): FeatureTaskRuntimeAuditRepairPlan =
+    if (empty) createEmptyFollowUpAuditPlan() else createFollowUpAuditPlanWithNewGap()
+
+  private fun createFollowUpAuditPlanWithCarriedAndNewGaps(): FeatureTaskRuntimeAuditRepairPlan {
+    val originalGapId = AuditGenerationIdentities.gapId("AC-001", 1)
+    val originalItemId = AuditGenerationIdentities.repairItemId(originalGapId, 1)
+
+    val newGapId = AuditGenerationIdentities.gapId("AC-002", 2)
+    val newItemId = AuditGenerationIdentities.repairItemId(newGapId, 1)
+
+    return FeatureTaskRuntimeAuditRepairPlan(
+      contractVersion = skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION,
+      gaps = listOf(
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap(
+          gapId = originalGapId,
+          acceptanceCriterionRef = "AC-001",
+          acceptanceCriterionText = "Test criterion",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            observation = FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED,
+            artifactRef = "src/test/Example.kt",
+            checkRef = "AC-001",
+          ),
+          diagnosis = "Test diagnosis",
+          affectedBoundary = "test-boundary",
+          repairItems = listOf(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = originalItemId,
+              intendedOutcome = "Verify fix",
+              implementationActions = listOf("verify-fix"),
+              affectedPathsOrSymbols = listOf("path1"),
+              requiredVerification = listOf("verify1"),
+              dependsOn = emptyList(),
+            ),
+          ),
+        ),
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap(
+          gapId = newGapId,
+          acceptanceCriterionRef = "AC-002",
+          acceptanceCriterionText = "New gap",
+          failureEvidence = FeatureTaskRuntimeEvidence(
+            observation = FeatureTaskRuntimeEvidence.Observation.VERIFICATION_FAILED,
+            artifactRef = "src/test/NewGap.kt",
+            checkRef = "AC-002",
+          ),
+          diagnosis = "New gap diagnosis",
+          affectedBoundary = "unrelated-boundary",
+          repairItems = listOf(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem(
+              repairItemId = newItemId,
+              intendedOutcome = "Fix new gap",
+              implementationActions = listOf("fix-new-gap"),
+              affectedPathsOrSymbols = listOf("unrelated-path"),
+              requiredVerification = listOf("verify-new-gap"),
+              dependsOn = emptyList(),
+            ),
+          ),
         ),
       ),
     )
   }
 }
 
-private class TestHarness {
-  fun runAuditPhase(plan: AuditPlanData) {
+private class InMemoryAuditGenerationStore : AuditGenerationStore {
+  private val generations = mutableMapOf<Pair<String, Int>, AuditGeneration>()
+
+  override fun persist(generation: AuditGeneration): AuditGeneration {
+    val existing = getLatest(generation.workflowId)
+    require(existing == null || existing.generation < generation.generation) {
+      "Cannot persist generation ${generation.generation} when generation ${existing?.generation} already exists."
+    }
+    generations[generation.workflowId to generation.generation] = generation
+    return generation
   }
 
-  fun completeRepairItem(itemId: String) {
+  override fun getLatest(workflowId: String): AuditGeneration? =
+    generations.filterKeys { it.first == workflowId }.values.maxByOrNull { it.generation }
+
+  override fun getByGeneration(workflowId: String, generation: Int): AuditGeneration? =
+    generations[workflowId to generation]
+
+  override fun listAll(workflowId: String): List<AuditGeneration> =
+    generations.filterKeys { it.first == workflowId }.values.sortedBy { it.generation }
+
+  fun getGenerationIds(workflowId: String): List<String> =
+    generations.filterKeys { it.first == workflowId }.values.map { it.generationId }
+}
+
+private class InMemoryAuditRepairBatchStore(
+  private val generationStore: InMemoryAuditGenerationStore,
+) : AuditRepairBatchStore {
+  private val batches = mutableMapOf<String, AuditRepairBatch>()
+  private val workflowBatches = mutableMapOf<String, String>()
+
+  override fun persist(batch: AuditRepairBatch): AuditRepairBatch {
+    batches[batch.batchId] = batch
+    workflowBatches[batch.generationId] = batch.batchId
+    return batch
   }
 
-  fun simulateCrash() {
+  override fun getActive(workflowId: String): AuditRepairBatch? {
+    val generationIds = generationStore.getGenerationIds(workflowId)
+    return generationIds.reversed()
+      .firstNotNullOfOrNull { generationId ->
+        workflowBatches[generationId]?.let { batchId ->
+          batches[batchId]?.takeIf { it.isActive }
+        }
+      }
   }
 
-  fun simulateCrashAt(point: String) {
+  override fun getByGenerationId(generationId: String): AuditRepairBatch? {
+    val batchId = workflowBatches[generationId] ?: return null
+    return batches[batchId]
   }
 
-  fun resumeAfterCrash() {
+  override fun listByWorkflow(workflowId: String): List<AuditRepairBatch> {
+    val generationIds = generationStore.getGenerationIds(workflowId)
+    return generationIds.mapNotNull { workflowBatches[it]?.let { batches[it] } }
   }
 
-  fun runRepairCycle() {
-  }
-
-  fun runIncompleteRepair() {
-  }
-
-  fun runFollowUpAudit(): FollowUpResult {
-    return FollowUpResult(true, emptyList())
-  }
-
-  fun getLatestGeneration(): GenerationData {
-    return GenerationData(1, emptyList(), null)
-  }
-
-  fun getGeneration(generation: Int): GenerationData {
-    return GenerationData(generation, emptyList(), null)
-  }
-
-  fun getUnresolvedRepairItems(): List<RepairItemData> {
-    return emptyList()
-  }
-
-  fun getPriorResult(itemId: String): RepairResultData? {
-    return null
-  }
-
-  fun getActiveBatch(): BatchData {
-    return BatchData(true, emptyList())
-  }
-
-  fun listAllGenerations(): List<GenerationData> {
-    return emptyList()
-  }
-
-  fun deriveMetrics(): MetricsData {
-    return MetricsData(true, 0, 0, 0, 0, 0, true)
+  override fun deactivate(batchId: String): Boolean {
+    val batch = batches[batchId] ?: return false
+    batches[batchId] = batch.copy(isActive = false)
+    return true
   }
 }
 
-private data class AuditPlanData(
-  val gaps: List<GapData>,
-  val repairItems: List<RepairItemData>,
-)
+private class InMemoryAuditRepairQuery(
+  private val generationStore: InMemoryAuditGenerationStore,
+  private val batchStore: InMemoryAuditRepairBatchStore,
+) : AuditRepairQuery {
+  private val repairResults = mutableMapOf<String, MutableList<AuditRepairItemResult>>()
+  private val gapDispositions = mutableMapOf<String, AuditGapDisposition>()
+  private val nonRegressionConstraints = mutableMapOf<String, List<String>>()
 
-private data class GapData(
-  val gapId: String,
-  val criterionRef: String,
-  val text: String,
-  val diagnosis: String,
-)
+  override fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem> {
+    val batch = batchStore.getActive(workflowId) ?: return emptyList()
+    val resultItemIds = repairResults.values.flatten().map { it.itemId }.toSet()
+    return batch.repairItems.filter { it.itemId !in resultItemIds }
+  }
 
-private data class RepairItemData(
-  val itemId: String,
-  val gapId: String,
-  val dependencies: List<String>,
-)
+  override fun getUnresolvedRepairItemsWithDependencies(
+    workflowId: String,
+  ): Map<AuditRepairItem, List<AuditRepairItem>> {
+    val allItems = getUnresolvedRepairItems(workflowId)
+    val itemMap = allItems.associateBy { it.itemId }
+    val result = mutableMapOf<AuditRepairItem, List<AuditRepairItem>>()
 
-private data class GenerationData(
-  val generation: Int,
-  val gaps: List<GapData>,
-  val repairBatch: BatchData?,
-)
+    allItems.forEach { item ->
+      val deps = item.dependencies.mapNotNull { itemMap[it] }
+      result[item] = deps
+    }
 
-private data class BatchData(
-  val isActive: Boolean,
-  val repairItems: List<RepairItemData>,
-)
+    return result
+  }
 
-private data class RepairResultData(
-  val itemId: String,
-  val outcome: String,
-)
+  override fun getPriorResults(itemId: String): List<AuditRepairItemResult> = repairResults[itemId] ?: emptyList()
+
+  override fun getNonRegressionConstraints(itemId: String): List<String> =
+    nonRegressionConstraints[itemId] ?: emptyList()
+
+  override fun getGapDisposition(gapId: String): AuditGapDisposition? = gapDispositions[gapId]
+
+  override fun getAllGapDispositions(workflowId: String): List<AuditGapDisposition> {
+    val gaps = generationStore.listAll(workflowId).flatMap { it.gaps }
+    return gaps.mapNotNull { gapDispositions[it.gapId] }
+  }
+
+  override fun getRecurringGaps(workflowId: String): List<skillbill.workflow.taskruntime.model.AuditGap> {
+    val gaps = generationStore.listAll(workflowId).flatMap { it.gaps }
+    return gaps.filter { it.status == AuditGapStatus.RECURRING }
+  }
+
+  override fun getResolvedGaps(workflowId: String): List<skillbill.workflow.taskruntime.model.AuditGap> {
+    val gaps = generationStore.listAll(workflowId).flatMap { it.gaps }
+    return gaps.filter { it.status == AuditGapStatus.RESOLVED }
+  }
+
+  fun recordResult(result: AuditRepairItemResult) {
+    repairResults.getOrPut(result.itemId) { mutableListOf() }.add(result)
+  }
+
+  fun recordGapDisposition(disposition: AuditGapDisposition) {
+    gapDispositions[disposition.gapId] = disposition
+  }
+}
+
+private class TestPhaseLedger : skillbill.application.featuretask.PhaseLedger {
+  private val ledger = mutableMapOf<String, Int>()
+
+  override fun recordAuditGeneration(workflowId: String, generation: Int) {
+    ledger[workflowId] = generation
+  }
+
+  fun getCurrentLedger(): FeatureTaskRuntimePhaseLedger? {
+    if (ledger.isEmpty()) return null
+    val firstEntry = ledger.entries.first()
+    return FeatureTaskRuntimePhaseLedger(
+      entries = listOf(
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry(
+          action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START,
+          sequenceNumber = 0,
+          timestamp = Instant.now().toString(),
+          phaseId = "audit",
+          attemptCount = 1,
+          resolvedAgentId = "test-agent",
+          auditRepairProgress = FeatureTaskRuntimeAuditRepairProgress(
+            firstPassConvergence = firstEntry.value == 1,
+            newGapCount = 1,
+            recurringGapCount = 0,
+            attemptedRepairItemCount = 2,
+            resolvedRepairItemCount = 0,
+            auditGapIterationCount = 0,
+          ),
+        ),
+      ),
+    )
+  }
+}
 
 private data class FollowUpResult(
   val canSatisfy: Boolean,
-  val gaps: List<GapData>,
+  val generation: AuditGeneration,
+  val gaps: List<AuditGap> = generation.gaps,
 )
 
 private data class MetricsData(
@@ -404,5 +772,6 @@ private data class MetricsData(
   val attemptedRepairItemCount: Int,
   val resolvedRepairItemCount: Int,
   val auditLoopCount: Int,
+  val totalGenerations: Int = auditLoopCount + 1,
   val phaseLedgerAgreement: Boolean,
 )

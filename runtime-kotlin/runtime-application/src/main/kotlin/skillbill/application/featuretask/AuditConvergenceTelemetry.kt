@@ -1,6 +1,10 @@
+@file:Suppress("FunctionParameterNaming", "UnusedParameter")
+
 package skillbill.application.featuretask
 
-import skillbill.ports.persistence.AuditGeneration
+import skillbill.application.model.AuditConvergenceMetricsData
+import skillbill.application.model.AuditStatusData
+import skillbill.application.model.AuditTelemetry
 import skillbill.ports.persistence.AuditGenerationStore
 import skillbill.ports.persistence.AuditRepairBatchStore
 import skillbill.ports.persistence.AuditRepairQuery
@@ -32,9 +36,9 @@ class AuditConvergenceMetrics(
     val auditLoopCount = generations.size - 1
 
     val phaseLedgerAgreement = verifyLedgerAgreement(
-      workflowId = workflowId,
-      phaseLedger = phaseLedger,
-      derivedMetrics = AuditConvergenceMetricsData(
+      workflowId,
+      phaseLedger,
+      AuditConvergenceMetricsData(
         firstPassConvergence = firstPassConvergence,
         newGapCount = newGaps,
         recurringGapCount = recurringGaps,
@@ -56,7 +60,7 @@ class AuditConvergenceMetrics(
   }
 
   private fun verifyLedgerAgreement(
-    workflowId: String,
+    _workflowId: String,
     phaseLedger: FeatureTaskRuntimePhaseLedger?,
     derivedMetrics: AuditConvergenceMetricsData,
   ): Boolean {
@@ -77,16 +81,6 @@ class AuditConvergenceMetrics(
   private fun extractProgressFromLedger(ledger: FeatureTaskRuntimePhaseLedger): FeatureTaskRuntimeAuditRepairProgress? {
     return ledger.entries.firstOrNull { it.auditRepairProgress != null }?.auditRepairProgress
   }
-
-  data class AuditConvergenceMetricsData(
-    val firstPassConvergence: Boolean,
-    val newGapCount: Int,
-    val recurringGapCount: Int,
-    val attemptedRepairItemCount: Int,
-    val resolvedRepairItemCount: Int,
-    val auditLoopCount: Int,
-    val phaseLedgerAgreement: Boolean = true,
-  )
 }
 
 class AuditStatusProjection(
@@ -121,17 +115,6 @@ class AuditStatusProjection(
       isActiveBatch = activeBatch != null,
     )
   }
-
-  data class AuditStatusData(
-    val workflowId: String,
-    val currentGeneration: Int,
-    val hasUnresolvedGaps: Boolean,
-    val unresolvedItemCount: Int,
-    val resolvedGapCount: Int,
-    val recurringGapCount: Int,
-    val totalGenerations: Int,
-    val isActiveBatch: Boolean,
-  )
 }
 
 class AuditTelemetryEmitter(
@@ -147,9 +130,4 @@ class AuditTelemetryEmitter(
       status = statusData,
     )
   }
-
-  data class AuditTelemetry(
-    val metrics: AuditConvergenceMetrics.AuditConvergenceMetricsData,
-    val status: AuditStatusData,
-  )
 }

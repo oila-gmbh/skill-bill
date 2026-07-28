@@ -72,6 +72,7 @@ class DatabaseMigrationsTest {
         15 to "add-private-producer-output-evidence",
         16 to "add-feature-task-convergence-state",
         17 to "retain-convergence-evidence-and-classification",
+        18 to "add-audit-convergence-tables",
       ),
       migrationDefinitions,
     )
