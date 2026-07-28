@@ -24,23 +24,35 @@ class ReviewGenerationRuntimeTest {
       repository.appendFinding("workflow-1", "generation-1", 1, finding)
 
       repository.appendGeneration(generation(2))
+      repository.appendPass("workflow-1", "generation-2", 1, "checkpoint-2")
+      assertEquals(
+        false,
+        repository.unresolvedBlockers("workflow-1").isEmpty(),
+        "the first unrelated successor generation must remain advancement-blocking",
+      )
       repository.appendGeneration(generation(3))
+      repository.appendPass("workflow-1", "generation-3", 1, "checkpoint-3")
 
       assertEquals(listOf(finding), repository.unresolvedBlockers("workflow-1"))
       assertEquals(1, repository.summary("workflow-1").carriedBlockerCount)
+      assertEquals(
+        false,
+        repository.unresolvedBlockers("workflow-1").isEmpty(),
+        "the second unrelated successor generation must remain advancement-blocking",
+      )
 
       repository.appendDisposition(
         GoalSubtaskReviewFindingDispositionRecord(
           workflowId = "workflow-1",
           generationId = "generation-3",
           findingId = finding.findingId,
-          disposition = GoalSubtaskReviewFindingDisposition.RESOLVED,
-          evidence = listOf("checkpoint-3:ProducerAttribution.kt:42"),
+          disposition = GoalSubtaskReviewFindingDisposition.ACCEPTED,
+          evidence = listOf("operator:accept_and_advance at checkpoint-3"),
         ),
       )
 
       assertEquals(emptyList(), repository.unresolvedBlockers("workflow-1"))
-      assertEquals(1, repository.summary("workflow-1").terminalDispositionCounts.getValue("resolved"))
+      assertEquals(1, repository.summary("workflow-1").terminalDispositionCounts.getValue("accepted"))
     }
   }
 
@@ -59,6 +71,34 @@ class ReviewGenerationRuntimeTest {
           generation.copy(identity = generation.identity.copy(repositoryCheckpoint = "changed-checkpoint")),
         )
       }
+    }
+  }
+
+  @Test
+  fun `pass local finding ids are namespaced when reused by a later generation`() {
+    val dbPath = Files.createTempDirectory("review-finding-id-reuse").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      repository.appendGeneration(generation(1))
+      repository.appendPass("workflow-1", "generation-1", 1, "checkpoint-1")
+      repository.appendFinding("workflow-1", "generation-1", 1, blocker().copy(findingId = "F-001"))
+      repository.appendGeneration(generation(2))
+      repository.appendPass("workflow-1", "generation-2", 1, "checkpoint-2")
+      repository.appendFinding(
+        "workflow-1",
+        "generation-2",
+        1,
+        blocker().copy(
+          findingId = "F-001",
+          summary = "A distinct later blocker reused the pass-local register id.",
+          sourceGenerationId = "generation-2",
+        ),
+      )
+
+      assertEquals(
+        setOf("F-001", "generation-2:F-001"),
+        repository.unresolvedBlockers("workflow-1").map { it.findingId }.toSet(),
+      )
     }
   }
 

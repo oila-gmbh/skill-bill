@@ -1157,7 +1157,14 @@ internal class FeatureTaskRuntimeRunLoop(
     return when (goalReviewStateOrNull()?.pauseRelease) {
       null, GoalSubtaskPauseRelease.RETRY_FIX -> null
       GoalSubtaskPauseRelease.ADVANCE -> {
-        consumeOperatorRetryGrant()
+        operatorRetryGrantConsumed = true
+        operatorGrantedFixIteration = false
+        checkNotNull(
+          goalContinuationRecorder.acceptUnresolvedReviewBlockers(
+            request.workflowId,
+            request.dbPathOverride,
+          ),
+        ) { "Could not durably accept carried Blockers before advancing." }
         PauseReleaseTarget(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE)
       }
       GoalSubtaskPauseRelease.ABANDON -> {

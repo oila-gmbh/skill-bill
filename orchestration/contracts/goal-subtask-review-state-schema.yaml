@@ -97,6 +97,14 @@ properties:
       disposition is authoritative only while this digest still matches the working tree.
     type: string
     pattern: "^[0-9a-f]{64}$"
+  active_pass_delta_digest:
+    description: Digest of the exact input materialized for the currently reserved review pass.
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+  reviewed_head_sha:
+    description: Repository head at which the active pass input was materialized.
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
   pass_results:
     type: array
     description: >

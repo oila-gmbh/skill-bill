@@ -70,6 +70,22 @@ class ReviewDeltaClassifierTest {
   }
 
   @Test
+  fun `nested current subtask identity is classified structurally`() {
+    val header =
+      "diff --git a/.feature-specs/SKILL-150/decomposition-manifest.yaml " +
+        "b/.feature-specs/SKILL-150/decomposition-manifest.yaml\n"
+    val diff = header +
+      " current_subtask_intent:\n" +
+      "-  subtask_id: 3\n" +
+      "+  subtask_id: 4\n"
+
+    assertEquals(
+      ReviewDeltaClassification.BOOKKEEPING_ONLY,
+      classifier.classifyUnifiedDiff(diff).classification,
+    )
+  }
+
+  @Test
   fun `mixed changes create exactly one semantic successor decision`() {
     val result = classifier.classify(
       listOf(

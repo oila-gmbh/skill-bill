@@ -79,6 +79,19 @@ internal class ReviewGenerationRuntime(
     passNumber: Int,
     finding: GoalSubtaskReviewFinding,
   ) {
+    val existing = loadFinding(workflowId, finding.findingId)
+    if (existing != null && existing != finding) {
+      require(existing.sourceGenerationId != generationId) {
+        "Conflicting immutable review finding '${finding.findingId}'."
+      }
+      appendFinding(
+        workflowId,
+        generationId,
+        passNumber,
+        finding.copy(findingId = "$generationId:${finding.findingId}"),
+      )
+      return
+    }
     connection.prepareStatement(
       """
       INSERT OR IGNORE INTO review_generation_findings (

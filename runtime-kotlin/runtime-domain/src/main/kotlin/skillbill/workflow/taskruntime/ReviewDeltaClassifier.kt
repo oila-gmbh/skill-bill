@@ -66,6 +66,8 @@ class ReviewDeltaClassifier(
     val changes = mutableListOf<ReviewDeltaChange>()
     var path: String? = null
     var changedKeys = mutableSetOf<String>()
+    val oldYamlPath = mutableListOf<Pair<Int, String>>()
+    val newYamlPath = mutableListOf<Pair<Int, String>>()
     fun flush() {
       val currentPath = path ?: return
       val governedFields = if (
@@ -79,6 +81,8 @@ class ReviewDeltaClassifier(
       }
       changes += ReviewDeltaChange(currentPath, governedFields)
       changedKeys = mutableSetOf()
+      oldYamlPath.clear()
+      newYamlPath.clear()
     }
     diff.lineSequence().forEach { line ->
       if (line.startsWith("diff --git a/")) {
@@ -86,12 +90,24 @@ class ReviewDeltaClassifier(
         path = line.substringAfter(" b/", "").takeIf(String::isNotBlank)
       } else if (
         path?.endsWith("/decomposition-manifest.yaml") == true &&
-        (line.startsWith("+") || line.startsWith("-")) &&
         !line.startsWith("+++") &&
         !line.startsWith("---")
       ) {
-        line.drop(1).trim().removePrefix("- ").substringBefore(":").trim()
-          .takeIf(String::isNotBlank)?.let(changedKeys::add)
+        val marker = line.firstOrNull()
+        if (marker == ' ' || marker == '+' || marker == '-') {
+          val yaml = line.drop(1).removePrefix("- ")
+          val indent = yaml.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
+          val key = yaml.trim().substringBefore(":").trim()
+          if (key.isNotBlank() && ":" in yaml) {
+            fun update(stack: MutableList<Pair<Int, String>>, changed: Boolean) {
+              while (stack.lastOrNull()?.first?.let { it >= indent } == true) stack.removeLast()
+              if (changed) changedKeys += (stack.map { it.second } + key).joinToString(".")
+              if (yaml.substringAfter(":", "").isBlank()) stack += indent to key
+            }
+            if (marker != '+') update(oldYamlPath, marker == '-')
+            if (marker != '-') update(newYamlPath, marker == '+')
+          }
+        }
       }
     }
     flush()
@@ -127,7 +143,15 @@ class ReviewDeltaClassifier(
     internal val RUNTIME_OWNED_MANIFEST_LEAF_FIELDS: Set<String> = setOf(
       "status",
       "current_subtask_intent",
+      "current_subtask_intent.subtask_id",
       "workflow_id",
+      "subtasks.status",
+      "subtasks.workflow_id",
+      "subtasks.blocked_reason",
+      "subtasks.last_resumable_step",
+      "subtasks.commit_sha",
+      "subtasks.finalizing_agent_id",
+      "subtasks.participating_agent_ids",
       "blocked_reason",
       "last_resumable_step",
       "commit_sha",

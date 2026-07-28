@@ -11,6 +11,25 @@ import kotlin.test.assertTrue
 
 class GoalSubtaskReviewStateTest {
   @Test
+  fun `active pass identity survives strict artifact round trip`() {
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    ).copy(
+      reviewedDeltaDigest = "b".repeat(64),
+      activePassDeltaDigest = "c".repeat(64),
+      reviewedHeadSha = "d".repeat(40),
+    )
+
+    val decoded = GoalSubtaskReviewState.fromArtifactMap(state.toArtifactMap())
+
+    assertEquals(state, decoded)
+    assertEquals("c".repeat(64), decoded.activePassDeltaDigest)
+    assertEquals("d".repeat(40), decoded.reviewedHeadSha)
+  }
+
+  @Test
   fun `completed passes record immutable execution modes while legacy records remain byte stable`() {
     val initial = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),

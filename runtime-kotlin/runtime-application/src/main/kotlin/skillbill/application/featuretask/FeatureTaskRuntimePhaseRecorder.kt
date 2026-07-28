@@ -433,6 +433,12 @@ class FeatureTaskRuntimePhaseRecorder(
       val artifacts = decodeArtifacts(record.artifactsJson)
       val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
         ?: return@transaction false
+      require(
+        reviewArtifacts.state.completedPassCount == 0 ||
+          unitOfWork.reviewGenerations.summary(request.workflowId).currentGenerationId != null,
+      ) {
+        "Legacy completed review state has no durable review generation; regenerate or migrate it before review resumes."
+      }
       val completedState = reviewArtifacts.state.completeReservedPass(
         verdict = completion.verdict,
         unresolvedFindingCount = completion.unresolvedFindingCount,
@@ -440,8 +446,8 @@ class FeatureTaskRuntimePhaseRecorder(
         blockerDispositions = completion.blockerDispositions,
       )
       val passNumber = completedState.completedPassCount.toString()
-      val reviewedDeltaDigest = requireNotNull(completedState.reviewedDeltaDigest) {
-        "Goal review completion requires the durable reviewed delta digest."
+      val reviewedDeltaDigest = requireNotNull(completedState.activePassDeltaDigest) {
+        "Goal review completion requires the exact active-pass delta digest."
       }
       val repositoryCheckpoint = requireNotNull(request.repositoryFingerprint) {
         "Goal review completion requires the runtime repository checkpoint."
@@ -464,11 +470,17 @@ class FeatureTaskRuntimePhaseRecorder(
         repositoryCheckpoint,
       )
       val carried = unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId)
-      if (passNumber.toInt() > 1 || completion.blockerDispositions.isNotEmpty()) {
-        require(completion.blockerDispositions.map { it.findingId }.toSet() == carried.map { it.findingId }.toSet()) {
+      if (carried.isNotEmpty() || completion.blockerDispositions.isNotEmpty()) {
+        val durableDispositions = completion.blockerDispositions.map { disposition ->
+          val durableId = carried.singleOrNull {
+            it.findingId == disposition.findingId || it.findingId.endsWith(":${disposition.findingId}")
+          }?.findingId ?: disposition.findingId
+          disposition.copy(findingId = durableId)
+        }
+        require(durableDispositions.map { it.findingId }.toSet() == carried.map { it.findingId }.toSet()) {
           "Remediation must disposition exactly the durable carried Blocker set."
         }
-        completion.blockerDispositions.forEach { disposition ->
+        durableDispositions.forEach { disposition ->
           unitOfWork.reviewGenerations.appendDisposition(
             GoalSubtaskReviewFindingDispositionRecord(
               workflowId = request.workflowId,
@@ -481,19 +493,20 @@ class FeatureTaskRuntimePhaseRecorder(
         }
       }
       completion.findings.forEachIndexed { index, finding ->
-        val findingId = finding.findingId ?: "$generationId-${passNumber}-${index + 1}"
+        val sourceFindingId = finding.findingId ?: "finding-${index + 1}"
+        val sourceFinding = GoalSubtaskReviewFinding(
+          findingId = sourceFindingId,
+          severity = finding.severity,
+          category = finding.category,
+          location = finding.location,
+          summary = finding.text,
+          sourceGenerationId = generationId,
+        )
         unitOfWork.reviewGenerations.appendFinding(
           request.workflowId,
           generationId,
           passNumber.toInt(),
-          GoalSubtaskReviewFinding(
-            findingId = findingId,
-            severity = finding.severity,
-            category = finding.category,
-            location = finding.location,
-            summary = finding.text,
-            sourceGenerationId = generationId,
-          ),
+          sourceFinding,
         )
       }
       if (completion.verdict == FeatureTaskRuntimeVerdict.APPROVED) {
@@ -1189,7 +1202,6 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private companion object {
     const val STATUS_RUNNING = "running"
-    const val GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY = "goal_subtask_review_result_history"
   }
 }
 

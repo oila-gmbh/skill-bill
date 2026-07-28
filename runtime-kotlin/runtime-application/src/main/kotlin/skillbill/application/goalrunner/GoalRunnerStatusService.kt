@@ -258,15 +258,16 @@ class GoalRunnerStatusService(
     val subtaskId = requireNotNull(request.subtaskId)
     val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
       ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
-    require(selected.status == "blocked") {
-      "Subtask '$subtaskId' is '${selected.status}'; scoped child deletion requires a blocked subtask."
-    }
     val workflowId = selected.workflowId?.takeIf(String::isNotBlank)
       ?: error("Subtask '$subtaskId' has no durable child workflow to delete.")
     val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
     require(classification == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL) {
       "Child workflow '$workflowId' is ${classification.wireValue}; scoped deletion requires an incompatible " +
         "terminal child."
+    }
+    require(selected.status == "blocked" || selected.status == "in_progress") {
+      "Subtask '$subtaskId' is '${selected.status}'; scoped child deletion requires a blocked or in-progress " +
+        "subtask with an incompatible terminal child."
     }
     val saved = manifestStore.deleteIncompatibleChildWorkflow(
       authoritativeState,

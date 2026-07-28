@@ -338,6 +338,8 @@ data class GoalSubtaskReviewState(
   val disposition: GoalSubtaskReviewDisposition = GoalSubtaskReviewDisposition.PENDING,
   val reviewInputArtifact: String? = null,
   val reviewedDeltaDigest: String? = null,
+  val activePassDeltaDigest: String? = null,
+  val reviewedHeadSha: String? = null,
   val passResults: List<GoalSubtaskReviewPassResult> = emptyList(),
   val emittedPassCount: Int = 0,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
@@ -360,6 +362,9 @@ data class GoalSubtaskReviewState(
       require(GIT_COMMIT_SHA.matches(sha)) {
         "Goal remediation base SHA must be a 40- or 64-character lowercase commit SHA."
       }
+    }
+    reviewedHeadSha?.let { sha ->
+      require(GIT_COMMIT_SHA.matches(sha)) { "Goal reviewed head SHA must be a lowercase commit SHA." }
     }
     require(baselineUntrackedPaths.all(String::isNotBlank)) { "Baseline untracked paths must be non-blank." }
     require(baselineUntrackedPaths == baselineUntrackedPaths.distinct().sorted()) {
@@ -566,6 +571,8 @@ data class GoalSubtaskReviewState(
     reservedPassNumber?.let { put("reserved_pass_number", it) }
     reviewInputArtifact?.let { put("review_input_artifact", it) }
     reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }
+    activePassDeltaDigest?.let { put("active_pass_delta_digest", it) }
+    reviewedHeadSha?.let { put("reviewed_head_sha", it) }
     operatorDecision?.let { put("operator_decision", it.wireValue) }
     if (operatorRetryRounds > 0) put("operator_retry_rounds", operatorRetryRounds)
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
@@ -592,7 +599,8 @@ data class GoalSubtaskReviewState(
       raw.requireOnlyReviewStateKeys(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
-          "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest", "pass_results",
+          "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest",
+          "active_pass_delta_digest", "reviewed_head_sha", "pass_results",
           "emitted_pass_count", "blocker_dispositions", "operator_decision", "operator_retry_rounds",
           "resolved_tier", "deciding_rule",
           "remediation_base_sha",
@@ -618,6 +626,8 @@ data class GoalSubtaskReviewState(
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
           reviewInputArtifact = raw.optionalReviewStateString("review_input_artifact", sourceLabel),
           reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
+          activePassDeltaDigest = raw.optionalReviewStateString("active_pass_delta_digest", sourceLabel),
+          reviewedHeadSha = raw.optionalReviewStateString("reviewed_head_sha", sourceLabel),
           passResults = raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
             GoalSubtaskReviewPassResult.fromArtifactMap(
               value.asReviewStateMap("$sourceLabel.pass_results[$index]"),

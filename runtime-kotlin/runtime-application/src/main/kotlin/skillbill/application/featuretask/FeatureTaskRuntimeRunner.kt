@@ -142,7 +142,9 @@ class FeatureTaskRuntimeRunner(
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
-      reopenCappedReviewOnChangedDelta(runRequest)
+      if (runRequest.operatorDecision == null) {
+        reopenCappedReviewOnChangedDelta(runRequest)
+      }
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
@@ -253,10 +255,11 @@ class FeatureTaskRuntimeRunner(
       // decision about findings the tree no longer carries.
       ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
       ?: return false
-    val judgedDigest = state.reviewedDeltaDigest ?: return true
+    val judgedDigest = state.activePassDeltaDigest ?: state.reviewedDeltaDigest ?: return true
+    val comparisonBase = state.reviewedHeadSha ?: state.reviewBaseSha
     val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
       request.repoRoot,
-      GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+      GoalSubtaskReviewBaseline(comparisonBase, state.baselineUntrackedPaths),
       goalBranch,
     ).input
     if (current == null || current.deltaDigest == judgedDigest) return false
