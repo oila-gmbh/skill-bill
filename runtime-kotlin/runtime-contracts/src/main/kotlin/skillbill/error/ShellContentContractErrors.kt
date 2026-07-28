@@ -82,6 +82,15 @@ class InvalidWorkflowStateSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime convergence state '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 class InvalidWorkListRowError(
   message: String,
   cause: Throwable? = null,

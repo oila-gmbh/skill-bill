@@ -490,6 +490,60 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 16,
+        name = "add-feature-task-convergence-state",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_convergence_records (
+                record_id TEXT PRIMARY KEY CHECK(length(record_id) BETWEEN 1 AND 160),
+                contract_version TEXT NOT NULL CHECK(contract_version = '0.1'),
+                workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
+                record_kind TEXT NOT NULL CHECK(record_kind IN (
+                  'IMPLEMENTATION_OUTCOME', 'IMPLEMENTATION_OBLIGATION', 'AUDIT_GAP', 'AUDIT_REPAIR',
+                  'REVIEW_FINDING', 'REVIEW_DISPOSITION', 'REPOSITORY_CHECKPOINT', 'LEGACY_IMPORT'
+                )),
+                generation INTEGER NOT NULL CHECK(generation > 0),
+                logical_id TEXT NOT NULL CHECK(length(logical_id) BETWEEN 1 AND 160),
+                parent_logical_id TEXT CHECK(parent_logical_id IS NULL OR length(parent_logical_id) BETWEEN 1 AND 160),
+                phase_id TEXT NOT NULL CHECK(phase_id IN ('implement', 'audit', 'review')),
+                attempt INTEGER CHECK(attempt IS NULL OR attempt > 0),
+                review_pass INTEGER CHECK(review_pass IS NULL OR review_pass > 0),
+                record_status TEXT NOT NULL CHECK(record_status IN ('OPEN', 'RESOLVED', 'COMPLETED', 'FAILED', 'QUARANTINED')),
+                summary TEXT CHECK(summary IS NULL OR length(summary) BETWEEN 1 AND 512),
+                affected_path TEXT CHECK(affected_path IS NULL OR length(affected_path) BETWEEN 1 AND 512),
+                evidence_digest TEXT NOT NULL CHECK(length(evidence_digest) = 64),
+                evidence_ref TEXT CHECK(evidence_ref IS NULL OR length(evidence_ref) BETWEEN 1 AND 512),
+                created_at TEXT NOT NULL,
+                UNIQUE(workflow_id, record_kind, generation, logical_id),
+                FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+            statement.execute(
+              "CREATE INDEX IF NOT EXISTS idx_convergence_history ON feature_task_convergence_records(workflow_id, generation, created_at)",
+            )
+            statement.execute(
+              "CREATE INDEX IF NOT EXISTS idx_convergence_unresolved ON feature_task_convergence_records(workflow_id, record_kind, record_status, generation)",
+            )
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_convergence_legacy_imports (
+                workflow_id TEXT NOT NULL,
+                source_digest TEXT NOT NULL CHECK(length(source_digest) = 64),
+                disposition TEXT NOT NULL CHECK(disposition IN ('imported', 'quarantined')),
+                reason_code TEXT CHECK(reason_code IS NULL OR length(reason_code) BETWEEN 1 AND 64),
+                imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(workflow_id, source_digest),
+                FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

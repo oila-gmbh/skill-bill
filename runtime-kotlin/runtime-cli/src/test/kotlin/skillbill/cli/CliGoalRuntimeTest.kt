@@ -600,8 +600,11 @@ class CliGoalWatchRuntimeTest {
 
     assertEquals(0, watch.exitCode, watch.stdout)
     assertContains(liveStdout.toString(), "watch_refresh: index=1 status=ok")
+    assertContains(liveStdout.toString(), "watch_planning: index=1 state=not_started")
+    assertContains(liveStdout.toString(), "shared_preplan=false planned=0/1 current=1")
     assertEquals(false, watch.stdout.contains("watch_refresh: index=1 status=ok"), watch.stdout)
     assertContains(watch.stdout, "watch_refresh: index=2 status=ok")
+    assertContains(watch.stdout, "watch_planning: index=2 state=not_started")
     assertContains(liveStdout.toString(), "watch_diff_stat: index=1 files_changed=1 insertions=2 deletions=1")
     assertContains(watch.stdout, "watch_diff_stat: index=2 files_changed=1 insertions=2 deletions=1")
     assertEquals(null, watch.payload?.get("refreshes"))
@@ -760,6 +763,7 @@ class CliGoalWatchRuntimeTest {
     assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
     assertEquals(1, latest?.get("blocked_count"))
     assertEquals(1, latest?.get("pending_count"))
+    assertContains(watch.stdout, "watch_blocked: index=2 reason=forced failure")
     assertEquals(launchCount, launcher.requests.size)
   }
 
@@ -902,6 +906,7 @@ class CliGoalExecutionOptionsTest {
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
     assertContains(status.stdout, "current_step: review")
+    assertContains(status.stdout, "blocked_reason: forced failure")
     // SKILL-103 AC1: prose-mode CLI child carries no persisted agent => active_agent omitted.
     assertContains(status.stdout, "active_agent: none")
   }

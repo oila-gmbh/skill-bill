@@ -279,6 +279,7 @@ data class GoalRunnerStatusProjection(
   val currentSubtaskId: Int?,
   val currentStep: String?,
   val activeAgent: String?,
+  val blockedReason: String? = null,
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val latestLivenessSignal: String? = null,
@@ -360,6 +361,10 @@ object GoalRunnerStatusProjector {
       currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
+      blockedReason = currentSubtask
+        ?.takeIf { statusOf(it) == "blocked" }
+        ?.blockedReason
+        ?.takeIf(String::isNotBlank),
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       executionLiveness = extras.executionLiveness,
       planning = extras.planning,

@@ -19,6 +19,7 @@ class GoalRunnerStatusProjectorTest {
 
     assertEquals(0, projection.blockedCount)
     assertEquals(1, projection.pendingCount)
+    assertNull(projection.blockedReason)
   }
 
   @Test
@@ -30,6 +31,7 @@ class GoalRunnerStatusProjectorTest {
 
     assertEquals(1, projection.blockedCount)
     assertEquals(0, projection.pendingCount)
+    assertEquals("branch checkout failed", projection.blockedReason)
   }
 
   // Only supervisor events are persisted, so a block recorded when a prior run stopped is still the newest
@@ -92,6 +94,7 @@ class GoalRunnerStatusProjectorTest {
         specPath = ".feature-specs/SKILL-135/spec_subtask_1.md",
         status = currentSubtaskStatus,
         workflowId = "wftr-20260720-192238-iwxj",
+        blockedReason = "branch checkout failed",
       ),
     ),
   )

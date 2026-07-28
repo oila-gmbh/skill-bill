@@ -22,6 +22,8 @@ interface UnitOfWork {
   val workflowStates: WorkflowStateRepository
   val workList: WorkListRepository
   val goalPlanningPreparations: GoalPlanningPreparationRepository
+  val convergenceStates: ConvergenceStateRepository
+    get() = UnavailableConvergenceStateRepository
   val unaddressedFindings: UnaddressedFindingsRepository
     get() = UnavailableUnaddressedFindingsRepository
   val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?

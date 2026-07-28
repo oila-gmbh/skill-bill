@@ -870,6 +870,7 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "blocked_count" to it.blockedCount,
     "current_subtask" to it.currentSubtaskId,
     "current_step" to it.currentStep,
+    "blocked_reason" to it.blockedReason,
     "active_agent" to it.activeAgent,
     "execution_liveness" to it.executionLiveness.wireValue,
     "latest_liveness_signal" to it.latestLivenessSignal,
@@ -936,6 +937,7 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("blocked: ${payload["blocked_count"]}")
   appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
   appendLine("current_step: ${payload["current_step"] ?: "none"}")
+  payload["blocked_reason"]?.let { appendLine("blocked_reason: $it") }
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("execution_liveness: ${payload["execution_liveness"]}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
@@ -989,6 +991,20 @@ private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
       "execution_liveness=${refresh["execution_liveness"] ?: "unknown"} " +
       "liveness=${refresh["latest_liveness_signal"] ?: "none"}",
   )
+  refresh["blocked_reason"]?.let {
+    appendLine("watch_blocked: index=${refresh["refresh_index"]} reason=$it")
+  }
+  (refresh["planning"] as? Map<*, *>)?.let { planning ->
+    appendLine(
+      "watch_planning: index=${refresh["refresh_index"]} state=${planning["state"]} " +
+        "shared_preplan=${planning["shared_preplan_prepared"]} " +
+        "planned=${planning["planned_subtask_count"]}/${planning["total_subtask_count"]} " +
+        "current=${planning["current_planning_subtask"] ?: "none"}",
+    )
+    planning["reason"]?.let {
+      appendLine("watch_planning_reason: index=${refresh["refresh_index"]} reason=$it")
+    }
+  }
   (refresh["latest_observability_event"] as? Map<*, *>)?.let { event ->
     appendLine(
       "watch_observability: index=${refresh["refresh_index"]} phase=${event["workflow_phase"]} " +

@@ -1,0 +1,74 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/feature-task-runtime-convergence-state-schema.yaml
+title: Feature task runtime convergence state
+description: Bounded, privacy-safe durable evidence used to converge implementation, audit, and review generations.
+type: object
+additionalProperties: false
+required: [contract_version, record_id, workflow_id, kind, generation, logical_id, evidence_digest, created_at]
+properties:
+  contract_version:
+    const: "0.1"
+  record_id:
+    $ref: "#/$defs/identity"
+  workflow_id:
+    $ref: "#/$defs/identity"
+  kind:
+    enum: [implementation_outcome, implementation_obligation, audit_gap, audit_repair, review_finding, review_disposition, repository_checkpoint, legacy_import]
+  generation:
+    type: integer
+    minimum: 1
+    maximum: 2147483647
+  logical_id:
+    $ref: "#/$defs/identity"
+  parent_logical_id:
+    $ref: "#/$defs/identity"
+  phase_id:
+    type: string
+    enum: [implement, audit, review]
+  attempt:
+    type: integer
+    minimum: 1
+    maximum: 10000
+  review_pass:
+    type: integer
+    minimum: 1
+    maximum: 10000
+  status:
+    enum: [open, resolved, completed, failed, quarantined]
+  classification:
+    type: string
+    minLength: 1
+    maxLength: 64
+    pattern: "^[a-z][a-z0-9_-]*$"
+  summary:
+    type: string
+    minLength: 1
+    maxLength: 512
+  path:
+    type: string
+    minLength: 1
+    maxLength: 512
+  evidence_digest:
+    type: string
+    pattern: "^[a-f0-9]{64}$"
+  evidence_ref:
+    type: string
+    minLength: 1
+    maxLength: 512
+  created_at:
+    type: string
+    format: date-time
+$defs:
+  identity:
+    type: string
+    minLength: 1
+    maxLength: 160
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+x-coherence-checks:
+  - record_id is deterministically derived from workflow_id, kind, generation, and logical_id
+  - implementation records require phase_id implement and attempt provenance
+  - audit records require phase_id audit and generation provenance
+  - review records require phase_id review and review_pass provenance
+  - repair and disposition records reference their stable parent logical identity
+  - repository checkpoints contain digests and evidence references, never complete diffs
+  - raw prompts, raw phase outputs, rejected-output bodies, and complete diffs are not contract fields
