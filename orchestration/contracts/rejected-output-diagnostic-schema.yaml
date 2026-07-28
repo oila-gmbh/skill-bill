@@ -1,0 +1,62 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/rejected-output-diagnostic-schema.yaml
+title: Rejected output diagnostic
+description: Safe metadata for one rejected workflow phase attempt. Raw bytes are stored separately.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - identity
+  - workflow_id
+  - phase_id
+  - attempt
+  - rule
+  - path
+  - reason
+  - agent_id
+  - model
+  - recorded_at
+  - byte_size
+  - sha256
+  - lifecycle
+properties:
+  contract_version:
+    const: "0.1"
+  identity:
+    type: string
+    pattern: "^rod_[0-9a-f]{64}$"
+  workflow_id:
+    type: string
+    minLength: 1
+  phase_id:
+    type: string
+    minLength: 1
+  attempt:
+    type: integer
+    minimum: 1
+  rule:
+    type: string
+    minLength: 1
+  path:
+    type: string
+    minLength: 1
+  reason:
+    type: string
+    minLength: 1
+  agent_id:
+    type: string
+    minLength: 1
+  model:
+    type: string
+    minLength: 1
+  recorded_at:
+    type: string
+    format: date-time
+  byte_size:
+    type: integer
+    minimum: 0
+  sha256:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+  lifecycle:
+    enum: [stored, oversized, expired]

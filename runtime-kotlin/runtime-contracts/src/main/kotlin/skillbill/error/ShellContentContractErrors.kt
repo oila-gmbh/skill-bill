@@ -95,6 +95,9 @@ class WorkflowIssueKeyConflictError(
   "Workflow '$workflowId' is already associated with issue key '$persistedIssueKey', not '$requestedIssueKey'.",
 )
 
+class InvalidRejectedOutputDiagnosticSchemaError(message: String) :
+  ShellContentContractException(message)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`

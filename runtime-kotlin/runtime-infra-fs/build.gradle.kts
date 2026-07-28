@@ -251,6 +251,24 @@ val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
     .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
     .absolutePath
 
+val canonicalRejectedOutputDiagnosticSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/rejected-output-diagnostic-schema.yaml")
+    .absolutePath
+
+val copyRejectedOutputDiagnosticSchema =
+  tasks.register<Copy>("copyRejectedOutputDiagnosticSchema") {
+    val schemaPath = canonicalRejectedOutputDiagnosticSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-134: canonical rejected-output diagnostic schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskExecutionIdentitySchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-execution-identity-schema.yaml")
@@ -482,6 +500,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
+  dependsOn(copyRejectedOutputDiagnosticSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
