@@ -20,6 +20,7 @@ class GoalSubtaskReviewStateTest {
       reviewedDeltaDigest = "b".repeat(64),
       activePassDeltaDigest = "c".repeat(64),
       reviewedHeadSha = "d".repeat(40),
+      reviewedRepositoryFingerprint = "repository-checkpoint-1",
     )
 
     val decoded = GoalSubtaskReviewState.fromArtifactMap(state.toArtifactMap())
@@ -27,6 +28,7 @@ class GoalSubtaskReviewStateTest {
     assertEquals(state, decoded)
     assertEquals("c".repeat(64), decoded.activePassDeltaDigest)
     assertEquals("d".repeat(40), decoded.reviewedHeadSha)
+    assertEquals("repository-checkpoint-1", decoded.reviewedRepositoryFingerprint)
   }
 
   @Test

@@ -82,14 +82,15 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   }
 
   @Test
-  fun `pass one never orders blocker dispositions`() {
+  fun `successor generation pass one orders carried blocker dispositions`() {
     val prompt = compose(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.DELEGATED,
       priorBlockerFindingIds = listOf("pass1-blocker-1"),
     )
 
-    assertFalse(prompt.contains("blocker_dispositions"), "Pass one has no prior pass to dispose.")
+    assertContains(prompt, "blocker_dispositions")
+    assertContains(prompt, "pass1-blocker-1")
   }
 
   private fun compose(

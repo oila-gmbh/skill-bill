@@ -67,7 +67,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
@@ -384,7 +383,11 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun reconcileReservedGoalReviewOutput(phaseId: String): String? = state.outputFor(phaseId)?.payload
     ?.let { output ->
       runCatching { outputValidator.validateAndReadPhaseOutput(output, sourceLabel = phaseId) }.fold(
-        onSuccess = { outputMap -> completeReservedGoalReviewPass(output, outputMap) },
+        onSuccess = { outputMap ->
+          runCatching { completeReservedGoalReviewPass(output, outputMap) }.getOrElse { error ->
+            "Completed goal-subtask review could not reconcile its reserved pass: ${error.message.orEmpty()}"
+          }
+        },
         onFailure = { error ->
           "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
         },

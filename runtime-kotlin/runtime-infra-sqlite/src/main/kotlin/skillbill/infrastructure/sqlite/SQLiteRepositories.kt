@@ -6,8 +6,8 @@ import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.goalrunner.model.UnaddressedFinding
-import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.goal.ReviewGenerationRuntime
+import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -28,8 +28,8 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
-import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.ReviewGenerationRepository
+import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnaddressedFindingsRepository

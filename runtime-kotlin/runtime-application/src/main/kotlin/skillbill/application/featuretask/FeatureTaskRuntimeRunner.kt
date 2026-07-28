@@ -19,10 +19,10 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.ReviewDeltaClassification
 import skillbill.workflow.taskruntime.ReviewDeltaClassifier
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
@@ -31,6 +31,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.ReviewDeltaClassification
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
@@ -255,6 +257,23 @@ class FeatureTaskRuntimeRunner(
       // decision about findings the tree no longer carries.
       ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
       ?: return false
+    return repositoryFingerprintMatches(request, state).not() && reviewDeltaIsStale(request, goalBranch, state)
+  }
+
+  private fun repositoryFingerprintMatches(
+    request: FeatureTaskRuntimeRunRequest,
+    state: GoalSubtaskReviewState,
+  ): Boolean {
+    val reviewedRepositoryFingerprint = state.reviewedRepositoryFingerprint ?: return false
+    val currentFingerprint = phaseGates.gitOperations.repositoryFingerprint(request.repoRoot)
+    return currentFingerprint.ok && currentFingerprint.value == reviewedRepositoryFingerprint
+  }
+
+  private fun reviewDeltaIsStale(
+    request: FeatureTaskRuntimeRunRequest,
+    goalBranch: String,
+    state: GoalSubtaskReviewState,
+  ): Boolean {
     val judgedDigest = state.activePassDeltaDigest ?: state.reviewedDeltaDigest ?: return true
     val comparisonBase = state.reviewedHeadSha ?: state.reviewBaseSha
     val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
@@ -262,9 +281,13 @@ class FeatureTaskRuntimeRunner(
       GoalSubtaskReviewBaseline(comparisonBase, state.baselineUntrackedPaths),
       goalBranch,
     ).input
-    if (current == null || current.deltaDigest == judgedDigest) return false
-    return ReviewDeltaClassifier().classifyUnifiedDiff(current.reviewText).classification ==
-      ReviewDeltaClassification.SEMANTIC
+    return current
+      ?.takeUnless { it.deltaDigest == judgedDigest }
+      ?.let {
+        ReviewDeltaClassifier().classifyUnifiedDiff(it.reviewText).classification ==
+          ReviewDeltaClassification.SEMANTIC
+      }
+      ?: false
   }
 
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =

@@ -65,7 +65,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Blocker findings remain recorded but do not request changes`() {
+  fun `Blocker findings remain recorded and request changes`() {
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
@@ -75,8 +75,8 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
-    assertEquals(0, outcome.unresolvedFindingCount)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    assertEquals(1, outcome.unresolvedFindingCount)
     assertEquals(1, GoalSubtaskReviewSummaryReducer.fromOutput(output).size)
   }
 
@@ -227,7 +227,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `Blocker plus Major findings remain recorded without blocking`() {
+  fun `Blocker plus Major findings remain recorded and the Blocker prevents advancement`() {
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
@@ -240,8 +240,8 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
 
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
-    assertEquals(0, outcome.unresolvedFindingCount)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, outcome.verdict)
+    assertEquals(1, outcome.unresolvedFindingCount)
     assertEquals(
       2,
       GoalSubtaskReviewSummaryReducer.unaddressedFindings(output, "SKILL-146", 3, "workflow", 1).size,

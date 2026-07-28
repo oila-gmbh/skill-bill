@@ -29,14 +29,12 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
 @Inject
+@Suppress("TooManyFunctions")
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -191,39 +189,37 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     updated
   }
 
-  fun acceptUnresolvedReviewBlockers(
-    workflowId: String,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction null
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = reviewStateFromArtifacts(artifacts) ?: return@transaction null
-    require(state.operatorDecision == GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE) {
-      "Unresolved Blockers may be accepted only by an explicit accept_and_advance decision."
-    }
-    val generationId = requireNotNull(unitOfWork.reviewGenerations.summary(workflowId).currentGenerationId) {
-      "Cannot accept unresolved Blockers without a durable review generation."
-    }
-    unitOfWork.reviewGenerations.unresolvedBlockers(workflowId).forEach { finding ->
-      unitOfWork.reviewGenerations.appendDisposition(
-        GoalSubtaskReviewFindingDispositionRecord(
-          workflowId = workflowId,
-          generationId = generationId,
-          findingId = finding.findingId,
-          disposition = GoalSubtaskReviewFindingDisposition.ACCEPTED,
-          evidence = listOf("operator:accept_and_advance"),
-        ),
+  fun acceptUnresolvedReviewBlockers(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewState? =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts) ?: return@transaction null
+      require(state.operatorDecision == GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE) {
+        "Unresolved Blockers may be accepted only by an explicit accept_and_advance decision."
+      }
+      val generationId = requireNotNull(unitOfWork.reviewGenerations.summary(workflowId).currentGenerationId) {
+        "Cannot accept unresolved Blockers without a durable review generation."
+      }
+      unitOfWork.reviewGenerations.unresolvedBlockers(workflowId).forEach { finding ->
+        unitOfWork.reviewGenerations.appendDisposition(
+          GoalSubtaskReviewFindingDispositionRecord(
+            workflowId = workflowId,
+            generationId = finding.sourceGenerationId.takeIf { it != generationId } ?: generationId,
+            findingId = finding.findingId,
+            disposition = GoalSubtaskReviewFindingDisposition.ACCEPTED,
+            evidence = listOf("operator:accept_and_advance"),
+          ),
+        )
+      }
+      val consumed = state.consumeOperatorDecision()
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to consumed.toArtifactMap()),
       )
+      consumed
     }
-    val consumed = state.consumeOperatorDecision()
-    savePatch(
-      record,
-      unitOfWork.workflowStates,
-      mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to consumed.toArtifactMap()),
-    )
-    consumed
-  }
 
   internal fun completeGoalReviewPass(
     request: GoalReviewPassCompletionRequest,
@@ -234,95 +230,21 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
-    require(
-      state.completedPassCount == 0 ||
-        unitOfWork.reviewGenerations.summary(request.workflowId).currentGenerationId != null,
-    ) {
-      "Legacy completed review state has no durable review generation; regenerate or migrate it before review resumes."
-    }
     require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
-    val completed = state.completeReservedPass(
-      request.verdict,
-      request.unresolvedFindingCount,
-      request.findings,
-      request.blockerDispositions,
-    )
-    val passNumber = completed.completedPassCount.toString()
-    val reviewedDeltaDigest = requireNotNull(completed.activePassDeltaDigest) {
-      "Goal review reconciliation requires the exact active-pass delta digest."
-    }
-    val repositoryCheckpoint = requireNotNull(request.repositoryCheckpoint) {
-      "Goal review reconciliation requires the runtime repository checkpoint."
-    }
-    val generationId = "review-${reviewedDeltaDigest.take(16)}-$repositoryCheckpoint".take(512)
-    unitOfWork.reviewGenerations.appendGeneration(
-      GoalSubtaskReviewGeneration(
-        GoalSubtaskReviewGenerationIdentity(
-          request.workflowId,
-          generationId,
-          completed.reviewBaseSha,
-          reviewedDeltaDigest,
-          repositoryCheckpoint,
-        ),
+    val settlement = unitOfWork.settleGoalSubtaskReviewGeneration(
+      GoalSubtaskReviewGenerationSettlementRequest(
+        workflowId = request.workflowId,
+        state = state,
+        verdict = request.verdict,
+        unresolvedFindingCount = request.unresolvedFindingCount,
+        findings = request.findings,
+        blockerDispositions = request.blockerDispositions,
+        repositoryCheckpoint = request.repositoryCheckpoint,
       ),
     )
-    unitOfWork.reviewGenerations.appendPass(
-      request.workflowId,
-      generationId,
-      passNumber.toInt(),
-      repositoryCheckpoint,
-    )
-    val carried = unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId)
-    val durableDispositions = request.blockerDispositions.map { disposition ->
-      val durableId = carried.singleOrNull {
-        it.findingId == disposition.findingId || it.findingId.endsWith(":${disposition.findingId}")
-      }?.findingId ?: disposition.findingId
-      disposition.copy(findingId = durableId)
-    }
-    require(durableDispositions.map { it.findingId }.toSet() == carried.map { it.findingId }.toSet()) {
-      "Reconciled review must disposition exactly the durable carried Blocker set."
-    }
-    durableDispositions.forEach { disposition ->
-      unitOfWork.reviewGenerations.appendDisposition(
-        GoalSubtaskReviewFindingDispositionRecord(
-          request.workflowId,
-          generationId,
-          disposition.findingId,
-          when (disposition.verdict) {
-            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.RESOLVED ->
-              GoalSubtaskReviewFindingDisposition.RESOLVED
-            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.UNRESOLVED ->
-              GoalSubtaskReviewFindingDisposition.STILL_PRESENT
-            skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.SUPERSEDED ->
-              GoalSubtaskReviewFindingDisposition.SUPERSEDED
-          },
-          disposition.evidence,
-        ),
-      )
-    }
-    request.findings.forEachIndexed { index, finding ->
-      val sourceFindingId = finding.findingId ?: "finding-${index + 1}"
-      val sourceFinding = GoalSubtaskReviewFinding(
-        sourceFindingId,
-        finding.severity,
-        finding.category,
-        finding.location,
-        finding.text,
-        generationId,
-      )
-      unitOfWork.reviewGenerations.appendFinding(
-        request.workflowId,
-        generationId,
-        passNumber.toInt(),
-        sourceFinding,
-      )
-    }
-    if (request.verdict == FeatureTaskRuntimeVerdict.APPROVED) {
-      require(unitOfWork.reviewGenerations.unresolvedBlockers(request.workflowId).isEmpty()) {
-        "Review reconciliation approval requires durable proof of zero unresolved Blockers."
-      }
-    }
+    val completed = settlement.state
+    val passNumber = settlement.passNumber.toString()
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(

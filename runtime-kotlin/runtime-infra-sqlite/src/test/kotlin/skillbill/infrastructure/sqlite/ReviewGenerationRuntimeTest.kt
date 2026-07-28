@@ -102,6 +102,29 @@ class ReviewGenerationRuntimeTest {
     }
   }
 
+  @Test
+  fun `same durable finding re-emitted in remediation retains its source identity`() {
+    val dbPath = Files.createTempDirectory("review-finding-stable-id").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      repository.appendGeneration(generation(1))
+      repository.appendPass("workflow-1", "generation-1", 1, "checkpoint-1")
+      repository.appendFinding("workflow-1", "generation-1", 1, blocker().copy(findingId = "F-001"))
+      repository.appendGeneration(generation(2))
+      repository.appendPass("workflow-1", "generation-2", 1, "checkpoint-2")
+
+      repository.appendFinding(
+        "workflow-1",
+        "generation-2",
+        1,
+        blocker().copy(findingId = "F-001", sourceGenerationId = "generation-2"),
+      )
+
+      assertEquals(listOf("F-001"), repository.unresolvedBlockers("workflow-1").map { it.findingId })
+      assertEquals("generation-1", repository.unresolvedBlockers("workflow-1").single().sourceGenerationId)
+    }
+  }
+
   private fun generation(number: Int) = GoalSubtaskReviewGeneration(
     identity = GoalSubtaskReviewGenerationIdentity(
       workflowId = "workflow-1",

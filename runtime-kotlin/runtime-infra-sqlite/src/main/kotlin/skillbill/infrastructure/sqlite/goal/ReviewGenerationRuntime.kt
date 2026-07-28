@@ -22,27 +22,26 @@ internal class ReviewGenerationRuntime(
       ) VALUES (?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, identity.workflowId)
-      statement.setString(2, identity.generationId)
-      statement.setString(3, identity.reviewBase)
-      statement.setString(4, identity.reviewedDeltaDigest)
-      statement.setString(5, identity.repositoryCheckpoint)
-      statement.setString(6, generation.supersededByGenerationId)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, identity.workflowId)
+      statement.setString(parameterIndex++, identity.generationId)
+      statement.setString(parameterIndex++, identity.reviewBase)
+      statement.setString(parameterIndex++, identity.reviewedDeltaDigest)
+      statement.setString(parameterIndex++, identity.repositoryCheckpoint)
+      statement.setString(parameterIndex, generation.supersededByGenerationId)
       statement.executeUpdate()
     }
     val persisted = loadById(identity.workflowId, identity.generationId)
       ?: error("Review generation insert did not persist '${identity.generationId}'.")
-    require(persisted.identity == identity && persisted.supersededByGenerationId == generation.supersededByGenerationId) {
+    require(
+      persisted.identity == identity &&
+        persisted.supersededByGenerationId == generation.supersededByGenerationId,
+    ) {
       "Conflicting immutable review generation '${identity.generationId}'."
     }
   }
 
-  override fun appendPass(
-    workflowId: String,
-    generationId: String,
-    passNumber: Int,
-    repositoryCheckpoint: String,
-  ) {
+  override fun appendPass(workflowId: String, generationId: String, passNumber: Int, repositoryCheckpoint: String) {
     connection.prepareStatement(
       """
       INSERT OR IGNORE INTO review_generation_passes (
@@ -50,10 +49,11 @@ internal class ReviewGenerationRuntime(
       ) VALUES (?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, generationId)
-      statement.setInt(3, passNumber)
-      statement.setString(4, repositoryCheckpoint)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setString(parameterIndex++, generationId)
+      statement.setInt(parameterIndex++, passNumber)
+      statement.setString(parameterIndex, repositoryCheckpoint)
       statement.executeUpdate()
     }
     connection.prepareStatement(
@@ -62,11 +62,12 @@ internal class ReviewGenerationRuntime(
       WHERE workflow_id = ? AND generation_id = ? AND pass_number = ?
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, generationId)
-      statement.setInt(3, passNumber)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setString(parameterIndex++, generationId)
+      statement.setInt(parameterIndex, passNumber)
       statement.executeQuery().use { rows ->
-        require(rows.next() && rows.getString(1) == repositoryCheckpoint) {
+        require(rows.next() && rows.getString("repository_checkpoint") == repositoryCheckpoint) {
           "Conflicting immutable review pass '$generationId/$passNumber'."
         }
       }
@@ -80,7 +81,10 @@ internal class ReviewGenerationRuntime(
     finding: GoalSubtaskReviewFinding,
   ) {
     val existing = loadFinding(workflowId, finding.findingId)
-    if (existing != null && existing != finding) {
+    if (existing != null && existing.copy(sourceGenerationId = finding.sourceGenerationId) == finding) {
+      return
+    }
+    if (existing != null) {
       require(existing.sourceGenerationId != generationId) {
         "Conflicting immutable review finding '${finding.findingId}'."
       }
@@ -100,15 +104,16 @@ internal class ReviewGenerationRuntime(
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, generationId)
-      statement.setInt(3, passNumber)
-      statement.setString(4, finding.findingId)
-      statement.setString(5, finding.severity)
-      statement.setString(6, finding.category)
-      statement.setString(7, finding.location)
-      statement.setString(8, finding.summary)
-      statement.setString(9, finding.sourceGenerationId)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, workflowId)
+      statement.setString(parameterIndex++, generationId)
+      statement.setInt(parameterIndex++, passNumber)
+      statement.setString(parameterIndex++, finding.findingId)
+      statement.setString(parameterIndex++, finding.severity)
+      statement.setString(parameterIndex++, finding.category)
+      statement.setString(parameterIndex++, finding.location)
+      statement.setString(parameterIndex++, finding.summary)
+      statement.setString(parameterIndex, finding.sourceGenerationId)
       statement.executeUpdate()
     }
     require(loadFinding(workflowId, finding.findingId) == finding) {
@@ -127,11 +132,12 @@ internal class ReviewGenerationRuntime(
       ) VALUES (?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, record.workflowId)
-      statement.setString(2, record.generationId)
-      statement.setString(3, record.findingId)
-      statement.setString(4, record.disposition.wireValue)
-      statement.setString(5, evidenceJson)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, record.workflowId)
+      statement.setString(parameterIndex++, record.generationId)
+      statement.setString(parameterIndex++, record.findingId)
+      statement.setString(parameterIndex++, record.disposition.wireValue)
+      statement.setString(parameterIndex, evidenceJson)
       statement.executeUpdate()
     }
     connection.prepareStatement(
@@ -141,9 +147,10 @@ internal class ReviewGenerationRuntime(
       WHERE workflow_id = ? AND generation_id = ? AND finding_id = ?
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, record.workflowId)
-      statement.setString(2, record.generationId)
-      statement.setString(3, record.findingId)
+      var parameterIndex = 1
+      statement.setString(parameterIndex++, record.workflowId)
+      statement.setString(parameterIndex++, record.generationId)
+      statement.setString(parameterIndex, record.findingId)
       statement.executeQuery().use { rows ->
         require(
           rows.next() &&
@@ -157,9 +164,8 @@ internal class ReviewGenerationRuntime(
   override fun loadGeneration(identity: GoalSubtaskReviewGenerationIdentity): GoalSubtaskReviewGeneration? =
     loadById(identity.workflowId, identity.generationId)?.takeIf { it.identity == identity }
 
-  override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> =
-    connection.prepareStatement(
-      """
+  override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> = connection.prepareStatement(
+    """
       SELECT f.finding_id, f.severity, f.category, f.location, f.summary, f.source_generation_id
       FROM review_generation_findings f
       JOIN review_generations g
@@ -175,15 +181,15 @@ internal class ReviewGenerationRuntime(
           LIMIT 1
         ), 'unresolved') IN ('unresolved', 'still_present')
       ORDER BY f.finding_id
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeQuery().use { rows ->
-        buildList {
-          while (rows.next()) add(rows.toFinding())
-        }
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) add(rows.toFinding())
       }
     }
+  }
 
   override fun summary(workflowId: String): GoalSubtaskReviewSummary {
     val current = connection.prepareStatement(
@@ -204,7 +210,9 @@ internal class ReviewGenerationRuntime(
     }
     val terminalCounts = GoalSubtaskReviewFindingDisposition.entries
       .filter(GoalSubtaskReviewFindingDisposition::terminal)
-      .associate { disposition -> disposition.wireValue to countDisposition(workflowId, disposition.wireValue) }
+      .associate { disposition ->
+        disposition.wireValue to connection.countReviewDisposition(workflowId, disposition.wireValue)
+      }
     val unresolved = unresolvedBlockers(workflowId)
     return GoalSubtaskReviewSummary(
       currentGenerationId = current?.first,
@@ -240,17 +248,16 @@ internal class ReviewGenerationRuntime(
       }
     }
 
-  private fun loadPassNumbers(workflowId: String, generationId: String): List<Int> =
-    connection.prepareStatement(
-      """
+  private fun loadPassNumbers(workflowId: String, generationId: String): List<Int> = connection.prepareStatement(
+    """
       SELECT pass_number FROM review_generation_passes
       WHERE workflow_id = ? AND generation_id = ? ORDER BY pass_number
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, generationId)
-      statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getInt(1)) } }
-    }
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.setString(2, generationId)
+    statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getInt(1)) } }
+  }
 
   private fun loadFinding(workflowId: String, findingId: String): GoalSubtaskReviewFinding? =
     connection.prepareStatement(
@@ -263,22 +270,25 @@ internal class ReviewGenerationRuntime(
       statement.setString(2, findingId)
       statement.executeQuery().use { rows -> if (rows.next()) rows.toFinding() else null }
     }
+}
 
-  private fun countDisposition(workflowId: String, disposition: String): Int =
-    connection.prepareStatement(
-      "SELECT COUNT(*) FROM review_finding_dispositions WHERE workflow_id = ? AND disposition = ?",
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, disposition)
-      statement.executeQuery().use { rows -> rows.next(); rows.getInt(1) }
-    }
+private fun java.sql.ResultSet.toFinding(): GoalSubtaskReviewFinding = GoalSubtaskReviewFinding(
+  findingId = getString("finding_id"),
+  severity = getString("severity"),
+  category = getString("category"),
+  location = getString("location"),
+  summary = getString("summary"),
+  sourceGenerationId = getString("source_generation_id"),
+)
 
-  private fun java.sql.ResultSet.toFinding(): GoalSubtaskReviewFinding = GoalSubtaskReviewFinding(
-    findingId = getString("finding_id"),
-    severity = getString("severity"),
-    category = getString("category"),
-    location = getString("location"),
-    summary = getString("summary"),
-    sourceGenerationId = getString("source_generation_id"),
-  )
+private fun Connection.countReviewDisposition(workflowId: String, disposition: String): Int = prepareStatement(
+  "SELECT COUNT(*) FROM review_finding_dispositions WHERE workflow_id = ? AND disposition = ?",
+).use { statement ->
+  var parameterIndex = 1
+  statement.setString(parameterIndex++, workflowId)
+  statement.setString(parameterIndex, disposition)
+  statement.executeQuery().use { rows ->
+    rows.next()
+    rows.getInt(1)
+  }
 }

@@ -1,5 +1,8 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.workflow.taskruntime.model.ReviewDeltaChange
+import skillbill.workflow.taskruntime.model.ReviewDeltaClassification
+import skillbill.workflow.taskruntime.model.ReviewGenerationDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -97,6 +100,24 @@ class ReviewDeltaClassifierTest {
 
     assertEquals(
       ReviewDeltaClassification.SEMANTIC,
+      classifier.classifyUnifiedDiff(diff).classification,
+    )
+  }
+
+  @Test
+  fun `truncated hunk inside subtasks recovers governed field ancestry`() {
+    val header =
+      "diff --git a/.feature-specs/SKILL-150/decomposition-manifest.yaml " +
+        "b/.feature-specs/SKILL-150/decomposition-manifest.yaml\n"
+    val diff = header +
+      "@@ -42,2 +42,2 @@\n" +
+      "-  workflow_id: old\n" +
+      "+  workflow_id: new\n" +
+      "-  last_resumable_step: review\n" +
+      "+  last_resumable_step: implement_fix\n"
+
+    assertEquals(
+      ReviewDeltaClassification.BOOKKEEPING_ONLY,
       classifier.classifyUnifiedDiff(diff).classification,
     )
   }

@@ -340,6 +340,7 @@ data class GoalSubtaskReviewState(
   val reviewedDeltaDigest: String? = null,
   val activePassDeltaDigest: String? = null,
   val reviewedHeadSha: String? = null,
+  val reviewedRepositoryFingerprint: String? = null,
   val passResults: List<GoalSubtaskReviewPassResult> = emptyList(),
   val emittedPassCount: Int = 0,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
@@ -573,6 +574,7 @@ data class GoalSubtaskReviewState(
     reviewedDeltaDigest?.let { put("reviewed_delta_digest", it) }
     activePassDeltaDigest?.let { put("active_pass_delta_digest", it) }
     reviewedHeadSha?.let { put("reviewed_head_sha", it) }
+    reviewedRepositoryFingerprint?.let { put("reviewed_repository_fingerprint", it) }
     operatorDecision?.let { put("operator_decision", it.wireValue) }
     if (operatorRetryRounds > 0) put("operator_retry_rounds", operatorRetryRounds)
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
@@ -600,7 +602,7 @@ data class GoalSubtaskReviewState(
         setOf(
           "contract_version", "review_base_sha", "baseline_untracked_paths", "code_review_mode", "reserved_pass_number",
           "completed_pass_count", "disposition", "review_input_artifact", "reviewed_delta_digest",
-          "active_pass_delta_digest", "reviewed_head_sha", "pass_results",
+          "active_pass_delta_digest", "reviewed_head_sha", "reviewed_repository_fingerprint", "pass_results",
           "emitted_pass_count", "blocker_dispositions", "operator_decision", "operator_retry_rounds",
           "resolved_tier", "deciding_rule",
           "remediation_base_sha",
@@ -611,13 +613,7 @@ data class GoalSubtaskReviewState(
         GoalSubtaskReviewState(
           contractVersion = raw.requireReviewStateString("contract_version", sourceLabel),
           reviewBaseSha = raw.requireReviewStateString("review_base_sha", sourceLabel),
-          baselineUntrackedPaths = raw.requireReviewStateList("baseline_untracked_paths", sourceLabel)
-            .mapIndexed { index, value ->
-              value as? String ?: reviewStateError(
-                "$sourceLabel.baseline_untracked_paths[$index]",
-                "must be a string.",
-              )
-            },
+          baselineUntrackedPaths = raw.decodeReviewStateStringList("baseline_untracked_paths", sourceLabel),
           codeReviewMode = CodeReviewExecutionMode.fromWire(
             raw.requireReviewStateString("code_review_mode", sourceLabel),
           ),
@@ -628,20 +624,11 @@ data class GoalSubtaskReviewState(
           reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
           activePassDeltaDigest = raw.optionalReviewStateString("active_pass_delta_digest", sourceLabel),
           reviewedHeadSha = raw.optionalReviewStateString("reviewed_head_sha", sourceLabel),
-          passResults = raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
-            GoalSubtaskReviewPassResult.fromArtifactMap(
-              value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
-              "$sourceLabel.pass_results[$index]",
-            )
-          },
+          reviewedRepositoryFingerprint =
+          raw.optionalReviewStateString("reviewed_repository_fingerprint", sourceLabel),
+          passResults = raw.decodeReviewPassResults(sourceLabel),
           emittedPassCount = raw.requireReviewStateInt("emitted_pass_count", sourceLabel),
-          blockerDispositions = raw.optionalReviewStateList("blocker_dispositions", sourceLabel)
-            ?.mapIndexed { index, value ->
-              GoalSubtaskBlockerDisposition.fromArtifactMap(
-                value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
-                "$sourceLabel.blocker_dispositions[$index]",
-              )
-            }.orEmpty(),
+          blockerDispositions = raw.decodeBlockerDispositions(sourceLabel),
           operatorDecision = raw.optionalReviewStateString("operator_decision", sourceLabel)
             ?.let(GoalSubtaskOperatorDecision::fromWire),
           operatorRetryRounds = raw.optionalReviewStateInt("operator_retry_rounds", sourceLabel) ?: 0,
@@ -658,6 +645,27 @@ data class GoalSubtaskReviewState(
     }
   }
 }
+
+private fun Map<String, Any?>.decodeReviewStateStringList(key: String, sourceLabel: String): List<String> =
+  requireReviewStateList(key, sourceLabel).mapIndexed { index, value ->
+    value as? String ?: reviewStateError("$sourceLabel.$key[$index]", "must be a string.")
+  }
+
+private fun Map<String, Any?>.decodeReviewPassResults(sourceLabel: String): List<GoalSubtaskReviewPassResult> =
+  requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
+    GoalSubtaskReviewPassResult.fromArtifactMap(
+      value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
+      "$sourceLabel.pass_results[$index]",
+    )
+  }
+
+private fun Map<String, Any?>.decodeBlockerDispositions(sourceLabel: String): List<GoalSubtaskBlockerDisposition> =
+  optionalReviewStateList("blocker_dispositions", sourceLabel)?.mapIndexed { index, value ->
+    GoalSubtaskBlockerDisposition.fromArtifactMap(
+      value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
+      "$sourceLabel.blocker_dispositions[$index]",
+    )
+  }.orEmpty()
 
 private fun blocksAdvance(unresolvedFindingCount: Int, findings: List<GoalSubtaskReviewCompactFinding>): Boolean =
   unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::isBlocker))

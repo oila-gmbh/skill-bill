@@ -67,7 +67,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       retryCorrectionDirective(briefing, priorSchemaFailure),
-      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds, carriedBlockerFindings),
+      outputContract(briefing, priorBlockerFindingIds, carriedBlockerFindings),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -329,7 +329,6 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun outputContract(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
     carriedBlockerFindings: List<GoalSubtaskReviewFinding>,
   ): String {
@@ -351,7 +350,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       result for downstream phases (for example plan steps, changed files, findings, or
       validation results)${producedOutputsAddendum(
       briefing,
-    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds, carriedBlockerFindings)}
+    )}${dispositionAddendum(briefing, priorBlockerFindingIds, carriedBlockerFindings)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
@@ -370,7 +369,6 @@ object FeatureTaskRuntimePhasePromptComposer {
    */
   private fun dispositionAddendum(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
     carriedBlockerFindings: List<GoalSubtaskReviewFinding>,
   ): String {

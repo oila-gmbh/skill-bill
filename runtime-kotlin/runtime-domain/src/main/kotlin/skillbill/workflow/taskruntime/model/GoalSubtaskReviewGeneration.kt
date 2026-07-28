@@ -43,7 +43,6 @@ enum class GoalSubtaskReviewFindingDisposition(val wireValue: String, val termin
   STILL_PRESENT("still_present", false),
   SUPERSEDED("superseded", true),
   ACCEPTED("accepted", true),
-  ;
 }
 
 data class GoalSubtaskReviewFinding(

@@ -105,6 +105,12 @@ properties:
     description: Repository head at which the active pass input was materialized.
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+  reviewed_repository_fingerprint:
+    description: >
+      Baseline-independent fingerprint of the exact repository tree materialized for the active
+      pass, including staged, unstaged, and owned untracked content.
+    type: string
+    minLength: 1
   pass_results:
     type: array
     description: >

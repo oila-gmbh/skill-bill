@@ -1,32 +1,9 @@
 package skillbill.workflow.taskruntime
 
-enum class ReviewDeltaClassification {
-  UNCHANGED,
-  BOOKKEEPING_ONLY,
-  SEMANTIC,
-}
-
-data class ReviewDeltaClassificationResult(
-  val contractVersion: String = CONTRACT_VERSION,
-  val classification: ReviewDeltaClassification,
-  val semanticPaths: List<String>,
-  val bookkeepingPaths: List<String>,
-) {
-  companion object {
-    const val CONTRACT_VERSION: String = "0.1"
-  }
-}
-
-data class ReviewDeltaChange(
-  val path: String,
-  val runtimeOwnedManifestFields: Set<String> = emptySet(),
-) {
-  init {
-    require(runtimeOwnedManifestFields.all { it in ReviewDeltaClassifier.RUNTIME_OWNED_MANIFEST_FIELDS }) {
-      "Review delta contains an ungoverned runtime-owned manifest field."
-    }
-  }
-}
+import skillbill.workflow.taskruntime.model.ReviewDeltaChange
+import skillbill.workflow.taskruntime.model.ReviewDeltaClassification
+import skillbill.workflow.taskruntime.model.ReviewDeltaClassificationResult
+import skillbill.workflow.taskruntime.model.ReviewGenerationDecision
 
 class ReviewDeltaClassifier(
   private val bookkeepingPathPrefixes: Set<String> = DEFAULT_BOOKKEEPING_PATH_PREFIXES,
@@ -57,57 +34,8 @@ class ReviewDeltaClassifier(
     return classify(normalized)
   }
 
-  fun classifyUnifiedDiff(diff: String): ReviewDeltaClassificationResult {
-    val changes = mutableListOf<ReviewDeltaChange>()
-    var path: String? = null
-    var changedKeys = mutableSetOf<String>()
-    val oldYamlPath = mutableListOf<Pair<Int, String>>()
-    val newYamlPath = mutableListOf<Pair<Int, String>>()
-    fun flush() {
-      val currentPath = path ?: return
-      val governedFields = if (
-        currentPath.endsWith("/decomposition-manifest.yaml") &&
-        changedKeys.isNotEmpty() &&
-        changedKeys.all { it in RUNTIME_OWNED_MANIFEST_FIELDS }
-      ) {
-        changedKeys
-      } else {
-        emptySet()
-      }
-      changes += ReviewDeltaChange(currentPath, governedFields)
-      changedKeys = mutableSetOf()
-      oldYamlPath.clear()
-      newYamlPath.clear()
-    }
-    diff.lineSequence().forEach { line ->
-      if (line.startsWith("diff --git a/")) {
-        flush()
-        path = line.substringAfter(" b/", "").takeIf(String::isNotBlank)
-      } else if (
-        path?.endsWith("/decomposition-manifest.yaml") == true &&
-        !line.startsWith("+++") &&
-        !line.startsWith("---")
-      ) {
-        val marker = line.firstOrNull()
-        if (marker == ' ' || marker == '+' || marker == '-') {
-          val yaml = line.drop(1).removePrefix("- ")
-          val indent = yaml.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0)
-          val key = yaml.trim().substringBefore(":").trim()
-          if (key.isNotBlank() && ":" in yaml) {
-            fun update(stack: MutableList<Pair<Int, String>>, changed: Boolean) {
-              while (stack.lastOrNull()?.first?.let { it >= indent } == true) stack.removeLast()
-              if (changed) changedKeys += (stack.map { it.second } + key).joinToString(".")
-              if (yaml.substringAfter(":", "").isBlank()) stack += indent to key
-            }
-            if (marker != '+') update(oldYamlPath, marker == '-')
-            if (marker != '-') update(newYamlPath, marker == '+')
-          }
-        }
-      }
-    }
-    flush()
-    return classifyChanges(changes)
-  }
+  fun classifyUnifiedDiff(diff: String): ReviewDeltaClassificationResult =
+    classifyChanges(ReviewDeltaUnifiedDiffParser(RUNTIME_OWNED_MANIFEST_FIELDS).parse(diff))
 
   private fun isBookkeeping(path: String): Boolean =
     bookkeepingPathPrefixes.any { prefix -> path == prefix || path.startsWith("$prefix/") } ||
@@ -115,8 +43,7 @@ class ReviewDeltaClassifier(
       path.endsWith("/decomposition-manifest.yaml.runtime-status") ||
       path.endsWith("/decomposition-manifest.yaml.repository-checkpoint")
 
-  private fun normalizePath(path: String): String =
-    path.trim().replace('\\', '/').removePrefix("./")
+  private fun normalizePath(path: String): String = path.trim().replace('\\', '/').removePrefix("./")
 
   companion object {
     val DEFAULT_BOOKKEEPING_PATH_PREFIXES: Set<String> = setOf(
@@ -139,10 +66,94 @@ class ReviewDeltaClassifier(
   }
 }
 
-enum class ReviewGenerationDecision {
-  RETAIN,
-  CREATE_SUCCESSOR,
+private class ReviewDeltaUnifiedDiffParser(
+  private val runtimeOwnedManifestFields: Set<String>,
+) {
+  private val changes = mutableListOf<ReviewDeltaChange>()
+  private val changedKeys = mutableSetOf<String>()
+  private val oldYamlPath = mutableListOf<Pair<Int, String>>()
+  private val newYamlPath = mutableListOf<Pair<Int, String>>()
+  private var path: String? = null
+
+  fun parse(diff: String): List<ReviewDeltaChange> {
+    diff.lineSequence().forEach(::consume)
+    flush()
+    return changes
+  }
+
+  private fun consume(line: String) {
+    if (line.startsWith("diff --git a/")) {
+      flush()
+      path = line.substringAfter(" b/", "").takeIf(String::isNotBlank)
+      return
+    }
+    parseManifestYamlLine(line)?.let(::record)
+  }
+
+  private fun parseManifestYamlLine(line: String): ParsedManifestYamlLine? {
+    if (
+      path?.endsWith("/decomposition-manifest.yaml") != true ||
+      line.startsWith("+++") ||
+      line.startsWith("---")
+    ) {
+      return null
+    }
+    val marker = line.firstOrNull()?.takeIf { it == ' ' || it == '+' || it == '-' } ?: return null
+    val yaml = line.drop(1).removePrefix("- ")
+    val key = yaml.trim().substringBefore(":").trim()
+    if (key.isBlank() || ":" !in yaml) return null
+    return ParsedManifestYamlLine(
+      marker = marker,
+      indent = yaml.indexOfFirst { !it.isWhitespace() }.coerceAtLeast(0),
+      key = key,
+      opensNestedValue = yaml.substringAfter(":", "").isBlank(),
+    )
+  }
+
+  private fun record(line: ParsedManifestYamlLine) {
+    if (line.marker != '+') update(oldYamlPath, line, line.marker == '-')
+    if (line.marker != '-') update(newYamlPath, line, line.marker == '+')
+  }
+
+  private fun update(stack: MutableList<Pair<Int, String>>, line: ParsedManifestYamlLine, changed: Boolean) {
+    while (stack.lastOrNull()?.first?.let { it >= line.indent } == true) stack.removeLast()
+    if (changed) {
+      val parsedPath = (stack.map { it.second } + line.key).joinToString(".")
+      changedKeys += if (
+        stack.isEmpty() &&
+        line.indent >= REVIEW_MANIFEST_SUBTASK_FIELD_INDENT &&
+        "subtasks.${line.key}" in runtimeOwnedManifestFields
+      ) {
+        "subtasks.${line.key}"
+      } else {
+        parsedPath
+      }
+    }
+    if (line.opensNestedValue) stack += line.indent to line.key
+  }
+
+  private fun flush() {
+    val currentPath = path ?: return
+    val governedFields = changedKeys.takeIf {
+      currentPath.endsWith("/decomposition-manifest.yaml") &&
+        it.isNotEmpty() &&
+        it.all(runtimeOwnedManifestFields::contains)
+    }?.toSet().orEmpty()
+    changes += ReviewDeltaChange(currentPath, governedFields)
+    changedKeys.clear()
+    oldYamlPath.clear()
+    newYamlPath.clear()
+  }
 }
+
+private data class ParsedManifestYamlLine(
+  val marker: Char,
+  val indent: Int,
+  val key: String,
+  val opensNestedValue: Boolean,
+)
+
+private const val REVIEW_MANIFEST_SUBTASK_FIELD_INDENT = 2
 
 object ReviewGenerationPolicy {
   fun decide(classification: ReviewDeltaClassification): ReviewGenerationDecision =

@@ -1,5 +1,18 @@
 # featuretask runtime boundary history
 
+## [2026-07-28] SKILL-150 — Lossless review generations
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/taskruntime, runtime-infra-sqlite, orchestration/contracts
+- Replaced destructive review invalidation with immutable, checkpoint-bound generations and durable finding identities/dispositions
+- Carried unresolved Blockers across semantic delta changes for explicit evidence-backed settlement; bookkeeping-only changes preserve the active review
+- Gated advancement on the durable cross-generation unresolved-Blocker ledger rather than the latest review payload alone
+- Preserved generation and finding history idempotently across remediation, pause, cap, operator disposition, abandon, crash, and resume paths
+- Exposed bounded generation, pass, carried/new Blocker counts, and terminal disposition summaries without raw review output
+- Pattern: classify repository deltas before review settlement and atomically persist generation state before workflow advancement
+- Reusable: review delta classifier, generation settlement service, artifact keys, SQLite generation runtime, and status summary reducer
+- Breaking changes/limitations: review-state schema adds generation summaries; complete review prose and source diffs remain outside normalized storage
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-07-28] SKILL-150 — Durable convergence state
 Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-ports/persistence, runtime-infra-sqlite, runtime-contracts, orchestration/contracts
 - Added versioned, bounded convergence records for implementation obligations, audit repairs, review blockers, repository generations, and phase provenance

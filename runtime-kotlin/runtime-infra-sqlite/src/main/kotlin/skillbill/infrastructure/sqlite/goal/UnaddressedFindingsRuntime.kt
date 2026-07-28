@@ -31,6 +31,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   }
 
   fun clearWorkflowLedger(workflowId: String) {
+    require(workflowId.isNotBlank()) { "Workflow id must be non-blank." }
     // Historical review evidence is append-only. Legacy callers may request a clear while reopening,
     // but generation settlement and dispositions determine authority.
   }

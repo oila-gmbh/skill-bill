@@ -149,7 +149,8 @@ class FeatureTaskRuntimeRunnerTest {
   fun `single-spec completion reconciles the spec Agent line with the ledger-derived finalizing agent`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val reopened = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened, reopened.toString())
 
     val write = harness.specStatusWriter.writes.single()
     assertEquals(SPEC_REFERENCE, write.first.toString())
@@ -1292,7 +1293,16 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals(started.sessionId, finished.sessionId)
     assertEquals("completed", finished.completionStatus)
     assertEquals(ALL_PHASES, finished.completedPhaseIds)
-    assertEquals(ALL_PHASES.associateWith { "completed" }, finished.phaseOutcomes)
+    assertEquals(
+      ALL_PHASES.associateWith { "completed" } + mapOf(
+        "review.current_generation" to "",
+        "review.current_pass" to "0",
+        "review.carried_blocker_count" to "0",
+        "review.new_blocker_count" to "0",
+        "review.terminal_dispositions" to "accepted:0,resolved:0,superseded:0",
+      ),
+      finished.phaseOutcomes,
+    )
     assertEquals("completed", finished.lastIncompletePhase)
     assertEquals("", finished.blockedReason)
   }
@@ -1409,11 +1419,9 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       },
     )
 
-    // SKILL-142: a cap exhausted with an unresolved Blocker disposition pauses for the bounded
-    // operator decision rather than blocking, and the pause is as authoritative on replay.
-    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
-    )
+    val initialReport =
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(initialReport, initialReport.toString())
     assertEquals("review", paused.pausedPhase)
     val cappedLaunches = reviewLaunches
     assertEquals(
@@ -1422,24 +1430,16 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       "the paused review must retain the digest of the unchanged delta it judged",
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
-    )
+    val replayReport =
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(replayReport, replayReport.toString())
     assertEquals(
       cappedLaunches,
       reviewLaunches,
       "an unchanged delta leaves the capped verdict authoritative and launches no review",
     )
 
-    val repaired = GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = "0".repeat(40),
-        trackedDelta = "diff --git a/Repaired.kt b/Repaired.kt",
-        ownedUntrackedPatches = "",
-      ),
-    )
+    val repaired = changedGoalReviewInput()
     repeat(2) { git.goalReviewBuildResults += repaired }
     assertTrue(
       harness.ledgerRows.any { it.severity == "blocker" },
@@ -1453,9 +1453,12 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened)
     assertTrue(
-      harness.ledgerRows.isEmpty(),
-      "invalidating the capped generation retracts its rows, which restarted pass numbering can no " +
-        "longer supersede: ${harness.ledgerRows}",
+      harness.recorder.unresolvedReviewBlockers(WORKFLOW_ID).isEmpty(),
+      "the successor generation must explicitly resolve the carried Blocker before advancement",
+    )
+    assertTrue(
+      harness.ledgerRows.isNotEmpty(),
+      "generation invalidation preserves the historical unaddressed-findings ledger",
     )
   }
 
@@ -1473,13 +1476,14 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
         reviewLaunches
       },
     )
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
-    )
+    val initialReport =
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(initialReport, initialReport.toString())
     val cappedLaunches = reviewLaunches
     harness.stripReviewedDeltaDigest()
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val reopened = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened, reopened.toString())
     assertTrue(
       reviewLaunches > cappedLaunches,
       "a cap that cannot prove what it judged is not authoritative and reopens",
@@ -2032,7 +2036,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
-  fun `crash reconciliation preserves a changes requested disposition without structured findings`() {
+  fun `legacy crash reconciliation without a repository checkpoint fails closed`() {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -2068,7 +2072,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       """.trimIndent(),
     )
 
-    harness.runner.run(
+    val report = harness.runner.run(
       harness.request().copy(
         transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
           forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
@@ -2077,11 +2081,11 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       ),
     )
 
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "runtime repository checkpoint")
     val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(1, state.completedPassCount)
-    val passResult = state.passResults.single()
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, passResult.verdict)
-    assertEquals(1, passResult.unresolvedFindingCount)
+    assertEquals(0, state.completedPassCount)
+    assertEquals(1, state.reservedPassNumber)
   }
 
   @Test
@@ -4138,6 +4142,9 @@ internal class RunnerHarness(
       .orEmpty()
       .toMutableMap()
     state.remove("reviewed_delta_digest")
+    state.remove("active_pass_delta_digest")
+    state.remove("reviewed_head_sha")
+    state.remove("reviewed_repository_fingerprint")
     artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = state
     repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
   }
@@ -4332,7 +4339,7 @@ private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLaunche
       facts(
         reviewFindingsOutput(
           changesRequested = launch <= 2,
-          dispositionedBlockerIds = if (launch > 1) listOf("pass1-blocker-1") else emptyList(),
+          dispositionedBlockerIds = if (launch > 1) listOf("finding-1") else emptyList(),
         ),
       )
     } else {
@@ -4350,7 +4357,7 @@ private fun crashingRemediationReviewLauncher(nextLaunch: () -> Int): RuntimeRec
       1 -> facts(reviewFindingsOutput(changesRequested = true))
       2 -> spawnFailedFacts()
       else -> facts(
-        reviewFindingsOutput(changesRequested = false, dispositionedBlockerIds = listOf("pass1-blocker-1")),
+        reviewFindingsOutput(changesRequested = false, dispositionedBlockerIds = listOf("finding-1")),
       )
     }
   }
@@ -4788,7 +4795,7 @@ private fun reviewFixLauncher(
       facts(
         reviewFindingsOutput(
           changesRequested = reviewLaunches < convergeOnReview,
-          dispositionedBlockerIds = if (reviewLaunches > 1) listOf("pass1-blocker-1") else emptyList(),
+          dispositionedBlockerIds = if (reviewLaunches > 1) listOf("finding-1") else emptyList(),
         ),
       )
     } else {
@@ -5343,6 +5350,15 @@ internal class RuntimeFakeDatabaseSessionFactory(
     linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
     linkedMapOf<Triple<String, String, Int>, skillbill.ports.persistence.ProducerOutputEvidence>()
+  private val reviewGenerationRows =
+    linkedMapOf<Pair<String, String>, skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration>()
+  private val reviewFindingRows =
+    linkedMapOf<Pair<String, String>, skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding>()
+  private val reviewDispositionRows =
+    linkedMapOf<
+      Triple<String, String, String>,
+      skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord,
+      >()
 
   fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
     diagnosticRecords.values.toList()
@@ -5421,6 +5437,123 @@ internal class RuntimeFakeDatabaseSessionFactory(
         ledgerRows.filter { it.issueKey == issueKey }
 
       override fun issueExists(issueKey: String): Boolean = knownIssue
+    }
+    override val reviewGenerations = object : skillbill.ports.persistence.ReviewGenerationRepository {
+      override fun appendGeneration(generation: skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration) {
+        val key = generation.identity.workflowId to generation.identity.generationId
+        val existing = reviewGenerationRows.putIfAbsent(key, generation)
+        require(
+          existing == null ||
+            existing.identity == generation.identity &&
+            existing.supersededByGenerationId == generation.supersededByGenerationId,
+        ) {
+          "Conflicting immutable review generation '${generation.identity.generationId}'."
+        }
+      }
+
+      override fun appendPass(
+        workflowId: String,
+        generationId: String,
+        passNumber: Int,
+        repositoryCheckpoint: String,
+      ) {
+        val key = workflowId to generationId
+        val generation = requireNotNull(reviewGenerationRows[key]) {
+          "Review generation '$generationId' must exist before its pass."
+        }
+        require(generation.identity.repositoryCheckpoint == repositoryCheckpoint) {
+          "Conflicting immutable review pass '$generationId/$passNumber'."
+        }
+        reviewGenerationRows[key] = generation.copy(
+          passNumbers = (generation.passNumbers + passNumber).distinct().sorted(),
+        )
+      }
+
+      override fun appendFinding(
+        workflowId: String,
+        generationId: String,
+        passNumber: Int,
+        finding: skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding,
+      ) {
+        require(reviewGenerationRows[workflowId to generationId]?.passNumbers?.contains(passNumber) == true) {
+          "Review pass '$generationId/$passNumber' must exist before its findings."
+        }
+        val initialKey = workflowId to finding.findingId
+        val existing = reviewFindingRows[initialKey]
+        if (existing == finding || existing?.copy(sourceGenerationId = finding.sourceGenerationId) == finding) return
+        val durableFinding = if (existing == null) {
+          finding
+        } else {
+          require(existing.sourceGenerationId != generationId) {
+            "Conflicting immutable review finding '${finding.findingId}'."
+          }
+          finding.copy(findingId = "$generationId:${finding.findingId}")
+        }
+        val durableKey = workflowId to durableFinding.findingId
+        val durableExisting = reviewFindingRows.putIfAbsent(durableKey, durableFinding)
+        require(durableExisting == null || durableExisting == durableFinding) {
+          "Conflicting immutable review finding '${durableFinding.findingId}'."
+        }
+      }
+
+      override fun appendDisposition(
+        record: skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord,
+      ) {
+        val key = Triple(record.workflowId, record.generationId, record.findingId)
+        val existing = reviewDispositionRows.putIfAbsent(key, record)
+        require(existing == null || existing == record) {
+          "Conflicting immutable disposition for finding '${record.findingId}'."
+        }
+      }
+
+      override fun loadGeneration(
+        identity: skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity,
+      ): skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration? =
+        reviewGenerationRows[identity.workflowId to identity.generationId]?.takeIf { it.identity == identity }
+
+      override fun unresolvedBlockers(
+        workflowId: String,
+      ): List<skillbill.workflow.taskruntime.model.GoalSubtaskReviewFinding> = reviewFindingRows
+        .filterKeys { it.first == workflowId }
+        .values
+        .filter { finding ->
+          finding.isBlocker &&
+            reviewGenerationRows[workflowId to finding.sourceGenerationId]?.supersededByGenerationId == null &&
+            reviewDispositionRows
+              .filterKeys { (recordWorkflowId, _, findingId) ->
+                recordWorkflowId == workflowId && findingId == finding.findingId
+              }
+              .values
+              .lastOrNull()
+              ?.disposition
+              ?.let {
+                it == skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition.UNRESOLVED ||
+                  it == skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition.STILL_PRESENT
+              } != false
+        }
+        .sortedBy { it.findingId }
+
+      override fun summary(workflowId: String): skillbill.workflow.taskruntime.model.GoalSubtaskReviewSummary {
+        val current = reviewGenerationRows
+          .filterKeys { it.first == workflowId }
+          .values
+          .lastOrNull { it.supersededByGenerationId == null }
+        val unresolved = unresolvedBlockers(workflowId)
+        val terminalCounts = skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition.entries
+          .filter { it.terminal }
+          .associate { disposition ->
+            disposition.wireValue to reviewDispositionRows.values.count {
+              it.workflowId == workflowId && it.disposition == disposition
+            }
+          }
+        return skillbill.workflow.taskruntime.model.GoalSubtaskReviewSummary(
+          currentGenerationId = current?.identity?.generationId,
+          currentPass = current?.passNumbers?.maxOrNull() ?: 0,
+          carriedBlockerCount = unresolved.count { it.sourceGenerationId != current?.identity?.generationId },
+          newBlockerCount = unresolved.count { it.sourceGenerationId == current?.identity?.generationId },
+          terminalDispositionCounts = terminalCounts,
+        )
+      }
     }
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
@@ -5805,11 +5938,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
     assertEquals(2, reserved.reservedPassNumber)
 
     val recoveredOutput = reviewFindingsOutput(changesRequested = true)
-    val recoveredMap = requireNotNull(
-      skillbill.contracts.JsonSupport.parseObjectOrNull(recoveredOutput)
-        ?.let { skillbill.contracts.JsonSupport.jsonElementToValue(it) }
-        ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap),
-    )
+    val recoveredMap = parseRuntimePhaseOutput(recoveredOutput)
     val recovered = harness.goalContinuationRecorder.completeGoalReviewPass(
       skillbill.application.featuretask.GoalReviewPassCompletionRequest(
         workflowId = WORKFLOW_ID,
@@ -5818,6 +5947,13 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         findings = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.fromOutput(recoveredMap),
         rawReviewResult = recoveredOutput,
         normalizedOutput = recoveredMap,
+        blockerDispositions = listOf(
+          skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition(
+            findingId = "finding-1",
+            verdict = skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict.UNRESOLVED,
+            evidence = listOf("Foo.kt:42 in the recovered remediation delta"),
+          ),
+        ),
         repositoryCheckpoint = "recovered-review-checkpoint",
       ),
     )
@@ -5826,10 +5962,27 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
     assertEquals(null, recovered.reservedPassNumber)
     val generation = requireNotNull(harness.recorder.reviewGenerationSummary(WORKFLOW_ID))
     assertEquals(2, generation.currentPass)
-    assertEquals(1, generation.newBlockerCount)
+    assertEquals(1, generation.carriedBlockerCount)
+    assertEquals(0, generation.newBlockerCount)
     assertFullyAssociatedLedgerRows(harness, passNumber = 2, subtaskId = 5)
   }
 }
+
+private fun parseRuntimePhaseOutput(output: String): Map<String, Any?> = requireNotNull(
+  skillbill.contracts.JsonSupport.parseObjectOrNull(output)
+    ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+    ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap),
+)
+
+private fun changedGoalReviewInput(): GoalSubtaskReviewInputResult = GoalSubtaskReviewInputResult(
+  status = "ok",
+  input = GoalSubtaskReviewInput(
+    reviewBaseSha = "0".repeat(40),
+    currentHeadSha = "0".repeat(40),
+    trackedDelta = "diff --git a/Repaired.kt b/Repaired.kt",
+    ownedUntrackedPatches = "",
+  ),
+)
 
 private fun assertFullyAssociatedLedgerRows(harness: RunnerHarness, passNumber: Int, subtaskId: Int) {
   val rows = harness.ledgerRows.filter { it.reviewPassNumber == passNumber }
