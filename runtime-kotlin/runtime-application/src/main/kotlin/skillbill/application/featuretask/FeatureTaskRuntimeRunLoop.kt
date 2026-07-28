@@ -30,7 +30,6 @@ import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -172,7 +171,9 @@ internal class FeatureTaskRuntimeRunLoop(
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
     .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
-    ?.takeIf { state.recordFor(it.phaseId) == null }
+    ?.takeIf { retry ->
+      state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
+    }
   private var operatorBlockRetryCompleted: Boolean = false
 
   private var pendingReentry: PendingReentry? = resumedReentry()
@@ -2053,21 +2054,19 @@ internal class FeatureTaskRuntimeRunLoop(
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
     val producerEvidence = recorder.producerOutput(
-      request.workflowId, producer, producingIteration, request.dbPathOverride,
-    ) ?: requireNotNull(rejectedRecord).let { output ->
-      val bytes = output.payload.encodeToByteArray()
-      ProducerOutputEvidence(
-        request.workflowId,
-        producer,
-        producingIteration,
-        state.recordFor(producer)?.resolvedAgentId ?: "legacy-unknown",
-        "legacy-unknown",
-        java.time.Instant.now(),
-        bytes.size.toLong(),
-        RejectedOutputDiagnosticService.sha256(bytes),
-        bytes,
-      )
-    }
+      request.workflowId,
+      producer,
+      producingIteration,
+      request.dbPathOverride,
+    ) ?: return blockAndPersistInPhase(
+      run,
+      iteration,
+      "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but exact " +
+        "raw evidence for attempt $producingIteration is unavailable. The run blocks instead of fabricating " +
+        "a rejected-output diagnostic from normalized workflow state.",
+      observability,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticIdentity = recordRejectedOutput(
       run = run,
@@ -2133,36 +2132,24 @@ internal class FeatureTaskRuntimeRunLoop(
         output.phaseId,
         output.iteration.coerceAtLeast(1),
         request.dbPathOverride,
-      ) ?: output.payload.encodeToByteArray().let { bytes ->
-        ProducerOutputEvidence(
-          request.workflowId,
-          output.phaseId,
-          output.iteration,
-          state.recordFor(output.phaseId)?.resolvedAgentId ?: "legacy-unknown",
-          "legacy-unknown",
-          java.time.Instant.now(),
-          bytes.size.toLong(),
-          RejectedOutputDiagnosticService.sha256(bytes),
-          bytes,
-        )
-      }
-    } ?: throw RejectedOutputDiagnosticError.Retrieval(
-      "actual rejected producer output is unavailable for unattributable reconciliation",
-    )
-    recordRejectedOutput(
-      run = run,
-      iteration = evidence.attempt,
-      rule = "reconciliation-${rejection.rejectionClass}",
-      reason = detail,
-      outputBytes = evidence.payload ?: byteArrayOf(),
-      phaseId = evidence.phaseId,
-      agentId = evidence.agentId,
-      model = evidence.model,
-      path = rejectionPath(rejection.rejectionDetail),
-      outputByteSize = evidence.byteSize,
-      outputSha256 = evidence.sha256,
-      outputTruncated = evidence.payload == null,
-    )
+      )
+    }
+    evidence?.let {
+      recordRejectedOutput(
+        run = run,
+        iteration = it.attempt,
+        rule = "reconciliation-${rejection.rejectionClass}",
+        reason = detail,
+        outputBytes = it.payload ?: byteArrayOf(),
+        phaseId = it.phaseId,
+        agentId = it.agentId,
+        model = it.model,
+        path = rejectionPath(rejection.rejectionDetail),
+        outputByteSize = it.byteSize,
+        outputSha256 = it.sha256,
+        outputTruncated = it.payload == null,
+      )
+    }
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
         "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
@@ -2181,15 +2168,6 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     )
-  }
-
-  private fun boundedRejectionDetail(detail: String): String {
-    val trimmed = detail.trim().ifBlank { "no detail available" }
-    return if (trimmed.length <= RECORD_REJECTION_DETAIL_MAX_CHARS) {
-      trimmed
-    } else {
-      trimmed.take(RECORD_REJECTION_DETAIL_MAX_CHARS) + "…(truncated)"
-    }
   }
 
   private fun rejectionPath(detail: String): String {
@@ -2258,20 +2236,6 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
-    recorder.retainProducerOutput(
-      ProducerOutputEvidence(
-        request.workflowId,
-        run.phaseId,
-        iteration,
-        run.resolvedAgent.resolvedAgentId,
-        run.modelDirective?.model ?: "unspecified",
-        java.time.Instant.now(),
-        outputByteSize,
-        outputSha256,
-        outputBytes.takeUnless { outputTruncated },
-      ),
-      run.request.dbPathOverride,
-    )
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
     settleValidatedOutput(
       run, iteration, normalized, observability, fileManifest,
@@ -2360,23 +2324,8 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       return schemaInvalidAttempt(reason, fileManifest)
     }
-    mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return reject("mutating-reconciliation", reason)
-    }
-    val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
-    terminalAuditRepairReason?.let { reason ->
-      return reject("terminal-audit-repair", reason)
-    }
-    auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return reject("audit-repair-result", reason)
-    }
-    if (!isCompactAuditOutput(run.phaseId, outputText)) {
-      auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-        return reject("audit-durable-ledger", reason)
-      }
-    }
-    auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
-      return reject("audit-closed-criterion", reason)
+    firstValidatedOutputRejection(run.phaseId, outputText, outputMap)?.let { (rule, reason) ->
+      return reject(rule, reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -2430,6 +2379,20 @@ internal class FeatureTaskRuntimeRunLoop(
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return reject("output-verification", reason)
     }
+    recorder.retainProducerOutput(
+      ProducerOutputEvidence(
+        request.workflowId,
+        run.phaseId,
+        iteration,
+        run.resolvedAgent.resolvedAgentId,
+        run.modelDirective?.model ?: "unspecified",
+        java.time.Instant.now(),
+        outputByteSize,
+        outputSha256,
+        outputBytes.takeUnless { outputTruncated },
+      ),
+      run.request.dbPathOverride,
+    )
     return persistAcceptedOutput(
       run,
       iteration,
@@ -2439,6 +2402,24 @@ internal class FeatureTaskRuntimeRunLoop(
       repositoryFingerprint,
     )
   }
+
+  private fun nonCompactAuditDurableLedgerGateReason(
+    phaseId: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): String? = if (isCompactAuditOutput(phaseId, outputText)) null else auditDurableLedgerGateReason(phaseId, outputMap)
+
+  private fun firstValidatedOutputRejection(
+    phaseId: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): Pair<String, String>? =
+    mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
+      ?: terminalAuditRepairBlockGateReason(phaseId, outputMap)?.let { "terminal-audit-repair" to it }
+      ?: auditRepairResultGateReason(phaseId, outputMap)?.let { "audit-repair-result" to it }
+      ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
+        ?.let { "audit-durable-ledger" to it }
+      ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
@@ -3612,7 +3593,12 @@ internal class FeatureTaskRuntimeRunLoop(
         stdoutSha256: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
       ): LaunchResult = Captured(
-        stdout, stdoutBytes, stdoutTruncated, stdoutByteSize, stdoutSha256, fileManifest,
+        stdout,
+        stdoutBytes,
+        stdoutTruncated,
+        stdoutByteSize,
+        stdoutSha256,
+        fileManifest,
       )
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
         InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
@@ -3696,16 +3682,11 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
-
 // The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
 // planning projection. The current seam quarantines the record and regenerates its producer instead,
 // so this phrase is emitted by no live path and only ever matches a legacy durable row.
 private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
   "rejected an upstream bounded planning projection at the launch seam"
-
-// Bounds the schema-locations detail carried into a quarantine entry and a block reason. Schema
-// locations only, never record bodies, so this is a defensive ceiling rather than a content filter.
-private const val RECORD_REJECTION_DETAIL_MAX_CHARS = 2_000
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'

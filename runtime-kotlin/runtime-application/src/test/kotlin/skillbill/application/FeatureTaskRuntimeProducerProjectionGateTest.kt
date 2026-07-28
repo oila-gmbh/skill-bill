@@ -31,8 +31,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("plan", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("plan"), "the plan phase must retry to the cap, not settle completed")
-    assertContains(outcome.blocked.blockedReason, "executable_plan")
-    assertContains(outcome.blocked.blockedReason, "projection_kind is missing")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "producer-projection",
+      "executable_plan",
+      "projection_kind is missing",
+    )
     assertTrue(outcome.launchedNever("implement"), "a malformed producer must not advance to its consumer")
   }
 
@@ -42,7 +46,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("plan", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("plan"))
-    assertContains(outcome.blocked.blockedReason, "contract_version")
+    assertPrivateDiagnosticRejection(outcome.blocked.blockedReason, "producer-projection", "contract_version")
   }
 
   @Test
@@ -51,7 +55,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("plan", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("plan"))
-    assertContains(outcome.blocked.blockedReason, "undeclared task")
+    assertPrivateDiagnosticRejection(outcome.blocked.blockedReason, "producer-projection", "undeclared task")
   }
 
   // --- preplan and implement, incl. the two RDN-29 production shapes ----------------------------
@@ -62,8 +66,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("preplan", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("preplan"))
-    assertContains(outcome.blocked.blockedReason, "preplanning_digest")
-    assertContains(outcome.blocked.blockedReason, "rollout")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "producer-projection",
+      "preplanning_digest",
+      "rollout",
+    )
     assertTrue(outcome.launchedNever("plan"))
   }
 
@@ -73,8 +81,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("implement", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("implement"))
-    assertContains(outcome.blocked.blockedReason, "implementation_receipt")
-    assertContains(outcome.blocked.blockedReason, "deviations")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "producer-projection",
+      "implementation_receipt",
+      "deviations",
+    )
     assertTrue(outcome.launchedNever("audit"))
   }
 
@@ -84,8 +96,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("validate", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("validate"))
-    assertContains(outcome.blocked.blockedReason, "repository_checkpoint")
-    assertContains(outcome.blocked.blockedReason, "non-blank fingerprint")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "consumer-projection",
+      "repository_checkpoint",
+      "non-blank fingerprint",
+    )
     assertTrue(outcome.launchedNever("write_history"))
   }
 
@@ -118,8 +134,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     assertEquals("implement", blocked.lastIncompletePhase)
     // One conforming forward launch, then a re-entry that retries the malformed receipt to the cap.
     assertEquals(1 + cap, implementLaunches, "the re-entered implement must retry the malformed receipt to the cap")
-    assertContains(blocked.blockedReason, "implementation_receipt")
-    assertContains(blocked.blockedReason, "deviations")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "producer-projection",
+      "implementation_receipt",
+      "deviations",
+    )
   }
 
   // --- the decompose exemption is scoped to the executable-plan producer ------------------------
@@ -134,8 +154,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("preplan", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("preplan"))
-    assertContains(outcome.blocked.blockedReason, "preplanning_digest")
-    assertContains(outcome.blocked.blockedReason, "is not a valid")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "producer-projection",
+      "preplanning_digest",
+      "is not a valid",
+    )
     assertTrue(outcome.launchedNever("plan"), "a decompose-shaped preplan must not bypass the gate and wedge plan")
   }
 
@@ -145,8 +169,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
     assertEquals("implement", outcome.blocked.lastIncompletePhase)
     assertEquals(cap, outcome.launchCount("implement"))
-    assertContains(outcome.blocked.blockedReason, "implementation_receipt")
-    assertContains(outcome.blocked.blockedReason, "is not a valid")
+    assertPrivateDiagnosticRejection(
+      outcome.blocked.blockedReason,
+      "producer-projection",
+      "implementation_receipt",
+      "is not a valid",
+    )
     assertTrue(outcome.launchedNever("audit"), "a decompose-shaped implement must not bypass the gate and wedge audit")
   }
 
@@ -168,17 +196,16 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   // --- AC-006 / AC-004: reason content, truncation, and the shared validator port ---------------
 
   @Test
-  fun `the block reason names the phase the expected projection kind and the validation failure`() {
+  fun `the block reason identifies the rule without exposing private validation detail`() {
     val outcome = runBlockingProducer("plan", PLAN_MISSING_PROJECTION_KIND)
 
     val reason = outcome.blocked.blockedReason
     assertContains(reason, "Phase 'plan'")
-    assertContains(reason, "executable_plan")
-    assertContains(reason, "projection_kind is missing")
+    assertPrivateDiagnosticRejection(reason, "producer-projection", "executable_plan", "projection_kind is missing")
   }
 
   @Test
-  fun `the retry prompt context carries the projection rejection so the agent can fix it`() {
+  fun `the retry prompt carries a private diagnostic pointer without rejected detail`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -194,8 +221,11 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "plan" }
     assertEquals(cap, planPrompts.size)
-    assertContains(planPrompts[1], "executable_plan")
-    assertContains(planPrompts[1], "projection_kind is missing")
+    assertPrivateDiagnosticRejection(
+      planPrompts[1],
+      "producer-projection",
+      "projection_kind is missing",
+    )
   }
 
   @Test
@@ -216,7 +246,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     assertEquals("preplan", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "… [truncated]")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "producer-projection", longReason)
     assertTrue(
       !blocked.blockedReason.contains("x".repeat(1_000)),
       "the validator's oversized reason must be truncated, not embedded whole",

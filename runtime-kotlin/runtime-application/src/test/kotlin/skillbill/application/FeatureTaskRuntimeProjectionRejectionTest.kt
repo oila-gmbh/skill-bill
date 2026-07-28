@@ -1,10 +1,13 @@
 package skillbill.application
 
+import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -117,14 +120,17 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       agentAssignment = phasePerAgentAssignment(),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    val legacyPlan =
+      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
+        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
     harness.seedPhase(
       "plan",
       "completed",
       1,
       phaseAgent("plan"),
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
-        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}""",
+      legacyPlan,
     )
+    harness.retainExactProducerEvidence("plan", legacyPlan)
 
     val report = harness.runner.run(harness.request())
 
@@ -165,14 +171,17 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
     // The upstream implement record predates the bounded projection (free-form body, no projection_kind).
+    val legacyImplementation =
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
     harness.seedPhase(
       "implement",
       "completed",
       1,
       phaseAgent("implement"),
-      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
-        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}""",
+      legacyImplementation,
     )
+    harness.retainExactProducerEvidence("implement", legacyImplementation)
     // The consumer was blocked by the pre-quarantine build with the exact legacy launch-seam reason, and
     // those rejections already spent its fix-loop budget (attempt 4 > cap 3). Re-entry must restart the
     // budget — the consumer never actually ran — so it reaches the live seam instead of re-blocking.
@@ -256,14 +265,17 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    val legacyImplementation =
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
     harness.seedPhase(
       "implement",
       "completed",
       1,
       phaseAgent("implement"),
-      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
-        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}""",
+      legacyImplementation,
     )
+    harness.retainExactProducerEvidence("implement", legacyImplementation)
     val launchSeamReason =
       "Feature-task-runtime phase 'audit' rejected an upstream bounded planning projection at the launch " +
         "seam (workflow '$WORKFLOW_ID'): implement#produced_outputs fails schema validation."
@@ -364,6 +376,23 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       }
     """.trimIndent()
   }
+}
+
+private fun RunnerHarness.retainExactProducerEvidence(phaseId: String, output: String) {
+  val bytes = output.encodeToByteArray()
+  recorder.retainProducerOutput(
+    ProducerOutputEvidence(
+      workflowId = WORKFLOW_ID,
+      phaseId = phaseId,
+      attempt = 1,
+      agentId = phaseAgent(phaseId),
+      model = "test-model",
+      recordedAt = Instant.EPOCH,
+      byteSize = bytes.size.toLong(),
+      sha256 = RejectedOutputDiagnosticService.sha256(bytes),
+      payload = bytes,
+    ),
+  )
 }
 
 private val DIGEST_LIST_FIELDS = listOf(

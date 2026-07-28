@@ -1,47 +1,23 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
-import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import java.io.IOException
 import java.security.MessageDigest
 import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 
-data class RejectedOutputDiagnosticConfig(
-  val maximumPayloadBytes: Long = 1_048_576,
-  val retention: Duration = Duration.ofDays(14),
-) {
-  init {
-    if (maximumPayloadBytes < 0) {
-      throw RejectedOutputDiagnosticError.InvalidConfiguration("maximumPayloadBytes must be non-negative")
-    }
-    if (retention.isNegative) {
-      throw RejectedOutputDiagnosticError.InvalidConfiguration("retention must be non-negative")
-    }
-  }
-}
-
-data class RejectedOutputDiagnosticRequest(
-  val workflowId: String,
-  val phaseId: String,
-  val attempt: Int,
-  val rule: String,
-  val path: String,
-  val reason: String,
-  val agentId: String,
-  val model: String,
-  val rawResponse: ByteArray,
-  val observedByteSize: Long = rawResponse.size.toLong(),
-  val observedSha256: String = RejectedOutputDiagnosticService.sha256(rawResponse),
-  val truncated: Boolean = false,
-)
+typealias RejectedOutputDiagnosticConfig =
+  skillbill.application.featuretask.model.RejectedOutputDiagnosticConfig
+typealias RejectedOutputDiagnosticRequest =
+  skillbill.application.featuretask.model.RejectedOutputDiagnosticRequest
 
 class RejectedOutputDiagnosticService(
   private val repository: RejectedOutputDiagnosticRepository,
@@ -76,28 +52,30 @@ class RejectedOutputDiagnosticService(
       lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
     )
     metadataValidator.validate(metadata)
-    try {
-      permissions.applyRestrictivePermissions()
-    } catch (error: RejectedOutputDiagnosticError) {
-      throw error
-    } catch (error: Exception) {
-      throw RejectedOutputDiagnosticError.Permission("apply", error)
-    }
+    applyRestrictivePermissions()
     return repository.insert(
       RejectedOutputDiagnosticRecord(metadata, request.rawResponse.takeUnless { oversized }),
     ).metadata
   }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence) {
+    applyRestrictivePermissions()
+    cleanup()
+    repository.retainProducerOutput(evidence)
+  }
+
+  private fun applyRestrictivePermissions() {
     try {
       permissions.applyRestrictivePermissions()
     } catch (error: RejectedOutputDiagnosticError) {
       throw error
-    } catch (error: Exception) {
-      throw RejectedOutputDiagnosticError.Permission("apply", error)
+    } catch (error: IOException) {
+      permissionFailure(error)
+    } catch (error: SecurityException) {
+      permissionFailure(error)
+    } catch (error: UnsupportedOperationException) {
+      permissionFailure(error)
     }
-    cleanup()
-    repository.retainProducerOutput(evidence)
   }
 
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
@@ -107,16 +85,8 @@ class RejectedOutputDiagnosticService(
     cleanup()
     val record = repository.read(identity)
     metadataValidator.validate(record.metadata)
-    when (record.metadata.lifecycle) {
-      RejectedOutputLifecycle.EXPIRED -> throw RejectedOutputDiagnosticError.Expired(identity)
-      RejectedOutputLifecycle.OVERSIZED -> throw RejectedOutputDiagnosticError.Oversized(identity)
-      RejectedOutputLifecycle.STORED -> Unit
-    }
-    val payload = record.payload ?: throw RejectedOutputDiagnosticError.Corrupt(identity)
-    if (payload.size.toLong() != record.metadata.byteSize || sha256(payload) != record.metadata.sha256) {
-      throw RejectedOutputDiagnosticError.Corrupt(identity)
-    }
-    return payload
+    ensureReadable(record.metadata)
+    return verifiedPayload(record)
   }
 
   fun cleanup(now: Instant = clock.instant()): Int {
@@ -124,56 +94,28 @@ class RejectedOutputDiagnosticService(
     return repository.markExpired(cutoff) + repository.deleteProducerOutputsBefore(cutoff)
   }
 
-  fun delete(selector: RejectedOutputDiagnosticSelector): Int =
-    repository.delete(validate(selector))
+  fun delete(selector: RejectedOutputDiagnosticSelector): Int = repository.delete(validate(selector))
 
   private fun validate(request: RejectedOutputDiagnosticRequest) {
-    val required = mapOf(
-      "workflowId" to request.workflowId,
-      "phaseId" to request.phaseId,
-      "rule" to request.rule,
-      "path" to request.path,
-      "reason" to request.reason,
-      "agentId" to request.agentId,
-      "model" to request.model,
-    )
-    required.entries.firstOrNull { it.value.isBlank() }?.let { (field, _) ->
-      throw RejectedOutputDiagnosticError.InvalidRequest("$field must be non-blank")
-    }
-    if (request.attempt <= 0) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("attempt must be positive")
-    }
-    if (request.observedByteSize < request.rawResponse.size || request.observedByteSize < 0) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("observedByteSize must include all retained bytes")
-    }
-    if (!Regex("[0-9a-f]{64}").matches(request.observedSha256)) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("observedSha256 must be a lowercase SHA-256 digest")
-    }
-    if (!request.truncated &&
-      (request.observedByteSize != request.rawResponse.size.toLong() ||
-        request.observedSha256 != sha256(request.rawResponse))
-    ) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("complete response evidence does not match its bytes")
+    requestValidationIssue(request)?.let { reason ->
+      throw RejectedOutputDiagnosticError.InvalidRequest(reason)
     }
   }
 
-  private fun existing(identity: String): RejectedOutputDiagnosticRecord? =
-    try {
-      repository.read(identity)
-    } catch (_: RejectedOutputDiagnosticError.Absent) {
-      null
-    }
+  private fun existing(identity: String): RejectedOutputDiagnosticRecord? = try {
+    repository.read(identity)
+  } catch (_: RejectedOutputDiagnosticError.Absent) {
+    null
+  }
 
   private fun validate(selector: RejectedOutputDiagnosticSelector): RejectedOutputDiagnosticSelector {
-    if (selector.workflowId.isBlank()) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("workflowId must be non-blank")
+    val issue = when {
+      selector.workflowId.isBlank() -> "workflowId must be non-blank"
+      selector.phaseId?.isBlank() == true -> "phaseId must be non-blank when present"
+      selector.attempt?.let { it <= 0 } == true -> "attempt must be positive when present"
+      else -> null
     }
-    if (selector.phaseId?.isBlank() == true) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("phaseId must be non-blank when present")
-    }
-    if (selector.attempt?.let { it <= 0 } == true) {
-      throw RejectedOutputDiagnosticError.InvalidRequest("attempt must be positive when present")
-    }
+    if (issue != null) throw RejectedOutputDiagnosticError.InvalidRequest(issue)
     return selector
   }
 
@@ -185,6 +127,55 @@ class RejectedOutputDiagnosticService(
       MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
   }
 }
+
+private fun verifiedPayload(record: RejectedOutputDiagnosticRecord): ByteArray {
+  val payload = record.payload ?: throw RejectedOutputDiagnosticError.Corrupt(record.metadata.identity)
+  if (payload.size.toLong() != record.metadata.byteSize ||
+    RejectedOutputDiagnosticService.sha256(payload) != record.metadata.sha256
+  ) {
+    throw RejectedOutputDiagnosticError.Corrupt(record.metadata.identity)
+  }
+  return payload
+}
+
+private fun requestValidationIssue(request: RejectedOutputDiagnosticRequest): String? {
+  val required = mapOf(
+    "workflowId" to request.workflowId,
+    "phaseId" to request.phaseId,
+    "rule" to request.rule,
+    "path" to request.path,
+    "reason" to request.reason,
+    "agentId" to request.agentId,
+    "model" to request.model,
+  )
+  val blankField = required.entries.firstOrNull { it.value.isBlank() }?.key
+  return when {
+    blankField != null -> "$blankField must be non-blank"
+    request.attempt <= 0 -> "attempt must be positive"
+    request.observedByteSize < request.rawResponse.size || request.observedByteSize < 0 ->
+      "observedByteSize must include all retained bytes"
+    !Regex("[0-9a-f]{64}").matches(request.observedSha256) ->
+      "observedSha256 must be a lowercase SHA-256 digest"
+    !request.truncated &&
+      (
+        request.observedByteSize != request.rawResponse.size.toLong() ||
+          request.observedSha256 != RejectedOutputDiagnosticService.sha256(request.rawResponse)
+        )
+    -> "complete response evidence does not match its bytes"
+    else -> null
+  }
+}
+
+private fun ensureReadable(metadata: RejectedOutputDiagnostic) {
+  when (metadata.lifecycle) {
+    RejectedOutputLifecycle.EXPIRED -> throw RejectedOutputDiagnosticError.Expired(metadata.identity)
+    RejectedOutputLifecycle.OVERSIZED -> throw RejectedOutputDiagnosticError.Oversized(metadata.identity)
+    RejectedOutputLifecycle.STORED -> Unit
+  }
+}
+
+private fun permissionFailure(error: Throwable): Nothing =
+  throw RejectedOutputDiagnosticError.Permission("apply", error)
 
 private fun RejectedOutputDiagnosticRecord.matches(request: RejectedOutputDiagnosticRequest): Boolean =
   metadata.workflowId == request.workflowId &&

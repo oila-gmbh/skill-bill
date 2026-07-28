@@ -318,7 +318,28 @@ internal class FeatureTaskRuntimeRunState(
       }
     }
     seedBudgetBasesOutsideLiveSpans(bases)
+    seedOperatorRetryBudgetBases(bases)
     return bases
+  }
+
+  private fun seedOperatorRetryBudgetBases(bases: MutableMap<String, Int>) {
+    initialLedger
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.RETRY }
+      .groupBy { it.phaseId }
+      .forEach { (phaseId, retries) ->
+        val latestRetry = retries.maxBy { it.sequenceNumber }
+        val settledAfterRetry = initialLedger.any { entry ->
+          entry.phaseId == phaseId &&
+            entry.sequenceNumber > latestRetry.sequenceNumber &&
+            entry.action in setOf(
+              FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
+              FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+            )
+        }
+        if (!settledAfterRetry && phaseId !in completed) {
+          bases[phaseId] = latestRetry.attemptCount
+        }
+      }
   }
 
   // A phase can carry a durable attempt watermark accrued under a topology whose reopened span no

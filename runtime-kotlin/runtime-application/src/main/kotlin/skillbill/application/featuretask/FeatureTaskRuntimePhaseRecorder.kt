@@ -14,13 +14,13 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
-import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
@@ -99,16 +99,28 @@ class FeatureTaskRuntimePhaseRecorder(
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun recordRejectedOutput(
-    request: RejectedOutputDiagnosticRequest,
-    dbOverride: String? = null,
-  ) = database.transaction(dbOverride) { unitOfWork ->
-    val repository = unitOfWork.rejectedOutputDiagnostics
-      ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
-    val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
-      ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
-    RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator).record(request)
-  }
+  fun recordRejectedOutput(request: RejectedOutputDiagnosticRequest, dbOverride: String? = null) =
+    database.transaction(dbOverride) { unitOfWork ->
+      val repository = unitOfWork.rejectedOutputDiagnostics
+        ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+      val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
+        ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
+      val service = RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator)
+      service.retainProducerOutput(
+        ProducerOutputEvidence(
+          workflowId = request.workflowId,
+          phaseId = request.phaseId,
+          attempt = request.attempt,
+          agentId = request.agentId,
+          model = request.model,
+          recordedAt = java.time.Instant.now(),
+          byteSize = request.observedByteSize,
+          sha256 = request.observedSha256,
+          payload = request.rawResponse.takeUnless { request.truncated },
+        ),
+      )
+      service.record(request)
+    }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =
     database.transaction(dbOverride) { unitOfWork ->
@@ -892,8 +904,17 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
       val retry = operatorBlockRetryFrom(artifacts) ?: return@read null
-      val latestPhaseEntry = phaseLedgerFrom(artifacts).lastOrNull { it.phaseId == retry.phaseId }
-      retry.takeIf { latestPhaseEntry?.action == FeatureTaskRuntimePhaseLedgerAction.RETRY }
+      val phaseEntries = phaseLedgerFrom(artifacts).filter { it.phaseId == retry.phaseId }
+      val latestRetry = phaseEntries.lastOrNull { it.action == FeatureTaskRuntimePhaseLedgerAction.RETRY }
+        ?: return@read null
+      val settledAfterRetry = phaseEntries.any { entry ->
+        entry.sequenceNumber > latestRetry.sequenceNumber &&
+          entry.action in setOf(
+            FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
+            FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+          )
+      }
+      retry.takeUnless { settledAfterRetry }
     }
 
   /**

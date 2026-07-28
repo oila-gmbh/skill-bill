@@ -68,6 +68,8 @@ class DatabaseMigrationsTest {
         11 to "require-goal-planning-phase-output-0-2",
         12 to "add-bounded-review-accounting",
         13 to "allow-goal-planning-phase-output-0-3",
+        14 to "add-rejected-output-diagnostics",
+        15 to "add-private-producer-output-evidence",
       ),
       migrationDefinitions,
     )

@@ -26,31 +26,7 @@ class ProcessAgentRunAdapter(
 
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
-    val result = processRunner.run(
-      AgentRunProcessRequest(
-        command = command.command,
-        workingDirectory = command.workingDirectory,
-        timeout = command.timeout,
-        stdinText = command.stdinText,
-        progressIdleTimeout = request.progressIdleTimeout,
-        progressProbe = request.progressProbe,
-        declaredProgressProbe = request.declaredProgressProbe,
-        progressEmitter = request.progressEmitter,
-        activityProbe = WorktreeActivityProbe(command.workingDirectory),
-        environment = command.environment,
-        inheritEnvironment = command.inheritEnvironment,
-        environmentPassthroughKeys = command.environmentPassthroughKeys,
-        outputSink = request.outputSink,
-        usePtyStdio = command.usePtyStdio,
-        idlePolicy = command.idlePolicy,
-        conversationIsolation = command.conversationIsolation,
-        reviewEvidenceBroker = request.reviewEvidenceBroker,
-        nativeReviewOperations = request.nativeReviewOperations,
-        nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
-          commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
-        },
-      ),
-    )
+    val result = processRunner.run(processRequest(command, request))
     val decoded = runCatching {
       (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
     }.getOrElse { error ->
@@ -96,6 +72,30 @@ class ProcessAgentRunAdapter(
       providerUsageEnforceable = false,
     )
   }
+
+  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
+    command = command.command,
+    workingDirectory = command.workingDirectory,
+    timeout = command.timeout,
+    stdinText = command.stdinText,
+    progressIdleTimeout = request.progressIdleTimeout,
+    progressProbe = request.progressProbe,
+    declaredProgressProbe = request.declaredProgressProbe,
+    progressEmitter = request.progressEmitter,
+    activityProbe = WorktreeActivityProbe(command.workingDirectory),
+    environment = command.environment,
+    inheritEnvironment = command.inheritEnvironment,
+    environmentPassthroughKeys = command.environmentPassthroughKeys,
+    outputSink = request.outputSink,
+    usePtyStdio = command.usePtyStdio,
+    idlePolicy = command.idlePolicy,
+    conversationIsolation = command.conversationIsolation,
+    reviewEvidenceBroker = request.reviewEvidenceBroker,
+    nativeReviewOperations = request.nativeReviewOperations,
+    nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
+      commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
+    },
+  )
 
   private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =
     buildString {

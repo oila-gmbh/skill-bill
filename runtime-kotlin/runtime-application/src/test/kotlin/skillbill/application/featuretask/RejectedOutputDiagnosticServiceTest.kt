@@ -2,12 +2,12 @@ package skillbill.application.featuretask
 
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -39,7 +39,10 @@ class RejectedOutputDiagnosticServiceTest {
   @Test
   fun `different attempts have distinct stable identities`() {
     val service = service(MemoryRepository())
-    assertNotEquals(service.record(request(byteArrayOf(1))).identity, service.record(request(byteArrayOf(1), 2)).identity)
+    assertNotEquals(
+      service.record(request(byteArrayOf(1))).identity,
+      service.record(request(byteArrayOf(1), 2)).identity,
+    )
   }
 
   @Test
@@ -117,7 +120,9 @@ class RejectedOutputDiagnosticServiceTest {
     val repository = MemoryRepository()
     val service = service(repository)
     val metadata = service.record(request(byteArrayOf(1, 2)))
-    repository.records[metadata.identity] = repository.records.getValue(metadata.identity).copy(payload = byteArrayOf(9))
+    repository.records[metadata.identity] = repository.records.getValue(
+      metadata.identity,
+    ).copy(payload = byteArrayOf(9))
 
     assertFailsWith<RejectedOutputDiagnosticError.Corrupt> { service.readRaw(metadata.identity) }
   }
@@ -147,18 +152,17 @@ class RejectedOutputDiagnosticServiceTest {
     }
   }
 
-  private fun service(repository: MemoryRepository, maximumPayloadBytes: Long = 100) =
-    RejectedOutputDiagnosticService(
-      repository,
-      permissions = { },
-      metadataValidator = RejectedOutputDiagnosticMetadataValidator { metadata ->
-        if (!Regex("[0-9a-f]{64}").matches(metadata.sha256)) {
-          throw InvalidRejectedOutputDiagnosticSchemaError("sha256 is invalid")
-        }
-      },
-      config = RejectedOutputDiagnosticConfig(maximumPayloadBytes = maximumPayloadBytes),
-      clock = Clock.fixed(now, ZoneOffset.UTC),
-    )
+  private fun service(repository: MemoryRepository, maximumPayloadBytes: Long = 100) = RejectedOutputDiagnosticService(
+    repository,
+    permissions = { },
+    metadataValidator = RejectedOutputDiagnosticMetadataValidator { metadata ->
+      if (!Regex("[0-9a-f]{64}").matches(metadata.sha256)) {
+        throw InvalidRejectedOutputDiagnosticSchemaError("sha256 is invalid")
+      }
+    },
+    config = RejectedOutputDiagnosticConfig(maximumPayloadBytes = maximumPayloadBytes),
+    clock = Clock.fixed(now, ZoneOffset.UTC),
+  )
 
   private fun request(bytes: ByteArray, attempt: Int = 1) = RejectedOutputDiagnosticRequest(
     workflowId = "workflow-1",

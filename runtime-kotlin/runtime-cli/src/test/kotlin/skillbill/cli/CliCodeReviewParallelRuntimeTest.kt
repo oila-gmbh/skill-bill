@@ -22,7 +22,7 @@ import kotlin.test.assertNull
 class CliCodeReviewParallelRuntimeTest {
   @Test
   fun `code-review-parallel command is registered and shows help`() {
-    val help = CliRuntime.run(listOf("code-review-parallel", "--help"), CliRuntimeContext())
+    val help = CliRuntime.run(listOf("code-review-parallel", "--help"), parallelReviewContext())
 
     assertEquals(0, help.exitCode, help.stdout)
     assertContains(help.stdout, "--agent1")
@@ -46,7 +46,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--diff-file", diff.toString(),
         "--repo-root", tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = NoOpAgentRunLauncher()),
+      parallelReviewContext(agentRunLauncher = NoOpAgentRunLauncher()),
     )
 
     assertEquals(1, result.exitCode)
@@ -73,7 +73,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--execution-mode", "delegated",
         "--repo-root", tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = launcher),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -104,7 +104,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--execution-mode", "delegated",
         "--repo-root", tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = RecordingParallelLauncher()),
+      parallelReviewContext(agentRunLauncher = RecordingParallelLauncher()),
     )
 
     assertEquals(1, result.exitCode)
@@ -115,7 +115,7 @@ class CliCodeReviewParallelRuntimeTest {
   fun `code-review-parallel fails with usage error when agent2 is omitted`() {
     val result = CliRuntime.run(
       listOf("code-review-parallel", "--agent1", "claude"),
-      CliRuntimeContext(),
+      parallelReviewContext(),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -138,7 +138,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = NoOpAgentRunLauncher()),
+      parallelReviewContext(agentRunLauncher = NoOpAgentRunLauncher()),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -160,7 +160,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = NoOpAgentRunLauncher()),
+      parallelReviewContext(agentRunLauncher = NoOpAgentRunLauncher()),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -170,7 +170,7 @@ class CliCodeReviewParallelRuntimeTest {
   fun `code-review-parallel rejects invalid scope value`() {
     val result = CliRuntime.run(
       listOf("code-review-parallel", "--agent1", "claude", "--agent2", "codex", "--scope", "invalid-scope"),
-      CliRuntimeContext(),
+      parallelReviewContext(),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -193,7 +193,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = launcher),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -221,7 +221,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = launcher),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -246,7 +246,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = launcher),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -272,7 +272,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = launcher),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
@@ -295,7 +295,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(
+      parallelReviewContext(
         environment = System.getenv() + mapOf("SKILL_BILL_AGENT" to "junie"),
         agentRunLauncher = launcher,
       ),
@@ -318,7 +318,7 @@ class CliCodeReviewParallelRuntimeTest {
 
     val viaAgent1 = CliRuntime.run(
       listOf("code-review-parallel", "--agent2", "claude", "--scope", "staged", "--repo-root", tempDir.toString()),
-      CliRuntimeContext(environment = mapOf("SKILL_BILL_AGENT" to "opencode"), agentRunLauncher = launcher),
+      parallelReviewContext(environment = mapOf("SKILL_BILL_AGENT" to "opencode"), agentRunLauncher = launcher),
     )
     assertEquals(1, viaAgent1.exitCode, viaAgent1.stdout)
     assertContains(viaAgent1.stdout, "Runtime mode is not supported on opencode")
@@ -336,7 +336,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(environment = emptyMap(), agentRunLauncher = launcher),
+      parallelReviewContext(environment = emptyMap(), agentRunLauncher = launcher),
     )
     assertEquals(1, viaAgent2.exitCode, viaAgent2.stdout)
     assertContains(viaAgent2.stdout, "Runtime mode is not supported on opencode")
@@ -359,7 +359,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(
+      parallelReviewContext(
         environment = emptyMap(),
         agentRunLauncher = launcher,
       ),
@@ -383,7 +383,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--repo-root",
         tempDir.toString(),
       ),
-      CliRuntimeContext(
+      parallelReviewContext(
         environment = emptyMap(),
         agentRunLauncher = NoOpAgentRunLauncher(),
       ),
@@ -394,6 +394,15 @@ class CliCodeReviewParallelRuntimeTest {
   }
 }
 
+private fun parallelReviewContext(
+  environment: Map<String, String> = System.getenv(),
+  agentRunLauncher: AgentRunLauncher? = null,
+): CliRuntimeContext = CliRuntimeContext(
+  environment = environment,
+  userHome = Files.createTempDirectory("cli-parallel-review-home"),
+  agentRunLauncher = agentRunLauncher,
+)
+
 private fun createGitRepo(): Path {
   val dir = Files.createTempDirectory("cli-parallel-review-git")
   runGit("init", dir.toString())
@@ -402,39 +411,7 @@ private fun createGitRepo(): Path {
   runGit("-C", dir.toString(), "config", "commit.gpgSign", "false")
   runGit("-C", dir.toString(), "commit", "--allow-empty", "-m", "initial")
 
-  // Copy platform-packs directory for platform pack discovery
-  val repoRoot = findRepoRoot()
-  val platformPacksSource = repoRoot.resolve("platform-packs")
-  if (Files.isDirectory(platformPacksSource)) {
-    val platformPacksDest = dir.resolve("platform-packs")
-    Files.createDirectories(platformPacksDest)
-    Files.walk(platformPacksSource).use { paths ->
-      paths.forEach { source ->
-        val relative = platformPacksSource.relativize(source)
-        val dest = platformPacksDest.resolve(relative)
-        if (Files.isDirectory(source)) {
-          Files.createDirectories(dest)
-        } else {
-          Files.copy(source, dest, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        }
-      }
-    }
-  }
-
   return dir
-}
-
-private fun findRepoRoot(): Path {
-  var current = Path.of(".").toAbsolutePath()
-  while (current != null) {
-    if (Files.exists(current.resolve("build.gradle.kts")) ||
-      Files.exists(current.resolve("settings.gradle.kts"))
-    ) {
-      return current
-    }
-    current = current.parent
-  }
-  return Path.of(".").toAbsolutePath()
 }
 
 private fun createStagedFile(dir: Path) {

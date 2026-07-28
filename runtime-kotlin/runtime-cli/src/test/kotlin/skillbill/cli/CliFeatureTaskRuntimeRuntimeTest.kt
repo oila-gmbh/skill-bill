@@ -1009,6 +1009,12 @@ class CliFeatureTaskRuntimeRuntimeTest {
       listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
       resumedLauncher.phaseOrder(),
     )
+    val completedStatus = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "feature-task", "status", workflowId),
+      fixture.context(RecordingPhaseLauncher()),
+    )
+    assertEquals(0, completedStatus.exitCode, completedStatus.stdout)
+    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=4")
     val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
     assertContains(resumedPrompts.first(), operatorReason)
     assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })

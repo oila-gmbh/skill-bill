@@ -237,8 +237,12 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     val blocked = assertNotNull(parity.blockedChildReason())
-    assertContains(blocked, "exact repair_item_result identifier equality")
-    assertContains(blocked, "ac-002-gap-1-item-2")
+    assertPrivateDiagnosticRejection(
+      blocked,
+      "audit-repair-result",
+      "exact repair_item_result identifier equality",
+      "ac-002-gap-1-item-2",
+    )
     val repairState = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
   }
@@ -317,7 +321,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val parity = standaloneAndGoalChildParity(launcher = ::launcher)
 
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertContains(assertNotNull(parity.blockedChildReason()), "later phase")
+    assertPrivateDiagnosticRejection(
+      assertNotNull(parity.blockedChildReason()),
+      "audit-repair-result",
+      "later phase",
+    )
   }
 
   @Test
@@ -369,7 +377,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     )
 
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertContains(requireNotNull(parity.blockedChildReason()), "durably closed acceptance criteria [AC-003]")
+    assertPrivateDiagnosticRejection(
+      requireNotNull(parity.blockedChildReason()),
+      "audit-closed-criterion",
+      "durably closed acceptance criteria [AC-003]",
+    )
     val state = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(0, state.progress.recurringGapCount)
     assertEquals(1, state.progress.newGapCount)

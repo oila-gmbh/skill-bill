@@ -2,10 +2,10 @@ package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.Test
@@ -45,23 +45,22 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
     }
   }
 
-  private fun record(payload: ByteArray): RejectedOutputDiagnosticRecord =
-    RejectedOutputDiagnosticRecord(
-      RejectedOutputDiagnostic(
-        identity = "rod_${"a".repeat(64)}",
-        workflowId = "workflow-1",
-        phaseId = "plan",
-        attempt = 1,
-        rule = "schema",
-        path = "/status",
-        reason = "invalid",
-        agentId = "codex",
-        model = "gpt",
-        recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
-        byteSize = payload.size.toLong(),
-        sha256 = "b".repeat(64),
-        lifecycle = RejectedOutputLifecycle.STORED,
-      ),
-      payload,
-    )
+  private fun record(payload: ByteArray): RejectedOutputDiagnosticRecord = RejectedOutputDiagnosticRecord(
+    RejectedOutputDiagnostic(
+      identity = "rod_${"a".repeat(64)}",
+      workflowId = "workflow-1",
+      phaseId = "plan",
+      attempt = 1,
+      rule = "schema",
+      path = "/status",
+      reason = "invalid",
+      agentId = "codex",
+      model = "gpt",
+      recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
+      byteSize = payload.size.toLong(),
+      sha256 = "b".repeat(64),
+      lifecycle = RejectedOutputLifecycle.STORED,
+    ),
+    payload,
+  )
 }

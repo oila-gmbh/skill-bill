@@ -48,7 +48,9 @@ data class FeatureTaskRuntimeQuarantineEntry(
     require(rejectionDetail.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.rejectionDetail must be non-blank." }
     require(regenerationAttempt >= 1) { "FeatureTaskRuntimeQuarantineEntry.regenerationAttempt must be >= 1." }
     require(quarantinedAtIteration >= 1) { "FeatureTaskRuntimeQuarantineEntry.quarantinedAtIteration must be >= 1." }
-    require(diagnosticIdentity.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.diagnosticIdentity must be non-blank." }
+    require(
+      diagnosticIdentity.isNotBlank(),
+    ) { "FeatureTaskRuntimeQuarantineEntry.diagnosticIdentity must be non-blank." }
     require(rejectedRecordByteSize >= 0) { "FeatureTaskRuntimeQuarantineEntry.rejectedRecordByteSize must be >= 0." }
     require(Regex("[0-9a-f]{64}").matches(rejectedRecordSha256)) {
       "FeatureTaskRuntimeQuarantineEntry.rejectedRecordSha256 must be a lowercase SHA-256 digest."

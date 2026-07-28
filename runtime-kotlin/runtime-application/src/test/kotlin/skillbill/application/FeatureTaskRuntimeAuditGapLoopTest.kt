@@ -287,8 +287,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(blocked.blockedReason, "must disposition every durable unresolved gap exactly once")
-    assertContains(blocked.blockedReason, "ac-002-gap-1")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-durable-ledger",
+      "must disposition every durable unresolved gap exactly once",
+      "ac-002-gap-1",
+    )
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
       listOf("ac-002-gap-1"),
@@ -328,7 +332,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     assertEquals("implement", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "later phase")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "audit-repair-result", "later phase")
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
@@ -417,7 +421,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(report.blockedReason, "not declared by this run: [AC-999]")
+    assertPrivateDiagnosticRejection(
+      report.blockedReason,
+      "audit-closed-criterion",
+      "not declared by this run: [AC-999]",
+    )
     assertEquals(null, harness.recorder.loadAuditRepairState(WORKFLOW_ID))
   }
 
@@ -470,7 +478,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(report.blockedReason, "durably closed acceptance criteria [AC-003]")
+    assertPrivateDiagnosticRejection(
+      report.blockedReason,
+      "audit-closed-criterion",
+      "durably closed acceptance criteria [AC-003]",
+    )
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
       listOf("ac-002-gap-1"),

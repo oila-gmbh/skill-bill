@@ -24,8 +24,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
-    assertContains(blocked.blockedReason, "ac-003-gap-1-item-1")
+    assertContains(blocked.blockedReason, "audit-repair-result")
+    assertContains(blocked.blockedReason, "Inspect the private diagnostic")
+    assertTrue(!blocked.blockedReason.contains("ac-002-gap-1-item-1"))
+    assertTrue(!blocked.blockedReason.contains("ac-003-gap-1-item-1"))
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
 
     allowExhaustiveRepair = true

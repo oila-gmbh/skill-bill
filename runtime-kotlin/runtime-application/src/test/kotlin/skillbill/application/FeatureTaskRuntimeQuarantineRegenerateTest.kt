@@ -1,10 +1,14 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -50,6 +54,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.recorder.retainPlanEvidence(legacyPlan)
 
     // Run 1: implement rejects the legacy plan, the regeneration edge fires (iteration 1), and the
     // plan regeneration crashes.
@@ -158,6 +163,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.recorder.retainPlanEvidence(legacyPlan)
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request))
 
@@ -209,4 +215,21 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     assertEquals(2, reloaded.size, "an already-recorded entry is never duplicated")
     assertEquals(loaded.map { it.diagnosticIdentity }, reloaded.map { it.diagnosticIdentity })
   }
+}
+
+private fun FeatureTaskRuntimePhaseRecorder.retainPlanEvidence(output: String) {
+  val bytes = output.encodeToByteArray()
+  retainProducerOutput(
+    ProducerOutputEvidence(
+      workflowId = WORKFLOW_ID,
+      phaseId = "plan",
+      attempt = 1,
+      agentId = phaseAgent("plan"),
+      model = "test-model",
+      recordedAt = Instant.EPOCH,
+      byteSize = bytes.size.toLong(),
+      sha256 = RejectedOutputDiagnosticService.sha256(bytes),
+      payload = bytes,
+    ),
+  )
 }

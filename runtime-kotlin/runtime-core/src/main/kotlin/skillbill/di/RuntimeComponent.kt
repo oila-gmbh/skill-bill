@@ -55,7 +55,6 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorI
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
-import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
@@ -109,6 +108,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
@@ -150,6 +150,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
@@ -197,7 +198,6 @@ import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import java.nio.file.Path
 
 @Component
@@ -253,7 +253,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun databaseSessionFactory(factory: SQLiteDatabaseSessionFactory): DatabaseSessionFactory = factory
+  fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
+    SQLiteDatabaseSessionFactory(context)
 
   @Provides
   @JvmSynthetic
@@ -622,9 +623,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun rejectedOutputDiagnosticMetadataValidator(
-    adapter: RejectedOutputDiagnosticMetadataValidatorAdapter,
-  ): RejectedOutputDiagnosticMetadataValidator = adapter
+  fun rejectedOutputDiagnosticMetadataValidator(): RejectedOutputDiagnosticMetadataValidator =
+    RejectedOutputDiagnosticMetadataValidatorAdapter()
 
   @Provides
   @JvmSynthetic

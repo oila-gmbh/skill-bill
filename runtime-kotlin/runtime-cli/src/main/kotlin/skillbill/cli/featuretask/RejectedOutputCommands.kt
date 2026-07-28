@@ -10,10 +10,15 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.io.OutputStream
+
+private const val CONTROL_CHARACTER_LIMIT: Int = 0x20
+private const val DELETE_CHARACTER_CODE: Int = 0x7f
+private const val HEX_RADIX: Int = 16
+private const val UNICODE_ESCAPE_WIDTH: Int = 4
 
 data class RejectedOutputInspectRequest(
   val workflowId: String,
@@ -52,8 +57,7 @@ class RejectedOutputInspectCommand(
 class RejectedOutputCleanupCommand(
   private val service: RejectedOutputDiagnosticService,
 ) {
-  fun execute(request: RejectedOutputCleanupRequest): Int =
-    service.delete(request.selector())
+  fun execute(request: RejectedOutputCleanupRequest): Int = service.delete(request.selector())
 }
 
 @Inject
@@ -108,18 +112,15 @@ class RejectedOutputCleanupCliCommand(
 
 private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(
   metadataValidator: RejectedOutputDiagnosticMetadataValidator,
-): RejectedOutputDiagnosticService =
-  RejectedOutputDiagnosticService(
-    rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
-    rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),
-    metadataValidator,
-  )
+): RejectedOutputDiagnosticService = RejectedOutputDiagnosticService(
+  rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
+  rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),
+  metadataValidator,
+)
 
-private fun RejectedOutputInspectRequest.selector() =
-  RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
+private fun RejectedOutputInspectRequest.selector() = RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
 
-private fun RejectedOutputCleanupRequest.selector() =
-  RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
+private fun RejectedOutputCleanupRequest.selector() = RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
 
 private fun RejectedOutputDiagnostic.safeLine(): String = listOf(
   "identity=${identity.safeField()}",
@@ -146,9 +147,9 @@ private fun String.safeField(): String = buildString {
       '\n' -> append("\\n")
       '\r' -> append("\\r")
       '\t' -> append("\\t")
-      else -> if (character.code < 0x20 || character.code == 0x7f) {
+      else -> if (character.code < CONTROL_CHARACTER_LIMIT || character.code == DELETE_CHARACTER_CODE) {
         append("\\u")
-        append(character.code.toString(16).padStart(4, '0'))
+        append(character.code.toString(HEX_RADIX).padStart(UNICODE_ESCAPE_WIDTH, '0'))
       } else {
         append(character)
       }

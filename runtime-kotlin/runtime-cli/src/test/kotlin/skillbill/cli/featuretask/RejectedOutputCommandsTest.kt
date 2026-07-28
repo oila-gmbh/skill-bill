@@ -3,10 +3,10 @@ package skillbill.cli.featuretask
 import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.io.ByteArrayOutputStream
 import java.time.Instant
 import kotlin.test.Test

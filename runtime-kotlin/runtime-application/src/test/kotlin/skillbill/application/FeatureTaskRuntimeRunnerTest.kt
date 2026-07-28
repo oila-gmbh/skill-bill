@@ -1678,9 +1678,13 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertContains(requireNotNull(implementRecord.blockedReason), "rejected by fake validator")
+    assertPrivateDiagnosticRejection(
+      requireNotNull(implementRecord.blockedReason),
+      "phase-output-schema",
+      "rejected by fake validator",
+    )
   }
 
   @Test
@@ -1694,7 +1698,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
   }
 
   @Test
@@ -3249,7 +3253,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "verification signal")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "verification signal")
     // It never advanced past review on the missing signal. Audit already ran — it precedes review.
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
@@ -3942,7 +3946,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("implement", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertContains(blocked.blockedReason, "reconciliation report")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "mutating-reconciliation", "reconciliation report")
     // The bounded fix loop retried to the cap before blocking (verified, not assumed).
     assertEquals(
       FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
@@ -5379,7 +5383,8 @@ internal class RuntimeFakeDatabaseSessionFactory(
         }
 
       override fun read(identity: String): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
-        diagnosticRecords[identity] ?: throw skillbill.ports.persistence.RejectedOutputDiagnosticError.Absent(identity)
+        diagnosticRecords[identity]
+          ?: throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Absent(identity)
 
       override fun markExpired(before: java.time.Instant): Int = 0
 
@@ -5393,8 +5398,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
         workflowId: String,
         phaseId: String,
         attempt: Int,
-      ): skillbill.ports.persistence.ProducerOutputEvidence? =
-        producerEvidence[Triple(workflowId, phaseId, attempt)]
+      ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence[Triple(workflowId, phaseId, attempt)]
     }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(

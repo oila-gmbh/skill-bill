@@ -1,27 +1,23 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
-import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.sql.Connection
 import java.sql.ResultSet
+import java.sql.SQLException
 import java.time.Instant
+import java.time.format.DateTimeParseException
 
 class SqliteRejectedOutputDiagnosticRepository(
   private val connection: Connection,
 ) : RejectedOutputDiagnosticRepository {
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord {
-    val existing = try {
-      find(record.metadata.identity)
-    } catch (error: RejectedOutputDiagnosticError) {
-      throw error
-    } catch (error: Exception) {
-      throw RejectedOutputDiagnosticError.Persistence("insert-read-existing", error)
-    }
+    val existing = persistence("insert-read-existing") { find(record.metadata.identity) }
     if (existing != null) {
       if (!existing.sameImmutableEvidence(record)) {
         throw RejectedOutputDiagnosticError.Conflict(record.metadata.identity)
@@ -38,26 +34,25 @@ class SqliteRejectedOutputDiagnosticRepository(
         """.trimIndent(),
       ).use { statement ->
         val metadata = record.metadata
-        statement.setString(1, metadata.identity)
-        statement.setString(2, metadata.workflowId)
-        statement.setString(3, metadata.phaseId)
-        statement.setInt(4, metadata.attempt)
-        statement.setString(5, metadata.rule)
-        statement.setString(6, metadata.path)
-        statement.setString(7, metadata.reason)
-        statement.setString(8, metadata.agentId)
-        statement.setString(9, metadata.model)
-        statement.setString(10, metadata.recordedAt.toString())
-        statement.setLong(11, metadata.byteSize)
-        statement.setString(12, metadata.sha256)
-        statement.setString(13, metadata.lifecycle.name.lowercase())
-        statement.setBytes(14, record.payload)
+        var index = 1
+        statement.setString(index++, metadata.identity)
+        statement.setString(index++, metadata.workflowId)
+        statement.setString(index++, metadata.phaseId)
+        statement.setInt(index++, metadata.attempt)
+        statement.setString(index++, metadata.rule)
+        statement.setString(index++, metadata.path)
+        statement.setString(index++, metadata.reason)
+        statement.setString(index++, metadata.agentId)
+        statement.setString(index++, metadata.model)
+        statement.setString(index++, metadata.recordedAt.toString())
+        statement.setLong(index++, metadata.byteSize)
+        statement.setString(index++, metadata.sha256)
+        statement.setString(index++, metadata.lifecycle.name.lowercase())
+        statement.setBytes(index, record.payload)
         statement.executeUpdate()
       }
       return record
-    } catch (error: RejectedOutputDiagnosticError) {
-      throw error
-    } catch (error: Exception) {
+    } catch (error: SQLException) {
       val raced = persistence("insert-read-raced") { find(record.metadata.identity) }
       if (raced != null && raced.sameImmutableEvidence(record)) return raced
       throw RejectedOutputDiagnosticError.Persistence("insert", error)
@@ -83,14 +78,9 @@ class SqliteRejectedOutputDiagnosticRepository(
     }
   }
 
-  override fun read(identity: String): RejectedOutputDiagnosticRecord =
-    try {
-      find(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
-    } catch (error: RejectedOutputDiagnosticError) {
-      throw error
-    } catch (error: Exception) {
-      throw RejectedOutputDiagnosticError.Corrupt(identity)
-    }
+  override fun read(identity: String): RejectedOutputDiagnosticRecord = persistence("read") {
+    find(identity) ?: throw RejectedOutputDiagnosticError.Absent(identity)
+  }
 
   override fun markExpired(before: Instant): Int = persistence("mark-expired") {
     connection.prepareStatement(
@@ -129,18 +119,20 @@ class SqliteRejectedOutputDiagnosticRepository(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
       ).use {
-        it.setString(1, evidence.workflowId)
-        it.setString(2, evidence.phaseId)
-        it.setInt(3, evidence.attempt)
-        it.setString(4, evidence.agentId)
-        it.setString(5, evidence.model)
-        it.setString(6, evidence.recordedAt.toString())
-        it.setLong(7, evidence.byteSize)
-        it.setString(8, evidence.sha256)
-        it.setBytes(9, evidence.payload)
+        var index = 1
+        it.setString(index++, evidence.workflowId)
+        it.setString(index++, evidence.phaseId)
+        it.setInt(index++, evidence.attempt)
+        it.setString(index++, evidence.agentId)
+        it.setString(index++, evidence.model)
+        it.setString(index++, evidence.recordedAt.toString())
+        it.setLong(index++, evidence.byteSize)
+        it.setString(index++, evidence.sha256)
+        it.setBytes(index, evidence.payload)
         it.executeUpdate()
       }
-      val retained = requireNotNull(readProducerOutput(evidence.workflowId, evidence.phaseId, evidence.attempt))
+      val retained = readProducerOutput(evidence.workflowId, evidence.phaseId, evidence.attempt)
+        ?: throw RejectedOutputDiagnosticError.Persistence("retain-producer-output-readback")
       if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
         !payloadsEqual(retained.payload, evidence.payload)
       ) {
@@ -154,15 +146,20 @@ class SqliteRejectedOutputDiagnosticRepository(
       connection.prepareStatement(
         "SELECT * FROM producer_output_evidence WHERE workflow_id = ? AND phase_id = ? AND attempt = ?",
       ).use {
-        it.setString(1, workflowId)
-        it.setString(2, phaseId)
-        it.setInt(3, attempt)
+        var index = 1
+        it.setString(index++, workflowId)
+        it.setString(index++, phaseId)
+        it.setInt(index, attempt)
         it.executeQuery().use { row ->
-          if (!row.next()) null else ProducerOutputEvidence(
-            row.getString("workflow_id"), row.getString("phase_id"), row.getInt("attempt"),
-            row.getString("agent_id"), row.getString("model"), Instant.parse(row.getString("recorded_at")),
-            row.getLong("byte_size"), row.getString("sha256"), row.getBytes("payload"),
-          )
+          if (!row.next()) {
+            null
+          } else {
+            ProducerOutputEvidence(
+              row.getString("workflow_id"), row.getString("phase_id"), row.getInt("attempt"),
+              row.getString("agent_id"), row.getString("model"), Instant.parse(row.getString("recorded_at")),
+              row.getLong("byte_size"), row.getString("sha256"), row.getBytes("payload"),
+            )
+          }
         }
       }
     }
@@ -181,25 +178,27 @@ class SqliteRejectedOutputDiagnosticRepository(
     statement.executeQuery().use { rows -> if (rows.next()) rows.toRecord() else null }
   }
 
-  private fun selectColumns(): String =
-    """
+  private fun selectColumns(): String = """
     SELECT identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
            recorded_at, byte_size, sha256, lifecycle, payload
     FROM rejected_output_diagnostics
-    """.trimIndent()
+  """.trimIndent()
 }
 
-private inline fun <T> persistence(operation: String, block: () -> T): T =
-  try {
-    block()
-  } catch (error: RejectedOutputDiagnosticError) {
-    throw error
-  } catch (error: Exception) {
-    throw RejectedOutputDiagnosticError.Persistence(operation, error)
-  }
+private inline fun <T> persistence(operation: String, block: () -> T): T = try {
+  block()
+} catch (error: RejectedOutputDiagnosticError) {
+  throw error
+} catch (error: SQLException) {
+  throw RejectedOutputDiagnosticError.Persistence(operation, error)
+}
 
 private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
-  val identity = runCatching { getString("identity") }.getOrNull() ?: "<invalid>"
+  val identity = try {
+    getString("identity")
+  } catch (error: SQLException) {
+    corruptRecord("<unreadable>", error)
+  }
   return try {
     RejectedOutputDiagnosticRecord(
       metadata = RejectedOutputDiagnostic(
@@ -219,14 +218,27 @@ private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
       ),
       payload = getBytes("payload"),
     )
-  } catch (error: Exception) {
-    throw RejectedOutputDiagnosticError.Corrupt(identity)
+  } catch (error: SQLException) {
+    corruptRecord(identity, error)
+  } catch (error: DateTimeParseException) {
+    corruptRecord(identity, error)
+  } catch (error: IllegalArgumentException) {
+    corruptRecord(identity, error)
   }
 }
 
+private fun corruptRecord(identity: String, error: Throwable): Nothing =
+  throw RejectedOutputDiagnosticError.Corrupt(identity, error)
+
 private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: RejectedOutputDiagnosticRecord): Boolean =
   metadata.copy(recordedAt = other.metadata.recordedAt) == other.metadata &&
-    ((payload == null && other.payload == null) || (payload != null && other.payload != null && payload.contentEquals(other.payload)))
+    (
+      (payload == null && other.payload == null) || (
+        payload != null && other.payload != null && payload.contentEquals(
+          other.payload,
+        )
+        )
+      )
 
 private fun payloadsEqual(left: ByteArray?, right: ByteArray?): Boolean =
   (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
