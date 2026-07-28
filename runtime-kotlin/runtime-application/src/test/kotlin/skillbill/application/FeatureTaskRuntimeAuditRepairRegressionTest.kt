@@ -87,6 +87,93 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
+  @Test
+  fun `blocked repair consistency failures retain stable rules and exact paths`() {
+    data class InvalidBlock(
+      val name: String,
+      val value: String?,
+      val rule: String,
+      val path: String,
+    )
+
+    val cases = listOf(
+      InvalidBlock(
+        "missing block",
+        null,
+        "audit_repair.blocked.unresolvable_repair.required",
+        "/produced_outputs/unresolvable_repair",
+      ),
+      InvalidBlock(
+        "malformed block",
+        "[]",
+        "audit_repair.blocked.unresolvable_repair.required",
+        "/produced_outputs/unresolvable_repair",
+      ),
+      InvalidBlock(
+        "missing gap",
+        """{"repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+      ),
+      InvalidBlock(
+        "unknown gap",
+        """{"gap_id":"ac-999-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+      ),
+      InvalidBlock(
+        "missing item",
+        """{"gap_id":"ac-002-gap-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+      ),
+      InvalidBlock(
+        "cross-gap item",
+        """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-999-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+      ),
+      InvalidBlock(
+        "malformed evidence",
+        """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":{}}""",
+        "audit_repair.blocked.evidence",
+        "/produced_outputs/unresolvable_repair/evidence",
+      ),
+    )
+
+    cases.forEach { invalid ->
+      var implementLaunches = 0
+      val harness = runnerHarness(
+        launcher = RuntimeRecordingLauncher { request ->
+          when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+            "audit" -> facts(auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1))
+            "implement" -> facts(
+              if (++implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                blockedRemediationOutput(
+                  gapId = "ac-002-gap-1",
+                  repairItemId = "ac-002-gap-1-item-1",
+                  unresolvableRepair = invalid.value,
+                )
+              },
+            )
+            else -> facts(validJsonOutput(phaseId))
+          }
+        },
+      )
+
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+        harness.runner.run(harness.request()),
+        invalid.name,
+      )
+      assertPrivateDiagnosticRejection(blocked.blockedReason, "terminal-audit-repair")
+      val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+      assertEquals(invalid.rule, diagnostic.rule, invalid.name)
+      assertEquals(invalid.path, diagnostic.path, invalid.name)
+    }
+  }
+
   // A contract rejection whose fix-loop budget runs out used to persist a null output artifact, leaving
   // no evidence of what the agent actually emitted.
   @Test
@@ -577,6 +664,13 @@ private fun blockedRemediationOutput(
   gapId: String,
   repairItemId: String,
   deferredItemIds: List<String> = listOf(repairItemId),
+  unresolvableRepair: String? = """
+    {
+      "gap_id":"$gapId",
+      "repair_item_id":"$repairItemId",
+      "evidence":$VALID_BLOCK_EVIDENCE
+    }
+  """.trimIndent(),
 ): String = """
   {
     "contract_version": "0.2",
@@ -588,16 +682,10 @@ private fun blockedRemediationOutput(
       "changed_files":[],
       "reconciled_state":{"reconciled":true},
       "deferred_repair_item_ids":[${deferredItemIds.joinToString(",") { "\"$it\"" }}],
-      "repair_item_results":[],
-      "unresolvable_repair":{
-        "gap_id":"$gapId",
-        "repair_item_id":"$repairItemId",
-        "evidence":{
-          "observation":"verification_failed",
-          "artifact_ref":"src/Foo.kt",
-          "check_ref":"AC-002"
-        }
-      }
+      "repair_item_results":[]${unresolvableRepair?.let { ""","unresolvable_repair":$it""" }.orEmpty()}
     }
   }
 """.trimIndent()
+
+private const val VALID_BLOCK_EVIDENCE =
+  """{"observation":"verification_failed","artifact_ref":"src/Foo.kt","check_ref":"AC-002"}"""

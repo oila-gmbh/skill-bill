@@ -2761,6 +2761,13 @@ internal class FeatureTaskRuntimeRunLoop(
         "Completed audit-gap remediation requires an empty deferred-repair representation.",
       )
     }
+    if (!blocked && produced.containsKey("unresolvable_repair")) {
+      return structuredRepairDiagnostic(
+        "audit_repair.completed.unresolvable_repair",
+        "/produced_outputs/unresolvable_repair",
+        "Only blocked audit-gap remediation may identify an unresolvable repair item.",
+      )
+    }
     val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
       if (blocked) actual.toSet() + deferred.toSet() != expected.toSet() ||
         actual.toSet().intersect(deferred.toSet()).isNotEmpty()
@@ -2956,22 +2963,49 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val block = JsonSupport.anyToStringAnyMap(produced["unresolvable_repair"])
-      ?: return "Blocked audit remediation must persist unresolvable_repair with gap_id and repair_item_id."
+      ?: return structuredRepairDiagnostic(
+        "audit_repair.blocked.unresolvable_repair.required",
+        "/produced_outputs/unresolvable_repair",
+        "Blocked audit remediation must persist an object with gap_id and repair_item_id.",
+      )
     val gapId = block["gap_id"] as? String
     val itemId = block["repair_item_id"] as? String
-    if (gapId.isNullOrBlank() || itemId.isNullOrBlank()) {
-      return "Blocked audit remediation requires nonblank gap_id and repair_item_id."
+    if (gapId.isNullOrBlank()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+        "Blocked audit remediation requires a nonblank gap_id from the accepted repair plan.",
+      )
+    }
+    if (itemId.isNullOrBlank()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+        "Blocked audit remediation requires a nonblank repair_item_id from the named gap.",
+      )
     }
     runCatching {
       auditEvidenceFromWire(block["evidence"], "unresolvable_repair.evidence")
     }.exceptionOrNull()?.let { decodeFailure ->
-      return "Blocked audit remediation evidence is not contract-safe: ${decodeFailure.diagnosticMessage()}"
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.evidence",
+        "/produced_outputs/unresolvable_repair/evidence",
+        "Blocked audit remediation evidence is not contract-safe: ${decodeFailure.diagnosticMessage()}",
+      )
     }
     val owningGap = reentry.auditRepairPlan?.gaps.orEmpty().firstOrNull { it.gapId == gapId }
-      ?: return "Blocked audit remediation references unknown gap_id '$gapId'."
+      ?: return structuredRepairDiagnostic(
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+        "Blocked audit remediation references unknown gap_id '$gapId'.",
+      )
     val carriedItems = owningGap.repairItems.map { it.repairItemId }
     return if (itemId !in carriedItems) {
-      "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'."
+      structuredRepairDiagnostic(
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+        "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'.",
+      )
     } else {
       null
     }

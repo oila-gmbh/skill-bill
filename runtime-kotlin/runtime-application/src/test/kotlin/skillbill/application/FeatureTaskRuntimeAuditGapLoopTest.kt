@@ -343,6 +343,56 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `a completed remediation cannot also name an unresolvable repair`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            val output = validJsonOutput(phaseId)
+            facts(
+              if (implementLaunches == 1) {
+                output
+              } else {
+                output.replace(
+                  "\"deferred_repair_item_ids\":[]",
+                  """
+                    "unresolvable_repair":{
+                      "gap_id":"ac-002-gap-1",
+                      "repair_item_id":"ac-002-gap-1-item-1",
+                      "evidence":{
+                        "observation":"verification_failed",
+                        "artifact_ref":"src/Foo.kt",
+                        "check_ref":"AC-002"
+                      }
+                    },
+                    "deferred_repair_item_ids":[]
+                  """.trimIndent(),
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "audit_repair.completed.unresolvable_repair",
+    )
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.completed.unresolvable_repair", diagnostic.rule)
+    assertEquals("/produced_outputs/unresolvable_repair", diagnostic.path)
+  }
+
+  @Test
   fun `recurring audit keeps the cumulative ledger identity and counters`() {
     var auditLaunches = 0
     var implementLaunches = 0
