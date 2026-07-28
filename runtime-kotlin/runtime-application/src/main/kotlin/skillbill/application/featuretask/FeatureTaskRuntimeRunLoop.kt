@@ -2319,7 +2319,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
       val diagnosticRule = structuredIdentity?.first ?: rule
       val path = structuredIdentity?.second ?: rejectionPath(detail)
-      val reason = payloadFreeRejectionReason(rule, path)
+      val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
       recordRejectedOutput(
         run, iteration, diagnosticRule, reason, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
@@ -2771,9 +2771,12 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
-      if (blocked) actual.toSet() + deferred.toSet() != expected.toSet() ||
-        actual.toSet().intersect(deferred.toSet()).isNotEmpty()
-      else actual.toSet() != expected.toSet()
+      if (blocked) {
+        actual.toSet() + deferred.toSet() != expected.toSet() ||
+          actual.toSet().intersect(deferred.toSet()).isNotEmpty()
+      } else {
+        actual.toSet() != expected.toSet()
+      }
     if (identifiersInvalid) {
       return structuredRepairDiagnostic(
         "audit_repair.results.identifiers",

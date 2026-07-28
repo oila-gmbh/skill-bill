@@ -88,60 +88,97 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   }
 
   @Test
+  fun `a completed remediation carrying structured deferred work is rejected`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              if (implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                validJsonOutput(phaseId).replace(
+                  "\"deferred_repair_item_ids\":[]",
+                  "\"deferred_repair_item_ids\":[\"ac-002-gap-1-item-1\"]",
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "audit_repair.completed.deferred_work",
+    )
+    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
+    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+  }
+
+  @Test
+  fun `a completed remediation cannot also name an unresolvable repair`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> facts(auditGapsOutput())
+          "implement" -> {
+            implementLaunches += 1
+            val output = validJsonOutput(phaseId)
+            facts(
+              if (implementLaunches == 1) {
+                output
+              } else {
+                output.replace(
+                  "\"deferred_repair_item_ids\":[]",
+                  """
+                    "unresolvable_repair":{
+                      "gap_id":"ac-002-gap-1",
+                      "repair_item_id":"ac-002-gap-1-item-1",
+                      "evidence":{
+                        "observation":"verification_failed",
+                        "artifact_ref":"src/Foo.kt",
+                        "check_ref":"AC-002"
+                      }
+                    },
+                    "deferred_repair_item_ids":[]
+                  """.trimIndent(),
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "audit_repair.completed.unresolvable_repair",
+    )
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.completed.unresolvable_repair", diagnostic.rule)
+    assertEquals("/produced_outputs/unresolvable_repair", diagnostic.path)
+  }
+
+  @Test
   fun `blocked repair consistency failures retain stable rules and exact paths`() {
-    data class InvalidBlock(
-      val name: String,
-      val value: String?,
-      val rule: String,
-      val path: String,
-    )
-
-    val cases = listOf(
-      InvalidBlock(
-        "missing block",
-        null,
-        "audit_repair.blocked.unresolvable_repair.required",
-        "/produced_outputs/unresolvable_repair",
-      ),
-      InvalidBlock(
-        "malformed block",
-        "[]",
-        "audit_repair.blocked.unresolvable_repair.required",
-        "/produced_outputs/unresolvable_repair",
-      ),
-      InvalidBlock(
-        "missing gap",
-        """{"repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
-        "audit_repair.blocked.gap_id",
-        "/produced_outputs/unresolvable_repair/gap_id",
-      ),
-      InvalidBlock(
-        "unknown gap",
-        """{"gap_id":"ac-999-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
-        "audit_repair.blocked.gap_id",
-        "/produced_outputs/unresolvable_repair/gap_id",
-      ),
-      InvalidBlock(
-        "missing item",
-        """{"gap_id":"ac-002-gap-1","evidence":$VALID_BLOCK_EVIDENCE}""",
-        "audit_repair.blocked.repair_item_id",
-        "/produced_outputs/unresolvable_repair/repair_item_id",
-      ),
-      InvalidBlock(
-        "cross-gap item",
-        """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-999-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
-        "audit_repair.blocked.repair_item_id",
-        "/produced_outputs/unresolvable_repair/repair_item_id",
-      ),
-      InvalidBlock(
-        "malformed evidence",
-        """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":{}}""",
-        "audit_repair.blocked.evidence",
-        "/produced_outputs/unresolvable_repair/evidence",
-      ),
-    )
-
-    cases.forEach { invalid ->
+    invalidBlockedRepairCases().forEach { invalid ->
       var implementLaunches = 0
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
@@ -394,6 +431,58 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     }
   }
 }
+
+private data class InvalidBlockedRepair(
+  val name: String,
+  val value: String?,
+  val rule: String,
+  val path: String,
+)
+
+private fun invalidBlockedRepairCases(): List<InvalidBlockedRepair> = listOf(
+  InvalidBlockedRepair(
+    "missing block",
+    null,
+    "audit_repair.blocked.unresolvable_repair.required",
+    "/produced_outputs/unresolvable_repair",
+  ),
+  InvalidBlockedRepair(
+    "malformed block",
+    "[]",
+    "audit_repair.blocked.unresolvable_repair.required",
+    "/produced_outputs/unresolvable_repair",
+  ),
+  InvalidBlockedRepair(
+    "missing gap",
+    """{"repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+    "audit_repair.blocked.gap_id",
+    "/produced_outputs/unresolvable_repair/gap_id",
+  ),
+  InvalidBlockedRepair(
+    "unknown gap",
+    """{"gap_id":"ac-999-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+    "audit_repair.blocked.gap_id",
+    "/produced_outputs/unresolvable_repair/gap_id",
+  ),
+  InvalidBlockedRepair(
+    "missing item",
+    """{"gap_id":"ac-002-gap-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+    "audit_repair.blocked.repair_item_id",
+    "/produced_outputs/unresolvable_repair/repair_item_id",
+  ),
+  InvalidBlockedRepair(
+    "cross-gap item",
+    """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-999-gap-1-item-1","evidence":$VALID_BLOCK_EVIDENCE}""",
+    "audit_repair.blocked.repair_item_id",
+    "/produced_outputs/unresolvable_repair/repair_item_id",
+  ),
+  InvalidBlockedRepair(
+    "malformed evidence",
+    """{"gap_id":"ac-002-gap-1","repair_item_id":"ac-002-gap-1-item-1","evidence":{}}""",
+    "audit_repair.blocked.evidence",
+    "/produced_outputs/unresolvable_repair/evidence",
+  ),
+)
 
 private fun skill128Harness(
   nextAuditLaunch: () -> Int,

@@ -84,6 +84,9 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       "ac-002-gap-1-item-1",
       "executed_verification",
     )
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.results.executed_verification", diagnostic.rule)
+    assertEquals("/produced_outputs/repair_item_results/0/executed_verification", diagnostic.path)
   }
 
   @Test

@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-07-28] SKILL-134 — Structured audit deferral
+Areas: runtime-application/featuretask, orchestration/contracts, runtime-application tests
+- Replaced recursive free-text deferral detection with explicit `deferred_repairs` and exhaustive per-item `repair_results`
+- Enforced exact repair identifiers, dependency order, terminal outcomes, changed-path/symbol evidence, executed verification, and blocked-item consistency
+- Preserved actionable diagnostic rule IDs and JSON paths while allowing legitimate future-phase language in summaries and evidence
+- Pattern: validate remediation authority from structured fields only; keep human-readable text non-authoritative
+- Reusable: shared structured repair projection validation across producer retry gates, standalone runtime, and goal-child execution
+- Breaking changes/limitations: planning projection contract now requires `deferred_repairs`; completed remediation must leave it empty
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-28] SKILL-134 — Rejected output diagnostics
 Areas: runtime-application/featuretask, runtime-cli/featuretask, runtime-contracts, runtime-domain, runtime-ports, runtime-infra-fs, runtime-infra-sqlite, orchestration/contracts
 - Persisted one exact rejected phase response per stable workflow/phase/attempt identity before retry or block, with typed metadata, digest, byte size, and deduplication

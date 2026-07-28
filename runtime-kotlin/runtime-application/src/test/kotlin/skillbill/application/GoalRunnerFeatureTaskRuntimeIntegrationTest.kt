@@ -294,13 +294,17 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   }
 
   @Test
-  fun `goal child rejects a remediation deferring carried work to a later phase`() {
+  fun `goal child accepts future phase prose when structured repair results are exhaustive`() {
     fun launcher(): RuntimeRecordingLauncher {
+      var auditLaunches = 0
       var implementLaunches = 0
       return RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) auditGapsOutput() else auditSatisfiedOutput())
+          }
           "implement" -> {
             implementLaunches += 1
             facts(
@@ -320,12 +324,19 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     }
     val parity = standaloneAndGoalChildParity(launcher = ::launcher)
 
-    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertPrivateDiagnosticRejection(
-      assertNotNull(parity.blockedChildReason()),
-      "audit-repair-result",
-      "later phase",
+    assertIs<GoalRunnerRunReport.Completed>(parity.report)
+    val observation = parity.runtime.goalChildObservation(
+      parity.childReports.last(),
+      parity.authoritativeOutcome(),
     )
+    assertEquals(
+      listOf("ac-002-gap-1-item-1"),
+      observation.repairResults.map { result ->
+        (result as skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult).repairItemId
+      },
+    )
+    assertEquals(observation.terminalReport, observation.authoritativeOutcome)
+    assertTrue(observation.unresolvedLedger.toString().contains("unresolvedGaps=[]"))
   }
 
   @Test
