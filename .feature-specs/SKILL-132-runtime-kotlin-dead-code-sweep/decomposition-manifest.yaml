@@ -60,12 +60,12 @@ subtasks:
 - id: 4
   name: "Rationalize MCP and CLI compatibility surfaces"
   spec_path: ".feature-specs/SKILL-132-runtime-kotlin-dead-code-sweep/spec_subtask_4_mcp_cli_surface.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260727-200205-oua7"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

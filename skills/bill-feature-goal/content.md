@@ -252,8 +252,8 @@ calls, and delegated observers. The cost rule is request count, not output size:
 one completion signal beats any number of short polls, and trimming a poll's
 output does not make polling acceptable.
 
-The only permitted in-session surface is exactly one completion line, errors
-such as launch failures, loud-fails, or non-zero exits, and one
+The only permitted in-session surface is one bounded terminal notification,
+errors such as launch failures, loud-fails, or non-zero exits, and one
 `skill-bill goal status` call made in direct response to an explicit user
 request.
 
@@ -265,27 +265,34 @@ Use the completion signal for the launch mode:
    to return its structured result.
 2. For a detached run where the harness provides background-exit notification,
    let that notification re-invoke the agent once with the result; do not poll.
-3. For a detached run where the harness provides no background-exit
-   notification, print the monitoring block, state that the run continues,
-   and end the turn. When the user next addresses the session, retrieve the
-   original detached command's return once. If it has completed, report its
-   structured result; if it is still running, state that the goal continues and
-   end the turn without polling. Do not substitute a `skill-bill goal status`
-   snapshot for the structured terminal result because that snapshot omits
-   `pull_request_url` and `blocked_reason`.
+3. When the harness provides no background-exit notification, do not detach.
+   Keep ownership of the original foreground process and use the harness's
+   blocking process-completion primitive to await that process's exit. Waiting
+   on the original process is a completion signal, not progress polling: do not
+   re-read status, logs, workflow state, or process output while it runs. If the
+   harness cannot keep or await the original process, loud-fail before launch
+   because the session cannot guarantee terminal delivery. Do not substitute a
+   `skill-bill goal status` snapshot for the structured terminal result because
+   that snapshot omits `pull_request_url` and `blocked_reason`.
 
-When the outcome reaches the session, emit exactly one completion line. Compose
-it only from the structured result fields `status`, completed/pending/blocked
-counts, `pull_request_url`, and `blocked_reason`:
+When the outcome reaches the session, always emit a terminal notification. For
+a clean completion, emit exactly two lines: a finished headline and one bounded
+summary line. Compose the summary only from the issue key, the feature name from
+the already-loaded manifest, and the structured result fields `status`,
+completed/pending/blocked counts, and `pull_request_url`. Do not reread files or
+invoke another command to build it. For blocked or failed outcomes, emit the
+single loud completion line with `blocked_reason`:
 
 ```text
-goal SKILL-146: complete — 3/3 subtasks, PR https://github.com/…/pull/241
+goal SKILL-146: finished
+summary: Example feature — 3/3 subtasks complete; PR https://github.com/…/pull/241
 goal SKILL-146: blocked at subtask 2 — <blocked_reason>
 goal SKILL-146: failed — <blocked_reason>
 ```
 
-Do not read back, summarize, or paraphrase run stdout to compose the completion
-line. Do not emit progress or transition lines around it.
+Keep the clean summary to one line and omit unavailable optional fields such as
+the PR URL. Do not read back, summarize, or paraphrase run stdout to compose the
+notification or summary. Do not emit progress or transition lines around it.
 
 ### Required: print the terminal monitoring command
 
@@ -305,10 +312,11 @@ while the goal continues — `watch` for a live feed, `status` for a single
 snapshot. Also state that the user can ask this session for status at any point;
 when they do, run `goal status` and report what it returns.
 
-Long goal runs may exceed a foreground command timeout. When that risk exists,
-run `skill-bill goal <issue_key> --agent <agent> --no-live-output` detached
-(background) rather than holding the foreground call open, hand the user the
-block above, and emit the single structured completion line when the run ends.
+Long goal runs may exceed one foreground command yield. Keep the original
+process alive across yields and await its terminal result through the harness's
+process-completion primitive. Detach only when the harness provides an explicit
+background-exit notification that re-invokes the session. Hand the user the
+block above, and emit the terminal notification when the run ends.
 
 The `goal_event:` transition stream below is the stable contract those read-only
 commands and any user-owned tooling consume. Heartbeats are high-frequency
