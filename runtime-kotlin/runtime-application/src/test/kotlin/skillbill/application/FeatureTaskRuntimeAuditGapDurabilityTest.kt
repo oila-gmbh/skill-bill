@@ -647,6 +647,7 @@ private fun twoItemRemediationOutput(): String = """
       ${PlanningProjectionFixtures.RECEIPT_FIELDS}
       "changed_files":["src/FooTest.kt"],
       "reconciled_state":{"reconciled":true},
+      "deferred_repair_item_ids":[],
       "repair_item_results":[{
         "repair_item_id":"ac-002-gap-1-item-1",
         "outcome":"already_satisfied",

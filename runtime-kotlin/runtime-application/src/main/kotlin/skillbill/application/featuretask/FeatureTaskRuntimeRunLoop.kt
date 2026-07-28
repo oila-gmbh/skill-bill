@@ -2730,18 +2730,48 @@ internal class FeatureTaskRuntimeRunLoop(
       .flatMap { it.repairItems }
       .map { it.repairItemId }
     if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
-    val results = (
-      JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])
-        ?.get("repair_item_results") as? List<*>
-      ).orEmpty()
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val results = (produced["repair_item_results"] as? List<*>).orEmpty()
     val resultMaps = results.mapNotNull(JsonSupport::anyToStringAnyMap)
     val actual = resultMaps.mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
     val blocked = outputMap["status"] == STATUS_BLOCKED
+    val deferredRaw = produced["deferred_repair_item_ids"]
+    if (deferredRaw !is List<*>) {
+      return structuredRepairDiagnostic(
+        "audit_repair.deferred_work.required",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Audit-gap remediation must explicitly report deferred repair-item identifiers.",
+      )
+    }
+    val deferred = deferredRaw.mapNotNull { (it as? String)?.let(::canonicalAuditIdentifier) }
+    if (deferred.size != deferredRaw.size || deferred.size != deferred.toSet().size ||
+      deferred.any { it !in expected }
+    ) {
+      return structuredRepairDiagnostic(
+        "audit_repair.deferred_work.identifiers",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Deferred repair-item identifiers must be unique exact identifiers from the accepted plan; " +
+          "expected=$expected actual=$deferred.",
+      )
+    }
+    if (!blocked && deferred.isNotEmpty()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.completed.deferred_work",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Completed audit-gap remediation requires an empty deferred-repair representation.",
+      )
+    }
     val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
-      if (blocked) !expected.toSet().containsAll(actual) else actual.toSet() != expected.toSet()
+      if (blocked) actual.toSet() + deferred.toSet() != expected.toSet() ||
+        actual.toSet().intersect(deferred.toSet()).isNotEmpty()
+      else actual.toSet() != expected.toSet()
     if (identifiersInvalid) {
-      return "Audit-gap remediation requires exact repair_item_result identifier equality; " +
-        "expected=$expected actual=$actual."
+      return structuredRepairDiagnostic(
+        "audit_repair.results.identifiers",
+        "/produced_outputs/repair_item_results",
+        "Audit-gap remediation results and deferred identifiers must exhaust the accepted plan exactly once; " +
+          "expected=$expected actual=$actual deferred=$deferred.",
+      )
     }
     val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
     val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
@@ -2750,28 +2780,36 @@ internal class FeatureTaskRuntimeRunLoop(
       val itemId = item.repairItemId
       val itemPosition = actualOrder[itemId] ?: return@forEach
       item.dependsOn.forEach { dependency ->
-        val dependencyPosition = actualOrder[dependency] ?: return@forEach
+        val dependencyPosition = actualOrder[dependency] ?: return structuredRepairDiagnostic(
+          "audit_repair.results.dependency_terminal",
+          "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
+          "Repair item '$itemId' cannot be terminal while dependency '$dependency' is deferred or missing.",
+        )
         val expectedDependency = expectedOrder[dependency] ?: return@forEach
         val expectedItem = expectedOrder[itemId] ?: return@forEach
         if (dependencyPosition >= itemPosition || expectedDependency >= expectedItem) {
-          return "Audit-gap remediation results must follow the accepted dependency order; " +
-            "'$itemId' depends on '$dependency' so '$dependency' must be reported first. Required order: $expected."
+          return structuredRepairDiagnostic(
+            "audit_repair.results.dependency_order",
+            "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
+            "Repair item '$itemId' depends on '$dependency', which must have a preceding terminal result.",
+          )
         }
       }
     }
     resultMaps.forEachIndexed { index, result ->
       auditRepairResultError(result, index)?.let { return it }
     }
-    if (containsForbiddenAuditRepairDeferral(outputMap)) {
-      return "Audit-gap remediation cannot assign carried repair work to a later phase."
-    }
     if (blocked) {
       val unresolvable = JsonSupport.anyToStringAnyMap(
-        JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])?.get("unresolvable_repair"),
+        produced["unresolvable_repair"],
       )
-      val blockedItemId = unresolvable?.get("repair_item_id") as? String
-      if (blockedItemId != null && blockedItemId in actual) {
-        return "An unresolvable repair item cannot also report a terminal fixed or already_satisfied result."
+      val blockedItemId = (unresolvable?.get("repair_item_id") as? String)?.let(::canonicalAuditIdentifier)
+      if (blockedItemId == null || blockedItemId !in deferred) {
+        return structuredRepairDiagnostic(
+          "audit_repair.blocked.deferred_item",
+          "/produced_outputs/deferred_repair_item_ids",
+          "Blocked remediation must include the item named by unresolvable_repair among its remaining work.",
+        )
       }
     }
     return null
@@ -2793,26 +2831,47 @@ internal class FeatureTaskRuntimeRunLoop(
       .exceptionOrNull()
     return when {
       missing.isNotEmpty() || unknown.isNotEmpty() ->
-        "Audit repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}."
+        structuredRepairDiagnostic(
+          "audit_repair.results.shape",
+          "/produced_outputs/repair_item_results/$index",
+          "Repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}.",
+        )
       result["outcome"] !in setOf("fixed", "already_satisfied") ->
-        "Audit repair item '$label' outcome must be 'fixed' or 'already_satisfied', was '${result["outcome"]}'."
+        structuredRepairDiagnostic(
+          "audit_repair.results.terminal_outcome",
+          "/produced_outputs/repair_item_results/$index/outcome",
+          "Repair item '$label' outcome must be fixed or already_satisfied.",
+        )
       hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
-        "Audit repair item '$label' changed_paths_or_symbols must contain at least one nonblank path or symbol, " +
-          "for example [\"src/main/Example.kt:Example\"]."
+        structuredRepairDiagnostic(
+          "audit_repair.results.repository_evidence",
+          "/produced_outputs/repair_item_results/$index/changed_paths_or_symbols",
+          "Repair item '$label' must name at least one changed path or symbol.",
+        )
       hasNoNonBlankStrings(result["executed_verification"]) ->
-        "Audit repair item '$label' executed_verification must contain at least one nonblank command and result, " +
-          "for example [\"./gradlew :runtime-domain:test --tests *ExampleTest* passed\"]."
+        structuredRepairDiagnostic(
+          "audit_repair.results.executed_verification",
+          "/produced_outputs/repair_item_results/$index/executed_verification",
+          "Repair item '$label' must report at least one executed verification and result.",
+        )
       decodeFailure != null ->
-        "Audit repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}"
+        structuredRepairDiagnostic(
+          "audit_repair.results.result_evidence",
+          "/produced_outputs/repair_item_results/$index/result_evidence",
+          "Repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}",
+        )
       result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
-        "Audit repair item '$label' reports 'already_satisfied', so changed_paths_or_symbols and " +
-          "executed_verification must each be nonempty and must not be the same list: name what already " +
-          "satisfies the item and, separately, the verification you ran to confirm it."
-      result.values.any(::containsForbiddenAuditRepairDeferral) ->
-        "Audit repair item '$label' cannot defer carried work to a later phase."
+        structuredRepairDiagnostic(
+          "audit_repair.results.distinct_evidence",
+          "/produced_outputs/repair_item_results/$index",
+          "Repair item '$label' must distinguish repository evidence from executed verification.",
+        )
       else -> null
     }
   }
+
+  private fun structuredRepairDiagnostic(ruleId: String, jsonPath: String, detail: String): String =
+    "[$ruleId] $jsonPath: $detail"
 
   private fun hasNoNonBlankStrings(value: Any?): Boolean =
     (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
@@ -2916,16 +2975,6 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       null
     }
-  }
-
-  private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
-    is String -> listOf(
-      Regex(FORWARD_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
-      Regex(REVERSE_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
-    ).any { it.containsMatchIn(value) }
-    is List<*> -> value.any(::containsForbiddenAuditRepairDeferral)
-    is Map<*, *> -> value.values.any(::containsForbiddenAuditRepairDeferral)
-    else -> false
   }
 
   private fun persistAcceptedOutput(
@@ -3694,10 +3743,3 @@ private const val OWNED_PATH_DELIMITER = '\u0000'
 // Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
 // inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
 private const val MAX_CHECKPOINT_OWNED_PATHS = 500
-
-private const val FORWARD_DEFERRAL_PATTERN =
-  "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +
-    ".{0,120}\\b(review|audit|validation|test(?:ing)?|later phase)\\b"
-private const val REVERSE_DEFERRAL_PATTERN =
-  "\\b(review|audit|validation|test(?:ing)?|later phase)\\b.{0,120}" +
-    "\\b(will|should|must|can)\\s+(handle|fix|complete|cover|address|verify)\\b"

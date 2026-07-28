@@ -302,9 +302,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
-  // AC4: naming a later phase as the place the carried work will happen is a deferral, not a repair.
+  // Structured remaining work, rather than vocabulary in free text, is the authoritative deferral signal.
   @Test
-  fun `a remediation deferring carried work to a later phase is rejected`() {
+  fun `a completed remediation carrying structured deferred work is rejected`() {
     var implementLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -318,8 +318,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
                 validJsonOutput(phaseId)
               } else {
                 validJsonOutput(phaseId).replace(
-                  "\"summary\": \"Phase produced a validated output.\"",
-                  "\"summary\": \"Deferred the remaining repair to the validation phase.\"",
+                  "\"deferred_repair_item_ids\":[]",
+                  "\"deferred_repair_item_ids\":[\"ac-002-gap-1-item-1\"]",
                 )
               },
             )
@@ -332,7 +332,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     assertEquals("implement", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "audit-repair-result", "later phase")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "audit_repair.completed.deferred_work",
+    )
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })

@@ -420,6 +420,8 @@ object FeatureTaskRuntimePhasePromptComposer {
           "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
           "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
           "sentence, spaces, or shell punctuation in check_ref.\n" +
+          "    - produced_outputs MUST include deferred_repair_item_ids. Completed remediation uses []; " +
+          "blocked remediation lists every remaining item, while unresolvable_repair identifies exactly one.\n" +
           auditRemediationOutputExample(briefing.auditRepairItemIds)
       }
       return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
@@ -609,6 +611,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
       "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
+      "        \"deferred_repair_item_ids\": [],\n" +
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
 

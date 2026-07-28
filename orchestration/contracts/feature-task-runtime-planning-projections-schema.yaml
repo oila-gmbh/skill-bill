@@ -295,6 +295,12 @@ $defs:
       # they are not part of the projection this variant delivers.
       reconciled_state: { type: object }
       repair_item_results: { type: array }
+      deferred_repair_item_ids:
+        type: array
+        uniqueItems: true
+        maxItems: 100
+        items: { type: string, minLength: 1, pattern: ".*\\S.*" }
+      unresolvable_repair: { type: object }
 
   test_execution:
     type: object

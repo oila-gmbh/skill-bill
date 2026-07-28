@@ -65,7 +65,13 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
             if (implementLaunches == 1) {
               facts(validJsonOutput(phaseId))
             } else {
-              facts(blockedRemediationOutput(gapId = "ac-002-gap-1", repairItemId = "ac-002-gap-1-item-1"))
+              facts(
+                blockedRemediationOutput(
+                  gapId = "ac-002-gap-1",
+                  repairItemId = "ac-002-gap-1-item-1",
+                  deferredItemIds = listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
+                ),
+              )
             }
           }
           else -> facts(validJsonOutput(phaseId))
@@ -150,6 +156,36 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertEquals(2, implementLaunches, "the uppercase remediation was accepted on its first attempt")
+  }
+
+  @Test
+  fun `future phase vocabulary in remediation free text is opaque`() {
+    var auditLaunches = 0
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+          "audit" -> facts(if (++auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
+          "implement" -> {
+            implementLaunches += 1
+            facts(
+              if (implementLaunches == 1) {
+                validJsonOutput(phaseId)
+              } else {
+                remediationResultsOutput(
+                  repairItemIds = listOf("ac-002-gap-1-item-1"),
+                  summary = "Full validation will verify integration; review can discover new defects; " +
+                    "a later audit confirms the repaired state.",
+                )
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
   }
 
   // Non-progress used to be waived whenever the following audit's plan introduced any repair item id
@@ -528,6 +564,7 @@ private fun remediationResultsOutput(
         ${PlanningProjectionFixtures.RECEIPT_FIELDS}
         "changed_files":["src/Foo.kt"],
         "reconciled_state":{"reconciled":true},
+        "deferred_repair_item_ids":[],
         "repair_item_results":[$results]$extraProducedOutputs
       }
     }
@@ -536,7 +573,11 @@ private fun remediationResultsOutput(
 
 // A blocked remediation naming one unresolvable carried item and reporting no terminal results, the
 // strict-subset shape the result gate must tolerate.
-private fun blockedRemediationOutput(gapId: String, repairItemId: String): String = """
+private fun blockedRemediationOutput(
+  gapId: String,
+  repairItemId: String,
+  deferredItemIds: List<String> = listOf(repairItemId),
+): String = """
   {
     "contract_version": "0.2",
     "phase_id": "implement",
@@ -546,6 +587,7 @@ private fun blockedRemediationOutput(gapId: String, repairItemId: String): Strin
       ${PlanningProjectionFixtures.RECEIPT_FIELDS}
       "changed_files":[],
       "reconciled_state":{"reconciled":true},
+      "deferred_repair_item_ids":[${deferredItemIds.joinToString(",") { "\"$it\"" }}],
       "repair_item_results":[],
       "unresolvable_repair":{
         "gap_id":"$gapId",
