@@ -40,6 +40,7 @@ import java.util.Collections
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -211,6 +212,26 @@ class AgentRunLauncherTest {
     assertFalse(spawnFailure.timedOut)
     assertTrue(spawnFailure.spawnFailed)
     assertEquals("missing executable", spawnFailure.stderr)
+  }
+
+  @Test
+  fun `launch facts retain exact process stdout bytes independently of decoded text`() {
+    val rawBytes = byteArrayOf(0, 13, 10, -1, 42)
+    val runner = RecordingAgentRunProcessRunner(
+      result = AgentRunProcessResult(
+        exitStatus = 0,
+        stdout = "\u0000\r\n�*",
+        stdoutBytes = rawBytes,
+        stderr = "",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      ),
+    )
+
+    val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
+
+    assertContentEquals(rawBytes, facts.stdoutBytes)
   }
 
   @Test

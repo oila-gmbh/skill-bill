@@ -1,12 +1,11 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.workflow.REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION
-import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
 import java.security.MessageDigest
@@ -43,6 +42,7 @@ data class RejectedOutputDiagnosticRequest(
 class RejectedOutputDiagnosticService(
   private val repository: RejectedOutputDiagnosticRepository,
   private val permissions: RejectedOutputDiagnosticPermissions,
+  private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val config: RejectedOutputDiagnosticConfig = RejectedOutputDiagnosticConfig(),
   private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -66,7 +66,7 @@ class RejectedOutputDiagnosticService(
       sha256 = digest,
       lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
     )
-    validateCanonicalMetadata(metadata)
+    metadataValidator.validate(metadata)
     try {
       permissions.applyRestrictivePermissions()
     } catch (error: RejectedOutputDiagnosticError) {
@@ -80,11 +80,11 @@ class RejectedOutputDiagnosticService(
   }
 
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
-    repository.select(validate(selector)).onEach(::validateCanonicalMetadata)
+    repository.select(validate(selector)).onEach(metadataValidator::validate)
 
   fun readRaw(identity: String): ByteArray {
     val record = repository.read(identity)
-    validateCanonicalMetadata(record.metadata)
+    metadataValidator.validate(record.metadata)
     when (record.metadata.lifecycle) {
       RejectedOutputLifecycle.EXPIRED -> throw RejectedOutputDiagnosticError.Expired(identity)
       RejectedOutputLifecycle.OVERSIZED -> throw RejectedOutputDiagnosticError.Oversized(identity)
@@ -132,34 +132,6 @@ class RejectedOutputDiagnosticService(
       throw RejectedOutputDiagnosticError.InvalidRequest("attempt must be positive when present")
     }
     return selector
-  }
-
-  /**
-   * Mirrors the canonical rejected-output-diagnostic schema at the application record/read seams.
-   * Keeping raw bytes out of this projection is the privacy boundary enforced by that contract.
-   */
-  private fun validateCanonicalMetadata(metadata: RejectedOutputDiagnostic) {
-    val required = listOf(
-      metadata.identity,
-      metadata.workflowId,
-      metadata.phaseId,
-      metadata.rule,
-      metadata.path,
-      metadata.reason,
-      metadata.agentId,
-      metadata.model,
-    )
-    val validIdentity = metadata.identity.matches(Regex("^rod_[0-9a-f]{64}$"))
-    val validDigest = metadata.sha256.matches(Regex("^[0-9a-f]{64}$"))
-    if (
-      required.any(String::isBlank) || !validIdentity || metadata.attempt <= 0 ||
-      metadata.byteSize < 0 || !validDigest
-    ) {
-      throw InvalidRejectedOutputDiagnosticSchemaError(
-        "Rejected output diagnostic '${metadata.identity.ifBlank { "<invalid>" }}' fails canonical " +
-          "contract $REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION.",
-      )
-    }
   }
 
   companion object {

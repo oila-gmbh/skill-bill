@@ -19,7 +19,7 @@ class RejectedOutputCommandsTest {
   @Test
   fun `metadata is safe by default and raw output is byte exact`() {
     val repository = CliDiagnosticRepository()
-    val service = RejectedOutputDiagnosticService(repository, { })
+    val service = RejectedOutputDiagnosticService(repository, { }, { })
     val raw = byteArrayOf(0, -1, 10, 13, 0, 42)
     service.record(request(raw))
 
@@ -42,7 +42,7 @@ class RejectedOutputCommandsTest {
   @Test
   fun `raw output rejects ambiguous workflow selection`() {
     val repository = CliDiagnosticRepository()
-    val service = RejectedOutputDiagnosticService(repository, { })
+    val service = RejectedOutputDiagnosticService(repository, { }, { })
     service.record(request(byteArrayOf(1), attempt = 1))
     service.record(request(byteArrayOf(2), attempt = 2))
 

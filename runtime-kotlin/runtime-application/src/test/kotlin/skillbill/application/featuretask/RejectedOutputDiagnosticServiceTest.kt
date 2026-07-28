@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
+import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
@@ -89,6 +90,7 @@ class RejectedOutputDiagnosticServiceTest {
     RejectedOutputDiagnosticService(
       repository,
       permissions = { },
+      metadataValidator = RejectedOutputDiagnosticMetadataValidatorAdapter(),
       config = RejectedOutputDiagnosticConfig(maximumPayloadBytes = maximumPayloadBytes),
       clock = Clock.fixed(now, ZoneOffset.UTC),
     )

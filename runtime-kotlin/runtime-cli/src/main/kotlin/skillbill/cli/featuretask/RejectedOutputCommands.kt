@@ -11,6 +11,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import java.io.OutputStream
 
@@ -59,6 +60,7 @@ class RejectedOutputCleanupCommand(
 class RejectedOutputInspectCliCommand(
   private val database: DatabaseSessionFactory,
   private val state: CliRunState,
+  private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
 ) : DocumentedCliCommand(
   "rejected-output",
   "Inspect rejected phase output metadata, or emit one exact stored body with --raw-output.",
@@ -73,7 +75,7 @@ class RejectedOutputInspectCliCommand(
 
   override fun run() {
     database.read(state.dbOverride) { unitOfWork ->
-      RejectedOutputInspectCommand(unitOfWork.diagnosticService()).execute(
+      RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
         RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput),
         System.out,
       )
@@ -85,6 +87,7 @@ class RejectedOutputInspectCliCommand(
 class RejectedOutputCleanupCliCommand(
   private val database: DatabaseSessionFactory,
   private val state: CliRunState,
+  private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
 ) : DocumentedCliCommand(
   "rejected-output-cleanup",
   "Delete rejected-output diagnostics selected within one workflow.",
@@ -95,7 +98,7 @@ class RejectedOutputCleanupCliCommand(
 
   override fun run() {
     val deleted = database.transaction(state.dbOverride) { unitOfWork ->
-      RejectedOutputCleanupCommand(unitOfWork.diagnosticService()).execute(
+      RejectedOutputCleanupCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
         RejectedOutputCleanupRequest(workflowId, phaseId, attempt),
       )
     }
@@ -103,10 +106,13 @@ class RejectedOutputCleanupCliCommand(
   }
 }
 
-private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(): RejectedOutputDiagnosticService =
+private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(
+  metadataValidator: RejectedOutputDiagnosticMetadataValidator,
+): RejectedOutputDiagnosticService =
   RejectedOutputDiagnosticService(
     rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
     rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),
+    metadataValidator,
   )
 
 private fun RejectedOutputInspectRequest.selector() =

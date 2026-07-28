@@ -55,6 +55,7 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorI
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
+import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
@@ -196,6 +197,7 @@ import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import java.nio.file.Path
 
 @Component
@@ -617,6 +619,12 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeQuarantineValidator(
     adapter: FeatureTaskRuntimeQuarantineValidatorAdapter,
   ): FeatureTaskRuntimeQuarantineValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun rejectedOutputDiagnosticMetadataValidator(
+    adapter: RejectedOutputDiagnosticMetadataValidatorAdapter,
+  ): RejectedOutputDiagnosticMetadataValidator = adapter
 
   @Provides
   @JvmSynthetic

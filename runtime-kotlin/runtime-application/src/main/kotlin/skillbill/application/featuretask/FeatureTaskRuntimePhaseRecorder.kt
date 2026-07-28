@@ -17,6 +17,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
@@ -93,6 +94,7 @@ class FeatureTaskRuntimePhaseRecorder(
   private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
   private val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
   private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
+  private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -104,7 +106,7 @@ class FeatureTaskRuntimePhaseRecorder(
       ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
     val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
       ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
-    RejectedOutputDiagnosticService(repository, permissions).record(request)
+    RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator).record(request)
   }
 
   /**

@@ -119,6 +119,7 @@ val DEFAULT_STATUS_HEARTBEAT_INTERVAL: Duration = 90.seconds
 data class AgentRunProcessResult(
   val exitStatus: Int?,
   val stdout: String,
+  val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val stderr: String,
   val timedOut: Boolean,
   val interrupted: Boolean,

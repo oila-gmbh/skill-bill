@@ -160,6 +160,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     return AgentRunProcessResult(
       exitStatus = if (finished) process.exitValue() else null,
       stdout = stdout.text(),
+      stdoutBytes = stdout.bytes(),
       stderr = stderr.text().withTimeoutMessage(requireNotNull(wait), request),
       timedOut = !finished,
       interrupted = false,
@@ -178,6 +179,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     return AgentRunProcessResult(
       exitStatus = null,
       stdout = stdout.text(),
+      stdoutBytes = stdout.bytes(),
       stderr = stderr.text().let { existing ->
         if (existing.isBlank()) {
           interruptMessage
@@ -856,6 +858,8 @@ private class CappedUtf8Drain(
   }
 
   fun text(): String = String(output.toByteArray(), StandardCharsets.UTF_8)
+
+  fun bytes(): ByteArray = output.toByteArray()
 
   /** True once more bytes arrived than the retention cap could keep, so [text] is incomplete. */
   fun wasTruncated(): Boolean = truncated

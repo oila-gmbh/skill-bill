@@ -65,7 +65,7 @@ class ProcessAgentRunAdapter(
       agent = agent,
       exitStatus = result.exitStatus,
       stdout = normalizedStdout,
-      stdoutBytes = normalizedStdout.encodeToByteArray(),
+      stdoutBytes = result.stdoutBytes,
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,

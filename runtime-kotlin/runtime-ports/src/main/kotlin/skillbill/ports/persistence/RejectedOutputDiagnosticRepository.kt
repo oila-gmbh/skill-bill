@@ -67,6 +67,10 @@ interface RejectedOutputDiagnosticRepository {
   fun delete(selector: RejectedOutputDiagnosticSelector): Int
 }
 
+fun interface RejectedOutputDiagnosticMetadataValidator {
+  fun validate(metadata: RejectedOutputDiagnostic)
+}
+
 fun interface RejectedOutputDiagnosticPermissions {
   fun applyRestrictivePermissions()
 }
