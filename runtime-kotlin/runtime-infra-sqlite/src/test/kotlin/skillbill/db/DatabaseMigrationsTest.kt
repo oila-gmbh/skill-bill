@@ -70,12 +70,35 @@ class DatabaseMigrationsTest {
         13 to "allow-goal-planning-phase-output-0-3",
         14 to "add-rejected-output-diagnostics",
         15 to "add-private-producer-output-evidence",
+        16 to "add-feature-task-convergence-state",
+        17 to "retain-convergence-evidence-and-classification",
       ),
       migrationDefinitions,
     )
     assertEquals(migrationDefinitions.sortedBy { (version, _) -> version }, migrationDefinitions)
     assertEquals(migrationDefinitions.map { (version, _) -> version }.toSet().size, migrationDefinitions.size)
     assertEquals(migrationDefinitions.map { (_, name) -> name }.toSet().size, migrationDefinitions.size)
+  }
+
+  @Test
+  fun `convergence migration retains evidence independently of workflow rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-convergence-v17").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("classification" in tableColumns(connection, "feature_task_convergence_records"))
+      listOf("feature_task_convergence_records", "feature_task_convergence_legacy_imports").forEach { table ->
+        connection.createStatement().use { statement ->
+          statement.executeQuery("PRAGMA foreign_key_list($table)").use { foreignKeys ->
+            assertFalse(foreignKeys.next(), "$table must not cascade when an active workflow row is reset.")
+          }
+        }
+      }
+      assertNotNull(
+        migrationRows(connection).singleOrNull {
+          it.version == 17 && it.name == "retain-convergence-evidence-and-classification"
+        },
+      )
+    }
   }
 
   @Test

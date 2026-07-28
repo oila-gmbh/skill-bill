@@ -369,13 +369,15 @@ internal object DatabaseSchema {
         attempt INTEGER CHECK(attempt IS NULL OR attempt > 0),
         review_pass INTEGER CHECK(review_pass IS NULL OR review_pass > 0),
         record_status TEXT NOT NULL CHECK(record_status IN ('OPEN', 'RESOLVED', 'COMPLETED', 'FAILED', 'QUARANTINED')),
+        classification TEXT CHECK(classification IS NULL OR (
+          length(classification) BETWEEN 1 AND 64 AND classification GLOB '[a-z]*'
+        )),
         summary TEXT CHECK(summary IS NULL OR length(summary) BETWEEN 1 AND 512),
         affected_path TEXT CHECK(affected_path IS NULL OR length(affected_path) BETWEEN 1 AND 512),
         evidence_digest TEXT NOT NULL CHECK(length(evidence_digest) = 64),
         evidence_ref TEXT CHECK(evidence_ref IS NULL OR length(evidence_ref) BETWEEN 1 AND 512),
         created_at TEXT NOT NULL,
-        UNIQUE(workflow_id, record_kind, generation, logical_id),
-        FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+        UNIQUE(workflow_id, record_kind, generation, logical_id)
       )
       """.trimIndent(),
       """
@@ -384,7 +386,7 @@ internal object DatabaseSchema {
       """.trimIndent(),
       """
       CREATE INDEX IF NOT EXISTS idx_convergence_unresolved
-        ON feature_task_convergence_records(workflow_id, record_kind, record_status, generation)
+        ON feature_task_convergence_records(workflow_id, record_kind, record_status, classification, generation)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS feature_task_convergence_legacy_imports (
@@ -393,8 +395,7 @@ internal object DatabaseSchema {
         disposition TEXT NOT NULL CHECK(disposition IN ('imported', 'quarantined')),
         reason_code TEXT CHECK(reason_code IS NULL OR length(reason_code) BETWEEN 1 AND 64),
         imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(workflow_id, source_digest),
-        FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+        PRIMARY KEY(workflow_id, source_digest)
       )
       """.trimIndent(),
       """

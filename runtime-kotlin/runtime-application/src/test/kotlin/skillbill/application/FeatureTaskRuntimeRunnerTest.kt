@@ -5333,6 +5333,8 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
   private val lifecycle: LifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
   private val knownIssue: Boolean = true,
+  private val convergence: skillbill.ports.persistence.ConvergenceStateRepository =
+    skillbill.ports.persistence.UnavailableConvergenceStateRepository,
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
@@ -5364,6 +5366,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+    override val convergenceStates: skillbill.ports.persistence.ConvergenceStateRepository = convergence
     override val rejectedOutputDiagnosticPermissions =
       skillbill.ports.persistence.RejectedOutputDiagnosticPermissions { }
     override val rejectedOutputDiagnostics = object : skillbill.ports.persistence.RejectedOutputDiagnosticRepository {

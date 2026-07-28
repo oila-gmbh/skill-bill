@@ -9,7 +9,7 @@ interface ConvergenceStateRepository {
   fun history(workflowId: String): List<ConvergenceRecord>
   fun current(workflowId: String): Map<String, ConvergenceRecord>
   fun unresolved(workflowId: String): UnresolvedConvergence
-  fun reconcileLegacy(workflowId: String, sourceDigest: String, records: List<ConvergenceRecord>): LegacyReconciliation
+  fun reconcileLegacy(workflowId: String, sourceDigest: String, encodedSource: String): LegacyReconciliation
 }
 
 sealed interface LegacyReconciliation {
@@ -30,6 +30,6 @@ object UnavailableConvergenceStateRepository : ConvergenceStateRepository {
   override fun reconcileLegacy(
     workflowId: String,
     sourceDigest: String,
-    records: List<ConvergenceRecord>,
+    encodedSource: String,
   ): LegacyReconciliation = unavailable()
 }

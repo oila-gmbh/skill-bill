@@ -4,7 +4,7 @@ title: Feature task runtime convergence state
 description: Bounded, privacy-safe durable evidence used to converge implementation, audit, and review generations.
 type: object
 additionalProperties: false
-required: [contract_version, record_id, workflow_id, kind, generation, logical_id, evidence_digest, created_at]
+required: [contract_version, record_id, workflow_id, kind, generation, logical_id, phase_id, status, evidence_digest, created_at]
 properties:
   contract_version:
     const: "0.1"
@@ -58,6 +58,53 @@ properties:
   created_at:
     type: string
     format: date-time
+allOf:
+  - if:
+      properties:
+        kind:
+          enum: [implementation_outcome, implementation_obligation]
+    then:
+      properties:
+        phase_id:
+          const: implement
+      required: [attempt]
+      not:
+        required: [review_pass]
+  - if:
+      properties:
+        kind:
+          enum: [audit_gap, audit_repair]
+    then:
+      properties:
+        phase_id:
+          const: audit
+      not:
+        anyOf:
+          - required: [attempt]
+          - required: [review_pass]
+  - if:
+      properties:
+        kind:
+          enum: [review_finding, review_disposition]
+    then:
+      properties:
+        phase_id:
+          const: review
+      required: [review_pass]
+      not:
+        required: [attempt]
+  - if:
+      properties:
+        kind:
+          enum: [audit_repair, review_disposition]
+    then:
+      required: [parent_logical_id]
+  - if:
+      properties:
+        kind:
+          enum: [repository_checkpoint]
+    then:
+      required: [evidence_ref]
 $defs:
   identity:
     type: string

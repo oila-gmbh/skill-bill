@@ -13,12 +13,19 @@ class FeatureTaskConvergenceService(private val database: DatabaseSessionFactory
   fun recordAndAdvance(
     record: ConvergenceRecord,
     dbOverride: String? = null,
+    isAlreadyAdvanced: (skillbill.ports.persistence.WorkflowStateRepository) -> Boolean,
     advance: (skillbill.ports.persistence.WorkflowStateRepository) -> Unit,
   ): ReplayResult = database.transaction(dbOverride) { unitOfWork ->
     when (val replay = unitOfWork.convergenceStates.append(record)) {
       is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(record.recordId)
-      is ReplayResult.Appended, is ReplayResult.Identical -> {
+      is ReplayResult.Appended -> {
         advance(unitOfWork.workflowStates)
+        replay
+      }
+      is ReplayResult.Identical -> {
+        if (!isAlreadyAdvanced(unitOfWork.workflowStates)) {
+          throw ConvergenceReplayConflictException(record.recordId)
+        }
         replay
       }
     }
@@ -30,9 +37,9 @@ class FeatureTaskConvergenceService(private val database: DatabaseSessionFactory
   fun reconcileLegacy(
     workflowId: String,
     sourceDigest: String,
-    records: List<ConvergenceRecord>,
+    encodedSource: String,
     dbOverride: String? = null,
   ): LegacyReconciliation = database.transaction(dbOverride) {
-    it.convergenceStates.reconcileLegacy(workflowId, sourceDigest, records)
+    it.convergenceStates.reconcileLegacy(workflowId, sourceDigest, encodedSource)
   }
 }

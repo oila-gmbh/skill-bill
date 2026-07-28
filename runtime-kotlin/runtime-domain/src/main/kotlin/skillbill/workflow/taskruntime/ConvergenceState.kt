@@ -1,10 +1,12 @@
 package skillbill.workflow.taskruntime
 
 import java.security.MessageDigest
+import java.time.Instant
 
 const val CONVERGENCE_STATE_CONTRACT_VERSION: String = "0.1"
 const val CONVERGENCE_ID_MAX_LENGTH: Int = 160
 const val CONVERGENCE_SUMMARY_MAX_LENGTH: Int = 512
+const val CONVERGENCE_CLASSIFICATION_MAX_LENGTH: Int = 64
 
 enum class ConvergenceRecordKind {
   IMPLEMENTATION_OUTCOME,
@@ -30,8 +32,8 @@ data class ConvergenceProvenance(
     require(workflowId.isSafeIdentity())
     require(generation > 0)
     require(phaseId in setOf("implement", "audit", "review"))
-    require(attempt == null || attempt > 0)
-    require(reviewPass == null || reviewPass > 0)
+    require(attempt == null || attempt in 1..10000)
+    require(reviewPass == null || reviewPass in 1..10000)
   }
 }
 
@@ -43,6 +45,7 @@ data class ConvergenceRecord(
   val evidenceDigest: String,
   val createdAt: String,
   val status: ConvergenceStatus,
+  val classification: String? = null,
   val summary: String? = null,
   val parentLogicalId: String? = null,
   val path: String? = null,
@@ -50,11 +53,44 @@ data class ConvergenceRecord(
 ) {
   init {
     require(recordId.isSafeIdentity() && logicalId.isSafeIdentity())
+    require(recordId == ConvergenceIdentities.record(logicalId, provenance.generation))
     require(parentLogicalId == null || parentLogicalId.isSafeIdentity())
     require(evidenceDigest.matches(Regex("[a-f0-9]{64}")))
+    require(runCatching { Instant.parse(createdAt) }.isSuccess)
+    require(classification == null || (
+      classification.length in 1..CONVERGENCE_CLASSIFICATION_MAX_LENGTH &&
+        classification.matches(Regex("[a-z][a-z0-9_-]*"))
+      ))
     require(summary == null || summary.length in 1..CONVERGENCE_SUMMARY_MAX_LENGTH)
     require(path == null || path.length in 1..512)
     require(evidenceRef == null || evidenceRef.length in 1..512)
+    when (kind) {
+      ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+      ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+      -> require(provenance.phaseId == "implement" && provenance.attempt != null && provenance.reviewPass == null)
+      ConvergenceRecordKind.AUDIT_GAP -> require(
+        provenance.phaseId == "audit" && provenance.attempt == null && provenance.reviewPass == null &&
+          parentLogicalId == null,
+      )
+      ConvergenceRecordKind.AUDIT_REPAIR -> require(
+        provenance.phaseId == "audit" && provenance.attempt == null && provenance.reviewPass == null &&
+          parentLogicalId != null,
+      )
+      ConvergenceRecordKind.REVIEW_FINDING -> require(
+        provenance.phaseId == "review" && provenance.attempt == null && provenance.reviewPass != null &&
+          parentLogicalId == null,
+      )
+      ConvergenceRecordKind.REVIEW_DISPOSITION -> require(
+        provenance.phaseId == "review" && provenance.attempt == null && provenance.reviewPass != null &&
+          parentLogicalId != null,
+      )
+      ConvergenceRecordKind.REPOSITORY_CHECKPOINT -> require(
+        provenance.attempt == null && provenance.reviewPass == null && evidenceRef != null,
+      )
+      ConvergenceRecordKind.LEGACY_IMPORT -> require(
+        provenance.attempt == null && provenance.reviewPass == null,
+      )
+    }
   }
 }
 
