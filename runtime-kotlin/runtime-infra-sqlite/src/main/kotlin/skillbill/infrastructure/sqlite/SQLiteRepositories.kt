@@ -24,6 +24,8 @@ import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
+import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
+import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
@@ -64,6 +66,10 @@ class SQLiteUnitOfWork(
   override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
     skillbill.db.workflow.GoalPlanningPreparationStore(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
+  override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
+    SqliteRejectedOutputDiagnosticRepository(connection)
+  override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =
+    FileRejectedOutputDiagnosticPermissions(dbPath)
 }
 
 class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedFindingsRepository {

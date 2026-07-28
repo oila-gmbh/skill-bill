@@ -26,6 +26,22 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
   @Test
+  fun `legacy rejected output is consumed and discarded during phase record migration`() {
+    val current = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "blocked",
+      attemptCount = 1,
+      startedAt = "2026-07-28T12:00:00Z",
+      resolvedAgentId = "codex",
+    ).toArtifactMap()
+
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(current + ("rejected_output" to "private body"))
+
+    assertNull(decoded.rejectedOutput)
+    assertTrue("rejected_output" !in decoded.toArtifactMap())
+  }
+
+  @Test
   fun `phase execution origin rejects incompatible legacy and unknown explicit values`() {
     val current = FeatureTaskRuntimePhaseRecord(
       phaseId = "plan",
@@ -204,6 +220,24 @@ class FeatureTaskRuntimePersistenceModelsTest {
     assertEquals(record, decoded)
     assertEquals("2026-06-02T10:00:00Z", decoded.firstStartedAt)
     assertEquals("exhausted the bounded fix loop", decoded.blockedReason)
+  }
+
+  @Test
+  fun `rejected raw output never enters the artifact map`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "blocked",
+      attemptCount = 1,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-implement-1",
+      rejectedOutput = "sentinel-private-body",
+    )
+
+    val artifact = record.toArtifactMap()
+
+    assertEquals(false, artifact.containsKey("rejected_output"))
+    assertEquals(false, artifact.toString().contains("sentinel-private-body"))
+    assertNull(FeatureTaskRuntimePhaseRecord.fromArtifactMap(artifact).rejectedOutput)
   }
 
   @Test

@@ -29,6 +29,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -170,7 +171,9 @@ internal class FeatureTaskRuntimeRunLoop(
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
     .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
-    ?.takeIf { state.recordFor(it.phaseId) == null }
+    ?.takeIf { retry ->
+      state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
+    }
   private var operatorBlockRetryCompleted: Boolean = false
 
   private var pendingReentry: PendingReentry? = resumedReentry()
@@ -2045,12 +2048,43 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
-      return blockUnattributableRecordRejection(run, iteration, observability, rejection, producer)
+      return blockUnattributableRecordRejection(run, state, iteration, observability, rejection, producer)
     }
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
-    val rejectedPayload = rejectedRecord?.payload ?: state.recordFor(producer)?.outputArtifact ?: "<unavailable>"
+    val producerEvidence = recorder.producerOutput(
+      request.workflowId,
+      producer,
+      producingIteration,
+      request.dbPathOverride,
+    ) ?: return blockAndPersistInPhase(
+      run,
+      iteration,
+      "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but exact " +
+        "raw evidence for attempt $producingIteration is unavailable. The run blocks instead of fabricating " +
+        "a rejected-output diagnostic from normalized workflow state.",
+      observability,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+    )
+    val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
+    val diagnosticIdentity = recordRejectedOutput(
+      run = run,
+      iteration = producingIteration,
+      rule = "reconciliation-${rejection.rejectionClass}",
+      reason = payloadFreeRejectionReason(
+        "reconciliation-${rejection.rejectionClass}",
+        rejectionPath(rejection.rejectionDetail),
+      ),
+      outputBytes = rejectedPayload,
+      phaseId = producer,
+      agentId = producerEvidence.agentId,
+      model = producerEvidence.model,
+      path = rejectionPath(rejection.rejectionDetail),
+      outputByteSize = producerEvidence.byteSize,
+      outputSha256 = producerEvidence.sha256,
+      outputTruncated = producerEvidence.payload == null,
+    )
     val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
     recorder.appendQuarantineEntry(
       request.workflowId,
@@ -2059,10 +2093,15 @@ internal class FeatureTaskRuntimeRunLoop(
         consumingPhaseId = consumer,
         producingIteration = producingIteration,
         rejectionClass = rejection.rejectionClass,
-        rejectionDetail = boundedRejectionDetail(rejection.rejectionDetail),
+        rejectionDetail = payloadFreeRejectionReason(
+          "reconciliation-${rejection.rejectionClass}",
+          rejectionPath(rejection.rejectionDetail),
+        ),
         regenerationAttempt = regenerationAttempt,
         quarantinedAtIteration = iteration.coerceAtLeast(1),
-        rejectedRecordPayload = rejectedPayload,
+        diagnosticIdentity = diagnosticIdentity,
+        rejectedRecordByteSize = producerEvidence.byteSize,
+        rejectedRecordSha256 = producerEvidence.sha256,
       ),
       request.dbPathOverride,
     )
@@ -2071,12 +2110,46 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun blockUnattributableRecordRejection(
     run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
     producer: String?,
   ): PhaseOutcome {
-    val detail = boundedRejectionDetail(rejection.rejectionDetail)
+    val detail = payloadFreeRejectionReason(
+      "reconciliation-${rejection.rejectionClass}",
+      rejectionPath(rejection.rejectionDetail),
+    )
+    val rejectedOutput = run.declaration.projectionDeclarations
+      .asSequence()
+      .map { it.producerIteration.phaseId }
+      .distinct()
+      .mapNotNull { phaseId -> state.outputFor(phaseId) }
+      .firstOrNull()
+    val evidence = rejectedOutput?.let { output ->
+      recorder.producerOutput(
+        request.workflowId,
+        output.phaseId,
+        output.iteration.coerceAtLeast(1),
+        request.dbPathOverride,
+      )
+    }
+    evidence?.let {
+      recordRejectedOutput(
+        run = run,
+        iteration = it.attempt,
+        rule = "reconciliation-${rejection.rejectionClass}",
+        reason = detail,
+        outputBytes = it.payload ?: byteArrayOf(),
+        phaseId = it.phaseId,
+        agentId = it.agentId,
+        model = it.model,
+        path = rejectionPath(rejection.rejectionDetail),
+        outputByteSize = it.byteSize,
+        outputSha256 = it.sha256,
+        outputTruncated = it.payload == null,
+      )
+    }
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
         "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
@@ -2097,14 +2170,20 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun boundedRejectionDetail(detail: String): String {
-    val trimmed = detail.trim().ifBlank { "no detail available" }
-    return if (trimmed.length <= RECORD_REJECTION_DETAIL_MAX_CHARS) {
-      trimmed
-    } else {
-      trimmed.take(RECORD_REJECTION_DETAIL_MAX_CHARS) + "…(truncated)"
-    }
+  private fun rejectionPath(detail: String): String {
+    Regex("""(?:instance location|path|pointer)\s*[:=]\s*['"]?(/[^\s,'"]*)""", RegexOption.IGNORE_CASE)
+      .find(detail)
+      ?.groupValues
+      ?.get(1)
+      ?.let { return it }
+    val dollarPath = Regex("""\$(?:\.[A-Za-z0-9_-]+|\[[0-9]+])+""").find(detail)?.value ?: return "/"
+    return dollarPath.removePrefix("$")
+      .replace(Regex("""\.([A-Za-z0-9_-]+)"""), "/${'$'}1")
+      .replace(Regex("""\[([0-9]+)]"""), "/${'$'}1")
   }
+
+  private fun payloadFreeRejectionReason(rule: String, path: String): String =
+    "Rejected output violated '$rule' at '$path'. Inspect the private diagnostic for the exact response."
 
   @Suppress("LongParameterList")
   private fun attemptOnce(
@@ -2137,6 +2216,10 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       iteration,
       requireNotNull(launch.capturedStdout),
+      requireNotNull(launch.capturedStdoutBytes),
+      launch.capturedStdoutTruncated,
+      requireNotNull(launch.capturedStdoutByteSize),
+      requireNotNull(launch.capturedStdoutSha256),
       observability,
       fileManifest,
     )
@@ -2146,20 +2229,76 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     outputText: String,
+    outputBytes: ByteArray,
+    outputTruncated: Boolean,
+    outputByteSize: Long,
+    outputSha256: String,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
-    settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
+    settleValidatedOutput(
+      run, iteration, normalized, observability, fileManifest,
+      outputBytes, outputTruncated, outputByteSize, outputSha256,
+    )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    val path = rejectionPath(error.reason)
+    val reason = payloadFreeRejectionReason("phase-output-schema", path)
+    recordRejectedOutput(
+      run, iteration, "phase-output-schema", reason, outputBytes, path = path,
+      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+    )
     schemaInvalidAttempt(
-      error.reason,
+      reason,
       fileManifest,
-      outputText,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    schemaInvalidAttempt(error.reason, fileManifest, outputText)
+    val path = rejectionPath(error.reason)
+    val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
+    recordRejectedOutput(
+      run, iteration, "audit-repair-plan-schema", reason, outputBytes, path = path,
+      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+    )
+    schemaInvalidAttempt(reason, fileManifest)
+  }
+
+  private fun recordRejectedOutput(
+    run: PhaseRun,
+    iteration: Int,
+    rule: String,
+    reason: String,
+    outputBytes: ByteArray,
+    phaseId: String = run.phaseId,
+    agentId: String = run.resolvedAgent.resolvedAgentId,
+    model: String = run.modelDirective?.model ?: "unspecified",
+    path: String = "/",
+    outputTruncated: Boolean = false,
+    outputByteSize: Long = outputBytes.size.toLong(),
+    outputSha256: String = RejectedOutputDiagnosticService.sha256(outputBytes),
+  ): String {
+    recorder.recordRejectedOutput(
+      RejectedOutputDiagnosticRequest(
+        workflowId = run.request.workflowId,
+        phaseId = phaseId,
+        attempt = iteration.coerceAtLeast(1),
+        rule = rule,
+        path = path,
+        reason = reason,
+        agentId = agentId,
+        model = model,
+        rawResponse = outputBytes,
+        observedByteSize = outputByteSize,
+        observedSha256 = outputSha256,
+        truncated = outputTruncated,
+      ),
+      run.request.dbPathOverride,
+    )
+    return RejectedOutputDiagnosticService.stableIdentity(
+      run.request.workflowId,
+      phaseId,
+      iteration.coerceAtLeast(1),
+    )
   }
 
   @Suppress("ReturnCount")
@@ -2169,26 +2308,26 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    outputBytes: ByteArray,
+    outputTruncated: Boolean,
+    outputByteSize: Long,
+    outputSha256: String,
   ): AttemptResult {
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
-    mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    fun reject(rule: String, detail: String): AttemptResult {
+      val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
+      val diagnosticRule = structuredIdentity?.first ?: rule
+      val path = structuredIdentity?.second ?: rejectionPath(detail)
+      val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
+      recordRejectedOutput(
+        run, iteration, diagnosticRule, reason, outputBytes, path = path,
+        outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+      )
+      return schemaInvalidAttempt(reason, fileManifest)
     }
-    val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
-    terminalAuditRepairReason?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
-    }
-    auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
-    }
-    if (!isCompactAuditOutput(run.phaseId, outputText)) {
-      auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-        return schemaInvalidAttempt(reason, fileManifest, outputText)
-      }
-    }
-    auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+    firstValidatedOutputRejection(run.phaseId, outputText, outputMap)?.let { (rule, reason) ->
+      return reject(rule, reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -2229,7 +2368,7 @@ internal class FeatureTaskRuntimeRunLoop(
       planningProjectionValidator,
       allowDecompositionPackage = true,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return reject("producer-projection", reason)
     }
     immediateConsumerProjectionGateReason(
       run,
@@ -2237,11 +2376,25 @@ internal class FeatureTaskRuntimeRunLoop(
       normalizedOutput,
       repositoryFingerprint,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return reject("consumer-projection", reason)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest, outputText)
+      return reject("output-verification", reason)
     }
+    recorder.retainProducerOutput(
+      ProducerOutputEvidence(
+        request.workflowId,
+        run.phaseId,
+        iteration,
+        run.resolvedAgent.resolvedAgentId,
+        run.modelDirective?.model ?: "unspecified",
+        java.time.Instant.now(),
+        outputByteSize,
+        outputSha256,
+        outputBytes.takeUnless { outputTruncated },
+      ),
+      run.request.dbPathOverride,
+    )
     return persistAcceptedOutput(
       run,
       iteration,
@@ -2251,6 +2404,24 @@ internal class FeatureTaskRuntimeRunLoop(
       repositoryFingerprint,
     )
   }
+
+  private fun nonCompactAuditDurableLedgerGateReason(
+    phaseId: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): String? = if (isCompactAuditOutput(phaseId, outputText)) null else auditDurableLedgerGateReason(phaseId, outputMap)
+
+  private fun firstValidatedOutputRejection(
+    phaseId: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): Pair<String, String>? =
+    mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
+      ?: terminalAuditRepairBlockGateReason(phaseId, outputMap)?.let { "terminal-audit-repair" to it }
+      ?: auditRepairResultGateReason(phaseId, outputMap)?.let { "audit-repair-result" to it }
+      ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
+        ?.let { "audit-durable-ledger" to it }
+      ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
@@ -2521,7 +2692,7 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition.retryOnResume &&
       FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
     ) {
-      AttemptResult.schemaInvalid(reason, fileManifest, boundedRejectedOutput(outputText))
+      AttemptResult.schemaInvalid(reason, fileManifest, null, false)
     } else {
       AttemptResult.settled(
         blockAndPersistInPhase(
@@ -2561,18 +2732,58 @@ internal class FeatureTaskRuntimeRunLoop(
       .flatMap { it.repairItems }
       .map { it.repairItemId }
     if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
-    val results = (
-      JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])
-        ?.get("repair_item_results") as? List<*>
-      ).orEmpty()
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val results = (produced["repair_item_results"] as? List<*>).orEmpty()
     val resultMaps = results.mapNotNull(JsonSupport::anyToStringAnyMap)
     val actual = resultMaps.mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
     val blocked = outputMap["status"] == STATUS_BLOCKED
+    val deferredRaw = produced["deferred_repair_item_ids"]
+    if (deferredRaw !is List<*>) {
+      return structuredRepairDiagnostic(
+        "audit_repair.deferred_work.required",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Audit-gap remediation must explicitly report deferred repair-item identifiers.",
+      )
+    }
+    val deferred = deferredRaw.mapNotNull { (it as? String)?.let(::canonicalAuditIdentifier) }
+    if (deferred.size != deferredRaw.size || deferred.size != deferred.toSet().size ||
+      deferred.any { it !in expected }
+    ) {
+      return structuredRepairDiagnostic(
+        "audit_repair.deferred_work.identifiers",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Deferred repair-item identifiers must be unique exact identifiers from the accepted plan; " +
+          "expected=$expected actual=$deferred.",
+      )
+    }
+    if (!blocked && deferred.isNotEmpty()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.completed.deferred_work",
+        "/produced_outputs/deferred_repair_item_ids",
+        "Completed audit-gap remediation requires an empty deferred-repair representation.",
+      )
+    }
+    if (!blocked && produced.containsKey("unresolvable_repair")) {
+      return structuredRepairDiagnostic(
+        "audit_repair.completed.unresolvable_repair",
+        "/produced_outputs/unresolvable_repair",
+        "Only blocked audit-gap remediation may identify an unresolvable repair item.",
+      )
+    }
     val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
-      if (blocked) !expected.toSet().containsAll(actual) else actual.toSet() != expected.toSet()
+      if (blocked) {
+        actual.toSet() + deferred.toSet() != expected.toSet() ||
+          actual.toSet().intersect(deferred.toSet()).isNotEmpty()
+      } else {
+        actual.toSet() != expected.toSet()
+      }
     if (identifiersInvalid) {
-      return "Audit-gap remediation requires exact repair_item_result identifier equality; " +
-        "expected=$expected actual=$actual."
+      return structuredRepairDiagnostic(
+        "audit_repair.results.identifiers",
+        "/produced_outputs/repair_item_results",
+        "Audit-gap remediation results and deferred identifiers must exhaust the accepted plan exactly once; " +
+          "expected=$expected actual=$actual deferred=$deferred.",
+      )
     }
     val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
     val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
@@ -2581,28 +2792,36 @@ internal class FeatureTaskRuntimeRunLoop(
       val itemId = item.repairItemId
       val itemPosition = actualOrder[itemId] ?: return@forEach
       item.dependsOn.forEach { dependency ->
-        val dependencyPosition = actualOrder[dependency] ?: return@forEach
+        val dependencyPosition = actualOrder[dependency] ?: return structuredRepairDiagnostic(
+          "audit_repair.results.dependency_terminal",
+          "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
+          "Repair item '$itemId' cannot be terminal while dependency '$dependency' is deferred or missing.",
+        )
         val expectedDependency = expectedOrder[dependency] ?: return@forEach
         val expectedItem = expectedOrder[itemId] ?: return@forEach
         if (dependencyPosition >= itemPosition || expectedDependency >= expectedItem) {
-          return "Audit-gap remediation results must follow the accepted dependency order; " +
-            "'$itemId' depends on '$dependency' so '$dependency' must be reported first. Required order: $expected."
+          return structuredRepairDiagnostic(
+            "audit_repair.results.dependency_order",
+            "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
+            "Repair item '$itemId' depends on '$dependency', which must have a preceding terminal result.",
+          )
         }
       }
     }
     resultMaps.forEachIndexed { index, result ->
       auditRepairResultError(result, index)?.let { return it }
     }
-    if (containsForbiddenAuditRepairDeferral(outputMap)) {
-      return "Audit-gap remediation cannot assign carried repair work to a later phase."
-    }
     if (blocked) {
       val unresolvable = JsonSupport.anyToStringAnyMap(
-        JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"])?.get("unresolvable_repair"),
+        produced["unresolvable_repair"],
       )
-      val blockedItemId = unresolvable?.get("repair_item_id") as? String
-      if (blockedItemId != null && blockedItemId in actual) {
-        return "An unresolvable repair item cannot also report a terminal fixed or already_satisfied result."
+      val blockedItemId = (unresolvable?.get("repair_item_id") as? String)?.let(::canonicalAuditIdentifier)
+      if (blockedItemId == null || blockedItemId !in deferred) {
+        return structuredRepairDiagnostic(
+          "audit_repair.blocked.deferred_item",
+          "/produced_outputs/deferred_repair_item_ids",
+          "Blocked remediation must include the item named by unresolvable_repair among its remaining work.",
+        )
       }
     }
     return null
@@ -2624,26 +2843,53 @@ internal class FeatureTaskRuntimeRunLoop(
       .exceptionOrNull()
     return when {
       missing.isNotEmpty() || unknown.isNotEmpty() ->
-        "Audit repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}."
+        structuredRepairDiagnostic(
+          "audit_repair.results.shape",
+          "/produced_outputs/repair_item_results/$index",
+          "Repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}.",
+        )
       result["outcome"] !in setOf("fixed", "already_satisfied") ->
-        "Audit repair item '$label' outcome must be 'fixed' or 'already_satisfied', was '${result["outcome"]}'."
+        structuredRepairDiagnostic(
+          "audit_repair.results.terminal_outcome",
+          "/produced_outputs/repair_item_results/$index/outcome",
+          "Repair item '$label' outcome must be fixed or already_satisfied.",
+        )
       hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
-        "Audit repair item '$label' changed_paths_or_symbols must contain at least one nonblank path or symbol, " +
-          "for example [\"src/main/Example.kt:Example\"]."
+        structuredRepairDiagnostic(
+          "audit_repair.results.repository_evidence",
+          "/produced_outputs/repair_item_results/$index/changed_paths_or_symbols",
+          "Repair item '$label' must name at least one changed path or symbol.",
+        )
       hasNoNonBlankStrings(result["executed_verification"]) ->
-        "Audit repair item '$label' executed_verification must contain at least one nonblank command and result, " +
-          "for example [\"./gradlew :runtime-domain:test --tests *ExampleTest* passed\"]."
+        structuredRepairDiagnostic(
+          "audit_repair.results.executed_verification",
+          "/produced_outputs/repair_item_results/$index/executed_verification",
+          "Repair item '$label' must report at least one executed verification and result.",
+        )
       decodeFailure != null ->
-        "Audit repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}"
+        structuredRepairDiagnostic(
+          "audit_repair.results.result_evidence",
+          "/produced_outputs/repair_item_results/$index/result_evidence",
+          "Repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}",
+        )
       result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
-        "Audit repair item '$label' reports 'already_satisfied', so changed_paths_or_symbols and " +
-          "executed_verification must each be nonempty and must not be the same list: name what already " +
-          "satisfies the item and, separately, the verification you ran to confirm it."
-      result.values.any(::containsForbiddenAuditRepairDeferral) ->
-        "Audit repair item '$label' cannot defer carried work to a later phase."
+        structuredRepairDiagnostic(
+          "audit_repair.results.distinct_evidence",
+          "/produced_outputs/repair_item_results/$index",
+          "Repair item '$label' must distinguish repository evidence from executed verification.",
+        )
       else -> null
     }
   }
+
+  private fun structuredRepairDiagnostic(ruleId: String, jsonPath: String, detail: String): String =
+    "[$ruleId] $jsonPath: $detail"
+
+  private fun structuredRepairDiagnosticIdentity(detail: String): Pair<String, String>? =
+    Regex("""^\[([A-Za-z0-9_.-]+)]\s+(/[^\s:]*):\s""")
+      .find(detail)
+      ?.destructured
+      ?.let { (ruleId, jsonPath) -> ruleId to jsonPath }
 
   private fun hasNoNonBlankStrings(value: Any?): Boolean =
     (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
@@ -2728,35 +2974,52 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val block = JsonSupport.anyToStringAnyMap(produced["unresolvable_repair"])
-      ?: return "Blocked audit remediation must persist unresolvable_repair with gap_id and repair_item_id."
+      ?: return structuredRepairDiagnostic(
+        "audit_repair.blocked.unresolvable_repair.required",
+        "/produced_outputs/unresolvable_repair",
+        "Blocked audit remediation must persist an object with gap_id and repair_item_id.",
+      )
     val gapId = block["gap_id"] as? String
     val itemId = block["repair_item_id"] as? String
-    if (gapId.isNullOrBlank() || itemId.isNullOrBlank()) {
-      return "Blocked audit remediation requires nonblank gap_id and repair_item_id."
+    if (gapId.isNullOrBlank()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+        "Blocked audit remediation requires a nonblank gap_id from the accepted repair plan.",
+      )
+    }
+    if (itemId.isNullOrBlank()) {
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+        "Blocked audit remediation requires a nonblank repair_item_id from the named gap.",
+      )
     }
     runCatching {
       auditEvidenceFromWire(block["evidence"], "unresolvable_repair.evidence")
     }.exceptionOrNull()?.let { decodeFailure ->
-      return "Blocked audit remediation evidence is not contract-safe: ${decodeFailure.diagnosticMessage()}"
+      return structuredRepairDiagnostic(
+        "audit_repair.blocked.evidence",
+        "/produced_outputs/unresolvable_repair/evidence",
+        "Blocked audit remediation evidence is not contract-safe: ${decodeFailure.diagnosticMessage()}",
+      )
     }
     val owningGap = reentry.auditRepairPlan?.gaps.orEmpty().firstOrNull { it.gapId == gapId }
-      ?: return "Blocked audit remediation references unknown gap_id '$gapId'."
+      ?: return structuredRepairDiagnostic(
+        "audit_repair.blocked.gap_id",
+        "/produced_outputs/unresolvable_repair/gap_id",
+        "Blocked audit remediation references unknown gap_id '$gapId'.",
+      )
     val carriedItems = owningGap.repairItems.map { it.repairItemId }
     return if (itemId !in carriedItems) {
-      "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'."
+      structuredRepairDiagnostic(
+        "audit_repair.blocked.repair_item_id",
+        "/produced_outputs/unresolvable_repair/repair_item_id",
+        "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'.",
+      )
     } else {
       null
     }
-  }
-
-  private fun containsForbiddenAuditRepairDeferral(value: Any?): Boolean = when (value) {
-    is String -> listOf(
-      Regex(FORWARD_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
-      Regex(REVERSE_DEFERRAL_PATTERN, RegexOption.IGNORE_CASE),
-    ).any { it.containsMatchIn(value) }
-    is List<*> -> value.any(::containsForbiddenAuditRepairDeferral)
-    is Map<*, *> -> value.values.any(::containsForbiddenAuditRepairDeferral)
-    else -> false
   }
 
   private fun persistAcceptedOutput(
@@ -2865,11 +3128,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun isGoalReviewRun(run: PhaseRun): Boolean =
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
 
-  // A rejected output is the only evidence of why a contract gate refused it. Persisting it bounded
-  // keeps the durable record diagnosable without letting a runaway agent payload into workflow state.
-  private fun boundedRejectedOutput(rejectedOutput: String?): String? =
-    rejectedOutput?.takeIf(String::isNotBlank)?.take(REJECTED_OUTPUT_MAX_CHARS)
-
   // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
   // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid
   // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
@@ -2877,12 +3135,11 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun schemaInvalidAttempt(
     reason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
-    rejectedOutput: String? = null,
     malformedOutput: Boolean = false,
   ): AttemptResult = AttemptResult.schemaInvalid(
     reason,
     fileManifest,
-    boundedRejectedOutput(rejectedOutput),
+    null,
     malformedOutput,
   )
 
@@ -3354,7 +3611,14 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     is AgentRunLaunchFacts -> infraFailureReason(phaseId, outcome)
       ?.let { LaunchResult.infraFailure(it, fileManifest) }
-      ?: LaunchResult.captured(outcome.stdout, fileManifest)
+      ?: LaunchResult.captured(
+        outcome.stdout,
+        outcome.stdoutBytes,
+        outcome.stdoutTruncated,
+        outcome.stdoutByteSize,
+        outcome.stdoutSha256,
+        fileManifest,
+      )
   }
 
   private data class PhaseRun(
@@ -3387,6 +3651,10 @@ internal class FeatureTaskRuntimeRunLoop(
   private sealed interface LaunchResult {
     private data class Captured(
       val stdout: String,
+      val stdoutBytes: ByteArray,
+      val stdoutTruncated: Boolean,
+      val stdoutByteSize: Long,
+      val stdoutSha256: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : LaunchResult
     private data class InfraFailure(
@@ -3400,6 +3668,10 @@ internal class FeatureTaskRuntimeRunLoop(
     ) : LaunchResult
 
     val capturedStdout: String? get() = (this as? Captured)?.stdout
+    val capturedStdoutBytes: ByteArray? get() = (this as? Captured)?.stdoutBytes
+    val capturedStdoutTruncated: Boolean get() = (this as? Captured)?.stdoutTruncated == true
+    val capturedStdoutByteSize: Long? get() = (this as? Captured)?.stdoutByteSize
+    val capturedStdoutSha256: String? get() = (this as? Captured)?.stdoutSha256
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
@@ -3407,8 +3679,21 @@ internal class FeatureTaskRuntimeRunLoop(
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
 
     companion object {
-      fun captured(stdout: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): LaunchResult =
-        Captured(stdout, fileManifest)
+      fun captured(
+        stdout: String,
+        stdoutBytes: ByteArray,
+        stdoutTruncated: Boolean,
+        stdoutByteSize: Long,
+        stdoutSha256: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      ): LaunchResult = Captured(
+        stdout,
+        stdoutBytes,
+        stdoutTruncated,
+        stdoutByteSize,
+        stdoutSha256,
+        fileManifest,
+      )
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
         InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
 
@@ -3491,17 +3776,11 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
 
-private const val REJECTED_OUTPUT_MAX_CHARS = 20_000
-
 // The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
 // planning projection. The current seam quarantines the record and regenerates its producer instead,
 // so this phrase is emitted by no live path and only ever matches a legacy durable row.
 private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
   "rejected an upstream bounded planning projection at the launch seam"
-
-// Bounds the schema-locations detail carried into a quarantine entry and a block reason. Schema
-// locations only, never record bodies, so this is a defensive ceiling rather than a content filter.
-private const val RECORD_REJECTION_DETAIL_MAX_CHARS = 2_000
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'
@@ -3509,10 +3788,3 @@ private const val OWNED_PATH_DELIMITER = '\u0000'
 // Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
 // inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
 private const val MAX_CHECKPOINT_OWNED_PATHS = 500
-
-private const val FORWARD_DEFERRAL_PATTERN =
-  "\\b(defer(?:red|ring)?|postpone(?:d|ment)?|leave|assign(?:ed|ing)?|hand(?:ed)?\\s+off|later)\\b" +
-    ".{0,120}\\b(review|audit|validation|test(?:ing)?|later phase)\\b"
-private const val REVERSE_DEFERRAL_PATTERN =
-  "\\b(review|audit|validation|test(?:ing)?|later phase)\\b.{0,120}" +
-    "\\b(will|should|must|can)\\s+(handle|fix|complete|cover|address|verify)\\b"

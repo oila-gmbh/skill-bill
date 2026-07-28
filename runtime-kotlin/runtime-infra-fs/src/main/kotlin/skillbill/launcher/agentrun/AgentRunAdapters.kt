@@ -26,31 +26,7 @@ class ProcessAgentRunAdapter(
 
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
-    val result = processRunner.run(
-      AgentRunProcessRequest(
-        command = command.command,
-        workingDirectory = command.workingDirectory,
-        timeout = command.timeout,
-        stdinText = command.stdinText,
-        progressIdleTimeout = request.progressIdleTimeout,
-        progressProbe = request.progressProbe,
-        declaredProgressProbe = request.declaredProgressProbe,
-        progressEmitter = request.progressEmitter,
-        activityProbe = WorktreeActivityProbe(command.workingDirectory),
-        environment = command.environment,
-        inheritEnvironment = command.inheritEnvironment,
-        environmentPassthroughKeys = command.environmentPassthroughKeys,
-        outputSink = request.outputSink,
-        usePtyStdio = command.usePtyStdio,
-        idlePolicy = command.idlePolicy,
-        conversationIsolation = command.conversationIsolation,
-        reviewEvidenceBroker = request.reviewEvidenceBroker,
-        nativeReviewOperations = request.nativeReviewOperations,
-        nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
-          commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
-        },
-      ),
-    )
+    val result = processRunner.run(processRequest(command, request))
     val decoded = runCatching {
       (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
     }.getOrElse { error ->
@@ -60,16 +36,25 @@ class ProcessAgentRunAdapter(
         throw error
       }
     }
+    val normalizedStdout = normalizeStdout(agent, decoded.text)
+    val decodedBodyBytes = if (normalizedStdout == result.stdout) {
+      result.stdoutBytes
+    } else {
+      normalizedStdout.encodeToByteArray()
+    }
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,
-      stdout = normalizeStdout(agent, decoded.text),
+      stdout = normalizedStdout,
+      stdoutBytes = decodedBodyBytes,
       stderr = result.stderr,
       timedOut = result.timedOut,
       interrupted = result.interrupted,
       spawnFailed = result.spawnFailed,
       liveness = result.liveness,
       stdoutTruncated = result.stdoutTruncated,
+      stdoutByteSize = if (result.stdoutTruncated) result.stdoutByteSize else decodedBodyBytes.size.toLong(),
+      stdoutSha256 = if (result.stdoutTruncated) result.stdoutSha256 else sha256(decodedBodyBytes),
       // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
       // descriptors derived from launch context the launcher controls — the
       // child working directory (session path) and a deterministic, non-secret
@@ -88,6 +73,30 @@ class ProcessAgentRunAdapter(
     )
   }
 
+  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
+    command = command.command,
+    workingDirectory = command.workingDirectory,
+    timeout = command.timeout,
+    stdinText = command.stdinText,
+    progressIdleTimeout = request.progressIdleTimeout,
+    progressProbe = request.progressProbe,
+    declaredProgressProbe = request.declaredProgressProbe,
+    progressEmitter = request.progressEmitter,
+    activityProbe = WorktreeActivityProbe(command.workingDirectory),
+    environment = command.environment,
+    inheritEnvironment = command.inheritEnvironment,
+    environmentPassthroughKeys = command.environmentPassthroughKeys,
+    outputSink = request.outputSink,
+    usePtyStdio = command.usePtyStdio,
+    idlePolicy = command.idlePolicy,
+    conversationIsolation = command.conversationIsolation,
+    reviewEvidenceBroker = request.reviewEvidenceBroker,
+    nativeReviewOperations = request.nativeReviewOperations,
+    nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
+      commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
+    },
+  )
+
   private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =
     buildString {
       append(agent.id)
@@ -101,6 +110,9 @@ class ProcessAgentRunAdapter(
       append(workingDirectory.fileName?.toString() ?: workingDirectory.toString())
     }
 }
+
+private fun sha256(bytes: ByteArray): String =
+  java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 data class DecodedAgentRunOutput(
   val text: String,

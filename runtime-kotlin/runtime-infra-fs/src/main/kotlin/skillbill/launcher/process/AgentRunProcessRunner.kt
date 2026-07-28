@@ -119,6 +119,7 @@ val DEFAULT_STATUS_HEARTBEAT_INTERVAL: Duration = 90.seconds
 data class AgentRunProcessResult(
   val exitStatus: Int?,
   val stdout: String,
+  val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val stderr: String,
   val timedOut: Boolean,
   val interrupted: Boolean,
@@ -126,6 +127,9 @@ data class AgentRunProcessResult(
   val liveness: AgentRunLivenessSnapshot? = null,
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
+  val stdoutByteSize: Long = stdoutBytes.size.toLong(),
+  val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
 )
 
 interface AgentRunProcessRunner {

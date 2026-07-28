@@ -430,6 +430,66 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 14,
+        name = "add-rejected-output-diagnostics",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS rejected_output_diagnostics (
+                identity TEXT PRIMARY KEY,
+                workflow_id TEXT NOT NULL,
+                phase_id TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK (attempt > 0),
+                rule TEXT NOT NULL,
+                rejection_path TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                model TEXT NOT NULL,
+                recorded_at TEXT NOT NULL,
+                byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+                sha256 TEXT NOT NULL,
+                lifecycle TEXT NOT NULL CHECK (lifecycle IN ('stored', 'oversized', 'expired')),
+                payload BLOB,
+                UNIQUE(workflow_id, phase_id, attempt),
+                CHECK (
+                  (lifecycle = 'stored' AND payload IS NOT NULL) OR
+                  (lifecycle IN ('oversized', 'expired') AND payload IS NULL)
+                )
+              )
+              """.trimIndent(),
+            )
+            statement.execute(
+              "CREATE INDEX IF NOT EXISTS idx_rejected_output_diagnostic_selection " +
+                "ON rejected_output_diagnostics(workflow_id, phase_id, attempt)",
+            )
+            statement.execute(
+              "CREATE INDEX IF NOT EXISTS idx_rejected_output_diagnostic_retention " +
+                "ON rejected_output_diagnostics(lifecycle, recorded_at)",
+            )
+          }
+        },
+      ),
+      DatabaseMigration(
+        version = 15,
+        name = "add-private-producer-output-evidence",
+        operation = { connection ->
+          connection.createStatement().use {
+            it.execute(
+              """
+              CREATE TABLE IF NOT EXISTS producer_output_evidence (
+                workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK (attempt > 0),
+                agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+                byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+                PRIMARY KEY (workflow_id, phase_id, attempt)
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

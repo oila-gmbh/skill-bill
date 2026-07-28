@@ -446,7 +446,6 @@ data class FeatureTaskRuntimePhaseRecord(
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
-    rejectedOutput?.let { put("rejected_output", it) }
     blockedReason?.let { put("blocked_reason", it) }
     failureDisposition?.let { put("failure_disposition", it.wireValue) }
     if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
@@ -466,9 +465,9 @@ data class FeatureTaskRuntimePhaseRecord(
         "first_started_at", "resolved_agent_id", "execution_origin",
       )
       val allowed = required + setOf(
-        "finished_at", "duration_millis", "output_artifact", "rejected_output", "blocked_reason",
+        "finished_at", "duration_millis", "output_artifact", "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
-        "loop_id", "edge_iteration", "review_pass_number",
+        "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
       )
       val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
       val hasCompatibleIdentity =
@@ -491,7 +490,7 @@ data class FeatureTaskRuntimePhaseRecord(
             raw.requireStringField("execution_origin"),
           ),
           outputArtifact = raw.optionalStringField("output_artifact"),
-          rejectedOutput = raw.optionalStringField("rejected_output"),
+          rejectedOutput = null,
           blockedReason = raw.optionalStringField("blocked_reason"),
           failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
             FeatureTaskRuntimeFailureDisposition.fromWireValue(value) ?: incompatiblePhaseRecord()

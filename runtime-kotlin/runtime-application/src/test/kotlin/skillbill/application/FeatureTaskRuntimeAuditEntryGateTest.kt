@@ -285,7 +285,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     // Blocking AT audit, not at review: a completed-but-undecidable audit could never satisfy the
     // gate and is never itself invalidated, so the run would be unrecoverable in band.
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "off-vocabulary verdict 'pass'")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "off-vocabulary verdict 'pass'")
     assertTrue(
       harness.launchedPhaseOrder().count { it == "audit" } > 1,
       "an undecidable audit must be a bounded in-band retry, not a single terminal settle",

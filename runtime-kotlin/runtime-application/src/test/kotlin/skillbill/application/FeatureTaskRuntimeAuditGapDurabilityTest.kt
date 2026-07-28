@@ -78,8 +78,15 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
-    assertContains(blocked.blockedReason, "executed_verification")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "ac-002-gap-1-item-1",
+      "executed_verification",
+    )
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.results.executed_verification", diagnostic.rule)
+    assertEquals("/produced_outputs/repair_item_results/0/executed_verification", diagnostic.path)
   }
 
   @Test
@@ -111,9 +118,13 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(blocked.blockedReason, "ac-002-gap-1-item-1")
-    assertContains(blocked.blockedReason, "result_evidence.observation")
-    assertContains(blocked.blockedReason, "unauthorized evidence observation 'fixed'")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "audit-repair-result",
+      "ac-002-gap-1-item-1",
+      "result_evidence.observation",
+      "unauthorized evidence observation 'fixed'",
+    )
   }
 
   // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes the unfinished
@@ -452,7 +463,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "verification signal")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "verification signal")
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
@@ -639,6 +650,7 @@ private fun twoItemRemediationOutput(): String = """
       ${PlanningProjectionFixtures.RECEIPT_FIELDS}
       "changed_files":["src/FooTest.kt"],
       "reconciled_state":{"reconciled":true},
+      "deferred_repair_item_ids":[],
       "repair_item_results":[{
         "repair_item_id":"ac-002-gap-1-item-1",
         "outcome":"already_satisfied",

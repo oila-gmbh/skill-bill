@@ -16,7 +16,7 @@ const val FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY: String =
   "feature_task_runtime_quarantined_records"
 
 /** Wire value of the quarantine contract version, mirrored by the canonical quarantine schema. */
-const val FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION: String = "0.2"
 
 /** Typed classes of launch-seam rejection that trigger quarantine; mirror the schema enum. */
 const val QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION: String = "planning_projection_schema"
@@ -26,7 +26,7 @@ const val QUARANTINE_REJECTION_CLASS_HANDOFF_ENVELOPE: String = "handoff_envelop
  * One quarantined durable record. Names the producing phase (which will be regenerated), the
  * consuming phase whose launch seam rejected it, the rejected producing iteration, the typed
  * rejection class and bounded detail, the per-producer regeneration attempt at quarantine, the
- * consuming-phase iteration at quarantine, and the verbatim rejected payload retained for diagnostics.
+ * consuming-phase iteration at quarantine, and a reference to the private rejected-output diagnostic.
  */
 data class FeatureTaskRuntimeQuarantineEntry(
   val producingPhaseId: String,
@@ -36,7 +36,9 @@ data class FeatureTaskRuntimeQuarantineEntry(
   val rejectionDetail: String,
   val regenerationAttempt: Int,
   val quarantinedAtIteration: Int,
-  val rejectedRecordPayload: String,
+  val diagnosticIdentity: String,
+  val rejectedRecordByteSize: Long,
+  val rejectedRecordSha256: String,
 ) {
   init {
     require(producingPhaseId.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.producingPhaseId must be non-blank." }
@@ -46,6 +48,13 @@ data class FeatureTaskRuntimeQuarantineEntry(
     require(rejectionDetail.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.rejectionDetail must be non-blank." }
     require(regenerationAttempt >= 1) { "FeatureTaskRuntimeQuarantineEntry.regenerationAttempt must be >= 1." }
     require(quarantinedAtIteration >= 1) { "FeatureTaskRuntimeQuarantineEntry.quarantinedAtIteration must be >= 1." }
+    require(
+      diagnosticIdentity.isNotBlank(),
+    ) { "FeatureTaskRuntimeQuarantineEntry.diagnosticIdentity must be non-blank." }
+    require(rejectedRecordByteSize >= 0) { "FeatureTaskRuntimeQuarantineEntry.rejectedRecordByteSize must be >= 0." }
+    require(Regex("[0-9a-f]{64}").matches(rejectedRecordSha256)) {
+      "FeatureTaskRuntimeQuarantineEntry.rejectedRecordSha256 must be a lowercase SHA-256 digest."
+    }
   }
 
   @OpenBoundaryMap("Feature-task-runtime quarantine entry artifact map at the durable workflow-artifact seam")
@@ -57,7 +66,9 @@ data class FeatureTaskRuntimeQuarantineEntry(
     "rejection_detail" to rejectionDetail,
     "regeneration_attempt" to regenerationAttempt,
     "quarantined_at_iteration" to quarantinedAtIteration,
-    "rejected_record_payload" to rejectedRecordPayload,
+    "diagnostic_identity" to diagnosticIdentity,
+    "rejected_record_byte_size" to rejectedRecordByteSize,
+    "rejected_record_sha256" to rejectedRecordSha256,
   )
 
   /** A stable identifier for this quarantined record, used in cap-exhaustion block reasons. */
@@ -74,7 +85,9 @@ data class FeatureTaskRuntimeQuarantineEntry(
       rejectionDetail = raw.requireStringField("rejection_detail"),
       regenerationAttempt = raw.requireIntField("regeneration_attempt"),
       quarantinedAtIteration = raw.requireIntField("quarantined_at_iteration"),
-      rejectedRecordPayload = raw.requireStringField("rejected_record_payload"),
+      diagnosticIdentity = raw.requireStringField("diagnostic_identity"),
+      rejectedRecordByteSize = raw.requireIntField("rejected_record_byte_size").toLong(),
+      rejectedRecordSha256 = raw.requireStringField("rejected_record_sha256"),
     )
   }
 }

@@ -51,12 +51,12 @@ class FeatureTaskRuntimeQuarantineSchemaValidatorTest {
   }
 
   private fun validRecord(): Map<String, Any?> = mapOf(
-    "contract_version" to "0.1",
+    "contract_version" to "0.2",
     "entries" to listOf(validEntry()),
   )
 
   private fun recordWithEntry(entry: Map<String, Any?>): Map<String, Any?> = mapOf(
-    "contract_version" to "0.1",
+    "contract_version" to "0.2",
     "entries" to listOf(entry),
   )
 
@@ -68,6 +68,8 @@ class FeatureTaskRuntimeQuarantineSchemaValidatorTest {
     "rejection_detail" to "plan#produced_outputs: projection_kind is missing",
     "regeneration_attempt" to 1,
     "quarantined_at_iteration" to 1,
-    "rejected_record_payload" to "{\"legacy\":\"free-form\"}",
+    "diagnostic_identity" to "rod_example",
+    "rejected_record_byte_size" to 22,
+    "rejected_record_sha256" to "a".repeat(64),
   )
 }

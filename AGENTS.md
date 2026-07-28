@@ -159,7 +159,7 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 
 ## Writing Policy
 
-Write clear, direct, active prose. Remove filler, stale phrases, vague praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
+Write direct, active prose. Remove filler, stale phrases, praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
 
 In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
 

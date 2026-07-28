@@ -108,6 +108,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.http.HttpTelemetryClient
@@ -149,6 +150,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.NativeReviewWorkerLauncher
@@ -251,7 +253,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun databaseSessionFactory(factory: SQLiteDatabaseSessionFactory): DatabaseSessionFactory = factory
+  fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
+    SQLiteDatabaseSessionFactory(context)
 
   @Provides
   @JvmSynthetic
@@ -617,6 +620,11 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeQuarantineValidator(
     adapter: FeatureTaskRuntimeQuarantineValidatorAdapter,
   ): FeatureTaskRuntimeQuarantineValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  fun rejectedOutputDiagnosticMetadataValidator(): RejectedOutputDiagnosticMetadataValidator =
+    RejectedOutputDiagnosticMetadataValidatorAdapter()
 
   @Provides
   @JvmSynthetic

@@ -24,4 +24,8 @@ interface UnitOfWork {
   val goalPlanningPreparations: GoalPlanningPreparationRepository
   val unaddressedFindings: UnaddressedFindingsRepository
     get() = UnavailableUnaddressedFindingsRepository
+  val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?
+    get() = null
+  val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions?
+    get() = null
 }

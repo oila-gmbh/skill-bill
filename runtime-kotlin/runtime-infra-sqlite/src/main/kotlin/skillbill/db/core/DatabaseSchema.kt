@@ -28,6 +28,8 @@ internal object DatabaseSchema {
       "goal_subtask_plans",
       "telemetry_reconciliation_state",
       "unaddressed_findings",
+      "rejected_output_diagnostics",
+      "producer_output_evidence",
     )
 
   val indexNames: Set<String> =
@@ -48,6 +50,7 @@ internal object DatabaseSchema {
       "idx_goal_subtask_plans_ordered",
       "idx_telemetry_reconciliation_completed",
       "idx_unaddressed_findings_issue",
+      "idx_rejected_output_diagnostics_selector",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -60,6 +63,42 @@ internal object DatabaseSchema {
 
   private val statements: List<String> =
     listOf(
+      """
+      CREATE TABLE IF NOT EXISTS producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, attempt)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS rejected_output_diagnostics (
+        identity TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        phase_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        rule TEXT NOT NULL,
+        rejection_path TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+        sha256 TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN ('stored', 'oversized', 'expired')),
+        payload BLOB,
+        UNIQUE (workflow_id, phase_id, attempt),
+        CHECK (
+          (lifecycle = 'stored' AND payload IS NOT NULL) OR
+          (lifecycle IN ('oversized', 'expired') AND payload IS NULL)
+        )
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_rejected_output_diagnostics_selector
+        ON rejected_output_diagnostics(workflow_id, phase_id, attempt)
+      """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,

@@ -110,6 +110,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       "reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "reconciled_state":{"reconciled":true},
+      "deferred_repair_item_ids":[],
       "repair_item_results":[{
         "repair_item_id":"ac-002-gap-1-item-1",
         "outcome":"fixed",

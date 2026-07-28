@@ -116,6 +116,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -441,6 +442,8 @@ class FeatureTaskRuntimeRunnerTest {
       listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history"),
       harness.launchedPhaseOrder(),
     )
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "write_history" }
+    assertContentEquals(validJsonOutput("write_history").encodeToByteArray(), diagnostic.payload)
   }
 
   @Test
@@ -524,12 +527,12 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `a schema-gate rejection threads the validator reason into the next attempt's prompt`() {
+  fun `a schema-gate rejection records exact evidence and threads a payload-free reason into retry`() {
     // F-001: the behavioral change lives in the runner's fix loop, not the composer. A regression that
     // drops priorSchemaFailure (sets null on Retry, or never threads it through attemptOnce ->
     // launchAndCapture -> compose) leaves every retry a blind re-roll yet keeps the composer-isolated
     // tests green. Assert the SECOND review launch prompt carries the rejection directive and the prior
-    // reason verbatim, and the FIRST attempt's prompt carries neither (forward launch unchanged).
+    // payload-free reason, and the FIRST attempt's prompt carries neither (forward launch unchanged).
     val reason = "Review gate: emit a findings array or a verdict, not prose"
     var reviewAttempts = 0
     val harness = runnerHarness(
@@ -556,7 +559,33 @@ class FeatureTaskRuntimeRunnerTest {
       "the first attempt's prompt carries no correction directive",
     )
     assertContains(reviewPrompts[1], "Previous attempt was REJECTED by the schema gate")
-    assertContains(reviewPrompts[1], reason)
+    assertFalse(reviewPrompts[1].contains(reason))
+    assertContains(reviewPrompts[1], "Rejected output violated 'phase-output-schema'")
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    assertTrue(diagnostic.payload?.isNotEmpty() == true)
+    assertFalse(diagnostic.metadata.reason.contains(reason))
+  }
+
+  @Test
+  fun `goal-child schema rejection records one diagnostic before retrying`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-child-diagnostic")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    var reviewAttempts = 0
+    val launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "review" && reviewAttempts++ == 0) {
+        facts("""{"private":"goal-child-secret"}""")
+      } else {
+        facts(validJsonOutput(phaseId))
+      }
+    }
+    val harness = goalContinuationHarness(repoRoot, git, launcher)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    assertContentEquals("""{"private":"goal-child-secret"}""".encodeToByteArray(), diagnostic.payload)
+    assertEquals(1, diagnostic.metadata.attempt)
   }
 
   @Test
@@ -1649,9 +1678,13 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertContains(requireNotNull(implementRecord.blockedReason), "rejected by fake validator")
+    assertPrivateDiagnosticRejection(
+      requireNotNull(implementRecord.blockedReason),
+      "phase-output-schema",
+      "rejected by fake validator",
+    )
   }
 
   @Test
@@ -1665,7 +1698,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertContains(blocked.blockedReason, "Last schema-gate failure: rejected by fake validator")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
   }
 
   @Test
@@ -2639,7 +2672,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("blocked", reviewRecord.status)
-    assertNotNull(reviewRecord.rejectedOutput)
+    assertNull(reviewRecord.rejectedOutput)
     assertNull(
       reviewRecord.outputArtifact,
       "rejected evidence must never land in output_artifact, which resume hydration re-validates",
@@ -3220,7 +3253,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "verification signal")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "verification signal")
     // It never advanced past review on the missing signal. Audit already ran — it precedes review.
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
@@ -3913,7 +3946,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("implement", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertContains(blocked.blockedReason, "reconciliation report")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "mutating-reconciliation", "reconciliation report")
     // The bounded fix loop retried to the cap before blocking (verified, not assumed).
     assertEquals(
       FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
@@ -5304,6 +5337,13 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
   val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
+  private val diagnosticRecords =
+    linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
+  private val producerEvidence =
+    linkedMapOf<Triple<String, String, Int>, skillbill.ports.persistence.ProducerOutputEvidence>()
+
+  fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
+    diagnosticRecords.values.toList()
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -5324,6 +5364,42 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+    override val rejectedOutputDiagnosticPermissions =
+      skillbill.ports.persistence.RejectedOutputDiagnosticPermissions { }
+    override val rejectedOutputDiagnostics = object : skillbill.ports.persistence.RejectedOutputDiagnosticRepository {
+      override fun insert(
+        record: skillbill.ports.persistence.RejectedOutputDiagnosticRecord,
+      ): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
+        diagnosticRecords.getOrPut(record.metadata.identity) { record }
+
+      override fun select(
+        selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector,
+      ): List<skillbill.ports.persistence.RejectedOutputDiagnostic> = diagnosticRecords.values
+        .map { it.metadata }
+        .filter {
+          it.workflowId == selector.workflowId &&
+            (selector.phaseId == null || it.phaseId == selector.phaseId) &&
+            (selector.attempt == null || it.attempt == selector.attempt)
+        }
+
+      override fun read(identity: String): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
+        diagnosticRecords[identity]
+          ?: throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Absent(identity)
+
+      override fun markExpired(before: java.time.Instant): Int = 0
+
+      override fun delete(selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector): Int = 0
+
+      override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+        producerEvidence.putIfAbsent(Triple(evidence.workflowId, evidence.phaseId, evidence.attempt), evidence)
+      }
+
+      override fun readProducerOutput(
+        workflowId: String,
+        phaseId: String,
+        attempt: Int,
+      ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence[Triple(workflowId, phaseId, attempt)]
+    }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(
         workflowId: String,

@@ -423,7 +423,7 @@ class WorkflowService(
     request: BlockedPhaseRetryRequest,
     state: BlockedPhaseRetryState,
   ): BlockedPhaseRetryPersistence {
-    val updatedRecords = LinkedHashMap(state.phaseRecords).apply { remove(request.phaseId) }
+    val updatedRecords = state.reopenedPhaseRecords()
     val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
       action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
       sequenceNumber = (state.ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
@@ -714,7 +714,22 @@ private data class BlockedPhaseRetryState(
   val phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   val ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   val blockedRecord: FeatureTaskRuntimePhaseRecord,
-)
+) {
+  fun reopenedPhaseRecords(): Map<String, FeatureTaskRuntimePhaseRecord> = LinkedHashMap(phaseRecords).apply {
+    this[blockedRecord.phaseId] = blockedRecord.copy(
+      status = "pending",
+      finishedAt = null,
+      durationMillis = null,
+      outputArtifact = null,
+      rejectedOutput = null,
+      blockedReason = null,
+      failureDisposition = null,
+      fileManifestBefore = emptyList(),
+      fileManifestAfter = emptyList(),
+      fileManifestIntroduced = emptyList(),
+    )
+  }
+}
 
 private data class BlockedPhaseRetryPersistence(
   val result: WorkflowUpdateResult,

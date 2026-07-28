@@ -5,7 +5,6 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -37,8 +36,12 @@ class RealValidatorProducerGateIntegrationTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("plan", blocked.lastIncompletePhase)
     assertEquals(cap, harness.launchedPromptPhaseOrder().count { it == "plan" }, "the plan phase must retry to the cap")
-    assertContains(blocked.blockedReason, "executable_plan")
-    assertContains(blocked.blockedReason, "leaked_planning_narration")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "producer-projection",
+      "executable_plan",
+      "leaked_planning_narration",
+    )
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it == "implement" },
       "a schema-violating plan must never advance to its consumer",
@@ -62,10 +65,13 @@ class RealValidatorProducerGateIntegrationTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "plan" }
     // Exactly `cap` launches: the first plus (cap - 1) retries, none of which is a terminal block before
-    // the last. The retries carry the schema rejection so the agent can repair the output.
+    // the last. Retries carry a safe diagnostic pointer without exposing the rejected payload.
     assertEquals(cap, planPrompts.size)
-    assertContains(planPrompts[1], "executable_plan")
-    assertContains(planPrompts[1], "leaked_planning_narration")
+    assertPrivateDiagnosticRejection(
+      planPrompts[1],
+      "producer-projection",
+      "leaked_planning_narration",
+    )
   }
 
   @Test

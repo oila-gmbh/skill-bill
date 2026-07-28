@@ -207,6 +207,7 @@ data class AgentRunLaunchFacts(
   val timedOut: Boolean,
   val interrupted: Boolean = false,
   val spawnFailed: Boolean,
+  val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val liveness: AgentRunLivenessSnapshot? = null,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
@@ -219,6 +220,9 @@ data class AgentRunLaunchFacts(
   val providerUsageEnforceable: Boolean = false,
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
+  val stdoutByteSize: Long = stdoutBytes.size.toLong(),
+  val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
+    .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }

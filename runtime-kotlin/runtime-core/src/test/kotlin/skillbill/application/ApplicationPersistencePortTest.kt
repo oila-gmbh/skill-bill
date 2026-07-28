@@ -604,7 +604,7 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `operator blocked-phase retry is active only while retry is the latest phase transition`() {
+  fun `operator blocked-phase retry stays active through launch and clears on terminal transition`() {
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
@@ -630,6 +630,16 @@ class ApplicationPersistencePortTest {
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = workflowId,
         action = FeatureTaskRuntimePhaseLedgerAction.START,
+        phaseId = "implement",
+        attemptCount = 1,
+        resolvedAgentId = "codex",
+      ),
+    )
+    assertEquals(reason, recorder.loadOperatorBlockRetry(workflowId)?.reason)
+    recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
         phaseId = "implement",
         attemptCount = 1,
         resolvedAgentId = "codex",
