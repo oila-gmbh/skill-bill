@@ -122,17 +122,37 @@ private fun RejectedOutputCleanupRequest.selector() =
   RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
 
 private fun RejectedOutputDiagnostic.safeLine(): String = listOf(
-  "identity=$identity",
-  "workflow=$workflowId",
-  "phase=$phaseId",
+  "identity=${identity.safeField()}",
+  "workflow=${workflowId.safeField()}",
+  "phase=${phaseId.safeField()}",
   "attempt=$attempt",
-  "rule=$rule",
-  "path=$path",
-  "reason=$reason",
-  "agent=$agentId",
-  "model=$model",
+  "rule=${rule.safeField()}",
+  "path=${path.safeField()}",
+  "reason=${reason.safeField()}",
+  "agent=${agentId.safeField()}",
+  "model=${model.safeField()}",
   "recorded_at=$recordedAt",
   "byte_size=$byteSize",
   "sha256=$sha256",
   "lifecycle=${lifecycle.name.lowercase()}",
 ).joinToString(" ")
+
+private fun String.safeField(): String = buildString {
+  append('"')
+  this@safeField.forEach { character ->
+    when (character) {
+      '\\' -> append("\\\\")
+      '"' -> append("\\\"")
+      '\n' -> append("\\n")
+      '\r' -> append("\\r")
+      '\t' -> append("\\t")
+      else -> if (character.code < 0x20 || character.code == 0x7f) {
+        append("\\u")
+        append(character.code.toString(16).padStart(4, '0'))
+      } else {
+        append(character)
+      }
+    }
+  }
+  append('"')
+}

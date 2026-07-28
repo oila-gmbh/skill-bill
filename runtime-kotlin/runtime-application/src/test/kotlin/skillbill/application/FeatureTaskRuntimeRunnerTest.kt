@@ -527,12 +527,12 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `a schema-gate rejection threads the validator reason into the next attempt's prompt`() {
+  fun `a schema-gate rejection records exact evidence and threads a payload-free reason into retry`() {
     // F-001: the behavioral change lives in the runner's fix loop, not the composer. A regression that
     // drops priorSchemaFailure (sets null on Retry, or never threads it through attemptOnce ->
     // launchAndCapture -> compose) leaves every retry a blind re-roll yet keeps the composer-isolated
     // tests green. Assert the SECOND review launch prompt carries the rejection directive and the prior
-    // reason verbatim, and the FIRST attempt's prompt carries neither (forward launch unchanged).
+    // payload-free reason, and the FIRST attempt's prompt carries neither (forward launch unchanged).
     val reason = "Review gate: emit a findings array or a verdict, not prose"
     var reviewAttempts = 0
     val harness = runnerHarness(
@@ -559,7 +559,33 @@ class FeatureTaskRuntimeRunnerTest {
       "the first attempt's prompt carries no correction directive",
     )
     assertContains(reviewPrompts[1], "Previous attempt was REJECTED by the schema gate")
-    assertContains(reviewPrompts[1], reason)
+    assertFalse(reviewPrompts[1].contains(reason))
+    assertContains(reviewPrompts[1], "Rejected output violated 'phase-output-schema'")
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    assertTrue(diagnostic.payload?.isNotEmpty() == true)
+    assertFalse(diagnostic.metadata.reason.contains(reason))
+  }
+
+  @Test
+  fun `goal-child schema rejection records one diagnostic before retrying`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-child-diagnostic")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    var reviewAttempts = 0
+    val launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "review" && reviewAttempts++ == 0) {
+        facts("""{"private":"goal-child-secret"}""")
+      } else {
+        facts(validJsonOutput(phaseId))
+      }
+    }
+    val harness = goalContinuationHarness(repoRoot, git, launcher)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    assertContentEquals("""{"private":"goal-child-secret"}""".encodeToByteArray(), diagnostic.payload)
+    assertEquals(1, diagnostic.metadata.attempt)
   }
 
   @Test

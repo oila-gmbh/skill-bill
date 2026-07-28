@@ -8,6 +8,7 @@ import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
+import skillbill.ports.persistence.ProducerOutputEvidence
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Duration
@@ -51,8 +52,13 @@ class RejectedOutputDiagnosticService(
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
-    cleanup()
     val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt)
+    existing(identity)?.let { record ->
+      if (!record.matches(request)) throw RejectedOutputDiagnosticError.Conflict(identity)
+      metadataValidator.validate(record.metadata)
+      return record.metadata
+    }
+    cleanup()
     val oversized = request.truncated || request.observedByteSize > config.maximumPayloadBytes
     val metadata = RejectedOutputDiagnostic(
       identity = identity,
@@ -80,6 +86,18 @@ class RejectedOutputDiagnosticService(
     return repository.insert(
       RejectedOutputDiagnosticRecord(metadata, request.rawResponse.takeUnless { oversized }),
     ).metadata
+  }
+
+  fun retainProducerOutput(evidence: ProducerOutputEvidence) {
+    try {
+      permissions.applyRestrictivePermissions()
+    } catch (error: RejectedOutputDiagnosticError) {
+      throw error
+    } catch (error: Exception) {
+      throw RejectedOutputDiagnosticError.Permission("apply", error)
+    }
+    cleanup()
+    repository.retainProducerOutput(evidence)
   }
 
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
@@ -139,6 +157,13 @@ class RejectedOutputDiagnosticService(
     }
   }
 
+  private fun existing(identity: String): RejectedOutputDiagnosticRecord? =
+    try {
+      repository.read(identity)
+    } catch (_: RejectedOutputDiagnosticError.Absent) {
+      null
+    }
+
   private fun validate(selector: RejectedOutputDiagnosticSelector): RejectedOutputDiagnosticSelector {
     if (selector.workflowId.isBlank()) {
       throw RejectedOutputDiagnosticError.InvalidRequest("workflowId must be non-blank")
@@ -160,3 +185,15 @@ class RejectedOutputDiagnosticService(
       MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
   }
 }
+
+private fun RejectedOutputDiagnosticRecord.matches(request: RejectedOutputDiagnosticRequest): Boolean =
+  metadata.workflowId == request.workflowId &&
+    metadata.phaseId == request.phaseId &&
+    metadata.attempt == request.attempt &&
+    metadata.rule == request.rule &&
+    metadata.path == request.path &&
+    metadata.reason == request.reason &&
+    metadata.agentId == request.agentId &&
+    metadata.model == request.model &&
+    metadata.byteSize == request.observedByteSize &&
+    metadata.sha256 == request.observedSha256

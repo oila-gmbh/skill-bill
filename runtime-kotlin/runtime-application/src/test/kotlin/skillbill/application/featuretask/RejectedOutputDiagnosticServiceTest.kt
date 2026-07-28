@@ -76,6 +76,43 @@ class RejectedOutputDiagnosticServiceTest {
   }
 
   @Test
+  fun `re-recording an expired attempt is an idempotent tombstone lookup`() {
+    val repository = MemoryRepository()
+    val service = service(repository)
+    val first = service.record(request(byteArrayOf(1, 2)))
+    repository.records[first.identity] = repository.records.getValue(first.identity).copy(
+      metadata = first.copy(lifecycle = RejectedOutputLifecycle.EXPIRED),
+      payload = null,
+    )
+
+    val replay = service.record(request(byteArrayOf(1, 2)))
+
+    assertEquals(RejectedOutputLifecycle.EXPIRED, replay.lifecycle)
+    assertEquals(1, repository.records.size)
+  }
+
+  @Test
+  fun `producer evidence applies permissions and retention before insertion`() {
+    val repository = MemoryRepository()
+    var permissionCalls = 0
+    val service = RejectedOutputDiagnosticService(
+      repository,
+      permissions = { permissionCalls += 1 },
+      metadataValidator = RejectedOutputDiagnosticMetadataValidator { },
+      clock = Clock.fixed(now, ZoneOffset.UTC),
+    )
+    service.retainProducerOutput(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        "workflow-1", "plan", 1, "codex", "gpt", now, 1, "a".repeat(64), byteArrayOf(1),
+      ),
+    )
+
+    assertEquals(1, permissionCalls)
+    assertEquals(1, repository.expiryCalls)
+    assertEquals(1, repository.producerOutputs)
+  }
+
+  @Test
   fun `corrupt payload fails without returning content`() {
     val repository = MemoryRepository()
     val service = service(repository)
@@ -139,6 +176,7 @@ class RejectedOutputDiagnosticServiceTest {
 private class MemoryRepository : RejectedOutputDiagnosticRepository {
   val records = linkedMapOf<String, RejectedOutputDiagnosticRecord>()
   var expiryCalls: Int = 0
+  var producerOutputs: Int = 0
 
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord =
     records.getOrPut(record.metadata.identity) { record }
@@ -159,4 +197,8 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
   }
 
   override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
+
+  override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+    producerOutputs += 1
+  }
 }

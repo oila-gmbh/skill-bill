@@ -231,7 +231,7 @@ class AgentRunLauncherTest {
 
     val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
 
-    assertContentEquals("\u0000\r\n�*".encodeToByteArray(), facts.stdoutBytes)
+    assertContentEquals(rawBytes, facts.stdoutBytes)
   }
 
   @Test

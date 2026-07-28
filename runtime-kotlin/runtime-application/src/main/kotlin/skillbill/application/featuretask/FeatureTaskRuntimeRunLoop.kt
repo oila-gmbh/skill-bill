@@ -2047,22 +2047,36 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
-      return blockUnattributableRecordRejection(run, iteration, observability, rejection, producer)
+      return blockUnattributableRecordRejection(run, state, iteration, observability, rejection, producer)
     }
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
     val producerEvidence = recorder.producerOutput(
       request.workflowId, producer, producingIteration, request.dbPathOverride,
-    ) ?: throw RejectedOutputDiagnosticError.Retrieval(
-      "original producer output is unavailable for $producer attempt $producingIteration",
-    )
+    ) ?: requireNotNull(rejectedRecord).let { output ->
+      val bytes = output.payload.encodeToByteArray()
+      ProducerOutputEvidence(
+        request.workflowId,
+        producer,
+        producingIteration,
+        state.recordFor(producer)?.resolvedAgentId ?: "legacy-unknown",
+        "legacy-unknown",
+        java.time.Instant.now(),
+        bytes.size.toLong(),
+        RejectedOutputDiagnosticService.sha256(bytes),
+        bytes,
+      )
+    }
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
-    recordRejectedOutput(
+    val diagnosticIdentity = recordRejectedOutput(
       run = run,
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
-      reason = rejection.rejectionDetail,
+      reason = payloadFreeRejectionReason(
+        "reconciliation-${rejection.rejectionClass}",
+        rejectionPath(rejection.rejectionDetail),
+      ),
       outputBytes = rejectedPayload,
       phaseId = producer,
       agentId = producerEvidence.agentId,
@@ -2080,10 +2094,15 @@ internal class FeatureTaskRuntimeRunLoop(
         consumingPhaseId = consumer,
         producingIteration = producingIteration,
         rejectionClass = rejection.rejectionClass,
-        rejectionDetail = boundedRejectionDetail(rejection.rejectionDetail),
+        rejectionDetail = payloadFreeRejectionReason(
+          "reconciliation-${rejection.rejectionClass}",
+          rejectionPath(rejection.rejectionDetail),
+        ),
         regenerationAttempt = regenerationAttempt,
         quarantinedAtIteration = iteration.coerceAtLeast(1),
-        rejectedRecordPayload = rejectedRecord?.payload ?: "<unavailable>",
+        diagnosticIdentity = diagnosticIdentity,
+        rejectedRecordByteSize = producerEvidence.byteSize,
+        rejectedRecordSha256 = producerEvidence.sha256,
       ),
       request.dbPathOverride,
     )
@@ -2092,19 +2111,57 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun blockUnattributableRecordRejection(
     run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
     producer: String?,
   ): PhaseOutcome {
-    val detail = boundedRejectionDetail(rejection.rejectionDetail)
+    val detail = payloadFreeRejectionReason(
+      "reconciliation-${rejection.rejectionClass}",
+      rejectionPath(rejection.rejectionDetail),
+    )
+    val rejectedOutput = run.declaration.projectionDeclarations
+      .asSequence()
+      .map { it.producerIteration.phaseId }
+      .distinct()
+      .mapNotNull { phaseId -> state.outputFor(phaseId) }
+      .firstOrNull()
+    val evidence = rejectedOutput?.let { output ->
+      recorder.producerOutput(
+        request.workflowId,
+        output.phaseId,
+        output.iteration.coerceAtLeast(1),
+        request.dbPathOverride,
+      ) ?: output.payload.encodeToByteArray().let { bytes ->
+        ProducerOutputEvidence(
+          request.workflowId,
+          output.phaseId,
+          output.iteration,
+          state.recordFor(output.phaseId)?.resolvedAgentId ?: "legacy-unknown",
+          "legacy-unknown",
+          java.time.Instant.now(),
+          bytes.size.toLong(),
+          RejectedOutputDiagnosticService.sha256(bytes),
+          bytes,
+        )
+      }
+    } ?: throw RejectedOutputDiagnosticError.Retrieval(
+      "actual rejected producer output is unavailable for unattributable reconciliation",
+    )
     recordRejectedOutput(
       run = run,
-      iteration = iteration,
+      iteration = evidence.attempt,
       rule = "reconciliation-${rejection.rejectionClass}",
-      reason = rejection.rejectionDetail,
-      outputBytes = detail.encodeToByteArray(),
+      reason = detail,
+      outputBytes = evidence.payload ?: byteArrayOf(),
+      phaseId = evidence.phaseId,
+      agentId = evidence.agentId,
+      model = evidence.model,
       path = rejectionPath(rejection.rejectionDetail),
+      outputByteSize = evidence.byteSize,
+      outputSha256 = evidence.sha256,
+      outputTruncated = evidence.payload == null,
     )
     val reason = if (producer == null) {
       "Feature-task-runtime phase '${run.phaseId}' rejected an upstream durable record " +
@@ -2135,12 +2192,20 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun rejectionPath(detail: String): String =
+  private fun rejectionPath(detail: String): String {
     Regex("""(?:instance location|path|pointer)\s*[:=]\s*['"]?(/[^\s,'"]*)""", RegexOption.IGNORE_CASE)
       .find(detail)
       ?.groupValues
       ?.get(1)
-      ?: "/"
+      ?.let { return it }
+    val dollarPath = Regex("""\$(?:\.[A-Za-z0-9_-]+|\[[0-9]+])+""").find(detail)?.value ?: return "/"
+    return dollarPath.removePrefix("$")
+      .replace(Regex("""\.([A-Za-z0-9_-]+)"""), "/${'$'}1")
+      .replace(Regex("""\[([0-9]+)]"""), "/${'$'}1")
+  }
+
+  private fun payloadFreeRejectionReason(rule: String, path: String): String =
+    "Rejected output violated '$rule' at '$path'. Inspect the private diagnostic for the exact response."
 
   @Suppress("LongParameterList")
   private fun attemptOnce(
@@ -2208,23 +2273,30 @@ internal class FeatureTaskRuntimeRunLoop(
       run.request.dbPathOverride,
     )
     val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
-    settleValidatedOutput(run, iteration, normalized, observability, fileManifest)
+    settleValidatedOutput(
+      run, iteration, normalized, observability, fileManifest,
+      outputBytes, outputTruncated, outputByteSize, outputSha256,
+    )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    val path = rejectionPath(error.reason)
+    val reason = payloadFreeRejectionReason("phase-output-schema", path)
     recordRejectedOutput(
-      run, iteration, "phase-output-schema", error.reason, outputBytes,
+      run, iteration, "phase-output-schema", reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
     schemaInvalidAttempt(
-      error.reason,
+      reason,
       fileManifest,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
+    val path = rejectionPath(error.reason)
+    val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
     recordRejectedOutput(
-      run, iteration, "audit-repair-plan-schema", error.reason, outputBytes,
+      run, iteration, "audit-repair-plan-schema", reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
-    schemaInvalidAttempt(error.reason, fileManifest)
+    schemaInvalidAttempt(reason, fileManifest)
   }
 
   private fun recordRejectedOutput(
@@ -2240,7 +2312,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputTruncated: Boolean = false,
     outputByteSize: Long = outputBytes.size.toLong(),
     outputSha256: String = RejectedOutputDiagnosticService.sha256(outputBytes),
-  ) {
+  ): String {
     recorder.recordRejectedOutput(
       RejectedOutputDiagnosticRequest(
         workflowId = run.request.workflowId,
@@ -2258,6 +2330,11 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
       run.request.dbPathOverride,
     )
+    return RejectedOutputDiagnosticService.stableIdentity(
+      run.request.workflowId,
+      phaseId,
+      iteration.coerceAtLeast(1),
+    )
   }
 
   @Suppress("ReturnCount")
@@ -2267,26 +2344,39 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    outputBytes: ByteArray,
+    outputTruncated: Boolean,
+    outputByteSize: Long,
+    outputSha256: String,
   ): AttemptResult {
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
-    mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
+    fun reject(rule: String, detail: String): AttemptResult {
+      val path = rejectionPath(detail)
+      val reason = payloadFreeRejectionReason(rule, path)
+      recordRejectedOutput(
+        run, iteration, rule, reason, outputBytes, path = path,
+        outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+      )
       return schemaInvalidAttempt(reason, fileManifest)
+    }
+    mutatingReconciliationGateReason(run.phaseId, outputMap)?.let { reason ->
+      return reject("mutating-reconciliation", reason)
     }
     val terminalAuditRepairReason = terminalAuditRepairBlockGateReason(run.phaseId, outputMap)
     terminalAuditRepairReason?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("terminal-audit-repair", reason)
     }
     auditRepairResultGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("audit-repair-result", reason)
     }
     if (!isCompactAuditOutput(run.phaseId, outputText)) {
       auditDurableLedgerGateReason(run.phaseId, outputMap)?.let { reason ->
-        return schemaInvalidAttempt(reason, fileManifest)
+        return reject("audit-durable-ledger", reason)
       }
     }
     auditClosedCriterionGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("audit-closed-criterion", reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
@@ -2327,7 +2417,7 @@ internal class FeatureTaskRuntimeRunLoop(
       planningProjectionValidator,
       allowDecompositionPackage = true,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("producer-projection", reason)
     }
     immediateConsumerProjectionGateReason(
       run,
@@ -2335,10 +2425,10 @@ internal class FeatureTaskRuntimeRunLoop(
       normalizedOutput,
       repositoryFingerprint,
     )?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("consumer-projection", reason)
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return schemaInvalidAttempt(reason, fileManifest)
+      return reject("output-verification", reason)
     }
     return persistAcceptedOutput(
       run,

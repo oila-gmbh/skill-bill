@@ -121,7 +121,7 @@ object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
  * Pins the durable append-only quarantined-record list the launch-seam quarantine-and-regenerate
  * edge writes.
  */
-const val FEATURE_TASK_RUNTIME_QUARANTINE_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_QUARANTINE_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeQuarantineSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

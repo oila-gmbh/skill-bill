@@ -1,0 +1,24 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-149"
+feature_name: "post-review-unit-test-value-fix"
+parent_spec_path: ".feature-specs/SKILL-149-post-review-unit-test-value-fix/spec.md"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-149-post-review-unit-test-value-fix"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "start"
+subtasks:
+- id: 1
+  name: "Post-review unit-test value find-and-fix phase"
+  spec_path: ".feature-specs/SKILL-149-post-review-unit-test-value-fix/spec_subtask_1_post_review_unit_test_value_fix.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  dependencies: []

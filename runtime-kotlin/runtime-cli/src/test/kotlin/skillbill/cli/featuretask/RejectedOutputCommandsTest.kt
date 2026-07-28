@@ -54,6 +54,20 @@ class RejectedOutputCommandsTest {
     }
   }
 
+  @Test
+  fun `metadata rendering encodes control characters onto one line`() {
+    val repository = CliDiagnosticRepository()
+    val service = RejectedOutputDiagnosticService(repository, { }, { })
+    service.record(request(byteArrayOf(1)).copy(reason = "invalid\nforged=value\u0000"))
+    val output = ByteArrayOutputStream()
+
+    RejectedOutputInspectCommand(service).execute(RejectedOutputInspectRequest("workflow-1"), output)
+
+    val rendered = output.toString()
+    assertTrue(rendered.contains("""reason="invalid\nforged=value\u0000""""))
+    assertTrue(rendered.lines().count { it.isNotEmpty() } == 1)
+  }
+
   private fun request(raw: ByteArray, attempt: Int = 1) = RejectedOutputDiagnosticRequest(
     workflowId = "workflow-1",
     phaseId = "implement",

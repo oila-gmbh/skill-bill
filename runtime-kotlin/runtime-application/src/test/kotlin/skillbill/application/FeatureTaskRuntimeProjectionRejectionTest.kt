@@ -139,7 +139,8 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
     assertEquals("implement", entry.consumingPhaseId)
-    assertContains(entry.rejectedRecordPayload, "free-form legacy body")
+    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     // Evidence is never delivered to any agent prompt.
     assertTrue(
       harness.launcher.requests.none {
@@ -197,7 +198,8 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
     assertEquals("audit", entry.consumingPhaseId)
-    assertContains(entry.rejectedRecordPayload, "free-form legacy body")
+    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     assertTrue(
       harness.launcher.requests.none {
         requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")

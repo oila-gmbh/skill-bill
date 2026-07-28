@@ -111,9 +111,13 @@ class FeatureTaskRuntimePhaseRecorder(
   }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =
-    database.transaction(dbOverride) {
-      it.rejectedOutputDiagnostics?.retainProducerOutput(evidence)
+    database.transaction(dbOverride) { unitOfWork ->
+      val repository = unitOfWork.rejectedOutputDiagnostics
         ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+      val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
+        ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
+      RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator)
+        .retainProducerOutput(evidence)
     }
 
   fun producerOutput(workflowId: String, phaseId: String, attempt: Int, dbOverride: String? = null) =

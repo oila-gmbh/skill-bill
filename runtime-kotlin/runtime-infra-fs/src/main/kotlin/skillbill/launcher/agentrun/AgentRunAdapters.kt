@@ -61,7 +61,11 @@ class ProcessAgentRunAdapter(
       }
     }
     val normalizedStdout = normalizeStdout(agent, decoded.text)
-    val decodedBodyBytes = normalizedStdout.encodeToByteArray()
+    val decodedBodyBytes = if (normalizedStdout == result.stdout) {
+      result.stdoutBytes
+    } else {
+      normalizedStdout.encodeToByteArray()
+    }
     return AgentRunLaunchFacts(
       agent = agent,
       exitStatus = result.exitStatus,

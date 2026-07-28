@@ -187,19 +187,26 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
       rejectionDetail = "plan#produced_outputs: projection_kind is missing",
       regenerationAttempt = 1,
       quarantinedAtIteration = 1,
-      rejectedRecordPayload = "payload-one",
+      diagnosticIdentity = "rod_one",
+      rejectedRecordByteSize = 11,
+      rejectedRecordSha256 = "a".repeat(64),
     )
-    val second = first.copy(producingIteration = 2, regenerationAttempt = 2, rejectedRecordPayload = "payload-two")
+    val second = first.copy(
+      producingIteration = 2,
+      regenerationAttempt = 2,
+      diagnosticIdentity = "rod_two",
+      rejectedRecordSha256 = "b".repeat(64),
+    )
     harness.recorder.appendQuarantineEntry(WORKFLOW_ID, first)
     harness.recorder.appendQuarantineEntry(WORKFLOW_ID, second)
 
     val loaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    assertEquals(listOf("payload-one", "payload-two"), loaded.map { it.rejectedRecordPayload })
+    assertEquals(listOf("rod_one", "rod_two"), loaded.map { it.diagnosticIdentity })
 
     // Crash replay: re-appending the first entry is a no-op; the store never duplicates or reorders.
     harness.recorder.appendQuarantineEntry(WORKFLOW_ID, first)
     val reloaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     assertEquals(2, reloaded.size, "an already-recorded entry is never duplicated")
-    assertEquals(loaded.map { it.rejectedRecordPayload }, reloaded.map { it.rejectedRecordPayload })
+    assertEquals(loaded.map { it.diagnosticIdentity }, reloaded.map { it.diagnosticIdentity })
   }
 }
