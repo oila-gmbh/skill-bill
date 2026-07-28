@@ -935,6 +935,39 @@ class FeatureTaskRuntimePhaseRecorder(
       phaseLedgerFrom(decodeArtifacts(record.artifactsJson))
     }
 
+  /**
+   * Strict read of the unresolved convergence obligations. Returns null only when the workflow row
+   * is absent or convergence-state persistence is unavailable.
+   */
+  fun loadConvergenceState(workflowId: String, dbOverride: String? = null): skillbill.workflow.taskruntime.model.UnresolvedConvergence? =
+    try {
+      database.read(dbOverride) { unitOfWork ->
+        unitOfWork.convergenceStates.unresolved(workflowId)
+      }
+    } catch (_: IllegalStateException) {
+      null
+    }
+
+  /**
+   * Loads the most recent implementation receipt envelope from durable phase records. Returns null when
+   * the implementation phase has no completed output or the record is absent. The caller is responsible
+   * for parsing the envelope into the typed projection using the appropriate validator.
+   */
+  fun loadPriorImplementationReceiptEnvelope(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, Any?>? {
+    val records = loadPhaseRecords(workflowId, dbOverride) ?: return null
+    val record = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
+      ?: return null
+    val outputText = record.outputArtifact ?: return null
+    return JsonSupport.parseObjectOrNull(outputText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+  }
+
+  /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
+
   /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
   fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
     database.read(dbOverride) { unitOfWork ->

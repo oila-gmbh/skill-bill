@@ -146,6 +146,7 @@ class FeatureTaskRuntimeRunner(
         transitions,
         recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         outputValidator,
+        phaseGates.planningProjectionValidator,
         (transitions.forwardPhaseIds + transitions.loopOnlyPhaseIds).associateWith { phaseId ->
           recorder.latestProducerOutputAttempt(
             runRequest.workflowId,

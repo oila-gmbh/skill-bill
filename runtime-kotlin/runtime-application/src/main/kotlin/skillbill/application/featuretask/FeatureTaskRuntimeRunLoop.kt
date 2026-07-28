@@ -64,7 +64,21 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import skillbill.workflow.taskruntime.model.ActionableDeviation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.ImplementationCompleted
+import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
+import skillbill.workflow.taskruntime.model.ImplementationCompletionDisposition
+import skillbill.workflow.taskruntime.model.ImplementationIncomplete
+import skillbill.workflow.taskruntime.model.SemanticIncompleteWorkContinuation
+import skillbill.workflow.taskruntime.model.SchemaInvalidCorrection
+import skillbill.workflow.taskruntime.model.TerminalBlocked
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
+import skillbill.workflow.taskruntime.model.implementationCompletionDecisionFromContext
+import skillbill.workflow.taskruntime.model.validateImplementationReceiptAgainstPlan
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
@@ -3022,6 +3036,82 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun validateImplementationCompletion(
+    run: PhaseRun,
+    iteration: Int,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    repositoryFingerprint: String?,
+  ): PhaseOutcome? {
+    val receipt = implementationReceiptFromOutput(normalizedOutput.envelope)
+      ?: return null
+    val authoritativePlan = state.authoritativeExecutablePlan()
+      ?: return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Implementation completion validation requires the authoritative executable plan.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        fileManifest = fileManifest,
+      )
+    val unresolvedObligations = recorder.loadConvergenceState(request.workflowId, request.dbPathOverride)
+      ?: return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Implementation completion validation requires unresolved obligations.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        fileManifest = fileManifest,
+      )
+    val decision = implementationCompletionDecisionFromContext(
+      authoritativeExecutablePlan = authoritativePlan,
+      unresolvedObligations = unresolvedObligations,
+      receipt = receipt,
+    )
+    return when {
+      decision.outcome is ImplementationCompleted -> null
+      decision.disposition is SemanticIncompleteWorkContinuation -> {
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          decision.exactBlockingReason() ?: "Implementation incomplete.",
+          observability,
+          failureDisposition = (decision.disposition as SemanticIncompleteWorkContinuation).failureDisposition,
+          fileManifest = fileManifest,
+        )
+      }
+      decision.disposition is SchemaInvalidCorrection -> {
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          "Implementation receipt has schema-invalid output: ${(decision.disposition as SchemaInvalidCorrection).schemaViolation}",
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+          fileManifest = fileManifest,
+        )
+      }
+      decision.disposition is TerminalBlocked -> {
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          (decision.disposition as TerminalBlocked).reason,
+          observability,
+          failureDisposition = (decision.disposition as TerminalBlocked).disposition,
+          fileManifest = fileManifest,
+        )
+      }
+      else -> blockAndPersistInPhase(
+        run,
+        iteration,
+        decision.exactBlockingReason() ?: "Implementation completion denied.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        fileManifest = fileManifest,
+      )
+    }
+  }
+
   private fun persistAcceptedOutput(
     run: PhaseRun,
     iteration: Int,
@@ -3035,6 +3125,42 @@ internal class FeatureTaskRuntimeRunLoop(
     if (isGoalReviewRun(run)) {
       persistGoalReviewCompletion(run, iteration, normalizedOutput, observability, fileManifest)?.let { outcome ->
         return AttemptResult.settled(outcome)
+      }
+    } else if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+      validateImplementationCompletion(
+        run,
+        iteration,
+        normalizedOutput,
+        observability,
+        fileManifest,
+        repositoryFingerprint,
+      )?.let { outcome ->
+        return AttemptResult.settled(outcome)
+      }
+      val persisted = recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          fileManifest = fileManifest,
+          normalizedOutput = normalizedOutput,
+          repositoryFingerprint = repositoryFingerprint,
+        ),
+        run.request.dbPathOverride,
+      )
+      if (!persisted) {
+        return AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            "Validated phase output could not be persisted to the authoritative workflow record.",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+            fileManifest = fileManifest,
+          ),
+        )
       }
     } else {
       val persisted = recorder.recordCompletedPhase(
@@ -3127,6 +3253,26 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun isGoalReviewRun(run: PhaseRun): Boolean =
     run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(run.request)
+
+  private fun implementationReceiptFromOutput(
+    output: Map<String, Any?>,
+  ): FeatureTaskRuntimeImplementationReceipt? {
+    val produced = JsonSupport.anyToStringAnyMap(output["produced_outputs"]) ?: return null
+    val kind = produced["projection_kind"]?.toString() ?: return null
+    if (kind != "implementation_receipt") return null
+    return try {
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = output,
+        producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+        schemaValidator = dependencies.phaseGates.planningProjectionValidator,
+      ) as? FeatureTaskRuntimeImplementationReceipt
+    } catch (error: IllegalArgumentException) {
+      null
+    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+      null
+    }
+  }
 
   // A goal-subtask review reserves its pass once in prepareGoalReviewRun, outside runPhaseAttempts, so a
   // bounded in-loop re-attempt reuses that same reserved pass instead of allocating another. Schema-invalid

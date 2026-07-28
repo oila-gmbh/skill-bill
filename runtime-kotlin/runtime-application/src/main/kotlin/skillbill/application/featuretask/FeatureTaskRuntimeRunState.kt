@@ -2,17 +2,22 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
 @Suppress("TooManyFunctions")
 internal class FeatureTaskRuntimeRunState(
@@ -20,6 +25,7 @@ internal class FeatureTaskRuntimeRunState(
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   private val producerEvidenceAttemptCounts: Map<String, Int> = emptyMap(),
 ) {
   private val hasDurableReviewInvalidationTombstone: Boolean = initialRecords[
@@ -486,6 +492,24 @@ internal class FeatureTaskRuntimeRunState(
     ?.let(JsonSupport::anyToStringAnyMap)
     ?.get("audit_repair_plan")
     ?.let { auditRepairPlanFromWire(it, "$phaseId.produced_outputs.audit_repair_plan") }
+
+  fun authoritativeExecutablePlan(): FeatureTaskRuntimeExecutablePlan? = outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
+    ?.normalizedOutput
+    ?.envelope
+    ?.let { envelope ->
+      try {
+        featureTaskRuntimePlanningProjectionFromEnvelope(
+          envelope = envelope,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+          schemaValidator = planningProjectionValidator,
+        ) as? FeatureTaskRuntimeExecutablePlan
+      } catch (_: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
+        null
+      } catch (_: IllegalArgumentException) {
+        null
+      }
+    }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
