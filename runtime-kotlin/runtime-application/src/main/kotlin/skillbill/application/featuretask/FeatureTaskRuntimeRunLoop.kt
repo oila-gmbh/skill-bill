@@ -2316,10 +2316,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     fun reject(rule: String, detail: String): AttemptResult {
-      val path = rejectionPath(detail)
+      val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
+      val diagnosticRule = structuredIdentity?.first ?: rule
+      val path = structuredIdentity?.second ?: rejectionPath(detail)
       val reason = payloadFreeRejectionReason(rule, path)
       recordRejectedOutput(
-        run, iteration, rule, reason, outputBytes, path = path,
+        run, iteration, diagnosticRule, reason, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
       return schemaInvalidAttempt(reason, fileManifest)
@@ -2879,6 +2881,12 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun structuredRepairDiagnostic(ruleId: String, jsonPath: String, detail: String): String =
     "[$ruleId] $jsonPath: $detail"
+
+  private fun structuredRepairDiagnosticIdentity(detail: String): Pair<String, String>? =
+    Regex("""^\[([A-Za-z0-9_.-]+)]\s+(/[^\s:]*):\s""")
+      .find(detail)
+      ?.destructured
+      ?.let { (ruleId, jsonPath) -> ruleId to jsonPath }
 
   private fun hasNoNonBlankStrings(value: Any?): Boolean =
     (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
