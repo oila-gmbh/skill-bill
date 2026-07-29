@@ -14,10 +14,12 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
+import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.UnavailableReviewGenerationRepository
+import skillbill.ports.persistence.UnavailableConvergenceStateRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
@@ -68,6 +70,12 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
@@ -189,8 +197,26 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existingRecords = phaseRecordsFrom(artifacts)
+      val completionTimestamp = existingRecords[request.phaseId]?.finishedAt ?: Instant.now().toString()
+      val convergenceAvailable = unitOfWork.convergenceStates !== UnavailableConvergenceStateRepository
+      if (convergenceAvailable) reconcileLegacyArtifacts(unitOfWork, request.workflowId, existingRecords)
+      val convergenceRecords = if (convergenceAvailable) {
+        convergenceRecordsForCompletion(request, completionTimestamp)
+      } else {
+        emptyList()
+      }
+      val replayResults = convergenceRecords.map(unitOfWork.convergenceStates::append)
+      replayResults.filterIsInstance<ReplayResult.Conflict>().firstOrNull()?.let {
+        throw ConvergenceReplayConflictException(it.proposed.recordId)
+      }
+      if (replayResults.isNotEmpty() &&
+        replayResults.all { it is ReplayResult.Identical } &&
+        existingRecords[request.phaseId]?.let { it.status == "completed" && it.finishedAt != null } == true
+      ) {
+        return@transaction true
+      }
       val updatedRecords = LinkedHashMap(existingRecords).apply {
-        put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()))
+        put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], completionTimestamp))
       }
       val ledger = phaseLedgerFrom(artifacts)
       val completion = FeatureTaskRuntimePhaseLedgerEntry(
@@ -1201,6 +1227,93 @@ class FeatureTaskRuntimePhaseRecorder(
       loopId = request.loopId,
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
+    )
+  }
+
+  private fun convergenceRecordsForCompletion(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    createdAt: String,
+  ): List<ConvergenceRecord> {
+    if (request.phaseId !in setOf("implement", "audit", "review")) return emptyList()
+    val generation = request.edgeIteration ?: request.attemptCount
+    val evidenceSeed = listOf(
+      request.workflowId,
+      request.phaseId,
+      request.attemptCount.toString(),
+      request.loopId.orEmpty(),
+      request.edgeIteration?.toString().orEmpty(),
+      request.reviewPassNumber?.toString().orEmpty(),
+      request.repositoryFingerprint.orEmpty(),
+      request.outputArtifact.orEmpty(),
+    ).joinToString("|")
+    val evidenceDigest = ConvergenceIdentities.digest(evidenceSeed)
+    val checkpointLogicalId = ConvergenceIdentities.logical(
+      request.workflowId,
+      ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+      "${request.phaseId}:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+    )
+    val checkpoint = ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        request.workflowId,
+        ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+        checkpointLogicalId,
+        generation,
+      ),
+      logicalId = checkpointLogicalId,
+      kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+      provenance = ConvergenceProvenance(request.workflowId, generation, request.phaseId),
+      evidenceDigest = evidenceDigest,
+      createdAt = createdAt,
+      status = ConvergenceStatus.COMPLETED,
+      summary = "${request.phaseId} phase repository checkpoint",
+      evidenceRef = (request.repositoryFingerprint ?: request.outputArtifact ?: "workflow:${request.workflowId}")
+        .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
+    )
+    if (request.phaseId != "implement") return listOf(checkpoint)
+    val outcomeLogicalId = ConvergenceIdentities.logical(
+      request.workflowId,
+      ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+      "attempt:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+    )
+    return listOf(
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          request.workflowId,
+          ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+          outcomeLogicalId,
+          generation,
+        ),
+        logicalId = outcomeLogicalId,
+        kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        provenance = ConvergenceProvenance(
+          request.workflowId,
+          generation,
+          request.phaseId,
+          attempt = request.attemptCount,
+        ),
+        evidenceDigest = evidenceDigest,
+        createdAt = createdAt,
+        status = ConvergenceStatus.COMPLETED,
+        summary = "implementation attempt ${request.attemptCount} completed",
+        evidenceRef = request.outputArtifact?.take(
+          skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH,
+        ),
+      ),
+      checkpoint,
+    )
+  }
+
+  private fun reconcileLegacyArtifacts(
+    unitOfWork: UnitOfWork,
+    workflowId: String,
+    phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+  ) {
+    val records = mapLegacyArtifactRecords(workflowId, phaseRecords)
+    val encoded = skillbill.workflow.taskruntime.ConvergenceStateCodec.encodeLegacySource(records)
+    unitOfWork.convergenceStates.reconcileLegacy(
+      workflowId,
+      ConvergenceIdentities.digest(encoded),
+      encoded,
     )
   }
 

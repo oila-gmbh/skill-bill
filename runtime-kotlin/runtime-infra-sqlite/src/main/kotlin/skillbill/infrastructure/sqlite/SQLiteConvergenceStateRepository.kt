@@ -26,7 +26,10 @@ class SQLiteConvergenceStateRepository(
       record.provenance.generation,
     )
     require(record.recordId == expectedRecordId) { "Convergence record identity is not deterministic." }
-    connection.requireConvergenceParentRelationship(record, history(record.provenance.workflowId))
+    val parentRecord = connection.requireConvergenceParentRelationship(
+      record,
+      history(record.provenance.workflowId),
+    )
     connection.findConvergenceByIdentity(record)?.let { existing ->
       return existing.replayAgainst(record)
     }
@@ -35,9 +38,9 @@ class SQLiteConvergenceStateRepository(
         """
         INSERT INTO feature_task_convergence_records(
           record_id, contract_version, workflow_id, record_kind, generation, logical_id,
-          parent_logical_id, phase_id, attempt, review_pass, record_status, classification, summary,
-          affected_path, evidence_digest, evidence_ref, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          parent_logical_id, parent_record_id, phase_id, attempt, review_pass, record_status,
+          classification, summary, affected_path, evidence_digest, evidence_ref, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
       ).use { statement ->
         val provenance = record.provenance
@@ -49,6 +52,7 @@ class SQLiteConvergenceStateRepository(
           provenance.generation,
           record.logicalId,
           record.parentLogicalId,
+          parentRecord?.recordId,
           provenance.phaseId,
           provenance.attempt,
           provenance.reviewPass,

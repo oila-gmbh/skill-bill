@@ -70,6 +70,36 @@ class SQLiteConvergenceStateRepositoryTest {
   }
 
   @Test
+  fun `a later review pass can disposition an earlier blocker by exact parent identity`() =
+    withRepository { repository ->
+      val finding = record(
+        "a".repeat(64),
+        RecordOptions(
+          kind = ConvergenceRecordKind.REVIEW_FINDING,
+          phase = "review",
+          stableKey = "F-002",
+          classification = "blocker",
+          reviewPass = 1,
+        ),
+      )
+      repository.append(finding)
+      val disposition = record(
+        "b".repeat(64),
+        RecordOptions(
+          kind = ConvergenceRecordKind.REVIEW_DISPOSITION,
+          phase = "review",
+          stableKey = "F-002-pass-2-disposition",
+          status = ConvergenceStatus.RESOLVED,
+          parentLogicalId = finding.logicalId,
+          reviewPass = 2,
+        ),
+      )
+
+      assertIs<ReplayResult.Appended>(repository.append(disposition))
+      assertEquals(emptyList(), repository.unresolved("workflow-1").reviewBlockers)
+    }
+
+  @Test
   fun `a prior generation disposition does not resolve a reopened blocker`() = withRepository { repository ->
     val first = record(
       "a".repeat(64),

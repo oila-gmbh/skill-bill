@@ -17,6 +17,11 @@ internal object ConvergenceDatabaseMigrations {
       name = "add-audit-convergence-tables",
       operation = ::createAuditConvergenceTables,
     ),
+    DatabaseMigration(
+      version = 19,
+      name = "retain-exact-convergence-parent-identity",
+      operation = ::retainExactConvergenceParentIdentity,
+    ),
   )
 }
 
@@ -130,5 +135,49 @@ private fun retainConvergenceEvidenceAndClassification(connection: java.sql.Conn
 private fun createAuditConvergenceTables(connection: java.sql.Connection) {
   connection.createStatement().use { statement ->
     AuditConvergenceDatabaseSchema.statements.forEach(statement::execute)
+  }
+}
+
+private fun retainExactConvergenceParentIdentity(connection: java.sql.Connection) {
+  val alreadyCurrent = connection.createStatement().use { statement ->
+    statement.executeQuery("PRAGMA table_info(feature_task_convergence_records)").use { rows ->
+      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "parent_record_id" }
+    }
+  }
+  if (alreadyCurrent) return
+  connection.createStatement().use { statement ->
+    statement.execute("DROP INDEX IF EXISTS idx_convergence_history")
+    statement.execute("DROP INDEX IF EXISTS idx_convergence_unresolved")
+    statement.execute(
+      "ALTER TABLE feature_task_convergence_records RENAME TO feature_task_convergence_records_v18",
+    )
+    statement.execute(ConvergenceDatabaseSchema.statements.first().replace(" IF NOT EXISTS", ""))
+    statement.execute(
+      """
+      INSERT INTO feature_task_convergence_records(
+        record_id, contract_version, workflow_id, record_kind, generation, logical_id,
+        parent_logical_id, parent_record_id, phase_id, attempt, review_pass, record_status,
+        classification, summary, affected_path, evidence_digest, evidence_ref, created_at
+      )
+      SELECT child.record_id, child.contract_version, child.workflow_id, child.record_kind,
+        child.generation, child.logical_id, child.parent_logical_id, parent.record_id,
+        child.phase_id, child.attempt, child.review_pass, child.record_status,
+        child.classification, child.summary, child.affected_path, child.evidence_digest,
+        child.evidence_ref, child.created_at
+      FROM feature_task_convergence_records_v18 child
+      LEFT JOIN feature_task_convergence_records_v18 parent
+        ON child.workflow_id = parent.workflow_id
+       AND child.generation = parent.generation
+       AND child.parent_logical_id = parent.logical_id
+       AND (
+         (child.record_kind = 'AUDIT_REPAIR' AND parent.record_kind = 'AUDIT_GAP') OR
+         (child.record_kind = 'REVIEW_DISPOSITION' AND parent.record_kind = 'REVIEW_FINDING')
+       )
+      """.trimIndent(),
+    )
+    statement.execute("DROP TABLE feature_task_convergence_records_v18")
+    ConvergenceDatabaseSchema.statements
+      .filter { it.startsWith("CREATE INDEX") }
+      .forEach(statement::execute)
   }
 }

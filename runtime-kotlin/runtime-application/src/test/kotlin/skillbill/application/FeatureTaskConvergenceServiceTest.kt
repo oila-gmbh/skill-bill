@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskConvergenceService
+import skillbill.application.featuretask.mapLegacyArtifactRecords
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.model.LegacyReconciliation
@@ -11,10 +12,12 @@ import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
 import skillbill.workflow.taskruntime.model.ConvergenceStatus
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.UnresolvedConvergence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class FeatureTaskConvergenceServiceTest {
   @Test
@@ -53,6 +56,31 @@ class FeatureTaskConvergenceServiceTest {
     assertFailsWith<ConvergenceReplayConflictException> {
       service.recordAndAdvance(record, isAlreadyAdvanced = { false }) { }
     }
+  }
+
+  @Test
+  fun `legacy artifact mapper emits bounded records without raw phase output`() {
+    val sentinel = "raw-private-output-that-must-not-be-persisted"
+    val records = mapLegacyArtifactRecords(
+      "workflow-1",
+      mapOf(
+        "implement" to FeatureTaskRuntimePhaseRecord(
+          phaseId = "implement",
+          status = "completed",
+          attemptCount = 2,
+          startedAt = "2026-07-28T09:00:00Z",
+          finishedAt = "2026-07-28T10:00:00Z",
+          resolvedAgentId = "codex",
+          rejectedOutput = sentinel,
+          outputArtifact = null,
+        ),
+      ),
+    )
+
+    assertEquals(1, records.size)
+    assertEquals(ConvergenceRecordKind.LEGACY_IMPORT, records.single().kind)
+    assertNull(records.single().evidenceRef)
+    assertEquals(false, records.single().toString().contains(sentinel))
   }
 
   private fun implementationOutcome(): ConvergenceRecord {

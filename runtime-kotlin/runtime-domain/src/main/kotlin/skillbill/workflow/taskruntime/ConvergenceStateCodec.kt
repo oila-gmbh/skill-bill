@@ -3,9 +3,12 @@ package skillbill.workflow.taskruntime
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import skillbill.error.InvalidFeatureTaskRuntimeConvergenceStateSchemaError
 import skillbill.workflow.taskruntime.model.CONVERGENCE_STATE_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.ConvergenceProvenance
@@ -92,6 +95,31 @@ object ConvergenceStateCodec {
     invalidLegacySource(sourceLabel, error)
   } catch (error: IllegalStateException) {
     invalidLegacySource(sourceLabel, error)
+  }
+
+  fun encodeLegacySource(records: List<ConvergenceRecord>): String = buildJsonObject {
+    put("contract_version", CONVERGENCE_STATE_CONTRACT_VERSION)
+    put("records", buildJsonArray { records.forEach { add(encodeRecord(it)) } })
+  }.toString()
+
+  private fun encodeRecord(record: ConvergenceRecord): JsonObject = buildJsonObject {
+    put("contract_version", CONVERGENCE_STATE_CONTRACT_VERSION)
+    put("record_id", record.recordId)
+    put("workflow_id", record.provenance.workflowId)
+    put("kind", record.kind.name.lowercase())
+    put("generation", record.provenance.generation)
+    put("logical_id", record.logicalId)
+    record.parentLogicalId?.let { put("parent_logical_id", it) }
+    put("phase_id", record.provenance.phaseId)
+    record.provenance.attempt?.let { put("attempt", it) }
+    record.provenance.reviewPass?.let { put("review_pass", it) }
+    put("status", record.status.name.lowercase())
+    record.classification?.let { put("classification", it) }
+    record.summary?.let { put("summary", it) }
+    record.path?.let { put("path", it) }
+    put("evidence_digest", record.evidenceDigest)
+    record.evidenceRef?.let { put("evidence_ref", it) }
+    put("created_at", record.createdAt)
   }
 
   private fun invalid(source: String, reason: String): Nothing =

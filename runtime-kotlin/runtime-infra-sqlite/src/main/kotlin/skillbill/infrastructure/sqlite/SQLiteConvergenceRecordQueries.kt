@@ -43,8 +43,8 @@ internal fun Connection.findConvergenceByIdentity(record: ConvergenceRecord): Co
 internal fun Connection.requireConvergenceParentRelationship(
   record: ConvergenceRecord,
   history: List<ConvergenceRecord>,
-) {
-  val expectedParentKind = expectedConvergenceParentKind(record.kind) ?: return
+): ConvergenceRecord? {
+  val expectedParentKind = expectedConvergenceParentKind(record.kind) ?: return null
   val parent = history.lastOrNull {
     it.logicalId == record.parentLogicalId &&
       it.kind == expectedParentKind &&
@@ -54,6 +54,7 @@ internal fun Connection.requireConvergenceParentRelationship(
   require(parent != null) {
     "${record.kind.name} requires a durable ${expectedParentKind.name} parent identity."
   }
+  return parent
 }
 
 internal fun expectedConvergenceParentKind(kind: ConvergenceRecordKind): ConvergenceRecordKind? = when (kind) {

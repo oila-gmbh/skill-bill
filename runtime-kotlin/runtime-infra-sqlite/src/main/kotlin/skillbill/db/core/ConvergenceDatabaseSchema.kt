@@ -26,23 +26,11 @@ internal object ConvergenceDatabaseSchema {
       parent_logical_id TEXT CHECK(
         parent_logical_id IS NULL OR length(parent_logical_id) BETWEEN 1 AND 160
       ),
-      parent_record_kind TEXT GENERATED ALWAYS AS (
-        CASE record_kind
-          WHEN 'AUDIT_REPAIR' THEN 'AUDIT_GAP'
-          WHEN 'REVIEW_DISPOSITION' THEN 'REVIEW_FINDING'
-          ELSE NULL
-        END
-      ) STORED,
+      parent_record_id TEXT,
       phase_id TEXT NOT NULL CHECK(phase_id IN ('implement', 'audit', 'review')),
       attempt INTEGER CHECK(attempt IS NULL OR attempt > 0),
       review_pass INTEGER CHECK(review_pass IS NULL OR review_pass > 0),
       review_pass_key INTEGER GENERATED ALWAYS AS (COALESCE(review_pass, 0)) STORED,
-      parent_review_pass_key INTEGER GENERATED ALWAYS AS (
-        CASE
-          WHEN record_kind IN ('AUDIT_REPAIR', 'REVIEW_DISPOSITION') THEN COALESCE(review_pass, 0)
-          ELSE NULL
-        END
-      ) STORED,
       record_status TEXT NOT NULL CHECK(
         record_status IN ('OPEN', 'RESOLVED', 'COMPLETED', 'FAILED', 'QUARANTINED')
       ),
@@ -57,11 +45,8 @@ internal object ConvergenceDatabaseSchema {
       UNIQUE(workflow_id, record_kind, generation, logical_id),
       UNIQUE(workflow_id, record_kind, generation, review_pass_key, logical_id),
       FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE,
-      FOREIGN KEY(
-        workflow_id, parent_record_kind, generation, parent_review_pass_key, parent_logical_id
-      ) REFERENCES feature_task_convergence_records(
-        workflow_id, record_kind, generation, review_pass_key, logical_id
-      ) ON DELETE CASCADE
+      FOREIGN KEY(parent_record_id)
+        REFERENCES feature_task_convergence_records(record_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """

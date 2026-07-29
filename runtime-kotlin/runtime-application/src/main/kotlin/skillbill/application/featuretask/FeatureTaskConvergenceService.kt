@@ -5,6 +5,13 @@ import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.LegacyReconciliation
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.ConvergenceStateCodec
+import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.UnresolvedConvergence
 
@@ -42,4 +49,48 @@ class FeatureTaskConvergenceService(private val database: DatabaseSessionFactory
   ): LegacyReconciliation = database.transaction(dbOverride) {
     it.convergenceStates.reconcileLegacy(workflowId, sourceDigest, encodedSource)
   }
+
+  fun reconcileLegacyArtifacts(
+    workflowId: String,
+    phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+    dbOverride: String? = null,
+  ): LegacyReconciliation {
+    val records = mapLegacyArtifactRecords(workflowId, phaseRecords)
+    val encoded = ConvergenceStateCodec.encodeLegacySource(records)
+    return reconcileLegacy(
+      workflowId = workflowId,
+      sourceDigest = ConvergenceIdentities.digest(encoded),
+      encodedSource = encoded,
+      dbOverride = dbOverride,
+    )
+  }
 }
+
+internal fun mapLegacyArtifactRecords(
+  workflowId: String,
+  phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+): List<ConvergenceRecord> = phaseRecords.values
+  .filter { it.finishedAt != null && it.phaseId in setOf("implement", "audit", "review") }
+  .map { phase ->
+    val generation = phase.edgeIteration ?: phase.attemptCount
+    val stableKey = "${phase.phaseId}:${phase.attemptCount}:${phase.loopId.orEmpty()}:${phase.edgeIteration ?: 0}"
+    val logicalId = ConvergenceIdentities.logical(workflowId, ConvergenceRecordKind.LEGACY_IMPORT, stableKey)
+    ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        workflowId,
+        ConvergenceRecordKind.LEGACY_IMPORT,
+        logicalId,
+        generation,
+      ),
+      logicalId = logicalId,
+      kind = ConvergenceRecordKind.LEGACY_IMPORT,
+      provenance = ConvergenceProvenance(workflowId, generation, phase.phaseId),
+      evidenceDigest = ConvergenceIdentities.digest(
+        listOf(workflowId, stableKey, phase.status, phase.outputArtifact.orEmpty()).joinToString("|"),
+      ),
+      createdAt = requireNotNull(phase.finishedAt),
+      status = ConvergenceStatus.COMPLETED,
+      summary = "legacy ${phase.phaseId} phase ${phase.attemptCount} reconciled",
+      evidenceRef = phase.outputArtifact?.take(CONVERGENCE_REFERENCE_MAX_LENGTH),
+    )
+  }
