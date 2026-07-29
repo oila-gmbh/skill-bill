@@ -231,6 +231,39 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `retryable blocked implementation preserves its receipt and completed attempt supersedes it`() {
+    var implementLaunches = 0
+    val partialBlocked = IMPLEMENT_OUTPUT
+      .replace(""""status":"completed"""", """"status":"blocked","failure_disposition":"retryable"""")
+      .replace(""""completed_task_ids":["task-1"]""", """"completed_task_ids":[]""")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(
+          if (phaseId == "implement" && implementLaunches++ == 0) {
+            partialBlocked
+          } else {
+            validJsonOutput(phaseId)
+          },
+        )
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val continuationPrompt = requireNotNull(harness.launcher.requests.last {
+      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+    }.skillRunRequest.promptOverride)
+    assertContains(continuationPrompt, "## Continue the implementation")
+    assertContains(continuationPrompt, "completed_task_ids=[]")
+    assertFalse(continuationPrompt.contains("REJECTED by the schema gate"))
+    val durableLatest = requireNotNull(harness.recorder.loadPriorImplementationReceiptEnvelope(WORKFLOW_ID))
+    val produced = requireNotNull(durableLatest["produced_outputs"] as? Map<*, *>)
+    assertEquals(listOf("task-1"), produced["completed_task_ids"])
+  }
+
+  @Test
   fun `goal-child cannot advance when implementation receipt omits a plan task`() {
     var implementLaunches = 0
     val repoRoot = Files.createTempDirectory("skillbill-goal-child-incomplete-implementation")
@@ -265,6 +298,54 @@ class FeatureTaskRuntimeRunnerTest {
     assertContains(continuationPrompt, "completed_task_ids=[]")
     assertContains(continuationPrompt, "repository_checkpoint=fixture-checkpoint-1")
     assertContains(continuationPrompt, "failure_disposition=retryable")
+  }
+
+  @Test
+  fun `standalone governed replan is extracted validated and durably persisted as terminal`() {
+    val governedOutput = implementationOutputWithOutcome(
+      """"kind":"governed_replan","plan_digest":"replacement-plan-digest"""",
+    )
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "implement") governedOutput else validJsonOutput(phaseId))
+      },
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", report.lastIncompletePhase)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("blocked", record.status)
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertEquals(governedOutput, record.outputArtifact)
+  }
+
+  @Test
+  fun `goal-child governed decomposition is extracted validated and durably persisted as terminal`() {
+    val governedOutput = implementationOutputWithOutcome(
+      """"kind":"governed_decomposition","manifest_digest":"replacement-manifest-digest"""",
+    )
+    val repoRoot = Files.createTempDirectory("skillbill-goal-child-governed-decomposition")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = "measured-head-sha" }
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "implement") governedOutput else validJsonOutput(phaseId))
+      },
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals("implement", report.lastIncompletePhase)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("blocked", record.status)
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertEquals(governedOutput, record.outputArtifact)
   }
 
   @Test
@@ -4310,6 +4391,12 @@ internal val IMPLEMENT_OUTPUT =
 private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): String =
   """{"contract_version":"0.2","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
+
+private fun implementationOutputWithOutcome(outcomeFields: String): String =
+  IMPLEMENT_OUTPUT.replace(
+    """"reconciled_state":{"reconciled":true}""",
+    """"reconciled_state":{"reconciled":true},"implementation_outcome":{$outcomeFields}""",
+  )
 
 internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")

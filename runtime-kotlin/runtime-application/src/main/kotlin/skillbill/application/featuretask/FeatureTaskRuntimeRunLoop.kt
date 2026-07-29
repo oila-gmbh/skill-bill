@@ -2049,9 +2049,10 @@ internal class FeatureTaskRuntimeRunLoop(
       run.modelDirective,
     )
     if (iteration > 1 || state.hasPriorRecord(run.phaseId)) {
-      val resumeClassification = when (run.phaseId) {
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "audit_reentry"
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "review_reentry"
+      val resumeClassification = when {
+        run.reentry == null -> "crash_resume"
+        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "audit_reentry"
+        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "review_reentry"
         else -> "crash_resume"
       }
       observability.transition(run.phaseId, agentId, iteration, resumeClassification)
@@ -2090,8 +2091,24 @@ internal class FeatureTaskRuntimeRunLoop(
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
             semanticIteration += 1
-            priorSchemaFailure = retryableTerminalReason
-            observability.transition(run.phaseId, agentId, iteration, "process_retry")
+            val implementationContinuation = if (
+              run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+            ) {
+              durableImplementationContinuationReason(run, state)
+            } else {
+              null
+            }
+            priorSchemaFailure = implementationContinuation ?: retryableTerminalReason
+            observability.transition(
+              run.phaseId,
+              agentId,
+              iteration,
+              if (implementationContinuation != null) {
+                "semantic_implementation_continuation"
+              } else {
+                "process_retry"
+              },
+            )
             null
           }
           is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
@@ -2975,6 +2992,16 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
     val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
+    if (
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      disposition.retryOnResume
+    ) {
+      recorder.recordImplementationReceiptAttempt(
+        run.request.workflowId,
+        outputMap,
+        run.request.dbPathOverride,
+      )
+    }
     return if (
       disposition.retryOnResume &&
       FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
@@ -3519,6 +3546,11 @@ internal class FeatureTaskRuntimeRunLoop(
           ),
         )
       }
+      recorder.recordImplementationReceiptAttempt(
+        run.request.workflowId,
+        normalizedOutput.envelope,
+        run.request.dbPathOverride,
+      )
     } else {
       val persisted = recorder.recordCompletedPhase(
         phaseStateRequest(
