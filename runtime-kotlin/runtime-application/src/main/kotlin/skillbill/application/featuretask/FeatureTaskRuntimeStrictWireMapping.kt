@@ -48,7 +48,8 @@ internal val AUDIT_REPAIR_RESULT_KEYS = setOf(
 )
 internal val AUDIT_REPAIR_DISPOSITION_KEYS = setOf("gap_id", "status", "evidence")
 internal val AUDIT_REPAIR_LEDGER_KEYS = setOf("gaps", "closed_generation_high_water_marks")
-internal val AUDIT_REPAIR_UNRESOLVED_GAP_KEYS = setOf("gap_id", "acceptance_criterion_ref", "generation")
+internal val AUDIT_REPAIR_UNRESOLVED_GAP_KEYS =
+  setOf("gap_id", "acceptance_criterion_ref", "generation", "recurrence")
 internal val AUDIT_REPAIR_PROGRESS_KEYS = setOf(
   "first_pass_convergence",
   "recurring_gap_count",

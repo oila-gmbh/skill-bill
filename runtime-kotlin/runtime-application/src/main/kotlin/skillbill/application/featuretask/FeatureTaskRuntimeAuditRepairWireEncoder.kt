@@ -46,6 +46,7 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
         "gap_id" to gap.gapId,
         "acceptance_criterion_ref" to gap.acceptanceCriterionRef,
         "generation" to gap.generation,
+        "recurrence" to gap.recurrence,
       )
     },
     "closed_generation_high_water_marks" to state.unresolvedGapLedger.closedGenerationHighWaterMarks,

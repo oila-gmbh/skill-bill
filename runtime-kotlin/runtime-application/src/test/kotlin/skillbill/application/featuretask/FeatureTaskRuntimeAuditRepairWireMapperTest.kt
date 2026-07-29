@@ -21,6 +21,21 @@ import kotlin.test.assertFalse
 
 class FeatureTaskRuntimeAuditRepairWireMapperTest {
   @Test
+  fun `durable wire retains recurrence for each stable gap identity`() {
+    val original = state().copy(
+      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+        listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1, recurrence = 2)),
+      ),
+      progress = state().progress.copy(recurringGapCount = 2, newGapCount = 0),
+    )
+
+    val restored = auditRepairStateFromWire(auditRepairStateToWire(original), "audit_repair_state")
+
+    assertEquals(2, restored.unresolvedGapLedger.unresolvedGaps.single().recurrence)
+    assertEquals(2, restored.progress.recurringGapCount)
+  }
+
+  @Test
   fun `recurring repair identifiers retain the newest terminal result`() {
     val prior = result("old evidence")
     val current = result("new evidence")

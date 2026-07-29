@@ -79,18 +79,8 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     gaps: GapReconciliation,
   ): FeatureTaskRuntimeAuditRepairProgress {
     val newlyAttemptedCount = input.repairResults.map { it.repairItemId }.distinct().size
-    val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
-    val auditWrite = input.latestPlan != null
-    val recurringGapCount = if (auditWrite) {
-      (input.prior?.progress?.recurringGapCount ?: 0) + gaps.recurringIds.size
-    } else {
-      input.prior?.progress?.recurringGapCount ?: 0
-    }
-    val newGapCount = if (auditWrite) {
-      (input.prior?.progress?.newGapCount ?: 0) + gaps.latestIds.count { it !in priorPlanGapIds }
-    } else {
-      input.prior?.progress?.newGapCount ?: 0
-    }
+    val recurringGapCount = gaps.unresolvedGaps.sumOf { it.recurrence }
+    val newGapCount = gaps.unresolvedGaps.count { it.recurrence == 0 }
     return FeatureTaskRuntimeAuditRepairProgress(
       firstPassConvergence = false,
       recurringGapCount = recurringGapCount,
@@ -185,11 +175,13 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
             "derives from durable state; expected '$derivedGapId'.",
         )
       }
+      val priorGap = merged[gap.gapId]
       merged[gap.gapId] = FeatureTaskRuntimeUnresolvedGap(
         gapId = gap.gapId,
         acceptanceCriterionRef = gap.acceptanceCriterionRef,
         generation = gap.gapId.substringAfterLast('-').toIntOrNull()
           ?: schemaError("Gap '${gap.gapId}' has no numeric generation."),
+        recurrence = (priorGap?.recurrence ?: 0) + if (gap.gapId in recurringIds) 1 else 0,
       )
     }
     return merged.values.toList()

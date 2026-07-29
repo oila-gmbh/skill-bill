@@ -81,13 +81,14 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
     val unresolved = ledgerMap.requiredArray("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
       val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
       val gapMap = gap.requiredMap(gapSource)
-      requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_UNRESOLVED_GAP_KEYS)
+      requireWireKeysAllowingLegacyRecurrence(gapMap, gapSource)
       val gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource))
       val generation = gapMap.requiredInt("generation", gapSource)
       FeatureTaskRuntimeUnresolvedGap(
         gapId = gapId,
         acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
         generation = generation,
+        recurrence = (gapMap["recurrence"] as? Number)?.toInt() ?: 0,
       )
     }
     val satisfiedCriterionRefs = map.satisfiedCriterionRefs(source)
@@ -220,7 +221,17 @@ internal fun FeatureTaskRuntimeAuditRepairState.requireDurableCoherence() {
   require(progress.resolvedRepairItemCount >= repairItemResults.size) {
     "Resolved repair-item count cannot be smaller than compact durable terminal results."
   }
-  require(progress.recurringGapCount + progress.newGapCount <= unresolvedGapLedger.unresolvedGaps.size) {
-    "Recurring and new gap counts cannot exceed the unresolved-gap ledger."
+  require(progress.recurringGapCount == unresolvedGapLedger.unresolvedGaps.sumOf { it.recurrence }) {
+    "Recurring gap count must be derived from retained per-identity recurrence."
+  }
+  require(progress.newGapCount == unresolvedGapLedger.unresolvedGaps.count { it.recurrence == 0 }) {
+    "New gap count must be derived from retained per-identity recurrence."
+  }
+}
+
+private fun requireWireKeysAllowingLegacyRecurrence(map: Map<String, Any?>, source: String) {
+  val legacyKeys = AUDIT_REPAIR_UNRESOLVED_GAP_KEYS - "recurrence"
+  if (map.keys != legacyKeys) {
+    requireExactWireKeys(map, source, AUDIT_REPAIR_UNRESOLVED_GAP_KEYS)
   }
 }

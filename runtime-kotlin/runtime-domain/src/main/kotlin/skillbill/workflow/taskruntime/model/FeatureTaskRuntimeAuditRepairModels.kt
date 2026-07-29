@@ -219,6 +219,7 @@ data class FeatureTaskRuntimeUnresolvedGap(
   val gapId: String,
   val acceptanceCriterionRef: String,
   val generation: Int,
+  val recurrence: Int = 0,
 ) {
   init {
     requireNonBlank(gapId, "gap_id")
@@ -227,6 +228,7 @@ data class FeatureTaskRuntimeUnresolvedGap(
       "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
     }
     require(generation > 0) { "gap generation must be positive, was $generation." }
+    require(recurrence >= 0) { "gap recurrence must be non-negative, was $recurrence." }
     val expectedGapId = "${acceptanceCriterionRef.lowercase()}-gap-$generation"
     require(gapId == expectedGapId) {
       "gap_id '$gapId' must equal the stable criterion-generation identifier '$expectedGapId'."

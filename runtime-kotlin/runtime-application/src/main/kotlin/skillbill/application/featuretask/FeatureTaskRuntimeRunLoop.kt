@@ -2247,6 +2247,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
     rejectedOutput: String? = null,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -2256,6 +2257,7 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = false,
       outputArtifact = outputArtifact,
+      normalizedOutput = normalizedOutput,
       rejectedOutput = rejectedOutput,
       blockedReason = reason,
       failureDisposition = failureDisposition,
@@ -2284,6 +2286,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
     rejectedOutput: String? = null,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
   ): PhaseOutcome = blockAndPersist(
     run,
     attemptCount,
@@ -2295,6 +2298,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest = fileManifest,
     outputArtifact = outputArtifact,
     rejectedOutput = rejectedOutput,
+    normalizedOutput = normalizedOutput,
   )
 
   /**
@@ -2630,6 +2634,7 @@ internal class FeatureTaskRuntimeRunLoop(
           failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           fileManifest = fileManifest,
           outputArtifact = outputText,
+          normalizedOutput = normalizedOutput,
         ),
       )
     }
