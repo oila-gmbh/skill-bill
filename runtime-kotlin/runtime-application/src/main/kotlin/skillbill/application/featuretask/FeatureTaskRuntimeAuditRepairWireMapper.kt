@@ -52,7 +52,9 @@ internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRu
           },
         )
       },
-    )
+    ).also {
+      if (it.gaps.isEmpty()) invalidWire("$source.gaps", "must contain at least one gap")
+    }
   }
 
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
@@ -72,6 +74,10 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
     val dispositions = map.requiredArray("prior_gap_dispositions", source).mapIndexed { index, disposition ->
       priorGapDispositionFromWire(disposition, "$source.prior_gap_dispositions[$index]")
     }
+    val dispositionHistory = (map["gap_disposition_history"] as? List<*>)
+      ?.mapIndexed { index, disposition ->
+        priorGapDispositionFromWire(disposition, "$source.gap_disposition_history[$index]")
+      } ?: dispositions
     val ledgerMap = map["unresolved_gap_ledger"].requiredMap("$source.unresolved_gap_ledger")
     requireExactWireKeys(ledgerMap, "$source.unresolved_gap_ledger", AUDIT_REPAIR_LEDGER_KEYS)
     val marksSource = "$source.unresolved_gap_ledger.closed_generation_high_water_marks"
@@ -109,6 +115,13 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
         auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", "$source.progress"),
       ),
       satisfiedCriterionRefs = satisfiedCriterionRefs,
+      repositoryFingerprintHistory = (map["repository_fingerprint_history"] as? List<*>)
+        ?.mapIndexed { index, value ->
+          value as? String
+            ?: invalidWire("$source.repository_fingerprint_history[$index]", "must be a string")
+        }
+        ?: listOfNotNull(map.optionalString("repository_fingerprint", source)),
+      gapDispositionHistory = dispositionHistory,
     ).also { it.requireDurableCoherence() }
   }
 
@@ -130,7 +143,8 @@ internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskR
       outcome = when (map.requiredString("outcome", source)) {
         "fixed" -> FeatureTaskRuntimeRepairItemOutcome.FIXED
         "already_satisfied" -> FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED
-        else -> invalidWire(source, "outcome must be fixed or already_satisfied")
+        "superseded" -> FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED
+        else -> invalidWire(source, "outcome must be fixed, already_satisfied, or superseded")
       },
       changedPathsOrSymbols = map.stringList("changed_paths_or_symbols", source, required = true),
       executedVerification = map.stringList("executed_verification", source, required = true),

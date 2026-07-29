@@ -31,8 +31,8 @@ class AuditConvergenceMetrics(
     }
 
     val allItems = batches.flatMap { it.repairItems }.distinctBy { it.itemId }
-    val attemptedRepairs = allItems.count { repairQuery.getPriorResults(it.itemId).isNotEmpty() }
-    val resolvedRepairs = allItems.count { repairQuery.getPriorResults(it.itemId).isNotEmpty() }
+    val attemptedRepairs = allItems.count { repairQuery.getPriorResults(workflowId, it.itemId).isNotEmpty() }
+    val resolvedRepairs = allItems.count { repairQuery.getPriorResults(workflowId, it.itemId).isNotEmpty() }
 
     val auditLoopCount = generations.size - 1
 

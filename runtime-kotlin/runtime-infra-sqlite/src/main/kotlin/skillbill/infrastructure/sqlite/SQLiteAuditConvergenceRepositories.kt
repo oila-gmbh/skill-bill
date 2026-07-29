@@ -301,43 +301,46 @@ class SQLiteAuditGenerationStore(
       connection.prepareStatement(
         """
         INSERT INTO feature_task_audit_repair_items(
-          item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
+          workflow_id, item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
           required_verification, dependencies
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(item_id) DO NOTHING
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workflow_id, item_id) DO NOTHING
         """.trimIndent(),
       ).use { stmt ->
-        stmt.setString(1, item.itemId)
-        stmt.setString(2, item.gapId)
-        stmt.setString(3, item.intendedOutcome)
-        stmt.setString(4, item.implementationActions.joinToString("\n"))
-        stmt.setString(5, item.affectedPathsOrSymbols.joinToString("\n"))
-        stmt.setString(6, item.requiredVerification.joinToString("\n"))
-        stmt.setString(7, item.dependencies.joinToString("\n"))
+        stmt.setString(1, workflowId)
+        stmt.setString(2, item.itemId)
+        stmt.setString(3, item.gapId)
+        stmt.setString(4, item.intendedOutcome)
+        stmt.setString(5, item.implementationActions.joinToString("\n"))
+        stmt.setString(6, item.affectedPathsOrSymbols.joinToString("\n"))
+        stmt.setString(7, item.requiredVerification.joinToString("\n"))
+        stmt.setString(8, item.dependencies.joinToString("\n"))
         stmt.executeUpdate()
       }
       connection.prepareStatement(
         """
-        INSERT INTO feature_task_audit_repair_item_batch_mapping(batch_id, item_id)
-        VALUES (?, ?)
-        ON CONFLICT(batch_id, item_id) DO NOTHING
+        INSERT INTO feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id)
+        VALUES (?, ?, ?)
+        ON CONFLICT(workflow_id, batch_id, item_id) DO NOTHING
         """.trimIndent(),
       ).use { stmt ->
-        stmt.setString(1, batch.batchId)
-        stmt.setString(2, item.itemId)
+        stmt.setString(1, workflowId)
+        stmt.setString(2, batch.batchId)
+        stmt.setString(3, item.itemId)
         stmt.executeUpdate()
       }
       batch.dependencies[item.itemId].orEmpty().forEach { dependency ->
         connection.prepareStatement(
           """
-          INSERT INTO feature_task_audit_repair_item_dependencies(batch_id, item_id, depends_on_item_id)
-          VALUES (?, ?, ?)
-          ON CONFLICT(batch_id, item_id, depends_on_item_id) DO NOTHING
+          INSERT INTO feature_task_audit_repair_item_dependencies(workflow_id, batch_id, item_id, depends_on_item_id)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(workflow_id, batch_id, item_id, depends_on_item_id) DO NOTHING
           """.trimIndent(),
         ).use { stmt ->
-          stmt.setString(1, batch.batchId)
-          stmt.setString(2, item.itemId)
-          stmt.setString(3, dependency)
+          stmt.setString(1, workflowId)
+          stmt.setString(2, batch.batchId)
+          stmt.setString(3, item.itemId)
+          stmt.setString(4, dependency)
           stmt.executeUpdate()
         }
       }
@@ -377,13 +380,11 @@ class SQLiteAuditGenerationStore(
       """
       SELECT item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
              required_verification, dependencies
-      FROM feature_task_audit_repair_items
-      WHERE item_id IN (
-        SELECT mapping.item_id
-        FROM feature_task_audit_repair_item_batch_mapping mapping
-        JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
-        WHERE batch.generation_id = ?
-      )
+      FROM feature_task_audit_repair_items item
+      JOIN feature_task_audit_repair_item_batch_mapping mapping
+        ON mapping.workflow_id = item.workflow_id AND mapping.item_id = item.item_id
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+      WHERE batch.generation_id = ?
       ORDER BY item_id ASC
       """.trimIndent(),
     ).use { stmt ->
@@ -558,13 +559,11 @@ class SQLiteAuditRepairBatchStore(
       """
     SELECT item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
            required_verification, dependencies
-    FROM feature_task_audit_repair_items
-    WHERE item_id IN (
-      SELECT mapping.item_id
-      FROM feature_task_audit_repair_item_batch_mapping mapping
-      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
-      WHERE batch.generation_id = ?
-    )
+    FROM feature_task_audit_repair_items item
+    JOIN feature_task_audit_repair_item_batch_mapping mapping
+      ON mapping.workflow_id = item.workflow_id AND mapping.item_id = item.item_id
+    JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+    WHERE batch.generation_id = ?
     ORDER BY item_id ASC
       """.trimIndent(),
     ).use { stmt ->
@@ -619,7 +618,8 @@ class SQLiteAuditRepairQuery(
       SELECT ari.item_id, ari.gap_id, ari.intended_outcome, ari.implementation_actions,
              ari.affected_paths_or_symbols, ari.required_verification, ari.dependencies
       FROM feature_task_audit_repair_items ari
-      JOIN feature_task_audit_repair_item_batch_mapping m ON ari.item_id = m.item_id
+      JOIN feature_task_audit_repair_item_batch_mapping m
+        ON ari.workflow_id = m.workflow_id AND ari.item_id = m.item_id
       JOIN feature_task_audit_repair_batches b ON m.batch_id = b.batch_id
       JOIN feature_task_audit_generations g ON b.generation_id = g.generation_id
       WHERE g.workflow_id = ? AND b.is_active = 1
@@ -665,15 +665,17 @@ class SQLiteAuditRepairQuery(
     return result
   }
 
-  override fun getPriorResults(itemId: String): List<AuditRepairItemResult> = connection.prepareStatement(
+  override fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult> =
+    connection.prepareStatement(
     """
       SELECT item_id, outcome, evidence_ref, verification_ref, disposition_generation
       FROM feature_task_audit_repair_item_results
-      WHERE item_id = ?
+      WHERE workflow_id = ? AND item_id = ?
       ORDER BY disposition_generation ASC
     """.trimIndent(),
   ).use { stmt ->
-    stmt.setString(1, itemId)
+    stmt.setString(1, workflowId)
+    stmt.setString(2, itemId)
     stmt.executeQuery().use { rs ->
       val results = mutableListOf<AuditRepairItemResult>()
       while (rs.next()) {
@@ -691,15 +693,17 @@ class SQLiteAuditRepairQuery(
     }
   }
 
-  override fun getNonRegressionConstraints(itemId: String): List<String> = connection.prepareStatement(
+  override fun getNonRegressionConstraints(workflowId: String, itemId: String): List<String> =
+    connection.prepareStatement(
     """
       SELECT constraint_text
       FROM feature_task_audit_repair_non_regression
-      WHERE item_id = ?
+      WHERE workflow_id = ? AND item_id = ?
       ORDER BY priority ASC
     """.trimIndent(),
   ).use { stmt ->
-    stmt.setString(1, itemId)
+    stmt.setString(1, workflowId)
+    stmt.setString(2, itemId)
     stmt.executeQuery().use { rs ->
       val constraints = mutableListOf<String>()
       while (rs.next()) {
@@ -709,17 +713,19 @@ class SQLiteAuditRepairQuery(
     }
   }
 
-  override fun getGapDisposition(gapId: String): AuditGapDisposition? = connection.prepareStatement(
+  override fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition? =
+    connection.prepareStatement(
     """
       SELECT gap_id, status, evidence_observation, evidence_artifact_ref, evidence_check_ref,
              disposition_generation, superseded_by_generation
       FROM feature_task_audit_gap_dispositions
-      WHERE gap_id = ?
+      WHERE workflow_id = ? AND gap_id = ?
       ORDER BY disposition_generation DESC
       LIMIT 1
     """.trimIndent(),
   ).use { stmt ->
-    stmt.setString(1, gapId)
+    stmt.setString(1, workflowId)
+    stmt.setString(2, gapId)
     stmt.executeQuery().use { rs ->
       if (rs.next()) {
         val evidence = FeatureTaskRuntimeEvidence(
@@ -745,8 +751,7 @@ class SQLiteAuditRepairQuery(
       SELECT gd.gap_id, gd.status, gd.evidence_observation, gd.evidence_artifact_ref,
              gd.evidence_check_ref, gd.disposition_generation, gd.superseded_by_generation
       FROM feature_task_audit_gap_dispositions gd
-      JOIN feature_task_audit_gaps g ON gd.gap_id = g.gap_id
-      WHERE g.workflow_id = ?
+      WHERE gd.workflow_id = ?
       ORDER BY gd.disposition_generation ASC
     """.trimIndent(),
   ).use { stmt ->

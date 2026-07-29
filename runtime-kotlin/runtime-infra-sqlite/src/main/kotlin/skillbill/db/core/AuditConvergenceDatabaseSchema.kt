@@ -96,13 +96,16 @@ internal object AuditConvergenceDatabaseSchema {
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_items (
-      item_id TEXT PRIMARY KEY CHECK(length(item_id) BETWEEN 1 AND 160),
+      workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
+      item_id TEXT NOT NULL CHECK(length(item_id) BETWEEN 1 AND 160),
       gap_id TEXT NOT NULL CHECK(length(gap_id) BETWEEN 1 AND 160),
       intended_outcome TEXT NOT NULL CHECK(length(intended_outcome) BETWEEN 1 AND 2048),
       implementation_actions TEXT NOT NULL CHECK(length(implementation_actions) > 0),
       affected_paths_or_symbols TEXT NOT NULL CHECK(length(affected_paths_or_symbols) > 0),
       required_verification TEXT NOT NULL CHECK(length(required_verification) > 0),
-      dependencies TEXT NOT NULL
+      dependencies TEXT NOT NULL,
+      PRIMARY KEY(workflow_id, item_id),
+      FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """
@@ -111,21 +114,23 @@ internal object AuditConvergenceDatabaseSchema {
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_item_batch_mapping (
+      workflow_id TEXT NOT NULL,
       batch_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
-      PRIMARY KEY(batch_id, item_id),
+      PRIMARY KEY(workflow_id, batch_id, item_id),
       FOREIGN KEY(batch_id) REFERENCES feature_task_audit_repair_batches(batch_id) ON DELETE CASCADE,
-      FOREIGN KEY(item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE
+      FOREIGN KEY(workflow_id, item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_item_dependencies (
+      workflow_id TEXT NOT NULL,
       batch_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
       depends_on_item_id TEXT NOT NULL,
-      PRIMARY KEY(batch_id, item_id, depends_on_item_id),
-      FOREIGN KEY(batch_id, item_id) REFERENCES feature_task_audit_repair_item_batch_mapping(batch_id, item_id) ON DELETE CASCADE,
-      FOREIGN KEY(depends_on_item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE
+      PRIMARY KEY(workflow_id, batch_id, item_id, depends_on_item_id),
+      FOREIGN KEY(workflow_id, batch_id, item_id) REFERENCES feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id) ON DELETE CASCADE,
+      FOREIGN KEY(workflow_id, depends_on_item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """
@@ -138,7 +143,7 @@ internal object AuditConvergenceDatabaseSchema {
       verification_ref TEXT NOT NULL CHECK(length(verification_ref) BETWEEN 1 AND 512),
       disposition_generation INTEGER NOT NULL CHECK(disposition_generation > 0),
       created_at TEXT NOT NULL,
-      FOREIGN KEY(item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE,
+      FOREIGN KEY(workflow_id, item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE,
       FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
     """.trimIndent(),
@@ -148,16 +153,18 @@ internal object AuditConvergenceDatabaseSchema {
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_non_regression (
+      workflow_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
       constraint_text TEXT NOT NULL CHECK(length(constraint_text) BETWEEN 1 AND 2048),
       priority INTEGER NOT NULL CHECK(priority >= 0),
-      PRIMARY KEY(item_id, priority),
-      FOREIGN KEY(item_id) REFERENCES feature_task_audit_repair_items(item_id) ON DELETE CASCADE
+      PRIMARY KEY(workflow_id, item_id, priority),
+      FOREIGN KEY(workflow_id, item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE
     )
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_gap_dispositions (
       disposition_id TEXT PRIMARY KEY CHECK(length(disposition_id) BETWEEN 1 AND 160),
+      workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
       gap_id TEXT NOT NULL CHECK(length(gap_id) BETWEEN 1 AND 160),
       status TEXT NOT NULL CHECK(status IN ('RESOLVED', 'RECURRING', 'SUPERSEDED')),
       evidence_observation TEXT NOT NULL CHECK(evidence_observation IN (
@@ -166,7 +173,8 @@ internal object AuditConvergenceDatabaseSchema {
       evidence_artifact_ref TEXT NOT NULL CHECK(length(evidence_artifact_ref) BETWEEN 1 AND 256),
       evidence_check_ref TEXT NOT NULL CHECK(length(evidence_check_ref) BETWEEN 1 AND 256),
       disposition_generation INTEGER NOT NULL CHECK(disposition_generation > 0),
-      superseded_by_generation INTEGER CHECK(superseded_by_generation IS NULL OR superseded_by_generation > 0)
+      superseded_by_generation INTEGER CHECK(superseded_by_generation IS NULL OR superseded_by_generation > 0),
+      FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
     """.trimIndent(),
   )

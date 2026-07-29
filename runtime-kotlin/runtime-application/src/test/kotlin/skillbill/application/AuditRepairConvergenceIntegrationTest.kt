@@ -320,7 +320,7 @@ private class AuditConvergenceScenario {
     }
   }
 
-  fun repairResultsExist(itemId: String): Boolean = repairQuery.getPriorResults(itemId).isNotEmpty()
+  fun repairResultsExist(itemId: String): Boolean = repairQuery.getPriorResults(workflowId, itemId).isNotEmpty()
 
   fun crash() {
     crashBeforePersistence = true
@@ -420,7 +420,8 @@ private class AuditConvergenceScenario {
 
   fun getUnresolvedRepairItems(): List<AuditRepairItem> = repairQuery.getUnresolvedRepairItems(workflowId)
 
-  fun getPriorResult(itemId: String): AuditRepairItemResult? = repairQuery.getPriorResults(itemId).lastOrNull()
+  fun getPriorResult(itemId: String): AuditRepairItemResult? =
+    repairQuery.getPriorResults(workflowId, itemId).lastOrNull()
 
   fun getActiveBatch(): AuditRepairBatch = batchStore.getActive(workflowId)!!
 
@@ -703,12 +704,13 @@ private class InMemoryAuditRepairQuery(
     return result
   }
 
-  override fun getPriorResults(itemId: String): List<AuditRepairItemResult> = repairResults[itemId] ?: emptyList()
+  override fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult> =
+    repairResults[itemId] ?: emptyList()
 
-  override fun getNonRegressionConstraints(itemId: String): List<String> =
+  override fun getNonRegressionConstraints(workflowId: String, itemId: String): List<String> =
     nonRegressionConstraints[itemId] ?: emptyList()
 
-  override fun getGapDisposition(gapId: String): AuditGapDisposition? = gapDispositions[gapId]
+  override fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition? = gapDispositions[gapId]
 
   override fun getAllGapDispositions(workflowId: String): List<AuditGapDisposition> {
     val gaps = generationStore.listAll(workflowId).flatMap { it.gaps }

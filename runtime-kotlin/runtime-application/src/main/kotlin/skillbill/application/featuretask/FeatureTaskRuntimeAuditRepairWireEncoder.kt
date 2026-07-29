@@ -52,6 +52,14 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
     "closed_generation_high_water_marks" to state.unresolvedGapLedger.closedGenerationHighWaterMarks,
   ),
   "repository_fingerprint" to state.repositoryFingerprint,
+  "repository_fingerprint_history" to state.repositoryFingerprintHistory,
+  "gap_disposition_history" to state.gapDispositionHistory.map { disposition ->
+    mapOf(
+      "gap_id" to disposition.gapId,
+      "status" to disposition.status.name.lowercase(),
+      "evidence" to AuditEvidenceWire.toWire(disposition.evidence),
+    )
+  },
   "satisfied_criterion_refs" to state.satisfiedCriterionRefs,
   "progress" to mapOf(
     "first_pass_convergence" to state.progress.firstPassConvergence,

@@ -24,15 +24,15 @@ class AuditRepairContinuationBuilder(
     val orderedItems = topologicalOrder(unresolvedItems, activeBatch.dependencies)
 
     val itemResults = orderedItems.associateWith { item ->
-      repairQuery.getPriorResults(item.itemId).lastOrNull()
+      repairQuery.getPriorResults(workflowId, item.itemId).lastOrNull()
     }
 
     val nonRegressionConstraints = orderedItems.associateWith { item ->
-      repairQuery.getNonRegressionConstraints(item.itemId)
+      repairQuery.getNonRegressionConstraints(workflowId, item.itemId)
     }
 
     val gapDispositions = orderedItems.mapNotNull { item ->
-      repairQuery.getGapDisposition(item.gapId)
+      repairQuery.getGapDisposition(workflowId, item.gapId)
     }.associateBy { it.gapId }
 
     return AuditRepairContinuation(

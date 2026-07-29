@@ -18,14 +18,14 @@ internal object ConvergenceDatabaseMigrations {
       operation = ::createAuditConvergenceTables,
     ),
     DatabaseMigration(
-      version = 21,
-      name = "retain-audit-history-and-one-active-repair-batch",
-      operation = ::retainAuditHistoryAndOneActiveRepairBatch,
-    ),
-    DatabaseMigration(
       version = 20,
       name = "retain-exact-convergence-parent-identity",
       operation = ::retainExactConvergenceParentIdentity,
+    ),
+    DatabaseMigration(
+      version = 21,
+      name = "retain-audit-history-and-one-active-repair-batch",
+      operation = ::retainAuditHistoryAndOneActiveRepairBatch,
     ),
   )
 }
@@ -144,12 +144,17 @@ private fun createAuditConvergenceTables(connection: java.sql.Connection) {
 }
 
 private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Connection) {
-  val hasWorkflowId = connection.createStatement().use { statement ->
+  val batchHasWorkflowId = connection.createStatement().use { statement ->
     statement.executeQuery("PRAGMA table_info(feature_task_audit_repair_batches)").use { rows ->
       generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "workflow_id" }
     }
   }
-  if (hasWorkflowId) {
+  val itemHasWorkflowId = connection.createStatement().use { statement ->
+    statement.executeQuery("PRAGMA table_info(feature_task_audit_repair_items)").use { rows ->
+      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "workflow_id" }
+    }
+  }
+  if (batchHasWorkflowId && itemHasWorkflowId) {
     connection.createStatement().use { it.execute(AuditConvergenceDatabaseSchema.statements.first {
       statement -> statement.startsWith("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_one_active_batch")
     }) }
@@ -191,14 +196,52 @@ private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Conne
       JOIN feature_task_audit_generations generation ON old.generation_id = generation.generation_id
       """.trimIndent(),
     )
-    listOf(
-      "feature_task_audit_repair_items",
-      "feature_task_audit_repair_item_batch_mapping",
-      "feature_task_audit_repair_item_dependencies",
-      "feature_task_audit_repair_item_results",
-      "feature_task_audit_repair_non_regression",
-      "feature_task_audit_gap_dispositions",
-    ).forEach { table -> statement.execute("INSERT INTO $table SELECT * FROM ${table}_v18") }
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_items
+      SELECT generation.workflow_id, item.*
+      FROM feature_task_audit_repair_items_v18 item
+      JOIN feature_task_audit_gaps_v18 gap ON gap.gap_id = item.gap_id
+      JOIN feature_task_audit_generations generation
+        ON generation.workflow_id = gap.workflow_id AND generation.generation = gap.generation
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_item_batch_mapping
+      SELECT batch.workflow_id, mapping.*
+      FROM feature_task_audit_repair_item_batch_mapping_v18 mapping
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_item_dependencies
+      SELECT batch.workflow_id, dependency.*
+      FROM feature_task_audit_repair_item_dependencies_v18 dependency
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = dependency.batch_id
+      """.trimIndent(),
+    )
+    statement.execute("INSERT INTO feature_task_audit_repair_item_results SELECT * FROM feature_task_audit_repair_item_results_v18")
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_non_regression
+      SELECT item.workflow_id, constraint_row.*
+      FROM feature_task_audit_repair_non_regression_v18 constraint_row
+      JOIN feature_task_audit_repair_items item ON item.item_id = constraint_row.item_id
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_gap_dispositions
+      SELECT disposition.disposition_id, gap.workflow_id, disposition.gap_id, disposition.status,
+        disposition.evidence_observation, disposition.evidence_artifact_ref,
+        disposition.evidence_check_ref, disposition.disposition_generation,
+        disposition.superseded_by_generation
+      FROM feature_task_audit_gap_dispositions_v18 disposition
+      JOIN feature_task_audit_gaps_v18 gap ON gap.gap_id = disposition.gap_id
+      """.trimIndent(),
+    )
     tables.forEach { table -> statement.execute("DROP TABLE ${table}_v18") }
     AuditConvergenceDatabaseSchema.statements
       .filter { it.startsWith("CREATE INDEX") || it.startsWith("CREATE UNIQUE INDEX") }

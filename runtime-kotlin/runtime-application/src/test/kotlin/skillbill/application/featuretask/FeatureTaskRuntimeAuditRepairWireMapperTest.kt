@@ -45,7 +45,7 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
       reconcileLatestRepairResults(listOf(prior), listOf(current), setOf(current.repairItemId)),
     )
     assertEquals(
-      emptyList(),
+      listOf(current),
       reconcileLatestRepairResults(listOf(prior), listOf(current), setOf("ac-999-gap-1-item-1")),
     )
   }

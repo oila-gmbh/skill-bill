@@ -11,7 +11,6 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     require(contractVersion == AUDIT_REPAIR_CONTRACT_VERSION) {
       "contract_version must be '$AUDIT_REPAIR_CONTRACT_VERSION', was '$contractVersion'."
     }
-    require(gaps.isNotEmpty()) { "An audit repair plan must contain at least one gap, gaps was empty." }
     require(gaps.size <= MAX_AUDIT_REPAIR_GAPS) {
       "An audit repair plan allows at most $MAX_AUDIT_REPAIR_GAPS gaps, had ${gaps.size}."
     }
@@ -185,7 +184,7 @@ data class FeatureTaskRuntimeRepairItem(
 }
 
 enum class FeatureTaskRuntimeRepairItemStatus { PENDING }
-enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED }
+enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED, SUPERSEDED }
 
 data class FeatureTaskRuntimeRepairItemResult(
   val repairItemId: String,
@@ -204,11 +203,13 @@ data class FeatureTaskRuntimeRepairItemResult(
       FeatureTaskRuntimeRepairItemOutcome.FIXED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
       FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
         FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
+      FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
     }
     require(resultEvidence.observation == expectedObservation) {
       "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
         "'${outcome.wire()}', was '${resultEvidence.observation.wire()}'; outcome 'fixed' pairs with " +
-        "'fix_verified' and 'already_satisfied' pairs with 'already_satisfied_verified'."
+        "'fix_verified', 'already_satisfied' pairs with 'already_satisfied_verified', and governed " +
+        "'superseded' pairs with 'fix_verified'."
     }
   }
 }
@@ -302,6 +303,8 @@ data class FeatureTaskRuntimeAuditRepairState(
    * Absent in a legacy durable payload, which decodes to "nothing closed yet".
    */
   val satisfiedCriterionRefs: List<String> = emptyList(),
+  val repositoryFingerprintHistory: List<String> = listOfNotNull(repositoryFingerprint),
+  val gapDispositionHistory: List<FeatureTaskRuntimePriorGapDisposition> = priorGapDispositions,
 ) {
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan, had none." }
@@ -321,6 +324,12 @@ data class FeatureTaskRuntimeAuditRepairState(
     require(repositoryFingerprint == null || repositoryFingerprint.length <= MAX_REPOSITORY_FINGERPRINT_LENGTH) {
       "repository_fingerprint allows at most $MAX_REPOSITORY_FINGERPRINT_LENGTH characters, " +
         "had ${repositoryFingerprint?.length}."
+    }
+    require(repositoryFingerprintHistory.all { it.isNotBlank() && it.length <= MAX_REPOSITORY_FINGERPRINT_LENGTH }) {
+      "repository_fingerprint_history entries must be nonblank bounded fingerprints."
+    }
+    require(gapDispositionHistory.size <= MAX_AUDIT_REPAIR_GAPS * MAX_AUDIT_REPAIR_GAPS) {
+      "gap_disposition_history exceeds the bounded durable-history limit."
     }
     val unresolvedIds = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
     val acceptedGapIdentities = acceptedPlans.flatMap { plan ->

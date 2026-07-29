@@ -25,9 +25,9 @@ interface AuditRepairBatchStore {
 interface AuditRepairQuery {
   fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem>
   fun getUnresolvedRepairItemsWithDependencies(workflowId: String): Map<AuditRepairItem, List<AuditRepairItem>>
-  fun getPriorResults(itemId: String): List<AuditRepairItemResult>
-  fun getNonRegressionConstraints(itemId: String): List<String>
-  fun getGapDisposition(gapId: String): AuditGapDisposition?
+  fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult>
+  fun getNonRegressionConstraints(workflowId: String, itemId: String): List<String>
+  fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition?
   fun getAllGapDispositions(workflowId: String): List<AuditGapDisposition>
   fun getRecurringGaps(workflowId: String): List<AuditGap>
   fun getResolvedGaps(workflowId: String): List<AuditGap>
@@ -56,9 +56,9 @@ object UnavailableAuditRepairQuery : AuditRepairQuery {
   override fun getUnresolvedRepairItemsWithDependencies(
     workflowId: String,
   ): Map<AuditRepairItem, List<AuditRepairItem>> = unavailable()
-  override fun getPriorResults(itemId: String): List<AuditRepairItemResult> = unavailable()
-  override fun getNonRegressionConstraints(itemId: String): List<String> = unavailable()
-  override fun getGapDisposition(gapId: String): AuditGapDisposition? = unavailable()
+  override fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult> = unavailable()
+  override fun getNonRegressionConstraints(workflowId: String, itemId: String): List<String> = unavailable()
+  override fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition? = unavailable()
   override fun getAllGapDispositions(workflowId: String): List<AuditGapDisposition> = unavailable()
   override fun getRecurringGaps(workflowId: String): List<AuditGap> = unavailable()
   override fun getResolvedGaps(workflowId: String): List<AuditGap> = unavailable()

@@ -34,7 +34,7 @@ class FollowUpAuditReconciler(
     val now = Instant.now().toString()
 
     val carriedGaps = previousGeneration.gaps.map { priorGap ->
-      reconcileCarriedGap(priorGap, currentAudit, previousGeneration.generation)
+      reconcileCarriedGap(workflowId, priorGap, currentAudit, previousGeneration.generation)
     }
 
     val newGaps = identifyNewGaps(currentAudit, previousGeneration, newGeneration)
@@ -74,6 +74,7 @@ class FollowUpAuditReconciler(
   }
 
   private fun reconcileCarriedGap(
+    workflowId: String,
     priorGap: AuditGap,
     currentAudit: FeatureTaskRuntimeAuditRepairPlan,
     _previousGeneration: Int,
@@ -83,7 +84,7 @@ class FollowUpAuditReconciler(
     }
 
     return if (currentGap != null) {
-      val disposition = repairQuery.getGapDisposition(priorGap.gapId)
+      val disposition = repairQuery.getGapDisposition(workflowId, priorGap.gapId)
       if (disposition != null && disposition.status == AuditGapStatus.RESOLVED) {
         priorGap.copy(
           status = AuditGapStatus.RESOLVED,

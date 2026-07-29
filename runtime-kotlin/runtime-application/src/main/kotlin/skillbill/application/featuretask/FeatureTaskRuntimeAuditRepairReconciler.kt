@@ -52,9 +52,14 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
           gaps.unresolvedGaps,
           gaps.closedGenerationHighWaterMarks,
         ),
-        repositoryFingerprint = input.repositoryFingerprint ?: input.prior?.repositoryFingerprint,
+        repositoryFingerprint = input.prior?.repositoryFingerprint ?: input.repositoryFingerprint,
         progress = progress,
         satisfiedCriterionRefs = reconcileSatisfiedCriteria(input, gaps),
+        repositoryFingerprintHistory = (
+          input.prior?.repositoryFingerprintHistory.orEmpty() + listOfNotNull(input.repositoryFingerprint)
+          ).distinct(),
+        gapDispositionHistory = input.prior?.gapDispositionHistory.orEmpty() +
+          if (input.auditWrite && input.dispositions != null) input.dispositions else emptyList(),
       ).also { it.requireDurableCoherence() }
     }.getOrElse { error ->
       if (error is IllegalArgumentException) {
@@ -84,7 +89,7 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     val recurringGapCount = gaps.unresolvedGaps.sumOf { it.recurrence }
     val newGapCount = gaps.unresolvedGaps.count { it.recurrence == 0 }
     return FeatureTaskRuntimeAuditRepairProgress(
-      firstPassConvergence = false,
+      firstPassConvergence = input.prior == null && input.auditWrite && gaps.unresolvedGaps.isEmpty(),
       recurringGapCount = recurringGapCount,
       newGapCount = newGapCount,
       attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
@@ -116,6 +121,8 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     val recurringIds = dispositions
       .filter { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING }
       .mapTo(linkedSetOf()) { it.gapId }
+      .takeIf { input.auditWrite }
+      .orEmpty()
     val latestGaps = input.latestPlan?.gaps
       ?: if (input.repairResults.isNotEmpty()) input.prior?.acceptedPlans?.lastOrNull()?.gaps.orEmpty() else emptyList()
     val latestIds = latestGaps.mapTo(linkedSetOf()) { it.gapId }

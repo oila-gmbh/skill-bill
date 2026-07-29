@@ -106,6 +106,49 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `audit repair logical identities are isolated by workflow`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-audit-workflow-scope").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        listOf("workflow-a", "workflow-b").forEach { workflowId ->
+          statement.executeUpdate(
+            """
+            INSERT INTO feature_task_workflows(workflow_id, mode, contract_version)
+            VALUES ('$workflowId', 'runtime', '0.1')
+            """.trimIndent(),
+          )
+          statement.executeUpdate(
+            """
+            INSERT INTO feature_task_audit_repair_items(
+              workflow_id, item_id, gap_id, intended_outcome, implementation_actions,
+              affected_paths_or_symbols, required_verification, dependencies
+            ) VALUES (
+              '$workflowId', 'ac-001-gap-1-item-1', 'ac-001-gap-1', 'fixed',
+              'change', 'src/Foo.kt', 'focused check', ''
+            )
+            """.trimIndent(),
+          )
+          statement.executeUpdate(
+            """
+            INSERT INTO feature_task_audit_gap_dispositions(
+              disposition_id, workflow_id, gap_id, status, evidence_observation,
+              evidence_artifact_ref, evidence_check_ref, disposition_generation
+            ) VALUES (
+              '$workflowId-disposition', '$workflowId', 'ac-001-gap-1', 'RESOLVED',
+              'FIX_VERIFIED', 'src/Foo.kt', 'focused check', 1
+            )
+            """.trimIndent(),
+          )
+        }
+      }
+
+      assertEquals(2, rowCount(connection, "feature_task_audit_repair_items"))
+      assertEquals(2, rowCount(connection, "feature_task_audit_gap_dispositions"))
+    }
+  }
+
+  @Test
   fun `migration v8 records and recreates goal planning preparations on an existing database`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-v8-goal-planning").resolve("metrics.db")
 

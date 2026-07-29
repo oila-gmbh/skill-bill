@@ -40,6 +40,7 @@ import skillbill.workflow.taskruntime.model.ConvergenceProvenance
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
 import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
 import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
@@ -52,6 +53,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PA
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
@@ -263,6 +265,14 @@ class FeatureTaskRuntimePhaseRecorder(
       val latestPlan = outputProduced?.get("audit_repair_plan")
         ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
         ?.let { auditRepairPlanFromWire(it, "audit.produced_outputs.audit_repair_plan") }
+        ?: FeatureTaskRuntimeAuditRepairPlan(
+          contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
+          gaps = emptyList(),
+        ).takeIf {
+          request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+            priorAuditState == null &&
+            request.auditScopeCriterionRefs.isNotEmpty()
+        }
       val repairResults = (outputProduced?.get("repair_item_results") as? List<*>)
         ?.takeIf {
           request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
@@ -1438,7 +1448,6 @@ internal fun reconcileLatestRepairResults(
 ): List<FeatureTaskRuntimeRepairItemResult> = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
   priorResults.forEach { put(it.repairItemId, it) }
   currentResults.forEach { put(it.repairItemId, it) }
-  keys.retainAll(latestPlanItemIds)
 }.values.toList()
 
 internal data class GoalReviewPhaseCompletionRequest(

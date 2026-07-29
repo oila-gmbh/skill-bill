@@ -121,7 +121,9 @@ class AuditGenerationRecorder(
   private val phaseLedger: PhaseLedger,
 ) {
   fun recordWithLedgerAdvance(generation: AuditGeneration): AuditGeneration {
-    val recorded = store.persist(generation)
+    val recorded = store.getLatest(generation.workflowId)
+      ?.takeIf { it.generation == generation.generation }
+      ?: store.persist(generation)
     phaseLedger.recordAuditGeneration(generation.workflowId, generation.generation)
     return recorded
   }
