@@ -215,9 +215,11 @@ class FeatureTaskRuntimeRunnerTest {
     crashContinuation = false
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val resumedPrompt = requireNotNull(harness.launcher.requests.last {
-      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
-    }.skillRunRequest.promptOverride)
+    val resumedPrompt = requireNotNull(
+      harness.launcher.requests.last {
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+      }.skillRunRequest.promptOverride,
+    )
     assertContains(resumedPrompt, "## Continue the implementation")
     assertContains(resumedPrompt, "completed_task_ids=[]")
     assertContains(resumedPrompt, "changed_paths=[src/Foo.kt]")
@@ -252,15 +254,55 @@ class FeatureTaskRuntimeRunnerTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val continuationPrompt = requireNotNull(harness.launcher.requests.last {
-      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
-    }.skillRunRequest.promptOverride)
+    val continuationPrompt = requireNotNull(
+      harness.launcher.requests.last {
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+      }.skillRunRequest.promptOverride,
+    )
     assertContains(continuationPrompt, "## Continue the implementation")
     assertContains(continuationPrompt, "completed_task_ids=[]")
     assertFalse(continuationPrompt.contains("REJECTED by the schema gate"))
     val durableLatest = requireNotNull(harness.recorder.loadPriorImplementationReceiptEnvelope(WORKFLOW_ID))
     val produced = requireNotNull(durableLatest["produced_outputs"] as? Map<*, *>)
     assertEquals(listOf("task-1"), produced["completed_task_ids"])
+  }
+
+  @Test
+  fun `retryable blocked implementation with malformed receipt uses schema correction`() {
+    var implementLaunches = 0
+    val malformedBlocked = IMPLEMENT_OUTPUT
+      .replace(""""status":"completed"""", """"status":"blocked","failure_disposition":"retryable"""")
+      .replace(""""projection_kind":"implementation_receipt",""", "")
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(
+          if (phaseId == "implement" && implementLaunches++ == 0) {
+            malformedBlocked
+          } else {
+            validJsonOutput(phaseId)
+          },
+        )
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val correctionPrompt = requireNotNull(
+      harness.launcher.requests.last {
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+      }.skillRunRequest.promptOverride,
+    )
+    assertContains(correctionPrompt, "REJECTED by the schema gate")
+    assertEquals(2, implementLaunches)
+    assertEquals(
+      listOf("schema_correction"),
+      harness.events
+        .filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseTransitionClassified>()
+        .filter { it.phaseId == "implement" }
+        .map { it.classification },
+    )
   }
 
   @Test
@@ -292,9 +334,11 @@ class FeatureTaskRuntimeRunnerTest {
       listOf("implement", "implement"),
       harness.launchedPhaseOrder().filter { it == "implement" },
     )
-    val continuationPrompt = requireNotNull(harness.launcher.requests.last {
-      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
-    }.skillRunRequest.promptOverride)
+    val continuationPrompt = requireNotNull(
+      harness.launcher.requests.last {
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+      }.skillRunRequest.promptOverride,
+    )
     assertContains(continuationPrompt, "completed_task_ids=[]")
     assertContains(continuationPrompt, "repository_checkpoint=fixture-checkpoint-1")
     assertContains(continuationPrompt, "failure_disposition=retryable")
@@ -4392,11 +4436,10 @@ private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): 
   """{"contract_version":"0.2","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
-private fun implementationOutputWithOutcome(outcomeFields: String): String =
-  IMPLEMENT_OUTPUT.replace(
-    """"reconciled_state":{"reconciled":true}""",
-    """"reconciled_state":{"reconciled":true},"implementation_outcome":{$outcomeFields}""",
-  )
+private fun implementationOutputWithOutcome(outcomeFields: String): String = IMPLEMENT_OUTPUT.replace(
+  """"reconciled_state":{"reconciled":true}""",
+  """"reconciled_state":{"reconciled":true},"implementation_outcome":{$outcomeFields}""",
+)
 
 internal val ALL_PHASES =
   listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")

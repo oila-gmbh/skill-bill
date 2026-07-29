@@ -1,5 +1,18 @@
 # featuretask runtime boundary history
 
+## [2026-07-29] SKILL-150 — Truthful implementation completion
+Areas: runtime-application/featuretask, runtime-application/model, runtime-domain/taskruntime, runtime-cli/featuretask, orchestration/contracts
+- Gated completed implementation receipts on exact executable-plan task coverage with no unresolved items or actionable deviations
+- Kept retryable blocked and failed outcomes distinct from extraction, schema, projection, and reconciliation failures
+- Persisted a bounded attempt history so continuation prompts and crash resumes reconstruct the complete prior implementation receipt
+- Added explicit governed replan and decomposition outcomes without letting a top-level completed status bypass open obligations
+- Distinguished semantic continuation, schema correction, process retry, crash resume, and audit or review re-entry in telemetry and status
+- Pattern: decide semantic completion after projection validation, then route incomplete work through its own bounded continuation loop
+- Reusable: implementation completion decision model, durable receipt projection, continuation prompt, and transition classification
+- Breaking changes/limitations: completed implementation now fails closed on missing plan tasks; receipt history retains the latest 32 attempts
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-29] SKILL-150 — Adaptive sizing and phase-appropriate quality
 Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-ports/taskruntime, runtime-infra-{fs,sqlite}, runtime-cli, runtime-core, orchestration/contracts
 - Added evidence-based feature sizing and decomposition enforcement from boundary breadth, risk, and task-graph signals

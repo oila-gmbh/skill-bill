@@ -1110,12 +1110,11 @@ class FeatureTaskRuntimePhaseRecorder(
    */
   @OpenBoundaryMap("Implementation receipt wire map at the persistence boundary")
   fun loadPriorImplementationReceiptEnvelope(workflowId: String, dbOverride: String? = null): Map<String, Any?>? {
-    loadImplementationReceiptAttemptHistory(workflowId, dbOverride).lastOrNull()?.let { return it }
-    val records = loadPhaseRecords(workflowId, dbOverride) ?: return null
-    val record = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
-      ?: return null
-    val outputText = record.outputArtifact ?: return null
-    return JsonSupport.parseObjectOrNull(outputText)
+    val latestAttempt = loadImplementationReceiptAttemptHistory(workflowId, dbOverride).lastOrNull()
+    return latestAttempt ?: loadPhaseRecords(workflowId, dbOverride)
+      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
+      ?.outputArtifact
+      ?.let(JsonSupport::parseObjectOrNull)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
   }

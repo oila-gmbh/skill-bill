@@ -166,19 +166,9 @@ data class ImplementationCompletionDecision(
     fun incompleteContinue(
       priorReceipt: FeatureTaskRuntimeImplementationReceipt,
       failureDisposition: FeatureTaskRuntimeFailureDisposition,
-      missingTaskIds: List<String> = emptyList(),
-      unknownTaskIds: List<String> = emptyList(),
-      unresolvedItems: List<String> = emptyList(),
-      actionableDeviations: List<ActionableDeviation> = emptyList(),
-      openObligationIds: List<String> = emptyList(),
+      outcome: ImplementationIncomplete,
     ): ImplementationCompletionDecision = ImplementationCompletionDecision(
-      outcome = ImplementationIncomplete(
-        missingTaskIds = missingTaskIds,
-        unknownTaskIds = unknownTaskIds,
-        unresolvedItems = unresolvedItems,
-        actionableDeviations = actionableDeviations,
-        openObligationIds = openObligationIds,
-      ),
+      outcome = outcome,
       disposition = SemanticIncompleteWorkContinuation(
         priorReceipt = priorReceipt,
         failureDisposition = failureDisposition,
@@ -273,11 +263,13 @@ data class ImplementationCompletionContext(
       ImplementationCompletionDecision.incompleteContinue(
         priorReceipt = receipt,
         failureDisposition = receiptToFailureDisposition(receipt),
-        missingTaskIds = missingTaskIds,
-        unknownTaskIds = unknownCompletedTaskIds,
-        unresolvedItems = unresolvedItems,
-        actionableDeviations = actionableDeviations,
-        openObligationIds = openObligationIds,
+        outcome = ImplementationIncomplete(
+          missingTaskIds = missingTaskIds,
+          unknownTaskIds = unknownCompletedTaskIds,
+          unresolvedItems = unresolvedItems,
+          actionableDeviations = actionableDeviations,
+          openObligationIds = openObligationIds,
+        ),
       )
     } else {
       ImplementationCompletionDecision.complete(completedTaskIds)

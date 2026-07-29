@@ -55,10 +55,16 @@ class FeatureTaskRuntimeImplementationCompletionDecisionTest {
     val completeReceipt = receipt(completedTaskIds = listOf("task-1", "task-2"))
 
     val replan = implementationCompletionDecisionFromContext(
-      plan(), emptyConvergence(), completeReceipt, GovernedImplementationOutcome.Replan("plan-digest"),
+      plan(),
+      emptyConvergence(),
+      completeReceipt,
+      GovernedImplementationOutcome.Replan("plan-digest"),
     )
     val decomposition = implementationCompletionDecisionFromContext(
-      plan(), emptyConvergence(), completeReceipt, GovernedImplementationOutcome.Decomposition("manifest-digest"),
+      plan(),
+      emptyConvergence(),
+      completeReceipt,
+      GovernedImplementationOutcome.Decomposition("manifest-digest"),
     )
 
     assertIs<GovernedReplan>(replan.disposition)
@@ -73,7 +79,10 @@ class FeatureTaskRuntimeImplementationCompletionDecisionTest {
       implementationObligations = listOf(
         ConvergenceRecord(
           recordId = ConvergenceIdentities.record(
-            "workflow-1", ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION, "obligation-1", 1,
+            "workflow-1",
+            ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+            "obligation-1",
+            1,
           ),
           logicalId = "obligation-1",
           kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
@@ -89,7 +98,9 @@ class FeatureTaskRuntimeImplementationCompletionDecisionTest {
     )
 
     val decision = implementationCompletionDecisionFromContext(
-      plan(), convergence, receipt(completedTaskIds = listOf("task-1", "task-2")),
+      plan(),
+      convergence,
+      receipt(completedTaskIds = listOf("task-1", "task-2")),
     )
 
     assertEquals("open durable obligation: obligation-1", decision.exactUnresolvedField())

@@ -2029,6 +2029,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private data class PhaseAttemptLoopState(
+    var iteration: Int,
+    var semanticIteration: Int,
+    var malformedAttemptCount: Int = 0,
+    var priorSchemaFailure: String? = null,
+    var outcome: PhaseOutcome? = null,
+  )
+
   private fun runPhaseAttempts(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -2036,7 +2044,7 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
     val agentId = run.resolvedAgent.resolvedAgentId
-    var iteration = state.nextIteration(run.phaseId)
+    val iteration = state.nextIteration(run.phaseId)
     val budgetBaseOffset = iteration - state.fixLoopIterationFor(run.phaseId, iteration)
     FeatureTaskRuntimeFixLoopPolicy
       .blockReasonIfBudgetExhausted(run.phaseId, iteration - budgetBaseOffset)
@@ -2057,116 +2065,174 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       observability.transition(run.phaseId, agentId, iteration, resumeClassification)
     }
-    var outcome: PhaseOutcome? = null
-    var priorSchemaFailure: String? = null
-    var malformedAttemptCount = 0
-    var semanticIteration = iteration - budgetBaseOffset
-    while (outcome == null) {
-      val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
-      val semanticIncompleteReason = attempt.semanticIncompleteReason
-      val retryableTerminalReason = attempt.retryableTerminalReason
-      outcome = attempt.settledOutcome ?: if (semanticIncompleteReason != null) {
-        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
-          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-            iteration += 1
-            semanticIteration += 1
-            priorSchemaFailure = semanticIncompleteReason
-            observability.transition(
-              run.phaseId, agentId, iteration, "semantic_implementation_continuation",
-            )
-            observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
-            null
-          }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-            run,
-            iteration,
-            semanticIncompleteReason,
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
-            fileManifest = attempt.fileManifest,
-          )
-        }
-      } else if (retryableTerminalReason != null) {
-        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
-          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-            iteration += 1
-            semanticIteration += 1
-            val implementationContinuation = if (
-              run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-            ) {
-              durableImplementationContinuationReason(run, state)
-            } else {
-              null
-            }
-            priorSchemaFailure = implementationContinuation ?: retryableTerminalReason
-            observability.transition(
-              run.phaseId,
-              agentId,
-              iteration,
-              if (implementationContinuation != null) {
-                "semantic_implementation_continuation"
-              } else {
-                "process_retry"
-              },
-            )
-            null
-          }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-            run,
-            iteration,
-            retryableTerminalReason,
-            observability,
-            failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
-            fileManifest = attempt.fileManifest,
-            outputArtifact = attempt.retryableTerminalOutput,
-          )
-        }
-      } else if (attempt.malformedOutput) {
-        malformedAttemptCount += 1
-        val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+    val loop = PhaseAttemptLoopState(
+      iteration = iteration,
+      semanticIteration = iteration - budgetBaseOffset,
+    )
+    while (loop.outcome == null) {
+      val attempt = attemptOnce(
+        run,
+        state,
+        loop.iteration,
+        observability,
+        loop.priorSchemaFailure,
+        phaseTokenAccumulator,
+      )
+      settleAttempt(run, state, observability, agentId, loop, attempt)
+    }
+    return requireNotNull(loop.outcome)
+  }
+
+  private fun settleAttempt(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+    agentId: String,
+    loop: PhaseAttemptLoopState,
+    attempt: AttemptResult,
+  ) {
+    when {
+      attempt.settledOutcome != null -> loop.outcome = attempt.settledOutcome
+      attempt.semanticIncompleteReason != null ->
+        settleSemanticIncompleteAttempt(run, observability, agentId, loop, attempt)
+      attempt.retryableTerminalReason != null ->
+        settleRetryableTerminalAttempt(run, state, observability, agentId, loop, attempt)
+      attempt.malformedOutput -> settleMalformedAttempt(run, observability, agentId, loop, attempt)
+      else -> settleSchemaInvalidAttempt(run, observability, agentId, loop, attempt)
+    }
+  }
+
+  private fun settleSemanticIncompleteAttempt(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+    agentId: String,
+    loop: PhaseAttemptLoopState,
+    attempt: AttemptResult,
+  ) {
+    val reason = requireNotNull(attempt.semanticIncompleteReason)
+    when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        loop.semanticIteration += 1
+        loop.priorSchemaFailure = reason
+        observability.transition(
           run.phaseId,
-          malformedAttemptCount,
+          agentId,
+          loop.iteration,
+          "semantic_implementation_continuation",
         )
-        if (formatBlock == null) {
-          iteration += 1
-          priorSchemaFailure = attempt.schemaRetryCorrectionReason
-          observability.transition(run.phaseId, agentId, iteration, "schema_correction")
-          observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
-          null
-        } else {
-          blockAndPersistInPhase(
-            run,
-            iteration,
-            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidReason)),
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
-            fileManifest = attempt.fileManifest,
-            rejectedOutput = attempt.rejectedOutput,
-          )
-        }
-      } else {
-        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
-          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-            iteration += 1
-            semanticIteration += 1
-            priorSchemaFailure = attempt.schemaRetryCorrectionReason
-            observability.transition(run.phaseId, agentId, iteration, "schema_correction")
-            observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
-            null
-          }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-            run,
-            iteration,
-            withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
-            fileManifest = attempt.fileManifest,
-            rejectedOutput = attempt.rejectedOutput,
-          )
-        }
+        observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, decision.fixLoopIteration)
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> {
+        loop.outcome = blockAndPersistInPhase(
+          run,
+          loop.iteration,
+          reason,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+          fileManifest = attempt.fileManifest,
+        )
       }
     }
-    return outcome
+  }
+
+  private fun settleRetryableTerminalAttempt(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+    agentId: String,
+    loop: PhaseAttemptLoopState,
+    attempt: AttemptResult,
+  ) {
+    val reason = requireNotNull(attempt.retryableTerminalReason)
+    when (FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        loop.semanticIteration += 1
+        val implementationContinuation = implementationContinuationForRetry(run, state)
+        loop.priorSchemaFailure = implementationContinuation ?: reason
+        observability.transition(
+          run.phaseId,
+          agentId,
+          loop.iteration,
+          implementationContinuation?.let { "semantic_implementation_continuation" } ?: "process_retry",
+        )
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> {
+        loop.outcome = blockAndPersistInPhase(
+          run,
+          loop.iteration,
+          reason,
+          observability,
+          failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
+          fileManifest = attempt.fileManifest,
+          outputArtifact = attempt.retryableTerminalOutput,
+        )
+      }
+    }
+  }
+
+  private fun implementationContinuationForRetry(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? =
+    durableImplementationContinuationReason(run, state)
+      .takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT }
+
+  private fun settleMalformedAttempt(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+    agentId: String,
+    loop: PhaseAttemptLoopState,
+    attempt: AttemptResult,
+  ) {
+    loop.malformedAttemptCount += 1
+    val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+      run.phaseId,
+      loop.malformedAttemptCount,
+    )
+    if (formatBlock == null) {
+      loop.iteration += 1
+      loop.priorSchemaFailure = attempt.schemaRetryCorrectionReason
+      observability.transition(run.phaseId, agentId, loop.iteration, "schema_correction")
+      observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, loop.malformedAttemptCount)
+    } else {
+      loop.outcome = blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidReason)),
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+        fileManifest = attempt.fileManifest,
+        rejectedOutput = attempt.rejectedOutput,
+      )
+    }
+  }
+
+  private fun settleSchemaInvalidAttempt(
+    run: PhaseRun,
+    observability: FeatureTaskRuntimeRunObservability,
+    agentId: String,
+    loop: PhaseAttemptLoopState,
+    attempt: AttemptResult,
+  ) {
+    when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        loop.semanticIteration += 1
+        loop.priorSchemaFailure = attempt.schemaRetryCorrectionReason
+        observability.transition(run.phaseId, agentId, loop.iteration, "schema_correction")
+        observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, decision.fixLoopIteration)
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> {
+        loop.outcome = blockAndPersistInPhase(
+          run,
+          loop.iteration,
+          withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+          fileManifest = attempt.fileManifest,
+          rejectedOutput = attempt.rejectedOutput,
+        )
+      }
+    }
   }
 
   @Suppress("LongParameterList")
@@ -2567,18 +2633,26 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
       )
     }
-    terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
-      return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
-    }
-    // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
-    // claiming 'completed' owes the projection its consumer will parse.
     producerProjectionGateReason(
       run.phaseId,
-      outputMap,
+      if (
+        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED &&
+        outputMap["failure_disposition"] == FeatureTaskRuntimeFailureDisposition.RETRYABLE.wireValue
+      ) {
+        // Retryable implementation outcomes are durable continuation receipts. Force the shared
+        // completed-producer gate to validate their receipt before terminal retry handling.
+        outputMap + ("status" to PHASE_OUTPUT_STATUS_COMPLETED)
+      } else {
+        outputMap
+      },
       planningProjectionValidator,
       allowDecompositionPackage = true,
     )?.let { reason ->
       return reject("producer-projection", reason)
+    }
+    terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
+      return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
     }
     immediateConsumerProjectionGateReason(
       run,
@@ -3817,26 +3891,24 @@ internal class FeatureTaskRuntimeRunLoop(
     return PreparedLaunch(briefing, prompt)
   }
 
-  private fun durableImplementationContinuationReason(
-    run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
-  ): String? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) return null
-    val envelope = recorder.loadPriorImplementationReceiptEnvelope(
-      run.request.workflowId,
-      run.request.dbPathOverride,
-    ) ?: return null
-    val receipt = implementationReceiptFromOutput(envelope) ?: return null
-    val plan = state.authoritativeExecutablePlan() ?: return null
-    val unresolved = recorder.loadConvergenceState(run.request.workflowId, run.request.dbPathOverride)
-      ?: UnresolvedConvergence(emptyList(), emptyList(), emptyList())
-    val decision = implementationCompletionDecisionFromContext(plan, unresolved, receipt)
-    return if (decision.disposition is SemanticIncompleteWorkContinuation) {
-      implementationContinuationReason(decision)
-    } else {
-      null
+  private fun durableImplementationContinuationReason(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? = run
+    .takeIf { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT }
+    ?.let {
+      recorder.loadPriorImplementationReceiptEnvelope(
+        it.request.workflowId,
+        it.request.dbPathOverride,
+      )
     }
-  }
+    ?.let(::implementationReceiptFromOutput)
+    ?.let { receipt ->
+      state.authoritativeExecutablePlan()?.let { plan ->
+        val unresolved = recorder.loadConvergenceState(run.request.workflowId, run.request.dbPathOverride)
+          ?: UnresolvedConvergence(emptyList(), emptyList(), emptyList())
+        implementationCompletionDecisionFromContext(plan, unresolved, receipt)
+      }
+    }
+    ?.takeIf { it.disposition is SemanticIncompleteWorkContinuation }
+    ?.let(::implementationContinuationReason)
 
   @Suppress("ReturnCount")
   private fun launchAndCapture(

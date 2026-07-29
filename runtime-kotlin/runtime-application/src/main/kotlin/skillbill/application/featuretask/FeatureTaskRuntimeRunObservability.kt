@@ -110,12 +110,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   /** Persists a bounded transition classification independently of the generic fix-loop counter. */
-  fun transition(
-    phaseId: String,
-    resolvedAgentId: String,
-    attemptCount: Int,
-    classification: String,
-  ) {
+  fun transition(phaseId: String, resolvedAgentId: String, attemptCount: Int, classification: String) {
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseTransitionClassified(
         workflowId = request.workflowId,
