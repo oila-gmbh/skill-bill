@@ -279,6 +279,34 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val blockedReason: String,
   ) : FeatureTaskRuntimeRunEvent
 
+  data class PlanDecompositionRequired(
+    override val workflowId: String,
+    override val phaseId: String = "plan",
+    val boundedScore: Int,
+    val rationale: List<String>,
+  ) : FeatureTaskRuntimeRunEvent
+
+  data class ReviewDepthResolved(
+    override val workflowId: String,
+    override val phaseId: String = "review",
+    val minimumDepth: String,
+    val executionMode: String,
+    val rationale: List<String>,
+  ) : FeatureTaskRuntimeRunEvent
+
+  data class FocusedQualityResolved(
+    override val workflowId: String,
+    override val phaseId: String = "focused_quality",
+    val disposition: String,
+    val repairAttempt: Int?,
+    val checkpointFingerprint: String?,
+  ) : FeatureTaskRuntimeRunEvent
+
+  data class FinalValidationStarted(
+    override val workflowId: String,
+    override val phaseId: String = "validate",
+  ) : FeatureTaskRuntimeRunEvent
+
   data class DecomposedAtPlanning(
     override val workflowId: String,
     override val phaseId: String,

@@ -79,6 +79,12 @@ data class FeatureTaskRuntimeFinishedRecord(
   // tally by reason class. Counts and class labels only; never carries row contents.
   val crashReconciliationCount: Int = 0,
   val crashReconciliationReasonCounts: Map<String, Int> = emptyMap(),
+  val decompositionEnforcementCount: Int = 0,
+  val reviewDepthEscalationCount: Int = 0,
+  val focusedQualityRepairCount: Int = 0,
+  val focusedQualityReuseCount: Int = 0,
+  val focusedQualityInvalidationCount: Int = 0,
+  val finalValidationCount: Int = 0,
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
 )

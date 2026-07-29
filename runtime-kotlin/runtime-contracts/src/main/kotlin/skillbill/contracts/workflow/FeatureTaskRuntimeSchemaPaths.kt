@@ -115,6 +115,17 @@ object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 }
 
+const val FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeAdaptivePolicySchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-adaptive-policy-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-adaptive-policy-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-adaptive-policy-schema.yaml"
+}
+
 /**
  * Runtime-side mirror of the quarantine schema's `contract_version`;
  * `FeatureTaskRuntimeQuarantineSchemaContractVersionTest` fails the build if they diverge.

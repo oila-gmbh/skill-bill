@@ -490,7 +490,50 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 19,
+        name = "add-feature-task-runtime-adaptive-decisions",
+        operation = { connection ->
+          connection.createStatement().use {
+            it.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_runtime_adaptive_decisions (
+                decision_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                decision_json TEXT NOT NULL,
+                destination_phase_id TEXT NOT NULL,
+                semantic_fingerprint TEXT,
+                focused_quality_disposition TEXT CHECK (
+                  focused_quality_disposition IS NULL OR
+                  focused_quality_disposition IN ('REUSED', 'PASSED', 'REPAIR_REQUIRED')
+                ),
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              )
+              """.trimIndent(),
+            )
+            it.execute(
+              """
+              CREATE TABLE IF NOT EXISTS feature_task_runtime_quality_repair_batches (
+                batch_id TEXT PRIMARY KEY,
+                decision_id TEXT NOT NULL,
+                checkpoint_fingerprint TEXT NOT NULL,
+                attempt INTEGER NOT NULL CHECK (attempt BETWEEN 1 AND 8),
+                batch_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (decision_id)
+                  REFERENCES feature_task_runtime_adaptive_decisions(decision_id) ON DELETE CASCADE
+              )
+              """.trimIndent(),
+            )
+            it.execute(
+              "CREATE INDEX IF NOT EXISTS idx_runtime_adaptive_destination " +
+                "ON feature_task_runtime_adaptive_decisions(destination_phase_id, updated_at)",
+            )
+          }
+        },
+      ),
     ).plus(ConvergenceDatabaseMigrations.migrations)
+      .sortedBy { it.version }
       .also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

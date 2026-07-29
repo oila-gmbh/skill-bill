@@ -464,6 +464,24 @@ val copyFeatureTaskRuntimePlanningProjectionsSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeAdaptivePolicySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-adaptive-policy-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeAdaptivePolicySchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeAdaptivePolicySchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeAdaptivePolicySchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).isFile) {
+        "SKILL-150: canonical adaptive-policy schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeQuarantineSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-quarantine-schema.yaml")
@@ -511,6 +529,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
+  dependsOn(copyFeatureTaskRuntimeAdaptivePolicySchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
 }
 
@@ -538,6 +557,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
+  dependsOn(copyFeatureTaskRuntimeAdaptivePolicySchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
 }
 

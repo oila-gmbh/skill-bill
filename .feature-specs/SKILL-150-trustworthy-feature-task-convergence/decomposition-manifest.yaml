@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-150-trustworthy-feature-task-convergence"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
+  subtask_id: 6
   action: "resume"
 subtasks:
 - id: 1
@@ -79,12 +79,12 @@ subtasks:
 - id: 5
   name: "Scoped checkpoint isolation"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_5_scoped_checkpoint_isolation.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260729-055513-mbyv"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -98,7 +98,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260729-104842-iuuu"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

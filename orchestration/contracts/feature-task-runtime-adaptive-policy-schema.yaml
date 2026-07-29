@@ -1,0 +1,93 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-adaptive-policy-schema.yaml"
+title: "Feature-task-runtime adaptive sizing and pre-review quality policy"
+description: "Bounded, platform-neutral policy for sizing, decomposition, review depth, and focused quality."
+type: object
+additionalProperties: false
+required: [contract_version, sizing, review, focused_quality]
+properties:
+  contract_version: { const: "0.1" }
+  sizing:
+    $ref: "#/$defs/sizingPolicy"
+  review:
+    $ref: "#/$defs/reviewPolicy"
+  focused_quality:
+    $ref: "#/$defs/focusedQualityPolicy"
+x-coherence-checks:
+  - id: platform-neutral
+    description: "Policy contains bounded signals and category names, never platform slugs or build commands."
+  - id: direct-plan-gate
+    description: "A direct plan above max_direct_score requires decomposition or a persisted governed override."
+  - id: review-floor
+    description: "An execution-mode request cannot reduce minimum substance depth or required specialist areas."
+$defs:
+  boundedScore: { type: integer, minimum: 0, maximum: 100 }
+  complexitySignals:
+    type: object
+    additionalProperties: false
+    required:
+      - task_count
+      - dependency_depth
+      - module_breadth
+      - boundary_breadth
+      - persistence_or_migration
+      - security_or_privacy
+      - concurrency_or_lifecycle
+      - process_boundary_or_crash_recovery
+      - platform_count
+      - expected_changed_path_count
+    properties:
+      task_count: { type: integer, minimum: 1, maximum: 128 }
+      dependency_depth: { type: integer, minimum: 0, maximum: 32 }
+      module_breadth: { type: integer, minimum: 1, maximum: 64 }
+      boundary_breadth: { type: integer, minimum: 1, maximum: 64 }
+      persistence_or_migration: { type: boolean }
+      security_or_privacy: { type: boolean }
+      concurrency_or_lifecycle: { type: boolean }
+      process_boundary_or_crash_recovery: { type: boolean }
+      platform_count: { type: integer, minimum: 1, maximum: 16 }
+      expected_changed_path_count: { type: integer, minimum: 1, maximum: 512 }
+  resolvedDecision:
+    type: object
+    additionalProperties: false
+    required: [feature_size, score, decomposition_requirement, review_depth, review_mode, rationale]
+    properties:
+      feature_size: { enum: [small, medium, large] }
+      score: { $ref: "#/$defs/boundedScore" }
+      decomposition_requirement: { enum: [direct_allowed, decomposition_required] }
+      review_depth: { enum: [standard, specialist, multi_specialist] }
+      review_mode: { enum: [inline, delegated, parallel_specialist] }
+      rationale:
+        type: array
+        maxItems: 16
+        items: { type: string, minLength: 1, maxLength: 256 }
+  sizingPolicy:
+    type: object
+    additionalProperties: false
+    required: [medium_min_score, large_min_score, decomposition_min_score, max_direct_score]
+    properties:
+      medium_min_score: { $ref: "#/$defs/boundedScore" }
+      large_min_score: { $ref: "#/$defs/boundedScore" }
+      decomposition_min_score: { $ref: "#/$defs/boundedScore" }
+      max_direct_score: { $ref: "#/$defs/boundedScore" }
+  reviewPolicy:
+    type: object
+    additionalProperties: false
+    required: [delegated_min_score, parallel_min_score, broad_boundary_count]
+    properties:
+      delegated_min_score: { $ref: "#/$defs/boundedScore" }
+      parallel_min_score: { $ref: "#/$defs/boundedScore" }
+      broad_boundary_count: { type: integer, minimum: 1, maximum: 64 }
+  focusedQualityPolicy:
+    type: object
+    additionalProperties: false
+    required: [categories, max_repair_attempts]
+    properties:
+      categories:
+        type: array
+        minItems: 1
+        maxItems: 6
+        uniqueItems: true
+        items:
+          enum: [format, compilation, static_analysis, schema_parity, migration, focused_test]
+      max_repair_attempts: { type: integer, minimum: 1, maximum: 8 }
