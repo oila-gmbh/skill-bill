@@ -53,7 +53,8 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStoreTest {
 
       assertEquals(record, store.read(record.decisionId))
       val count = it.createStatement().use { statement ->
-        statement.executeQuery("SELECT COUNT(*) AS count FROM feature_task_runtime_quality_repair_batches").use { rows ->
+        val query = "SELECT COUNT(*) AS count FROM feature_task_runtime_quality_repair_batches"
+        statement.executeQuery(query).use { rows ->
           rows.next()
           rows.getInt("count")
         }

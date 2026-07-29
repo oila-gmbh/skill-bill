@@ -175,11 +175,26 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
   )
 
   @Suppress("UNCHECKED_CAST")
-  private fun envelope(producedOutputs: String): Map<String, Any?> = mapOf(
-    "produced_outputs" to (
-      skillbill.contracts.JsonSupport.jsonElementToValue(
-        requireNotNull(skillbill.contracts.JsonSupport.parseObjectOrNull(producedOutputs)),
-      ) as Map<String, Any?>
+  private fun envelope(producedOutputs: String): Map<String, Any?> {
+    val parsed = skillbill.contracts.JsonSupport.jsonElementToValue(
+      requireNotNull(skillbill.contracts.JsonSupport.parseObjectOrNull(producedOutputs)),
+    ) as Map<String, Any?>
+    val projection = LinkedHashMap(parsed)
+    projection.putIfAbsent(
+      "complexity_signals",
+      linkedMapOf(
+        "task_count" to 1,
+        "dependency_depth" to 0,
+        "module_breadth" to 1,
+        "boundary_breadth" to 1,
+        "persistence_or_migration" to false,
+        "security_or_privacy" to false,
+        "concurrency_or_lifecycle" to false,
+        "process_boundary_or_crash_recovery" to false,
+        "platform_count" to 1,
+        "expected_changed_path_count" to 1,
       ),
-  )
+    )
+    return mapOf("produced_outputs" to projection)
+  }
 }

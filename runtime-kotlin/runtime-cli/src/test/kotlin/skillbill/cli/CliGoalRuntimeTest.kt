@@ -1868,14 +1868,19 @@ private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId)
     """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["runtime-cli"],""" +
       """"risks":["Fixture risk."],""" +
       """"rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+      """"validation_strategy":["Focused runtime tests."],"complexity_signals":$GOAL_COMPLEXITY_SIGNALS}"""
   "plan" ->
     """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +
       """"description":"Fixture task.","criterion_refs":["AC-001"],""" +
       """"target_paths_or_symbols":["src/Foo.kt"],"test_obligations":["Focused test."]}],""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+      """"validation_strategy":["Focused runtime tests."],"complexity_signals":$GOAL_COMPLEXITY_SIGNALS}"""
   else -> null
 }
+
+private const val GOAL_COMPLEXITY_SIGNALS: String =
+  """{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1}"""
 
 private fun subtaskSpecText(id: Int): String =
   "---\nstatus: Pending\n---\n\n# Subtask $id\n\n## Acceptance Criteria\n\n1. Subtask $id delivers its part.\n"

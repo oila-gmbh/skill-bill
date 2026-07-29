@@ -1,9 +1,9 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import skillbill.workflow.model.CodeReviewExecutionMode
 
 class FeatureTaskRuntimeAdaptivePolicyModelsTest {
   @Test

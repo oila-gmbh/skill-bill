@@ -307,22 +307,7 @@ internal class FeatureTaskRuntimeRunLoop(
         return carriedForward
       }
     }
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE && !state.isComplete(phaseId)) {
-      request.eventSink.emit(
-        skillbill.application.model.FeatureTaskRuntimeRunEvent.FinalValidationStarted(
-          workflowId = request.workflowId,
-        ),
-      )
-    }
-    val reason = if (state.isComplete(phaseId)) {
-      state.outputFor(phaseId)
-        ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }
-        ?.let { applyPlanningStop(phaseId, it) }
-    } else {
-      establishBranchIfNeeded(phaseId) ?: run {
-        runPhaseFor(phaseId)
-      }
-    }
+    val reason = phaseRunReason(phaseId)
     return when {
       decomposed != null -> PhaseSettlement.stop()
       recordRejectionSettlementPending -> {
@@ -339,6 +324,26 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
     }
+  }
+
+  private fun phaseRunReason(phaseId: String): String? {
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE && !state.isComplete(phaseId)) {
+      request.eventSink.emit(
+        skillbill.application.model.FeatureTaskRuntimeRunEvent.FinalValidationStarted(
+          workflowId = request.workflowId,
+        ),
+      )
+    }
+    val reason = if (state.isComplete(phaseId)) {
+      state.outputFor(phaseId)
+        ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }
+        ?.let { applyPlanningStop(phaseId, it) }
+    } else {
+      establishBranchIfNeeded(phaseId) ?: run {
+        runPhaseFor(phaseId)
+      }
+    }
+    return reason
   }
 
   // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared

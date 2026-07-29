@@ -1,5 +1,18 @@
 # featuretask runtime boundary history
 
+## [2026-07-29] SKILL-150 — Adaptive sizing and phase-appropriate quality
+Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-ports/taskruntime, runtime-infra-{fs,sqlite}, runtime-cli, runtime-core, orchestration/contracts
+- Added evidence-based feature sizing and decomposition enforcement from boundary breadth, risk, and task-graph signals
+- Resolved and persisted minimum review depth without allowing inline execution mode to reduce required coverage
+- Made manifest-selected non-test build, compilation, formatting, static-analysis, schema, and migration checks available during implementation and review
+- Kept test execution exclusive to validation while permitting builds that compile test sources without running them
+- Persisted checkpoint-bound quality decisions and routed structured failures back to the mutating phase without consuming another review pass
+- Pattern: classify commands by execution behavior, not source-set names, and keep final validation authoritative
+- Reusable: adaptive policy models, manifest-focused quality selector, focused-quality coordinator, and SQLite decision store
+- Breaking changes/limitations: pre-validation test execution is rejected; semantic repository changes invalidate reusable quality results
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-07-29] SKILL-150 — Scoped checkpoint isolation
 Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/taskruntime, runtime-ports/workflow, runtime-infra-{fs,sqlite}, runtime-cli, runtime-core
 - Replaced repository-wide checkpoint staging with a workflow-owned path inventory and a private Git index, preserving foreign staged, unstaged, and untracked work

@@ -381,7 +381,11 @@ private val PLAN_UNDECLARED_DEPENDENCY: String = envelope(
   "plan",
   """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
     """"tasks":[{"task_id":"task-1","depends_on":["task-ghost"],"description":"t",""" +
-    """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+    """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"complexity_signals":""" +
+    """{"task_count":1,"dependency_depth":1,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1},""" +
+    """"validation_strategy":["v"]}""",
 )
 
 // A completed producing-phase output shaped like a decomposition package (mode=decompose, no
@@ -403,7 +407,11 @@ private val IMPLEMENT_DECOMPOSE_SHAPED: String = envelope(
 private val PREPLAN_ROLLOUT_AS_ARRAY: String = envelope(
   "preplan",
   """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-    """"risks":["r"],"rollout":[{"flag_required":false,"notes":"n"}],"validation_strategy":["v"]}""",
+    """"risks":["r"],"rollout":[{"flag_required":false,"notes":"n"}],"complexity_signals":""" +
+    """{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1},""" +
+    """"validation_strategy":["v"]}""",
 )
 
 private val IMPLEMENT_DEVIATIONS_AS_STRINGS: String = envelope(

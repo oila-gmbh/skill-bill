@@ -18,7 +18,7 @@ internal object ConvergenceDatabaseMigrations {
       operation = ::createAuditConvergenceTables,
     ),
     DatabaseMigration(
-      version = 19,
+      version = 20,
       name = "retain-exact-convergence-parent-identity",
       operation = ::retainExactConvergenceParentIdentity,
     ),

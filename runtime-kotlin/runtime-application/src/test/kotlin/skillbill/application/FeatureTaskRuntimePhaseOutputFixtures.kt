@@ -70,7 +70,8 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       "affected_boundaries":["runtime-application"],
       "risks":["Fixture risk."],
       "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
-      "validation_strategy":["Focused runtime tests."]
+      "validation_strategy":["Focused runtime tests."],
+      "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS}
     }
     """.trimIndent()
   "plan" ->
@@ -85,7 +86,8 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
         "target_paths_or_symbols":["src/Foo.kt"],
         "test_obligations":["Focused test."]
       }],
-      "validation_strategy":["Focused runtime tests."]
+      "validation_strategy":["Focused runtime tests."],
+      "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS}
     }
     """.trimIndent()
   // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate

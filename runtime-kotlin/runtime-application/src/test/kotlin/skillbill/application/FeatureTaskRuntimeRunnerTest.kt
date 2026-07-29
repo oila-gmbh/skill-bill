@@ -3914,6 +3914,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.worktreeStatusValue = " M src/Foo.kt" // dirty tree => one checkpoint commit on the boundary
+    git.ownedPathsValue = listOf("src/Foo.kt")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),

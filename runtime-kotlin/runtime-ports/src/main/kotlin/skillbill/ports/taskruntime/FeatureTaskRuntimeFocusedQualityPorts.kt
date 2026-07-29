@@ -2,18 +2,14 @@ package skillbill.ports.taskruntime
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAdaptiveDecisionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityCheck
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualitySelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityRepairItem
-
-data class FeatureTaskRuntimeFocusedQualitySelection(
-  val semanticFingerprint: String,
-  val checks: List<FeatureTaskRuntimeFocusedQualityCheck>,
-)
 
 fun interface FeatureTaskRuntimeFocusedQualitySelector {
   fun select(ownedPaths: List<String>): FeatureTaskRuntimeFocusedQualitySelection
 }
 
-fun interface FeatureTaskRuntimeFocusedQualityExecutor {
+fun interface FeatureTaskRuntimeFocusedQualityRunner {
   fun execute(checks: List<FeatureTaskRuntimeFocusedQualityCheck>): List<FeatureTaskRuntimeQualityRepairItem>
 }
 
@@ -24,8 +20,5 @@ fun interface FeatureTaskRuntimeFocusedQualityExecutor {
 interface FeatureTaskRuntimeAdaptiveDecisionStore {
   fun read(decisionId: String): FeatureTaskRuntimeAdaptiveDecisionRecord?
 
-  fun persistAndAdvance(
-    record: FeatureTaskRuntimeAdaptiveDecisionRecord,
-    destinationPhaseId: String,
-  )
+  fun persistAndAdvance(record: FeatureTaskRuntimeAdaptiveDecisionRecord, destinationPhaseId: String)
 }

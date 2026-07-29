@@ -3068,6 +3068,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "produced_outputs":{"projection_kind":"preplanning_digest","contract_version":"0.1",
         "affected_boundaries":["runtime-application/goalrunner"],"risks":["hydration drift"],
         "rollout":{"flag_required":false,"notes":"no flag needed"},
+        "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
         "validation_strategy":["focused gradle"],"evidence_refs":["shared-preplan"]}
       }
     """.trimIndent()
@@ -3078,7 +3079,8 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"no obligations",
         "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
         "tasks":[{"task_id":"task-1","description":"no obligations","criterion_refs":["AC-001"],
-        "test_obligations":[]}],"validation_strategy":["focused gradle"]}
+        "test_obligations":[]}],"complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
+        "validation_strategy":["focused gradle"]}
       }
     """.trimIndent()
     val PLAN_ONE_PAYLOAD = planPayload("owned-plan-one")
@@ -3089,7 +3091,8 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"$description",
         "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
         "tasks":[{"task_id":"task-1","description":"$description","criterion_refs":["AC-001"],
-        "test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}
+        "test_obligations":["parity"]}],"complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
+        "validation_strategy":["focused gradle"]}
       }
     """.trimIndent()
 

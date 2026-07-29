@@ -903,24 +903,46 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
   is FeatureTaskRuntimeRunEvent.RunStarted ->
     "feature-task-runtime $workflowId: run started feature_size=$featureSize\n"
   is FeatureTaskRuntimeRunEvent.BranchResolved ->
-    "feature-task-runtime $workflowId: branch ${if (reused) "reused" else "created"} $branch\n"
+    "feature-task-runtime $workflowId: branch ${resolutionLabel()} $branch\n"
   is FeatureTaskRuntimeRunEvent.BranchSetupBlocked ->
     "feature-task-runtime $workflowId: branch setup blocked at phase $phaseId: $blockedReason\n"
   is FeatureTaskRuntimeRunEvent.PhaseStarted ->
-    "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
-      "agent=$resolvedAgentId attempt=$attemptCount" +
-      model?.let { " model=$it" }.orEmpty() +
-      effort?.let { " effort=$it" }.orEmpty() +
-      "\n"
+    "feature-task-runtime $workflowId: phase $phaseId ${startDetails()}\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
     "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
   is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
+  is FeatureTaskRuntimeRunEvent.PlanDecompositionRequired ->
+    "feature-task-runtime $workflowId: plan decomposition required score=$boundedScore: " +
+      "${rationale.joinToString("; ")}\n"
+  is FeatureTaskRuntimeRunEvent.ReviewDepthResolved ->
+    "feature-task-runtime $workflowId: review depth=$minimumDepth mode=$executionMode: " +
+      "${rationale.joinToString("; ")}\n"
+  is FeatureTaskRuntimeRunEvent.FocusedQualityResolved ->
+    "feature-task-runtime $workflowId: focused quality ${resolutionDetails()}\n"
+  is FeatureTaskRuntimeRunEvent.FinalValidationStarted ->
+    "feature-task-runtime $workflowId: final validation started\n"
   is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning ->
     "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
       "Work the first subtask first.\n"
+}
+
+private fun FeatureTaskRuntimeRunEvent.BranchResolved.resolutionLabel(): String = if (reused) "reused" else "created"
+
+private fun FeatureTaskRuntimeRunEvent.PhaseStarted.startDetails(): String = buildString {
+  append(if (resumed) "resumed" else "started")
+  append(" agent=").append(resolvedAgentId)
+  append(" attempt=").append(attemptCount)
+  model?.let { append(" model=").append(it) }
+  effort?.let { append(" effort=").append(it) }
+}
+
+private fun FeatureTaskRuntimeRunEvent.FocusedQualityResolved.resolutionDetails(): String = buildString {
+  append(disposition)
+  repairAttempt?.let { append(" repair_attempt=").append(it) }
+  checkpointFingerprint?.let { append(" checkpoint=").append(it) }
 }
 
 private fun parsePhaseAgents(rawAssignments: List<String>): Map<String, String> {

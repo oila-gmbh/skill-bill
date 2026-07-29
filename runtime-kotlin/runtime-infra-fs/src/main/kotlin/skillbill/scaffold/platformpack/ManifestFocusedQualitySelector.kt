@@ -1,9 +1,9 @@
 package skillbill.scaffold.platformpack
 
-import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualitySelection
 import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualitySelector
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityCategory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityCheck
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualitySelection
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
@@ -69,14 +69,17 @@ class ManifestFocusedQualitySelector(
   private fun matches(signal: String, path: String): Boolean {
     val normalizedSignal = signal.removePrefix("./")
     return if ('*' in normalizedSignal || '?' in normalizedSignal || '[' in normalizedSignal) {
-      FileSystems.getDefault().getPathMatcher("glob:$normalizedSignal").matches(Path.of(path))
+      val matcher = FileSystems.getDefault().getPathMatcher("glob:$normalizedSignal")
+      val candidate = Path.of(path)
+      matcher.matches(candidate) || candidate.fileName?.let(matcher::matches) == true
     } else {
-      path == normalizedSignal || path.startsWith("$normalizedSignal/")
+      path == normalizedSignal ||
+        path.startsWith("$normalizedSignal/") ||
+        (normalizedSignal.startsWith('.') && path.endsWith(normalizedSignal))
     }
   }
 
-  private fun sha256(value: String): String =
-    MessageDigest.getInstance("SHA-256")
-      .digest(value.toByteArray(StandardCharsets.UTF_8))
-      .joinToString("") { "%02x".format(it) }
+  private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(value.toByteArray(StandardCharsets.UTF_8))
+    .joinToString("") { "%02x".format(it) }
 }

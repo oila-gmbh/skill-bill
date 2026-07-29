@@ -121,30 +121,29 @@ object ConvergenceStateCodec {
     record.evidenceRef?.let { put("evidence_ref", it) }
     put("created_at", record.createdAt)
   }
-
-  private fun invalid(source: String, reason: String): Nothing =
-    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(source, reason)
-
-  private fun invalidRecord(source: String, error: RuntimeException): Nothing =
-    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
-      source,
-      "record violates the convergence-state contract",
-      error,
-    )
-
-  private fun invalidLegacySource(source: String, error: RuntimeException): Nothing =
-    throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
-      source,
-      "legacy source violates the convergence-state contract",
-      error,
-    )
-
-  private fun JsonObject.string(name: String): String =
-    get(name)?.jsonPrimitive?.contentOrNull ?: error("missing $name")
-
-  private fun JsonObject.optionalString(name: String): String? = get(name)?.jsonPrimitive?.contentOrNull
-
-  private fun JsonObject.int(name: String): Int = get(name)?.jsonPrimitive?.intOrNull ?: error("missing $name")
-
-  private fun JsonObject.optionalInt(name: String): Int? = get(name)?.jsonPrimitive?.intOrNull
 }
+
+private fun invalid(source: String, reason: String): Nothing =
+  throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(source, reason)
+
+private fun invalidRecord(source: String, error: RuntimeException): Nothing =
+  throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
+    source,
+    "record violates the convergence-state contract",
+    error,
+  )
+
+private fun invalidLegacySource(source: String, error: RuntimeException): Nothing =
+  throw InvalidFeatureTaskRuntimeConvergenceStateSchemaError(
+    source,
+    "legacy source violates the convergence-state contract",
+    error,
+  )
+
+private fun JsonObject.string(name: String): String = get(name)?.jsonPrimitive?.contentOrNull ?: error("missing $name")
+
+private fun JsonObject.optionalString(name: String): String? = get(name)?.jsonPrimitive?.contentOrNull
+
+private fun JsonObject.int(name: String): Int = get(name)?.jsonPrimitive?.intOrNull ?: error("missing $name")
+
+private fun JsonObject.optionalInt(name: String): Int? = get(name)?.jsonPrimitive?.intOrNull

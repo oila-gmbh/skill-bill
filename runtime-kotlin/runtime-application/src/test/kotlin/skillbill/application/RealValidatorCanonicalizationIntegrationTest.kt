@@ -85,7 +85,11 @@ private const val CANONICALIZABLE_PLAN: String =
   """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Plan output.","produced_outputs":{""" +
     """"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
     """"tasks":[{"task_id":"TASK-1","description":"  `Fixture` task. ","criterion_refs":["AC-001"],""" +
-    """"test_obligations":["Focused test."]}],"validation_strategy":["Focused runtime tests."]}}"""
+    """"test_obligations":["Focused test."]}],"complexity_signals":""" +
+    """{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1},""" +
+    """"validation_strategy":["Focused runtime tests."]}}"""
 
 // The same canonicalizable id but with the required test_obligations omitted. Canonicalization never
 // synthesizes a missing field, so the schema still rejects it.
@@ -93,4 +97,7 @@ private const val CANONICALIZABLE_PLAN_MISSING_OBLIGATION: String =
   """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Plan output.","produced_outputs":{""" +
     """"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
     """"tasks":[{"task_id":"TASK-1","description":"Fixture task.","criterion_refs":["AC-001"]}],""" +
+    """"complexity_signals":{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1},""" +
     """"validation_strategy":["Focused runtime tests."]}}"""

@@ -2013,17 +2013,22 @@ private class RecordingPhaseLauncher(
     }
 
     // Flow-style so each stays a single YAML line the phase-output template can substitute directly.
+    private const val COMPLEXITY_SIGNALS_OUTPUTS: String =
+      """{task_count: 1, dependency_depth: 0, module_breadth: 1, boundary_breadth: 1, """ +
+        """persistence_or_migration: false, security_or_privacy: false, concurrency_or_lifecycle: false, """ +
+        """process_boundary_or_crash_recovery: false, platform_count: 1, expected_changed_path_count: 1}"""
+
     private const val PREPLAN_DIGEST_OUTPUTS: String =
       """{projection_kind: "preplanning_digest", contract_version: "0.1", affected_boundaries: ["runtime-cli"], """ +
         """risks: ["Fixture risk."], """ +
         """rollout: {flag_required: false, flag_pattern: "none", notes: "No flag needed."}, """ +
-        """validation_strategy: ["Focused runtime tests."]}"""
+        """validation_strategy: ["Focused runtime tests."], complexity_signals: $COMPLEXITY_SIGNALS_OUTPUTS}"""
 
     private const val EXECUTABLE_PLAN_OUTPUTS: String =
       """{projection_kind: "executable_plan", contract_version: "0.1", mode: "direct", tasks: [{task_id: "task-1", """ +
         """description: "Fixture task.", criterion_refs: ["AC-001"], """ +
         """target_paths_or_symbols: ["src/Foo.kt"], test_obligations: ["Focused test."]}], """ +
-        """validation_strategy: ["Focused runtime tests."]}"""
+        """validation_strategy: ["Focused runtime tests."], complexity_signals: $COMPLEXITY_SIGNALS_OUTPUTS}"""
 
     private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
       """{projection_kind: "implementation_receipt", contract_version: "0.1", completed_task_ids: ["task-1"], """ +

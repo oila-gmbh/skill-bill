@@ -8,6 +8,19 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
+  private fun complexitySignals(): Map<String, Any?> = linkedMapOf(
+    "task_count" to 1,
+    "dependency_depth" to 0,
+    "module_breadth" to 1,
+    "boundary_breadth" to 1,
+    "persistence_or_migration" to false,
+    "security_or_privacy" to false,
+    "concurrency_or_lifecycle" to false,
+    "process_boundary_or_crash_recovery" to false,
+    "platform_count" to 1,
+    "expected_changed_path_count" to 1,
+  )
+
   @Test
   fun `a valid preplanning digest validates`() {
     FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
@@ -18,6 +31,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
         "risks" to listOf("producer may omit digest fields"),
         "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
         "validation_strategy" to listOf("snapshot projection tests"),
+        "complexity_signals" to complexitySignals(),
       ),
       sourceLabel = "preplan#1",
     )
@@ -41,6 +55,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
           ),
         ),
         "validation_strategy" to listOf("focused gradle"),
+        "complexity_signals" to complexitySignals(),
       ),
       sourceLabel = "plan#1",
     )
@@ -97,6 +112,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
             ),
           ),
           "validation_strategy" to listOf("focused gradle"),
+          "complexity_signals" to complexitySignals(),
           "narration" to "planning narration must be rejected",
         ),
         sourceLabel = "plan#1",
@@ -122,6 +138,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
           "risks" to listOf("producer may omit digest fields"),
           "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
           "validation_strategy" to listOf("snapshot projection tests"),
+          "complexity_signals" to complexitySignals(),
           "progress_diagnostics" to "smuggled whole-envelope field",
         ),
         sourceLabel = "preplan#produced_outputs",
@@ -170,6 +187,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
           ),
         ),
         "validation_strategy" to listOf("focused gradle"),
+        "complexity_signals" to complexitySignals(),
       ),
       sourceLabel = "plan#1",
     )
@@ -209,6 +227,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
         "risks" to listOf("producer may omit digest fields"),
         "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
         "validation_strategy" to listOf("snapshot projection tests"),
+        "complexity_signals" to complexitySignals(),
       )
       mutate(digest)
       return runCatching {
@@ -240,6 +259,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
           "mode" to "direct",
           "tasks" to listOf(task(mutate)),
           "validation_strategy" to listOf("focused gradle"),
+          "complexity_signals" to complexitySignals(),
         ),
         sourceLabel = "plan#1",
       )

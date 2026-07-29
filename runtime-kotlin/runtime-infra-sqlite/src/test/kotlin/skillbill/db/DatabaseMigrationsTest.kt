@@ -73,6 +73,8 @@ class DatabaseMigrationsTest {
         16 to "add-feature-task-convergence-state",
         17 to "retain-convergence-evidence-and-classification",
         18 to "add-audit-convergence-tables",
+        19 to "add-feature-task-runtime-adaptive-decisions",
+        20 to "retain-exact-convergence-parent-identity",
       ),
       migrationDefinitions,
     )

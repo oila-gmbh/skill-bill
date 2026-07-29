@@ -18,8 +18,8 @@ import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
-import skillbill.ports.persistence.UnavailableReviewGenerationRepository
 import skillbill.ports.persistence.UnavailableConvergenceStateRepository
+import skillbill.ports.persistence.UnavailableReviewGenerationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
@@ -35,6 +35,11 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
@@ -70,11 +75,6 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
-import skillbill.workflow.taskruntime.model.ConvergenceIdentities
-import skillbill.workflow.taskruntime.model.ConvergenceProvenance
-import skillbill.workflow.taskruntime.model.ConvergenceRecord
-import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
-import skillbill.workflow.taskruntime.model.ConvergenceStatus
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
@@ -1236,69 +1236,11 @@ class FeatureTaskRuntimePhaseRecorder(
   ): List<ConvergenceRecord> {
     if (request.phaseId !in setOf("implement", "audit", "review")) return emptyList()
     val generation = request.edgeIteration ?: request.attemptCount
-    val evidenceSeed = listOf(
-      request.workflowId,
-      request.phaseId,
-      request.attemptCount.toString(),
-      request.loopId.orEmpty(),
-      request.edgeIteration?.toString().orEmpty(),
-      request.reviewPassNumber?.toString().orEmpty(),
-      request.repositoryFingerprint.orEmpty(),
-      request.outputArtifact.orEmpty(),
-    ).joinToString("|")
-    val evidenceDigest = ConvergenceIdentities.digest(evidenceSeed)
-    val checkpointLogicalId = ConvergenceIdentities.logical(
-      request.workflowId,
-      ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-      "${request.phaseId}:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
-    )
-    val checkpoint = ConvergenceRecord(
-      recordId = ConvergenceIdentities.record(
-        request.workflowId,
-        ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-        checkpointLogicalId,
-        generation,
-      ),
-      logicalId = checkpointLogicalId,
-      kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-      provenance = ConvergenceProvenance(request.workflowId, generation, request.phaseId),
-      evidenceDigest = evidenceDigest,
-      createdAt = createdAt,
-      status = ConvergenceStatus.COMPLETED,
-      summary = "${request.phaseId} phase repository checkpoint",
-      evidenceRef = (request.repositoryFingerprint ?: request.outputArtifact ?: "workflow:${request.workflowId}")
-        .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
-    )
+    val evidenceDigest = convergenceEvidenceDigest(request)
+    val checkpoint = convergenceCheckpoint(request, generation, evidenceDigest, createdAt)
     if (request.phaseId != "implement") return listOf(checkpoint)
-    val outcomeLogicalId = ConvergenceIdentities.logical(
-      request.workflowId,
-      ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-      "attempt:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
-    )
     return listOf(
-      ConvergenceRecord(
-        recordId = ConvergenceIdentities.record(
-          request.workflowId,
-          ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-          outcomeLogicalId,
-          generation,
-        ),
-        logicalId = outcomeLogicalId,
-        kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-        provenance = ConvergenceProvenance(
-          request.workflowId,
-          generation,
-          request.phaseId,
-          attempt = request.attemptCount,
-        ),
-        evidenceDigest = evidenceDigest,
-        createdAt = createdAt,
-        status = ConvergenceStatus.COMPLETED,
-        summary = "implementation attempt ${request.attemptCount} completed",
-        evidenceRef = request.outputArtifact?.take(
-          skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH,
-        ),
-      ),
+      convergenceImplementationOutcome(request, generation, evidenceDigest, createdAt),
       checkpoint,
     )
   }
@@ -1320,6 +1262,84 @@ class FeatureTaskRuntimePhaseRecorder(
   private companion object {
     const val STATUS_RUNNING = "running"
   }
+}
+
+private fun convergenceEvidenceDigest(request: FeatureTaskRuntimePhaseStateRequest): String =
+  ConvergenceIdentities.digest(
+    listOf(
+      request.workflowId,
+      request.phaseId,
+      request.attemptCount.toString(),
+      request.loopId.orEmpty(),
+      request.edgeIteration?.toString().orEmpty(),
+      request.reviewPassNumber?.toString().orEmpty(),
+      request.repositoryFingerprint.orEmpty(),
+      request.outputArtifact.orEmpty(),
+    ).joinToString("|"),
+  )
+
+private fun convergenceCheckpoint(
+  request: FeatureTaskRuntimePhaseStateRequest,
+  generation: Int,
+  evidenceDigest: String,
+  createdAt: String,
+): ConvergenceRecord {
+  val logicalId = ConvergenceIdentities.logical(
+    request.workflowId,
+    ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+    "${request.phaseId}:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+  )
+  return ConvergenceRecord(
+    recordId = ConvergenceIdentities.record(
+      request.workflowId,
+      ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+      logicalId,
+      generation,
+    ),
+    logicalId = logicalId,
+    kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+    provenance = ConvergenceProvenance(request.workflowId, generation, request.phaseId),
+    evidenceDigest = evidenceDigest,
+    createdAt = createdAt,
+    status = ConvergenceStatus.COMPLETED,
+    summary = "${request.phaseId} phase repository checkpoint",
+    evidenceRef = (request.repositoryFingerprint ?: "workflow:${request.workflowId}")
+      .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
+  )
+}
+
+private fun convergenceImplementationOutcome(
+  request: FeatureTaskRuntimePhaseStateRequest,
+  generation: Int,
+  evidenceDigest: String,
+  createdAt: String,
+): ConvergenceRecord {
+  val logicalId = ConvergenceIdentities.logical(
+    request.workflowId,
+    ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+    "attempt:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+  )
+  return ConvergenceRecord(
+    recordId = ConvergenceIdentities.record(
+      request.workflowId,
+      ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+      logicalId,
+      generation,
+    ),
+    logicalId = logicalId,
+    kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+    provenance = ConvergenceProvenance(
+      request.workflowId,
+      generation,
+      request.phaseId,
+      attempt = request.attemptCount,
+    ),
+    evidenceDigest = evidenceDigest,
+    createdAt = createdAt,
+    status = ConvergenceStatus.COMPLETED,
+    summary = "implementation attempt ${request.attemptCount} completed",
+    evidenceRef = null,
+  )
 }
 
 internal fun reconcileLatestRepairResults(

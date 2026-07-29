@@ -10,9 +10,9 @@ import skillbill.workflow.taskruntime.model.ConvergenceProvenance
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
 import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
 import skillbill.workflow.taskruntime.model.ConvergenceStatus
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.UnresolvedConvergence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -71,8 +71,8 @@ class FeatureTaskConvergenceServiceTest {
           startedAt = "2026-07-28T09:00:00Z",
           finishedAt = "2026-07-28T10:00:00Z",
           resolvedAgentId = "codex",
-          rejectedOutput = sentinel,
-          outputArtifact = null,
+          rejectedOutput = null,
+          outputArtifact = sentinel,
         ),
       ),
     )

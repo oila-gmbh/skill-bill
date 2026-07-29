@@ -4,6 +4,28 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRAC
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 const val FEATURE_TASK_RUNTIME_COMPLEXITY_MAX: Int = 100
+private const val MAX_TASK_COUNT: Int = 128
+private const val MAX_DEPENDENCY_DEPTH: Int = 32
+private const val MAX_MODULE_BREADTH: Int = 64
+private const val MAX_BOUNDARY_BREADTH: Int = 64
+private const val MAX_PLATFORM_COUNT: Int = 16
+private const val MAX_CHANGED_PATH_COUNT: Int = 512
+private const val MODULE_BREADTH_WEIGHT: Int = 3
+private const val BOUNDARY_BREADTH_WEIGHT: Int = 4
+private const val PLATFORM_COUNT_WEIGHT: Int = 4
+private const val MAX_BREADTH_SCORE: Int = 35
+private const val TASK_COUNT_WEIGHT: Int = 2
+private const val DEPENDENCY_DEPTH_WEIGHT: Int = 4
+private const val CHANGED_PATH_SCORE_DIVISOR: Int = 8
+private const val MAX_SHAPE_SCORE: Int = 25
+private const val RISK_WEIGHT: Int = 12
+private const val CROSS_BOUNDARY_BREADTH_MINIMUM: Int = 3
+private const val MULTI_SPECIALIST_RISK_COUNT: Int = 2
+private const val MULTI_SPECIALIST_BOUNDARY_BREADTH: Int = 5
+private const val ADAPTIVE_ID_MAX_LENGTH: Int = 128
+private const val ADAPTIVE_SUMMARY_MAX_LENGTH: Int = 512
+private const val QUALITY_REPAIR_MAX_ATTEMPTS: Int = 8
+private const val QUALITY_REPAIR_MAX_ITEMS: Int = 128
 
 data class FeatureTaskRuntimeComplexitySignals(
   val taskCount: Int,
@@ -18,32 +40,39 @@ data class FeatureTaskRuntimeComplexitySignals(
   val expectedChangedPathCount: Int,
 ) {
   init {
-    require(taskCount in 1..128)
-    require(dependencyDepth in 0..32)
-    require(moduleBreadth in 1..64)
-    require(boundaryBreadth in 1..64)
-    require(platformCount in 1..16)
-    require(expectedChangedPathCount in 1..512)
+    require(taskCount in 1..MAX_TASK_COUNT)
+    require(dependencyDepth in 0..MAX_DEPENDENCY_DEPTH)
+    require(moduleBreadth in 1..MAX_MODULE_BREADTH)
+    require(boundaryBreadth in 1..MAX_BOUNDARY_BREADTH)
+    require(platformCount in 1..MAX_PLATFORM_COUNT)
+    require(expectedChangedPathCount in 1..MAX_CHANGED_PATH_COUNT)
   }
 
   fun boundedScore(): Int {
-    val breadth = (moduleBreadth * 3 + boundaryBreadth * 4 + platformCount * 4).coerceAtMost(35)
-    val shape = (taskCount * 2 + dependencyDepth * 4 + expectedChangedPathCount / 8).coerceAtMost(25)
+    val breadth = (
+      moduleBreadth * MODULE_BREADTH_WEIGHT +
+        boundaryBreadth * BOUNDARY_BREADTH_WEIGHT +
+        platformCount * PLATFORM_COUNT_WEIGHT
+      ).coerceAtMost(MAX_BREADTH_SCORE)
+    val shape = (
+      taskCount * TASK_COUNT_WEIGHT +
+        dependencyDepth * DEPENDENCY_DEPTH_WEIGHT +
+        expectedChangedPathCount / CHANGED_PATH_SCORE_DIVISOR
+      ).coerceAtMost(MAX_SHAPE_SCORE)
     val risk = listOf(
       persistenceOrMigration,
       securityOrPrivacy,
       concurrencyOrLifecycle,
       processBoundaryOrCrashRecovery,
-    ).count { it } * 12
+    ).count { it } * RISK_WEIGHT
     return (breadth + shape + risk).coerceAtMost(FEATURE_TASK_RUNTIME_COMPLEXITY_MAX)
   }
 
-  fun toBriefingLine(): String =
-    "tasks=$taskCount, dependency_depth=$dependencyDepth, modules=$moduleBreadth, " +
-      "boundaries=$boundaryBreadth, persistence_or_migration=$persistenceOrMigration, " +
-      "security_or_privacy=$securityOrPrivacy, concurrency_or_lifecycle=$concurrencyOrLifecycle, " +
-      "process_or_recovery=$processBoundaryOrCrashRecovery, platforms=$platformCount, " +
-      "expected_changed_paths=$expectedChangedPathCount"
+  fun toBriefingLine(): String = "tasks=$taskCount, dependency_depth=$dependencyDepth, modules=$moduleBreadth, " +
+    "boundaries=$boundaryBreadth, persistence_or_migration=$persistenceOrMigration, " +
+    "security_or_privacy=$securityOrPrivacy, concurrency_or_lifecycle=$concurrencyOrLifecycle, " +
+    "process_or_recovery=$processBoundaryOrCrashRecovery, platforms=$platformCount, " +
+    "expected_changed_paths=$expectedChangedPathCount"
 
   companion object {
     /** Source-compatible fixture default; governed production projections must always parse explicit signals. */
@@ -71,9 +100,9 @@ data class FeatureTaskRuntimeSizingPolicy(
 ) {
   init {
     require(contractVersion == FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRACT_VERSION)
-    require(mediumMinScore in 0..100)
-    require(largeMinScore in mediumMinScore..100)
-    require(decompositionMinScore in largeMinScore..100)
+    require(mediumMinScore in 0..FEATURE_TASK_RUNTIME_COMPLEXITY_MAX)
+    require(largeMinScore in mediumMinScore..FEATURE_TASK_RUNTIME_COMPLEXITY_MAX)
+    require(decompositionMinScore in largeMinScore..FEATURE_TASK_RUNTIME_COMPLEXITY_MAX)
     require(maxDirectScore in 0 until decompositionMinScore)
   }
 }
@@ -99,8 +128,8 @@ object FeatureTaskRuntimeSizingPolicyResolver {
       else -> FeatureTaskRuntimeFeatureSize.SMALL
     }
     val crossBoundaryHighRisk =
-      signals.moduleBreadth >= 3 &&
-        signals.boundaryBreadth >= 3 &&
+      signals.moduleBreadth >= CROSS_BOUNDARY_BREADTH_MINIMUM &&
+        signals.boundaryBreadth >= CROSS_BOUNDARY_BREADTH_MINIMUM &&
         signals.persistenceOrMigration &&
         (signals.securityOrPrivacy || signals.processBoundaryOrCrashRecovery) &&
         signals.concurrencyOrLifecycle
@@ -129,9 +158,9 @@ data class FeatureTaskRuntimeGovernedDirectOverride(
   val persisted: Boolean,
 ) {
   init {
-    require(overrideId.isNotBlank() && overrideId.length <= 128)
+    require(overrideId.isNotBlank() && overrideId.length <= ADAPTIVE_ID_MAX_LENGTH)
     require(policyVersion == FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRACT_VERSION)
-    require(rationale.isNotBlank() && rationale.length <= 512)
+    require(rationale.isNotBlank() && rationale.length <= ADAPTIVE_SUMMARY_MAX_LENGTH)
   }
 }
 
@@ -141,15 +170,14 @@ object FeatureTaskRuntimeDirectPlanGate {
   fun resolve(
     decision: FeatureTaskRuntimeSizingDecision,
     override: FeatureTaskRuntimeGovernedDirectOverride? = null,
-  ): FeatureTaskRuntimePlanAdvance =
-    if (
-      decision.decompositionRequirement == FeatureTaskRuntimeDecompositionRequirement.DECOMPOSITION_REQUIRED &&
-      override?.persisted != true
-    ) {
-      FeatureTaskRuntimePlanAdvance.REENTER_PLAN_FOR_DECOMPOSITION
-    } else {
-      FeatureTaskRuntimePlanAdvance.IMPLEMENT
-    }
+  ): FeatureTaskRuntimePlanAdvance = if (
+    decision.decompositionRequirement == FeatureTaskRuntimeDecompositionRequirement.DECOMPOSITION_REQUIRED &&
+    override?.persisted != true
+  ) {
+    FeatureTaskRuntimePlanAdvance.REENTER_PLAN_FOR_DECOMPOSITION
+  } else {
+    FeatureTaskRuntimePlanAdvance.IMPLEMENT
+  }
 }
 
 enum class FeatureTaskRuntimeReviewSubstanceDepth { STANDARD, SPECIALIST, MULTI_SPECIALIST }
@@ -168,31 +196,10 @@ object FeatureTaskRuntimeAdaptiveReviewPolicy {
     signals: FeatureTaskRuntimeComplexitySignals,
     requestedMode: CodeReviewExecutionMode,
   ): FeatureTaskRuntimeResolvedReviewPolicy {
-    val riskAreas = buildSet {
-      if (signals.persistenceOrMigration) add("persistence")
-      if (signals.securityOrPrivacy) add("security")
-      if (signals.concurrencyOrLifecycle || signals.processBoundaryOrCrashRecovery) add("platform-correctness")
-    }
-    val depth = when {
-      riskAreas.size >= 2 || signals.boundaryBreadth >= 5 ->
-        FeatureTaskRuntimeReviewSubstanceDepth.MULTI_SPECIALIST
-      riskAreas.isNotEmpty() || sizing.featureSize == FeatureTaskRuntimeFeatureSize.LARGE ->
-        FeatureTaskRuntimeReviewSubstanceDepth.SPECIALIST
-      else -> FeatureTaskRuntimeReviewSubstanceDepth.STANDARD
-    }
-    val minimumMode = when (depth) {
-      FeatureTaskRuntimeReviewSubstanceDepth.MULTI_SPECIALIST ->
-        FeatureTaskRuntimeResolvedReviewMode.PARALLEL_SPECIALIST
-      FeatureTaskRuntimeReviewSubstanceDepth.SPECIALIST ->
-        FeatureTaskRuntimeResolvedReviewMode.DELEGATED
-      FeatureTaskRuntimeReviewSubstanceDepth.STANDARD ->
-        FeatureTaskRuntimeResolvedReviewMode.INLINE
-    }
-    val requested = when (requestedMode) {
-      CodeReviewExecutionMode.INLINE -> FeatureTaskRuntimeResolvedReviewMode.INLINE
-      CodeReviewExecutionMode.DELEGATED -> FeatureTaskRuntimeResolvedReviewMode.DELEGATED
-      CodeReviewExecutionMode.AUTO -> minimumMode
-    }
+    val riskAreas = adaptiveReviewRiskAreas(signals)
+    val depth = minimumAdaptiveReviewDepth(sizing, signals, riskAreas)
+    val minimumMode = minimumAdaptiveReviewMode(depth)
+    val requested = requestedAdaptiveReviewMode(requestedMode, minimumMode)
     val resolved = if (requested.ordinal < minimumMode.ordinal) minimumMode else requested
     return FeatureTaskRuntimeResolvedReviewPolicy(
       minimumDepth = depth,
@@ -201,6 +208,45 @@ object FeatureTaskRuntimeAdaptiveReviewPolicy {
       rationale = listOf("minimum_depth=${depth.name.lowercase()}", "risk_area_count=${riskAreas.size}"),
     )
   }
+}
+
+private fun adaptiveReviewRiskAreas(signals: FeatureTaskRuntimeComplexitySignals): Set<String> = buildSet {
+  if (signals.persistenceOrMigration) add("persistence")
+  if (signals.securityOrPrivacy) add("security")
+  if (signals.concurrencyOrLifecycle || signals.processBoundaryOrCrashRecovery) add("platform-correctness")
+}
+
+private fun minimumAdaptiveReviewDepth(
+  sizing: FeatureTaskRuntimeSizingDecision,
+  signals: FeatureTaskRuntimeComplexitySignals,
+  riskAreas: Set<String>,
+): FeatureTaskRuntimeReviewSubstanceDepth = when {
+  riskAreas.size >= MULTI_SPECIALIST_RISK_COUNT ||
+    signals.boundaryBreadth >= MULTI_SPECIALIST_BOUNDARY_BREADTH ->
+    FeatureTaskRuntimeReviewSubstanceDepth.MULTI_SPECIALIST
+  riskAreas.isNotEmpty() || sizing.featureSize == FeatureTaskRuntimeFeatureSize.LARGE ->
+    FeatureTaskRuntimeReviewSubstanceDepth.SPECIALIST
+  else -> FeatureTaskRuntimeReviewSubstanceDepth.STANDARD
+}
+
+private fun minimumAdaptiveReviewMode(
+  depth: FeatureTaskRuntimeReviewSubstanceDepth,
+): FeatureTaskRuntimeResolvedReviewMode = when (depth) {
+  FeatureTaskRuntimeReviewSubstanceDepth.MULTI_SPECIALIST ->
+    FeatureTaskRuntimeResolvedReviewMode.PARALLEL_SPECIALIST
+  FeatureTaskRuntimeReviewSubstanceDepth.SPECIALIST ->
+    FeatureTaskRuntimeResolvedReviewMode.DELEGATED
+  FeatureTaskRuntimeReviewSubstanceDepth.STANDARD ->
+    FeatureTaskRuntimeResolvedReviewMode.INLINE
+}
+
+private fun requestedAdaptiveReviewMode(
+  requestedMode: CodeReviewExecutionMode,
+  minimumMode: FeatureTaskRuntimeResolvedReviewMode,
+): FeatureTaskRuntimeResolvedReviewMode = when (requestedMode) {
+  CodeReviewExecutionMode.INLINE -> FeatureTaskRuntimeResolvedReviewMode.INLINE
+  CodeReviewExecutionMode.DELEGATED -> FeatureTaskRuntimeResolvedReviewMode.DELEGATED
+  CodeReviewExecutionMode.AUTO -> minimumMode
 }
 
 enum class FeatureTaskRuntimeFocusedQualityCategory {
@@ -219,13 +265,18 @@ data class FeatureTaskRuntimeFocusedQualityCheck(
   val checkerSkill: String,
 ) {
   init {
-    require(checkId.isNotBlank() && checkId.length <= 128)
-    require(ownedPaths.isNotEmpty() && ownedPaths.size <= 512)
+    require(checkId.isNotBlank() && checkId.length <= ADAPTIVE_ID_MAX_LENGTH)
+    require(ownedPaths.isNotEmpty() && ownedPaths.size <= MAX_CHANGED_PATH_COUNT)
     require(ownedPaths == ownedPaths.distinct().sorted())
     require(ownedPaths.all(::isNormalizedRepositoryPath))
-    require(checkerSkill.isNotBlank() && checkerSkill.length <= 128)
+    require(checkerSkill.isNotBlank() && checkerSkill.length <= ADAPTIVE_ID_MAX_LENGTH)
   }
 }
+
+data class FeatureTaskRuntimeFocusedQualitySelection(
+  val semanticFingerprint: String,
+  val checks: List<FeatureTaskRuntimeFocusedQualityCheck>,
+)
 
 data class FeatureTaskRuntimeFocusedQualityCheckpoint(
   val checkpointFingerprint: String,
@@ -269,10 +320,14 @@ data class FeatureTaskRuntimeQualityRepairBatch(
 ) {
   init {
     require(batchId.isNotBlank() && checkpointFingerprint.isNotBlank())
-    require(attempt in 1..8)
-    require(items.isNotEmpty() && items.size <= 128)
+    require(attempt in 1..QUALITY_REPAIR_MAX_ATTEMPTS)
+    require(items.isNotEmpty() && items.size <= QUALITY_REPAIR_MAX_ITEMS)
     require(items.map { it.itemId }.distinct().size == items.size)
-    require(items.all { it.boundedDiagnostic.isNotBlank() && it.boundedDiagnostic.length <= 512 })
+    require(
+      items.all {
+        it.boundedDiagnostic.isNotBlank() && it.boundedDiagnostic.length <= ADAPTIVE_SUMMARY_MAX_LENGTH
+      },
+    )
   }
 }
 
@@ -284,15 +339,14 @@ data class FeatureTaskRuntimeAdaptiveDecisionRecord(
   val focusedQualityOutcome: FeatureTaskRuntimeFocusedQualityOutcome?,
 ) {
   init {
-    require(decisionId.isNotBlank() && decisionId.length <= 128)
+    require(decisionId.isNotBlank() && decisionId.length <= ADAPTIVE_ID_MAX_LENGTH)
   }
 
   fun withFocusedQuality(outcome: FeatureTaskRuntimeFocusedQualityOutcome): FeatureTaskRuntimeAdaptiveDecisionRecord =
     copy(focusedQualityOutcome = outcome)
 }
 
-private fun isNormalizedRepositoryPath(path: String): Boolean =
-  path.isNotBlank() &&
-    !path.startsWith("/") &&
-    '\\' !in path &&
-    path.split('/').none { it.isBlank() || it == "." || it == ".." }
+private fun isNormalizedRepositoryPath(path: String): Boolean = path.isNotBlank() &&
+  !path.startsWith("/") &&
+  '\\' !in path &&
+  path.split('/').none { it.isBlank() || it == "." || it == ".." }

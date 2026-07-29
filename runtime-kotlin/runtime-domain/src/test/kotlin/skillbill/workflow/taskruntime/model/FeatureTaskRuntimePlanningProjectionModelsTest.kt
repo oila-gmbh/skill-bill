@@ -295,6 +295,18 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
       "mode" to "direct",
       "tasks" to tasks,
       "validation_strategy" to listOf("focused gradle"),
+      "complexity_signals" to linkedMapOf(
+        "task_count" to tasks.size,
+        "dependency_depth" to if (dependsOn.isEmpty()) 0 else 1,
+        "module_breadth" to 1,
+        "boundary_breadth" to 1,
+        "persistence_or_migration" to false,
+        "security_or_privacy" to false,
+        "concurrency_or_lifecycle" to false,
+        "process_boundary_or_crash_recovery" to false,
+        "platform_count" to 1,
+        "expected_changed_path_count" to 1,
+      ),
     )
   }
 

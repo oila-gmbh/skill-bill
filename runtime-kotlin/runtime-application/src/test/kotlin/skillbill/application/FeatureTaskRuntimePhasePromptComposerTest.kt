@@ -340,15 +340,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `linear commit_push prompt stages the complete repository delta`() {
+  fun `linear commit_push prompt carries the spec-exclusion directive`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("commit_push"),
       specSource = SpecSource.LINEAR,
     )
 
-    assertContains(prompt, "Stage the complete current repository delta")
-    assertTrue(!prompt.contains("Linear-mode commit exclusion"))
+    assertContains(prompt, "Linear-mode commit exclusion")
+    assertContains(prompt, ".feature-specs/$ISSUE_KEY/")
+    assertContains(prompt, "never run `git add -A`")
+    assertContains(prompt, "decomposition-manifest.yaml")
   }
 
   @Test

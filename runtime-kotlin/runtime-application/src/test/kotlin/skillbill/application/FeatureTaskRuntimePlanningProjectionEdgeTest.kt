@@ -637,6 +637,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       "mode":"direct",
       "tasks":[{"task_id":"task-1","description":"add contract","criterion_refs":["AC-005"],
       "test_obligations":[]}],
+      "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
       "validation_strategy":["focused gradle"]
     }}
   """.trimIndent()
@@ -651,6 +652,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         {"task_id":"Task_2","depends_on":["T1"],"description":"second","criterion_refs":["AC-002"],
          "test_obligations":["parity"]}
       ],
+      "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
       "validation_strategy":["focused gradle"]
     }}
   """.trimIndent()
@@ -752,6 +754,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         "affected_boundaries":["runtime-domain/model"],
         "risks":["producer may omit fields"],
         "rollout":{"flag_required":false,"notes":"no flag needed"},
+        "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
         "validation_strategy":["snapshot projection tests"]$undeclared
       }}
     """.trimIndent()
@@ -775,6 +778,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         "mode":"$mode",
         "tasks":[{"task_id":"task-01","depends_on":[],"description":"add contract",
         "criterion_refs":["AC-005"],"test_obligations":["parity"],"constraints":["d"]}],
+        "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
         "validation_strategy":["focused gradle"]$undeclared$decomposition
       }}
     """.trimIndent()
@@ -788,6 +792,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       "tasks":[{"task_id":"task-01","depends_on":[],"description":"add contract",
       "criterion_refs":["AC-005"],"target_paths_or_symbols":["runtime-domain/model/X.kt"],
       "test_obligations":["parity"],"constraints":["closed-world only"]}],
+      "complexity_signals":${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
       "validation_strategy":["focused gradle"]
     }}
   """.trimIndent()

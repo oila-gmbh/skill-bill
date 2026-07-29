@@ -371,6 +371,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
           "projection_kind": "preplanning_digest",
           "contract_version": "0.1",
           $fields,
+          "complexity_signals": ${PlanningProjectionFixtures.COMPLEXITY_SIGNALS},
           "rollout": {"flag_required": false, "flag_pattern": "none", "notes": "No flag needed."}
         }
       }

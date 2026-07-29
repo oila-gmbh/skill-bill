@@ -876,7 +876,11 @@ private fun emptyTestObligationsPlanPayload(): String =
     """"status":"completed","summary":"s","produced_outputs":""" +
     """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{""" +
     """"task_id":"task-1","description":"Fixture task.","criterion_refs":["AC-001"],""" +
-    """"test_obligations":[]}],"validation_strategy":["Focused runtime tests."]}}"""
+    """"test_obligations":[]}],"complexity_signals":""" +
+    """{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+    """"persistence_or_migration":false,"security_or_privacy":false,"concurrency_or_lifecycle":false,""" +
+    """"process_boundary_or_crash_recovery":false,"platform_count":1,"expected_changed_path_count":1},""" +
+    """"validation_strategy":["Focused runtime tests."]}}"""
 
 private fun GoalPlanningPreparationRecord.withSharedPacket(
   transform: (Map<String, Any?>) -> Map<String, Any?>,

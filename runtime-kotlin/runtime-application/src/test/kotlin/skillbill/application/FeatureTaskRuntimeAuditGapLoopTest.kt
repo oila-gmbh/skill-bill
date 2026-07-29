@@ -104,6 +104,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   fun `final audit repair iteration is committed before review`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").apply {
       worktreeStatusValue = " M src/Foo.kt"
+      ownedPathsValue = listOf("src/Foo.kt")
     }
     val delegate = auditGapLauncher(convergeOnAudit = 2)
     var commitMessagesObservedAtReview: List<String> = emptyList()
@@ -119,7 +120,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val report = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
 
     assertEquals(2, commitMessagesObservedAtReview.size)
     assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")

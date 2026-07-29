@@ -4,11 +4,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.LegacyReconciliation
-import skillbill.workflow.taskruntime.model.ConvergenceRecord
 import skillbill.workflow.taskruntime.ConvergenceStateCodec
-import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
 import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
 import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
 import skillbill.workflow.taskruntime.model.ConvergenceStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -91,6 +90,6 @@ internal fun mapLegacyArtifactRecords(
       createdAt = requireNotNull(phase.finishedAt),
       status = ConvergenceStatus.COMPLETED,
       summary = "legacy ${phase.phaseId} phase ${phase.attemptCount} reconciled",
-      evidenceRef = phase.outputArtifact?.take(CONVERGENCE_REFERENCE_MAX_LENGTH),
+      evidenceRef = null,
     )
   }

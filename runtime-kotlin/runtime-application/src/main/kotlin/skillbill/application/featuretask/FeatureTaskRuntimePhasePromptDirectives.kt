@@ -46,40 +46,51 @@ internal data class ReviewExecutionDirectiveInputs(
 )
 
 internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDirectiveInputs): String {
-  val codeReviewMode = inputs.codeReviewMode
-  val parallelReviewAgent = inputs.parallelReviewAgent
-  val goalSubtaskReviewInput = inputs.goalSubtaskReviewInput
-  val reviewPassNumber = inputs.reviewPassNumber
-  val resolvedReviewTier = inputs.resolvedReviewTier
-  val reviewDecidingRule = inputs.reviewDecidingRule
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
     return ""
   }
-  val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
+  val remediationPass = inputs.reviewPassNumber == 2
+  val parallel = parallelReviewDirective(inputs)
+  val materializedScope = immutableBaseReviewScope(inputs.goalSubtaskReviewInput, remediationPass)
+  val remediationContext = remediationReviewContext(inputs.goalSubtaskReviewInput, remediationPass)
+  val resolvedTierInfo = resolvedReviewTierDirective(inputs.resolvedReviewTier, inputs.reviewDecidingRule)
+  val coverageFloor = reviewCoverageFloor(inputs)
+  return """
+    ## Review execution mode
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass.$parallel$resolvedTierInfo$coverageFloor$materializedScope$remediationContext
+  """.trimIndent()
+}
+
+private fun parallelReviewDirective(inputs: ReviewExecutionDirectiveInputs): String =
+  inputs.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
     " Combine it with `parallel:$agent`; both lanes must receive the resolved tier " +
-      "${resolvedReviewTier?.wireValue ?: codeReviewMode.wireValue} " +
+      "${inputs.resolvedReviewTier?.wireValue ?: inputs.codeReviewMode.wireValue} " +
       "and the second lane must not launch parallel review recursively."
   }.orEmpty()
-  val remediationPass = reviewPassNumber == 2
+
+private fun immutableBaseReviewScope(input: GoalSubtaskReviewInput?, remediationPass: Boolean): String {
   // The immutable-base framing is pass one's authority only. Emitting it on pass two would contradict
   // the remediation-delta bound stated in the same prompt.
-  val materializedScope = goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
+  return input?.takeIf { !remediationPass }?.let {
     """
     ## Immutable-base review scope
-    Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
+    Review only this run-owned delta from durable base `${it.reviewBaseSha}` to current HEAD `${it.currentHeadSha}`.
     It includes committed, staged, unstaged, and owned untracked changes below.
     Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
     If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
     never select a branch scope.
 
-    ${input.reviewText}
+    ${it.reviewText}
     """.trimIndent()
   }.orEmpty()
-  val remediationContext = if (remediationPass) {
-    val materialized = goalSubtaskReviewInput?.let { input ->
-      "\nThe materialized remediation delta below runs from pre-fix tree `${input.reviewBaseSha}` to " +
-        "post-fix HEAD `${input.currentHeadSha}`; treat it as authoritative and do not rediscover or " +
-        "replace its scope.\n\n${input.reviewText}"
+}
+
+private fun remediationReviewContext(input: GoalSubtaskReviewInput?, remediationPass: Boolean): String =
+  if (remediationPass) {
+    val materialized = input?.let {
+      "\nThe materialized remediation delta below runs from pre-fix tree `${it.reviewBaseSha}` to " +
+        "post-fix HEAD `${it.currentHeadSha}`; treat it as authoritative and do not rediscover or " +
+        "replace its scope.\n\n${it.reviewText}"
     }.orEmpty()
     """
     ## Reserved remediation pass (pass two)
@@ -88,15 +99,21 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   } else {
     ""
   }
-  val resolvedTierInfo = if (resolvedReviewTier != null && reviewDecidingRule != null) {
-    """
+
+private fun resolvedReviewTierDirective(
+  resolvedReviewTier: CodeReviewExecutionMode?,
+  reviewDecidingRule: String?,
+): String = if (resolvedReviewTier != null && reviewDecidingRule != null) {
+  """
     ## Resolved review tier
     Review resolved to tier ${resolvedReviewTier.wireValue} by rule "$reviewDecidingRule".
-    """.trimIndent()
-  } else {
-    ""
-  }
-  val coverageFloor = inputs.minimumReviewDepth?.let { depth ->
+  """.trimIndent()
+} else {
+  ""
+}
+
+private fun reviewCoverageFloor(inputs: ReviewExecutionDirectiveInputs): String =
+  inputs.minimumReviewDepth?.let { depth ->
     val areas = inputs.requiredSpecialistAreas.sorted().joinToString(",").ifBlank { "none" }
     val rationale = inputs.adaptiveReviewRationale.joinToString("; ")
     """
@@ -105,13 +122,25 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
     mode controls execution only and cannot reduce this coverage floor. Rationale: $rationale
     """.trimIndent()
   }.orEmpty()
+
+// Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
+// (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
+// explicit enumeration and exclude the whole `.feature-specs/{KEY}/` tree. For local mode (default)
+// the section is empty, leaving the commit prompt byte-for-byte unchanged (AC6).
+internal fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH || specSource != SpecSource.LINEAR) {
+    return ""
+  }
   return """
-    ## Review execution mode
-    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass.$parallel$resolvedTierInfo$coverageFloor$materializedScope$remediationContext
+    ## Linear-mode commit exclusion
+    This feature's spec_source is `linear`: the local spec scratch is NOT committed. Stage every
+    changed path by explicit enumeration and never run `git add -A` / `git add .`. Exclude the
+    entire `.feature-specs/$issueKey/` directory from staging — the parent spec, every subtask
+    spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
+    or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
+    Linear when a later resume or verify needs it.
   """.trimIndent()
 }
-
-internal fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String = ""
 
 // Emits only for the commit phase of a local-mode run when a spec reference is known: the runtime
 // updates the spec file with the run's completion status just before launching commit_push, so the
@@ -158,7 +187,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
     "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
     "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
-    "validation_strategy, unresolved_questions, evidence_refs, complexity_signals). Do not forward the complete " +
+    "validation_strategy, unresolved_questions, evidence_refs, complexity_signals). Do not forward " +
+    "the complete " +
     "preplan envelope, a generic summary, or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
     "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
@@ -168,7 +198,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
     "stable ordered tasks " +
     "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
-    "constraints), validation_strategy, and complexity_signals. Exclude planning narration, presentation summary, and " +
+    "constraints), validation_strategy, and complexity_signals. Exclude planning narration, " +
+    "presentation summary, and " +
     "generic producer notes; decomposition detail stays private to the preparation boundary.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
     "Reconcile the repository to the intended state the upstream plan output describes: make the " +

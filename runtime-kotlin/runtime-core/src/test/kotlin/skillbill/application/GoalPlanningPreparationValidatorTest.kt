@@ -172,13 +172,21 @@ class GoalPlanningPreparationValidatorTest {
     "affected_boundaries":["runtime-application/goalrunner"],
     "risks":["producer may omit test obligations"],
     "rollout":{"flag_required":false,"notes":"no flag needed"},
-    "validation_strategy":["focused gradle"]}
+    "validation_strategy":["focused gradle"],"complexity_signals":$COMPLEXITY_SIGNALS}
   """.trimIndent().replace("\n", "")
 
   private fun planProjectionJson(testObligations: String = """["parity"]"""): String = """
     {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
     "tasks":[{"task_id":"task-1","description":"add the producer gate","criterion_refs":["AC-001"],
     "test_obligations":$testObligations}],
-    "validation_strategy":["focused gradle"]}
+    "validation_strategy":["focused gradle"],"complexity_signals":$COMPLEXITY_SIGNALS}
   """.trimIndent().replace("\n", "")
+
+  private companion object {
+    const val COMPLEXITY_SIGNALS: String =
+      """{"task_count":1,"dependency_depth":0,"module_breadth":1,"boundary_breadth":1,""" +
+        """"persistence_or_migration":false,"security_or_privacy":false,""" +
+        """"concurrency_or_lifecycle":false,"process_boundary_or_crash_recovery":false,""" +
+        """"platform_count":1,"expected_changed_path_count":1}"""
+  }
 }

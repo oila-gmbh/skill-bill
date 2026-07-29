@@ -30,15 +30,14 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStore(
   private val connection: Connection,
   private val mapper: ObjectMapper = ObjectMapper(),
 ) : FeatureTaskRuntimeAdaptiveDecisionStore {
-  override fun read(decisionId: String): FeatureTaskRuntimeAdaptiveDecisionRecord? =
-    connection.prepareStatement(
-      "SELECT decision_json FROM feature_task_runtime_adaptive_decisions WHERE decision_id = ?",
-    ).use { statement ->
-      statement.setString(1, decisionId)
-      statement.executeQuery().use { rows ->
-        if (rows.next()) decode(mapper.readTree(rows.getString("decision_json"))) else null
-      }
+  override fun read(decisionId: String): FeatureTaskRuntimeAdaptiveDecisionRecord? = connection.prepareStatement(
+    "SELECT decision_json FROM feature_task_runtime_adaptive_decisions WHERE decision_id = ?",
+  ).use { statement ->
+    statement.setString(1, decisionId)
+    statement.executeQuery().use { rows ->
+      if (rows.next()) decode(mapper.readTree(rows.getString("decision_json"))) else null
     }
+  }
 
   override fun persistAndAdvance(record: FeatureTaskRuntimeAdaptiveDecisionRecord, destinationPhaseId: String) {
     require(destinationPhaseId in DESTINATIONS)
@@ -58,12 +57,16 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStore(
           updated_at = CURRENT_TIMESTAMP
         """.trimIndent(),
       ).use {
-        it.setString(1, record.decisionId)
-        it.setString(2, FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRACT_VERSION)
-        it.setString(3, mapper.writeValueAsString(encode(record)))
-        it.setString(4, destinationPhaseId)
-        it.setString(5, outcome?.checkpoint?.semanticFingerprint ?: outcome?.repairBatch?.checkpointFingerprint)
-        it.setString(6, outcome?.disposition?.name)
+        var parameterIndex = 1
+        it.setString(parameterIndex++, record.decisionId)
+        it.setString(parameterIndex++, FEATURE_TASK_RUNTIME_ADAPTIVE_POLICY_CONTRACT_VERSION)
+        it.setString(parameterIndex++, mapper.writeValueAsString(encode(record)))
+        it.setString(parameterIndex++, destinationPhaseId)
+        it.setString(
+          parameterIndex++,
+          outcome?.checkpoint?.semanticFingerprint ?: outcome?.repairBatch?.checkpointFingerprint,
+        )
+        it.setString(parameterIndex, outcome?.disposition?.name)
         it.executeUpdate()
       }
       outcome?.repairBatch?.let { batch ->
@@ -74,11 +77,12 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStore(
           ) VALUES (?, ?, ?, ?, ?)
           """.trimIndent(),
         ).use {
-          it.setString(1, batch.batchId)
-          it.setString(2, record.decisionId)
-          it.setString(3, batch.checkpointFingerprint)
-          it.setInt(4, batch.attempt)
-          it.setString(5, mapper.writeValueAsString(encodeBatch(batch)))
+          var parameterIndex = 1
+          it.setString(parameterIndex++, batch.batchId)
+          it.setString(parameterIndex++, record.decisionId)
+          it.setString(parameterIndex++, batch.checkpointFingerprint)
+          it.setInt(parameterIndex++, batch.attempt)
+          it.setString(parameterIndex, mapper.writeValueAsString(encodeBatch(batch)))
           it.executeUpdate()
         }
       }
@@ -94,7 +98,12 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStore(
       "rationale" to record.sizingDecision.rationale,
     ),
     "override" to record.directOverride?.let {
-      mapOf("id" to it.overrideId, "policy_version" to it.policyVersion, "rationale" to it.rationale, "persisted" to it.persisted)
+      mapOf(
+        "id" to it.overrideId,
+        "policy_version" to it.policyVersion,
+        "rationale" to it.rationale,
+        "persisted" to it.persisted,
+      )
     },
     "review" to mapOf(
       "minimum_depth" to record.reviewPolicy.minimumDepth.name,
@@ -152,7 +161,10 @@ class FeatureTaskRuntimeAdaptiveDecisionSqliteStore(
       ),
       directOverride = root["override"]?.takeUnless(JsonNode::isNull)?.let {
         FeatureTaskRuntimeGovernedDirectOverride(
-          it["id"].asText(), it["policy_version"].asText(), it["rationale"].asText(), it["persisted"].asBoolean(),
+          it["id"].asText(),
+          it["policy_version"].asText(),
+          it["rationale"].asText(),
+          it["persisted"].asBoolean(),
         )
       },
       reviewPolicy = FeatureTaskRuntimeResolvedReviewPolicy(

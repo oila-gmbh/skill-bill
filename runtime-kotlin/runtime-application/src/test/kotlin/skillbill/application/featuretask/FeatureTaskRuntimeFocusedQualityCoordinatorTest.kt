@@ -1,11 +1,7 @@
 package skillbill.application.featuretask
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import skillbill.ports.taskruntime.FeatureTaskRuntimeAdaptiveDecisionStore
-import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualityExecutor
-import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualitySelection
+import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualityRunner
 import skillbill.ports.taskruntime.FeatureTaskRuntimeFocusedQualitySelector
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAdaptiveDecisionRecord
@@ -14,8 +10,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeComplexitySignals
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityCategory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityCheck
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualityDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFocusedQualitySelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSizingPolicyResolver
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class FeatureTaskRuntimeFocusedQualityCoordinatorTest {
   private val signals = FeatureTaskRuntimeComplexitySignals(2, 1, 2, 2, false, false, false, false, 1, 8)
@@ -81,7 +81,7 @@ class FeatureTaskRuntimeFocusedQualityCoordinatorTest {
       selector = FeatureTaskRuntimeFocusedQualitySelector {
         FeatureTaskRuntimeFocusedQualitySelection("semantic-1", listOf(check))
       },
-      executor = FeatureTaskRuntimeFocusedQualityExecutor {
+      runner = FeatureTaskRuntimeFocusedQualityRunner {
         executions += 1
         failures
       },
