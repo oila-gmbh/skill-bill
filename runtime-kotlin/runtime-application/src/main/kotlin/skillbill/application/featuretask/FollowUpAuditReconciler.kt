@@ -130,11 +130,8 @@ class FollowUpAuditReconciler(
 }
 
 class AuditGapIdentityResolver {
-  fun isSameIdentity(gapId1: String, gapId2: String): Boolean {
-    val criterion1 = gapId1.substringBefore("-gap-")
-    val criterion2 = gapId2.substringBefore("-gap-")
-    return criterion1.equals(criterion2, ignoreCase = true)
-  }
+  fun isSameIdentity(gapId1: String, gapId2: String): Boolean =
+    gapId1.equals(gapId2, ignoreCase = true)
 
   fun extractCriterionRef(gapId: String): String {
     val match = Regex("^([Aa][Cc]-[0-9]{3,})-gap-[0-9]+$").find(gapId)

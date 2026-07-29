@@ -3241,11 +3241,11 @@ internal class FeatureTaskRuntimeRunLoop(
           "/produced_outputs/repair_item_results/$index",
           "Repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}.",
         )
-      result["outcome"] !in setOf("fixed", "already_satisfied") ->
+      result["outcome"] !in setOf("fixed", "already_satisfied", "superseded") ->
         structuredRepairDiagnostic(
           "audit_repair.results.terminal_outcome",
           "/produced_outputs/repair_item_results/$index/outcome",
-          "Repair item '$label' outcome must be fixed or already_satisfied.",
+          "Repair item '$label' outcome must be fixed, already_satisfied, or governed superseded.",
         )
       hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
         structuredRepairDiagnostic(

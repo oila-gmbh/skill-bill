@@ -22,6 +22,12 @@ class SQLiteAuditGenerationStore(
 ) : AuditGenerationStore {
   override fun persist(generation: AuditGeneration): AuditGeneration {
     val existing = getLatest(generation.workflowId)
+    if (existing?.generation == generation.generation) {
+      require(existing == generation) {
+        "Conflicting replay for audit generation ${generation.generation} in workflow '${generation.workflowId}'."
+      }
+      return existing
+    }
     require(existing == null || existing.generation < generation.generation) {
       "Cannot persist generation ${generation.generation} when generation ${existing?.generation} already exists."
     }
@@ -32,9 +38,7 @@ class SQLiteAuditGenerationStore(
         generation_id, workflow_id, generation, repository_fingerprint, repository_evidence_ref,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(workflow_id, generation) DO UPDATE SET
-        repository_fingerprint = excluded.repository_fingerprint,
-        repository_evidence_ref = excluded.repository_evidence_ref
+      ON CONFLICT(workflow_id, generation) DO NOTHING
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, generation.generationId)
@@ -48,7 +52,7 @@ class SQLiteAuditGenerationStore(
 
     persistSatisfiedCriteria(connection, generation)
     persistGaps(connection, generation)
-    persistRepairBatch(connection, generation.repairBatch)
+    persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
 
     return generation
   }
@@ -210,7 +214,7 @@ class SQLiteAuditGenerationStore(
     generation.gaps.forEach { gap ->
       connection.prepareStatement(
         """
-        INSERT OR REPLACE INTO feature_task_audit_gaps(
+        INSERT INTO feature_task_audit_gaps(
           gap_id, workflow_id, generation, acceptance_criterion_ref, acceptance_criterion_text,
           diagnosis, affected_boundary, status, recurrence, first_seen_generation,
           failure_observation, failure_artifact_ref, failure_check_ref
@@ -276,28 +280,31 @@ class SQLiteAuditGenerationStore(
       }
     }
 
-  private fun persistRepairBatch(connection: Connection, batch: AuditRepairBatch?) {
+  private fun persistRepairBatch(connection: Connection, workflowId: String, batch: AuditRepairBatch?) {
     if (batch == null) return
     connection.prepareStatement(
       """
-      INSERT OR REPLACE INTO feature_task_audit_repair_batches(
-        batch_id, generation_id, is_active
-      ) VALUES (?, ?, ?)
+      INSERT INTO feature_task_audit_repair_batches(
+        batch_id, workflow_id, generation_id, is_active
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(batch_id) DO NOTHING
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, batch.batchId)
-      stmt.setString(2, batch.generationId)
-      stmt.setBoolean(3, batch.isActive)
+      stmt.setString(2, workflowId)
+      stmt.setString(3, batch.generationId)
+      stmt.setBoolean(4, batch.isActive)
       stmt.executeUpdate()
     }
 
     batch.repairItems.forEach { item ->
       connection.prepareStatement(
         """
-        INSERT OR REPLACE INTO feature_task_audit_repair_items(
+        INSERT INTO feature_task_audit_repair_items(
           item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
           required_verification, dependencies
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(item_id) DO NOTHING
         """.trimIndent(),
       ).use { stmt ->
         stmt.setString(1, item.itemId)
@@ -308,6 +315,31 @@ class SQLiteAuditGenerationStore(
         stmt.setString(6, item.requiredVerification.joinToString("\n"))
         stmt.setString(7, item.dependencies.joinToString("\n"))
         stmt.executeUpdate()
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO feature_task_audit_repair_item_batch_mapping(batch_id, item_id)
+        VALUES (?, ?)
+        ON CONFLICT(batch_id, item_id) DO NOTHING
+        """.trimIndent(),
+      ).use { stmt ->
+        stmt.setString(1, batch.batchId)
+        stmt.setString(2, item.itemId)
+        stmt.executeUpdate()
+      }
+      batch.dependencies[item.itemId].orEmpty().forEach { dependency ->
+        connection.prepareStatement(
+          """
+          INSERT INTO feature_task_audit_repair_item_dependencies(batch_id, item_id, depends_on_item_id)
+          VALUES (?, ?, ?)
+          ON CONFLICT(batch_id, item_id, depends_on_item_id) DO NOTHING
+          """.trimIndent(),
+        ).use { stmt ->
+          stmt.setString(1, batch.batchId)
+          stmt.setString(2, item.itemId)
+          stmt.setString(3, dependency)
+          stmt.executeUpdate()
+        }
       }
     }
   }
@@ -347,7 +379,10 @@ class SQLiteAuditGenerationStore(
              required_verification, dependencies
       FROM feature_task_audit_repair_items
       WHERE item_id IN (
-        SELECT item_id FROM feature_task_audit_repair_item_batch_mapping WHERE generation_id = ?
+        SELECT mapping.item_id
+        FROM feature_task_audit_repair_item_batch_mapping mapping
+        JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+        WHERE batch.generation_id = ?
       )
       ORDER BY item_id ASC
       """.trimIndent(),
@@ -376,9 +411,10 @@ class SQLiteAuditGenerationStore(
     val dependencies = mutableMapOf<String, MutableList<String>>()
     connection.prepareStatement(
       """
-      SELECT item_id, depends_on_item_id
-      FROM feature_task_audit_repair_item_dependencies
-      WHERE generation_id = ?
+      SELECT dependency.item_id, dependency.depends_on_item_id
+      FROM feature_task_audit_repair_item_dependencies dependency
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = dependency.batch_id
+      WHERE batch.generation_id = ?
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, generationId)
@@ -400,13 +436,17 @@ class SQLiteAuditRepairBatchStore(
   override fun persist(batch: AuditRepairBatch): AuditRepairBatch {
     connection.prepareStatement(
       """
-      INSERT OR REPLACE INTO feature_task_audit_repair_batches(batch_id, generation_id, is_active)
-      VALUES (?, ?, ?)
+      INSERT INTO feature_task_audit_repair_batches(batch_id, workflow_id, generation_id, is_active)
+      SELECT ?, workflow_id, ?, ?
+      FROM feature_task_audit_generations
+      WHERE generation_id = ?
+      ON CONFLICT(batch_id) DO NOTHING
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, batch.batchId)
       stmt.setString(2, batch.generationId)
       stmt.setBoolean(3, batch.isActive)
+      stmt.setString(4, batch.generationId)
       stmt.executeUpdate()
     }
     return batch
@@ -418,7 +458,7 @@ class SQLiteAuditRepairBatchStore(
       FROM feature_task_audit_repair_batches arb
       JOIN feature_task_audit_generations ag ON arb.generation_id = ag.generation_id
       WHERE ag.workflow_id = ? AND arb.is_active = 1
-      LIMIT 1
+      ORDER BY ag.generation ASC
     """.trimIndent(),
   ).use { stmt ->
     stmt.setString(1, workflowId)
@@ -429,13 +469,15 @@ class SQLiteAuditRepairBatchStore(
         val isActive = rs.getBoolean("is_active")
         val items = getRepairItems(connection, generationId)
         val dependencies = loadDependencies(connection, generationId)
-        AuditRepairBatch(
+        val active = AuditRepairBatch(
           batchId = batchId,
           generationId = generationId,
           repairItems = items,
           dependencies = dependencies,
           isActive = isActive,
         )
+        check(!rs.next()) { "Multiple active audit repair batches exist for workflow '$workflowId'." }
+        active
       } else {
         null
       }

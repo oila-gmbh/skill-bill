@@ -186,7 +186,7 @@ data class FeatureTaskRuntimeRepairItem(
 }
 
 enum class FeatureTaskRuntimeRepairItemStatus { PENDING }
-enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED }
+enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED, SUPERSEDED }
 
 data class FeatureTaskRuntimeRepairItemResult(
   val repairItemId: String,
@@ -205,6 +205,7 @@ data class FeatureTaskRuntimeRepairItemResult(
       FeatureTaskRuntimeRepairItemOutcome.FIXED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
       FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
         FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
+      FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
     }
     require(resultEvidence.observation == expectedObservation) {
       "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
@@ -361,9 +362,9 @@ data class FeatureTaskRuntimeAuditRepairState(
     val recurringDispositionCount = priorGapDispositions.count {
       it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
     }
-    require(progress.recurringGapCount == recurringDispositionCount) {
-      "progress.recurring_gap_count (${progress.recurringGapCount}) must match the $recurringDispositionCount " +
-        "durable dispositions with status 'recurring'."
+    require(progress.recurringGapCount >= recurringDispositionCount) {
+      "progress.recurring_gap_count (${progress.recurringGapCount}) cannot be smaller than the " +
+        "$recurringDispositionCount currently recurring durable dispositions."
     }
     requireSatisfiedCriterionCoherence()
   }

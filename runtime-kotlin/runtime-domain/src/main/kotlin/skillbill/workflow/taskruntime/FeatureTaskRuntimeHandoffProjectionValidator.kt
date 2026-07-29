@@ -518,6 +518,19 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
           mapOf(
             "repair_item_id" to result.repairItemId,
             "outcome" to result.outcome.name.lowercase(),
+            "changed_paths_or_symbols" to result.changedPathsOrSymbols,
+            "executed_verification" to result.executedVerification,
+            "result_evidence" to mapOf(
+              "observation" to result.resultEvidence.observation.name.lowercase(),
+              "artifact_ref" to result.resultEvidence.artifactRef,
+              "check_ref" to result.resultEvidence.checkRef,
+            ),
+          )
+        }.orEmpty(),
+        "non_regression_constraints" to state?.satisfiedCriterionRefs?.map { criterionRef ->
+          mapOf(
+            "acceptance_criterion_ref" to criterionRef,
+            "constraint" to "Preserve the production behavior already accepted for $criterionRef.",
           )
         }.orEmpty(),
         "unresolved_gap_ids" to state?.unresolvedGapLedger?.unresolvedGaps?.map { it.gapId }

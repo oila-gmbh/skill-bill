@@ -26,10 +26,19 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedger
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AuditRepairConvergenceIntegrationTest {
+
+  @Test
+  fun `distinct gaps under one criterion retain independent logical identities`() {
+    val resolver = skillbill.application.featuretask.AuditGapIdentityResolver()
+
+    assertTrue(resolver.isSameIdentity("ac-002-gap-1", "AC-002-GAP-1"))
+    assertFalse(resolver.isSameIdentity("ac-002-gap-1", "ac-002-gap-2"))
+  }
 
   @Test
   fun `initial full-per-criterion audit creates one generation with closure-complete repair batch`() {
@@ -237,14 +246,12 @@ private class AuditConvergenceScenario {
   private val repairQuery = InMemoryAuditRepairQuery(generationStore, batchStore)
   private val testPhaseLedger = TestPhaseLedger()
 
-  private val generationRecorder = AuditGenerationRecorder(generationStore)
+  private val generationRecorder = AuditGenerationRecorder(generationStore, testPhaseLedger)
   private val batchPlanner = AuditRepairBatchPlanner()
-  private val phaseLedger = testPhaseLedger
 
   private val auditPhase = CompletenessAuditPhase(
     generationRecorder,
     batchPlanner,
-    phaseLedger,
   )
 
   private val followUpReconciler = FollowUpAuditReconciler(
@@ -267,6 +274,7 @@ private class AuditConvergenceScenario {
       workflowId = workflowId,
       auditPlan = plan,
       repositoryFingerprint = "a".repeat(64),
+      declaredCriteria = plan.gaps.map { it.acceptanceCriterionRef },
       satisfiedCriteria = emptyList(),
     )
     if (!crashBeforePersistence) {

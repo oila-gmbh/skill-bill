@@ -512,15 +512,16 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      now, allowing every evidenced gap to be repaired together in one implementation invocation. Verify\n" +
         "      concrete production behavior and do not invent speculative gaps.\n"
     } else {
-      "      FOLLOW-UP AUDIT SCOPE: verify ONLY the carried unresolved gaps and the repair work performed\n" +
-        "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Inspect only the\n" +
-        "      repaired symbols and the directly necessary production evidence needed to decide whether each\n" +
-        "      carried gap is resolved or recurring. Do not rescan the full subtask, the full acceptance-criterion\n" +
-        "      surface, or the cumulative diff. Do not hunt for unrelated or newly discoverable gaps. A recurring\n" +
+      "      FOLLOW-UP AUDIT SCOPE: disposition every carried unresolved gap and inspect the repair work performed\n" +
+        "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Reverify each original\n" +
+        "      failure_evidence check, then inspect the cumulative repair delta and its directly affected production\n" +
+        "      boundaries for newly introduced gaps before emitting satisfied. Do not rescan unrelated subtask or\n" +
+        "      acceptance-criterion surfaces, and never classify test-only concerns as audit gaps. A recurring\n" +
         "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
         "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
-        "      a preference for a different repair approach never makes a resolved gap recurring. Emit a\n" +
-        "      compact gap only when one of the carried gaps still recurs; otherwise emit satisfied with gaps [].\n"
+        "      a preference for a different repair approach never makes a resolved gap recurring. Emit compact gaps\n" +
+        "      for recurring carried identities and any concrete new production gaps in the repair blast radius;\n" +
+        "      emit satisfied with gaps [] only when neither category remains.\n"
     }
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =

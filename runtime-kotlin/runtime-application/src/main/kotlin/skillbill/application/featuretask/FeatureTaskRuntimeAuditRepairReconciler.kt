@@ -41,7 +41,7 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
       input.repairResults,
       latestItemIds,
     )
-    val progress = reconcileProgress(input, gaps, latestItemIds.size)
+    val progress = reconcileProgress(input, gaps)
     return runCatching {
       FeatureTaskRuntimeAuditRepairState(
         acceptedPlans = acceptedPlans,
@@ -77,28 +77,28 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
   private fun reconcileProgress(
     input: AuditRepairReconciliation,
     gaps: GapReconciliation,
-    latestPlanItemCount: Int,
   ): FeatureTaskRuntimeAuditRepairProgress {
-    val newlyAttemptedCount = if (input.repairResults.isEmpty()) 0 else latestPlanItemCount
+    val newlyAttemptedCount = input.repairResults.map { it.repairItemId }.distinct().size
     val priorPlanGapIds = input.prior?.unresolvedGapLedger?.unresolvedGaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
     val auditWrite = input.latestPlan != null
-    val ledgerSize = gaps.unresolvedGaps.size
     val recurringGapCount = if (auditWrite) {
-      gaps.recurringIds.size
+      (input.prior?.progress?.recurringGapCount ?: 0) + gaps.recurringIds.size
     } else {
-      (input.prior?.progress?.recurringGapCount ?: 0).coerceAtMost(ledgerSize)
+      input.prior?.progress?.recurringGapCount ?: 0
     }
     val newGapCount = if (auditWrite) {
-      gaps.latestIds.count { it !in priorPlanGapIds }
+      (input.prior?.progress?.newGapCount ?: 0) + gaps.latestIds.count { it !in priorPlanGapIds }
     } else {
-      (input.prior?.progress?.newGapCount ?: 0).coerceAtMost(ledgerSize - recurringGapCount)
+      input.prior?.progress?.newGapCount ?: 0
     }
     return FeatureTaskRuntimeAuditRepairProgress(
       firstPassConvergence = false,
       recurringGapCount = recurringGapCount,
       newGapCount = newGapCount,
       attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
-      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + input.repairResults.size,
+      resolvedRepairItemCount = (
+        input.prior?.repairItemResults.orEmpty() + input.repairResults
+        ).distinctBy { it.repairItemId }.size,
       auditGapIterationCount = maxOf(
         input.prior?.progress?.auditGapIterationCount ?: 0,
         input.edgeIteration ?: 0,

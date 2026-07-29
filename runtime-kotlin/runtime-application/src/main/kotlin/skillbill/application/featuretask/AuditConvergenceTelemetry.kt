@@ -19,19 +19,20 @@ class AuditConvergenceMetrics(
 ) {
   fun deriveMetrics(workflowId: String, phaseLedger: FeatureTaskRuntimePhaseLedger?): AuditConvergenceMetricsData {
     val generations = generationStore.listAll(workflowId)
-    val activeBatch = batchStore.getActive(workflowId)
+    val batches = batchStore.listByWorkflow(workflowId)
+    val firstPassConvergence = generations.size == 1 && generations.single().gaps.isEmpty()
 
-    val firstPassConvergence = generations.size == 1 && activeBatch?.isActive == true
-
-    val newGaps = generations.lastOrNull()?.gaps?.count { it.status == AuditGapStatus.NEW } ?: 0
+    val newGaps = generations.sumOf { generation ->
+      generation.gaps.count { it.status == AuditGapStatus.NEW }
+    }
 
     val recurringGaps = generations.sumOf { gen ->
       gen.gaps.count { it.status == AuditGapStatus.RECURRING }
     }
 
-    val attemptedRepairs = activeBatch?.repairItems?.size ?: 0
-
-    val resolvedRepairs = repairQuery.getResolvedGaps(workflowId).size
+    val allItems = batches.flatMap { it.repairItems }.distinctBy { it.itemId }
+    val attemptedRepairs = allItems.count { repairQuery.getPriorResults(it.itemId).isNotEmpty() }
+    val resolvedRepairs = allItems.count { repairQuery.getPriorResults(it.itemId).isNotEmpty() }
 
     val auditLoopCount = generations.size - 1
 
@@ -64,7 +65,7 @@ class AuditConvergenceMetrics(
     phaseLedger: FeatureTaskRuntimePhaseLedger?,
     derivedMetrics: AuditConvergenceMetricsData,
   ): Boolean {
-    if (phaseLedger == null) return true
+    if (phaseLedger == null) return false
 
     val ledgerProgress = extractProgressFromLedger(phaseLedger)
 
@@ -75,11 +76,11 @@ class AuditConvergenceMetrics(
         progress.attemptedRepairItemCount == derivedMetrics.attemptedRepairItemCount &&
         progress.resolvedRepairItemCount == derivedMetrics.resolvedRepairItemCount &&
         progress.auditGapIterationCount == derivedMetrics.auditLoopCount
-    } ?: true
+    } ?: false
   }
 
   private fun extractProgressFromLedger(ledger: FeatureTaskRuntimePhaseLedger): FeatureTaskRuntimeAuditRepairProgress? {
-    return ledger.entries.firstOrNull { it.auditRepairProgress != null }?.auditRepairProgress
+    return ledger.entries.lastOrNull { it.auditRepairProgress != null }?.auditRepairProgress
   }
 }
 

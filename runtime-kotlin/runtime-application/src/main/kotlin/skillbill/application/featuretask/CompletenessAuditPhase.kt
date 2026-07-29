@@ -16,12 +16,12 @@ import java.util.UUID
 class CompletenessAuditPhase(
   private val generationRecorder: AuditGenerationRecorder,
   private val batchPlanner: AuditRepairBatchPlanner,
-  private val phaseLedger: PhaseLedger,
 ) {
   fun handleInitialAudit(
     workflowId: String,
     auditPlan: FeatureTaskRuntimeAuditRepairPlan,
     repositoryFingerprint: String,
+    declaredCriteria: List<String>,
     satisfiedCriteria: List<String>,
   ): AuditGenerationResult {
     val now = Instant.now().toString()
@@ -46,6 +46,15 @@ class CompletenessAuditPhase(
         firstSeenGeneration = generation,
       )
     }
+    val satisfied = satisfiedCriteria.toSet()
+    val gapped = gaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef }
+    require(satisfied.intersect(gapped).isEmpty()) {
+      "Initial audit criteria cannot be both satisfied and gapped."
+    }
+    require(satisfied + gapped == declaredCriteria.toSet()) {
+      "Initial audit must disposition every declared acceptance criterion exactly once; " +
+        "declared=${declaredCriteria.sorted()} satisfied=${satisfied.sorted()} gapped=${gapped.sorted()}."
+    }
 
     val repairBatch = batchPlanner.planClosureCompleteBatch(
       generationId = generationId,
@@ -66,8 +75,6 @@ class CompletenessAuditPhase(
 
     val persisted = generationRecorder.recordWithLedgerAdvance(auditGeneration)
 
-    phaseLedger.recordAuditGeneration(workflowId, generation)
-
     return AuditGenerationResult(
       generation = persisted,
       repairBatch = repairBatch,
@@ -85,10 +92,11 @@ class CompletenessAuditPhase(
 
 class AuditGenerationRecorder(
   private val store: AuditGenerationStore,
+  private val phaseLedger: PhaseLedger,
 ) {
   fun recordWithLedgerAdvance(generation: AuditGeneration): AuditGeneration {
     val recorded = store.persist(generation)
-
+    phaseLedger.recordAuditGeneration(generation.workflowId, generation.generation)
     return recorded
   }
 

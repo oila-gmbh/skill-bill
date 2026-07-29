@@ -129,6 +129,7 @@ internal fun repairItemResultFromWire(value: Any?, source: String): FeatureTaskR
       outcome = when (map.requiredString("outcome", source)) {
         "fixed" -> FeatureTaskRuntimeRepairItemOutcome.FIXED
         "already_satisfied" -> FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED
+        "superseded" -> FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED
         else -> invalidWire(source, "outcome must be fixed or already_satisfied")
       },
       changedPathsOrSymbols = map.stringList("changed_paths_or_symbols", source, required = true),

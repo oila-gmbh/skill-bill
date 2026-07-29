@@ -20,6 +20,7 @@ internal object AuditConvergenceDatabaseSchema {
     "idx_audit_gaps_status",
     "idx_audit_repair_items_gap",
     "idx_audit_repair_results_item",
+    "idx_audit_one_active_batch",
   )
 
   val statements: List<String> = listOf(
@@ -50,7 +51,7 @@ internal object AuditConvergenceDatabaseSchema {
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_gaps (
-      gap_id TEXT PRIMARY KEY CHECK(length(gap_id) BETWEEN 1 AND 160),
+      gap_id TEXT NOT NULL CHECK(length(gap_id) BETWEEN 1 AND 160),
       workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
       generation INTEGER NOT NULL CHECK(generation > 0),
       acceptance_criterion_ref TEXT NOT NULL CHECK(acceptance_criterion_ref GLOB 'AC-[0-9][0-9][0-9]'),
@@ -67,7 +68,7 @@ internal object AuditConvergenceDatabaseSchema {
       failure_artifact_ref TEXT NOT NULL CHECK(length(failure_artifact_ref) BETWEEN 1 AND 256),
       failure_check_ref TEXT NOT NULL CHECK(length(failure_check_ref) BETWEEN 1 AND 256),
       FOREIGN KEY(workflow_id, generation) REFERENCES feature_task_audit_generations(workflow_id, generation) ON DELETE CASCADE,
-      UNIQUE(workflow_id, generation, gap_id)
+      PRIMARY KEY(workflow_id, generation, gap_id)
     )
     """.trimIndent(),
     """
@@ -81,10 +82,17 @@ internal object AuditConvergenceDatabaseSchema {
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_batches (
       batch_id TEXT PRIMARY KEY CHECK(length(batch_id) BETWEEN 1 AND 160),
+      workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
       generation_id TEXT NOT NULL CHECK(length(generation_id) BETWEEN 1 AND 160),
       is_active INTEGER NOT NULL CHECK(is_active IN (0, 1)),
-      FOREIGN KEY(generation_id) REFERENCES feature_task_audit_generations(generation_id) ON DELETE CASCADE
+      FOREIGN KEY(generation_id) REFERENCES feature_task_audit_generations(generation_id) ON DELETE CASCADE,
+      FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
+    """.trimIndent(),
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_one_active_batch
+      ON feature_task_audit_repair_batches(workflow_id)
+      WHERE is_active = 1
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_items (
@@ -94,8 +102,7 @@ internal object AuditConvergenceDatabaseSchema {
       implementation_actions TEXT NOT NULL CHECK(length(implementation_actions) > 0),
       affected_paths_or_symbols TEXT NOT NULL CHECK(length(affected_paths_or_symbols) > 0),
       required_verification TEXT NOT NULL CHECK(length(required_verification) > 0),
-      dependencies TEXT NOT NULL,
-      FOREIGN KEY(gap_id) REFERENCES feature_task_audit_gaps(gap_id) ON DELETE CASCADE
+      dependencies TEXT NOT NULL
     )
     """.trimIndent(),
     """
@@ -159,8 +166,7 @@ internal object AuditConvergenceDatabaseSchema {
       evidence_artifact_ref TEXT NOT NULL CHECK(length(evidence_artifact_ref) BETWEEN 1 AND 256),
       evidence_check_ref TEXT NOT NULL CHECK(length(evidence_check_ref) BETWEEN 1 AND 256),
       disposition_generation INTEGER NOT NULL CHECK(disposition_generation > 0),
-      superseded_by_generation INTEGER CHECK(superseded_by_generation IS NULL OR superseded_by_generation > 0),
-      FOREIGN KEY(gap_id) REFERENCES feature_task_audit_gaps(gap_id) ON DELETE CASCADE
+      superseded_by_generation INTEGER CHECK(superseded_by_generation IS NULL OR superseded_by_generation > 0)
     )
     """.trimIndent(),
   )

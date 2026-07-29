@@ -172,10 +172,45 @@ class FeatureTaskRuntimePhaseRecorder(
       val previous = existingRecords[request.phaseId]
       val phaseRecord = phaseRecordFor(request, previous, now)
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
+      val partialRepairPatch = if (
+        request.status == "blocked" &&
+        request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+      ) {
+        val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
+          ?.let(JsonSupport::anyToStringAnyMap)
+        val results = (produced?.get("repair_item_results") as? List<*>)
+          ?.mapIndexed { index, value ->
+            repairItemResultFromWire(value, "implement.repair_item_results[$index]")
+          }.orEmpty()
+        val prior = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]?.let {
+          auditRepairStateFromWire(it, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
+        }
+        if (results.isNotEmpty() && prior != null) {
+          mapOf(
+            FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(
+              FeatureTaskRuntimeAuditRepairReconciler.reconcile(
+                AuditRepairReconciliation(
+                  prior = prior,
+                  latestPlan = null,
+                  repairResults = results,
+                  dispositions = null,
+                  repositoryFingerprint = request.repositoryFingerprint,
+                  edgeIteration = request.edgeIteration,
+                ),
+              ),
+            ),
+          )
+        } else {
+          emptyMap()
+        }
+      } else {
+        emptyMap()
+      }
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
-      )
+      ) + partialRepairPatch
       persistPatch(
         unitOfWork.workflowStates,
         record,
