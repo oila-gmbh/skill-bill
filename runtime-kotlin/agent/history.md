@@ -7,6 +7,7 @@ Areas: runtime-kotlin/runtime-{application,domain,infra-sqlite,ports,core}, runt
 - Repair implementation cannot report `completed` until every carried repair item has one terminal disposition (fixed, already-satisfied, or superseded). reusable
 - Follow-up audit must reverify every carried gap and inspect the repair batch's blast radius for newly introduced gaps before it can emit `satisfied`. reusable
 - Recurring gaps increment durable recurrence for the same identity and are not counted as resolved merely because a later snapshot replaced the earlier audit plan. reusable
+- Completeness audit records production gaps only; validation owns test adequacy, coverage, fixtures, assertions, and test execution failures.
 - Audit convergence metrics (first-pass, new-gap count, recurring-gap count, attempted/resolved repairs, loop count) are derived from durable generations and agree with the phase ledger. reusable
 - Crash and resume at audit-plan persistence, repair-result persistence, and follow-up disposition seams preserve exactly one active repair batch and the complete prior history. reusable
 - Tests cover two defective repairs that recur under stable identities, closure-complete repair, new gaps, recurring gaps, superseded repairs, multi-criteria dependencies, crash/resume, and telemetry agreement.

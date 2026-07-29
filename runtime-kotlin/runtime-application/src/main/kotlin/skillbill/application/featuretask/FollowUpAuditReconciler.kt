@@ -45,7 +45,8 @@ class FollowUpAuditReconciler(
       newGeneration = newGeneration,
     )
 
-    val allGaps = carriedGaps + newGaps + blastRadiusGaps
+    val allGaps = (carriedGaps + newGaps + blastRadiusGaps)
+      .distinctBy { it.gapId }
 
     val repositoryCheckpoint = RepositoryCheckpoint(
       fingerprint = repositoryFingerprint,
@@ -131,8 +132,7 @@ class FollowUpAuditReconciler(
 }
 
 class AuditGapIdentityResolver {
-  fun isSameIdentity(gapId1: String, gapId2: String): Boolean =
-    gapId1.equals(gapId2, ignoreCase = true)
+  fun isSameIdentity(gapId1: String, gapId2: String): Boolean = gapId1.equals(gapId2, ignoreCase = true)
 
   fun extractCriterionRef(gapId: String): String {
     val match = Regex("^([Aa][Cc]-[0-9]{3,})-gap-[0-9]+$").find(gapId)

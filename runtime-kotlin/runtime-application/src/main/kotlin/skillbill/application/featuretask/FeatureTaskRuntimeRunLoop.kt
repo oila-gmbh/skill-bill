@@ -3137,13 +3137,10 @@ internal class FeatureTaskRuntimeRunLoop(
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     } ?: return null
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-    val priorResultIds = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-      ?.repairItemResults.orEmpty()
-      .mapTo(linkedSetOf()) { it.repairItemId }
+    val durableAuditState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
     val expected = reentry.auditRepairPlan?.gaps.orEmpty()
       .flatMap { it.repairItems }
       .map { it.repairItemId }
-      .filterNot { it in priorResultIds }
     if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val results = (produced["repair_item_results"] as? List<*>).orEmpty()
@@ -3201,17 +3198,15 @@ internal class FeatureTaskRuntimeRunLoop(
     val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
     val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
     val planItems = reentry.auditRepairPlan?.gaps.orEmpty().flatMap { it.repairItems }
-      .filterNot { it.repairItemId in priorResultIds }
     planItems.forEach { item ->
       val itemId = item.repairItemId
       val itemPosition = actualOrder[itemId] ?: return@forEach
       item.dependsOn.forEach { dependency ->
-        if (dependency in priorResultIds) return@forEach
         val dependencyPosition = actualOrder[dependency] ?: return structuredRepairDiagnostic(
-            "audit_repair.results.dependency_terminal",
-            "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
-            "Repair item '$itemId' cannot be terminal while dependency '$dependency' is deferred or missing.",
-          )
+          "audit_repair.results.dependency_terminal",
+          "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
+          "Repair item '$itemId' cannot be terminal while dependency '$dependency' is deferred or missing.",
+        )
         val expectedDependency = expectedOrder[dependency] ?: return@forEach
         val expectedItem = expectedOrder[itemId] ?: return@forEach
         if (dependencyPosition >= itemPosition || expectedDependency >= expectedItem) {
@@ -3225,6 +3220,23 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     resultMaps.forEachIndexed { index, result ->
       auditRepairResultError(result, index)?.let { return it }
+      if (result["outcome"] == "superseded") {
+        val itemId = (result["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier).orEmpty()
+        val gapId = itemId.substringBeforeLast("-item-", missingDelimiterValue = "")
+        val governed = durableAuditState?.decisionGenerations.orEmpty()
+          .flatMap { it.dispositions }
+          .any {
+            it.gapId == gapId &&
+              it.status == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED
+          }
+        if (!governed) {
+          return structuredRepairDiagnostic(
+            "audit_repair.results.unauthorized_supersession",
+            "/produced_outputs/repair_item_results/$index/outcome",
+            "Repair item '$itemId' cannot be superseded without an audit-owned durable superseding disposition.",
+          )
+        }
+      }
     }
     if (blocked) {
       val unresolvable = JsonSupport.anyToStringAnyMap(

@@ -332,6 +332,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       listOf(
         "audit_repair_plan",
         "prior_terminal_repair_outcomes",
+        "non_regression_constraints",
         "unresolved_gap_ids",
         "repository_checkpoint",
       ),

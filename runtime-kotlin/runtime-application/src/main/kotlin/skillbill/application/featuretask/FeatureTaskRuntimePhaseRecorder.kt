@@ -35,12 +35,12 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
 import skillbill.workflow.taskruntime.model.ConvergenceProvenance
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
 import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
 import skillbill.workflow.taskruntime.model.ConvergenceStatus
-import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
@@ -52,8 +52,8 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BL
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
@@ -174,41 +174,7 @@ class FeatureTaskRuntimePhaseRecorder(
       val previous = existingRecords[request.phaseId]
       val phaseRecord = phaseRecordFor(request, previous, now)
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
-      val partialRepairPatch = if (
-        request.status == "blocked" &&
-        request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
-        request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-      ) {
-        val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
-          ?.let(JsonSupport::anyToStringAnyMap)
-        val results = (produced?.get("repair_item_results") as? List<*>)
-          ?.mapIndexed { index, value ->
-            repairItemResultFromWire(value, "implement.repair_item_results[$index]")
-          }.orEmpty()
-        val prior = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]?.let {
-          auditRepairStateFromWire(it, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
-        }
-        if (results.isNotEmpty() && prior != null) {
-          mapOf(
-            FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(
-              FeatureTaskRuntimeAuditRepairReconciler.reconcile(
-                AuditRepairReconciliation(
-                  prior = prior,
-                  latestPlan = null,
-                  repairResults = results,
-                  dispositions = null,
-                  repositoryFingerprint = request.repositoryFingerprint,
-                  edgeIteration = request.edgeIteration,
-                ),
-              ),
-            ),
-          )
-        } else {
-          emptyMap()
-        }
-      } else {
-        emptyMap()
-      }
+      val partialRepairPatch = partialRepairPatch(request, artifacts)
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
@@ -225,6 +191,39 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  private fun partialRepairPatch(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    artifacts: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val isBlockedAuditRepair = request.status == "blocked" &&
+      request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    if (!isBlockedAuditRepair) return emptyMap()
+    val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+    val results = (produced?.get("repair_item_results") as? List<*>)
+      ?.mapIndexed { index, value ->
+        repairItemResultFromWire(value, "implement.repair_item_results[$index]")
+      }.orEmpty()
+    val prior = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]?.let {
+      auditRepairStateFromWire(it, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
+    }
+    if (results.isEmpty() || prior == null) return emptyMap()
+    val reconciled = FeatureTaskRuntimeAuditRepairReconciler.reconcile(
+      AuditRepairReconciliation(
+        prior = prior,
+        latestPlan = null,
+        repairResults = results,
+        dispositions = null,
+        repositoryFingerprint = request.repositoryFingerprint,
+        edgeIteration = request.edgeIteration,
+      ),
+    )
+    return mapOf(
+      FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(reconciled),
+    )
+  }
 
   @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
@@ -293,6 +292,12 @@ class FeatureTaskRuntimePhaseRecorder(
         reconcilesAuditState
       ) {
         if (latestPlan != null && priorAuditState == null) {
+          if (!currentDispositions.isNullOrEmpty()) {
+            schemaError(
+              "An initial audit cannot disposition a gap the durable ledger never carried; " +
+                "dispositioned=${currentDispositions.map { it.gapId }.sorted()}.",
+            )
+          }
           CompletenessAuditPhase.handleInitialAudit(
             auditPlan = latestPlan,
             repositoryFingerprint = request.repositoryFingerprint,
@@ -1444,11 +1449,7 @@ private fun convergenceImplementationOutcome(
 internal fun reconcileLatestRepairResults(
   priorResults: List<FeatureTaskRuntimeRepairItemResult>,
   currentResults: List<FeatureTaskRuntimeRepairItemResult>,
-  latestPlanItemIds: Set<String>,
-): List<FeatureTaskRuntimeRepairItemResult> = linkedMapOf<String, FeatureTaskRuntimeRepairItemResult>().apply {
-  priorResults.forEach { put(it.repairItemId, it) }
-  currentResults.forEach { put(it.repairItemId, it) }
-}.values.toList()
+): List<FeatureTaskRuntimeRepairItemResult> = priorResults + currentResults
 
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,

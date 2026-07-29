@@ -36,17 +36,13 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   }
 
   @Test
-  fun `recurring repair identifiers retain the newest terminal result`() {
+  fun `recurring repair identifiers retain append-only attempt evidence`() {
     val prior = result("old evidence")
     val current = result("new evidence")
 
     assertEquals(
-      listOf(current),
-      reconcileLatestRepairResults(listOf(prior), listOf(current), setOf(current.repairItemId)),
-    )
-    assertEquals(
-      listOf(current),
-      reconcileLatestRepairResults(listOf(prior), listOf(current), setOf("ac-999-gap-1-item-1")),
+      listOf(prior, current),
+      reconcileLatestRepairResults(listOf(prior), listOf(current)),
     )
   }
 

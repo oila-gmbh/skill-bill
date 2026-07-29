@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditDecisionGeneration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -16,46 +17,49 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 
-internal fun auditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairPlan =
-  auditRepairPlanMapping(source) {
-    val map = value.requiredMap(source)
-    requireExactWireKeys(map, source, AUDIT_REPAIR_PLAN_KEYS)
-    FeatureTaskRuntimeAuditRepairPlan(
-      contractVersion = map.requiredString("contract_version", source),
-      gaps = map.requiredList("gaps", source).mapIndexed { index, gap ->
-        val gapSource = "$source.gaps[$index]"
-        val gapMap = gap.requiredMap(gapSource)
-        requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_GAP_KEYS)
-        FeatureTaskRuntimeAuditGap(
-          gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource)),
-          acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
-          acceptanceCriterionText = gapMap.requiredString("acceptance_criterion_text", gapSource),
-          failureEvidence = AuditEvidenceWire.fromWire(gapMap["failure_evidence"], "$gapSource.failure_evidence"),
-          diagnosis = gapMap.requiredString("diagnosis", gapSource),
-          affectedBoundary = gapMap.requiredString("affected_boundary", gapSource),
-          repairItems = gapMap.requiredList("repair_items", gapSource).mapIndexed { itemIndex, item ->
-            val itemSource = "$gapSource.repair_items[$itemIndex]"
-            val itemMap = item.requiredMap(itemSource)
-            requireExactWireKeys(itemMap, itemSource, AUDIT_REPAIR_ITEM_KEYS)
-            FeatureTaskRuntimeRepairItem(
-              repairItemId = canonicalAuditIdentifier(itemMap.requiredString("repair_item_id", itemSource)),
-              intendedOutcome = itemMap.requiredString("intended_outcome", itemSource),
-              implementationActions = itemMap.stringList("implementation_actions", itemSource, required = true),
-              affectedPathsOrSymbols = itemMap.stringList("affected_paths_or_symbols", itemSource),
-              requiredVerification = itemMap.stringList("required_verification", itemSource, required = true),
-              dependsOn = itemMap.stringList("depends_on", itemSource).map(::canonicalAuditIdentifier),
-              status = when (itemMap.requiredString("status", itemSource)) {
-                "pending" -> FeatureTaskRuntimeRepairItemStatus.PENDING
-                else -> invalidWire("$itemSource.status", "must be pending")
-              },
-            )
-          },
-        )
-      },
-    ).also {
-      if (it.gaps.isEmpty()) invalidWire("$source.gaps", "must contain at least one gap")
-    }
+internal fun auditRepairPlanFromWire(
+  value: Any?,
+  source: String,
+  allowEmpty: Boolean = false,
+): FeatureTaskRuntimeAuditRepairPlan = auditRepairPlanMapping(source) {
+  val map = value.requiredMap(source)
+  requireExactWireKeys(map, source, AUDIT_REPAIR_PLAN_KEYS)
+  FeatureTaskRuntimeAuditRepairPlan(
+    contractVersion = map.requiredString("contract_version", source),
+    gaps = map.requiredArray("gaps", source).mapIndexed { index, gap ->
+      val gapSource = "$source.gaps[$index]"
+      val gapMap = gap.requiredMap(gapSource)
+      requireExactWireKeys(gapMap, gapSource, AUDIT_REPAIR_GAP_KEYS)
+      FeatureTaskRuntimeAuditGap(
+        gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource)),
+        acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
+        acceptanceCriterionText = gapMap.requiredString("acceptance_criterion_text", gapSource),
+        failureEvidence = AuditEvidenceWire.fromWire(gapMap["failure_evidence"], "$gapSource.failure_evidence"),
+        diagnosis = gapMap.requiredString("diagnosis", gapSource),
+        affectedBoundary = gapMap.requiredString("affected_boundary", gapSource),
+        repairItems = gapMap.requiredList("repair_items", gapSource).mapIndexed { itemIndex, item ->
+          val itemSource = "$gapSource.repair_items[$itemIndex]"
+          val itemMap = item.requiredMap(itemSource)
+          requireExactWireKeys(itemMap, itemSource, AUDIT_REPAIR_ITEM_KEYS)
+          FeatureTaskRuntimeRepairItem(
+            repairItemId = canonicalAuditIdentifier(itemMap.requiredString("repair_item_id", itemSource)),
+            intendedOutcome = itemMap.requiredString("intended_outcome", itemSource),
+            implementationActions = itemMap.stringList("implementation_actions", itemSource, required = true),
+            affectedPathsOrSymbols = itemMap.stringList("affected_paths_or_symbols", itemSource),
+            requiredVerification = itemMap.stringList("required_verification", itemSource, required = true),
+            dependsOn = itemMap.stringList("depends_on", itemSource).map(::canonicalAuditIdentifier),
+            status = when (itemMap.requiredString("status", itemSource)) {
+              "pending" -> FeatureTaskRuntimeRepairItemStatus.PENDING
+              else -> invalidWire("$itemSource.status", "must be pending")
+            },
+          )
+        },
+      )
+    },
+  ).also {
+    if (!allowEmpty && it.gaps.isEmpty()) invalidWire("$source.gaps", "must contain at least one gap")
   }
+}
 
 internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairState =
   wireMapping(source) {
@@ -78,52 +82,90 @@ internal fun auditRepairStateFromWire(value: Any?, source: String): FeatureTaskR
       ?.mapIndexed { index, disposition ->
         priorGapDispositionFromWire(disposition, "$source.gap_disposition_history[$index]")
       } ?: dispositions
-    val ledgerMap = map["unresolved_gap_ledger"].requiredMap("$source.unresolved_gap_ledger")
-    requireExactWireKeys(ledgerMap, "$source.unresolved_gap_ledger", AUDIT_REPAIR_LEDGER_KEYS)
-    val marksSource = "$source.unresolved_gap_ledger.closed_generation_high_water_marks"
-    val marks = ledgerMap["closed_generation_high_water_marks"].requiredMap(marksSource).mapValues { (key, value) ->
-      (value as? Number)?.toInt() ?: invalidWire("$marksSource.$key", "must be an integer")
-    }
-    val unresolved = ledgerMap.requiredArray("gaps", "$source.unresolved_gap_ledger").mapIndexed { index, gap ->
-      val gapSource = "$source.unresolved_gap_ledger.gaps[$index]"
-      val gapMap = gap.requiredMap(gapSource)
-      requireWireKeysAllowingLegacyRecurrence(gapMap, gapSource)
-      val gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource))
-      val generation = gapMap.requiredInt("generation", gapSource)
-      FeatureTaskRuntimeUnresolvedGap(
-        gapId = gapId,
-        acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
-        generation = generation,
-        recurrence = (gapMap["recurrence"] as? Number)?.toInt() ?: 0,
-      )
-    }
-    val satisfiedCriterionRefs = map.satisfiedCriterionRefs(source)
-    val progressMap = map["progress"].requiredMap("$source.progress")
-    requireExactWireKeys(progressMap, "$source.progress", AUDIT_REPAIR_PROGRESS_KEYS)
     FeatureTaskRuntimeAuditRepairState(
       acceptedPlans = acceptedPlans,
       repairItemResults = results,
       priorGapDispositions = dispositions,
-      unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(unresolved, marks),
+      unresolvedGapLedger = AuditRepairStateWire.unresolvedGapLedger(map, source),
       repositoryFingerprint = map.optionalString("repository_fingerprint", source),
-      progress = FeatureTaskRuntimeAuditRepairProgress(
-        firstPassConvergence = progressMap.requiredBoolean("first_pass_convergence", "$source.progress"),
-        recurringGapCount = progressMap.requiredInt("recurring_gap_count", "$source.progress"),
-        newGapCount = progressMap.requiredInt("new_gap_count", "$source.progress"),
-        attemptedRepairItemCount = progressMap.requiredInt("attempted_repair_item_count", "$source.progress"),
-        resolvedRepairItemCount = progressMap.requiredInt("resolved_repair_item_count", "$source.progress"),
-        auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", "$source.progress"),
-      ),
-      satisfiedCriterionRefs = satisfiedCriterionRefs,
-      repositoryFingerprintHistory = (map["repository_fingerprint_history"] as? List<*>)
-        ?.mapIndexed { index, value ->
-          value as? String
-            ?: invalidWire("$source.repository_fingerprint_history[$index]", "must be a string")
-        }
-        ?: listOfNotNull(map.optionalString("repository_fingerprint", source)),
+      progress = AuditRepairStateWire.progress(map, source),
+      satisfiedCriterionRefs = map.satisfiedCriterionRefs(source),
+      repositoryFingerprintHistory = AuditRepairStateWire.repositoryFingerprintHistory(map, source),
       gapDispositionHistory = dispositionHistory,
+      decisionGenerations = AuditRepairStateWire.decisionGenerations(map, source),
     ).also { it.requireDurableCoherence() }
   }
+
+private object AuditRepairStateWire {
+  fun decisionGenerations(map: Map<String, Any?>, source: String): List<FeatureTaskRuntimeAuditDecisionGeneration> =
+    (map["decision_generations"] as? List<*>)
+      ?.mapIndexed { index, entry ->
+        val entrySource = "$source.decision_generations[$index]"
+        val entryMap = entry.requiredMap(entrySource)
+        requireExactWireKeys(
+          entryMap,
+          entrySource,
+          setOf("generation", "plan", "repository_fingerprint", "dispositions"),
+        )
+        FeatureTaskRuntimeAuditDecisionGeneration(
+          generation = entryMap.requiredInt("generation", entrySource),
+          plan = durableAuditRepairPlanFromWire(entryMap["plan"], "$entrySource.plan"),
+          repositoryFingerprint = entryMap.optionalString("repository_fingerprint", entrySource),
+          dispositions = entryMap.requiredArray("dispositions", entrySource)
+            .mapIndexed { dispositionIndex, value ->
+              priorGapDispositionFromWire(value, "$entrySource.dispositions[$dispositionIndex]")
+            },
+        )
+      }.orEmpty()
+
+  fun unresolvedGapLedger(map: Map<String, Any?>, source: String): FeatureTaskRuntimeUnresolvedGapLedger {
+    val ledgerSource = "$source.unresolved_gap_ledger"
+    val ledgerMap = map["unresolved_gap_ledger"].requiredMap(ledgerSource)
+    requireExactWireKeys(ledgerMap, ledgerSource, AUDIT_REPAIR_LEDGER_KEYS)
+    val marksSource = "$ledgerSource.closed_generation_high_water_marks"
+    val marks = ledgerMap["closed_generation_high_water_marks"].requiredMap(marksSource)
+      .mapValues { (key, value) ->
+        (value as? Number)?.toInt() ?: invalidWire("$marksSource.$key", "must be an integer")
+      }
+    val unresolved = ledgerMap.requiredArray("gaps", ledgerSource).mapIndexed { index, gap ->
+      unresolvedGap(gap, "$ledgerSource.gaps[$index]")
+    }
+    return FeatureTaskRuntimeUnresolvedGapLedger(unresolved, marks)
+  }
+
+  private fun unresolvedGap(gap: Any?, gapSource: String): FeatureTaskRuntimeUnresolvedGap {
+    val gapMap = gap.requiredMap(gapSource)
+    requireWireKeysAllowingLegacyRecurrence(gapMap, gapSource)
+    return FeatureTaskRuntimeUnresolvedGap(
+      gapId = canonicalAuditIdentifier(gapMap.requiredString("gap_id", gapSource)),
+      acceptanceCriterionRef = gapMap.requiredString("acceptance_criterion_ref", gapSource),
+      generation = gapMap.requiredInt("generation", gapSource),
+      recurrence = (gapMap["recurrence"] as? Number)?.toInt() ?: 0,
+    )
+  }
+
+  fun progress(map: Map<String, Any?>, source: String): FeatureTaskRuntimeAuditRepairProgress {
+    val progressSource = "$source.progress"
+    val progressMap = map["progress"].requiredMap(progressSource)
+    requireExactWireKeys(progressMap, progressSource, AUDIT_REPAIR_PROGRESS_KEYS)
+    return FeatureTaskRuntimeAuditRepairProgress(
+      firstPassConvergence = progressMap.requiredBoolean("first_pass_convergence", progressSource),
+      recurringGapCount = progressMap.requiredInt("recurring_gap_count", progressSource),
+      newGapCount = progressMap.requiredInt("new_gap_count", progressSource),
+      attemptedRepairItemCount = progressMap.requiredInt("attempted_repair_item_count", progressSource),
+      resolvedRepairItemCount = progressMap.requiredInt("resolved_repair_item_count", progressSource),
+      auditGapIterationCount = progressMap.requiredInt("audit_gap_iteration_count", progressSource),
+    )
+  }
+
+  fun repositoryFingerprintHistory(map: Map<String, Any?>, source: String): List<String> =
+    (map["repository_fingerprint_history"] as? List<*>)
+      ?.mapIndexed { index, value ->
+        value as? String
+          ?: invalidWire("$source.repository_fingerprint_history[$index]", "must be a string")
+      }
+      ?: listOfNotNull(map.optionalString("repository_fingerprint", source))
+}
 
 private fun Map<String, Any?>.satisfiedCriterionRefs(source: String): List<String> {
   if (!containsKey("satisfied_criterion_refs")) return emptyList()
@@ -160,7 +202,8 @@ internal fun priorGapDispositionFromWire(value: Any?, source: String): FeatureTa
     status = when (map.requiredString("status", source)) {
       "resolved" -> FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
       "recurring" -> FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
-      else -> invalidWire(source, "status must be resolved or recurring")
+      "superseded" -> FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED
+      else -> invalidWire(source, "status must be resolved, recurring, or superseded")
     },
     evidence = AuditEvidenceWire.fromWire(map["evidence"], "$source.evidence"),
   )
@@ -216,7 +259,7 @@ private inline fun <T> auditRepairPlanMapping(source: String, block: () -> T): T
 }
 
 private fun durableAuditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairPlan = try {
-  auditRepairPlanFromWire(value, source)
+  auditRepairPlanFromWire(value, source, allowEmpty = true)
 } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
   throw InvalidWorkflowStateSchemaError("$source: ${error.message}", error)
 }

@@ -16,6 +16,7 @@ import skillbill.workflow.taskruntime.model.AuditRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.sql.Connection
+import java.sql.SQLException
 
 class SQLiteAuditGenerationStore(
   private val connection: Connection,
@@ -32,29 +33,45 @@ class SQLiteAuditGenerationStore(
       "Cannot persist generation ${generation.generation} when generation ${existing?.generation} already exists."
     }
 
-    connection.prepareStatement(
-      """
+    val priorAutoCommit = connection.autoCommit
+    if (priorAutoCommit) connection.autoCommit = false
+    try {
+      connection.prepareStatement(
+        """
       INSERT INTO feature_task_audit_generations(
         generation_id, workflow_id, generation, repository_fingerprint, repository_evidence_ref,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(workflow_id, generation) DO NOTHING
-      """.trimIndent(),
-    ).use { stmt ->
-      stmt.setString(1, generation.generationId)
-      stmt.setString(2, generation.workflowId)
-      stmt.setInt(3, generation.generation)
-      stmt.setString(4, generation.repositoryCheckpoint.fingerprint)
-      stmt.setString(5, generation.repositoryCheckpoint.evidenceRef)
-      stmt.setString(6, generation.createdAt)
-      stmt.executeUpdate()
+        """.trimIndent(),
+      ).use { stmt ->
+        stmt.setString(1, generation.generationId)
+        stmt.setString(2, generation.workflowId)
+        stmt.setInt(3, generation.generation)
+        stmt.setString(4, generation.repositoryCheckpoint.fingerprint)
+        stmt.setString(5, generation.repositoryCheckpoint.evidenceRef)
+        stmt.setString(6, generation.createdAt)
+        stmt.executeUpdate()
+      }
+
+      persistSatisfiedCriteria(connection, generation)
+      persistGaps(connection, generation)
+      persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
+      val replayed = getByGeneration(generation.workflowId, generation.generation)
+      require(replayed == generation) {
+        "Persisted audit generation ${generation.generation} did not replay as its complete aggregate."
+      }
+      if (priorAutoCommit) connection.commit()
+      return replayed
+    } catch (error: SQLException) {
+      if (priorAutoCommit) connection.rollback()
+      throw error
+    } catch (error: IllegalArgumentException) {
+      if (priorAutoCommit) connection.rollback()
+      throw error
+    } finally {
+      if (priorAutoCommit) connection.autoCommit = true
     }
-
-    persistSatisfiedCriteria(connection, generation)
-    persistGaps(connection, generation)
-    persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
-
-    return generation
   }
 
   override fun getLatest(workflowId: String): AuditGeneration? = connection.prepareStatement(
@@ -282,6 +299,17 @@ class SQLiteAuditGenerationStore(
 
   private fun persistRepairBatch(connection: Connection, workflowId: String, batch: AuditRepairBatch?) {
     if (batch == null) return
+    persistRepairBatchRow(connection, workflowId, batch)
+    batch.repairItems.forEach { item ->
+      persistRepairItem(connection, workflowId, item)
+      persistRepairItemBatchMapping(connection, workflowId, batch.batchId, item.itemId)
+      batch.dependencies[item.itemId].orEmpty().forEach { dependency ->
+        persistRepairItemDependency(connection, workflowId, batch.batchId, item.itemId, dependency)
+      }
+    }
+  }
+
+  private fun persistRepairBatchRow(connection: Connection, workflowId: String, batch: AuditRepairBatch) {
     connection.prepareStatement(
       """
       INSERT INTO feature_task_audit_repair_batches(
@@ -296,54 +324,69 @@ class SQLiteAuditGenerationStore(
       stmt.setBoolean(4, batch.isActive)
       stmt.executeUpdate()
     }
+  }
 
-    batch.repairItems.forEach { item ->
-      connection.prepareStatement(
-        """
-        INSERT INTO feature_task_audit_repair_items(
-          workflow_id, item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
-          required_verification, dependencies
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(workflow_id, item_id) DO NOTHING
-        """.trimIndent(),
-      ).use { stmt ->
-        stmt.setString(1, workflowId)
-        stmt.setString(2, item.itemId)
-        stmt.setString(3, item.gapId)
-        stmt.setString(4, item.intendedOutcome)
-        stmt.setString(5, item.implementationActions.joinToString("\n"))
-        stmt.setString(6, item.affectedPathsOrSymbols.joinToString("\n"))
-        stmt.setString(7, item.requiredVerification.joinToString("\n"))
-        stmt.setString(8, item.dependencies.joinToString("\n"))
-        stmt.executeUpdate()
-      }
-      connection.prepareStatement(
-        """
-        INSERT INTO feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id)
-        VALUES (?, ?, ?)
-        ON CONFLICT(workflow_id, batch_id, item_id) DO NOTHING
-        """.trimIndent(),
-      ).use { stmt ->
-        stmt.setString(1, workflowId)
-        stmt.setString(2, batch.batchId)
-        stmt.setString(3, item.itemId)
-        stmt.executeUpdate()
-      }
-      batch.dependencies[item.itemId].orEmpty().forEach { dependency ->
-        connection.prepareStatement(
-          """
-          INSERT INTO feature_task_audit_repair_item_dependencies(workflow_id, batch_id, item_id, depends_on_item_id)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT(workflow_id, batch_id, item_id, depends_on_item_id) DO NOTHING
-          """.trimIndent(),
-        ).use { stmt ->
-          stmt.setString(1, workflowId)
-          stmt.setString(2, batch.batchId)
-          stmt.setString(3, item.itemId)
-          stmt.setString(4, dependency)
-          stmt.executeUpdate()
-        }
-      }
+  private fun persistRepairItem(connection: Connection, workflowId: String, item: AuditRepairItem) {
+    connection.prepareStatement(
+      """
+      INSERT INTO feature_task_audit_repair_items(
+        workflow_id, item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
+        required_verification, dependencies
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workflow_id, item_id) DO NOTHING
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, workflowId)
+      stmt.setString(2, item.itemId)
+      stmt.setString(3, item.gapId)
+      stmt.setString(4, item.intendedOutcome)
+      stmt.setString(5, item.implementationActions.joinToString("\n"))
+      stmt.setString(6, item.affectedPathsOrSymbols.joinToString("\n"))
+      stmt.setString(7, item.requiredVerification.joinToString("\n"))
+      stmt.setString(8, item.dependencies.joinToString("\n"))
+      stmt.executeUpdate()
+    }
+  }
+
+  private fun persistRepairItemBatchMapping(
+    connection: Connection,
+    workflowId: String,
+    batchId: String,
+    itemId: String,
+  ) {
+    connection.prepareStatement(
+      """
+      INSERT INTO feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id)
+      VALUES (?, ?, ?)
+      ON CONFLICT(workflow_id, batch_id, item_id) DO NOTHING
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, workflowId)
+      stmt.setString(2, batchId)
+      stmt.setString(3, itemId)
+      stmt.executeUpdate()
+    }
+  }
+
+  private fun persistRepairItemDependency(
+    connection: Connection,
+    workflowId: String,
+    batchId: String,
+    itemId: String,
+    dependency: String,
+  ) {
+    connection.prepareStatement(
+      """
+      INSERT INTO feature_task_audit_repair_item_dependencies(workflow_id, batch_id, item_id, depends_on_item_id)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(workflow_id, batch_id, item_id, depends_on_item_id) DO NOTHING
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, workflowId)
+      stmt.setString(2, batchId)
+      stmt.setString(3, itemId)
+      stmt.setString(4, dependency)
+      stmt.executeUpdate()
     }
   }
 
@@ -667,54 +710,53 @@ class SQLiteAuditRepairQuery(
 
   override fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult> =
     connection.prepareStatement(
-    """
+      """
       SELECT item_id, outcome, evidence_ref, verification_ref, disposition_generation
       FROM feature_task_audit_repair_item_results
       WHERE workflow_id = ? AND item_id = ?
       ORDER BY disposition_generation ASC
-    """.trimIndent(),
-  ).use { stmt ->
-    stmt.setString(1, workflowId)
-    stmt.setString(2, itemId)
-    stmt.executeQuery().use { rs ->
-      val results = mutableListOf<AuditRepairItemResult>()
-      while (rs.next()) {
-        results.add(
-          AuditRepairItemResult(
-            itemId = rs.getString("item_id"),
-            outcome = AuditRepairItemResult.Outcome.valueOf(rs.getString("outcome")),
-            evidenceRef = rs.getString("evidence_ref"),
-            verificationRef = rs.getString("verification_ref"),
-            dispositionGeneration = rs.getInt("disposition_generation"),
-          ),
-        )
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, workflowId)
+      stmt.setString(2, itemId)
+      stmt.executeQuery().use { rs ->
+        val results = mutableListOf<AuditRepairItemResult>()
+        while (rs.next()) {
+          results.add(
+            AuditRepairItemResult(
+              itemId = rs.getString("item_id"),
+              outcome = AuditRepairItemResult.Outcome.valueOf(rs.getString("outcome")),
+              evidenceRef = rs.getString("evidence_ref"),
+              verificationRef = rs.getString("verification_ref"),
+              dispositionGeneration = rs.getInt("disposition_generation"),
+            ),
+          )
+        }
+        results
       }
-      results
     }
-  }
 
   override fun getNonRegressionConstraints(workflowId: String, itemId: String): List<String> =
     connection.prepareStatement(
-    """
+      """
       SELECT constraint_text
       FROM feature_task_audit_repair_non_regression
       WHERE workflow_id = ? AND item_id = ?
       ORDER BY priority ASC
-    """.trimIndent(),
-  ).use { stmt ->
-    stmt.setString(1, workflowId)
-    stmt.setString(2, itemId)
-    stmt.executeQuery().use { rs ->
-      val constraints = mutableListOf<String>()
-      while (rs.next()) {
-        constraints.add(rs.getString("constraint_text"))
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, workflowId)
+      stmt.setString(2, itemId)
+      stmt.executeQuery().use { rs ->
+        val constraints = mutableListOf<String>()
+        while (rs.next()) {
+          constraints.add(rs.getString("constraint_text"))
+        }
+        constraints
       }
-      constraints
     }
-  }
 
-  override fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition? =
-    connection.prepareStatement(
+  override fun getGapDisposition(workflowId: String, gapId: String): AuditGapDisposition? = connection.prepareStatement(
     """
       SELECT gap_id, status, evidence_observation, evidence_artifact_ref, evidence_check_ref,
              disposition_generation, superseded_by_generation

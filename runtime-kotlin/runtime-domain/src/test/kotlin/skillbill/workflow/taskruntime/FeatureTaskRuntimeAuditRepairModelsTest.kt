@@ -291,13 +291,13 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
   }
 
   @Test
-  fun `recurring criterion reuses its durable gap identity`() {
+  fun `next gap ordinal follows every live identity for the criterion`() {
     val ledger = FeatureTaskRuntimeUnresolvedGapLedger(
       listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-2", "AC-001", 2)),
     )
 
-    assertEquals("ac-001-gap-2", ledger.allocateGapId("AC-001"))
-    assertEquals("ac-002-gap-1", ledger.allocateGapId("AC-002"))
+    assertEquals(3, ledger.nextGapOrdinal("AC-001"))
+    assertEquals(1, ledger.nextGapOrdinal("AC-002"))
   }
 
   @Test
@@ -307,13 +307,13 @@ class FeatureTaskRuntimeAuditRepairModelsTest {
       mapOf("AC-003" to 2, "AC-001" to 7),
     )
 
-    assertEquals("ac-003-gap-3", ledger.allocateGapId("AC-003"))
+    assertEquals(3, ledger.nextGapOrdinal("AC-003"))
     assertEquals(
-      "ac-001-gap-2",
-      ledger.allocateGapId("AC-001"),
-      "a still-unresolved criterion keeps its durable identity regardless of the high-water mark",
+      8,
+      ledger.nextGapOrdinal("AC-001"),
+      "new identities advance past both live gaps and the closed-generation high-water mark",
     )
-    assertEquals("ac-004-gap-1", ledger.allocateGapId("AC-004"))
+    assertEquals(1, ledger.nextGapOrdinal("AC-004"))
   }
 
   @Test

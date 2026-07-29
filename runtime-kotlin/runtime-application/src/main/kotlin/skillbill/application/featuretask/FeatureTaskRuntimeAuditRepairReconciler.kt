@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditDecisionGeneration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -34,13 +35,9 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
       listOfNotNull(input.latestPlan).filterNot { it == input.prior?.acceptedPlans?.lastOrNull() }
     if (acceptedPlans.isEmpty()) schemaError("Audit-repair state requires an accepted plan.")
     val gaps = reconcileUnresolvedGaps(input)
-    val latestItemIds = acceptedPlans.last().gaps
-      .flatMap { it.repairItems }
-      .mapTo(linkedSetOf()) { it.repairItemId }
     val allResults = reconcileLatestRepairResults(
       input.prior?.repairItemResults.orEmpty(),
       input.repairResults,
-      latestItemIds,
     )
     val progress = reconcileProgress(input, gaps)
     return runCatching {
@@ -60,6 +57,19 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
           ).distinct(),
         gapDispositionHistory = input.prior?.gapDispositionHistory.orEmpty() +
           if (input.auditWrite && input.dispositions != null) input.dispositions else emptyList(),
+        decisionGenerations = input.prior?.decisionGenerations.orEmpty() +
+          if (input.auditWrite) {
+            listOf(
+              FeatureTaskRuntimeAuditDecisionGeneration(
+                generation = input.prior?.decisionGenerations.orEmpty().size + 1,
+                plan = input.latestPlan ?: acceptedPlans.last(),
+                repositoryFingerprint = input.repositoryFingerprint,
+                dispositions = input.dispositions.orEmpty(),
+              ),
+            )
+          } else {
+            emptyList()
+          },
       ).also { it.requireDurableCoherence() }
     }.getOrElse { error ->
       if (error is IllegalArgumentException) {
@@ -84,22 +94,23 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     input: AuditRepairReconciliation,
     gaps: GapReconciliation,
   ): FeatureTaskRuntimeAuditRepairProgress {
-    val priorResultIds = input.prior?.repairItemResults.orEmpty().mapTo(linkedSetOf()) { it.repairItemId }
-    val newlyAttemptedCount = input.repairResults.map { it.repairItemId }.distinct().count { it !in priorResultIds }
+    val newlyAttemptedCount = input.repairResults.size
     val recurringGapCount = gaps.unresolvedGaps.sumOf { it.recurrence }
     val newGapCount = gaps.unresolvedGaps.count { it.recurrence == 0 }
+    val auditGapIterationCount = maxOf(
+      input.prior?.progress?.auditGapIterationCount ?: 0,
+      input.edgeIteration ?: 0,
+    )
     return FeatureTaskRuntimeAuditRepairProgress(
-      firstPassConvergence = input.prior == null && input.auditWrite && gaps.unresolvedGaps.isEmpty(),
+      firstPassConvergence = input.prior == null &&
+        input.auditWrite &&
+        auditGapIterationCount == 0 &&
+        gaps.unresolvedGaps.isEmpty(),
       recurringGapCount = recurringGapCount,
       newGapCount = newGapCount,
       attemptedRepairItemCount = (input.prior?.progress?.attemptedRepairItemCount ?: 0) + newlyAttemptedCount,
-      resolvedRepairItemCount = (
-        input.prior?.repairItemResults.orEmpty() + input.repairResults
-        ).distinctBy { it.repairItemId }.size,
-      auditGapIterationCount = maxOf(
-        input.prior?.progress?.auditGapIterationCount ?: 0,
-        input.edgeIteration ?: 0,
-      ),
+      resolvedRepairItemCount = (input.prior?.progress?.resolvedRepairItemCount ?: 0) + newlyAttemptedCount,
+      auditGapIterationCount = auditGapIterationCount,
     )
   }
 
@@ -116,7 +127,10 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
       )
     }
     val resolvedIds = dispositions
-      .filter { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED }
+      .filter {
+        it.status == FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED ||
+          it.status == FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED
+      }
       .mapTo(linkedSetOf()) { it.gapId }
     val recurringIds = dispositions
       .filter { it.status == FeatureTaskRuntimePriorGapDisposition.Status.RECURRING }

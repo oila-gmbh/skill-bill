@@ -143,43 +143,68 @@ private fun createAuditConvergenceTables(connection: java.sql.Connection) {
   }
 }
 
-private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Connection) {
-  val batchHasWorkflowId = connection.createStatement().use { statement ->
-    statement.executeQuery("PRAGMA table_info(feature_task_audit_repair_batches)").use { rows ->
-      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "workflow_id" }
+private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Connection) =
+  AuditHistoryMigration.run(connection)
+
+private object AuditHistoryMigration {
+  private val tables = listOf(
+    "feature_task_audit_gaps",
+    "feature_task_audit_repair_batches",
+    "feature_task_audit_repair_items",
+    "feature_task_audit_repair_item_batch_mapping",
+    "feature_task_audit_repair_item_dependencies",
+    "feature_task_audit_repair_item_results",
+    "feature_task_audit_repair_non_regression",
+    "feature_task_audit_gap_dispositions",
+  )
+
+  fun run(connection: java.sql.Connection) {
+    if (hasColumn(connection, "feature_task_audit_repair_batches", "workflow_id") &&
+      hasColumn(connection, "feature_task_audit_repair_items", "workflow_id")
+    ) {
+      createIndexes(connection)
+      return
+    }
+    connection.createStatement().use { statement ->
+      snapshot(statement)
+      recreateTables(statement)
+      migrateCore(statement)
+      migrateRelations(statement)
+      tables.forEach { table -> statement.execute("DROP TABLE ${table}_v18") }
+    }
+    createIndexes(connection)
+  }
+
+  private fun hasColumn(connection: java.sql.Connection, table: String, column: String): Boolean =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("PRAGMA table_info($table)").use { rows ->
+        generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == column }
+      }
+    }
+
+  private fun createIndexes(connection: java.sql.Connection) {
+    connection.createStatement().use { statement ->
+      AuditConvergenceDatabaseSchema.statements
+        .filter { it.startsWith("CREATE INDEX") || it.startsWith("CREATE UNIQUE INDEX") }
+        .forEach(statement::execute)
     }
   }
-  val itemHasWorkflowId = connection.createStatement().use { statement ->
-    statement.executeQuery("PRAGMA table_info(feature_task_audit_repair_items)").use { rows ->
-      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "workflow_id" }
+
+  private fun snapshot(statement: java.sql.Statement) {
+    tables.forEach { table ->
+      statement.execute("CREATE TEMP TABLE ${table}_v18 AS SELECT * FROM $table")
     }
-  }
-  if (batchHasWorkflowId && itemHasWorkflowId) {
-    connection.createStatement().use { it.execute(AuditConvergenceDatabaseSchema.statements.first {
-      statement -> statement.startsWith("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_one_active_batch")
-    }) }
-    return
-  }
-  connection.createStatement().use { statement ->
-    val tables = listOf(
-      "feature_task_audit_gaps",
-      "feature_task_audit_repair_batches",
-      "feature_task_audit_repair_items",
-      "feature_task_audit_repair_item_batch_mapping",
-      "feature_task_audit_repair_item_dependencies",
-      "feature_task_audit_repair_item_results",
-      "feature_task_audit_repair_non_regression",
-      "feature_task_audit_gap_dispositions",
-    )
-    tables.forEach { table -> statement.execute("CREATE TEMP TABLE ${table}_v18 AS SELECT * FROM $table") }
     tables.asReversed().forEach { table -> statement.execute("DROP TABLE $table") }
+  }
+
+  private fun recreateTables(statement: java.sql.Statement) {
     AuditConvergenceDatabaseSchema.statements
       .filter { sql -> tables.any { table -> sql.startsWith("CREATE TABLE IF NOT EXISTS $table") } }
       .forEach(statement::execute)
+  }
 
-    statement.execute(
-      "INSERT INTO feature_task_audit_gaps SELECT * FROM feature_task_audit_gaps_v18",
-    )
+  private fun migrateCore(statement: java.sql.Statement) {
+    statement.execute("INSERT INTO feature_task_audit_gaps SELECT * FROM feature_task_audit_gaps_v18")
     statement.execute(
       """
       INSERT INTO feature_task_audit_repair_batches(batch_id, workflow_id, generation_id, is_active)
@@ -206,6 +231,9 @@ private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Conne
         ON generation.workflow_id = gap.workflow_id AND generation.generation = gap.generation
       """.trimIndent(),
     )
+  }
+
+  private fun migrateRelations(statement: java.sql.Statement) {
     statement.execute(
       """
       INSERT INTO feature_task_audit_repair_item_batch_mapping
@@ -222,7 +250,10 @@ private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Conne
       JOIN feature_task_audit_repair_batches batch ON batch.batch_id = dependency.batch_id
       """.trimIndent(),
     )
-    statement.execute("INSERT INTO feature_task_audit_repair_item_results SELECT * FROM feature_task_audit_repair_item_results_v18")
+    statement.execute(
+      "INSERT INTO feature_task_audit_repair_item_results " +
+        "SELECT * FROM feature_task_audit_repair_item_results_v18",
+    )
     statement.execute(
       """
       INSERT INTO feature_task_audit_repair_non_regression
@@ -242,10 +273,6 @@ private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Conne
       JOIN feature_task_audit_gaps_v18 gap ON gap.gap_id = disposition.gap_id
       """.trimIndent(),
     )
-    tables.forEach { table -> statement.execute("DROP TABLE ${table}_v18") }
-    AuditConvergenceDatabaseSchema.statements
-      .filter { it.startsWith("CREATE INDEX") || it.startsWith("CREATE UNIQUE INDEX") }
-      .forEach(statement::execute)
   }
 }
 

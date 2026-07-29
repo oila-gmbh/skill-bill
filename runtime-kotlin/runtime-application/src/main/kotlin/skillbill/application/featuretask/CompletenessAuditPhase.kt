@@ -123,6 +123,12 @@ class AuditGenerationRecorder(
   fun recordWithLedgerAdvance(generation: AuditGeneration): AuditGeneration {
     val recorded = store.getLatest(generation.workflowId)
       ?.takeIf { it.generation == generation.generation }
+      ?.also { existing ->
+        require(existing == generation) {
+          "Incomplete or conflicting replay for audit generation ${generation.generation} in workflow " +
+            "'${generation.workflowId}'."
+        }
+      }
       ?: store.persist(generation)
     phaseLedger.recordAuditGeneration(generation.workflowId, generation.generation)
     return recorded

@@ -60,6 +60,20 @@ internal fun auditRepairStateToWire(state: FeatureTaskRuntimeAuditRepairState): 
       "evidence" to AuditEvidenceWire.toWire(disposition.evidence),
     )
   },
+  "decision_generations" to state.decisionGenerations.map { generation ->
+    mapOf(
+      "generation" to generation.generation,
+      "plan" to auditRepairPlanToWire(generation.plan),
+      "repository_fingerprint" to generation.repositoryFingerprint,
+      "dispositions" to generation.dispositions.map { disposition ->
+        mapOf(
+          "gap_id" to disposition.gapId,
+          "status" to disposition.status.name.lowercase(),
+          "evidence" to AuditEvidenceWire.toWire(disposition.evidence),
+        )
+      },
+    )
+  },
   "satisfied_criterion_refs" to state.satisfiedCriterionRefs,
   "progress" to mapOf(
     "first_pass_convergence" to state.progress.firstPassConvergence,

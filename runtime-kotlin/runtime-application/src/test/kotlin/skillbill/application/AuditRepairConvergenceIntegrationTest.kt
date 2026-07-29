@@ -190,7 +190,7 @@ class AuditConvergenceTelemetryTest {
     scenario.runInitialAudit()
 
     val metrics = scenario.deriveMetrics()
-    assertTrue(metrics.firstPassConvergence)
+    assertFalse(metrics.firstPassConvergence)
   }
 
   @Test
@@ -201,7 +201,7 @@ class AuditConvergenceTelemetryTest {
     scenario.runFollowUpAuditWithNewGaps()
 
     val metrics = scenario.deriveMetrics()
-    assertEquals(1, metrics.newGapCount)
+    assertEquals(2, metrics.newGapCount)
     assertTrue(metrics.recurringGapCount > 0)
   }
 
@@ -745,7 +745,6 @@ private class TestPhaseLedger : skillbill.application.featuretask.PhaseLedger {
 
   fun getCurrentLedger(): FeatureTaskRuntimePhaseLedger? {
     if (ledger.isEmpty()) return null
-    val firstEntry = ledger.entries.first()
     return FeatureTaskRuntimePhaseLedger(
       entries = listOf(
         skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry(

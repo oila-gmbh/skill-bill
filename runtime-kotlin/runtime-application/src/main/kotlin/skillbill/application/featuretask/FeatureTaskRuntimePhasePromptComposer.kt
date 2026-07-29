@@ -514,10 +514,12 @@ object FeatureTaskRuntimePhasePromptComposer {
     } else {
       "      FOLLOW-UP AUDIT SCOPE: disposition every carried unresolved gap and inspect the repair work performed\n" +
         "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Reverify each original\n" +
-        "      failure_evidence check, then inspect the cumulative repair delta and its directly affected production\n" +
+        "      failure_evidence check, then inspect the cumulative repair delta and its directly affected " +
+        "production\n" +
         "      boundaries for newly introduced gaps before emitting satisfied. Do not rescan unrelated subtask or\n" +
         "      acceptance-criterion surfaces, and never classify test-only concerns as audit gaps. A recurring\n" +
-        "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
+        "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails " +
+        "at its\n" +
         "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
         "      a preference for a different repair approach never makes a resolved gap recurring. Emit compact gaps\n" +
         "      for recurring carried identities and any concrete new production gaps in the repair blast radius;\n" +

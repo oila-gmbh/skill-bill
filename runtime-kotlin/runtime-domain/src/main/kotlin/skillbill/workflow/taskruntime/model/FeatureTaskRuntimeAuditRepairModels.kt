@@ -203,13 +203,14 @@ data class FeatureTaskRuntimeRepairItemResult(
       FeatureTaskRuntimeRepairItemOutcome.FIXED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
       FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
         FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
-      FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
+      FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED ->
+        FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
     }
     require(resultEvidence.observation == expectedObservation) {
       "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
         "'${outcome.wire()}', was '${resultEvidence.observation.wire()}'; outcome 'fixed' pairs with " +
         "'fix_verified', 'already_satisfied' pairs with 'already_satisfied_verified', and governed " +
-        "'superseded' pairs with 'fix_verified'."
+        "'superseded' pairs with audit-owned 'resolution_verified'."
     }
   }
 }
@@ -228,8 +229,9 @@ data class FeatureTaskRuntimeUnresolvedGap(
     }
     require(generation > 0) { "gap generation must be positive, was $generation." }
     require(recurrence >= 0) { "gap recurrence must be non-negative, was $recurrence." }
-    require(gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-") &&
-      gapId.substringAfterLast("-gap-").toIntOrNull() == generation
+    require(
+      gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-") &&
+        gapId.substringAfterLast("-gap-").toIntOrNull() == generation,
     ) {
       "gap_id '$gapId' must retain its criterion and numeric stable identity generation '$generation'."
     }
@@ -305,6 +307,7 @@ data class FeatureTaskRuntimeAuditRepairState(
   val satisfiedCriterionRefs: List<String> = emptyList(),
   val repositoryFingerprintHistory: List<String> = listOfNotNull(repositoryFingerprint),
   val gapDispositionHistory: List<FeatureTaskRuntimePriorGapDisposition> = priorGapDispositions,
+  val decisionGenerations: List<FeatureTaskRuntimeAuditDecisionGeneration> = emptyList(),
 ) {
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan, had none." }
@@ -330,6 +333,9 @@ data class FeatureTaskRuntimeAuditRepairState(
     }
     require(gapDispositionHistory.size <= MAX_AUDIT_REPAIR_GAPS * MAX_AUDIT_REPAIR_GAPS) {
       "gap_disposition_history exceeds the bounded durable-history limit."
+    }
+    require(decisionGenerations.map { it.generation } == (1..decisionGenerations.size).toList()) {
+      "Audit decision generations must be append-only and consecutively numbered."
     }
     val unresolvedIds = unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
     val acceptedGapIdentities = acceptedPlans.flatMap { plan ->
@@ -408,18 +414,33 @@ data class FeatureTaskRuntimePriorGapDisposition(
   val status: Status,
   val evidence: FeatureTaskRuntimeEvidence,
 ) {
-  enum class Status { RESOLVED, RECURRING }
+  enum class Status { RESOLVED, RECURRING, SUPERSEDED }
   init {
     requireNonBlank(gapId, "gap_id")
     requireGapIdPattern(gapId)
     val expectedObservation = when (status) {
       Status.RESOLVED -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
       Status.RECURRING -> FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
+      Status.SUPERSEDED -> FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
     }
     require(evidence.observation == expectedObservation) {
       "Prior gap disposition '$gapId' evidence.observation must be '${expectedObservation.wire()}' when " +
         "status is '${status.wire()}', was '${evidence.observation.wire()}'; status 'resolved' pairs with " +
         "'resolution_verified' and 'recurring' pairs with 'recurrence_verified'."
+    }
+  }
+}
+
+data class FeatureTaskRuntimeAuditDecisionGeneration(
+  val generation: Int,
+  val plan: FeatureTaskRuntimeAuditRepairPlan,
+  val repositoryFingerprint: String?,
+  val dispositions: List<FeatureTaskRuntimePriorGapDisposition>,
+) {
+  init {
+    require(generation > 0) { "Audit decision generation must be positive." }
+    require(repositoryFingerprint == null || repositoryFingerprint.isNotBlank()) {
+      "Audit decision repository fingerprint must be nonblank when present."
     }
   }
 }

@@ -471,7 +471,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
 
     assertContains(error.message.orEmpty(), "gap_id 'ac-002-gap-2' for 'AC-002'")
-    assertContains(error.message.orEmpty(), "expected 'ac-002-gap-1'")
+    assertContains(error.message.orEmpty(), "next durable identity ordinal '1'")
   }
 
   @Test

@@ -42,6 +42,7 @@ internal val AUDIT_REPAIR_STATE_OPTIONAL_KEYS = setOf(
   "satisfied_criterion_refs",
   "repository_fingerprint_history",
   "gap_disposition_history",
+  "decision_generations",
 )
 internal val AUDIT_REPAIR_RESULT_KEYS = setOf(
   "repair_item_id",
