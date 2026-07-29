@@ -298,21 +298,29 @@ class FeatureTaskRuntimePhaseRecorder(
       val auditRepairPatch = if (latestPlan != null || repairResults != null || effectiveDispositions != null ||
         reconcilesAuditState
       ) {
-        mapOf(
-          FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(
-            FeatureTaskRuntimeAuditRepairReconciler.reconcile(
-              AuditRepairReconciliation(
-                prior = priorAuditState,
-                latestPlan = latestPlan,
-                repairResults = repairResults.orEmpty(),
-                dispositions = effectiveDispositions,
-                repositoryFingerprint = request.repositoryFingerprint,
-                edgeIteration = request.edgeIteration,
-                auditWrite = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-                auditScopeCriterionRefs = request.auditScopeCriterionRefs,
-              ),
+        val reconciledAuditState = if (latestPlan != null && priorAuditState == null) {
+          CompletenessAuditPhase.handleInitialAudit(
+            auditPlan = latestPlan,
+            repositoryFingerprint = request.repositoryFingerprint,
+            edgeIteration = request.edgeIteration,
+            declaredCriteria = request.auditScopeCriterionRefs,
+          )
+        } else {
+          FeatureTaskRuntimeAuditRepairReconciler.reconcile(
+            AuditRepairReconciliation(
+              prior = priorAuditState,
+              latestPlan = latestPlan,
+              repairResults = repairResults.orEmpty(),
+              dispositions = effectiveDispositions,
+              repositoryFingerprint = request.repositoryFingerprint,
+              edgeIteration = request.edgeIteration,
+              auditWrite = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+              auditScopeCriterionRefs = request.auditScopeCriterionRefs,
             ),
-          ),
+          )
+        }
+        mapOf(
+          FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(reconciledAuditState),
         )
       } else {
         emptyMap()

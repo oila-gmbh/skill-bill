@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
 import skillbill.workflow.taskruntime.model.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.time.Instant
 import java.util.UUID
@@ -17,6 +18,31 @@ class CompletenessAuditPhase(
   private val generationRecorder: AuditGenerationRecorder,
   private val batchPlanner: AuditRepairBatchPlanner,
 ) {
+  companion object {
+    fun handleInitialAudit(
+      auditPlan: FeatureTaskRuntimeAuditRepairPlan,
+      repositoryFingerprint: String?,
+      edgeIteration: Int?,
+      declaredCriteria: List<String>,
+    ): FeatureTaskRuntimeAuditRepairState {
+      require(declaredCriteria.isNotEmpty()) {
+        "Initial audit requires the complete declared acceptance-criterion scope."
+      }
+      return FeatureTaskRuntimeAuditRepairReconciler.reconcile(
+        AuditRepairReconciliation(
+          prior = null,
+          latestPlan = auditPlan,
+          repairResults = emptyList(),
+          dispositions = null,
+          repositoryFingerprint = repositoryFingerprint,
+          edgeIteration = edgeIteration,
+          auditWrite = true,
+          auditScopeCriterionRefs = declaredCriteria,
+        ),
+      )
+    }
+  }
+
   fun handleInitialAudit(
     workflowId: String,
     auditPlan: FeatureTaskRuntimeAuditRepairPlan,

@@ -2167,6 +2167,7 @@ internal class FeatureTaskRuntimeRunLoop(
           failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
           fileManifest = attempt.fileManifest,
           outputArtifact = attempt.retryableTerminalOutput,
+          normalizedOutput = attempt.retryableTerminalNormalizedOutput,
         )
       }
     }
@@ -2657,7 +2658,14 @@ internal class FeatureTaskRuntimeRunLoop(
       return reject("producer-projection", reason)
     }
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
-      return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
+      return terminalOutputAttempt(
+        run,
+        iteration,
+        reason,
+        normalizedOutput,
+        observability,
+        fileManifest,
+      )
     }
     immediateConsumerProjectionGateReason(
       run,
@@ -3065,11 +3073,12 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     reason: String,
-    outputText: String,
-    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
+    val outputText = normalizedOutput.canonicalJson
+    val outputMap = normalizedOutput.envelope
     val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
     if (
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
@@ -3090,6 +3099,7 @@ internal class FeatureTaskRuntimeRunLoop(
         disposition = disposition,
         fileManifest = fileManifest,
         outputArtifact = outputText,
+        normalizedOutput = normalizedOutput,
       )
     } else {
       AttemptResult.settled(
@@ -3101,6 +3111,7 @@ internal class FeatureTaskRuntimeRunLoop(
           failureDisposition = disposition,
           fileManifest = fileManifest,
           outputArtifact = outputText,
+          normalizedOutput = normalizedOutput,
         ),
       )
     }
@@ -3445,6 +3456,8 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
           fileManifest = fileManifest,
+          outputArtifact = normalizedOutput.canonicalJson,
+          normalizedOutput = normalizedOutput,
         ),
       )
     val unresolvedObligations = recorder.loadConvergenceState(request.workflowId, request.dbPathOverride)
@@ -3482,6 +3495,8 @@ internal class FeatureTaskRuntimeRunLoop(
             observability,
             failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
             fileManifest = fileManifest,
+            outputArtifact = normalizedOutput.canonicalJson,
+            normalizedOutput = normalizedOutput,
           ),
         )
       }
@@ -3494,6 +3509,8 @@ internal class FeatureTaskRuntimeRunLoop(
             observability,
             failureDisposition = (decision.disposition as TerminalBlocked).disposition,
             fileManifest = fileManifest,
+            outputArtifact = normalizedOutput.canonicalJson,
+            normalizedOutput = normalizedOutput,
           ),
         )
       }
@@ -3507,6 +3524,7 @@ internal class FeatureTaskRuntimeRunLoop(
             failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
             fileManifest = fileManifest,
             outputArtifact = normalizedOutput.canonicalJson,
+            normalizedOutput = normalizedOutput,
           ),
         )
       }
@@ -3518,6 +3536,8 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           fileManifest = fileManifest,
+          outputArtifact = normalizedOutput.canonicalJson,
+          normalizedOutput = normalizedOutput,
         ),
       )
     }
@@ -4373,6 +4393,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val disposition: FeatureTaskRuntimeFailureDisposition,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       val outputArtifact: String,
+      val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     ) : AttemptResult
     private data class SchemaInvalid(
       val publicReason: String,
@@ -4388,6 +4409,8 @@ internal class FeatureTaskRuntimeRunLoop(
     val retryableTerminalDisposition: FeatureTaskRuntimeFailureDisposition?
       get() = (this as? RetryableTerminal)?.disposition
     val retryableTerminalOutput: String? get() = (this as? RetryableTerminal)?.outputArtifact
+    val retryableTerminalNormalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput?
+      get() = (this as? RetryableTerminal)?.normalizedOutput
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.publicReason
     val schemaRetryCorrectionReason: String? get() = (this as? SchemaInvalid)?.retryCorrectionReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
@@ -4409,7 +4432,8 @@ internal class FeatureTaskRuntimeRunLoop(
         disposition: FeatureTaskRuntimeFailureDisposition,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         outputArtifact: String,
-      ): AttemptResult = RetryableTerminal(reason, disposition, fileManifest, outputArtifact)
+        normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+      ): AttemptResult = RetryableTerminal(reason, disposition, fileManifest, outputArtifact, normalizedOutput)
       fun schemaInvalid(
         publicReason: String,
         retryCorrectionReason: String,
