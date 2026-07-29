@@ -63,7 +63,7 @@ subtasks:
 - id: 4
   name: "Lossless review generations"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_4_lossless_review_generations.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260729-165609-chpi"

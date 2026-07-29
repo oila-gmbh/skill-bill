@@ -348,31 +348,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
-  internal fun createCurrentReviewCheckpoint(
-    workflowId: String,
-    gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
-    dbOverride: String? = null,
-  ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
-    val durable = database.read(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
-      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
-      val resolved = resolvedBranchFrom(artifacts) ?: return@read null
-      Triple(state, continuation, resolved)
-    } ?: return null
-    return createAndPersistReviewCheckpoint(
-      workflowId,
-      durable.first,
-      durable.second,
-      durable.third,
-      gitOperations,
-      repoRoot,
-      dbOverride,
-    )
-  }
-
   @Suppress("LongParameterList")
   private fun createAndPersistReviewCheckpoint(
     workflowId: String,

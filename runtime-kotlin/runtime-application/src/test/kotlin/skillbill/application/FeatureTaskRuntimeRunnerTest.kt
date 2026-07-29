@@ -1685,6 +1685,7 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
   }
 
   @Test
+  @Suppress("LongMethod")
   fun `a capped review holds on an unchanged delta and reopens once the reviewed delta changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-reopen")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
@@ -1704,6 +1705,8 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
     val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(initialReport, initialReport.toString())
     assertEquals("review", paused.pausedPhase)
     val cappedLaunches = reviewLaunches
+    val durableCheckpointCount = requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID))
+      .checkpointIdentities.size
     assertEquals(
       harness.reviewedDeltaDigest(),
       harness.currentReviewDeltaDigest(git, repoRoot),
@@ -1717,6 +1720,15 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       cappedLaunches,
       reviewLaunches,
       "an unchanged delta leaves the capped verdict authoritative and launches no review",
+    )
+    assertEquals(
+      durableCheckpointCount,
+      requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).checkpointIdentities.size,
+      "the stale-review probe must not append its transient checkpoint to durable review history",
+    )
+    assertTrue(
+      git.restoredCheckpointIdentities.any { it.phase == "review_probe" },
+      "the transient stale-review probe must restore its parent after diff construction",
     )
 
     val repaired = changedGoalReviewInput()
@@ -4735,13 +4747,15 @@ private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 // evidenced disposition the parse seam requires for the prior pass's Blocker.
 private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
   RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+    val phaseId = phaseIdFromPrompt(prompt)
     if (phaseId == "review") {
       val launch = nextLaunch()
       facts(
         reviewFindingsOutput(
           changesRequested = launch <= 2,
           dispositionedBlockerIds = if (launch > 1) listOf("finding-1") else emptyList(),
+          repositoryCheckpoint = repositoryCheckpointFromPrompt(prompt),
         ),
       )
     } else {
@@ -4753,13 +4767,18 @@ private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLaunche
 // evidenced disposition for pass one's Blocker.
 private fun crashingRemediationReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
   RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+    val phaseId = phaseIdFromPrompt(prompt)
     if (phaseId != "review") return@RuntimeRecordingLauncher facts(validJsonOutput(phaseId))
     when (nextLaunch()) {
       1 -> facts(reviewFindingsOutput(changesRequested = true))
       2 -> spawnFailedFacts()
       else -> facts(
-        reviewFindingsOutput(changesRequested = false, dispositionedBlockerIds = listOf("finding-1")),
+        reviewFindingsOutput(
+          changesRequested = false,
+          dispositionedBlockerIds = listOf("finding-1"),
+          repositoryCheckpoint = repositoryCheckpointFromPrompt(prompt),
+        ),
       )
     }
   }
@@ -5059,6 +5078,13 @@ private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILIN
 internal fun phaseIdFromPrompt(prompt: String): String =
   PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
 
+private val REPOSITORY_CHECKPOINT_LINE =
+  Regex("(?:repository_checkpoint[:=]\\s*|fingerprint:\\s*)([^\\s]+)")
+
+private fun repositoryCheckpointFromPrompt(prompt: String): String =
+  REPOSITORY_CHECKPOINT_LINE.find(prompt)?.groupValues?.get(1)
+    ?: error("Prompt did not contain a repository checkpoint fingerprint: $prompt")
+
 // The default harness launcher returns a schema-valid, phase-attributed output per phase so a forward
 // run completes. Phase-aware so the implement phase carries the reconciliation report the runtime's
 // mutating-phase gate requires (SKILL-85 Subtask 3); every other phase carries its generic output.
@@ -5156,6 +5182,7 @@ internal const val REVIEW_BLOCKER_MESSAGE = "Foo.kt leaks a connection in the er
 internal fun reviewFindingsOutput(
   changesRequested: Boolean,
   dispositionedBlockerIds: List<String> = emptyList(),
+  repositoryCheckpoint: String? = null,
 ): String {
   val findings = if (changesRequested) {
     """{"severity": "blocker", "message": "$REVIEW_BLOCKER_MESSAGE"}"""
@@ -5165,8 +5192,11 @@ internal fun reviewFindingsOutput(
   // A remediation pass must disposition every Blocker the prior pass emitted, with evidence; the
   // parse seam rejects an output that leaves one undisposed.
   val dispositions = dispositionedBlockerIds.joinToString(", ") { findingId ->
+    val checkpoint = requireNotNull(repositoryCheckpoint) {
+      "A disposition fixture requires the review prompt's repository checkpoint."
+    }
     """{"finding_id": "$findingId", "verdict": "${if (changesRequested) "unresolved" else "resolved"}", """ +
-      """"evidence": ["Foo.kt:42 in the remediation delta"]}"""
+      """"evidence": ["checkpoint=$checkpoint;location=UnchangedBlocker.kt:42"]}"""
   }
   return """
     {
@@ -5189,7 +5219,8 @@ private fun reviewFixLauncher(
 ): RuntimeRecordingLauncher {
   var reviewLaunches = 0
   return RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+    val phaseId = phaseIdFromPrompt(prompt)
     onPhaseLaunch(phaseId)
     if (phaseId == "review") {
       reviewLaunches += 1
@@ -5198,6 +5229,7 @@ private fun reviewFixLauncher(
         reviewFindingsOutput(
           changesRequested = reviewLaunches < convergeOnReview,
           dispositionedBlockerIds = if (reviewLaunches > 1) listOf("finding-1") else emptyList(),
+          repositoryCheckpoint = repositoryCheckpointFromPrompt(prompt),
         ),
       )
     } else {
@@ -5535,6 +5567,7 @@ internal class RecordingWorkflowGitOperations(
   // overrides the result to model a failed staging.
   var stageAllCalls: Int = 0
   var stageAllResult: WorkflowGitOperationResult? = null
+  val restoredCheckpointIdentities = mutableListOf<WorkflowCheckpointIdentity>()
   val goalReviewBuildInputs = mutableListOf<GoalSubtaskReviewBaseline>()
   val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
@@ -5613,7 +5646,10 @@ internal class RecordingWorkflowGitOperations(
   override fun restoreScopedCheckpointParent(
     repoRoot: Path,
     identity: WorkflowCheckpointIdentity,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = identity.parentSha)
+  ): WorkflowGitOperationResult {
+    restoredCheckpointIdentities += identity
+    return WorkflowGitOperationResult(status = "ok", value = identity.parentSha)
+  }
 
   var headCommitShaCalls: Int = 0
 

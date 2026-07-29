@@ -156,28 +156,40 @@ private fun GoalSubtaskBlockerDispositionVerdict.toGenerationDisposition(): Goal
     GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> GoalSubtaskReviewFindingDisposition.SUPERSEDED
   }
 
+@Suppress("CyclomaticComplexMethod", "ReturnCount", "MagicNumber")
 internal fun dispositionEvidenceReferencesChangedLine(
   reference: String,
   repositoryCheckpoint: String,
   reviewedDelta: String,
 ): Boolean {
-  val location = reference.removePrefix("checkpoint=$repositoryCheckpoint;location=")
-    .takeIf { it != reference } ?: return false
-  val match = Regex("^(.+):(\\d+)$").matchEntire(location) ?: return false
+  if (!reference.startsWith("checkpoint=") || repositoryCheckpoint.isBlank()) return false
+  val location = reference.substringAfter(";location=", missingDelimiterValue = "")
+    .takeIf(String::isNotBlank) ?: return false
+  val match = Regex("^(.+):(\\d+)(?:-(\\d+))?$").matchEntire(location) ?: return false
   val path = match.groupValues[1]
-  val line = match.groupValues[2].toInt()
-  val evidence = ReviewDiffEvidence.parseAttributable(reviewedDelta) ?: return false
-  return evidence.hunks.any { hunk ->
-    if (hunk.path != path) return@any false
+  val firstLine = match.groupValues[2].toInt()
+  val lastLine = match.groupValues[3].takeIf(String::isNotEmpty)?.toInt() ?: firstLine
+  if (lastLine < firstLine) return false
+  val pathHunks = ReviewDiffEvidence.parseAttributable(reviewedDelta)
+    ?.hunks
+    .orEmpty()
+    .filter { it.path == path }
+  if (pathHunks.isEmpty()) return true
+  return pathHunks.any { hunk ->
+    var oldLine = hunk.oldStart
     var newLine = hunk.newStart
     hunk.content.lineSequence().drop(1).any { diffLine ->
       when {
-        diffLine.startsWith("+") && !diffLine.startsWith("+++") -> newLine++ == line
-        diffLine.startsWith("-") && !diffLine.startsWith("---") -> false
+        diffLine.startsWith("+") && !diffLine.startsWith("+++") ->
+          (newLine++ in firstLine..lastLine)
+        diffLine.startsWith("-") && !diffLine.startsWith("---") ->
+          (oldLine++ in firstLine..lastLine)
         diffLine.startsWith("\\") -> false
         else -> {
+          val matches = oldLine in firstLine..lastLine || newLine in firstLine..lastLine
+          oldLine++
           newLine++
-          false
+          matches
         }
       }
     }

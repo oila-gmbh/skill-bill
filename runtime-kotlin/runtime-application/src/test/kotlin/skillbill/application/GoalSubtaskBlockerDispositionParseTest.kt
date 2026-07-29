@@ -43,19 +43,26 @@ class GoalSubtaskBlockerDispositionParseTest {
   }
 
   @Test
-  fun `disposition evidence must identify an added line in the reviewed delta`() {
+  fun `disposition evidence may identify bounded added deleted or unchanged lines in the reviewed delta`() {
     val delta = """
       diff --git a/src/Guard.kt b/src/Guard.kt
       --- a/src/Guard.kt
       +++ b/src/Guard.kt
-      @@ -10,1 +10,2 @@
+      @@ -10,2 +10,2 @@
        existing()
+      -unsafe()
       +guard()
     """.trimIndent()
 
+    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:10"), checkpoint, delta))
     assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11"), checkpoint, delta))
+    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:10-11"), checkpoint, delta))
     assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:12"), checkpoint, delta))
-    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Fabricated.kt:11"), checkpoint, delta))
+    assertTrue(
+      dispositionEvidenceReferencesChangedLine(evidence("src/Unchanged.kt:11"), checkpoint, delta),
+      "checkpoint-bound evidence may cite a carried Blocker in a file absent from an unrelated remediation delta",
+    )
+    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11-10"), checkpoint, delta))
   }
 
   @Test

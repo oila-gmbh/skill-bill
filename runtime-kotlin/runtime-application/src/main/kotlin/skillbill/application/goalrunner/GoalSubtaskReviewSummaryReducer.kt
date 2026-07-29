@@ -243,4 +243,4 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
 }
 
 private val DISPOSITION_EVIDENCE =
-  Regex("^checkpoint=[0-9a-f]{64};location=(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^;\\s]+:\\d+(?:-\\d+)?$")
+  Regex("^checkpoint=[^;\\s]+;location=(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^;\\s]+:\\d+(?:-\\d+)?$")

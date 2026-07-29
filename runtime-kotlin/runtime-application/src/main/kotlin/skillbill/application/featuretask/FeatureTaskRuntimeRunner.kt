@@ -20,6 +20,7 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -305,6 +306,7 @@ class FeatureTaskRuntimeRunner(
     return currentFingerprint.ok && currentFingerprint.value == reviewedRepositoryFingerprint
   }
 
+  @Suppress("ReturnCount")
   private fun reviewDeltaIsStale(
     request: FeatureTaskRuntimeRunRequest,
     goalBranch: String,
@@ -315,29 +317,35 @@ class FeatureTaskRuntimeRunner(
       ?.checkpointIdentities
       ?.lastOrNull()
       ?: return true
-    val currentCheckpoint = goalContinuationRecorder.createCurrentReviewCheckpoint(
-      request.workflowId,
-      phaseGates.gitOperations,
-      request.repoRoot,
-      request.dbPathOverride,
-    ) ?: return true
     val frozenPaths = reviewedCheckpoint.ownedPaths.distinct().sorted()
     val frozenDigest = java.security.MessageDigest.getInstance("SHA-256")
       .digest(frozenPaths.joinToString("\u0000").toByteArray())
       .joinToString("") { "%02x".format(it) }
-    if (
-      frozenDigest != reviewedCheckpoint.ownedPathDigest ||
-      currentCheckpoint.ownedPathDigest != reviewedCheckpoint.ownedPathDigest
-    ) {
-      return true
-    }
-    val current = phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
+    if (frozenDigest != reviewedCheckpoint.ownedPathDigest) return true
+    val checkpointOperations = phaseGates.gitOperations.scopedCheckpointOperations
+    val probe = checkpointOperations.createScopedCheckpoint(
       request.repoRoot,
-      GoalSubtaskReviewBaseline(reviewedCheckpoint.commitSha, emptyList()),
-      goalBranch,
-      currentCheckpoint.commitSha,
-      frozenPaths,
-    ).input
+      WorkflowScopedCheckpointRequest(
+        branch = goalBranch,
+        phase = "review_probe",
+        loop = "stale_check",
+        generation = (state.reservedPassNumber ?: state.completedPassCount + 1),
+        ownedPaths = frozenPaths,
+        commitMessage = "chore(skill-bill): transient stale-review probe",
+      ),
+    )
+    val currentCheckpoint = probe.identity ?: return true
+    val current = try {
+      phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
+        request.repoRoot,
+        GoalSubtaskReviewBaseline(reviewedCheckpoint.commitSha, emptyList()),
+        goalBranch,
+        currentCheckpoint.commitSha,
+        frozenPaths,
+      ).input
+    } finally {
+      checkpointOperations.restoreScopedCheckpointParent(request.repoRoot, currentCheckpoint)
+    }
     return current
       ?.takeUnless { it.deltaDigest == judgedDigest }
       ?.let {
