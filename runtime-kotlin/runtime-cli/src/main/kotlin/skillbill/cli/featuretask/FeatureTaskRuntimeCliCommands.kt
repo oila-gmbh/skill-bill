@@ -910,6 +910,8 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: phase $phaseId ${startDetails()}\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
     "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
+  is FeatureTaskRuntimeRunEvent.PhaseTransitionClassified ->
+    "feature-task-runtime $workflowId: phase $phaseId transition=$classification attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->

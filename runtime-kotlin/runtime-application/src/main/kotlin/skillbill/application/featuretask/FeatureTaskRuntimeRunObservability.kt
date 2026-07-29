@@ -116,6 +116,15 @@ internal class FeatureTaskRuntimeRunObservability(
     attemptCount: Int,
     classification: String,
   ) {
+    request.eventSink.emit(
+      FeatureTaskRuntimeRunEvent.PhaseTransitionClassified(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        resolvedAgentId = resolvedAgentId,
+        attemptCount = attemptCount,
+        classification = classification,
+      ),
+    )
     appendLedger(
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = request.workflowId,

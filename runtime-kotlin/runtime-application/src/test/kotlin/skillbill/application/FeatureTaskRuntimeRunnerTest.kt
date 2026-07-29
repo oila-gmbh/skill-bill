@@ -179,6 +179,13 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(2, implementLaunches)
     assertEquals(listOf("implement", "implement"), harness.launchedPhaseOrder().filter { it == "implement" })
+    assertEquals(
+      listOf("semantic_implementation_continuation"),
+      harness.events
+        .filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseTransitionClassified>()
+        .filter { it.phaseId == "implement" }
+        .map { it.classification },
+    )
   }
 
   @Test
@@ -4340,6 +4347,7 @@ internal class RunnerHarness(
     when (event) {
       is FeatureTaskRuntimeRunEvent.PhaseStarted -> event.phaseId
       is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration -> event.phaseId
+      is FeatureTaskRuntimeRunEvent.PhaseTransitionClassified -> null
       else -> null
     }
   }

@@ -264,6 +264,14 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val fixLoopIteration: Int,
   ) : FeatureTaskRuntimeRunEvent
 
+  data class PhaseTransitionClassified(
+    override val workflowId: String,
+    override val phaseId: String,
+    val resolvedAgentId: String,
+    val attemptCount: Int,
+    val classification: String,
+  ) : FeatureTaskRuntimeRunEvent
+
   data class PhaseCompleted(
     override val workflowId: String,
     override val phaseId: String,
