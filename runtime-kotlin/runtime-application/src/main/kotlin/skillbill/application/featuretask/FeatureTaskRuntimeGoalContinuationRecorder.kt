@@ -240,6 +240,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction null
     require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
+    requireNotNull(request.repositoryCheckpoint) {
+      "Goal review completion requires the runtime repository checkpoint."
+    }
     val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
     val settlement = unitOfWork.settleGoalSubtaskReviewGeneration(
       GoalSubtaskReviewGenerationSettlementRequest(
@@ -303,11 +306,19 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       Triple(state, continuation, resolvedBranchFrom(artifacts))
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation, resolved) = durable
-    val checkpoint = createAndPersistReviewCheckpoint(
+    val durableResolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState
+    val checkpointLoop = if (state.remediationBaseSha == null) "initial" else "review_fix"
+    val checkpointGeneration = state.reservedPassNumber ?: state.completedPassCount + 1
+    val checkpoint = durableResolved.checkpointIdentities.firstOrNull {
+      it.branch == continuation.goalBranch &&
+        it.phase == "review" &&
+        it.loop == checkpointLoop &&
+        it.generation == checkpointGeneration
+    } ?: createAndPersistReviewCheckpoint(
       workflowId = workflowId,
       state = state,
       continuation = continuation,
-      resolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState,
+      resolved = durableResolved,
       gitOperations = gitOperations,
       repoRoot = repoRoot,
       dbOverride = dbOverride,

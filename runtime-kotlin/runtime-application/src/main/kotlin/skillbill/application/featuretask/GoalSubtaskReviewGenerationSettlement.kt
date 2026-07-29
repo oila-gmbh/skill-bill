@@ -177,7 +177,7 @@ internal fun dispositionEvidenceReferencesChangedLine(
     ?.hunks
     .orEmpty()
     .filter { it.path == path }
-  if (pathHunks.isEmpty()) return true
+  if (pathHunks.isEmpty()) return false
   return pathHunks.any { hunk ->
     var oldLine = hunk.oldStart
     var newLine = hunk.newStart

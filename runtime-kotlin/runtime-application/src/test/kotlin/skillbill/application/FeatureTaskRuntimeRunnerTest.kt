@@ -2322,7 +2322,6 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(2, reserved.reservedPassNumber)
     assertEquals(1, reserved.completedPassCount)
     assertEquals(CodeReviewExecutionMode.DELEGATED, reserved.passResults.single().executedMode)
-
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(2, resumed.completedPassCount)

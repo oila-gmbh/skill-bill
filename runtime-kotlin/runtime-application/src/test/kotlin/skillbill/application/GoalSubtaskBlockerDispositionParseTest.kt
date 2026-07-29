@@ -59,8 +59,8 @@ class GoalSubtaskBlockerDispositionParseTest {
     assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:10-11"), checkpoint, delta))
     assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:12"), checkpoint, delta))
     assertTrue(
-      dispositionEvidenceReferencesChangedLine(evidence("src/Unchanged.kt:11"), checkpoint, delta),
-      "checkpoint-bound evidence may cite a carried Blocker in a file absent from an unrelated remediation delta",
+      !dispositionEvidenceReferencesChangedLine(evidence("src/Unchanged.kt:11"), checkpoint, delta),
+      "a path absent from the reviewed delta cannot provide repository evidence for a terminal disposition",
     )
     assertTrue(
       !dispositionEvidenceReferencesChangedLine(
