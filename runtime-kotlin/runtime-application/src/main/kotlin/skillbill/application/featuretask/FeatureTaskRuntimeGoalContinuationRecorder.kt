@@ -201,6 +201,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       val generationId = requireNotNull(unitOfWork.reviewGenerations.summary(workflowId).currentGenerationId) {
         "Cannot accept unresolved Blockers without a durable review generation."
       }
+      val repositoryCheckpoint = requireNotNull(state.reviewedRepositoryFingerprint) {
+        "Cannot accept unresolved Blockers without the reviewed repository checkpoint."
+      }
       unitOfWork.reviewGenerations.unresolvedBlockers(workflowId).forEach { finding ->
         unitOfWork.reviewGenerations.appendDisposition(
           GoalSubtaskReviewFindingDispositionRecord(
@@ -208,7 +211,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
             generationId = finding.sourceGenerationId.takeIf { it != generationId } ?: generationId,
             findingId = finding.findingId,
             disposition = GoalSubtaskReviewFindingDisposition.ACCEPTED,
-            evidence = listOf("operator:accept_and_advance"),
+            evidence = listOf(
+              "operator:accept_and_advance",
+              "repository_checkpoint:$repositoryCheckpoint",
+              "changed_line:${finding.location}",
+            ),
           ),
         )
       }

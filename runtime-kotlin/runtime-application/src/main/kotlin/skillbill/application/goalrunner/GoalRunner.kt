@@ -100,12 +100,14 @@ class GoalRunner(
     pendingCausingLoopEntry.clear()
     var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
-    val projectionChanged = state.manifest.subtasks.mapNotNull { it.workflowId }.map { workflowId ->
+    val reopenedWorkflowIds = state.manifest.subtasks.mapNotNull { it.workflowId }.filter { workflowId ->
       outcomeStore.reconcileMismatchedGoalReviewProjection(workflowId, request.dbPathOverride)
-    }.any { it }
-    if (projectionChanged) {
-      state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
-        ?: return unknownGoal(request.issueKey)
+    }.toSet()
+    if (reopenedWorkflowIds.isNotEmpty()) {
+      state = manifestStore.save(
+        state.copy(manifest = state.manifest.withReopenedReviewSubtasks(reopenedWorkflowIds)),
+        request.dbPathOverride,
+      )
     }
     return when (val preparation = prepareRun(state, request)) {
       is GoalRunPreparation.PreparationBlocked -> preparation.report
@@ -414,6 +416,12 @@ class GoalRunner(
       causingLoopEntry,
     )
     return if (reviewReopened) {
+      manifestStore.save(
+        refreshed.copy(manifest = refreshed.manifest.withReopenedReviewSubtasks(setOfNotNull(
+          refreshed.manifest.workflowIdFor(subtaskId),
+        ))),
+        request.dbPathOverride,
+      )
       val reopenedState = manifestStore.loadByIssueKey(
         request.issueKey,
         request.dbPathOverride,
@@ -1820,6 +1828,20 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
 private fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
   subtasks = subtasks.map { subtask ->
     if (subtask.id == subtaskId) subtask.copy(workflowId = workflowId) else subtask
+  },
+)
+
+private fun DecompositionManifest.withReopenedReviewSubtasks(workflowIds: Set<String>): DecompositionManifest = copy(
+  status = "in_progress",
+  currentSubtaskIntent = subtasks.firstOrNull { it.workflowId in workflowIds }?.let {
+    CurrentSubtaskIntent(subtaskId = it.id, action = "resume")
+  } ?: currentSubtaskIntent,
+  subtasks = subtasks.map { subtask ->
+    if (subtask.workflowId in workflowIds) {
+      subtask.copy(status = "in_progress", commitSha = null, blockedReason = null)
+    } else {
+      subtask
+    }
   },
 )
 

@@ -13,6 +13,7 @@ import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
+import skillbill.application.featuretask.goalSubtaskReviewGenerationId
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
@@ -917,7 +918,7 @@ class WorkflowGoalRunnerOutcomeStore(
           fieldPath = "phase_records.review",
           reason = "must exist before a mismatched terminal review projection can be resumed.",
         )
-      val reopening = reopenedReviewProjection(artifacts, review, priorReview)
+      val reopening = reopenedReviewProjection(workflowId, artifacts, review, priorReview)
       val updated = engine.updateRecord(
         WorkflowFamily.TASK_RUNTIME.definition,
         record,
@@ -930,7 +931,9 @@ class WorkflowGoalRunnerOutcomeStore(
               "status" to "running",
               "attempt_count" to reopening.reviewRecord.attemptCount,
             ),
-          ),
+          ) + REVIEW_DOWNSTREAM_PHASES.map { phaseId ->
+            mapOf("step_id" to phaseId, "status" to "pending", "attempt_count" to 0)
+          },
           artifactsPatch = reopening.patch,
           sessionId = record.sessionId.orEmpty(),
         ),
@@ -1771,7 +1774,15 @@ private data class ReopenedReviewProjection(
   val patch: Map<String, Any?>,
 )
 
+private val REVIEW_DOWNSTREAM_PHASES = listOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+)
+
 private fun reopenedReviewProjection(
+  workflowId: String,
   artifacts: Map<String, Any?>,
   review: GoalSubtaskReviewArtifacts,
   priorReview: FeatureTaskRuntimePhaseRecord,
@@ -1785,13 +1796,42 @@ private fun reopenedReviewProjection(
     resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
   )
   val phaseRecords = LinkedHashMap(phaseRecordsFrom(artifacts)).apply {
+    REVIEW_DOWNSTREAM_PHASES.forEach(::remove)
     put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reopenedReview)
   }
   val history = (artifacts[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
     ?.entries
     ?.associate { (key, value) -> key.toString() to value }
     .orEmpty()
-  val historyIdentity = review.state.reviewedDeltaDigest ?: "legacy-pass-${review.state.completedPassCount}"
+  val reviewedDeltaDigest = review.state.reviewedDeltaDigest
+  val reviewedRepositoryFingerprint = review.state.reviewedRepositoryFingerprint
+  val generationIdentity = if (
+    reviewedDeltaDigest != null &&
+    reviewedRepositoryFingerprint != null &&
+    review.state.completedPassCount > 0
+  ) {
+    goalSubtaskReviewGenerationId(
+      workflowId = workflowId,
+      reviewBase = review.state.remediationBaseSha
+        ?.takeIf { review.state.completedPassCount == 2 }
+        ?: review.state.reviewBaseSha,
+      reviewedDeltaDigest = reviewedDeltaDigest,
+      passNumber = review.state.completedPassCount,
+      repositoryCheckpoint = reviewedRepositoryFingerprint,
+    )
+  } else {
+    listOf(
+      review.state.reviewBaseSha,
+      review.state.reviewedDeltaDigest ?: "legacy",
+      review.state.completedPassCount.toString(),
+      review.state.reviewedRepositoryFingerprint ?: "checkpoint-unavailable",
+    ).joinToString(":")
+  }
+  val historyIdentity = generateSequence(0) { it + 1 }
+    .map { reopenIndex ->
+      if (reopenIndex == 0) generationIdentity else "$generationIdentity-reopen-$reopenIndex"
+    }
+    .first { it !in history }
   return ReopenedReviewProjection(
     reviewRecord = reopenedReview,
     patch = linkedMapOf(

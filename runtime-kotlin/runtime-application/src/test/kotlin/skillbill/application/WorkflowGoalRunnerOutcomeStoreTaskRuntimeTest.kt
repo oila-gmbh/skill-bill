@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.featuretask.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
@@ -190,7 +191,38 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
             finishedAt = "2026-07-29T05:01:00Z",
             resolvedAgentId = "codex",
           ).toArtifactMap(),
+          "validate" to FeatureTaskRuntimePhaseRecord(
+            phaseId = "validate",
+            status = "completed",
+            attemptCount = 1,
+            startedAt = "2026-07-29T05:02:00Z",
+            firstStartedAt = "2026-07-29T05:02:00Z",
+            finishedAt = "2026-07-29T05:03:00Z",
+            resolvedAgentId = "codex",
+          ).toArtifactMap(),
+          "write_history" to FeatureTaskRuntimePhaseRecord(
+            phaseId = "write_history",
+            status = "completed",
+            attemptCount = 1,
+            startedAt = "2026-07-29T05:04:00Z",
+            firstStartedAt = "2026-07-29T05:04:00Z",
+            finishedAt = "2026-07-29T05:05:00Z",
+            resolvedAgentId = "codex",
+          ).toArtifactMap(),
+          "commit_push" to FeatureTaskRuntimePhaseRecord(
+            phaseId = "commit_push",
+            status = "completed",
+            attemptCount = 1,
+            startedAt = "2026-07-29T05:06:00Z",
+            firstStartedAt = "2026-07-29T05:06:00Z",
+            finishedAt = "2026-07-29T05:07:00Z",
+            resolvedAgentId = "codex",
+          ).toArtifactMap(),
         ),
+      )
+      put(
+        GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY,
+        mapOf("${"a".repeat(40)}:legacy:1:checkpoint-unavailable" to mapOf("prior" to true)),
       )
     }
     workflows.saveFeatureTaskRuntimeWorkflow(
@@ -216,7 +248,9 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       JsonSupport.anyToStringAnyMap(reopenedArtifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]).orEmpty(),
     )
     assertEquals(0, reopenedState.completedPassCount)
-    assertTrue((reopenedArtifacts["goal_subtask_review_result_history"] as Map<*, *>).isNotEmpty())
+    assertEquals(2, (reopenedArtifacts["goal_subtask_review_result_history"] as Map<*, *>).size)
+    val reopenedPhaseRecords = reopenedArtifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as Map<*, *>
+    assertEquals(setOf("review"), reopenedPhaseRecords.keys)
   }
 
   @Test
