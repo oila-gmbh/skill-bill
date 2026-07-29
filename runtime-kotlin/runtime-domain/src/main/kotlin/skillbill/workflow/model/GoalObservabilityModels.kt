@@ -163,6 +163,8 @@ data class GoalObservabilityEvent(
   val activitySummary: String,
   val timestamp: String,
   val sequenceNumber: Int,
+  val attemptCount: Int? = null,
+  val processExitStatus: Int? = null,
   val workflowId: String? = null,
   val changedFileSummary: GoalObservabilityChangedFileSummary? = null,
   val diffStat: GoalObservabilityDiffStat? = null,
@@ -182,6 +184,8 @@ data class GoalObservabilityEvent(
     "activity_summary" to activitySummary,
     "timestamp" to timestamp,
     "sequence_number" to sequenceNumber,
+    "attempt_count" to attemptCount,
+    "process_exit_status" to processExitStatus,
   ).apply {
     changedFileSummary?.let { summary -> put("changed_file_summary", summary.toArtifactMap()) }
     diffStat?.let { stat -> put("diff_stat", stat.toArtifactMap()) }
@@ -228,6 +232,8 @@ data class GoalObservabilityEvent(
     "activity_summary" to activitySummary,
     "sequence_number" to sequenceNumber,
     "timestamp" to timestamp,
+    "attempt_count" to attemptCount,
+    "process_exit_status" to processExitStatus,
   ).apply {
     changedFileSummary?.let { summary -> put("changed_file_summary", summary.toArtifactMap()) }
     diffStat?.let { stat -> put("diff_stat", stat.toArtifactMap()) }

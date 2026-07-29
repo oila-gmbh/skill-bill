@@ -43,6 +43,8 @@ internal class GoalRunnerObservabilityEmitter(
           activitySummary = signal.activitySummary.takeIf(String::isNotBlank) ?: signal.livenessClass,
           sequenceNumber = sequence++,
           timestamp = Instant.now().toString(),
+          attemptCount = signal.attemptCount,
+          processExitStatus = signal.processExitStatus,
         ),
         dbPathOverride = dbPathOverride,
       )
@@ -129,6 +131,8 @@ internal class GoalRunnerObservabilityEmitter(
         livenessClass = "worker_output_summary",
         activitySummary = "stdout_chars=${facts.stdout.length}; stderr_chars=${facts.stderr.length}; " +
           "exit_status=${facts.exitStatus ?: "none"}$stderrDetail",
+        attemptCount = progress?.latestDurableProgressEvent?.attemptCount,
+        processExitStatus = facts.exitStatus,
       ),
     )
   }
@@ -144,4 +148,6 @@ internal data class GoalRunnerObservabilitySignal(
   val workflowPhase: String,
   val livenessClass: String,
   val activitySummary: String,
+  val attemptCount: Int? = null,
+  val processExitStatus: Int? = null,
 )

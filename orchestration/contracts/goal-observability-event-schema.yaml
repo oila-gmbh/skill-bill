@@ -57,6 +57,16 @@ properties:
     type: integer
     minimum: 0
     maximum: 2147483647
+  attempt_count:
+    type: integer
+    minimum: 1
+    maximum: 2147483647
+    description: "Exact producer attempt associated with this event when one exists."
+  process_exit_status:
+    type: integer
+    minimum: -2147483648
+    maximum: 2147483647
+    description: "Exact child exit status for worker-output events."
   changed_file_summary:
     $ref: "#/$defs/changedFileSummary"
   diff_stat:

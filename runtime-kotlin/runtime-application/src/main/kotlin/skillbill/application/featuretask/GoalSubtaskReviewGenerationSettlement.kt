@@ -35,7 +35,7 @@ internal fun UnitOfWork.settleGoalSubtaskReviewGeneration(
 ): GoalSubtaskReviewGenerationSettlement {
   require(
     request.state.completedPassCount == 0 ||
-      reviewGenerations.summary(request.workflowId).currentGenerationId != null,
+      reviewGenerations.hasGenerations(request.workflowId),
   ) {
     "Legacy completed review state has no durable review generation; regenerate or migrate it before review resumes."
   }
@@ -43,8 +43,16 @@ internal fun UnitOfWork.settleGoalSubtaskReviewGeneration(
     "Goal review completion requires the runtime repository checkpoint."
   }
   require(
-    request.blockerDispositions.flatMap(GoalSubtaskBlockerDisposition::evidence)
-      .all { dispositionEvidenceReferencesChangedLine(it, repositoryCheckpoint, request.reviewedDelta) },
+    request.blockerDispositions.all { disposition ->
+      disposition.evidence.all {
+        dispositionEvidenceReferencesDeltaLine(
+          it,
+          repositoryCheckpoint,
+          request.reviewedDelta,
+          requireChangedLine = disposition.verdict != GoalSubtaskBlockerDispositionVerdict.UNRESOLVED,
+        )
+      }
+    },
   ) {
     "Every carried Blocker disposition must cite a path and line present in the active checkpoint's reviewed delta."
   }
@@ -72,11 +80,6 @@ internal fun UnitOfWork.settleGoalSubtaskReviewGeneration(
   reviewGenerations.appendPass(request.workflowId, generationId, passNumber, repositoryCheckpoint)
   appendDispositions(request, generationId)
   appendFindings(request, generationId, passNumber)
-  if (request.verdict == FeatureTaskRuntimeVerdict.APPROVED) {
-    require(reviewGenerations.unresolvedBlockers(request.workflowId).isEmpty()) {
-      "Review approval requires durable proof of zero unresolved Blockers across generations."
-    }
-  }
   return GoalSubtaskReviewGenerationSettlement(completed, passNumber)
 }
 
@@ -157,10 +160,11 @@ private fun GoalSubtaskBlockerDispositionVerdict.toGenerationDisposition(): Goal
   }
 
 @Suppress("CyclomaticComplexMethod", "ReturnCount", "MagicNumber")
-internal fun dispositionEvidenceReferencesChangedLine(
+internal fun dispositionEvidenceReferencesDeltaLine(
   reference: String,
   repositoryCheckpoint: String,
   reviewedDelta: String,
+  requireChangedLine: Boolean,
 ): Boolean {
   if (repositoryCheckpoint.isBlank()) return false
   val evidenceCheckpoint = reference.substringAfter("checkpoint=", missingDelimiterValue = "")
@@ -192,7 +196,7 @@ internal fun dispositionEvidenceReferencesChangedLine(
           val matches = oldLine in firstLine..lastLine || newLine in firstLine..lastLine
           oldLine++
           newLine++
-          matches
+          matches && !requireChangedLine
         }
       }
     }

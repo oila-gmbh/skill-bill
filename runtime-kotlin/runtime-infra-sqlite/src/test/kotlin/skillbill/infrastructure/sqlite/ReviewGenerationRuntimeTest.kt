@@ -53,6 +53,7 @@ class ReviewGenerationRuntimeTest {
 
       val summary = repository.summary("workflow-1")
 
+      assertEquals(true, repository.hasGenerations("workflow-1"))
       assertEquals(
         reviewGenerationId(
           "workflow-1",
@@ -64,6 +65,44 @@ class ReviewGenerationRuntimeTest {
         summary.currentGenerationId,
       )
       assertEquals(2, summary.currentPass)
+    }
+  }
+
+  @Test
+  fun `synthetic active generation does not count as durable history`() {
+    val dbPath = Files.createTempDirectory("synthetic-review-generation").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      connection.prepareStatement(
+        """
+        INSERT INTO feature_task_workflows (workflow_id, mode, contract_version, artifacts_json)
+        VALUES ('workflow-1', 'runtime', '0.1', ?)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(
+          1,
+          """
+          {
+            "goal_subtask_review_state": {
+              "reserved_pass_number": 2,
+              "review_base_sha": "${"0".repeat(40)}",
+              "active_pass_delta_digest": "${"2".repeat(64)}"
+            },
+            "feature_task_runtime_delivered_projections": {
+              "active": {
+                "consumer_phase_id": "review",
+                "consumer_delivery_iteration": 2,
+                "repository_checkpoint": {"fingerprint": "checkpoint-2"}
+              }
+            }
+          }
+          """.trimIndent(),
+        )
+        statement.executeUpdate()
+      }
+
+      assertEquals(false, repository.hasGenerations("workflow-1"))
+      assertEquals(2, repository.summary("workflow-1").currentPass)
     }
   }
 

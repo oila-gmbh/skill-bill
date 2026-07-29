@@ -81,7 +81,7 @@ internal class ReviewGenerationRuntime(
     passNumber: Int,
     finding: GoalSubtaskReviewFinding,
   ) {
-    val existing = loadFinding(workflowId, finding.findingId)
+    val existing = connection.loadReviewFinding(workflowId, finding.findingId)
     if (existing != null && existing.copy(sourceGenerationId = finding.sourceGenerationId) == finding) {
       return
     }
@@ -153,6 +153,13 @@ internal class ReviewGenerationRuntime(
   override fun loadGeneration(identity: GoalSubtaskReviewGenerationIdentity): GoalSubtaskReviewGeneration? =
     loadById(identity.workflowId, identity.generationId)?.takeIf { it.identity == identity }
 
+  override fun hasGenerations(workflowId: String): Boolean = connection.prepareStatement(
+    "SELECT 1 FROM review_generations WHERE workflow_id = ? LIMIT 1",
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeQuery().use { rows -> rows.next() }
+  }
+
   override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> = connection.prepareStatement(
     """
       SELECT f.finding_id, f.severity, f.category, f.location, f.summary, f.source_generation_id
@@ -181,67 +188,8 @@ internal class ReviewGenerationRuntime(
   }
 
   override fun summary(workflowId: String): GoalSubtaskReviewSummary {
-    val current = connection.prepareStatement(
-      """
-      SELECT g.generation_id, COALESCE(MAX(p.pass_number), 0) current_pass
-      FROM review_generations g
-      LEFT JOIN review_generation_passes p
-        ON p.workflow_id = g.workflow_id AND p.generation_id = g.generation_id
-      WHERE g.workflow_id = ? AND g.superseded_by_generation_id IS NULL
-      GROUP BY g.generation_id, g.created_at
-      ORDER BY g.created_at DESC, g.generation_id DESC LIMIT 1
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeQuery().use { rows ->
-        if (rows.next()) rows.getString("generation_id") to rows.getInt("current_pass") else null
-      }
-    }
-    val active = connection.prepareStatement(
-      """
-      SELECT
-        json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') reserved_pass,
-        CASE
-          WHEN json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 2
-          THEN COALESCE(
-            json_extract(w.artifacts_json, '$.goal_subtask_review_state.remediation_base_sha'),
-            json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
-          )
-          ELSE json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
-        END review_base,
-        json_extract(w.artifacts_json, '$.goal_subtask_review_state.active_pass_delta_digest') delta_digest,
-        json_extract(p.value, '$.repository_checkpoint.fingerprint') checkpoint
-      FROM feature_task_workflows w
-      LEFT JOIN json_each(w.artifacts_json, '$.feature_task_runtime_delivered_projections') p
-        ON json_extract(p.value, '$.consumer_phase_id') = 'review'
-      WHERE w.workflow_id = ?
-        AND json_valid(w.artifacts_json)
-        AND json_type(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 'integer'
-      ORDER BY json_extract(p.value, '$.consumer_delivery_iteration') DESC
-      LIMIT 1
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeQuery().use { rows ->
-        if (!rows.next()) {
-          null
-        } else {
-          val pass = rows.getInt("reserved_pass")
-          val identityParts = listOf(
-            workflowId,
-            rows.getString("review_base"),
-            rows.getString("delta_digest"),
-            pass.toString(),
-            rows.getString("checkpoint"),
-          )
-          val generation = identityParts.takeIf { parts -> parts.all { !it.isNullOrBlank() } }
-            ?.joinToString("\u0000")
-            ?.let(::sha256Hex)
-            ?.let { "review-$it" }
-          generation to pass
-        }
-      }
-    }
+    val current = connection.loadCurrentReviewGeneration(workflowId)
+    val active = connection.loadActiveReviewGeneration(workflowId)
     val currentGenerationId = active?.first ?: current?.first
     val terminalCounts = GoalSubtaskReviewFindingDisposition.entries
       .filter(GoalSubtaskReviewFindingDisposition::terminal)
@@ -277,35 +225,98 @@ internal class ReviewGenerationRuntime(
             reviewedDeltaDigest = rows.getString("reviewed_delta_digest"),
             repositoryCheckpoint = rows.getString("repository_checkpoint"),
           ),
-          passNumbers = loadPassNumbers(workflowId, generationId),
+          passNumbers = connection.loadReviewPassNumbers(workflowId, generationId),
           supersededByGenerationId = rows.getString("superseded_by_generation_id"),
         )
       }
     }
+}
 
-  private fun loadPassNumbers(workflowId: String, generationId: String): List<Int> = connection.prepareStatement(
-    """
+private fun Connection.loadCurrentReviewGeneration(workflowId: String): Pair<String, Int>? = prepareStatement(
+  """
+    SELECT g.generation_id, COALESCE(MAX(p.pass_number), 0) current_pass
+    FROM review_generations g
+    LEFT JOIN review_generation_passes p
+      ON p.workflow_id = g.workflow_id AND p.generation_id = g.generation_id
+    WHERE g.workflow_id = ? AND g.superseded_by_generation_id IS NULL
+    GROUP BY g.generation_id, g.created_at
+    ORDER BY g.created_at DESC, g.generation_id DESC LIMIT 1
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.executeQuery().use { rows ->
+    if (rows.next()) rows.getString("generation_id") to rows.getInt("current_pass") else null
+  }
+}
+
+private fun Connection.loadActiveReviewGeneration(workflowId: String): Pair<String?, Int>? = prepareStatement(
+  """
+      SELECT
+        json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') reserved_pass,
+        CASE
+          WHEN json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 2
+          THEN COALESCE(
+            json_extract(w.artifacts_json, '$.goal_subtask_review_state.remediation_base_sha'),
+            json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
+          )
+          ELSE json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
+        END review_base,
+        json_extract(w.artifacts_json, '$.goal_subtask_review_state.active_pass_delta_digest') delta_digest,
+        json_extract(p.value, '$.repository_checkpoint.fingerprint') checkpoint
+      FROM feature_task_workflows w
+      LEFT JOIN json_each(w.artifacts_json, '$.feature_task_runtime_delivered_projections') p
+        ON json_extract(p.value, '$.consumer_phase_id') = 'review'
+      WHERE w.workflow_id = ?
+        AND json_valid(w.artifacts_json)
+        AND json_type(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 'integer'
+      ORDER BY json_extract(p.value, '$.consumer_delivery_iteration') DESC
+      LIMIT 1
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.executeQuery().use { rows ->
+    if (!rows.next()) {
+      null
+    } else {
+      val pass = rows.getInt("reserved_pass")
+      val identityParts = listOf(
+        workflowId,
+        rows.getString("review_base"),
+        rows.getString("delta_digest"),
+        pass.toString(),
+        rows.getString("checkpoint"),
+      )
+      val generation = identityParts.takeIf { parts -> parts.all { !it.isNullOrBlank() } }
+        ?.joinToString("\u0000")
+        ?.let(::sha256Hex)
+        ?.let { "review-$it" }
+      generation to pass
+    }
+  }
+}
+
+private fun Connection.loadReviewPassNumbers(workflowId: String, generationId: String): List<Int> = prepareStatement(
+  """
       SELECT pass_number FROM review_generation_passes
       WHERE workflow_id = ? AND generation_id = ? ORDER BY pass_number
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.setString(2, generationId)
+  statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getInt(1)) } }
+}
+
+private fun Connection.loadReviewFinding(workflowId: String, findingId: String): GoalSubtaskReviewFinding? =
+  prepareStatement(
+    """
+      SELECT finding_id, severity, category, location, summary, source_generation_id
+      FROM review_generation_findings WHERE workflow_id = ? AND finding_id = ?
     """.trimIndent(),
   ).use { statement ->
     statement.setString(1, workflowId)
-    statement.setString(2, generationId)
-    statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.getInt(1)) } }
+    statement.setString(2, findingId)
+    statement.executeQuery().use { rows -> if (rows.next()) rows.toFinding() else null }
   }
-
-  private fun loadFinding(workflowId: String, findingId: String): GoalSubtaskReviewFinding? =
-    connection.prepareStatement(
-      """
-      SELECT finding_id, severity, category, location, summary, source_generation_id
-      FROM review_generation_findings WHERE workflow_id = ? AND finding_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, findingId)
-      statement.executeQuery().use { rows -> if (rows.next()) rows.toFinding() else null }
-    }
-}
 
 private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray())

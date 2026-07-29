@@ -80,6 +80,7 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
+import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 
@@ -118,19 +119,20 @@ class FeatureTaskRuntimePhaseRecorder(
       val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
         ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
       val service = RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator)
-      service.retainProducerOutput(
-        ProducerOutputEvidence(
-          workflowId = request.workflowId,
-          phaseId = request.phaseId,
-          attempt = request.attempt,
-          agentId = request.agentId,
-          model = request.model,
-          recordedAt = java.time.Instant.now(),
-          byteSize = request.observedByteSize,
-          sha256 = request.observedSha256,
-          payload = request.rawResponse.takeUnless { request.truncated },
-        ),
+      val evidence = ProducerOutputEvidence(
+        workflowId = request.workflowId,
+        phaseId = request.phaseId,
+        attempt = request.attempt,
+        agentId = request.agentId,
+        model = request.model,
+        recordedAt = java.time.Instant.now(),
+        byteSize = request.observedByteSize,
+        sha256 = request.observedSha256,
+        payload = request.rawResponse.takeUnless { request.truncated },
       )
+      request.rawResponsePath?.let { path ->
+        service.retainProducerOutput(evidence, Path.of(path))
+      } ?: service.retainProducerOutput(evidence)
       service.record(request)
     }
 
@@ -146,13 +148,19 @@ class FeatureTaskRuntimePhaseRecorder(
 
   fun producerOutput(workflowId: String, phaseId: String, attempt: Int, dbOverride: String? = null) =
     database.read(dbOverride) {
-      it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt)
+      it.rejectedOutputDiagnostics?.producerOutputs?.read(workflowId, phaseId, attempt)
     }
 
   fun latestProducerOutputAttempt(workflowId: String, phaseId: String, dbOverride: String? = null): Int =
     database.read(dbOverride) {
-      it.rejectedOutputDiagnostics?.latestProducerOutputAttempt(workflowId, phaseId) ?: 0
+      it.rejectedOutputDiagnostics?.producerOutputs?.latestAttempt(workflowId, phaseId) ?: 0
     }
+
+  fun releaseCapturedOutput(path: String, dbOverride: String? = null) {
+    database.read(dbOverride) {
+      it.rejectedOutputDiagnostics?.filePayloads?.release(Path.of(path))
+    }
+  }
 
   /**
    * Persists one per-phase record. A `running` transition for a new attempt re-mints

@@ -891,12 +891,13 @@ private fun resumeRepositoryRoot(repoRoot: String, specPath: Path): Path {
   return candidate?.parent ?: Path.of(repoRoot)
 }
 
-private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {
-  FeatureTaskRuntimeRunEventSink.NONE
-} else {
+private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink =
   FeatureTaskRuntimeRunEventSink { event ->
-    state.liveStdout(event.runtimeProgressLine())
-  }
+    if (event is FeatureTaskRuntimeRunEvent.Warning) {
+      state.liveStderr(event.runtimeProgressLine())
+    } else if (monitor) {
+      state.liveStdout(event.runtimeProgressLine())
+    }
 }
 
 private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
@@ -916,6 +917,8 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
+  is FeatureTaskRuntimeRunEvent.Warning ->
+    "feature-task-runtime $workflowId: warning $category at $phaseId: $message; goal execution continues\n"
   is FeatureTaskRuntimeRunEvent.PlanDecompositionRequired ->
     "feature-task-runtime $workflowId: plan decomposition required score=$boundedScore: " +
       "${rationale.joinToString("; ")}\n"

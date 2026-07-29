@@ -35,6 +35,7 @@ data class GoalRunnerWorkflowProgress(
   val progressToken: String,
   val latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
   val latestGoalObservabilityEvent: GoalObservabilityProgressEvent? = null,
+  val latestFailureObservabilityEvent: GoalObservabilityProgressEvent? = null,
   // SKILL-64 Subtask 3 (AC20-AC23): latest declared progress event surfaced to
   // the supervisor for deterministic liveness; null when none recorded yet.
   val latestDeclaredProgressEvent: GoalProgressEvent? = null,
@@ -52,6 +53,8 @@ data class GoalRunnerObservabilityRecordRequest(
   val activitySummary: String,
   val sequenceNumber: Int,
   val timestamp: String,
+  val attemptCount: Int? = null,
+  val processExitStatus: Int? = null,
 ) {
   init {
     require(workflowId.isNotBlank()) { "workflowId is required." }
@@ -63,6 +66,7 @@ data class GoalRunnerObservabilityRecordRequest(
     require(activitySummary.isNotBlank()) { "activitySummary is required." }
     require(sequenceNumber >= 0) { "sequenceNumber must be non-negative." }
     require(timestamp.isNotBlank()) { "timestamp is required." }
+    attemptCount?.let { require(it > 0) { "attemptCount must be positive when provided." } }
   }
 }
 
@@ -135,6 +139,8 @@ data class GoalObservabilityProgressEvent(
   val activitySummary: String,
   val sequenceNumber: Int,
   val timestamp: String,
+  val attemptCount: Int? = null,
+  val processExitStatus: Int? = null,
 )
 
 /**

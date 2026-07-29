@@ -89,6 +89,7 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
+import skillbill.workflow.model.goalObservabilityHistoryFromArtifacts
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
@@ -1313,6 +1314,11 @@ class WorkflowGoalRunnerOutcomeStore(
       val observabilityEvent = runCatching {
         goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)
       }.getOrNull()
+      val latestFailureEvent = runCatching {
+        goalObservabilityHistoryFromArtifacts(artifacts, goalObservabilityEventValidator)
+          .events
+          .lastOrNull { event -> event.isFailureEvent() }
+      }.getOrNull()
       GoalRunnerWorkflowProgress(
         workflowId = record.workflowId,
         workflowStatus = record.workflowStatus,
@@ -1320,6 +1326,7 @@ class WorkflowGoalRunnerOutcomeStore(
         progressToken = record.progressToken(),
         latestDurableProgressEvent = progressEvent,
         latestGoalObservabilityEvent = observabilityEvent?.toProgressEvent(),
+        latestFailureObservabilityEvent = latestFailureEvent?.toProgressEvent(),
         latestDeclaredProgressEvent = declaredProgressEvent,
         latestLivenessSignal = observabilityEvent?.compactLivenessSummary()
           ?: progressEvent?.summary()
@@ -2265,7 +2272,13 @@ private fun skillbill.workflow.model.GoalObservabilityEvent.toProgressEvent(): G
     activitySummary = activitySummary,
     sequenceNumber = sequenceNumber,
     timestamp = timestamp,
+    attemptCount = attemptCount,
+    processExitStatus = processExitStatus,
   )
+
+private fun skillbill.workflow.model.GoalObservabilityEvent.isFailureEvent(): Boolean =
+  livenessClass in setOf("block", "failure") ||
+    (livenessClass == "worker_output_summary" && processExitStatus != null && processExitStatus != 0)
 
 private fun GoalRunnerSupervisionEvent.toArtifactsMap(): Map<String, Any?> = linkedMapOf(
   "phase" to phase,

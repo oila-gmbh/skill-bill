@@ -1,9 +1,11 @@
 package skillbill.cli.featuretask
 
+import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
+import com.github.ajalt.clikt.parameters.types.long
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.cli.core.CliRunState
@@ -25,6 +27,8 @@ data class RejectedOutputInspectRequest(
   val phaseId: String? = null,
   val attempt: Int? = null,
   val rawOutput: Boolean = false,
+  val offset: Long = 0,
+  val length: Long? = null,
 )
 
 data class RejectedOutputCleanupRequest(
@@ -45,7 +49,7 @@ class RejectedOutputInspectCommand(
           "raw output requires a selector resolving to exactly one diagnostic",
         )
       }
-      output.write(service.readRaw(matches.single().identity))
+      service.streamRaw(matches.single().identity, output, request.offset, request.length)
       return
     }
     matches.forEach { metadata ->
@@ -76,11 +80,25 @@ class RejectedOutputInspectCliCommand(
     "--raw-output",
     help = "Write the exact stored response bytes; the selector must resolve to one record.",
   ).flag(default = false)
+  private val offset by option("--offset", help = "Zero-based byte offset for --raw-output.").long()
+  private val length by option("--length", help = "Maximum bytes to stream for --raw-output.").long()
 
   override fun run() {
+    if (!rawOutput && (offset != null || length != null)) {
+      throw UsageError("--offset and --length require --raw-output.")
+    }
+    if (offset != null && requireNotNull(offset) < 0) throw UsageError("--offset must be non-negative.")
+    if (length != null && requireNotNull(length) < 0) throw UsageError("--length must be non-negative.")
     database.read(state.dbOverride) { unitOfWork ->
       RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
-        RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput),
+        RejectedOutputInspectRequest(
+          workflowId,
+          phaseId,
+          attempt,
+          rawOutput,
+          offset ?: 0,
+          length,
+        ),
         System.out,
       )
     }

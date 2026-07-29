@@ -15,6 +15,7 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 internal const val AGENT_RUN_OUTPUT_LIMIT_BYTES: Int = 1024 * 1024
+internal const val FEATURE_TASK_OUTPUT_PREVIEW_LIMIT_BYTES: Int = 8 * 1024 * 1024
 
 @Suppress("LongParameterList")
 data class AgentRunProcessRequest(
@@ -40,6 +41,7 @@ data class AgentRunProcessRequest(
    */
   val environmentPassthroughKeys: Set<String> = emptySet(),
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
+  val retainFullOutput: Boolean = false,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
@@ -130,6 +132,7 @@ data class AgentRunProcessResult(
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
   val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
     .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
+  val stdoutArtifactPath: String? = null,
 )
 
 interface AgentRunProcessRunner {

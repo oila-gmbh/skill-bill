@@ -24,6 +24,9 @@ import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -94,7 +97,12 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
       input = stdoutStream,
-      limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
+      limitBytes = if (request.retainFullOutput) {
+        FEATURE_TASK_OUTPUT_PREVIEW_LIMIT_BYTES
+      } else {
+        AGENT_RUN_OUTPUT_LIMIT_BYTES
+      },
+      spoolFullOutput = request.retainFullOutput,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
       onChunkRead = { chunk ->
@@ -109,6 +117,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     val stderr = CappedUtf8Drain(
       input = stderrStream,
       limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
+      spoolFullOutput = false,
       outputStream = AgentRunOutputStream.STDERR,
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
@@ -143,6 +152,10 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
         .onFailure { error -> if (error is InterruptedException) interrupted = true }
     }
     liveProcesses.remove(process)
+    if (!finished) {
+      stdout.closeInput()
+      stderr.closeInput()
+    }
     stdout.join()
     stderr.join()
     runCatching { ptyMasterCloseable?.close() }
@@ -169,6 +182,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       stdoutTruncated = stdout.wasTruncated(),
       stdoutByteSize = stdout.totalByteSize(),
       stdoutSha256 = stdout.sha256(),
+      stdoutArtifactPath = stdout.retainedArtifactPath(),
     )
   }
 
@@ -201,6 +215,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       stdoutTruncated = stdout.wasTruncated(),
       stdoutByteSize = stdout.totalByteSize(),
       stdoutSha256 = stdout.sha256(),
+      stdoutArtifactPath = stdout.retainedArtifactPath(),
     )
   }
 
@@ -789,58 +804,73 @@ private sealed interface ProcessStart {
 
 private class CappedUtf8Drain(
   private val input: InputStream,
-  private val limitBytes: Int?,
+  private val limitBytes: Int,
+  spoolFullOutput: Boolean,
   private val outputStream: AgentRunOutputStream,
   private val outputSink: AgentRunOutputSink,
   private val onChunkRead: (String) -> Unit,
 ) {
   private val output = ByteArrayOutputStream(
-    limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
+    limitBytes.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES),
   )
+  private val artifactPath: Path? = if (spoolFullOutput) {
+    Files.createTempFile("skillbill-agent-output-", ".bin").also { it.toFile().deleteOnExit() }
+  } else {
+    null
+  }
 
   @Volatile private var truncated = false
   private var totalByteSize = 0L
   private val digest = java.security.MessageDigest.getInstance("SHA-256")
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
-      input.use { stream ->
-        val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
-        var remaining = limitBytes
-        val decoder = StandardCharsets.UTF_8.newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE)
-        val carry = ByteBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES + UTF8_MAX_BYTES_PER_CODE_POINT)
-        val decoded = CharBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES)
-        while (true) {
-          val read = stream.read(buffer)
-          if (read == -1) {
-            break
-          }
-          totalByteSize += read
-          digest.update(buffer, 0, read)
-          // Whether the retention cap still has room at the START of this read: sink forwarding
-          // stops once the cap is exhausted, independent of onChunkRead's lifecycle decoding, which
-          // must keep observing output regardless of the cap to enforce provider budgets correctly.
-          val withinCap = remaining == null || remaining > 0
-          carry.put(buffer, 0, read)
-          carry.flip()
-          decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, false) }
-          carry.compact()
-
-          val retained = remaining?.coerceAtMost(read) ?: read
-          if (retained > 0) {
-            output.write(buffer, 0, retained)
-            remaining = remaining?.minus(retained)
-          }
-          if (retained < read) truncated = true
+      artifactPath?.let { path ->
+        Files.newOutputStream(path, StandardOpenOption.TRUNCATE_EXISTING).use { artifact ->
+          drainInput(artifact::write)
         }
-        val withinCap = remaining == null || remaining > 0
-        carry.flip()
-        decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, true) }
-        decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
-      }
+      } ?: drainInput { _, _, _ -> }
     } catch (_: IOException) {
       // Forced process teardown can close pipes while drain threads are blocked in read().
+    }
+  }
+
+  private fun drainInput(writeArtifact: (ByteArray, Int, Int) -> Unit) {
+    input.use { stream ->
+      val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
+      var remaining = limitBytes
+      val decoder = StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPLACE)
+        .onUnmappableCharacter(CodingErrorAction.REPLACE)
+      val carry = ByteBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES + UTF8_MAX_BYTES_PER_CODE_POINT)
+      val decoded = CharBuffer.allocate(DEFAULT_DRAIN_BUFFER_BYTES)
+      while (true) {
+        val read = stream.read(buffer)
+        if (read == -1) {
+          break
+        }
+        totalByteSize += read
+        digest.update(buffer, 0, read)
+        writeArtifact(buffer, 0, read)
+        // Whether the retention cap still has room at the START of this read: sink forwarding
+        // stops once the cap is exhausted, independent of onChunkRead's lifecycle decoding, which
+        // must keep observing output regardless of the cap to enforce provider budgets correctly.
+        val withinCap = remaining > 0
+        carry.put(buffer, 0, read)
+        carry.flip()
+        decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, false) }
+        carry.compact()
+
+        val retained = remaining.coerceAtMost(read)
+        if (retained > 0) {
+          output.write(buffer, 0, retained)
+          remaining -= retained
+        }
+        if (retained < read) truncated = true
+      }
+      val withinCap = remaining > 0
+      carry.flip()
+      decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, true) }
+      decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
     }
   }
 
@@ -863,7 +893,11 @@ private class CappedUtf8Drain(
   }
 
   fun join() {
-    worker.join(DRAIN_JOIN_TIMEOUT_MILLIS)
+    worker.join()
+  }
+
+  fun closeInput() {
+    runCatching { input.close() }
   }
 
   fun text(): String = String(output.toByteArray(), StandardCharsets.UTF_8)
@@ -876,6 +910,13 @@ private class CappedUtf8Drain(
   fun totalByteSize(): Long = totalByteSize
 
   fun sha256(): String = digest.digest().joinToString("") { "%02x".format(it) }
+
+  fun retainedArtifactPath(): String? {
+    val path = artifactPath ?: return null
+    if (truncated) return path.toString()
+    Files.deleteIfExists(path)
+    return null
+  }
 }
 
 private class OutputObservationTracker {
@@ -903,7 +944,6 @@ private fun Instant.toIsoUtc(): String = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 private const val DEFAULT_DRAIN_BUFFER_BYTES = 8192
 private const val UTF8_MAX_BYTES_PER_CODE_POINT = 4
 private const val INITIAL_OUTPUT_BUFFER_BYTES = DEFAULT_DRAIN_BUFFER_BYTES
-private const val DRAIN_JOIN_TIMEOUT_MILLIS = 1_000L
 private const val MIN_TIMEOUT_MILLIS = 1L
 private const val MIN_TIMEOUT_NANOS = 1L
 private const val PROGRESS_POLL_INTERVAL_MILLIS = 250L

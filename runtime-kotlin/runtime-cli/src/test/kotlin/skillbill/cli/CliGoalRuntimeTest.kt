@@ -457,6 +457,7 @@ class CliGoalRuntimeTest {
         "--repo-root",
         fixture.tempDir.toString(),
         "--diff-stat",
+        "--verbose",
         "--diff-hunk",
         "runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt",
         "--diff-hunk-max-hunks",
@@ -501,13 +502,10 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "latest_observability: phase=implement role=phase_subagent")
     assertContains(status.stdout, "liveness=durable_progress sequence=12")
     assertEquals(0, watch.exitCode, watch.stdout)
-    assertContains(watch.stdout, "watch_refresh: index=1")
-    assertContains(watch.stdout, "  current_subtask: 1")
-    assertContains(watch.stdout, "  current_step: implement")
-    assertContains(watch.stdout, "  observability:")
-    assertContains(watch.stdout, "    phase: implement")
-    assertContains(watch.stdout, "    worker_role: phase_subagent")
-    assertContains(watch.stdout, "    sequence: 12")
+    assertContains(watch.stdout, "current subtask: 1")
+    assertContains(watch.stdout, "current step: implement")
+    assertContains(watch.stdout, "phase: implement")
+    assertFalse(watch.stdout.contains("observability:"), watch.stdout)
     assertEquals(1, resumed.exitCode, resumed.stdout)
     assertEquals(2, launcher.requests.size)
     assertTrue(launcher.childLaunches.isEmpty())
@@ -539,7 +537,7 @@ class CliGoalWatchRuntimeTest {
         launcher = NoopGoalTestAgentRunLauncher,
         liveStdout = {
           resetOutput.append(it)
-          if (it.startsWith("watch_refresh:") && ++observed == 2) {
+          if (it.startsWith("status:") && ++observed == 2) {
             seedLiveWorkerLease(fixture, childWorkflowId)
           }
         },
@@ -548,9 +546,9 @@ class CliGoalWatchRuntimeTest {
 
     assertEquals("max_refreshes", reset.payload?.get("stop_reason"))
     assertEquals(4, reset.payload?.get("refresh_count"))
-    assertContains(resetOutput.toString(), "watch_refresh: index=3")
-    assertContains(resetOutput.toString(), "  status: ok")
-    assertContains(resetOutput.toString(), "  execution_liveness: live")
+    assertContains(resetOutput.toString(), "current step:")
+    assertContains(resetOutput.toString(), "status: running")
+    assertFalse(resetOutput.toString().contains("execution_liveness:"), resetOutput.toString())
 
     clearWorkerLease(fixture, childWorkflowId)
     val idleOutput = StringBuilder()
@@ -572,9 +570,9 @@ class CliGoalWatchRuntimeTest {
 
     assertEquals("goal_idle", idle.payload?.get("stop_reason"))
     assertEquals(3, idle.payload?.get("refresh_count"))
-    assertContains(idle.stdout, "watch_refresh: index=3")
-    assertContains(idle.stdout, "  status: ok")
-    assertContains(idle.stdout, "  execution_liveness: idle")
+    assertContains(idle.stdout, "current step:")
+    assertContains(idle.stdout, "status: running")
+    assertFalse(idle.stdout.contains("execution_liveness:"), idle.stdout)
     assertFalse(idleOutput.toString().contains("index=4"), idleOutput.toString())
   }
 
@@ -605,17 +603,11 @@ class CliGoalWatchRuntimeTest {
     )
 
     assertEquals(0, watch.exitCode, watch.stdout)
-    assertContains(liveStdout.toString(), "watch_refresh: index=1")
-    assertContains(liveStdout.toString(), "  planning:")
-    assertContains(liveStdout.toString(), "    state: not_started")
-    assertContains(liveStdout.toString(), "    shared_preplan_prepared: false")
-    assertContains(liveStdout.toString(), "    planned_subtasks: 0/1")
-    assertContains(liveStdout.toString(), "    current_subtask: 1")
-    assertEquals(false, watch.stdout.contains("watch_refresh: index=1"), watch.stdout)
-    assertContains(watch.stdout, "watch_refresh: index=2")
-    assertContains(watch.stdout, "    state: not_started")
-    assertContains(liveStdout.toString(), "watch_diff_stat: index=1 files_changed=1 insertions=2 deletions=1")
-    assertContains(watch.stdout, "watch_diff_stat: index=2 files_changed=1 insertions=2 deletions=1")
+    assertContains(liveStdout.toString(), "status: pending")
+    assertFalse(liveStdout.toString().contains("planning:"), liveStdout.toString())
+    assertContains(watch.stdout, "status: pending")
+    assertFalse(liveStdout.toString().contains("watch_diff_stat:"), liveStdout.toString())
+    assertFalse(watch.stdout.contains("watch_diff_stat:"), watch.stdout)
     assertEquals(null, watch.payload?.get("refreshes"))
     assertEquals(2, (watch.payload?.get("latest_refresh") as? Map<*, *>)?.get("refresh_index"))
     assertEquals(2, watch.payload?.get("refresh_count"))
@@ -677,8 +669,7 @@ class CliGoalWatchRuntimeTest {
     assertEquals(1, watch.exitCode, watch.stdout)
     assertEquals(1, watch.payload?.get("refresh_count"))
     assertEquals("not_found", watch.payload?.get("stop_reason"))
-    assertContains(watch.stdout, "watch_refresh: index=1")
-    assertContains(watch.stdout, "  status: not_found")
+    assertContains(watch.stdout, "status: not_found")
   }
 
   @Test
@@ -727,7 +718,7 @@ class CliGoalWatchRuntimeTest {
         launcher = launcher,
         liveStdout = {
           liveStdout.append(it)
-          if (it.startsWith("watch_refresh:") && ++refreshesObserved == 1) {
+          if (it.startsWith("status:") && ++refreshesObserved == 1) {
             completeRunningGoalChild(fixture, childWorkflowId)
           }
         },
@@ -737,9 +728,9 @@ class CliGoalWatchRuntimeTest {
     assertEquals(0, watch.exitCode, watch.stdout)
     assertEquals(2, watch.payload?.get("refresh_count"))
     assertEquals("goal_terminal", watch.payload?.get("stop_reason"))
-    assertContains(liveStdout.toString(), "watch_refresh: index=1")
-    assertContains(watch.stdout, "watch_refresh: index=2")
-    assertFalse(watch.stdout.contains("watch_refresh: index=3"), watch.stdout)
+    assertContains(liveStdout.toString(), "status: running")
+    assertContains(liveStdout.toString(), "status: complete")
+    assertContains(watch.stdout, "status: complete")
     assertEquals(emptyList(), launcher.requests)
   }
 
@@ -773,7 +764,7 @@ class CliGoalWatchRuntimeTest {
     assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
     assertEquals(1, latest?.get("blocked_count"))
     assertEquals(1, latest?.get("pending_count"))
-    assertContains(watch.stdout, "  blocked_reason: forced failure")
+    assertEquals("forced failure", latest?.get("blocked_reason"))
     assertEquals(launchCount, launcher.requests.size)
   }
 
@@ -798,7 +789,7 @@ class CliGoalWatchRuntimeTest {
     )
 
     assertEquals(0, watch.exitCode, watch.stdout)
-    assertContains(watch.stdout, "watch_refresh: index=1")
+    assertContains(watch.stdout, "status: complete")
     assertFalse(watch.stdout.contains("  planning:"), watch.stdout)
   }
 
@@ -821,14 +812,14 @@ class CliGoalWatchRuntimeTest {
         "--interval-seconds",
         "0",
         "--max-refreshes",
-        "3",
+        "4",
         "--suppress-unchanged",
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,
         liveStdout = {
           suppressedOutput.append(it)
-          if (it.startsWith("watch_refresh:") && ++suppressedRefreshesObserved == 1) {
+          if (it.startsWith("status:") && ++suppressedRefreshesObserved == 1) {
             advanceRunningGoalChildToReview(fixture, childWorkflowId)
           }
         },
@@ -844,7 +835,7 @@ class CliGoalWatchRuntimeTest {
         "--interval-seconds",
         "0",
         "--max-refreshes",
-        "3",
+        "4",
       ),
       fixture.context(
         launcher = NoopGoalTestAgentRunLauncher,
@@ -861,20 +852,20 @@ class CliGoalWatchRuntimeTest {
     suppressed: CliExecutionResult,
     shown: CliExecutionResult,
   ) {
-    assertEquals(3, suppressedOutput.lines().count { it.startsWith("watch_refresh:") })
+    assertEquals(3, suppressedOutput.lines().count { it.startsWith("status:") })
     assertContains(
       suppressedOutput.toString(),
-      "watch_refresh: index=1\n  status: ok\n  current_subtask: 1\n  current_step: implement",
+      "status: running\ncurrent subtask: 1\ncurrent step: implement\nphase: implement",
     )
     assertContains(
       suppressedOutput.toString(),
-      "watch_refresh: index=2\n  status: ok\n  current_subtask: 1\n  current_step: review",
+      "status: running\ncurrent subtask: 1\ncurrent step: review\nphase: review",
     )
-    assertEquals(3, shownOutput.lines().count { it.startsWith("watch_refresh:") })
-    assertContains(suppressed.stdout, "watch_refresh: index=3")
-    assertContains(shown.stdout, "watch_refresh: index=3")
-    assertEquals(3, suppressed.payload?.get("refresh_count"))
-    assertEquals(3, shown.payload?.get("refresh_count"))
+    assertEquals(4, shownOutput.lines().count { it.startsWith("status:") })
+    assertContains(suppressed.stdout, "current step: review")
+    assertContains(shown.stdout, "current step: review")
+    assertEquals(4, suppressed.payload?.get("refresh_count"))
+    assertEquals(4, shown.payload?.get("refresh_count"))
   }
 }
 
@@ -1013,7 +1004,7 @@ class CliGoalExecutionOptionsTest {
     )
 
     assertEquals(0, status.exitCode, status.stdout)
-    assertContains(status.stdout, "status: ok")
+    assertContains(status.stdout, "status: pending")
     assertContains(status.stdout, "current_subtask: 1")
     DriverManager.getConnection("jdbc:sqlite:$recoveredDb").use { connection ->
       connection.prepareStatement("SELECT COUNT(*) FROM feature_task_workflows WHERE issue_key = ?").use { statement ->

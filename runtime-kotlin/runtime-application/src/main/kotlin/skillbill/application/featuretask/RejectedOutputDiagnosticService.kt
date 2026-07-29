@@ -10,6 +10,8 @@ import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.io.IOException
+import java.io.OutputStream
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
@@ -29,13 +31,16 @@ class RejectedOutputDiagnosticService(
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
     val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt)
-    existing(identity)?.let { record ->
+    repository.readOrNull(identity)?.let { record ->
       if (!record.matches(request)) throw RejectedOutputDiagnosticError.Conflict(identity)
       metadataValidator.validate(record.metadata)
       return record.metadata
     }
     cleanup()
-    val oversized = request.truncated || request.observedByteSize > config.maximumPayloadBytes
+    if (request.truncated && request.rawResponsePath == null) {
+      throw RejectedOutputDiagnosticError.Persistence("record-incomplete-capture")
+    }
+    val payloadPath = request.rawResponsePath?.let(Path::of)
     val metadata = RejectedOutputDiagnostic(
       identity = identity,
       workflowId = request.workflowId,
@@ -49,19 +54,25 @@ class RejectedOutputDiagnosticService(
       recordedAt = clock.instant(),
       byteSize = request.observedByteSize,
       sha256 = request.observedSha256,
-      lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
+      lifecycle = RejectedOutputLifecycle.STORED,
     )
     metadataValidator.validate(metadata)
     applyRestrictivePermissions()
-    return repository.insert(
-      RejectedOutputDiagnosticRecord(metadata, request.rawResponse.takeUnless { oversized }),
-    ).metadata
+    val record = RejectedOutputDiagnosticRecord(metadata, request.rawResponse.takeUnless { request.truncated })
+    return payloadPath?.let { repository.filePayloads.insert(record, it) }?.metadata
+      ?: repository.insert(record).metadata
   }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence) {
     applyRestrictivePermissions()
     cleanup()
-    repository.retainProducerOutput(evidence)
+    repository.producerOutputs.retain(evidence)
+  }
+
+  fun retainProducerOutput(evidence: ProducerOutputEvidence, payloadPath: Path) {
+    applyRestrictivePermissions()
+    cleanup()
+    repository.producerOutputs.retain(evidence, payloadPath)
   }
 
   private fun applyRestrictivePermissions() {
@@ -81,17 +92,24 @@ class RejectedOutputDiagnosticService(
   fun inspect(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
     repository.select(validate(selector).also { cleanup() }).onEach(metadataValidator::validate)
 
-  fun readRaw(identity: String): ByteArray {
+  fun streamRaw(identity: String, output: OutputStream, offset: Long = 0, length: Long? = null): Long {
+    if (offset < 0) throw RejectedOutputDiagnosticError.InvalidRequest("offset must be non-negative")
+    if (length != null && length < 0) {
+      throw RejectedOutputDiagnosticError.InvalidRequest("length must be non-negative when present")
+    }
     cleanup()
-    val record = repository.read(identity)
-    metadataValidator.validate(record.metadata)
-    ensureReadable(record.metadata)
-    return verifiedPayload(record)
+    val preliminaryMetadata = repository.payloadReader.metadata(identity)
+    metadataValidator.validate(preliminaryMetadata)
+    ensureReadable(preliminaryMetadata)
+    val read = repository.payloadReader.stream(identity, offset, length, output)
+    metadataValidator.validate(read.metadata)
+    ensureReadable(read.metadata)
+    return read.byteCount
   }
 
   fun cleanup(now: Instant = clock.instant()): Int {
     val cutoff = now.minus(config.retention)
-    return repository.markExpired(cutoff) + repository.deleteProducerOutputsBefore(cutoff)
+    return repository.markExpired(cutoff) + repository.producerOutputs.deleteBefore(cutoff)
   }
 
   fun delete(selector: RejectedOutputDiagnosticSelector): Int = repository.delete(validate(selector))
@@ -100,12 +118,6 @@ class RejectedOutputDiagnosticService(
     requestValidationIssue(request)?.let { reason ->
       throw RejectedOutputDiagnosticError.InvalidRequest(reason)
     }
-  }
-
-  private fun existing(identity: String): RejectedOutputDiagnosticRecord? = try {
-    repository.read(identity)
-  } catch (_: RejectedOutputDiagnosticError.Absent) {
-    null
   }
 
   private fun validate(selector: RejectedOutputDiagnosticSelector): RejectedOutputDiagnosticSelector {
@@ -128,14 +140,10 @@ class RejectedOutputDiagnosticService(
   }
 }
 
-private fun verifiedPayload(record: RejectedOutputDiagnosticRecord): ByteArray {
-  val payload = record.payload ?: throw RejectedOutputDiagnosticError.Corrupt(record.metadata.identity)
-  if (payload.size.toLong() != record.metadata.byteSize ||
-    RejectedOutputDiagnosticService.sha256(payload) != record.metadata.sha256
-  ) {
-    throw RejectedOutputDiagnosticError.Corrupt(record.metadata.identity)
-  }
-  return payload
+private fun RejectedOutputDiagnosticRepository.readOrNull(identity: String): RejectedOutputDiagnosticRecord? = try {
+  read(identity)
+} catch (_: RejectedOutputDiagnosticError.Absent) {
+  null
 }
 
 private fun requestValidationIssue(request: RejectedOutputDiagnosticRequest): String? {

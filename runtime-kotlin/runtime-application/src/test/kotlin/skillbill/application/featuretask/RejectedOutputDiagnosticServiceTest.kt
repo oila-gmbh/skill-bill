@@ -8,7 +8,11 @@ import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import java.io.ByteArrayOutputStream
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -16,6 +20,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
 
 class RejectedOutputDiagnosticServiceTest {
   private val now = Instant.parse("2026-07-28T10:00:00Z")
@@ -32,7 +37,7 @@ class RejectedOutputDiagnosticServiceTest {
 
     assertEquals(first.identity, second.identity)
     assertEquals(bytes.size.toLong(), first.byteSize)
-    assertContentEquals(bytes, service.readRaw(first.identity))
+    assertContentEquals(bytes, service.readBytes(first.identity))
     assertEquals(1, repository.records.size)
   }
 
@@ -46,28 +51,50 @@ class RejectedOutputDiagnosticServiceTest {
   }
 
   @Test
-  fun `ceiling stores tombstone and read reports oversized`() {
-    val service = service(MemoryRepository(), maximumPayloadBytes = 1)
-    val metadata = service.record(request(byteArrayOf(1, 2)))
+  fun `payload size does not discard exact bytes`() {
+    val service = service(MemoryRepository())
+    val bytes = ByteArray(1_387_312) { (it % 251).toByte() }
+    val metadata = service.record(request(bytes))
 
-    assertEquals(RejectedOutputLifecycle.OVERSIZED, metadata.lifecycle)
-    assertFailsWith<RejectedOutputDiagnosticError.Oversized> { service.readRaw(metadata.identity) }
+    assertEquals(RejectedOutputLifecycle.STORED, metadata.lifecycle)
+    assertContentEquals(bytes, service.readBytes(metadata.identity))
   }
 
   @Test
-  fun `truncated capture stores deterministic full stream oversized evidence`() {
+  fun `an incomplete upstream capture blocks instead of storing a tombstone`() {
+    val repository = MemoryRepository()
+    val service = service(repository)
+    val error = assertFailsWith<RejectedOutputDiagnosticError.Persistence> {
+      service.record(
+        request(byteArrayOf(1)).copy(
+          observedByteSize = 1_048_577,
+          observedSha256 = "a".repeat(64),
+          truncated = true,
+        ),
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("record-incomplete-capture"))
+    assertTrue(repository.records.isEmpty())
+  }
+
+  @Test
+  fun `a complete file-backed capture persists exact bytes`() {
+    val bytes = ByteArray(1_387_312) { (it % 251).toByte() }
+    val path = Files.createTempFile("rejected-output-source-", ".bin")
+    Files.write(path, bytes)
     val service = service(MemoryRepository())
+
     val metadata = service.record(
-      request(byteArrayOf(1)).copy(
-        observedByteSize = 1_048_577,
-        observedSha256 = "a".repeat(64),
+      request(bytes.copyOf(32)).copy(
+        observedByteSize = bytes.size.toLong(),
+        observedSha256 = RejectedOutputDiagnosticService.sha256(bytes),
         truncated = true,
+        rawResponsePath = path.toString(),
       ),
     )
 
-    assertEquals(RejectedOutputLifecycle.OVERSIZED, metadata.lifecycle)
-    assertEquals(1_048_577, metadata.byteSize)
-    assertEquals("a".repeat(64), metadata.sha256)
+    assertContentEquals(bytes, service.readBytes(metadata.identity))
+    Files.deleteIfExists(path)
   }
 
   @Test
@@ -112,7 +139,7 @@ class RejectedOutputDiagnosticServiceTest {
 
     assertEquals(1, permissionCalls)
     assertEquals(1, repository.expiryCalls)
-    assertEquals(1, repository.producerOutputs)
+    assertEquals(1, repository.producerOutputRetentions)
   }
 
   @Test
@@ -124,7 +151,7 @@ class RejectedOutputDiagnosticServiceTest {
       metadata.identity,
     ).copy(payload = byteArrayOf(9))
 
-    assertFailsWith<RejectedOutputDiagnosticError.Corrupt> { service.readRaw(metadata.identity) }
+    assertFailsWith<RejectedOutputDiagnosticError.Corrupt> { service.readBytes(metadata.identity) }
   }
 
   @Test
@@ -136,13 +163,13 @@ class RejectedOutputDiagnosticServiceTest {
       metadata = metadata.copy(sha256 = "not-a-digest"),
     )
 
-    assertFailsWith<InvalidRejectedOutputDiagnosticSchemaError> { service.readRaw(metadata.identity) }
+    assertFailsWith<InvalidRejectedOutputDiagnosticSchemaError> { service.readBytes(metadata.identity) }
   }
 
   @Test
   fun `invalid request and configuration failures are typed`() {
     assertFailsWith<RejectedOutputDiagnosticError.InvalidConfiguration> {
-      RejectedOutputDiagnosticConfig(maximumPayloadBytes = -1)
+      RejectedOutputDiagnosticConfig(retention = Duration.ofDays(-1))
     }
     assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
       service(MemoryRepository()).record(request(byteArrayOf(1)).copy(workflowId = ""))
@@ -152,7 +179,7 @@ class RejectedOutputDiagnosticServiceTest {
     }
   }
 
-  private fun service(repository: MemoryRepository, maximumPayloadBytes: Long = 100) = RejectedOutputDiagnosticService(
+  private fun service(repository: MemoryRepository) = RejectedOutputDiagnosticService(
     repository,
     permissions = { },
     metadataValidator = RejectedOutputDiagnosticMetadataValidator { metadata ->
@@ -160,7 +187,7 @@ class RejectedOutputDiagnosticServiceTest {
         throw InvalidRejectedOutputDiagnosticSchemaError("sha256 is invalid")
       }
     },
-    config = RejectedOutputDiagnosticConfig(maximumPayloadBytes = maximumPayloadBytes),
+    config = RejectedOutputDiagnosticConfig(),
     clock = Clock.fixed(now, ZoneOffset.UTC),
   )
 
@@ -177,10 +204,22 @@ class RejectedOutputDiagnosticServiceTest {
   )
 }
 
+private fun RejectedOutputDiagnosticService.readBytes(identity: String): ByteArray =
+  ByteArrayOutputStream().also { streamRaw(identity, it) }.toByteArray()
+
 private class MemoryRepository : RejectedOutputDiagnosticRepository {
   val records = linkedMapOf<String, RejectedOutputDiagnosticRecord>()
   var expiryCalls: Int = 0
-  var producerOutputs: Int = 0
+  var producerOutputRetentions: Int = 0
+  override val filePayloads = object : skillbill.ports.persistence.RejectedOutputFilePayloadRepository {
+    override fun insert(record: RejectedOutputDiagnosticRecord, payloadPath: Path): RejectedOutputDiagnosticRecord =
+      insert(record.copy(payload = Files.readAllBytes(payloadPath)))
+  }
+  override val producerOutputs = object : skillbill.ports.persistence.ProducerOutputEvidenceRepository {
+    override fun retain(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+      producerOutputRetentions += 1
+    }
+  }
 
   override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord =
     records.getOrPut(record.metadata.identity) { record }
@@ -201,8 +240,4 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
   }
 
   override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
-
-  override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
-    producerOutputs += 1
-  }
 }

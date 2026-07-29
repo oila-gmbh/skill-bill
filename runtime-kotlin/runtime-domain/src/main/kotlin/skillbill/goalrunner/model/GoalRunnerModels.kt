@@ -274,11 +274,13 @@ data class GoalPlanningStatusSnapshot(
 
 data class GoalRunnerStatusProjection(
   val issueKey: String,
+  val goalStatus: String,
   val completeCount: Int,
   val pendingCount: Int,
   val blockedCount: Int,
   val currentSubtaskId: Int?,
   val currentStep: String?,
+  val snapshotTimestamp: String?,
   val activeAgent: String?,
   val blockedReason: String? = null,
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
@@ -286,6 +288,7 @@ data class GoalRunnerStatusProjection(
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
+  val lastFailure: GoalRunnerStatusFailure? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
   val blockedAttemptCount: Int = 0,
@@ -296,6 +299,22 @@ data class GoalRunnerStatusProjection(
   val findingsInScope: Int? = null,
   val reviewGeneration: GoalSubtaskReviewSummary? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+)
+
+data class GoalRunnerStatusFailure(
+  val phase: String,
+  val attempt: Int?,
+  val timestamp: String,
+  val current: Boolean,
+  val summary: String,
+)
+
+data class GoalRunnerStatusEvent(
+  val workflowPhase: String,
+  val activitySummary: String,
+  val sequenceNumber: Int,
+  val timestamp: String,
+  val attemptCount: Int? = null,
 )
 
 /**
@@ -320,9 +339,13 @@ data class GoalRunnerStatusProjectionExtras(
    * the whole run; this reports what the child is actually doing.
    */
   val currentWorkflowStatus: String? = null,
+  val snapshotTimestamp: String? = null,
   val latestLivenessSignal: String? = null,
   @OpenBoundaryMap("Compact latest goal observability event passthrough for goal status rendering")
   val latestObservabilityEvent: Map<String, Any?>? = null,
+  val latestFailureEvent: GoalRunnerStatusEvent? = null,
+  val latestFailureAttempt: Int? = null,
+  val currentAttempt: Int? = null,
   val requestedDiffStat: GoalObservabilityDiffStat? = null,
   val selectedDiffHunks: GoalObservabilitySelectedDiffHunks? = null,
   val blockedAttemptCount: Int = 0,
@@ -353,17 +376,23 @@ object GoalRunnerStatusProjector {
     // Only goal_runner_supervisor events are persisted; the per-tick foreground heartbeats are console-only.
     // So a block recorded when a prior run stopped stays the newest stored event while a relaunched child
     // runs, and rendering it would contradict the live workflow status.
-    val staleBlockSignal = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES &&
-      extras.latestObservabilityEvent?.get("liveness_class") == "block"
+    val authoritativeStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
+      ?: currentSubtask?.lastResumableStep
+    val signals = statusSignals(extras, authoritativeStep)
+    val completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" }
+    val pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") }
+    val blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" }
     return GoalRunnerStatusProjection(
       issueKey = manifest.issueKey,
-      completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
-      pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
-      blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
+      goalStatus = goalStatus(extras.currentWorkflowStatus, completeCount, pendingCount, blockedCount),
+      completeCount = completeCount,
+      pendingCount = pendingCount,
+      blockedCount = blockedCount,
       currentSubtaskId = currentSubtask?.id,
       currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
+      snapshotTimestamp = extras.snapshotTimestamp,
       blockedReason = currentSubtask
         ?.takeIf { statusOf(it) == "blocked" }
         ?.blockedReason
@@ -371,8 +400,9 @@ object GoalRunnerStatusProjector {
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       executionLiveness = extras.executionLiveness,
       planning = extras.planning,
-      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleBlockSignal },
-      latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleBlockSignal },
+      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && signals.current },
+      latestObservabilityEvent = signals.event?.takeIf { signals.current },
+      lastFailure = signals.failure,
       requestedDiffStat = extras.requestedDiffStat,
       selectedDiffHunks = extras.selectedDiffHunks,
       blockedAttemptCount = extras.blockedAttemptCount,
@@ -387,4 +417,48 @@ object GoalRunnerStatusProjector {
   }
 
   private val LIVE_WORKFLOW_STATUSES = setOf("running", "pending")
+
+  private data class StatusSignals(
+    val event: Map<String, Any?>?,
+    val current: Boolean,
+    val failure: GoalRunnerStatusFailure?,
+  )
+
+  private fun statusSignals(extras: GoalRunnerStatusProjectionExtras, authoritativeStep: String?): StatusSignals {
+    val event = extras.latestObservabilityEvent
+    val phase = event?.get("workflow_phase")?.toString()
+    val stalePhase = phase != null && authoritativeStep != null && phase != authoritativeStep
+    val staleBlock = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES &&
+      event?.get("liveness_class") == "block"
+    val current = !stalePhase && !staleBlock
+    val failureEvent = extras.latestFailureEvent
+    val failurePhase = failureEvent?.workflowPhase
+    val failureSequence = failureEvent?.sequenceNumber
+    val latestSequence = (event?.get("sequence_number") as? Number)?.toInt()
+    val failureCurrent = failurePhase == authoritativeStep &&
+      (extras.currentAttempt == null || extras.latestFailureAttempt == extras.currentAttempt) &&
+      (latestSequence == null || failureSequence == null || failureSequence >= latestSequence)
+    val failure = failureEvent?.let {
+      GoalRunnerStatusFailure(
+        phase = failurePhase.orEmpty(),
+        attempt = it.attemptCount ?: extras.latestFailureAttempt,
+        timestamp = it.timestamp,
+        current = failureCurrent,
+        summary = it.activitySummary,
+      )
+    }
+    return StatusSignals(event, current, failure)
+  }
+
+  private fun goalStatus(
+    currentWorkflowStatus: String?,
+    completeCount: Int,
+    pendingCount: Int,
+    blockedCount: Int,
+  ): String = when {
+    blockedCount > 0 -> "blocked"
+    pendingCount == 0 && completeCount > 0 -> "complete"
+    currentWorkflowStatus in LIVE_WORKFLOW_STATUSES -> "running"
+    else -> "pending"
+  }
 }

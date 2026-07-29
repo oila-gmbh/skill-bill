@@ -361,6 +361,10 @@ class GoalWatchCommand(
     "--suppress-unchanged",
     help = "Print only changed refreshes. The first and loop-ending refresh are always shown.",
   ).flag(default = false)
+  private val verbose by option(
+    "--verbose",
+    help = "Include liveness, observability, planning, counters, and requested diff diagnostics.",
+  ).flag(default = false)
 
   override fun run() {
     require(intervalSeconds >= 0) { "--interval-seconds must be non-negative." }
@@ -387,9 +391,10 @@ class GoalWatchCommand(
         maxRefreshes = maxRefreshes,
         idleStop = consecutiveIdleRefreshes >= IDLE_STOP_CONSECUTIVE_REFRESHES,
       ) ?: ""
-      val renderedRefresh = goalWatchRefreshText(refresh)
+      val renderedRefresh = goalWatchRefreshText(refresh, verbose)
       val normalizedRefresh = goalWatchRefreshText(
         refresh.toMutableMap().apply { this["refresh_index"] = "<refresh_index>" },
+        verbose,
       )
       val endsLoop = stopReason.isNotEmpty()
       val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
@@ -413,7 +418,7 @@ class GoalWatchCommand(
       "latest_refresh" to latestRefresh,
       "stop_reason" to stopReason,
     )
-    state.completeText(goalWatchText(payload), payload, exitCode = payload.goalStatusExitCode())
+    state.completeText(goalWatchText(payload, verbose), payload, exitCode = payload.goalStatusExitCode())
   }
 
   private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
@@ -862,71 +867,108 @@ private fun unaddressedFindingsLine(payload: Map<String, Any?>): String? {
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
 
 private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
-  linkedMapOf<String, Any?>(
-    "status" to "ok",
-    "issue_key" to it.issueKey,
-    "complete_count" to it.completeCount,
-    "pending_count" to it.pendingCount,
-    "blocked_count" to it.blockedCount,
-    "current_subtask" to it.currentSubtaskId,
-    "current_step" to it.currentStep,
-    "blocked_reason" to it.blockedReason,
-    "active_agent" to it.activeAgent,
-    "execution_liveness" to it.executionLiveness.wireValue,
-    "latest_liveness_signal" to it.latestLivenessSignal,
-  ).apply {
-    it.planning?.let { planning ->
-      put(
-        "planning",
-        linkedMapOf(
-          "state" to planning.state.wireValue,
-          "shared_preplan_prepared" to planning.sharedPreplanPrepared,
-          "planned_subtask_count" to planning.plannedSubtaskCount,
-          "total_subtask_count" to planning.totalSubtaskCount,
-          "current_planning_subtask" to planning.currentPlanningSubtaskId,
-          "reason" to planning.reason,
-        ),
-      )
-    }
+  it.baseGoalStatusCliMap().apply {
+    putGoalFailureCliEntry(it)
+    putGoalPlanningCliEntry(it)
     it.latestObservabilityEvent?.let { event -> put("latest_observability_event", event) }
     it.requestedDiffStat?.let { stat -> put("diff_stat", stat.toGoalDiffStatCliMap()) }
     it.selectedDiffHunks?.let { hunks -> put("selected_diff_hunks", hunks.toGoalSelectedDiffHunksCliMap()) }
     putGoalLedgerCliEntries(it)
-    it.reviewGeneration?.let { review ->
-      put(
-        "review_generation",
-        mapOf(
-          "generation_id" to review.currentGenerationId,
-          "pass" to review.currentPass,
-          "carried_blocker_count" to review.carriedBlockerCount,
-          "new_blocker_count" to review.newBlockerCount,
-          "terminal_disposition_counts" to review.terminalDispositionCounts,
-        ),
-      )
-    }
+    putGoalReviewGenerationCliEntry(it)
     it.outOfBandAcceptances.toGoalAcceptanceCliList()?.let { list -> put("out_of_band_acceptances", list) }
   }
 } ?: linkedMapOf(
   "status" to "not_found",
+  "goal_status" to "not_found",
   "issue_key" to issueKey,
   "complete_count" to 0,
   "pending_count" to 0,
   "blocked_count" to 0,
   "current_subtask" to null,
   "current_step" to null,
+  "timestamp" to null,
   "active_agent" to null,
   "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
   "latest_liveness_signal" to null,
 )
 
+private fun GoalRunnerStatusProjection.baseGoalStatusCliMap(): LinkedHashMap<String, Any?> = linkedMapOf(
+  "status" to "ok",
+  "goal_status" to goalStatus,
+  "issue_key" to issueKey,
+  "complete_count" to completeCount,
+  "pending_count" to pendingCount,
+  "blocked_count" to blockedCount,
+  "current_subtask" to currentSubtaskId,
+  "current_step" to currentStep,
+  "timestamp" to snapshotTimestamp,
+  "blocked_reason" to blockedReason,
+  "active_agent" to activeAgent,
+  "execution_liveness" to executionLiveness.wireValue,
+  "latest_liveness_signal" to latestLivenessSignal,
+)
+
+private fun MutableMap<String, Any?>.putGoalFailureCliEntry(projection: GoalRunnerStatusProjection) {
+  projection.lastFailure?.let { failure ->
+    put(
+      "last_failure",
+      linkedMapOf(
+        "phase" to failure.phase,
+        "attempt" to failure.attempt,
+        "timestamp" to failure.timestamp,
+        "current" to failure.current,
+        "summary" to failure.summary,
+      ),
+    )
+  }
+}
+
+private fun MutableMap<String, Any?>.putGoalPlanningCliEntry(projection: GoalRunnerStatusProjection) {
+  projection.planning?.let { planning ->
+    put(
+      "planning",
+      linkedMapOf(
+        "state" to planning.state.wireValue,
+        "shared_preplan_prepared" to planning.sharedPreplanPrepared,
+        "planned_subtask_count" to planning.plannedSubtaskCount,
+        "total_subtask_count" to planning.totalSubtaskCount,
+        "current_planning_subtask" to planning.currentPlanningSubtaskId,
+        "reason" to planning.reason,
+      ),
+    )
+  }
+}
+
+private fun MutableMap<String, Any?>.putGoalReviewGenerationCliEntry(projection: GoalRunnerStatusProjection) {
+  projection.reviewGeneration?.let { review ->
+    put(
+      "review_generation",
+      mapOf(
+        "generation_id" to review.currentGenerationId,
+        "pass" to review.currentPass,
+        "carried_blocker_count" to review.carriedBlockerCount,
+        "new_blocker_count" to review.newBlockerCount,
+        "terminal_disposition_counts" to review.terminalDispositionCounts,
+      ),
+    )
+  }
+}
+
 private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
   if (projection.blockedAttemptCount > 0) put("blocked_attempt_count", projection.blockedAttemptCount)
   if (projection.supervisorKillCount > 0) put("supervisor_kill_count", projection.supervisorKillCount)
-  if (projection.phaseAttemptCounts.isNotEmpty()) put("phase_attempt_counts", projection.phaseAttemptCounts)
+  if (projection.phaseAttemptCounts.isNotEmpty()) {
+    put("phase_launch_counts", projection.phaseAttemptCounts)
+    put("phase_attempt_counts", projection.phaseAttemptCounts)
+  }
   if (projection.cumulativeFixIterations.isNotEmpty()) {
+    put("completed_loop_counts", projection.cumulativeFixIterations)
     put("cumulative_fix_iterations", projection.cumulativeFixIterations)
   }
-  if (projection.reAttemptCauseCounts.isNotEmpty()) put("re_attempt_causes", projection.reAttemptCauseCounts)
+  if (projection.reAttemptCauseCounts.isNotEmpty()) {
+    put("retry_cause_counts", projection.reAttemptCauseCounts)
+    put("re_attempt_causes", projection.reAttemptCauseCounts)
+  }
   projection.findingsInScope?.let { count -> put("findings_in_scope", count) }
 }
 
@@ -943,7 +985,7 @@ private fun List<GoalRunnerAcceptedSubtask>.toGoalAcceptanceCliList(): List<Map<
 
 private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("status: ${payload["goal_status"] ?: payload["status"]}")
   appendLine("complete: ${payload["complete_count"]}")
   appendLine("pending: ${payload["pending_count"]}")
   appendLine("blocked: ${payload["blocked_count"]}")
@@ -953,6 +995,13 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("execution_liveness: ${payload["execution_liveness"]}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  (payload["last_failure"] as? Map<*, *>)?.let { failure ->
+    appendLine(
+      "last_failure: phase=${failure["phase"]} attempt=${failure["attempt"] ?: "unknown"} " +
+        "timestamp=${failure["timestamp"]} current=${failure["current"]}",
+    )
+    appendLine("last_failure_summary: ${failure["summary"]}")
+  }
   (payload["planning"] as? Map<*, *>)?.let { planning ->
     appendLine(
       "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
@@ -985,44 +1034,73 @@ private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshe
     else -> null
   }
 
-private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
+private fun goalWatchText(payload: Map<String, Any?>, verbose: Boolean = false): String = buildString {
+  val latestRefresh = payload["latest_refresh"] as? Map<*, *> ?: return@buildString
   appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
+  appendLine("status: ${latestRefresh["goal_status"] ?: payload["status"]}")
   appendLine("refresh_count: ${payload["refresh_count"]}")
   appendLine("interval_seconds: ${payload["interval_seconds"]}")
   appendLine("stop_reason: ${payload["stop_reason"]}")
-  val latestRefresh = payload["latest_refresh"] as? Map<*, *> ?: return@buildString
-  append(goalWatchRefreshText(latestRefresh))
+  append(goalWatchRefreshText(latestRefresh, verbose))
 }
 
-private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
-  appendLine("watch_refresh: index=${refresh["refresh_index"]}")
-  appendLine("  status: ${refresh["status"]}")
-  appendLine("  current_subtask: ${refresh["current_subtask"] ?: "none"}")
-  appendLine("  current_step: ${refresh["current_step"] ?: "none"}")
+private fun goalWatchRefreshText(refresh: Map<*, *>, verbose: Boolean = false): String = buildString {
+  appendLine("status: ${refresh["goal_status"] ?: refresh["status"]}")
+  appendLine("current subtask: ${refresh["current_subtask"] ?: "none"}")
+  appendLine("current step: ${refresh["current_step"] ?: "none"}")
+  appendLine("phase: ${refresh["current_step"] ?: "none"}")
+  appendLine("timestamp: ${refresh["timestamp"] ?: "unknown"}")
+  if (!verbose) {
+    appendLine()
+    return@buildString
+  }
+  appendVerboseGoalWatchRefresh(refresh)
+}
+
+private fun StringBuilder.appendVerboseGoalWatchRefresh(refresh: Map<*, *>) {
+  appendLine("diagnostics:")
+  appendLine("  refresh_index: ${refresh["refresh_index"]}")
   appendLine("  execution_liveness: ${refresh["execution_liveness"] ?: "unknown"}")
   appendLine("  latest_liveness_signal: ${refresh["latest_liveness_signal"] ?: "none"}")
-  refresh["blocked_reason"]?.let {
-    appendLine("  blocked_reason: $it")
-  }
-  (refresh["planning"] as? Map<*, *>)?.takeIf(Map<*, *>::isPlanningOngoing)?.let { planning ->
-    appendLine("  planning:")
-    appendLine("    state: ${planning["state"]}")
-    appendLine("    shared_preplan_prepared: ${planning["shared_preplan_prepared"]}")
-    appendLine("    planned_subtasks: ${planning["planned_subtask_count"]}/${planning["total_subtask_count"]}")
-    appendLine("    current_subtask: ${planning["current_planning_subtask"] ?: "none"}")
-    planning["reason"]?.let {
-      appendLine("    reason: $it")
-    }
-  }
-  (refresh["latest_observability_event"] as? Map<*, *>)?.let { event ->
-    appendLine("  observability:")
-    appendLine("    phase: ${event["workflow_phase"]}")
-    appendLine("    worker_role: ${event["worker_role"]}")
-    appendLine("    liveness: ${event["liveness_class"]}")
-    appendLine("    sequence: ${event["sequence_number"]}")
-  }
+  refresh["blocked_reason"]?.let { appendLine("  blocked_reason: $it") }
+  appendGoalWatchPlanning(refresh["planning"] as? Map<*, *>)
+  appendGoalWatchObservability(refresh["latest_observability_event"] as? Map<*, *>)
+  appendGoalWatchFailure(refresh["last_failure"] as? Map<*, *>)
+  refresh["phase_launch_counts"]?.let { appendLine("  phase_launch_counts: $it") }
+  refresh["completed_loop_counts"]?.let { appendLine("  completed_loop_counts: $it") }
+  refresh["retry_cause_counts"]?.let { appendLine("  retry_cause_counts: $it") }
   appendDiffStatusLines(refresh, watchIndex = refresh["refresh_index"]?.toString())
+}
+
+private fun StringBuilder.appendGoalWatchPlanning(planning: Map<*, *>?) {
+  planning?.takeIf(Map<*, *>::isPlanningOngoing)?.let {
+    appendLine("  planning:")
+    appendLine("    state: ${it["state"]}")
+    appendLine("    shared_preplan_prepared: ${it["shared_preplan_prepared"]}")
+    appendLine("    planned_subtasks: ${it["planned_subtask_count"]}/${it["total_subtask_count"]}")
+    appendLine("    current_subtask: ${it["current_planning_subtask"] ?: "none"}")
+    it["reason"]?.let { reason -> appendLine("    reason: $reason") }
+  }
+}
+
+private fun StringBuilder.appendGoalWatchObservability(event: Map<*, *>?) {
+  event?.let {
+    appendLine("  observability:")
+    appendLine("    phase: ${it["workflow_phase"]}")
+    appendLine("    worker_role: ${it["worker_role"]}")
+    appendLine("    liveness: ${it["liveness_class"]}")
+    appendLine("    sequence: ${it["sequence_number"]}")
+  }
+}
+
+private fun StringBuilder.appendGoalWatchFailure(failure: Map<*, *>?) {
+  failure?.let {
+    appendLine(
+      "  last_failure: phase=${it["phase"]} attempt=${it["attempt"] ?: "unknown"} " +
+        "timestamp=${it["timestamp"]} current=${it["current"]}",
+    )
+    appendLine("  last_failure_summary: ${it["summary"]}")
+  }
 }
 
 private fun Map<*, *>.isPlanningOngoing(): Boolean =
@@ -1034,14 +1112,14 @@ private fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
   if (blockedAttemptCount > 0 || supervisorKillCount > 0) {
     appendLine("blocked_attempts: $blockedAttemptCount supervisor_kills: $supervisorKillCount")
   }
-  (payload["phase_attempt_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { counts ->
-    appendLine("phase_attempts: ${counts.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  (payload["phase_launch_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { counts ->
+    appendLine("phase_launches: ${counts.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
   }
-  (payload["cumulative_fix_iterations"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { iters ->
-    appendLine("fix_iterations: ${iters.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  (payload["completed_loop_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { iters ->
+    appendLine("completed_loops: ${iters.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
   }
-  (payload["re_attempt_causes"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { causes ->
-    appendLine("re_attempt_causes: ${causes.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
+  (payload["retry_cause_counts"] as? Map<*, *>)?.takeIf(Map<*, *>::isNotEmpty)?.let { causes ->
+    appendLine("retry_causes: ${causes.entries.joinToString(" ") { (k, v) -> "$k=$v" }}")
   }
   (payload["findings_in_scope"] as? Number)?.toInt()?.let { appendLine("findings_in_scope: $it") }
   (payload["out_of_band_acceptances"] as? List<*>)?.takeIf(List<*>::isNotEmpty)?.forEach { raw ->

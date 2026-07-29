@@ -27,6 +27,7 @@ data class SkillRunRequest(
   val declaredProgressProbe: AgentRunDeclaredProgressProbe = AgentRunDeclaredProgressProbe.NONE,
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
+  val retainFullOutput: Boolean = false,
   val promptOverride: String? = null,
   /**
    * Request incremental provider output so a launch that writes no durable workflow rows can still
@@ -223,6 +224,7 @@ data class AgentRunLaunchFacts(
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
   val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
     .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
+  val stdoutArtifactPath: String? = null,
 ) : AgentRunLaunchOutcome {
   init {
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }

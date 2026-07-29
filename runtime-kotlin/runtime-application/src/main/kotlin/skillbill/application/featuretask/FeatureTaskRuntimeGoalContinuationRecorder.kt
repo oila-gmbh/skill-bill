@@ -296,50 +296,28 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
   ): GoalSubtaskReviewInputPreparation {
-    val durable = database.read(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts)
-        ?: return@read null
-      val continuation = continuationFromArtifacts(artifacts)
-        ?: return@read null
-      Triple(state, continuation, resolvedBranchFrom(artifacts))
-    } ?: return GoalSubtaskReviewInputPreparation.MissingState
-    val (state, continuation, resolved) = durable
-    val durableResolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState
-    val checkpointLoop = if (state.remediationBaseSha == null) "initial" else "review_fix"
-    val checkpointGeneration = state.reservedPassNumber ?: state.completedPassCount + 1
-    val checkpoint = durableResolved.checkpointIdentities.firstOrNull {
-      it.branch == continuation.goalBranch &&
-        it.phase == "review" &&
-        it.loop == checkpointLoop &&
-        it.generation == checkpointGeneration
-    } ?: createAndPersistReviewCheckpoint(
-      workflowId = workflowId,
-      state = state,
-      continuation = continuation,
-      resolved = durableResolved,
-      gitOperations = gitOperations,
-      repoRoot = repoRoot,
-      dbOverride = dbOverride,
+    val durable = readGoalReviewDurableState(workflowId, dbOverride)
+      ?: return GoalSubtaskReviewInputPreparation.MissingState
+    val (state, continuation, durableResolved) = durable
+    val checkpoint = resolveGoalReviewCheckpoint(
+      workflowId,
+      durable,
+      gitOperations,
+      repoRoot,
+      dbOverride,
     )
       ?: return GoalSubtaskReviewInputBlocked("Goal-child review checkpoint could not be created and persisted.")
-    val result = run {
-      val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
-      val digest = MessageDigest.getInstance("SHA-256")
-        .digest(frozenPaths.joinToString("\u0000").toByteArray())
-        .joinToString("") { "%02x".format(it) }
-      if (digest != checkpoint.ownedPathDigest) {
-        return GoalSubtaskReviewInputBlocked("Checkpoint owned-path inventory digest does not match durable identity.")
-      }
-      gitOperations.buildScopedGoalSubtaskReviewInput(
-        repoRoot,
-        GoalSubtaskReviewBaseline(state.remediationBaseSha ?: state.reviewBaseSha, emptyList()),
-        continuation.goalBranch,
-        checkpoint.commitSha,
-        frozenPaths,
+    val frozenPaths = checkpoint.verifiedOwnedPaths()
+      ?: return GoalSubtaskReviewInputBlocked(
+        "Checkpoint owned-path inventory digest does not match durable identity.",
       )
-    }
+    val result = gitOperations.buildScopedGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline(state.remediationBaseSha ?: state.reviewBaseSha, emptyList()),
+      continuation.goalBranch,
+      checkpoint.commitSha,
+      frozenPaths,
+    )
     val input = if (result.ok) {
       requireNotNull(result.input)
     } else {
@@ -358,6 +336,46 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
   }
+
+  private fun resolveGoalReviewCheckpoint(
+    workflowId: String,
+    durable: GoalReviewDurableState,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    dbOverride: String?,
+  ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
+    val (state, continuation, resolved) = durable
+    val checkpointLoop = if (state.remediationBaseSha == null) "initial" else "review_fix"
+    val checkpointGeneration = state.reservedPassNumber ?: state.completedPassCount + 1
+    return resolved.checkpointIdentities.lastOrNull {
+      it.branch == continuation.goalBranch &&
+        it.phase == "audit" &&
+        it.loop == checkpointLoop
+    } ?: resolved.checkpointIdentities.firstOrNull {
+      it.branch == continuation.goalBranch &&
+        it.phase == "review" &&
+        it.loop == checkpointLoop &&
+        it.generation == checkpointGeneration
+    } ?: createAndPersistReviewCheckpoint(
+      workflowId = workflowId,
+      state = state,
+      continuation = continuation,
+      resolved = resolved,
+      gitOperations = gitOperations,
+      repoRoot = repoRoot,
+      dbOverride = dbOverride,
+    )
+  }
+
+  private fun readGoalReviewDurableState(workflowId: String, dbOverride: String?): GoalReviewDurableState? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
+      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+      val resolved = resolvedBranchFrom(artifacts) ?: return@read null
+      GoalReviewDurableState(state, continuation, resolved)
+    }
 
   @Suppress("LongParameterList")
   private fun createAndPersistReviewCheckpoint(
@@ -530,6 +548,20 @@ private data class GoalReviewInputRecoveryExecution(
   val repoRoot: java.nio.file.Path,
   val dbOverride: String?,
 )
+
+private data class GoalReviewDurableState(
+  val state: GoalSubtaskReviewState,
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  val resolved: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch,
+)
+
+private fun skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity.verifiedOwnedPaths(): List<String>? {
+  val frozenPaths = ownedPaths.distinct().sorted()
+  val digest = MessageDigest.getInstance("SHA-256")
+    .digest(frozenPaths.joinToString("\u0000").toByteArray())
+    .joinToString("") { "%02x".format(it) }
+  return frozenPaths.takeIf { digest == ownedPathDigest }
+}
 
 private fun continuationPatch(
   continuation: FeatureTaskRuntimeGoalContinuationArtifact?,

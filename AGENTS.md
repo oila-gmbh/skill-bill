@@ -1,5 +1,10 @@
 # AGENTS.md
 
+## General guidelines
+
+DO NOT ADD ANY NEW TESTS FOR THIS PROJECT AT ALL! 
+DO NOT ADD ANY NEW COMMENTS TO THIS PROJECT AT ALL. IN FACT, IF YOU ARE MODIFYING A FILE AND SEE COMMENTS - REMOVE THEM!
+
 ## Project Context
 
 skill-bill governs authoring, routing, validation, installation, and measurement of agent skills. It ships shared orchestration, tooling, telemetry, workflow state, and shells for review, quality checks, feature work, verification, and PRs.

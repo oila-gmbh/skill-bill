@@ -297,6 +297,31 @@ class AgentRunLauncherTest {
   }
 
   @Test
+  fun `jvm process runner keeps a bounded preview and an exact output artifact`() {
+    val exactOutputSize = 9 * 1024 * 1024
+    val previewSize = 8 * 1024 * 1024
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "head -c $exactOutputSize /dev/zero"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 10.seconds,
+        retainFullOutput = true,
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertTrue(result.stdoutTruncated)
+    assertEquals(exactOutputSize.toLong(), result.stdoutByteSize)
+    assertEquals(previewSize, result.stdoutBytes.size)
+    val artifact = Path.of(assertNotNull(result.stdoutArtifactPath))
+    try {
+      assertEquals(exactOutputSize.toLong(), Files.size(artifact))
+    } finally {
+      Files.deleteIfExists(artifact)
+    }
+  }
+
+  @Test
   fun `jvm process runner closes child stdin for non-interactive runs`() {
     val result = JvmAgentRunProcessRunner().run(
       AgentRunProcessRequest(

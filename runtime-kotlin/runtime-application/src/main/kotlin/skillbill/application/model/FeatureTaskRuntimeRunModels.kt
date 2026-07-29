@@ -287,6 +287,13 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val blockedReason: String,
   ) : FeatureTaskRuntimeRunEvent
 
+  data class Warning(
+    override val workflowId: String,
+    override val phaseId: String,
+    val category: String,
+    val message: String,
+  ) : FeatureTaskRuntimeRunEvent
+
   data class PlanDecompositionRequired(
     override val workflowId: String,
     override val phaseId: String = "plan",

@@ -27,13 +27,17 @@ class ProcessAgentRunAdapter(
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
     val result = processRunner.run(processRequest(command, request))
-    val decoded = runCatching {
-      (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
-    }.getOrElse { error ->
-      if (error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError) {
-        DecodedAgentRunOutput(result.stdout)
-      } else {
-        throw error
+    val decoded = if (result.stdoutTruncated) {
+      DecodedAgentRunOutput(result.stdout)
+    } else {
+      runCatching {
+        (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
+      }.getOrElse { error ->
+        if (error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError) {
+          DecodedAgentRunOutput(result.stdout)
+        } else {
+          throw error
+        }
       }
     }
     val normalizedStdout = normalizeStdout(agent, decoded.text)
@@ -55,6 +59,7 @@ class ProcessAgentRunAdapter(
       stdoutTruncated = result.stdoutTruncated,
       stdoutByteSize = if (result.stdoutTruncated) result.stdoutByteSize else decodedBodyBytes.size.toLong(),
       stdoutSha256 = if (result.stdoutTruncated) result.stdoutSha256 else sha256(decodedBodyBytes),
+      stdoutArtifactPath = result.stdoutArtifactPath,
       // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
       // descriptors derived from launch context the launcher controls — the
       // child working directory (session path) and a deterministic, non-secret
@@ -87,6 +92,7 @@ class ProcessAgentRunAdapter(
     inheritEnvironment = command.inheritEnvironment,
     environmentPassthroughKeys = command.environmentPassthroughKeys,
     outputSink = request.outputSink,
+    retainFullOutput = request.retainFullOutput,
     usePtyStdio = command.usePtyStdio,
     idlePolicy = command.idlePolicy,
     conversationIsolation = command.conversationIsolation,

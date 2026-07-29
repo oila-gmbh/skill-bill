@@ -2,14 +2,18 @@ package skillbill.cli.featuretask
 
 import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
+import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliRuntimeContext
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import java.io.ByteArrayOutputStream
+import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertContentEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -55,6 +59,21 @@ class RejectedOutputCommandsTest {
   }
 
   @Test
+  fun `raw output supports bounded byte ranges`() {
+    val repository = CliDiagnosticRepository()
+    val service = RejectedOutputDiagnosticService(repository, { }, { })
+    service.record(request(byteArrayOf(10, 11, 12, 13, 14)))
+    val output = ByteArrayOutputStream()
+
+    RejectedOutputInspectCommand(service).execute(
+      RejectedOutputInspectRequest("workflow-1", "implement", 1, rawOutput = true, offset = 1, length = 3),
+      output,
+    )
+
+    assertContentEquals(byteArrayOf(11, 12, 13), output.toByteArray())
+  }
+
+  @Test
   fun `metadata rendering encodes control characters onto one line`() {
     val repository = CliDiagnosticRepository()
     val service = RejectedOutputDiagnosticService(repository, { }, { })
@@ -66,6 +85,64 @@ class RejectedOutputCommandsTest {
     val rendered = output.toString()
     assertTrue(rendered.contains("""reason="invalid\nforged=value\u0000""""))
     assertTrue(rendered.lines().count { it.isNotEmpty() } == 1)
+  }
+
+  @Test
+  fun `cli range options require raw output and reject negative values`() {
+    val database = Files.createTempDirectory("rejected-output-range-cli").resolve("runtime.db")
+
+    val missingRaw = CliRuntime.run(
+      listOf(
+        "--db",
+        database.toString(),
+        "feature-task",
+        "rejected-output",
+        "--workflow",
+        "workflow-1",
+        "--offset",
+        "1",
+      ),
+      CliRuntimeContext(),
+    )
+    val negative = CliRuntime.run(
+      listOf(
+        "--db",
+        database.toString(),
+        "feature-task",
+        "rejected-output",
+        "--workflow",
+        "workflow-1",
+        "--raw-output",
+        "--length",
+        "-1",
+      ),
+      CliRuntimeContext(),
+    )
+
+    assertContains(missingRaw.stdout, "--offset and --length require --raw-output")
+    assertContains(negative.stdout, "--length must be non-negative")
+  }
+
+  @Test
+  fun `cli range parser accepts offsets larger than an integer`() {
+    val database = Files.createTempDirectory("rejected-output-long-cli").resolve("runtime.db")
+
+    assertFailsWith<RejectedOutputDiagnosticError.Absent> {
+      CliRuntime.run(
+        listOf(
+          "--db",
+          database.toString(),
+          "feature-task",
+          "rejected-output",
+          "--workflow",
+          "workflow-1",
+          "--raw-output",
+          "--offset",
+          "2147483648",
+        ),
+        CliRuntimeContext(),
+      )
+    }
   }
 
   private fun request(raw: ByteArray, attempt: Int = 1) = RejectedOutputDiagnosticRequest(

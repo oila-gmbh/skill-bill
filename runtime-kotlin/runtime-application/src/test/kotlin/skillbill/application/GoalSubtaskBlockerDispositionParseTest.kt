@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.featuretask.dispositionEvidenceReferencesChangedLine
+import skillbill.application.featuretask.dispositionEvidenceReferencesDeltaLine
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
@@ -43,7 +43,7 @@ class GoalSubtaskBlockerDispositionParseTest {
   }
 
   @Test
-  fun `disposition evidence may identify bounded added deleted or unchanged lines in the reviewed delta`() {
+  fun `terminal disposition evidence requires a changed line while unresolved may cite context`() {
     val delta = """
       diff --git a/src/Guard.kt b/src/Guard.kt
       --- a/src/Guard.kt
@@ -54,23 +54,25 @@ class GoalSubtaskBlockerDispositionParseTest {
       +guard()
     """.trimIndent()
 
-    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:10"), checkpoint, delta))
-    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11"), checkpoint, delta))
-    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:10-11"), checkpoint, delta))
-    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:12"), checkpoint, delta))
+    assertTrue(!dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:10"), checkpoint, delta, true))
+    assertTrue(dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:10"), checkpoint, delta, false))
+    assertTrue(dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:11"), checkpoint, delta, true))
+    assertTrue(dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:10-11"), checkpoint, delta, true))
+    assertTrue(!dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:12"), checkpoint, delta, false))
     assertTrue(
-      !dispositionEvidenceReferencesChangedLine(evidence("src/Unchanged.kt:11"), checkpoint, delta),
+      !dispositionEvidenceReferencesDeltaLine(evidence("src/Unchanged.kt:11"), checkpoint, delta, false),
       "a path absent from the reviewed delta cannot provide repository evidence for a terminal disposition",
     )
     assertTrue(
-      !dispositionEvidenceReferencesChangedLine(
+      !dispositionEvidenceReferencesDeltaLine(
         "checkpoint=bogus;location=src/Unchanged.kt:11",
         checkpoint,
         delta,
+        false,
       ),
       "evidence from a fabricated checkpoint must not settle a carried Blocker",
     )
-    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11-10"), checkpoint, delta))
+    assertTrue(!dispositionEvidenceReferencesDeltaLine(evidence("src/Guard.kt:11-10"), checkpoint, delta, false))
   }
 
   @Test

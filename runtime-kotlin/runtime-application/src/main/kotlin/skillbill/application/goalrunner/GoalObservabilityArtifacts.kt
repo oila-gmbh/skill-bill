@@ -53,6 +53,8 @@ internal object GoalObservabilityArtifacts {
         activitySummary = input.request.activitySummary,
         timestamp = input.request.timestamp,
         sequenceNumber = input.request.sequenceNumber,
+        attemptCount = input.request.attemptCount,
+        processExitStatus = input.request.processExitStatus,
       ),
       validator = validator,
     )
@@ -115,6 +117,7 @@ internal object GoalObservabilityArtifacts {
         ?: "workflow_status=${input.workflowStatus}; progress_kind=$kind",
       timestamp = timestamp,
       sequenceNumber = progressEvent["sequence"].asGoalObservabilityIntOrNull() ?: 0,
+      attemptCount = progressEvent["attempt_count"].asGoalObservabilityIntOrNull()?.takeIf { it > 0 },
       changedFileSummary = input.worktreeActivity?.changedFileSummary,
       diffStat = input.worktreeActivity?.diffStat,
     )

@@ -16,6 +16,7 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
+import skillbill.goalrunner.model.GoalRunnerStatusEvent
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
@@ -70,9 +71,7 @@ class GoalRunnerStatusService(
           ?.workflowId
           ?.takeIf(String::isNotBlank)
           ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
-        val planningBlock = currentSubtask?.takeIf { subtask ->
-          subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
-        }
+        val planningBlock = currentSubtask.planningBlock()
         val ledgerSummary = runCatching {
           attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
         }.getOrNull()
@@ -90,8 +89,12 @@ class GoalRunnerStatusService(
             ),
             currentStepOverride = progress?.currentStepId,
             currentWorkflowStatus = progress?.workflowStatus,
+            snapshotTimestamp = progress?.lastSnapshotUpdatedAt,
             latestLivenessSignal = progress?.latestLivenessSignal,
             latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
+            latestFailureEvent = progress?.latestFailureObservabilityEvent?.toStatusEvent(),
+            latestFailureAttempt = progress?.latestFailureObservabilityEvent?.attemptCount,
+            currentAttempt = progress?.latestDurableProgressEvent?.attemptCount,
             requestedDiffStat = request.requestedDiffStat(),
             selectedDiffHunks = request.requestedSelectedDiffHunks(),
             blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
@@ -100,14 +103,19 @@ class GoalRunnerStatusService(
             cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
             findingsInScope = ledgerSummary?.findingsInScope,
-            reviewGeneration = currentSubtask?.workflowId
-              ?.takeIf(String::isNotBlank)
-              ?.let { phaseRecorder.reviewGenerationSummary(it, request.dbPathOverride) },
+            reviewGeneration = currentSubtask.reviewGeneration(request.dbPathOverride),
             outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
           ),
         )
       }
   }
+
+  private fun DecompositionSubtask?.reviewGeneration(dbPathOverride: String?) = this?.workflowId
+    ?.takeIf(String::isNotBlank)
+    ?.let { phaseRecorder.reviewGenerationSummary(it, dbPathOverride) }
+
+  private fun DecompositionSubtask?.planningBlock(): DecompositionSubtask? =
+    this?.takeIf { it.status == "blocked" && it.lastResumableStep in setOf("preplan", "plan") }
 
   private fun resolveExecutionLiveness(
     currentSubtask: DecompositionSubtask?,
@@ -603,4 +611,15 @@ private fun skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent.toSt
     "activity_summary" to activitySummary,
     "sequence_number" to sequenceNumber,
     "timestamp" to timestamp,
+    "attempt_count" to attemptCount,
+    "process_exit_status" to processExitStatus,
+  )
+
+private fun skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent.toStatusEvent(): GoalRunnerStatusEvent =
+  GoalRunnerStatusEvent(
+    workflowPhase = workflowPhase,
+    activitySummary = activitySummary,
+    sequenceNumber = sequenceNumber,
+    timestamp = timestamp,
+    attemptCount = attemptCount,
   )

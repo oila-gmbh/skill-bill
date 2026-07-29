@@ -33,6 +33,7 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -117,14 +118,12 @@ class GoalRunner(
 
   private fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
-    persistedReviewPolicy?.let { policy ->
-      reviewPolicyMismatch(state, request, policy)?.let { return it }
-    }
+    persistedReviewPolicy?.let { policy -> printReviewPolicyWarning(state, request, policy) }
     val requestedReviewPolicy = GoalRunnerReviewPolicy(
-      codeReviewMode = request.codeReviewMode
-        ?: persistedReviewPolicy?.codeReviewMode
+      codeReviewMode = persistedReviewPolicy?.codeReviewMode
+        ?: request.codeReviewMode
         ?: CodeReviewExecutionMode.DEFAULT,
-      parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
+      parallelReviewAgent = persistedReviewPolicy?.parallelReviewAgent ?: request.parallelReviewAgent,
       agentAddonSelection = request.agentAddonSelection.persisted,
     )
     val effectiveReviewPolicy = manifestStore.persistReviewPolicy(
@@ -141,35 +140,25 @@ class GoalRunner(
     )
   }
 
-  private fun reviewPolicyMismatch(
+  private fun printReviewPolicyWarning(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
     policy: GoalRunnerReviewPolicy,
-  ): GoalRunPreparation.PreparationBlocked? {
+  ) {
     val reason = when {
       request.codeReviewMode != null && policy.codeReviewMode != request.codeReviewMode ->
-        "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' " +
-          "is pinned to '${policy.codeReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'."
+        "requested code-review mode '${request.codeReviewMode.wireValue}' differs from the persisted " +
+          "mode '${policy.codeReviewMode.wireValue}' for parent workflow '${state.parentWorkflowId}'"
       request.parallelReviewAgent != null && policy.parallelReviewAgent != request.parallelReviewAgent ->
-        "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' " +
-          "is pinned to '${policy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'."
-      else -> return null
+        "requested parallel-review agent '${request.parallelReviewAgent}' differs from the persisted " +
+          "agent '${policy.parallelReviewAgent ?: "none"}' for parent workflow '${state.parentWorkflowId}'"
+      else -> return
     }
-    return GoalRunPreparation.PreparationBlocked(
-      stopped(
-        issueKey = request.issueKey,
-        attempted = emptyList(),
-        subtaskId = 0,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = reason,
-        workflowId = state.parentWorkflowId,
-        lastResumableStep = "preplan",
-      ),
-    )
+    printReviewWarning(request, "$reason; the persisted review policy will be used")
   }
 
   private fun runPrepared(preparation: GoalRunPreparation.Prepared): GoalRunnerRunReport {
-    var state = preparation.state
+    var state = reopenWarningOnlySubtask(preparation.state, preparation.request)
     val effectiveRequest = preparation.request
     val attempted = mutableListOf<Int>()
     val observability = GoalRunnerObservabilityEmitter(outcomeStore, effectiveRequest)
@@ -177,29 +166,7 @@ class GoalRunner(
     effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
-    val sweepOutcome = goalPlanningSweep.prepare(state, effectiveRequest)
-    if (sweepOutcome is GoalPlanningSweepOutcome.Stopped) {
-      val planningStop = stopped(
-        issueKey = sweepOutcome.issueKey,
-        attempted = emptyList(),
-        subtaskId = sweepOutcome.currentSubtaskId,
-        reason = sweepOutcome.reason,
-        blockedReason = sweepOutcome.blockedReason,
-        workflowId = null,
-        lastResumableStep = sweepOutcome.lastResumableStep,
-      )
-      effectiveRequest.eventSink.emit(
-        GoalRunnerRunEvent.SubtaskStopped(
-          issueKey = sweepOutcome.issueKey,
-          subtaskId = sweepOutcome.currentSubtaskId,
-          reason = sweepOutcome.reason.name.lowercase(),
-          blockedReason = sweepOutcome.blockedReason,
-          currentStepId = sweepOutcome.lastResumableStep,
-        ),
-      )
-      closeGoalTelemetrySegment(telemetryEmitter, state, planningStop, attempted)
-      return planningStop
-    }
+    val sweepOutcome = preparePlanningOrWarning(state, effectiveRequest)
     val loopResult = driveGoalLoop(
       state,
       effectiveRequest,
@@ -207,7 +174,7 @@ class GoalRunner(
       observability,
       ledger,
       telemetryEmitter,
-      sweepOutcome as GoalPlanningSweepOutcome.PreparedAll,
+      sweepOutcome,
     )
     state = loopResult.state
     val finalReport = requireNotNull(loopResult.report)
@@ -240,21 +207,7 @@ class GoalRunner(
             }
         is GoalRunnerSelection.Run -> {
           if (currentPlanning.identity != null && currentPlanning.hydrationFor(selection.decision.subtask.id) == null) {
-            when (val refreshedPlanning = goalPlanningSweep.prepare(state, request)) {
-              is GoalPlanningSweepOutcome.PreparedAll -> currentPlanning = refreshedPlanning
-              is GoalPlanningSweepOutcome.Stopped -> {
-                terminalReport = stopped(
-                  refreshedPlanning.issueKey,
-                  attempted,
-                  refreshedPlanning.currentSubtaskId,
-                  refreshedPlanning.reason,
-                  refreshedPlanning.blockedReason,
-                  state.manifest.workflowIdFor(refreshedPlanning.currentSubtaskId),
-                  refreshedPlanning.lastResumableStep,
-                )
-                continue
-              }
-            }
+            currentPlanning = preparePlanningOrWarning(state, request)
           }
           val result = runSelectedSubtask(
             state,
@@ -375,19 +328,17 @@ class GoalRunner(
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
       return failure
     }
-    val baselineCapture = goalReviewBaseline(state, subtaskId, request)
-    if (!baselineCapture.ok) {
-      return blockedReviewBaselineIteration(
-        state,
-        subtaskId,
-        "Could not capture the goal-subtask review baseline before implementation. " +
-          "Refusing to substitute a branch-wide scope. ${baselineCapture.error}",
-        request,
-      )
+    val reviewBaseline = goalReviewBaseline(state, subtaskId, request).let { baselineCapture ->
+      baselineCapture.baseline ?: GoalSubtaskReviewBaseline("0".repeat(40), emptyList()).also {
+        printReviewWarning(
+          request,
+          "could not capture the goal-subtask review baseline before implementation for subtask " +
+            "$subtaskId: ${baselineCapture.error.orEmpty()}",
+        )
+      }
     }
-    val reviewBaseline = requireNotNull(baselineCapture.baseline)
     val prepared = runCatching {
-      prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+      prepareAttemptedLaunchWithPlanningFallback(state, subtaskId, request, reviewBaseline, planning)
     }.getOrElse { error -> return blockedOnRecoveryError(state, subtaskId, error, request) }
     val attemptedState = prepared.state
     attempted += subtaskId
@@ -524,6 +475,78 @@ class GoalRunner(
       else -> throw error
     }
     return blockedReviewBaselineIteration(state, targetSubtaskId, reason, request)
+  }
+
+  private fun preparePlanningOrWarning(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+  ): GoalPlanningSweepOutcome.PreparedAll {
+    val outcome = runCatching { goalPlanningSweep.prepare(state, request) }.getOrElse { error ->
+      printPlanningWarning(request, "planning preparation failed: ${error.message.orEmpty()}")
+      return GoalPlanningSweepOutcome.PreparedAll()
+    }
+    return when (outcome) {
+      is GoalPlanningSweepOutcome.PreparedAll -> outcome
+      is GoalPlanningSweepOutcome.Stopped -> {
+        printPlanningWarning(
+          request,
+          "planning preparation stopped at subtask ${outcome.currentSubtaskId} " +
+            "(${outcome.lastResumableStep}): ${outcome.blockedReason}",
+        )
+        GoalPlanningSweepOutcome.PreparedAll()
+      }
+    }
+  }
+
+  private fun prepareAttemptedLaunchWithPlanningFallback(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+    reviewBaseline: GoalSubtaskReviewBaseline,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
+  ): PreparedLaunch = try {
+    prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+  } catch (error: Throwable) {
+    if (!error.isPlanningPreparationFailure()) throw error
+    printPlanningWarning(
+      request,
+      "subtask $subtaskId planning import is stale or incompatible: ${error.message.orEmpty()}",
+    )
+    prepareAttemptedLaunch(
+      state,
+      subtaskId,
+      request,
+      reviewBaseline,
+      GoalPlanningSweepOutcome.PreparedAll(),
+    )
+  }
+
+  private fun printPlanningWarning(request: GoalRunnerRunRequest, detail: String) {
+    val message = "skill-bill: warning: $detail; goal execution continues without blocking on planning.\n"
+    request.outputSink.write(AgentRunOutputStream.STDERR, message)
+  }
+
+  private fun printReviewWarning(request: GoalRunnerRunRequest, detail: String) {
+    val message = "skill-bill: warning: $detail; goal execution continues without blocking on code review.\n"
+    request.outputSink.write(AgentRunOutputStream.STDERR, message)
+  }
+
+  private fun reopenWarningOnlySubtask(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerManifestState {
+    val warningOnly = state.manifest.subtasks.singleOrNull { subtask ->
+      subtask.status == "blocked" && subtask.blockedReason.isPlanningOrReviewStop()
+    } ?: return state
+    val reason = requireNotNull(warningOnly.blockedReason)
+    val category = if (reason.contains("review", ignoreCase = true)) "review" else "planning"
+    val message = "skill-bill: warning: prior $category stop for subtask ${warningOnly.id}: $reason; " +
+      "goal execution continues.\n"
+    request.outputSink.write(AgentRunOutputStream.STDERR, message)
+    return manifestStore.save(
+      state.copy(manifest = state.manifest.withAttemptedSubtask(warningOnly.id)),
+      request.dbPathOverride,
+    )
   }
 
   private fun launchSubtaskWithWorkerResult(
@@ -1825,6 +1848,19 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
     }
   },
 )
+
+private fun String?.isPlanningOrReviewStop(): Boolean {
+  val reason = this ?: return false
+  return reason.contains("planning", ignoreCase = true) ||
+    reason.contains("preplan", ignoreCase = true) ||
+    reason.contains("code review", ignoreCase = true) ||
+    reason.contains("review", ignoreCase = true)
+}
+
+private fun Throwable.isPlanningPreparationFailure(): Boolean =
+  this is skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError ||
+    javaClass.simpleName.contains("Planning", ignoreCase = true) ||
+    message.isPlanningOrReviewStop()
 
 private fun DecompositionManifest.withWorkflowId(subtaskId: Int, workflowId: String): DecompositionManifest = copy(
   subtasks = subtasks.map { subtask ->

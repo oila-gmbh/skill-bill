@@ -1,5 +1,6 @@
 package skillbill.goalrunner
 
+import skillbill.goalrunner.model.GoalRunnerStatusEvent
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.workflow.model.CurrentSubtaskIntent
@@ -78,6 +79,68 @@ class GoalRunnerStatusProjectorTest {
     )
 
     assertEquals("liveness=block phase=review role=goal_runner_supervisor", projection.latestLivenessSignal)
+  }
+
+  @Test
+  fun `an audit failure becomes historical after the workflow advances to review`() {
+    val projection = GoalRunnerStatusProjector.project(
+      manifest = manifest(currentSubtaskStatus = "in_progress"),
+      extras = GoalRunnerStatusProjectionExtras(
+        currentStepOverride = "review",
+        currentWorkflowStatus = "running",
+        latestLivenessSignal = "liveness=phase_change phase=review",
+        latestObservabilityEvent = mapOf(
+          "workflow_phase" to "review",
+          "liveness_class" to "phase_change",
+          "sequence_number" to 12,
+        ),
+        latestFailureEvent = GoalRunnerStatusEvent(
+          workflowPhase = "audit",
+          activitySummary = "stdout_chars=1387312; stderr_chars=42; exit_status=1",
+          timestamp = "2026-07-29T17:25:47.263781494Z",
+          sequenceNumber = 10,
+          attemptCount = 3,
+        ),
+        latestFailureAttempt = 3,
+        currentAttempt = 4,
+      ),
+    )
+
+    assertEquals("liveness=phase_change phase=review", projection.latestLivenessSignal)
+    assertEquals("review", projection.latestObservabilityEvent?.get("workflow_phase"))
+    assertEquals("audit", projection.lastFailure?.phase)
+    assertEquals(3, projection.lastFailure?.attempt)
+    assertEquals("2026-07-29T17:25:47.263781494Z", projection.lastFailure?.timestamp)
+    assertEquals(false, projection.lastFailure?.current)
+  }
+
+  @Test
+  fun `a retained failure stays visible after a newer healthy event without becoming current`() {
+    val projection = GoalRunnerStatusProjector.project(
+      manifest = manifest(currentSubtaskStatus = "in_progress"),
+      extras = GoalRunnerStatusProjectionExtras(
+        currentStepOverride = "review",
+        currentWorkflowStatus = "running",
+        latestObservabilityEvent = mapOf(
+          "workflow_phase" to "review",
+          "liveness_class" to "heartbeat",
+          "sequence_number" to 15,
+        ),
+        latestFailureEvent = GoalRunnerStatusEvent(
+          workflowPhase = "review",
+          activitySummary = "review worker exited",
+          timestamp = "2026-07-29T18:00:00Z",
+          sequenceNumber = 14,
+          attemptCount = 1,
+        ),
+        latestFailureAttempt = 1,
+        currentAttempt = 2,
+      ),
+    )
+
+    assertEquals("review", projection.lastFailure?.phase)
+    assertEquals(1, projection.lastFailure?.attempt)
+    assertEquals(false, projection.lastFailure?.current)
   }
 
   private fun manifest(currentSubtaskStatus: String): DecompositionManifest = DecompositionManifest(
