@@ -225,6 +225,12 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
   if (evidence.isEmpty()) {
     reviewStateError("$path.evidence", "must cite the specific changed lines that settle the Blocker.")
   }
+  if (evidence.any { !DISPOSITION_EVIDENCE.matches(it) }) {
+    reviewStateError(
+      "$path.evidence",
+      "must use checkpoint=<fingerprint>;location=<repository-relative-path>:<line> evidence.",
+    )
+  }
   return GoalSubtaskBlockerDisposition(
     findingId = (disposition["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank)
       ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
@@ -235,3 +241,6 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
     evidence = evidence,
   )
 }
+
+private val DISPOSITION_EVIDENCE =
+  Regex("^checkpoint=[0-9a-f]{64};location=(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^;\\s]+:\\d+(?:-\\d+)?$")

@@ -196,6 +196,18 @@ internal class ReviewGenerationRuntime(
         if (rows.next()) rows.getString("generation_id") to rows.getInt("current_pass") else null
       }
     }
+    val reservedPass = connection.prepareStatement(
+      """
+      SELECT json_extract(artifacts_json, '$.goal_subtask_review_state.reserved_pass_number')
+      FROM feature_task_workflows
+      WHERE workflow_id = ?
+        AND json_valid(artifacts_json)
+        AND json_type(artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 'integer'
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeQuery().use { rows -> if (rows.next()) rows.getInt(1) else null }
+    }
     val terminalCounts = GoalSubtaskReviewFindingDisposition.entries
       .filter(GoalSubtaskReviewFindingDisposition::terminal)
       .associate { disposition ->
@@ -204,7 +216,7 @@ internal class ReviewGenerationRuntime(
     val unresolved = unresolvedBlockers(workflowId)
     return GoalSubtaskReviewSummary(
       currentGenerationId = current?.first,
-      currentPass = current?.second ?: 0,
+      currentPass = reservedPass ?: current?.second ?: 0,
       carriedBlockerCount = unresolved.count { it.sourceGenerationId != current?.first },
       newBlockerCount = unresolved.count { it.sourceGenerationId == current?.first },
       terminalDispositionCounts = terminalCounts,

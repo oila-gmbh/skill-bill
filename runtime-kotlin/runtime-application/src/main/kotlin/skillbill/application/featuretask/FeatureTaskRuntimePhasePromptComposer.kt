@@ -392,7 +392,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
     val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
       "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
-        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
+        "\"evidence\": [\"checkpoint=<active repository fingerprint>;location=<path>:<line>\"] }"
     }
     val carried = carriedBlockerFindings.joinToString(separator = "\n") {
       "      - ${it.findingId}: severity=${it.severity}; category=${it.category}; " +
@@ -404,7 +404,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      ${priorBlockerFindingIds.joinToString()}.\n" +
       "      Durable carried Blockers requiring re-verification:\n$carried\n" +
       "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
-      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
+      "      and a non-empty evidence array bound to the active repository fingerprint and citing the\n" +
+      "      repository-relative changed lines that resolve or fail to\n" +
       "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
       "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
       "      ```json\n" +

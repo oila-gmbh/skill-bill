@@ -311,20 +311,31 @@ class FeatureTaskRuntimeRunner(
     state: GoalSubtaskReviewState,
   ): Boolean {
     val judgedDigest = state.activePassDeltaDigest ?: state.reviewedDeltaDigest ?: return true
-    val checkpoint = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    val reviewedCheckpoint = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
       ?.checkpointIdentities
       ?.lastOrNull()
       ?: return true
-    val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
+    val currentCheckpoint = goalContinuationRecorder.createCurrentReviewCheckpoint(
+      request.workflowId,
+      phaseGates.gitOperations,
+      request.repoRoot,
+      request.dbPathOverride,
+    ) ?: return true
+    val frozenPaths = reviewedCheckpoint.ownedPaths.distinct().sorted()
     val frozenDigest = java.security.MessageDigest.getInstance("SHA-256")
       .digest(frozenPaths.joinToString("\u0000").toByteArray())
       .joinToString("") { "%02x".format(it) }
-    if (frozenDigest != checkpoint.ownedPathDigest) return true
+    if (
+      frozenDigest != reviewedCheckpoint.ownedPathDigest ||
+      currentCheckpoint.ownedPathDigest != reviewedCheckpoint.ownedPathDigest
+    ) {
+      return true
+    }
     val current = phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
       request.repoRoot,
-      GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
+      GoalSubtaskReviewBaseline(reviewedCheckpoint.commitSha, emptyList()),
       goalBranch,
-      checkpoint.commitSha,
+      currentCheckpoint.commitSha,
       frozenPaths,
     ).input
     return current

@@ -14,6 +14,32 @@ import kotlin.test.assertFailsWith
 
 class ReviewGenerationRuntimeTest {
   @Test
+  fun `summary exposes the durably reserved pass before review completion`() {
+    val dbPath = Files.createTempDirectory("active-review-pass-summary").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      repository.appendGeneration(generation(1))
+      repository.appendPass("workflow-1", "generation-1", 1, "checkpoint-1")
+      connection.prepareStatement(
+        """
+        INSERT INTO feature_task_workflows (
+          workflow_id, mode, contract_version, artifacts_json
+        ) VALUES (?, 'runtime', '0.1', ?)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, "workflow-1")
+        statement.setString(2, """{"goal_subtask_review_state":{"reserved_pass_number":2}}""")
+        statement.executeUpdate()
+      }
+
+      val summary = repository.summary("workflow-1")
+
+      assertEquals("generation-1", summary.currentGenerationId)
+      assertEquals(2, summary.currentPass)
+    }
+  }
+
+  @Test
   fun `producer attribution blocker survives unrelated generations until explicit evidence`() {
     val dbPath = Files.createTempDirectory("lossless-review-generations").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->

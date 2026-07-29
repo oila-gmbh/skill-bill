@@ -40,6 +40,12 @@ internal fun UnitOfWork.settleGoalSubtaskReviewGeneration(
   val repositoryCheckpoint = requireNotNull(request.repositoryCheckpoint) {
     "Goal review completion requires the runtime repository checkpoint."
   }
+  require(
+    request.blockerDispositions.flatMap(GoalSubtaskBlockerDisposition::evidence)
+      .all { it.startsWith("checkpoint=$repositoryCheckpoint;location=") },
+  ) {
+    "Every carried Blocker disposition must cite a location bound to the active repository checkpoint."
+  }
   val completed = request.state.completeReservedPass(
     request.verdict,
     request.unresolvedFindingCount,

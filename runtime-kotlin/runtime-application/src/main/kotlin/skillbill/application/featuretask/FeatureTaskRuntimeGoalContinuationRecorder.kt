@@ -302,16 +302,15 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       Triple(state, continuation, resolvedBranchFrom(artifacts))
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation, resolved) = durable
-    val checkpoint = resolved?.checkpointIdentities?.lastOrNull()
-      ?: createAndPersistReviewCheckpoint(
-        workflowId = workflowId,
-        state = state,
-        continuation = continuation,
-        resolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState,
-        gitOperations = gitOperations,
-        repoRoot = repoRoot,
-        dbOverride = dbOverride,
-      )
+    val checkpoint = createAndPersistReviewCheckpoint(
+      workflowId = workflowId,
+      state = state,
+      continuation = continuation,
+      resolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState,
+      gitOperations = gitOperations,
+      repoRoot = repoRoot,
+      dbOverride = dbOverride,
+    )
       ?: return GoalSubtaskReviewInputBlocked("Goal-child review checkpoint could not be created and persisted.")
     val result = run {
       val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
@@ -346,6 +345,31 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
+  }
+
+  internal fun createCurrentReviewCheckpoint(
+    workflowId: String,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    dbOverride: String? = null,
+  ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
+    val durable = database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
+      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+      val resolved = resolvedBranchFrom(artifacts) ?: return@read null
+      Triple(state, continuation, resolved)
+    } ?: return null
+    return createAndPersistReviewCheckpoint(
+      workflowId,
+      durable.first,
+      durable.second,
+      durable.third,
+      gitOperations,
+      repoRoot,
+      dbOverride,
+    )
   }
 
   @Suppress("LongParameterList")
