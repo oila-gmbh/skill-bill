@@ -100,6 +100,7 @@ data class FeatureTaskRuntimeResolvedBranch(
   val baselineUntrackedPaths: List<String> = emptyList(),
   val baselineOwnedPaths: List<String> = emptyList(),
   val workflowOwnedPaths: List<String> = emptyList(),
+  val workflowOwnedPathContentIdentities: Map<String, String> = emptyMap(),
   val checkpointIdentities: List<WorkflowCheckpointIdentity> = emptyList(),
 ) {
   init {
@@ -116,6 +117,7 @@ data class FeatureTaskRuntimeResolvedBranch(
     require(workflowOwnedPaths.all(String::isNotBlank)) {
       "FeatureTaskRuntimeResolvedBranch.workflowOwnedPaths must not contain blanks."
     }
+    require(workflowOwnedPathContentIdentities.keys.all(String::isNotBlank))
   }
 
   @OpenBoundaryMap("Feature-task-runtime resolved-branch artifact map at the durable workflow-artifact seam")
@@ -128,6 +130,9 @@ data class FeatureTaskRuntimeResolvedBranch(
     if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
     put("baseline_owned_paths", baselineOwnedPaths)
     put("workflow_owned_paths", workflowOwnedPaths)
+    if (workflowOwnedPathContentIdentities.isNotEmpty()) {
+      put("workflow_owned_path_content_identities", workflowOwnedPathContentIdentities)
+    }
     if (checkpointIdentities.isNotEmpty()) {
       put("checkpoint_identities", checkpointIdentities.map(WorkflowCheckpointIdentity::toArtifactMap))
     }
@@ -150,6 +155,12 @@ data class FeatureTaskRuntimeResolvedBranch(
       workflowOwnedPaths = (raw["workflow_owned_paths"] as? List<*>)
         ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
         .orEmpty(),
+      workflowOwnedPathContentIdentities =
+        (raw["workflow_owned_path_content_identities"] as? Map<*, *>)
+          ?.map { (key, value) ->
+            (key as? String ?: error("workflow_owned_path_content_identities keys must be strings.")) to
+              (value as? String ?: error("workflow_owned_path_content_identities values must be strings."))
+          }?.toMap().orEmpty(),
       checkpointIdentities = (raw["checkpoint_identities"] as? List<*>)
         ?.map { entry ->
           val identity = entry as? Map<*, *> ?: error("checkpoint_identities must contain only objects.")

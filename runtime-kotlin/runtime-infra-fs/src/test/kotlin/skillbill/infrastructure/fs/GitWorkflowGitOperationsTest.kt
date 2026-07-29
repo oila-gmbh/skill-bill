@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
+import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
+import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
@@ -14,10 +14,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.test.assertContentEquals
 
 class GitWorkflowGitOperationsTest {
   @Test
@@ -63,7 +63,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `scoped checkpoint blocks an owned path already present in the foreign index`() {
+  fun `scoped checkpoint snapshots current owned content without mutating its staged index entry`() {
     val repoRoot = Files.createTempDirectory("skillbill-scoped-checkpoint-overlap")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -73,6 +73,7 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "initial")
     Files.writeString(repoRoot.resolve("shared.txt"), "foreign staged\n")
     git(repoRoot, "add", "shared.txt")
+    Files.writeString(repoRoot.resolve("shared.txt"), "current combined content\n")
     val headBefore = git(repoRoot, "rev-parse", "HEAD")
     val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
 
@@ -84,15 +85,13 @@ class GitWorkflowGitOperationsTest {
         loop = "initial",
         generation = 1,
         ownedPaths = listOf("shared.txt"),
-        commitMessage = "must not commit",
+        commitMessage = "snapshot current content",
       ),
     )
 
-    assertFalse(result.ok)
-    assertEquals("shared.txt", requireNotNull(result.policyBlock).path)
-    assertFalse(requireNotNull(result.policyBlock).retryable)
-    assertContains(requireNotNull(result.policyBlock).recoveryGuidance, "unstage")
-    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+    assertTrue(result.ok, result.error)
+    assertEquals("current combined content", git(repoRoot, "show", "HEAD:shared.txt"))
+    assertEquals(headBefore, requireNotNull(result.identity).parentSha)
     assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
   }
 
@@ -171,6 +170,72 @@ class GitWorkflowGitOperationsTest {
     assertEquals("foreign-governed-feature-path", requireNotNull(result.policyBlock).code)
     assertEquals(".feature-specs/SKILL-149/spec.md", requireNotNull(result.policyBlock).path)
     assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+  }
+
+  @Test
+  fun `phase path outside frozen inventory blocks before commit`() {
+    val repoRoot = Files.createTempDirectory("skillbill-outside-inventory")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("owned.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("owned.txt"), "owned\n")
+    Files.writeString(repoRoot.resolve("escaped.txt"), "escaped\n")
+    val headBefore = git(repoRoot, "rev-parse", "HEAD")
+
+    val result = GitWorkflowGitOperations().createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "implement",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf("owned.txt"),
+        observedPaths = listOf("owned.txt", "escaped.txt"),
+        commitMessage = "must not commit",
+      ),
+    )
+
+    assertEquals("outside-owned-inventory", requireNotNull(result.policyBlock).code)
+    assertEquals("escaped.txt", requireNotNull(result.policyBlock).path)
+    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+  }
+
+  @Test
+  fun `owned content changed after phase completion is checkpointed as its current state`() {
+    val repoRoot = Files.createTempDirectory("skillbill-content-overlap")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("shared.txt"), "phase result\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val operations = GitWorkflowGitOperations()
+    val captured = operations.ownedPathContentIdentities(repoRoot, listOf("shared.txt"))
+      .value.substringAfter('\t')
+    Files.writeString(repoRoot.resolve("shared.txt"), "concurrent edit\n")
+    val bytesBefore = Files.readAllBytes(repoRoot.resolve("shared.txt"))
+    val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
+
+    val result = operations.createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "implement",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf("shared.txt"),
+        expectedContentIdentities = mapOf("shared.txt" to captured),
+        commitMessage = "snapshot current content",
+      ),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertEquals("concurrent edit", git(repoRoot, "show", "HEAD:shared.txt"))
+    assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
+    assertContentEquals(bytesBefore, Files.readAllBytes(repoRoot.resolve("shared.txt")))
   }
 
   @Test

@@ -14,6 +14,7 @@ class WorkflowCheckpointIdentityTest {
       generation = 1,
       parentSha = "a".repeat(40),
       ownedPathDigest = "b".repeat(64),
+      ownedPaths = listOf("runtime-kotlin/owned.kt"),
       commitSha = "c".repeat(40),
     )
 
@@ -30,6 +31,7 @@ class WorkflowCheckpointIdentityTest {
         generation = 1,
         parentSha = "a".repeat(40),
         ownedPathDigest = "not-a-digest",
+        ownedPaths = listOf("runtime-kotlin/owned.kt"),
         commitSha = "c".repeat(40),
       )
     }

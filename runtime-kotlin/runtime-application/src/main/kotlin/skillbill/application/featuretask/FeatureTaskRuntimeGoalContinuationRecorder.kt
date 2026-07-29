@@ -8,6 +8,7 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
@@ -21,7 +22,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -32,6 +32,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionRecord
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import java.security.MessageDigest
 
 @Inject
 @Suppress("TooManyFunctions")
@@ -283,6 +284,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     completed
   }
 
+  @Suppress("ReturnCount")
   internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
@@ -296,42 +298,43 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         ?: return@read null
       val continuation = continuationFromArtifacts(artifacts)
         ?: return@read null
-      state to continuation
+      Triple(state, continuation, resolvedBranchFrom(artifacts))
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
-    val (state, continuation) = durable
-    // Pass one is unchanged: the immutable review_base_sha and baseline untracked inventory stay its
-    // sole authority. Only the reserved remediation pass is rescoped, to diff(pre-fix tree -> HEAD),
-    // so the scope union the prompt states has a materialized input behind it.
-    val remediationBaseline = state.remediationBaseSha
-      ?.takeIf { state.reservedPassNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES }
-      // The baseline untracked inventory is the exclusion list, not a per-pass detail: dropping it
-      // would materialize every untracked file in the worktree into the pass-two input as an owned
-      // change. Only the base sha is rescoped.
-      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, state.baselineUntrackedPaths) }
-    val result = gitOperations.buildGoalSubtaskReviewInput(
-      repoRoot,
-      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
-      continuation.goalBranch,
-    )
+    val (state, continuation, resolved) = durable
+    val checkpoint = resolved?.checkpointIdentities?.lastOrNull()
+    val result = if (checkpoint == null) {
+      gitOperations.buildGoalSubtaskReviewInput(
+        repoRoot,
+        GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+        continuation.goalBranch,
+      )
+    } else {
+      val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
+      val digest = MessageDigest.getInstance("SHA-256")
+        .digest(frozenPaths.joinToString("\u0000").toByteArray())
+        .joinToString("") { "%02x".format(it) }
+      if (digest != checkpoint.ownedPathDigest) {
+        return GoalSubtaskReviewInputBlocked("Checkpoint owned-path inventory digest does not match durable identity.")
+      }
+      gitOperations.buildScopedGoalSubtaskReviewInput(
+        repoRoot,
+        GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
+        continuation.goalBranch,
+        checkpoint.commitSha,
+        frozenPaths,
+      )
+    }
     val input = if (result.ok) {
       requireNotNull(result.input)
     } else {
-      recoverGoalReviewInput(
-        GoalReviewInputRecoveryRequest(
-          workflowId = workflowId,
-          state = state,
-          continuation = continuation,
-          failureReason = result.failureReason,
-          failureMessage = result.error,
-          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, dbOverride),
-        ),
-      ) ?: return GoalSubtaskReviewInputBlocked(result.error)
+      return GoalSubtaskReviewInputBlocked(result.error)
     }
     val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
+  @Suppress("ReturnCount", "UnusedPrivateMember")
   private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalSubtaskReviewInput? {
     if (request.failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) return null
     val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(
@@ -341,10 +344,22 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     )
     if (!recovered.ok) return null
     val recoveredBaseline = requireNotNull(recovered.baseline)
-    val rebuilt = request.execution.gitOperations.buildGoalSubtaskReviewInput(
+    val checkpoint = database.read(request.execution.dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@read null
+      resolvedBranchFrom(decodeArtifacts(record.artifactsJson))?.checkpointIdentities?.lastOrNull()
+    } ?: return null
+    val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
+    val frozenDigest = MessageDigest.getInstance("SHA-256")
+      .digest(frozenPaths.joinToString("\u0000").toByteArray())
+      .joinToString("") { "%02x".format(it) }
+    if (frozenDigest != checkpoint.ownedPathDigest) return null
+    val rebuilt = request.execution.gitOperations.buildScopedGoalSubtaskReviewInput(
       request.execution.repoRoot,
-      recoveredBaseline,
+      GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
       request.continuation.goalBranch,
+      checkpoint.commitSha,
+      frozenPaths,
     )
     check(rebuilt.ok) {
       "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize review input " +
@@ -362,8 +377,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         "Goal-subtask review base can be recovered only before any review input or completed review pass exists."
       }
       val replaced = latest.copy(
-        reviewBaseSha = recoveredBaseline.reviewBaseSha,
-        baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths.distinct().sorted(),
+        reviewBaseSha = checkpoint.parentSha,
+        baselineUntrackedPaths = emptyList(),
         reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
       )
       check(input.reviewBaseSha == replaced.reviewBaseSha) {

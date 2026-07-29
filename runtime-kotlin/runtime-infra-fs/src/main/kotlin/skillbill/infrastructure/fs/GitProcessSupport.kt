@@ -48,11 +48,7 @@ internal fun runGitProcess(repoRoot: Path, args: List<String>): GitProcessResult
   return runGitProcess(repoRoot, args, emptyMap())
 }
 
-internal fun runGitProcess(
-  repoRoot: Path,
-  args: List<String>,
-  environment: Map<String, String>,
-): GitProcessResult {
+internal fun runGitProcess(repoRoot: Path, args: List<String>, environment: Map<String, String>): GitProcessResult {
   val builder = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
     .redirectErrorStream(true)
   builder.environment().putAll(environment)

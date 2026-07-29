@@ -64,7 +64,7 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     if (normalizedPaths.isEmpty()) {
       return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review owns no paths.")
     }
-    val head = goalReviewGitValue(repoRoot, "rev-parse", "${checkpointHead}^{commit}")?.trim()
+    val head = goalReviewGitValue(repoRoot, "rev-parse", "$checkpointHead^{commit}")?.trim()
       ?: return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review checkpoint is not a commit.")
     val changed = goalReviewGitValue(
       repoRoot,

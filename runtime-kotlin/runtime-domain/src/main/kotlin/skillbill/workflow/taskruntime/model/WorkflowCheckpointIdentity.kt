@@ -7,6 +7,7 @@ data class WorkflowCheckpointIdentity(
   val generation: Int,
   val parentSha: String,
   val ownedPathDigest: String,
+  val ownedPaths: List<String>,
   val commitSha: String,
 ) {
   init {
@@ -16,6 +17,7 @@ data class WorkflowCheckpointIdentity(
     require(generation > 0)
     require(CHECKPOINT_SHA.matches(parentSha))
     require(CHECKPOINT_DIGEST.matches(ownedPathDigest))
+    require(ownedPaths.isNotEmpty() && ownedPaths.all(String::isNotBlank))
     require(CHECKPOINT_SHA.matches(commitSha))
   }
 
@@ -26,6 +28,7 @@ data class WorkflowCheckpointIdentity(
     "generation" to generation,
     "parent_sha" to parentSha,
     "owned_path_digest" to ownedPathDigest,
+    "owned_paths" to ownedPaths,
     "commit_sha" to commitSha,
   )
 
@@ -38,6 +41,10 @@ data class WorkflowCheckpointIdentity(
         ?: error("Checkpoint identity generation must be an integer."),
       parentSha = raw.requireCheckpointString("parent_sha"),
       ownedPathDigest = raw.requireCheckpointString("owned_path_digest"),
+      ownedPaths = (raw["owned_paths"] as? List<*>)
+        ?.map { it as? String ?: error("Checkpoint identity owned_paths must contain only strings.") }
+        ?.takeIf { it.isNotEmpty() }
+        ?: error("Checkpoint identity owned_paths must be a non-empty list."),
       commitSha = raw.requireCheckpointString("commit_sha"),
     )
   }

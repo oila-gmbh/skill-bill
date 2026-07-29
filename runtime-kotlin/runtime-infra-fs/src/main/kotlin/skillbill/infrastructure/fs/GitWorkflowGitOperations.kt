@@ -10,18 +10,18 @@ import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowCheckpointPolicyBlock
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.model.WorkflowScopedCheckpointResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -121,6 +121,14 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     request: WorkflowScopedCheckpointRequest,
   ): WorkflowScopedCheckpointResult = ScopedCheckpointGitOperations.create(repoRoot, request)
 
+  override fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
+    ScopedCheckpointGitOperations.contentIdentities(repoRoot, ownedPaths)
+
+  override fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult = ScopedCheckpointGitOperations.restoreParent(repoRoot, identity)
+
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     val commit = runGitCommand(repoRoot, "commit", "-m", message)
     return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit
@@ -195,6 +203,16 @@ private object ScopedCheckpointGitOperations {
     if (paths.isEmpty()) {
       return WorkflowScopedCheckpointResult(status = "error", error = "Scoped checkpoint owns no paths.")
     }
+    val escapedPath = request.observedPaths
+      .map { it.replace('\\', '/').trim().removePrefix("./") }
+      .firstOrNull { it !in paths }
+    if (escapedPath != null) {
+      return policy(
+        "outside-owned-inventory",
+        escapedPath,
+        "Move the named change outside this phase or expand ownership through the governed durable operation.",
+      )
+    }
     val foreignGovernedPath = request.governedSpecRoot?.trimEnd('/')?.let { governedRoot ->
       paths.firstOrNull { path ->
         path.startsWith(".feature-specs/") && path != governedRoot && !path.startsWith("$governedRoot/")
@@ -213,16 +231,6 @@ private object ScopedCheckpointGitOperations {
         "case-colliding-owned-paths",
         caseCollision.sorted().joinToString(","),
         "Resolve the case-colliding ownership entries and retry.",
-      )
-    }
-    val staged = runGitCommand(repoRoot, "diff", "--cached", "--name-only", "-z")
-    if (!staged.ok) return failure(staged.error)
-    val overlap = staged.value.orEmpty().split('\u0000').firstOrNull { it in paths }
-    if (overlap != null) {
-      return policy(
-        "ambiguous-index-overlap",
-        overlap,
-        "Commit or unstage the named path, then resume the workflow checkpoint.",
       )
     }
     val parent = runGitCommand(repoRoot, "rev-parse", "HEAD")
@@ -250,6 +258,7 @@ private object ScopedCheckpointGitOperations {
           generation = request.generation,
           parentSha = parent.value,
           ownedPathDigest = sha256(paths.joinToString("\u0000")),
+          ownedPaths = paths,
           commitSha = head.value,
         ),
       )
@@ -258,21 +267,67 @@ private object ScopedCheckpointGitOperations {
     }
   }
 
-  private fun run(
-    repoRoot: Path,
-    environment: Map<String, String>,
-    args: List<String>,
-  ): WorkflowGitOperationResult {
+  fun contentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult {
+    val paths = ownedPaths.distinct().sorted()
+    val identities = contentIdentityMap(repoRoot, paths)
+      ?: return WorkflowGitOperationResult(
+        status = "error",
+        error = "Could not capture owned-path content identities.",
+      )
+    return WorkflowGitOperationResult(
+      status = "ok",
+      value = identities.entries.joinToString("\n") { (path, digest) -> "$path\t$digest" },
+    )
+  }
+
+  fun restoreParent(repoRoot: Path, identity: WorkflowCheckpointIdentity): WorkflowGitOperationResult {
+    val current = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!current.ok) return current
+    if (current.value != identity.commitSha) {
+      return WorkflowGitOperationResult(
+        status = "error",
+        error = "Refusing checkpoint rollback because HEAD no longer names ${identity.commitSha}.",
+      )
+    }
+    return runGitCommand(
+      repoRoot,
+      "update-ref",
+      "refs/heads/${identity.branch}",
+      identity.parentSha,
+      identity.commitSha,
+    )
+  }
+
+  private fun contentIdentityMap(repoRoot: Path, paths: List<String>): Map<String, String>? = runCatching {
+    paths.associateWith { path ->
+      val resolved = repoRoot.toAbsolutePath().normalize().resolve(path).normalize()
+      require(resolved.startsWith(repoRoot.toAbsolutePath().normalize()))
+      when {
+        Files.isSymbolicLink(resolved) -> sha256("symlink:${Files.readSymbolicLink(resolved)}")
+        Files.isRegularFile(resolved) -> sha256(Files.readAllBytes(resolved))
+        Files.notExists(resolved) -> sha256("missing")
+        else -> sha256("unsupported")
+      }
+    }
+  }.getOrNull()
+
+  private fun run(repoRoot: Path, environment: Map<String, String>, args: List<String>): WorkflowGitOperationResult {
     val result = runGitProcess(repoRoot, args, environment)
     return if (result.exitCode == 0 && !result.timedOut && result.readFailure == null) {
       WorkflowGitOperationResult(status = "ok", value = result.output)
     } else {
-      WorkflowGitOperationResult(status = "error", error = result.output.ifBlank { result.readFailure?.message.orEmpty() })
+      WorkflowGitOperationResult(
+        status = "error",
+        error = result.output.ifBlank { result.readFailure?.message.orEmpty() },
+      )
     }
   }
 
   private fun sha256(value: String): String =
     MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+  private fun sha256(value: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(value).joinToString("") { "%02x".format(it) }
 
   private fun policy(code: String, path: String, guidance: String) = WorkflowScopedCheckpointResult(
     status = "blocked",

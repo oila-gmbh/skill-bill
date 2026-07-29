@@ -146,9 +146,18 @@ internal fun reconcileCheckpointPathInventory(
     .let { path -> if (path.isAbsolute) repoRoot.relativize(path) else path }
     .normalize()
     .toString()
+    .replace('\\', '/')
+  val activeSpecRoot = specPath.substringBeforeLast('/', missingDelimiterValue = specPath)
+  val eligiblePaths = paths
+    .map { it.replace('\\', '/').removePrefix("./") }
+    .filterNot { path ->
+      path.startsWith(".feature-specs/") &&
+        path != activeSpecRoot &&
+        !path.startsWith("$activeSpecRoot/")
+    }
   return when (specSource) {
-    SpecSource.LOCAL -> (paths + specPath).distinct()
-    SpecSource.LINEAR -> paths.filterNot { path ->
+    SpecSource.LOCAL -> (eligiblePaths + specPath).distinct()
+    SpecSource.LINEAR -> eligiblePaths.filterNot { path ->
       path == specPath || path.startsWith(".feature-specs/$issueKey-")
     }
   }
@@ -769,6 +778,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val ownedPaths = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
       ?.workflowOwnedPaths
       .orEmpty()
+    val resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
     if (ownedPaths.isEmpty()) {
       return blockCheckpoint(
         precedingPhaseId,
@@ -787,6 +797,11 @@ internal class FeatureTaskRuntimeRunLoop(
         loop = loop,
         generation = generation,
         ownedPaths = ownedPaths,
+        observedPaths = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+          ?.get(precedingPhaseId)
+          ?.fileManifestIntroduced
+          .orEmpty(),
+        expectedContentIdentities = resolvedBranch?.workflowOwnedPathContentIdentities.orEmpty(),
         governedSpecRoot = runCatching {
           request.repoRoot.toAbsolutePath().normalize()
             .relativize(Path.of(request.runInvariants.specReference).toAbsolutePath().normalize())
@@ -801,10 +816,23 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!commit.ok) return blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)
     val identity = commit.identity
       ?: return blockCheckpoint(precedingPhaseId, branch, "scoped checkpoint returned no identity", blockedReason)
-    return if (recorder.recordCheckpointIdentity(request.workflowId, identity, request.dbPathOverride)) {
+    val identityPersisted = runCatching {
+      recorder.recordCheckpointIdentity(request.workflowId, identity, request.dbPathOverride)
+    }.getOrDefault(false)
+    return if (identityPersisted) {
       true
     } else {
-      blockCheckpoint(precedingPhaseId, branch, "checkpoint identity could not be persisted", blockedReason)
+      val restored = phaseGates.gitOperations.restoreScopedCheckpointParent(request.repoRoot, identity)
+      blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        if (restored.ok) {
+          "checkpoint identity could not be persisted; the branch was restored to ${identity.parentSha}"
+        } else {
+          "checkpoint identity could not be persisted and branch restoration failed: ${restored.error}"
+        },
+        blockedReason,
+      )
     }
   }
 
@@ -1646,6 +1674,7 @@ internal class FeatureTaskRuntimeRunLoop(
     else -> prepareStandaloneReviewRun(run, observability)
   }
 
+  @Suppress("ReturnCount")
   private fun prepareStandaloneReviewRun(
     run: PhaseRun,
     observability: FeatureTaskRuntimeRunObservability,
@@ -1666,12 +1695,19 @@ internal class FeatureTaskRuntimeRunLoop(
         resolved.branch,
       )
     } else {
+      val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
+      val frozenDigest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(frozenPaths.joinToString("\u0000").toByteArray())
+        .joinToString("") { "%02x".format(it) }
+      if (frozenDigest != checkpoint.ownedPathDigest) {
+        return blockedGoalReviewRun(run, observability, "Checkpoint owned-path inventory digest mismatch.")
+      }
       phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
         run.request.repoRoot,
         GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
         resolved.branch,
         checkpoint.commitSha,
-        resolved.workflowOwnedPaths,
+        frozenPaths,
       )
     }
     val input = result.input
@@ -1876,6 +1912,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun isRetryableGoalReviewPreparation(phaseId: String, reason: String): Boolean {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return false
+    if (reason == "Goal-child review requires a persisted immutable checkpoint.") return true
     val legacyDatabaseContention =
       reason.startsWith("Goal-subtask review state or durable raw evidence is malformed:") &&
         "[SQLITE_BUSY]" in reason
@@ -2007,7 +2044,7 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         if (formatBlock == null) {
           iteration += 1
-          priorSchemaFailure = attempt.schemaInvalidReason
+          priorSchemaFailure = attempt.schemaRetryCorrectionReason
           observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
           null
         } else {
@@ -2026,7 +2063,7 @@ internal class FeatureTaskRuntimeRunLoop(
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
             semanticIteration += 1
-            priorSchemaFailure = attempt.schemaInvalidReason
+            priorSchemaFailure = attempt.schemaRetryCorrectionReason
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
           }
@@ -2383,7 +2420,7 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  @Suppress("ReturnCount")
+  @Suppress("CyclomaticComplexMethod", "ReturnCount")
   private fun settleValidatedOutput(
     run: PhaseRun,
     iteration: Int,
@@ -2406,7 +2443,11 @@ internal class FeatureTaskRuntimeRunLoop(
         run, iteration, diagnosticRule, reason, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
-      return schemaInvalidAttempt(reason, fileManifest)
+      return schemaInvalidAttempt(
+        publicReason = reason,
+        retryCorrectionReason = retryCorrectionReason(detail, structuredIdentity, reason),
+        fileManifest = fileManifest,
+      )
     }
     firstValidatedOutputRejection(run.phaseId, outputText, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
@@ -2463,6 +2504,23 @@ internal class FeatureTaskRuntimeRunLoop(
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return reject("output-verification", reason)
     }
+    val checkpointManifest = prepareMutatingCheckpointCompletion(run, outputMap, fileManifest)?.let { preparation ->
+      when (preparation) {
+        is MutatingCheckpointCompletionBlocked -> {
+          return AttemptResult.settled(
+            blockAndPersistInPhase(
+              run,
+              iteration,
+              preparation.reason,
+              observability,
+              failureDisposition = preparation.disposition,
+              fileManifest = fileManifest,
+            ),
+          )
+        }
+        is MutatingCheckpointCompletionReady -> preparation.fileManifest
+      }
+    } ?: fileManifest
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
         request.workflowId,
@@ -2482,10 +2540,103 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration,
       normalizedOutput,
       observability,
-      fileManifest,
+      checkpointManifest,
       repositoryFingerprint,
     )
   }
+
+  @Suppress("ReturnCount")
+  private fun prepareMutatingCheckpointCompletion(
+    run: PhaseRun,
+    output: Map<String, Any?>,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): MutatingCheckpointCompletionPreparation? {
+    if (
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    ) {
+      return null
+    }
+    val resolved = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+      ?: return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion cannot resolve the durable workflow-owned path inventory.",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    val frozenPaths = resolved.workflowOwnedPaths.distinct().sorted()
+    if (frozenPaths.isEmpty()) {
+      return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion has an empty durable workflow-owned path inventory.",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    val claimedPaths = JsonSupport.anyToStringAnyMap(output["produced_outputs"])
+      .orEmpty()["changed_paths"]
+      .let { it as? List<*> }
+      .orEmpty()
+      .mapNotNull { it as? String }
+      .map { it.replace('\\', '/').trim().removePrefix("./") }
+      .filter(String::isNotBlank)
+      .toSet()
+    val governedRoot = activeGovernedSpecRoot(run)
+    val concurrentForeignGovernedPaths = fileManifest.introduced.filter { path ->
+      isForeignGovernedPath(path, governedRoot) && path !in claimedPaths
+    }.toSet()
+    val attributableIntroduced = fileManifest.introduced.filterNot { it in concurrentForeignGovernedPaths }
+    val escapedPath = (claimedPaths + attributableIntroduced)
+      .sorted()
+      .firstOrNull { it !in frozenPaths }
+    if (escapedPath != null) {
+      return MutatingCheckpointCompletionBlocked(
+        "Checkpoint policy block 'outside-owned-inventory' names '$escapedPath'. " +
+          "Move the named change outside this phase or expand ownership through the governed durable operation.",
+        FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
+      )
+    }
+    val identities = phaseGates.gitOperations.ownedPathContentIdentities(run.request.repoRoot, frozenPaths)
+    if (!identities.ok) {
+      return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion could not capture owned-path content identities: ${identities.error}",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    val parsedIdentities = identities.value.orEmpty()
+      .lineSequence()
+      .filter(String::isNotBlank)
+      .associate { line -> line.substringBefore('\t') to line.substringAfter('\t') }
+    if (
+      parsedIdentities.keys != frozenPaths.toSet() ||
+      !recorder.recordWorkflowOwnedPaths(
+        run.request.workflowId,
+        frozenPaths,
+        parsedIdentities,
+        run.request.dbPathOverride,
+      )
+    ) {
+      return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion could not persist the complete owned-path content identities.",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    return MutatingCheckpointCompletionReady(
+      FeatureTaskRuntimePhaseFileManifest(
+        before = (fileManifest.before + concurrentForeignGovernedPaths).distinct().sorted(),
+        after = fileManifest.after,
+      ),
+    )
+  }
+
+  private fun activeGovernedSpecRoot(run: PhaseRun): String? = runCatching {
+    run.request.repoRoot.toAbsolutePath().normalize()
+      .relativize(Path.of(run.request.runInvariants.specReference).toAbsolutePath().normalize())
+      .parent
+      ?.toString()
+      ?.replace('\\', '/')
+  }.getOrNull()
+
+  private fun isForeignGovernedPath(path: String, activeRoot: String?): Boolean = activeRoot != null &&
+    path.startsWith(".feature-specs/") &&
+    path != activeRoot &&
+    !path.startsWith("$activeRoot/")
 
   private fun nonCompactAuditDurableLedgerGateReason(
     phaseId: String,
@@ -2589,7 +2740,6 @@ internal class FeatureTaskRuntimeRunLoop(
       baselineOwnedPaths = resolvedBranch?.baselineOwnedPaths
         ?: goalReviewState?.baselineUntrackedPaths
         ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
-      revisions = revisions,
     ) ?: return null
     val fingerprint = gitOperations.repositoryCheckpointFingerprint(
       run.request.repoRoot,
@@ -2609,27 +2759,30 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     persistedOwnedPaths: List<String>?,
     baselineOwnedPaths: List<String>,
-    revisions: CheckpointRevisions,
   ): List<String>? {
-    val workingTreePaths = checkpointOwnedPaths(run, baselineOwnedPaths) ?: return null
-    val committedPaths = revisions.base?.let { base ->
-      gitOperations.runtimePhaseChangedPathsBetweenCommits(run.request.repoRoot, base, revisions.head)
-        .takeIf { it.ok }
-        ?.value
-        ?.let(FeatureTaskRuntimePhaseSafetyPolicy::lineSeparatedPaths)
-        ?: return null
-    }.orEmpty()
+    val frozenPaths = persistedOwnedPaths
+      ?.takeIf(List<String>::isNotEmpty)
+      ?: checkpointOwnedPaths(run, baselineOwnedPaths)
+      ?: return null
     val inventory = reconcileCheckpointPathInventory(
       repoRoot = run.request.repoRoot,
       issueKey = run.request.issueKey,
       specReference = run.request.runInvariants.specReference,
       specSource = run.specSource,
-      paths = (persistedOwnedPaths.orEmpty() + committedPaths + workingTreePaths).distinct(),
+      paths = frozenPaths,
     ).sorted()
+    if (inventory.isEmpty()) return null
+    val contentIdentities = gitOperations.ownedPathContentIdentities(run.request.repoRoot, inventory)
+      .takeIf { it.ok }?.value
+      ?.lineSequence()
+      ?.filter(String::isNotBlank)
+      ?.associate { line -> line.substringBefore('\t') to line.substringAfter('\t') }
+      ?: return null
     return inventory.takeIf {
       recorder.recordWorkflowOwnedPaths(
         run.request.workflowId,
         inventory,
+        contentIdentities,
         run.request.dbPathOverride,
       )
     }
@@ -2774,7 +2927,12 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition.retryOnResume &&
       FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
     ) {
-      AttemptResult.schemaInvalid(reason, fileManifest, null, false)
+      AttemptResult.schemaInvalid(
+        publicReason = reason,
+        retryCorrectionReason = reason,
+        fileManifest = fileManifest,
+        rejectedOutput = null,
+      )
     } else {
       AttemptResult.settled(
         blockAndPersistInPhase(
@@ -2972,6 +3130,12 @@ internal class FeatureTaskRuntimeRunLoop(
       .find(detail)
       ?.destructured
       ?.let { (ruleId, jsonPath) -> ruleId to jsonPath }
+
+  private fun retryCorrectionReason(
+    detail: String,
+    structuredIdentity: Pair<String, String>?,
+    publicReason: String,
+  ): String = if (structuredIdentity == null) publicReason else detail
 
   private fun hasNoNonBlankStrings(value: Any?): Boolean =
     (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
@@ -3369,11 +3533,13 @@ internal class FeatureTaskRuntimeRunLoop(
   // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
   // output, which is the state a resume is already contracted to re-enter rather than treat as terminal.
   private fun schemaInvalidAttempt(
-    reason: String,
+    publicReason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     malformedOutput: Boolean = false,
+    retryCorrectionReason: String = publicReason,
   ): AttemptResult = AttemptResult.schemaInvalid(
-    reason,
+    publicReason,
+    retryCorrectionReason,
     fileManifest,
     null,
     malformedOutput,
@@ -3824,6 +3990,17 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class LaunchPreparationRejected(val result: LaunchResult) : LaunchPreparation
 
+  private sealed interface MutatingCheckpointCompletionPreparation
+
+  private data class MutatingCheckpointCompletionReady(
+    val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ) : MutatingCheckpointCompletionPreparation
+
+  private data class MutatingCheckpointCompletionBlocked(
+    val reason: String,
+    val disposition: FeatureTaskRuntimeFailureDisposition,
+  ) : MutatingCheckpointCompletionPreparation
+
   private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {
     run.reentry
       ?.takeIf { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
@@ -3959,7 +4136,8 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : AttemptResult
     private data class SchemaInvalid(
-      val validationReason: String,
+      val publicReason: String,
+      val retryCorrectionReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
       override val malformedOutput: Boolean,
@@ -3967,7 +4145,8 @@ internal class FeatureTaskRuntimeRunLoop(
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val semanticIncompleteReason: String? get() = (this as? SemanticIncomplete)?.reason
-    val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
+    val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.publicReason
+    val schemaRetryCorrectionReason: String? get() = (this as? SchemaInvalid)?.retryCorrectionReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
     val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
@@ -3977,11 +4156,13 @@ internal class FeatureTaskRuntimeRunLoop(
       fun semanticIncomplete(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): AttemptResult =
         SemanticIncomplete(reason, fileManifest)
       fun schemaInvalid(
-        validationReason: String,
+        publicReason: String,
+        retryCorrectionReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         rejectedOutput: String?,
         malformedOutput: Boolean = false,
-      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput, malformedOutput)
+      ): AttemptResult =
+        SchemaInvalid(publicReason, retryCorrectionReason, fileManifest, rejectedOutput, malformedOutput)
     }
   }
 

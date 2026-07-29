@@ -38,6 +38,15 @@ interface WorkflowGitOperations {
     error = "This git adapter does not support scoped checkpoint transactions.",
   )
 
+  fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot fingerprint owned paths.")
+
+  fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot restore a checkpoint parent.")
+
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
   // Resolves an operator-supplied revision to a full commit SHA, or errors when it names no commit

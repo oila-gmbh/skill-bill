@@ -18,7 +18,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -311,11 +311,21 @@ class FeatureTaskRuntimeRunner(
     state: GoalSubtaskReviewState,
   ): Boolean {
     val judgedDigest = state.activePassDeltaDigest ?: state.reviewedDeltaDigest ?: return true
-    val comparisonBase = state.reviewedHeadSha ?: state.reviewBaseSha
-    val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+    val checkpoint = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+      ?.checkpointIdentities
+      ?.lastOrNull()
+      ?: return true
+    val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
+    val frozenDigest = java.security.MessageDigest.getInstance("SHA-256")
+      .digest(frozenPaths.joinToString("\u0000").toByteArray())
+      .joinToString("") { "%02x".format(it) }
+    if (frozenDigest != checkpoint.ownedPathDigest) return true
+    val current = phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
       request.repoRoot,
-      GoalSubtaskReviewBaseline(comparisonBase, state.baselineUntrackedPaths),
+      GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
       goalBranch,
+      checkpoint.commitSha,
+      frozenPaths,
     ).input
     return current
       ?.takeUnless { it.deltaDigest == judgedDigest }
