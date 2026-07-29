@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionR
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import java.nio.file.Files
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -71,6 +72,54 @@ class ReviewGenerationRuntimeTest {
           generation.copy(identity = generation.identity.copy(repositoryCheckpoint = "changed-checkpoint")),
         )
       }
+    }
+  }
+
+  @Test
+  fun `pass-specific generations may share the reviewed tuple`() {
+    val dbPath = Files.createTempDirectory("pass-specific-review-generations").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      val first = generation(1)
+      val second = first.copy(identity = first.identity.copy(generationId = "generation-2"))
+
+      repository.appendGeneration(first)
+      repository.appendGeneration(second)
+
+      assertEquals("generation-2", repository.summary("workflow-1").currentGenerationId)
+    }
+  }
+
+  @Test
+  fun `existing pass-blind generation uniqueness is healed without losing rows`() {
+    val dbPath = Files.createTempDirectory("review-generation-schema-heal").resolve("runtime.db")
+    DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath()}").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_generations (
+            workflow_id TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
+            review_base TEXT NOT NULL,
+            reviewed_delta_digest TEXT NOT NULL,
+            repository_checkpoint TEXT NOT NULL,
+            superseded_by_generation_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (workflow_id, generation_id),
+            UNIQUE (workflow_id, review_base, reviewed_delta_digest, repository_checkpoint)
+          )
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      val first = generation(1)
+      repository.appendGeneration(first)
+      repository.appendGeneration(first.copy(identity = first.identity.copy(generationId = "generation-2")))
+
+      assertEquals("generation-2", repository.summary("workflow-1").currentGenerationId)
     }
   }
 

@@ -149,8 +149,8 @@ class FeatureTaskRuntimeRunner(
     val report = runCatching {
       if (runRequest.operatorDecision == null) {
         reopenMismatchedReviewProjection(runRequest)
-        reopenCappedReviewOnChangedDelta(runRequest)
       }
+      reopenCappedReviewOnChangedDelta(runRequest)
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,

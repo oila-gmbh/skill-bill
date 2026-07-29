@@ -98,10 +98,14 @@ class GoalRunner(
     validationQualityRetries.clear()
     pendingReAttemptCause.clear()
     pendingCausingLoopEntry.clear()
-    val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    var state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
-    state.manifest.subtasks.mapNotNull { it.workflowId }.forEach { workflowId ->
+    val projectionChanged = state.manifest.subtasks.mapNotNull { it.workflowId }.map { workflowId ->
       outcomeStore.reconcileMismatchedGoalReviewProjection(workflowId, request.dbPathOverride)
+    }.any { it }
+    if (projectionChanged) {
+      state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+        ?: return unknownGoal(request.issueKey)
     }
     return when (val preparation = prepareRun(state, request)) {
       is GoalRunPreparation.PreparationBlocked -> preparation.report
@@ -398,7 +402,7 @@ class GoalRunner(
     val reconciled = launchReconciliation.reconciled
     val reAttemptCause = pendingReAttemptCause.remove(subtaskId)
     val causingLoopEntry = pendingCausingLoopEntry.remove(subtaskId)
-    recordPostLaunchState(
+    val reviewReopened = recordPostLaunchState(
       refreshed,
       subtaskId,
       selection,
@@ -409,10 +413,19 @@ class GoalRunner(
       reAttemptCause,
       causingLoopEntry,
     )
-    return dispatchWorkerResult(
-      refreshed, subtaskId, reconciled, workerRequestResult, launchReconciliation,
-      request, attempted, observability, ledger, attemptStartMillis,
-    )
+    return if (reviewReopened) {
+      val reopenedState = manifestStore.loadByIssueKey(
+        request.issueKey,
+        request.dbPathOverride,
+        request.repoRoot,
+      ) ?: refreshed
+      GoalRunnerIterationResult(state = reopenedState)
+    } else {
+      dispatchWorkerResult(
+        refreshed, subtaskId, reconciled, workerRequestResult, launchReconciliation,
+        request, attempted, observability, ledger, attemptStartMillis,
+      )
+    }
   }
 
   private fun dispatchWorkerResult(
@@ -457,8 +470,8 @@ class GoalRunner(
     ledger: GoalRunnerLedgerRecorder,
     reAttemptCause: String? = null,
     causingLoopEntry: String? = null,
-  ) {
-    refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
+  ): Boolean {
+    return refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
       recordLaunchObservabilityLedgerAndAccounting(
         LaunchRecordingContext(
           workflowId,
@@ -473,8 +486,13 @@ class GoalRunner(
         observability,
         ledger,
       )
-      emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
-    }
+      val reviewReopened =
+        outcomeStore.reconcileMismatchedGoalReviewProjection(workflowId, request.dbPathOverride)
+      if (!reviewReopened) {
+        emitGoalReviewSummaries(refreshed.manifest.issueKey, subtaskId, workflowId, request)
+      }
+      reviewReopened
+    } ?: false
   }
 
   private fun blockedOnRecoveryError(

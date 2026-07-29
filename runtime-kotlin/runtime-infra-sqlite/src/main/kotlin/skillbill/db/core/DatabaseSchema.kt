@@ -172,8 +172,7 @@ internal object DatabaseSchema {
         repository_checkpoint TEXT NOT NULL,
         superseded_by_generation_id TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (workflow_id, generation_id),
-        UNIQUE (workflow_id, review_base, reviewed_delta_digest, repository_checkpoint)
+        PRIMARY KEY (workflow_id, generation_id)
       )
       """.trimIndent(),
       """
