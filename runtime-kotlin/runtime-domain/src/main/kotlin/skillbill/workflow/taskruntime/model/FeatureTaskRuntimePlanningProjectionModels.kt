@@ -725,7 +725,8 @@ private fun FeatureTaskRuntimeExecutablePlan.Companion.fromMap(
 }
 
 private fun Map<String, Any?>.requireComplexitySignals(): FeatureTaskRuntimeComplexitySignals {
-  val signals = stringAnyMap("complexity_signals") ?: return FeatureTaskRuntimeComplexitySignals.MINIMUM
+  val signals = stringAnyMap("complexity_signals")
+    ?: throw malformed("complexity_signals", "is required")
   fun number(name: String): Int = (signals[name] as? Number)?.toInt()
     ?: throw malformed("complexity_signals.$name", "must be an integer")
   fun flag(name: String): Boolean = signals[name] as? Boolean

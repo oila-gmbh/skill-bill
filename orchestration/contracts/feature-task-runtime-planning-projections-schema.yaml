@@ -178,6 +178,7 @@ $defs:
       - risks
       - rollout
       - validation_strategy
+      - complexity_signals
     properties:
       projection_kind: { const: "preplanning_digest" }
       contract_version: { $ref: "#/$defs/contractVersion" }
@@ -212,6 +213,7 @@ $defs:
       - mode
       - tasks
       - validation_strategy
+      - complexity_signals
     properties:
       projection_kind: { const: "executable_plan" }
       contract_version: { $ref: "#/$defs/contractVersion" }
