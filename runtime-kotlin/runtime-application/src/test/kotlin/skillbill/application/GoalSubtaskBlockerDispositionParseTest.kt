@@ -62,6 +62,14 @@ class GoalSubtaskBlockerDispositionParseTest {
       dispositionEvidenceReferencesChangedLine(evidence("src/Unchanged.kt:11"), checkpoint, delta),
       "checkpoint-bound evidence may cite a carried Blocker in a file absent from an unrelated remediation delta",
     )
+    assertTrue(
+      !dispositionEvidenceReferencesChangedLine(
+        "checkpoint=bogus;location=src/Unchanged.kt:11",
+        checkpoint,
+        delta,
+      ),
+      "evidence from a fabricated checkpoint must not settle a carried Blocker",
+    )
     assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11-10"), checkpoint, delta))
   }
 

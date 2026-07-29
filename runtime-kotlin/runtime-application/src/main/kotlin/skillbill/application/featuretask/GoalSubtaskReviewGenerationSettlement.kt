@@ -162,7 +162,10 @@ internal fun dispositionEvidenceReferencesChangedLine(
   repositoryCheckpoint: String,
   reviewedDelta: String,
 ): Boolean {
-  if (!reference.startsWith("checkpoint=") || repositoryCheckpoint.isBlank()) return false
+  if (repositoryCheckpoint.isBlank()) return false
+  val evidenceCheckpoint = reference.substringAfter("checkpoint=", missingDelimiterValue = "")
+    .substringBefore(";location=")
+  if (evidenceCheckpoint != repositoryCheckpoint) return false
   val location = reference.substringAfter(";location=", missingDelimiterValue = "")
     .takeIf(String::isNotBlank) ?: return false
   val match = Regex("^(.+):(\\d+)(?:-(\\d+))?$").matchEntire(location) ?: return false
