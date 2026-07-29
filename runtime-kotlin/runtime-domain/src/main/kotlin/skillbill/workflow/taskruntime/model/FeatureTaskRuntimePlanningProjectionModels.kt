@@ -101,6 +101,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
   val validationStrategy: List<String>,
   val unresolvedQuestions: List<String> = emptyList(),
   val evidenceRefs: List<String> = emptyList(),
+  val complexitySignals: FeatureTaskRuntimeComplexitySignals = FeatureTaskRuntimeComplexitySignals.MINIMUM,
 ) : FeatureTaskRuntimePlanningProjection {
   override val projectionKind: FeatureTaskRuntimeProjectionKind =
     FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
@@ -122,6 +123,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
     field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
     field(FIELD_UNRESOLVED_QUESTIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(unresolvedQuestions)),
     field(FIELD_EVIDENCE_REFS, FeatureTaskRuntimeHandoffProjectionValue.TextList(evidenceRefs)),
+    field(FIELD_COMPLEXITY_SIGNALS, FeatureTaskRuntimeHandoffProjectionValue.Text(complexitySignals.toBriefingLine())),
   )
 
   companion object {
@@ -133,6 +135,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
       FIELD_VALIDATION_STRATEGY,
       FIELD_UNRESOLVED_QUESTIONS,
       FIELD_EVIDENCE_REFS,
+      FIELD_COMPLEXITY_SIGNALS,
     )
 
     const val FIELD_AFFECTED_BOUNDARIES: String = "affected_boundaries"
@@ -142,6 +145,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
     const val FIELD_VALIDATION_STRATEGY: String = "validation_strategy"
     const val FIELD_UNRESOLVED_QUESTIONS: String = "unresolved_questions"
     const val FIELD_EVIDENCE_REFS: String = "evidence_refs"
+    const val FIELD_COMPLEXITY_SIGNALS: String = "complexity_signals"
   }
 }
 
@@ -201,6 +205,7 @@ data class FeatureTaskRuntimeExecutablePlan(
   val mode: FeatureTaskRuntimePlanMode,
   val tasks: List<FeatureTaskRuntimePlanTask>,
   val validationStrategy: List<String>,
+  val complexitySignals: FeatureTaskRuntimeComplexitySignals = FeatureTaskRuntimeComplexitySignals.MINIMUM,
   val decompositionSubtaskCount: Int? = null,
   val decompositionManifestRef: String? = null,
 ) : FeatureTaskRuntimePlanningProjection {
@@ -224,6 +229,7 @@ data class FeatureTaskRuntimeExecutablePlan(
     field(FIELD_MODE, FeatureTaskRuntimeHandoffProjectionValue.Text(mode.wireValue)),
     field(FIELD_TASKS, FeatureTaskRuntimeHandoffProjectionValue.TextList(tasks.map { it.toBriefingLine() })),
     field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
+    field(FIELD_COMPLEXITY_SIGNALS, FeatureTaskRuntimeHandoffProjectionValue.Text(complexitySignals.toBriefingLine())),
   )
 
   /** The bounded commitment forwarded to audit: task/criterion/test obligations only (AC-011). */
@@ -239,10 +245,12 @@ data class FeatureTaskRuntimeExecutablePlan(
   )
 
   companion object {
-    val DECLARED_FIELD_NAMES: List<String> = listOf(FIELD_MODE, FIELD_TASKS, FIELD_VALIDATION_STRATEGY)
+    val DECLARED_FIELD_NAMES: List<String> =
+      listOf(FIELD_MODE, FIELD_TASKS, FIELD_VALIDATION_STRATEGY, FIELD_COMPLEXITY_SIGNALS)
     const val FIELD_MODE: String = "mode"
     const val FIELD_TASKS: String = "tasks"
     const val FIELD_VALIDATION_STRATEGY: String = "validation_strategy"
+    const val FIELD_COMPLEXITY_SIGNALS: String = "complexity_signals"
   }
 }
 
@@ -677,6 +685,7 @@ private fun FeatureTaskRuntimePrePlanningDigest.Companion.fromMap(
     validationStrategy = map.requireStringList("validation_strategy"),
     unresolvedQuestions = map.optionalStringList("unresolved_questions"),
     evidenceRefs = map.optionalStringList("evidence_refs"),
+    complexitySignals = map.requireComplexitySignals(),
   )
 }
 
@@ -709,8 +718,29 @@ private fun FeatureTaskRuntimeExecutablePlan.Companion.fromMap(
     mode = mode,
     tasks = tasks,
     validationStrategy = map.requireStringList("validation_strategy"),
+    complexitySignals = map.requireComplexitySignals(),
     decompositionSubtaskCount = (map["decomposition_subtask_count"] as? Number)?.toInt(),
     decompositionManifestRef = map["decomposition_manifest_ref"]?.toString()?.takeIf(String::isNotBlank),
+  )
+}
+
+private fun Map<String, Any?>.requireComplexitySignals(): FeatureTaskRuntimeComplexitySignals {
+  val signals = stringAnyMap("complexity_signals") ?: return FeatureTaskRuntimeComplexitySignals.MINIMUM
+  fun number(name: String): Int = (signals[name] as? Number)?.toInt()
+    ?: throw malformed("complexity_signals.$name", "must be an integer")
+  fun flag(name: String): Boolean = signals[name] as? Boolean
+    ?: throw malformed("complexity_signals.$name", "must be a boolean")
+  return FeatureTaskRuntimeComplexitySignals(
+    taskCount = number("task_count"),
+    dependencyDepth = number("dependency_depth"),
+    moduleBreadth = number("module_breadth"),
+    boundaryBreadth = number("boundary_breadth"),
+    persistenceOrMigration = flag("persistence_or_migration"),
+    securityOrPrivacy = flag("security_or_privacy"),
+    concurrencyOrLifecycle = flag("concurrency_or_lifecycle"),
+    processBoundaryOrCrashRecovery = flag("process_boundary_or_crash_recovery"),
+    platformCount = number("platform_count"),
+    expectedChangedPathCount = number("expected_changed_path_count"),
   )
 }
 

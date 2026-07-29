@@ -142,6 +142,31 @@ $defs:
         type: array
         maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
+  complexitySignals:
+    type: object
+    additionalProperties: false
+    required:
+      - task_count
+      - dependency_depth
+      - module_breadth
+      - boundary_breadth
+      - persistence_or_migration
+      - security_or_privacy
+      - concurrency_or_lifecycle
+      - process_boundary_or_crash_recovery
+      - platform_count
+      - expected_changed_path_count
+    properties:
+      task_count: { type: integer, minimum: 1, maximum: 128 }
+      dependency_depth: { type: integer, minimum: 0, maximum: 32 }
+      module_breadth: { type: integer, minimum: 1, maximum: 64 }
+      boundary_breadth: { type: integer, minimum: 1, maximum: 64 }
+      persistence_or_migration: { type: boolean }
+      security_or_privacy: { type: boolean }
+      concurrency_or_lifecycle: { type: boolean }
+      process_boundary_or_crash_recovery: { type: boolean }
+      platform_count: { type: integer, minimum: 1, maximum: 16 }
+      expected_changed_path_count: { type: integer, minimum: 1, maximum: 512 }
 
   preplanning_digest:
     type: object
@@ -172,6 +197,7 @@ $defs:
       validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
       unresolved_questions: { $ref: "#/$defs/strings" }
       evidence_refs: { $ref: "#/$defs/strings" }
+      complexity_signals: { $ref: "#/$defs/complexitySignals" }
       # Governed co-resident of the goal-planning sweep's preplan produced_outputs, owned by
       # goal-planning-preparation-schema.yaml. Named here only so additionalProperties:false does not
       # reject an output that seam requires; it is not part of the digest this variant delivers.
@@ -196,6 +222,7 @@ $defs:
         maxItems: 128
         items: { $ref: "#/$defs/plan_task" }
       validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
+      complexity_signals: { $ref: "#/$defs/complexitySignals" }
       decomposition_subtask_count: { type: integer, minimum: 1 }
       decomposition_manifest_ref: { $ref: "#/$defs/nonBlank" }
 

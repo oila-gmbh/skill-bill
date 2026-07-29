@@ -307,6 +307,13 @@ internal class FeatureTaskRuntimeRunLoop(
         return carriedForward
       }
     }
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE && !state.isComplete(phaseId)) {
+      request.eventSink.emit(
+        skillbill.application.model.FeatureTaskRuntimeRunEvent.FinalValidationStarted(
+          workflowId = request.workflowId,
+        ),
+      )
+    }
     val reason = if (state.isComplete(phaseId)) {
       state.outputFor(phaseId)
         ?.takeIf { phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN }

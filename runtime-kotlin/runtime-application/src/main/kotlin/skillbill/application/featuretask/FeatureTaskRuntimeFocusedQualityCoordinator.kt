@@ -19,6 +19,7 @@ class FeatureTaskRuntimeFocusedQualityCoordinator(
     ownedPaths: List<String>,
     auditCleared: Boolean,
     repairAttempt: Int,
+    repositoryCheckpointFingerprint: String = decision.decisionId,
   ): FeatureTaskRuntimeFocusedQualityOutcome {
     require(auditCleared) { "Focused quality may run only after audit clearance." }
     val selection = selector.select(ownedPaths.distinct().sorted())
@@ -36,7 +37,7 @@ class FeatureTaskRuntimeFocusedQualityCoordinator(
       FeatureTaskRuntimeFocusedQualityOutcome(
         disposition = FeatureTaskRuntimeFocusedQualityDisposition.PASSED,
         checkpoint = FeatureTaskRuntimeFocusedQualityCheckpoint(
-          checkpointFingerprint = "${decision.decisionId}:${selection.semanticFingerprint}",
+          checkpointFingerprint = "$repositoryCheckpointFingerprint:${selection.semanticFingerprint}",
           semanticFingerprint = selection.semanticFingerprint,
           checks = selection.checks,
           passed = true,
@@ -55,7 +56,11 @@ class FeatureTaskRuntimeFocusedQualityCoordinator(
         ),
       )
     }
-    val destination = if (failures.isEmpty()) "review" else "implement"
+    val destination = if (failures.isEmpty()) {
+      skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    } else {
+      skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    }
     store.persistAndAdvance(decision.withFocusedQuality(outcome), destination)
     return outcome
   }

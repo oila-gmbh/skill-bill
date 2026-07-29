@@ -37,6 +37,29 @@ data class FeatureTaskRuntimeComplexitySignals(
     ).count { it } * 12
     return (breadth + shape + risk).coerceAtMost(FEATURE_TASK_RUNTIME_COMPLEXITY_MAX)
   }
+
+  fun toBriefingLine(): String =
+    "tasks=$taskCount, dependency_depth=$dependencyDepth, modules=$moduleBreadth, " +
+      "boundaries=$boundaryBreadth, persistence_or_migration=$persistenceOrMigration, " +
+      "security_or_privacy=$securityOrPrivacy, concurrency_or_lifecycle=$concurrencyOrLifecycle, " +
+      "process_or_recovery=$processBoundaryOrCrashRecovery, platforms=$platformCount, " +
+      "expected_changed_paths=$expectedChangedPathCount"
+
+  companion object {
+    /** Source-compatible fixture default; governed production projections must always parse explicit signals. */
+    val MINIMUM: FeatureTaskRuntimeComplexitySignals = FeatureTaskRuntimeComplexitySignals(
+      taskCount = 1,
+      dependencyDepth = 0,
+      moduleBreadth = 1,
+      boundaryBreadth = 1,
+      persistenceOrMigration = false,
+      securityOrPrivacy = false,
+      concurrencyOrLifecycle = false,
+      processBoundaryOrCrashRecovery = false,
+      platformCount = 1,
+      expectedChangedPathCount = 1,
+    )
+  }
 }
 
 data class FeatureTaskRuntimeSizingPolicy(

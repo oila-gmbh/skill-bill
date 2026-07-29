@@ -545,6 +545,10 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      { \"projection_kind\": \"preplanning_digest\",\n" +
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
       "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
+      "        \"complexity_signals\": { \"task_count\": 1, \"dependency_depth\": 0, \"module_breadth\": 1,\n" +
+      "          \"boundary_breadth\": 1, \"persistence_or_migration\": false, \"security_or_privacy\": false,\n" +
+      "          \"concurrency_or_lifecycle\": false, \"process_boundary_or_crash_recovery\": false,\n" +
+      "          \"platform_count\": 1, \"expected_changed_path_count\": 1 },\n" +
       "        \"risks\": [\"<concrete risk>\"],\n" +
       "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
       "          \"notes\": \"<rollout note, or N/A>\" },\n" +
@@ -562,6 +566,10 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      { \"projection_kind\": \"executable_plan\",\n" +
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
       "        \"mode\": \"direct\",\n" +
+      "        \"complexity_signals\": { \"task_count\": 1, \"dependency_depth\": 0, \"module_breadth\": 1,\n" +
+      "          \"boundary_breadth\": 1, \"persistence_or_migration\": false, \"security_or_privacy\": false,\n" +
+      "          \"concurrency_or_lifecycle\": false, \"process_boundary_or_crash_recovery\": false,\n" +
+      "          \"platform_count\": 1, \"expected_changed_path_count\": 1 },\n" +
       "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
       "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
       "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +

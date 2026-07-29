@@ -40,6 +40,9 @@ internal data class ReviewExecutionDirectiveInputs(
   val reviewPassNumber: Int?,
   val resolvedReviewTier: CodeReviewExecutionMode?,
   val reviewDecidingRule: String?,
+  val minimumReviewDepth: String? = null,
+  val requiredSpecialistAreas: Set<String> = emptySet(),
+  val adaptiveReviewRationale: List<String> = emptyList(),
 )
 
 internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDirectiveInputs): String {
@@ -88,14 +91,23 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   val resolvedTierInfo = if (resolvedReviewTier != null && reviewDecidingRule != null) {
     """
     ## Resolved review tier
-    AUTO resolved to tier ${resolvedReviewTier.wireValue} by rule "$reviewDecidingRule". An explicit INLINE or DELEGATED always overrides AUTO.
+    Review resolved to tier ${resolvedReviewTier.wireValue} by rule "$reviewDecidingRule".
     """.trimIndent()
   } else {
     ""
   }
+  val coverageFloor = inputs.minimumReviewDepth?.let { depth ->
+    val areas = inputs.requiredSpecialistAreas.sorted().joinToString(",").ifBlank { "none" }
+    val rationale = inputs.adaptiveReviewRationale.joinToString("; ")
+    """
+    ## Non-reducible review coverage
+    Minimum substance depth is $depth; required specialist areas are $areas. The selected execution
+    mode controls execution only and cannot reduce this coverage floor. Rationale: $rationale
+    """.trimIndent()
+  }.orEmpty()
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves to INLINE on every pass. Only an explicit DELEGATED selection launches workers.$parallel$resolvedTierInfo$materializedScope$remediationContext
+    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass.$parallel$resolvedTierInfo$coverageFloor$materializedScope$remediationContext
   """.trimIndent()
 }
 
@@ -163,7 +175,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
     "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
     "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
-    "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
+    "validation_strategy, unresolved_questions, evidence_refs, complexity_signals). Do not forward the complete " +
     "preplan envelope, a generic summary, or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
     "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
@@ -173,7 +185,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
     "stable ordered tasks " +
     "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
-    "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
+    "constraints), validation_strategy, and complexity_signals. Exclude planning narration, presentation summary, and " +
     "generic producer notes; decomposition detail stays private to the preparation boundary.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
     "Reconcile the repository to the intended state the upstream plan output describes: make the " +

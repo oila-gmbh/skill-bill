@@ -15,6 +15,10 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeComplexitySignals
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDirectPlanGate
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanAdvance
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSizingPolicyResolver
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull
 import java.io.IOException
 
@@ -94,6 +98,32 @@ class FeatureTaskRuntimePlanningStopper(
       completedOutput.payload,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
     )
+    if (!isGoalContinuationRun(request)) {
+      val produced = parsed["produced_outputs"] as? Map<*, *>
+      val mode = produced?.get("mode")?.toString()
+      if (mode == "direct") {
+        val raw = produced["complexity_signals"] as? Map<*, *>
+          ?: return FeatureTaskRuntimePlanningStopDecision.Blocked(
+            "Direct plan is missing governed complexity_signals; planning must re-enter before implementation.",
+          )
+        val signals = raw.toComplexitySignals()
+        val sizing = FeatureTaskRuntimeSizingPolicyResolver.resolve(signals)
+        if (FeatureTaskRuntimeDirectPlanGate.resolve(sizing) ==
+          FeatureTaskRuntimePlanAdvance.REENTER_PLAN_FOR_DECOMPOSITION
+        ) {
+          request.eventSink.emit(
+            FeatureTaskRuntimeRunEvent.PlanDecompositionRequired(
+              workflowId = request.workflowId,
+              boundedScore = sizing.score,
+              rationale = sizing.rationale,
+            ),
+          )
+          return FeatureTaskRuntimePlanningStopDecision.Blocked(
+            "Adaptive sizing requires decomposition; re-enter plan or persist a governed direct-plan override.",
+          )
+        }
+      }
+    }
     val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed, specSource)
       ?: return FeatureTaskRuntimePlanningStopDecision.Proceed
     val terminal = writeDecompositionTerminal(request, outcome)
@@ -101,6 +131,25 @@ class FeatureTaskRuntimePlanningStopper(
     emitDecomposedAtPlanning(request, terminal)
     return FeatureTaskRuntimePlanningStopDecision.Decomposed(
       terminal.toRunReport(request, completedPhaseIds, resolvedBranch),
+    )
+  }
+
+  private fun Map<*, *>.toComplexitySignals(): FeatureTaskRuntimeComplexitySignals {
+    fun number(name: String): Int = (this[name] as? Number)?.toInt()
+      ?: throw IllegalArgumentException("complexity_signals.$name must be an integer")
+    fun flag(name: String): Boolean = this[name] as? Boolean
+      ?: throw IllegalArgumentException("complexity_signals.$name must be a boolean")
+    return FeatureTaskRuntimeComplexitySignals(
+      taskCount = number("task_count"),
+      dependencyDepth = number("dependency_depth"),
+      moduleBreadth = number("module_breadth"),
+      boundaryBreadth = number("boundary_breadth"),
+      persistenceOrMigration = flag("persistence_or_migration"),
+      securityOrPrivacy = flag("security_or_privacy"),
+      concurrencyOrLifecycle = flag("concurrency_or_lifecycle"),
+      processBoundaryOrCrashRecovery = flag("process_boundary_or_crash_recovery"),
+      platformCount = number("platform_count"),
+      expectedChangedPathCount = number("expected_changed_path_count"),
     )
   }
 
