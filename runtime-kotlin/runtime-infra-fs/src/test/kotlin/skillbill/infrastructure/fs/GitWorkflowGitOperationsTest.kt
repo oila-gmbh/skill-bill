@@ -65,7 +65,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `scoped checkpoint blocks foreign staged content on an owned path without mutating state`() {
+  fun `scoped checkpoint uses current worktree content despite earlier staged content`() {
     val repoRoot = Files.createTempDirectory("skillbill-scoped-checkpoint-overlap")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -80,7 +80,6 @@ class GitWorkflowGitOperationsTest {
     Files.writeString(repoRoot.resolve("shared.txt"), "foreign staged\n")
     git(repoRoot, "add", "shared.txt")
     Files.writeString(repoRoot.resolve("shared.txt"), "phase result\n")
-    val headBefore = git(repoRoot, "rev-parse", "HEAD")
     val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
     val bytesBefore = Files.readAllBytes(repoRoot.resolve("shared.txt"))
 
@@ -97,9 +96,8 @@ class GitWorkflowGitOperationsTest {
       ),
     )
 
-    assertEquals("ambiguous-owned-path-overlap", requireNotNull(result.policyBlock).code)
-    assertEquals("shared.txt", requireNotNull(result.policyBlock).path)
-    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+    assertTrue(result.ok, result.error)
+    assertEquals("phase result", git(repoRoot, "show", "HEAD:shared.txt"))
     assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
     assertContentEquals(bytesBefore, Files.readAllBytes(repoRoot.resolve("shared.txt")))
   }
@@ -151,7 +149,7 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
-  fun `foreign governed feature path is a typed pre-commit policy block`() {
+  fun `foreign governed feature path is included in the checkpoint`() {
     val repoRoot = Files.createTempDirectory("skillbill-foreign-governed-path")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -161,8 +159,6 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "initial")
     Files.createDirectories(repoRoot.resolve(".feature-specs/SKILL-149"))
     Files.writeString(repoRoot.resolve(".feature-specs/SKILL-149/spec.md"), "foreign\n")
-    val headBefore = git(repoRoot, "rev-parse", "HEAD")
-
     val result = GitWorkflowGitOperations().createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -172,17 +168,16 @@ class GitWorkflowGitOperationsTest {
         generation = 1,
         ownedPaths = listOf(".feature-specs/SKILL-149/spec.md"),
         governedSpecRoot = ".feature-specs/SKILL-134",
-        commitMessage = "must not commit",
+        commitMessage = "checkpoint current repository state",
       ),
     )
 
-    assertEquals("foreign-governed-feature-path", requireNotNull(result.policyBlock).code)
-    assertEquals(".feature-specs/SKILL-149/spec.md", requireNotNull(result.policyBlock).path)
-    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+    assertTrue(result.ok, result.error)
+    assertEquals("foreign", git(repoRoot, "show", "HEAD:.feature-specs/SKILL-149/spec.md"))
   }
 
   @Test
-  fun `phase path outside frozen inventory blocks before commit`() {
+  fun `phase path outside the earlier inventory joins the checkpoint`() {
     val repoRoot = Files.createTempDirectory("skillbill-outside-inventory")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -192,8 +187,6 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "commit", "-m", "initial")
     Files.writeString(repoRoot.resolve("owned.txt"), "owned\n")
     Files.writeString(repoRoot.resolve("escaped.txt"), "escaped\n")
-    val headBefore = git(repoRoot, "rev-parse", "HEAD")
-
     val result = GitWorkflowGitOperations().createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -203,17 +196,18 @@ class GitWorkflowGitOperationsTest {
         generation = 1,
         ownedPaths = listOf("owned.txt"),
         observedPaths = listOf("owned.txt", "escaped.txt"),
-        commitMessage = "must not commit",
+        commitMessage = "checkpoint current repository state",
       ),
     )
 
-    assertEquals("outside-owned-inventory", requireNotNull(result.policyBlock).code)
-    assertEquals("escaped.txt", requireNotNull(result.policyBlock).path)
-    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+    assertTrue(result.ok, result.error)
+    assertEquals(listOf("escaped.txt", "owned.txt"), requireNotNull(result.identity).ownedPaths)
+    assertEquals("escaped", git(repoRoot, "show", "HEAD:escaped.txt"))
+    assertEquals("owned", git(repoRoot, "show", "HEAD:owned.txt"))
   }
 
   @Test
-  fun `owned content changed after phase completion blocks with exact path`() {
+  fun `owned content changed after phase completion uses the current content`() {
     val repoRoot = Files.createTempDirectory("skillbill-content-overlap")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -225,9 +219,6 @@ class GitWorkflowGitOperationsTest {
     val expected = operations.ownedPathContentIdentities(repoRoot, listOf("shared.txt"))
       .value.orEmpty().substringAfter('\t')
     Files.writeString(repoRoot.resolve("shared.txt"), "concurrent edit\n")
-    val bytesBefore = Files.readAllBytes(repoRoot.resolve("shared.txt"))
-    val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
-
     val result = operations.createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -241,13 +232,12 @@ class GitWorkflowGitOperationsTest {
       ),
     )
 
-    assertEquals("ambiguous-owned-path-overlap", requireNotNull(result.policyBlock).code)
-    assertEquals("shared.txt", requireNotNull(result.policyBlock).path)
-    assertEquals("phase result", git(repoRoot, "show", "HEAD:shared.txt"))
-    assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
-    assertContentEquals(bytesBefore, Files.readAllBytes(repoRoot.resolve("shared.txt")))
+    assertTrue(result.ok, result.error)
+    assertEquals("concurrent edit", git(repoRoot, "show", "HEAD:shared.txt"))
   }
+}
 
+class GitWorkflowGitOperationsGeneralTest {
   @Test
   fun `runtime phase commit range reports committed paths`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-runtime-phase")
@@ -838,28 +828,28 @@ class GitWorkflowGitOperationsTest {
     assertFalse(result.ok)
     assertContains(result.error, "durable child branch 'feat/child-one'")
   }
+}
 
-  private fun git(repoRoot: Path, vararg args: String): String {
-    val output = runGit(repoRoot, *args)
-    // Persist signing-off into the repo's own config right after init so that BOTH
-    // these helper commits AND the production GitWorkflow commits under test (which
-    // run their own `git commit` in this repo) skip signing. A host global
-    // commit.gpgsign=true would otherwise fail every commit when gpg is absent from
-    // the process environment (common on dev machines and self-hosted CI runners).
-    if (args.firstOrNull() == "init") {
-      runGit(repoRoot, "config", "commit.gpgsign", "false")
-      runGit(repoRoot, "config", "tag.gpgsign", "false")
-    }
-    return output
+private fun git(repoRoot: Path, vararg args: String): String {
+  val output = runGit(repoRoot, *args)
+  // Persist signing-off into the repo's own config right after init so that BOTH
+  // these helper commits AND the production GitWorkflow commits under test (which
+  // run their own `git commit` in this repo) skip signing. A host global
+  // commit.gpgsign=true would otherwise fail every commit when gpg is absent from
+  // the process environment (common on dev machines and self-hosted CI runners).
+  if (args.firstOrNull() == "init") {
+    runGit(repoRoot, "config", "commit.gpgsign", "false")
+    runGit(repoRoot, "config", "tag.gpgsign", "false")
   }
+  return output
+}
 
-  private fun runGit(repoRoot: Path, vararg args: String): String {
-    val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
-      .redirectErrorStream(true)
-      .start()
-    val output = process.inputStream.bufferedReader().readText().trim()
-    val exitCode = process.waitFor()
-    check(exitCode == 0) { "git ${args.joinToString(" ")} failed with $exitCode: $output" }
-    return output
-  }
+private fun runGit(repoRoot: Path, vararg args: String): String {
+  val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
+    .redirectErrorStream(true)
+    .start()
+  val output = process.inputStream.bufferedReader().readText().trim()
+  val exitCode = process.waitFor()
+  check(exitCode == 0) { "git ${args.joinToString(" ")} failed with $exitCode: $output" }
+  return output
 }

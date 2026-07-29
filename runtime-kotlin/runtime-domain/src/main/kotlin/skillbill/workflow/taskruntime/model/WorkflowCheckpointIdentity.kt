@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.boundary.OpenBoundaryMap
+
 data class WorkflowCheckpointIdentity(
   val branch: String,
   val phase: String,
@@ -21,6 +23,7 @@ data class WorkflowCheckpointIdentity(
     require(CHECKPOINT_SHA.matches(commitSha))
   }
 
+  @OpenBoundaryMap("Checkpoint identity projection at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
     "branch" to branch,
     "phase" to phase,
@@ -33,6 +36,7 @@ data class WorkflowCheckpointIdentity(
   )
 
   companion object {
+    @OpenBoundaryMap("Checkpoint identity decode from the durable workflow-artifact seam")
     fun fromArtifactMap(raw: Map<String, Any?>): WorkflowCheckpointIdentity = WorkflowCheckpointIdentity(
       branch = raw.requireCheckpointString("branch"),
       phase = raw.requireCheckpointString("phase"),

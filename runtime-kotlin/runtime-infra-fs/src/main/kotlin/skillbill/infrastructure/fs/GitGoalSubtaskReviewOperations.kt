@@ -55,52 +55,26 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     checkpointHead: String,
     ownedPaths: List<String>,
   ): GoalSubtaskReviewInputResult {
-    val branch = currentGoalReviewBranch(repoRoot, expectedBranch)
-      ?: return GoalSubtaskReviewInputResult(
-        status = "error",
-        error = "Scoped review must run on durable branch '$expectedBranch'.",
-      )
-    val normalizedPaths = ownedPaths.distinct().sorted()
-    if (normalizedPaths.isEmpty()) {
-      return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review owns no paths.")
-    }
-    val head = goalReviewGitValue(repoRoot, "rev-parse", "$checkpointHead^{commit}")?.trim()
-      ?: return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review checkpoint is not a commit.")
-    val changed = goalReviewGitValue(
+    val material = scopedCheckpointReviewMaterial(
       repoRoot,
-      "diff",
-      "--name-only",
-      "-z",
-      baseline.reviewBaseSha,
-      head,
-      "--",
-      *normalizedPaths.toTypedArray(),
-    ) ?: return GoalSubtaskReviewInputResult(status = "error", error = "Could not read scoped review paths.")
-    val escaped = changed.split('\u0000').filter(String::isNotBlank).filterNot { it in normalizedPaths }
-    if (escaped.isNotEmpty()) {
-      return GoalSubtaskReviewInputResult(
-        status = "error",
-        error = "Scoped review contains path outside its persisted inventory: '${escaped.first()}'.",
-      )
-    }
-    val patch = goalReviewGitValue(
-      repoRoot,
-      "diff",
-      "--binary",
-      baseline.reviewBaseSha,
-      head,
-      "--",
-      *normalizedPaths.toTypedArray(),
-    ) ?: return GoalSubtaskReviewInputResult(status = "error", error = "Could not materialize scoped review input.")
-    return GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = baseline.reviewBaseSha,
-        currentHeadSha = head,
-        trackedDelta = patch,
-        ownedUntrackedPatches = "",
-      ),
+      baseline,
+      expectedBranch,
+      checkpointHead,
+      ownedPaths.distinct().sorted(),
     )
+    return if (material.error.isNotBlank()) {
+      GoalSubtaskReviewInputResult(status = "error", error = material.error)
+    } else {
+      GoalSubtaskReviewInputResult(
+        status = "ok",
+        input = GoalSubtaskReviewInput(
+          reviewBaseSha = baseline.reviewBaseSha,
+          currentHeadSha = requireNotNull(material.head),
+          trackedDelta = requireNotNull(material.patch),
+          ownedUntrackedPatches = "",
+        ),
+      )
+    }
   }
 
   override fun recoverBaseline(
@@ -122,6 +96,53 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     }
   }
 }
+
+private fun scopedCheckpointReviewMaterial(
+  repoRoot: Path,
+  baseline: GoalSubtaskReviewBaseline,
+  expectedBranch: String,
+  checkpointHead: String,
+  ownedPaths: List<String>,
+): ScopedCheckpointReviewMaterial {
+  val branch = currentGoalReviewBranch(repoRoot, expectedBranch)
+  val head = branch?.takeIf { ownedPaths.isNotEmpty() }?.let {
+    goalReviewGitValue(repoRoot, "rev-parse", "$checkpointHead^{commit}")?.trim()
+  }
+  val changed = head?.let {
+    runGitCommand(
+      repoRoot,
+      listOf("diff", "--name-only", "-z", baseline.reviewBaseSha, it, "--") + ownedPaths,
+    ).takeIf { result -> result.ok }?.value
+  }
+  val escaped = changed
+    ?.split('\u0000')
+    ?.filter(String::isNotBlank)
+    ?.filterNot { it in ownedPaths }
+    .orEmpty()
+  val patch = changed?.takeIf { escaped.isEmpty() }?.let {
+    runGitCommand(
+      repoRoot,
+      listOf("diff", "--binary", baseline.reviewBaseSha, requireNotNull(head), "--") + ownedPaths,
+    ).takeIf { result -> result.ok }?.value
+  }
+  val error = when {
+    branch == null -> "Scoped review must run on durable branch '$expectedBranch'."
+    ownedPaths.isEmpty() -> "Scoped review owns no paths."
+    head == null -> "Scoped review checkpoint is not a commit."
+    changed == null -> "Could not read scoped review paths."
+    escaped.isNotEmpty() ->
+      "Scoped review contains path outside its persisted inventory: '${escaped.first()}'."
+    patch == null -> "Could not materialize scoped review input."
+    else -> ""
+  }
+  return ScopedCheckpointReviewMaterial(head = head, patch = patch, error = error)
+}
+
+private data class ScopedCheckpointReviewMaterial(
+  val head: String?,
+  val patch: String?,
+  val error: String,
+)
 
 private fun <T> stableSnapshot(
   repoRoot: Path,

@@ -330,7 +330,7 @@ class FeatureTaskRuntimePhaseRecorder(
           ?.associate { (key, value) -> key.toString() to value }
           .orEmpty()
         patch[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] =
-          priorResults + reviewArtifactsHistoryEntry(state, artifacts)
+          priorResults + reviewArtifactsHistoryEntry(workflowId, state, artifacts, priorResults.keys)
         patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = GoalSubtaskReviewState.initial(
           reviewBaseSha = state.reviewBaseSha,
           baselineUntrackedPaths = state.baselineUntrackedPaths,
@@ -352,10 +352,40 @@ class FeatureTaskRuntimePhaseRecorder(
     }
 
   private fun reviewArtifactsHistoryEntry(
+    workflowId: String,
     state: GoalSubtaskReviewState,
     artifacts: Map<String, Any?>,
+    existingIdentities: Set<String>,
   ): Map<String, Any?> {
-    val identity = state.reviewedDeltaDigest ?: "legacy-pass-${state.completedPassCount}"
+    val reviewedDeltaDigest = state.reviewedDeltaDigest
+    val reviewedRepositoryFingerprint = state.reviewedRepositoryFingerprint
+    val generationIdentity = if (
+      reviewedDeltaDigest != null &&
+      reviewedRepositoryFingerprint != null &&
+      state.completedPassCount > 0
+    ) {
+      goalSubtaskReviewGenerationId(
+        workflowId = workflowId,
+        reviewBase = state.remediationBaseSha
+          ?.takeIf { state.completedPassCount == 2 }
+          ?: state.reviewBaseSha,
+        reviewedDeltaDigest = reviewedDeltaDigest,
+        passNumber = state.completedPassCount,
+        repositoryCheckpoint = reviewedRepositoryFingerprint,
+      )
+    } else {
+      listOf(
+        state.reviewBaseSha,
+        state.reviewedDeltaDigest ?: "legacy",
+        state.completedPassCount.toString(),
+        state.reviewedRepositoryFingerprint ?: "checkpoint-unavailable",
+      ).joinToString(":")
+    }
+    val identity = generateSequence(0) { it + 1 }
+      .map { invalidationIndex ->
+        if (invalidationIndex == 0) generationIdentity else "$generationIdentity-invalidation-$invalidationIndex"
+      }
+      .first { it !in existingIdentities }
     return mapOf(
       identity to linkedMapOf(
         "state" to state.toArtifactMap(),
@@ -943,19 +973,51 @@ class FeatureTaskRuntimePhaseRecorder(
       resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
     }
 
-  fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String? = null): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction false
-      val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
-      val updated = resolved.copy(workflowOwnedPaths = ownedPaths.distinct().sorted())
-      persistPatch(
-        unitOfWork.workflowStates,
-        record,
-        mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
-      )
-      true
+  fun recordWorkflowOwnedPaths(
+    workflowId: String,
+    ownedPaths: List<String>,
+    contentIdentities: Map<String, String> = emptyMap(),
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
+    val updated = resolved.copy(
+      workflowOwnedPaths = ownedPaths.distinct().sorted(),
+      workflowOwnedPathContentIdentities = contentIdentities.toSortedMap(),
+    )
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+    )
+    true
+  }
+
+  fun recordCheckpointIdentity(
+    workflowId: String,
+    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val resolved = resolvedBranchFrom(decodeArtifacts(record.artifactsJson)) ?: return@transaction false
+    val existing = resolved.checkpointIdentities.firstOrNull {
+      it.phase == identity.phase && it.loop == identity.loop && it.generation == identity.generation
     }
+    require(existing == null || existing == identity) {
+      "Checkpoint identity for ${identity.phase}/${identity.loop}/${identity.generation} already names " +
+        "commit ${existing?.commitSha}; refusing to advance with ${identity.commitSha}."
+    }
+    if (existing == identity) return@transaction true
+    val updated = resolved.copy(checkpointIdentities = resolved.checkpointIdentities + identity)
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+    )
+    true
+  }
 
   /**
    * Strict read of the per-phase records keyed by phase id; an absent key yields an empty map

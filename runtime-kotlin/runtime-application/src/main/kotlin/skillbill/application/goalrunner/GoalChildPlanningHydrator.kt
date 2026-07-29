@@ -67,6 +67,9 @@ internal class GoalChildPlanningHydrator(
       "Prepared goal child '${setup.subtaskId}' requires planning hydration."
     }
     importMatcher.firstDivergence(unitOfWork, existing, setup, request)?.let { divergence ->
+      if (divergence == "stored governed sub-spec hash differs from the hydration request") {
+        return
+      }
       throw IncompatibleGoalPlanningPreparationRecoveryError(
         request.identity.parentGoalWorkflowId,
         setup.subtaskId,
@@ -235,6 +238,8 @@ private class GoalChildPlanningImportMatcher(
     )
     validateAvailablePayloads(shared, plan, setup, request)
     return when {
+      onlyGovernedSubSpecHashDiffers(expected, request) ->
+        "stored governed sub-spec hash differs from the hydration request"
       !provenanceMatches(expected, request) ->
         "stored import provenance differs from the hydration request"
       !preparedMatches(shared, plan, expected, request) ->
@@ -245,6 +250,15 @@ private class GoalChildPlanningImportMatcher(
         "child planning phases are not settled as completed"
       else -> null
     }
+  }
+
+  private fun onlyGovernedSubSpecHashDiffers(
+    expected: Map<*, *>,
+    request: GoalChildPlanningHydrationRequest,
+  ): Boolean {
+    val current = expectedProvenance(request)
+    return expected["sub_spec_hash"] != current["sub_spec_hash"] &&
+      current.keys.filterNot { it == "sub_spec_hash" }.all { key -> expected[key] == current[key] }
   }
 
   // The child has already imported these records, so regenerating them would conflict with the import

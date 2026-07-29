@@ -156,11 +156,11 @@ data class FeatureTaskRuntimeResolvedBranch(
         ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
         .orEmpty(),
       workflowOwnedPathContentIdentities =
-        (raw["workflow_owned_path_content_identities"] as? Map<*, *>)
-          ?.map { (key, value) ->
-            (key as? String ?: error("workflow_owned_path_content_identities keys must be strings.")) to
-              (value as? String ?: error("workflow_owned_path_content_identities values must be strings."))
-          }?.toMap().orEmpty(),
+      (raw["workflow_owned_path_content_identities"] as? Map<*, *>)
+        ?.map { (key, value) ->
+          (key as? String ?: error("workflow_owned_path_content_identities keys must be strings.")) to
+            (value as? String ?: error("workflow_owned_path_content_identities values must be strings."))
+        }?.toMap().orEmpty(),
       checkpointIdentities = (raw["checkpoint_identities"] as? List<*>)
         ?.map { entry ->
           val identity = entry as? Map<*, *> ?: error("checkpoint_identities must contain only objects.")

@@ -19,17 +19,21 @@ import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.WorkflowScopedCheckpointGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -2127,9 +2131,12 @@ private class FakeRuntimeGitOperations(
   private var currentBranchValue: String = "feat/pre-created-runtime-branch",
   private val checkoutResult: WorkflowGitOperationResult? = null,
 ) : WorkflowGitOperations,
+  WorkflowScopedCheckpointGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider {
+  override val scopedCheckpointOperations: WorkflowScopedCheckpointGitOperations = this
+
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
@@ -2153,6 +2160,36 @@ private class FakeRuntimeGitOperations(
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "recorded")
+
+  override fun createScopedCheckpoint(
+    repoRoot: Path,
+    request: WorkflowScopedCheckpointRequest,
+  ): WorkflowScopedCheckpointResult = WorkflowScopedCheckpointResult(
+    status = "ok",
+    identity = WorkflowCheckpointIdentity(
+      branch = request.branch,
+      phase = request.phase,
+      loop = request.loop,
+      generation = request.generation,
+      parentSha = "0".repeat(40),
+      ownedPathDigest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(request.ownedPaths.distinct().sorted().joinToString("\u0000").toByteArray())
+        .joinToString("") { "%02x".format(it) },
+      ownedPaths = request.ownedPaths,
+      commitSha = "1".repeat(40),
+    ),
+  )
+
+  override fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "ok",
+      value = ownedPaths.distinct().sorted().joinToString("\n") { "$it\t${"2".repeat(64)}" },
+    )
+
+  override fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = identity.parentSha)
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")

@@ -421,8 +421,10 @@ object FeatureTaskRuntimePhasePromptComposer {
           "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
           "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
           "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
-          "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
-          "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
+          "fix_verified when outcome is fixed and already_satisfied_verified when outcome is " +
+          "already_satisfied. recurrence_verified is for recurring audit-gap disposition evidence, not a " +
+          "repair_item_result whose outcome is fixed. Do not invent a synonym outside this list. " +
+          "artifact_ref MUST be a repository-relative path " +
           "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
           "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
           "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +

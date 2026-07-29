@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-150-trustworthy-feature-task-convergence"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 5
   action: "resume"
 subtasks:
 - id: 1
@@ -63,12 +63,12 @@ subtasks:
 - id: 4
   name: "Lossless review generations"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_4_lossless_review_generations.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260728-203550-zk11"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -79,12 +79,12 @@ subtasks:
 - id: 5
   name: "Scoped checkpoint isolation"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_5_scoped_checkpoint_isolation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260729-055513-mbyv"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

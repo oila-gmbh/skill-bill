@@ -332,7 +332,16 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val input = if (result.ok) {
       requireNotNull(result.input)
     } else {
-      return GoalSubtaskReviewInputBlocked(result.error)
+      recoverGoalReviewInput(
+        GoalReviewInputRecoveryRequest(
+          workflowId = workflowId,
+          state = state,
+          continuation = continuation,
+          failureReason = result.failureReason,
+          failureMessage = result.error,
+          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, dbOverride),
+        ),
+      ) ?: return GoalSubtaskReviewInputBlocked(result.error)
     }
     val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
@@ -349,7 +358,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     repoRoot: java.nio.file.Path,
     dbOverride: String?,
   ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
-    val checkpoint = gitOperations.createScopedCheckpoint(
+    val scopedCheckpointOperations = gitOperations.scopedCheckpointOperations
+    val checkpoint = scopedCheckpointOperations.createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
         branch = continuation.goalBranch,
@@ -376,13 +386,13 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       true
     }
     if (!persisted) {
-      gitOperations.restoreScopedCheckpointParent(repoRoot, identity)
+      scopedCheckpointOperations.restoreScopedCheckpointParent(repoRoot, identity)
       return null
     }
     return identity
   }
 
-  @Suppress("ReturnCount", "UnusedPrivateMember")
+  @Suppress("ReturnCount")
   private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalSubtaskReviewInput? {
     if (request.failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) return null
     val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(

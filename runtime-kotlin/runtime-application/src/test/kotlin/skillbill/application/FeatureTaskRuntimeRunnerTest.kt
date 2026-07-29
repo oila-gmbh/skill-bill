@@ -79,6 +79,7 @@ import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.WorkflowScopedCheckpointGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -86,6 +87,8 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -113,6 +116,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -144,6 +148,37 @@ class FeatureTaskRuntimeRunnerTest {
       ALL_PHASES,
       harness.launchOrder(),
     )
+    assertEquals(
+      listOf(SPEC_REFERENCE, "src/Foo.kt"),
+      requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
+      "initial implement completion must establish ownership from its validated changed-path receipt",
+    )
+  }
+
+  @Test
+  fun `incomplete implementation receipt re-enters implement in the same run`() {
+    var implementLaunches = 0
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        val output = if (phaseId == "implement" && implementLaunches++ == 0) {
+          validJsonOutput(phaseId).replace(
+            "\"completed_task_ids\":[\"task-1\"]",
+            "\"completed_task_ids\":[]",
+          )
+        } else {
+          validJsonOutput(phaseId)
+        }
+        facts(output)
+      },
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
+    assertEquals(2, implementLaunches)
+    assertEquals(listOf("implement", "implement"), harness.launchedPhaseOrder().filter { it == "implement" })
   }
 
   @Test
@@ -1497,6 +1532,49 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
   }
 
   @Test
+  fun `repeated invalidation preserves distinct archives for the same reviewed generation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-invalidation-history")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      cappedReviewLauncher {
+        reviewLaunches += 1
+        reviewLaunches
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+    )
+    val cappedArtifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
+    val reviewedDeltaDigest = harness.reviewedDeltaDigest()
+
+    assertTrue(harness.recorder.persistReviewGenerationInvalidation(WORKFLOW_ID))
+    val firstHistory = (
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY]
+        as Map<*, *>
+      )
+    assertEquals(1, firstHistory.size)
+    assertFalse(firstHistory.containsKey(reviewedDeltaDigest))
+
+    harness.repository.replaceTaskRuntimeArtifacts(
+      WORKFLOW_ID,
+      cappedArtifacts + (GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY to firstHistory),
+    )
+    assertTrue(harness.recorder.persistReviewGenerationInvalidation(WORKFLOW_ID))
+
+    val secondHistory = (
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY]
+        as Map<*, *>
+      )
+    assertEquals(2, secondHistory.size)
+    assertTrue(secondHistory.keys.containsAll(firstHistory.keys))
+  }
+
+  @Test
   fun `a capped review recorded before the digest existed reopens once instead of wedging`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-legacy")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
@@ -2060,11 +2138,11 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(recoveredBaseline.reviewBaseSha, state.reviewBaseSha)
-    assertEquals(recoveredBaseline.baselineUntrackedPaths, state.baselineUntrackedPaths)
+    assertEquals(COMMITTED_HEAD_SHA, state.reviewBaseSha)
+    assertEquals(emptyList(), state.baselineUntrackedPaths)
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(
-      listOf("0".repeat(40), recoveredBaseline.reviewBaseSha),
+      listOf("0".repeat(40), COMMITTED_HEAD_SHA),
       git.goalReviewBuildInputs.map { it.reviewBaseSha },
     )
   }
@@ -2196,13 +2274,12 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 }
 
-/** AC-014: the goal-child audit checkpoint is scoped to the child's own base and inventory. */
+/** The audit checkpoint accepts the repository state that exists when the phase runs. */
 class FeatureTaskRuntimeCheckpointScopeTest {
   @Test
-  fun `linear checkpoint inventory excludes runtime spec scratch while preserving code paths`() {
+  fun `linear checkpoint inventory includes every current repository path`() {
     val paths = reconcileCheckpointPathInventory(
       repoRoot = Path.of("/repo"),
-      issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
       specSource = SpecSource.LINEAR,
       paths = listOf(
@@ -2212,11 +2289,42 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       ),
     )
 
-    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+    assertEquals(
+      listOf(
+        ".feature-specs/SKILL-146-least-context/spec.md",
+        ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+      paths,
+    )
   }
 
   @Test
-  fun `goal-child audit checkpoint scopes owned paths to the child's own base and baseline inventory`() {
+  fun `local checkpoint inventory includes a concurrently changed governed issue`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      specReference = ".feature-specs/SKILL-134-active/spec.md",
+      specSource = SpecSource.LOCAL,
+      paths = listOf(
+        ".feature-specs/SKILL-134-active/notes.md",
+        ".feature-specs/SKILL-149-concurrent/spec.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(
+      listOf(
+        ".feature-specs/SKILL-134-active/notes.md",
+        ".feature-specs/SKILL-149-concurrent/spec.md",
+        "runtime-domain/Changed.kt",
+        ".feature-specs/SKILL-134-active/spec.md",
+      ),
+      paths,
+    )
+  }
+
+  @Test
+  fun `goal-child audit checkpoint includes preexisting and concurrently changed paths`() {
     val harness = checkpointScopeHarness()
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -2224,28 +2332,22 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     val auditBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"])
     assertContains(auditBriefing.briefingText, "base_ref: ${"0".repeat(40)}")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Child.kt")
-    assertContains(auditBriefing.briefingText, "- runtime-domain/Committed.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Remediation.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
     assertContains(auditBriefing.briefingText, "- $SPEC_REFERENCE")
-    assertFalse(
-      auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
-      "a sibling subtask's baseline path must not enter the goal-child audit projection",
-    )
-    assertFalse(
-      auditBriefing.briefingText.contains(".feature-specs/SKILL-137/sibling"),
-      "no entry from a sibling subtask's untracked directory may enter the goal-child audit projection",
-    )
+    assertContains(auditBriefing.briefingText, "spec_subtask_9_sibling")
+    assertContains(auditBriefing.briefingText, ".feature-specs/SKILL-137/sibling/notes.md")
     assertEquals(
       listOf(
+        ".feature-specs/SKILL-137/sibling/notes.md",
+        ".feature-specs/SKILL-137/sibling/spec_subtask_9_sibling.md",
         SPEC_REFERENCE,
         "runtime-domain/Child.kt",
-        "runtime-domain/Committed.kt",
         "runtime-domain/Remediation.kt",
         "runtime-domain/Renamed.kt",
       ),
       requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
-      "the checkpoint must union durable, committed, remediation, and local-spec paths",
+      "the checkpoint must include every current, durable, remediation, and local-spec path",
     )
   }
 
@@ -3795,7 +3897,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         }
       },
     )
-
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
@@ -3827,6 +3928,16 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         }
       },
     )
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/existing-runtime-branch",
+        reviewBaseSha = "0".repeat(40),
+        workflowOwnedPaths = listOf("src/Foo.kt"),
+      ),
+    )
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
@@ -3846,6 +3957,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.ownedPathsValue = listOf("src/Foo.kt")
     git.worktreeStatusValue = " M src/Foo.kt"
     git.stageAllResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
     val harness = runnerHarness(
@@ -3861,6 +3973,14 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
           else -> facts(validJsonOutput(phaseId))
         }
       },
+    )
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/existing-runtime-branch",
+        reviewBaseSha = "0".repeat(40),
+        workflowOwnedPaths = listOf("src/Foo.kt"),
+      ),
     )
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -3902,7 +4022,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
+    val changedPath = repoRoot.resolve("src/Foo.kt")
+    Files.createDirectories(changedPath.parent)
+    Files.writeString(changedPath, "class Foo\n")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+    git.ownedPathsValue = listOf("src/Foo.kt")
     git.worktreeStatusValue = " M src/Foo.kt"
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
@@ -3929,8 +4053,18 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         }
       },
     )
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordResolvedBranch(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeResolvedBranch(
+        branch = "feat/existing-runtime-branch",
+        reviewBaseSha = "0".repeat(40),
+        workflowOwnedPaths = listOf("src/Foo.kt"),
+      ),
+    )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(
       3,
       git.createCommitMessages.size,
@@ -5143,10 +5277,13 @@ internal class RecordingWorkflowGitOperations(
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
 ) : WorkflowGitOperations,
+  WorkflowScopedCheckpointGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider {
+  override val scopedCheckpointOperations: WorkflowScopedCheckpointGitOperations = this
+
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
   var headCommitShaValue: String = ""
@@ -5212,15 +5349,53 @@ internal class RecordingWorkflowGitOperations(
     return currentBranchResult ?: WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
   }
 
-  override fun stageAll(repoRoot: Path): WorkflowGitOperationResult {
+  override fun createScopedCheckpoint(
+    repoRoot: Path,
+    request: WorkflowScopedCheckpointRequest,
+  ): WorkflowScopedCheckpointResult {
     stageAllCalls++
-    return stageAllResult ?: WorkflowGitOperationResult(status = "ok", value = "")
+    stageAllResult?.takeUnless { it.ok }?.let {
+      return WorkflowScopedCheckpointResult(status = "error", error = it.error)
+    }
+    createCommitMessages += request.commitMessage
+    createCommitResult?.takeUnless { it.ok }?.let {
+      return WorkflowScopedCheckpointResult(status = "error", error = it.error)
+    }
+    return WorkflowScopedCheckpointResult(
+      status = "ok",
+      identity = WorkflowCheckpointIdentity(
+        branch = request.branch,
+        phase = request.phase,
+        loop = request.loop,
+        generation = request.generation,
+        parentSha = headCommitShaValue.takeIf { it.matches(Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")) }
+          ?: COMMITTED_HEAD_SHA,
+        ownedPathDigest = java.security.MessageDigest.getInstance("SHA-256")
+          .digest(request.ownedPaths.distinct().sorted().joinToString("\u0000").toByteArray())
+          .joinToString("") { "%02x".format(it) },
+        ownedPaths = request.ownedPaths,
+        commitSha = createCommitResult?.value
+          ?.takeIf { it.matches(Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")) }
+          ?: "b".repeat(40),
+      ),
+    )
   }
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
     return createCommitResult ?: WorkflowGitOperationResult(status = "ok", value = "checkpoint-sha")
   }
+
+  override fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "ok",
+      value = ownedPaths.distinct().sorted().joinToString("\n") { "$it\t${"c".repeat(64)}" },
+    )
+
+  override fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = identity.parentSha)
 
   var headCommitShaCalls: Int = 0
 

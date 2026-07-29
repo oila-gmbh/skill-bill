@@ -58,6 +58,55 @@ class ReviewGenerationRuntimeTest {
   }
 
   @Test
+  fun `new disposition wins within the same generation`() {
+    val dbPath = Files.createTempDirectory("latest-review-disposition").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      val finding = blocker()
+      repository.appendGeneration(generation(1))
+      repository.appendPass("workflow-1", "generation-1", 1, "checkpoint-1")
+      repository.appendFinding("workflow-1", "generation-1", 1, finding)
+      repository.appendDisposition(
+        GoalSubtaskReviewFindingDispositionRecord(
+          workflowId = "workflow-1",
+          generationId = "generation-1",
+          findingId = finding.findingId,
+          disposition = GoalSubtaskReviewFindingDisposition.STILL_PRESENT,
+          evidence = listOf("first result"),
+        ),
+      )
+      repository.appendDisposition(
+        GoalSubtaskReviewFindingDispositionRecord(
+          workflowId = "workflow-1",
+          generationId = "generation-1",
+          findingId = finding.findingId,
+          disposition = GoalSubtaskReviewFindingDisposition.RESOLVED,
+          evidence = listOf("new result"),
+        ),
+      )
+
+      assertEquals(emptyList(), repository.unresolvedBlockers("workflow-1"))
+      assertEquals(1, repository.summary("workflow-1").terminalDispositionCounts.getValue("resolved"))
+    }
+  }
+
+  @Test
+  fun `new finding metadata wins within the same generation`() {
+    val dbPath = Files.createTempDirectory("latest-review-finding").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnitOfWork(connection, dbPath).reviewGenerations
+      val initial = blocker()
+      val corrected = initial.copy(summary = "The newer review result corrected the finding summary.")
+      repository.appendGeneration(generation(1))
+      repository.appendPass("workflow-1", "generation-1", 1, "checkpoint-1")
+      repository.appendFinding("workflow-1", "generation-1", 1, initial)
+      repository.appendFinding("workflow-1", "generation-1", 1, corrected)
+
+      assertEquals(listOf(corrected), repository.unresolvedBlockers("workflow-1"))
+    }
+  }
+
+  @Test
   fun `repeated immutable writes are idempotent and conflicts fail loudly`() {
     val dbPath = Files.createTempDirectory("idempotent-review-generation").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->

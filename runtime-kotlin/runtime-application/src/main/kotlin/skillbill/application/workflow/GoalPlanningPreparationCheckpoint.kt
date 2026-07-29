@@ -83,7 +83,10 @@ class GoalPlanningPreparationCheckpoint(
       checkpoint.governedSubSpecPath,
       dbOverride,
     )
-    if (stored != null && gate.subtaskPlanIsRegenerable(stored)) {
+    if (
+      stored != null &&
+      (gate.subtaskPlanIsRegenerable(stored) || stored.subSpecHash != checkpoint.subSpecHash)
+    ) {
       database.read(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(checkpoint) }
     } else {
       database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
@@ -131,11 +134,7 @@ class GoalPlanningPreparationCheckpoint(
       expectedDescriptor != null &&
       plan.subSpecHash != expectedDescriptor.subSpecHash
     ) {
-      throw IncompatibleGoalPlanningPreparationRecoveryError(
-        identity.parentGoalWorkflowId,
-        subtaskId,
-        "stored governed sub-spec hash differs from the current governed sub-spec",
-      )
+      return null
     }
     plan.takeIf { projectionRejection == null }
   }

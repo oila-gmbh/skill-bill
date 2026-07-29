@@ -1,6 +1,7 @@
 package skillbill.db.core
 
 import java.sql.Connection
+import java.sql.SQLException
 
 @Suppress("TooManyFunctions")
 internal object DatabaseColumnMigrations {
@@ -52,74 +53,7 @@ internal object DatabaseColumnMigrations {
 
   fun healReviewGenerationIdentity(connection: Connection) {
     if (!tableExists(connection, "review_generations")) return
-    val hasPassBlindUniqueness = connection.createStatement().use { statement ->
-      statement.executeQuery("PRAGMA index_list(review_generations)").use { indexes ->
-        var found = false
-        while (indexes.next() && !found) {
-          if (indexes.getInt("unique") != 1) continue
-          val indexName = indexes.getString("name").replace("\"", "\"\"")
-          val columns = statement.connection.createStatement().use { columnStatement ->
-            columnStatement.executeQuery("PRAGMA index_info(\"$indexName\")").use { rows ->
-              buildList {
-                while (rows.next()) add(rows.getString("name"))
-              }
-            }
-          }
-          found = columns == listOf(
-            "workflow_id",
-            "review_base",
-            "reviewed_delta_digest",
-            "repository_checkpoint",
-          )
-        }
-        found
-      }
-    }
-    if (!hasPassBlindUniqueness) return
-
-    connection.createStatement().use { statement ->
-      statement.execute("PRAGMA foreign_keys = OFF")
-      statement.execute("PRAGMA legacy_alter_table = ON")
-    }
-    try {
-      connection.autoCommit = false
-      connection.createStatement().use { statement ->
-        statement.execute("ALTER TABLE review_generations RENAME TO review_generations_legacy")
-        statement.execute(
-          """
-          CREATE TABLE review_generations (
-            workflow_id TEXT NOT NULL,
-            generation_id TEXT NOT NULL,
-            review_base TEXT NOT NULL,
-            reviewed_delta_digest TEXT NOT NULL,
-            repository_checkpoint TEXT NOT NULL,
-            superseded_by_generation_id TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (workflow_id, generation_id)
-          )
-          """.trimIndent(),
-        )
-        statement.execute(
-          """
-          INSERT INTO review_generations
-          SELECT workflow_id, generation_id, review_base, reviewed_delta_digest,
-                 repository_checkpoint, superseded_by_generation_id, created_at
-          FROM review_generations_legacy
-          """.trimIndent(),
-        )
-        statement.execute("DROP TABLE review_generations_legacy")
-      }
-      connection.commit()
-    } catch (error: Throwable) {
-      connection.rollback()
-      throw error
-    } finally {
-      connection.autoCommit = true
-      connection.createStatement().use { statement ->
-        statement.execute("PRAGMA legacy_alter_table = OFF")
-        statement.execute("PRAGMA foreign_keys = ON")
-      }
-    }
+    ReviewGenerationIdentityMigration.heal(connection)
   }
 
   private fun ensureUnaddressedFindingColumns(connection: Connection) {
@@ -650,4 +584,86 @@ internal object DatabaseColumnMigrations {
         }
       }
     }
+}
+
+private object ReviewGenerationIdentityMigration {
+  private val passBlindColumns = listOf(
+    "workflow_id",
+    "review_base",
+    "reviewed_delta_digest",
+    "repository_checkpoint",
+  )
+
+  fun heal(connection: Connection) {
+    if (!hasPassBlindUniqueness(connection)) return
+    configureMigration(connection, enabled = true)
+    try {
+      migrateTable(connection)
+    } finally {
+      configureMigration(connection, enabled = false)
+    }
+  }
+
+  private fun hasPassBlindUniqueness(connection: Connection): Boolean = connection.createStatement().use { statement ->
+    statement.executeQuery("PRAGMA index_list(review_generations)").use { indexes ->
+      generateSequence { indexes.takeIf { it.next() } }
+        .filter { it.getInt("unique") == 1 }
+        .map { it.getString("name").replace("\"", "\"\"") }
+        .map { indexName ->
+          statement.connection.createStatement().use { columnStatement ->
+            columnStatement.executeQuery("PRAGMA index_info(\"$indexName\")").use { rows ->
+              buildList {
+                while (rows.next()) add(rows.getString("name"))
+              }
+            }
+          }
+        }
+        .any { it == passBlindColumns }
+    }
+  }
+
+  private fun migrateTable(connection: Connection) {
+    try {
+      connection.autoCommit = false
+      connection.createStatement().use { statement ->
+        statement.execute("ALTER TABLE review_generations RENAME TO review_generations_legacy")
+        statement.execute(
+          """
+          CREATE TABLE review_generations (
+            workflow_id TEXT NOT NULL,
+            generation_id TEXT NOT NULL,
+            review_base TEXT NOT NULL,
+            reviewed_delta_digest TEXT NOT NULL,
+            repository_checkpoint TEXT NOT NULL,
+            superseded_by_generation_id TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (workflow_id, generation_id)
+          )
+          """.trimIndent(),
+        )
+        statement.execute(
+          """
+          INSERT INTO review_generations
+          SELECT workflow_id, generation_id, review_base, reviewed_delta_digest,
+                 repository_checkpoint, superseded_by_generation_id, created_at
+          FROM review_generations_legacy
+          """.trimIndent(),
+        )
+        statement.execute("DROP TABLE review_generations_legacy")
+      }
+      connection.commit()
+    } catch (error: SQLException) {
+      connection.rollback()
+      throw error
+    } finally {
+      connection.autoCommit = true
+    }
+  }
+
+  private fun configureMigration(connection: Connection, enabled: Boolean) {
+    connection.createStatement().use { statement ->
+      statement.execute("PRAGMA legacy_alter_table = ${if (enabled) "ON" else "OFF"}")
+      statement.execute("PRAGMA foreign_keys = ${if (enabled) "OFF" else "ON"}")
+    }
+  }
 }

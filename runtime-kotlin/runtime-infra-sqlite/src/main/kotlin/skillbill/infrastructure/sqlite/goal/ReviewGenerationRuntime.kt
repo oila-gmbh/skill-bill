@@ -84,10 +84,7 @@ internal class ReviewGenerationRuntime(
     if (existing != null && existing.copy(sourceGenerationId = finding.sourceGenerationId) == finding) {
       return
     }
-    if (existing != null) {
-      require(existing.sourceGenerationId != generationId) {
-        "Conflicting immutable review finding '${finding.findingId}'."
-      }
+    if (existing != null && existing.sourceGenerationId != generationId) {
       appendFinding(
         workflowId,
         generationId,
@@ -98,10 +95,19 @@ internal class ReviewGenerationRuntime(
     }
     connection.prepareStatement(
       """
-      INSERT OR IGNORE INTO review_generation_findings (
+      INSERT INTO review_generation_findings (
         workflow_id, generation_id, pass_number, finding_id, severity,
         category, location, summary, source_generation_id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workflow_id, finding_id) DO UPDATE SET
+        generation_id = excluded.generation_id,
+        pass_number = excluded.pass_number,
+        severity = excluded.severity,
+        category = excluded.category,
+        location = excluded.location,
+        summary = excluded.summary,
+        source_generation_id = excluded.source_generation_id,
+        created_at = CURRENT_TIMESTAMP
       """.trimIndent(),
     ).use { statement ->
       var parameterIndex = 1
@@ -116,9 +122,6 @@ internal class ReviewGenerationRuntime(
       statement.setString(parameterIndex, finding.sourceGenerationId)
       statement.executeUpdate()
     }
-    require(loadFinding(workflowId, finding.findingId) == finding) {
-      "Conflicting immutable review finding '${finding.findingId}'."
-    }
   }
 
   override fun appendDisposition(record: GoalSubtaskReviewFindingDispositionRecord) {
@@ -127,9 +130,13 @@ internal class ReviewGenerationRuntime(
     }
     connection.prepareStatement(
       """
-      INSERT OR IGNORE INTO review_finding_dispositions (
+      INSERT INTO review_finding_dispositions (
         workflow_id, generation_id, finding_id, disposition, evidence_json
       ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(workflow_id, generation_id, finding_id) DO UPDATE SET
+        disposition = excluded.disposition,
+        evidence_json = excluded.evidence_json,
+        created_at = CURRENT_TIMESTAMP
       """.trimIndent(),
     ).use { statement ->
       var parameterIndex = 1
@@ -139,25 +146,6 @@ internal class ReviewGenerationRuntime(
       statement.setString(parameterIndex++, record.disposition.wireValue)
       statement.setString(parameterIndex, evidenceJson)
       statement.executeUpdate()
-    }
-    connection.prepareStatement(
-      """
-      SELECT disposition, evidence_json
-      FROM review_finding_dispositions
-      WHERE workflow_id = ? AND generation_id = ? AND finding_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      var parameterIndex = 1
-      statement.setString(parameterIndex++, record.workflowId)
-      statement.setString(parameterIndex++, record.generationId)
-      statement.setString(parameterIndex, record.findingId)
-      statement.executeQuery().use { rows ->
-        require(
-          rows.next() &&
-            rows.getString("disposition") == record.disposition.wireValue &&
-            rows.getString("evidence_json") == evidenceJson,
-        ) { "Conflicting immutable disposition for finding '${record.findingId}'." }
-      }
     }
   }
 

@@ -1,5 +1,18 @@
 # featuretask runtime boundary history
 
+## [2026-07-29] SKILL-150 — Scoped checkpoint isolation
+Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/taskruntime, runtime-ports/workflow, runtime-infra-{fs,sqlite}, runtime-cli, runtime-core
+- Replaced repository-wide checkpoint staging with a workflow-owned path inventory and a private Git index, preserving foreign staged, unstaged, and untracked work
+- Added typed policy blocks for paths outside workflow authority, including foreign governed feature specs, before checkpoint commit creation
+- Persisted checkpoint identity with branch, phase, loop, generation, parent, owned-path digest, owned paths, and immutable commit SHA
+- Bound review generation and semantic delta calculation to the immutable checkpoint and its owned-path inventory so unrelated dirt cannot affect review
+- Routed standalone and goal-child checkpoint creation, restoration, crash/resume, audit repair, and review remediation through the same scoped contract
+- Pattern: construct the checkpoint tree in a temporary index, create the commit object, then advance the branch with a compare-and-swap ref update. reusable
+- Reusable: scoped checkpoint port/models, checkpoint identity artifact mapping, owned-content identities, and Git checkpoint operations
+- Breaking changes/limitations: repository-wide `stageAll` checkpoint authority was removed; owned-path violations now stop with a non-retryable policy result
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-07-28] SKILL-150 — Lossless review generations
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/taskruntime, runtime-infra-sqlite, orchestration/contracts
 - Replaced destructive review invalidation with immutable, checkpoint-bound generations and durable finding identities/dispositions

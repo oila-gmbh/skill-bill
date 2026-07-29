@@ -2763,6 +2763,27 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     assertContains(error.message.orEmpty(), "stored import provenance differs from the hydration request")
   }
 
+  @Test
+  fun `resume accepts a child after its governed sub spec regenerates planning`() {
+    val harness = hydrationHarness()
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+    val child = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+    val artifacts = parseChildArtifacts(child)
+    val importArtifact = (artifacts["goal_planning_import"] as Map<*, *>)
+      .entries
+      .associate { (key, value) -> key.toString() to value }
+      .toMutableMap()
+    importArtifact["sub_spec_hash"] = "sha256:previous-governed-sub-spec"
+    artifacts["goal_planning_import"] = importArtifact
+    harness.workflows.saveFeatureTaskRuntimeWorkflow(
+      child.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+
+    harness.store.saveNewChildWorkflow(harness.state, harness.setup)
+
+    assertNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
+  }
+
   /**
    * SKILL-141 F-009: resume must reject when the child carries no goal_planning_import artifact at
    * all — the very first branch in firstDivergence returns "child carries no goal planning import

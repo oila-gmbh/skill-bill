@@ -137,7 +137,6 @@ internal fun resolveLaunchRejectionAttribution(
 
 internal fun reconcileCheckpointPathInventory(
   repoRoot: Path,
-  issueKey: String,
   specReference: String,
   specSource: SpecSource,
   paths: List<String>,
@@ -147,19 +146,11 @@ internal fun reconcileCheckpointPathInventory(
     .normalize()
     .toString()
     .replace('\\', '/')
-  val activeSpecRoot = specPath.substringBeforeLast('/', missingDelimiterValue = specPath)
-  val eligiblePaths = paths
+  val repositoryPaths = paths
     .map { it.replace('\\', '/').removePrefix("./") }
-    .filterNot { path ->
-      path.startsWith(".feature-specs/") &&
-        path != activeSpecRoot &&
-        !path.startsWith("$activeSpecRoot/")
-    }
   return when (specSource) {
-    SpecSource.LOCAL -> (eligiblePaths + specPath).distinct()
-    SpecSource.LINEAR -> eligiblePaths.filterNot { path ->
-      path == specPath || path.startsWith(".feature-specs/$issueKey-")
-    }
+    SpecSource.LOCAL -> (repositoryPaths + specPath).distinct()
+    SpecSource.LINEAR -> repositoryPaths
   }
 }
 
@@ -801,7 +792,8 @@ internal class FeatureTaskRuntimeRunLoop(
       .maxOfOrNull { it.generation }
       ?.let { maxOf(requestedGeneration, it + 1) }
       ?: requestedGeneration
-    val commit = phaseGates.gitOperations.createScopedCheckpoint(
+    val scopedCheckpointOperations = phaseGates.gitOperations.scopedCheckpointOperations
+    val commit = scopedCheckpointOperations.createScopedCheckpoint(
       request.repoRoot,
       WorkflowScopedCheckpointRequest(
         branch = branch,
@@ -834,7 +826,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return if (identityPersisted) {
       true
     } else {
-      val restored = phaseGates.gitOperations.restoreScopedCheckpointParent(request.repoRoot, identity)
+      val restored = scopedCheckpointOperations.restoreScopedCheckpointParent(request.repoRoot, identity)
       blockCheckpoint(
         precedingPhaseId,
         branch,
@@ -2588,45 +2580,41 @@ internal class FeatureTaskRuntimeRunLoop(
       .map { it.replace('\\', '/').trim().removePrefix("./") }
       .filter(String::isNotBlank)
       .toSet()
-    val governedRoot = activeGovernedSpecRoot(run)
-    val concurrentForeignGovernedPaths = fileManifest.introduced.filter { path ->
-      isForeignGovernedPath(path, governedRoot) && path !in claimedPaths
-    }.toSet()
-    val attributableIntroduced = fileManifest.introduced.filterNot { it in concurrentForeignGovernedPaths }
+    val currentRepositoryPathsResult = phaseGates.gitOperations.repositoryOwnedPaths(run.request.repoRoot)
+    if (!currentRepositoryPathsResult.ok) {
+      return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion could not capture the current repository paths: " +
+          currentRepositoryPathsResult.error,
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    val currentRepositoryPaths = currentRepositoryPathsResult.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .toSet()
     val persistedPaths = resolved.workflowOwnedPaths.distinct().sorted()
-    val frozenPaths = if (
+    val checkpointPaths = if (
       persistedPaths.isEmpty() &&
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
     ) {
       reconcileCheckpointPathInventory(
         repoRoot = run.request.repoRoot,
-        issueKey = run.request.issueKey,
         specReference = run.request.runInvariants.specReference,
         specSource = run.specSource,
-        paths = (claimedPaths + attributableIntroduced)
-          .filterNot { it in resolved.baselineOwnedPaths }
-          .sorted(),
+        paths = (currentRepositoryPaths + claimedPaths + fileManifest.introduced).sorted(),
       ).distinct().sorted()
     } else {
-      persistedPaths
+      (persistedPaths + currentRepositoryPaths + claimedPaths + fileManifest.introduced).distinct().sorted()
     }
-    if (frozenPaths.isEmpty()) {
+    if (checkpointPaths.isEmpty()) {
       return MutatingCheckpointCompletionBlocked(
         "Mutating-phase completion has an empty durable workflow-owned path inventory.",
         FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
       )
     }
-    val escapedPath = (claimedPaths + attributableIntroduced)
-      .sorted()
-      .firstOrNull { it !in frozenPaths }
-    if (escapedPath != null) {
-      return MutatingCheckpointCompletionBlocked(
-        "Checkpoint policy block 'outside-owned-inventory' names '$escapedPath'. " +
-          "Move the named change outside this phase or expand ownership through the governed durable operation.",
-        FeatureTaskRuntimeFailureDisposition.NON_RETRYABLE_POLICY_CONFLICT,
-      )
-    }
-    val identities = phaseGates.gitOperations.ownedPathContentIdentities(run.request.repoRoot, frozenPaths)
+    val identities = phaseGates.gitOperations.scopedCheckpointOperations
+      .ownedPathContentIdentities(run.request.repoRoot, checkpointPaths)
     if (!identities.ok) {
       return MutatingCheckpointCompletionBlocked(
         "Mutating-phase completion could not capture owned-path content identities: ${identities.error}",
@@ -2638,10 +2626,10 @@ internal class FeatureTaskRuntimeRunLoop(
       .filter(String::isNotBlank)
       .associate { line -> line.substringBefore('\t') to line.substringAfter('\t') }
     if (
-      parsedIdentities.keys != frozenPaths.toSet() ||
+      parsedIdentities.keys != checkpointPaths.toSet() ||
       !recorder.recordWorkflowOwnedPaths(
         run.request.workflowId,
-        frozenPaths,
+        checkpointPaths,
         parsedIdentities,
         run.request.dbPathOverride,
       )
@@ -2651,26 +2639,8 @@ internal class FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
       )
     }
-    return MutatingCheckpointCompletionReady(
-      FeatureTaskRuntimePhaseFileManifest(
-        before = (fileManifest.before + concurrentForeignGovernedPaths).distinct().sorted(),
-        after = fileManifest.after,
-      ),
-    )
+    return MutatingCheckpointCompletionReady(fileManifest)
   }
-
-  private fun activeGovernedSpecRoot(run: PhaseRun): String? = runCatching {
-    run.request.repoRoot.toAbsolutePath().normalize()
-      .relativize(Path.of(run.request.runInvariants.specReference).toAbsolutePath().normalize())
-      .parent
-      ?.toString()
-      ?.replace('\\', '/')
-  }.getOrNull()
-
-  private fun isForeignGovernedPath(path: String, activeRoot: String?): Boolean = activeRoot != null &&
-    path.startsWith(".feature-specs/") &&
-    path != activeRoot &&
-    !path.startsWith("$activeRoot/")
 
   private fun nonCompactAuditDurableLedgerGateReason(
     phaseId: String,
@@ -2771,9 +2741,6 @@ internal class FeatureTaskRuntimeRunLoop(
     val ownedPaths = resolveCheckpointOwnedPaths(
       run = run,
       persistedOwnedPaths = resolvedBranch?.workflowOwnedPaths,
-      baselineOwnedPaths = resolvedBranch?.baselineOwnedPaths
-        ?: goalReviewState?.baselineUntrackedPaths
-        ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
     ) ?: return null
     val fingerprint = gitOperations.repositoryCheckpointFingerprint(
       run.request.repoRoot,
@@ -2789,24 +2756,18 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun resolveCheckpointOwnedPaths(
-    run: PhaseRun,
-    persistedOwnedPaths: List<String>?,
-    baselineOwnedPaths: List<String>,
-  ): List<String>? {
-    val frozenPaths = persistedOwnedPaths
-      ?.takeIf(List<String>::isNotEmpty)
-      ?: checkpointOwnedPaths(run, baselineOwnedPaths)
-      ?: return null
+  private fun resolveCheckpointOwnedPaths(run: PhaseRun, persistedOwnedPaths: List<String>?): List<String>? {
+    val currentPaths = checkpointOwnedPaths(run) ?: return null
+    val checkpointPaths = (persistedOwnedPaths.orEmpty() + currentPaths).distinct()
     val inventory = reconcileCheckpointPathInventory(
       repoRoot = run.request.repoRoot,
-      issueKey = run.request.issueKey,
       specReference = run.request.runInvariants.specReference,
       specSource = run.specSource,
-      paths = frozenPaths,
+      paths = checkpointPaths,
     ).sorted()
     if (inventory.isEmpty()) return null
-    val contentIdentities = gitOperations.ownedPathContentIdentities(run.request.repoRoot, inventory)
+    val contentIdentities = gitOperations.scopedCheckpointOperations
+      .ownedPathContentIdentities(run.request.repoRoot, inventory)
       .takeIf { it.ok }?.value
       ?.lineSequence()
       ?.filter(String::isNotBlank)
@@ -2846,10 +2807,9 @@ internal class FeatureTaskRuntimeRunLoop(
   )
 
   /**
-   * Owned paths for the checkpoint scope. Subtracting the run's persisted tracked-and-untracked
-   * ownership baseline keeps sibling and pre-existing changes out of this workflow's checkpoint.
+   * Paths for the checkpoint scope are the repository's current tracked and untracked changes.
    *
-   * Both sides of that subtraction come from the same NUL-delimited plumbing listing. `git status
+   * The listing uses NUL-delimited plumbing. `git status
    * --porcelain` is deliberately not the source: it collapses a wholly-untracked directory to one
    * `dir/` entry and C-quotes non-ASCII paths, so a sibling subtask's new directory would never match
    * the `ls-files`-written baseline and would leak into the child's audit scope (AC-014).
@@ -2865,15 +2825,13 @@ internal class FeatureTaskRuntimeRunLoop(
    * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
    * option — audit would read a silently narrowed scope as the complete one.
    */
-  private fun checkpointOwnedPaths(run: PhaseRun, baselineOwnedPaths: List<String>): List<String>? {
+  private fun checkpointOwnedPaths(run: PhaseRun): List<String>? {
     val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
     if (!owned.ok) return null
-    val baseline = baselineOwnedPaths.toSet()
     val paths = owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
-      .filterNot { it in baseline }
       .distinct()
       .sorted()
     if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {

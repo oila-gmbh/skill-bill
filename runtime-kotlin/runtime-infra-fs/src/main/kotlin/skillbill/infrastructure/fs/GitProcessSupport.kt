@@ -9,12 +9,15 @@ import kotlin.concurrent.thread
 internal const val GIT_TIMEOUT_SECONDS = 30L
 
 internal fun runGitCommand(repoRoot: Path, vararg args: String): WorkflowGitOperationResult {
-  val argList = args.toList()
-  val result = runGitProcess(repoRoot, argList)
+  return runGitCommand(repoRoot, args.toList())
+}
+
+internal fun runGitCommand(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
+  val result = runGitProcess(repoRoot, args)
   return when {
     result.timedOut -> WorkflowGitOperationResult(
       status = "error",
-      error = "git ${argList.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
     )
     result.readFailure != null -> WorkflowGitOperationResult(
       status = "error",
@@ -23,7 +26,7 @@ internal fun runGitCommand(repoRoot: Path, vararg args: String): WorkflowGitOper
     result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
     else -> WorkflowGitOperationResult(
       status = "error",
-      error = "git ${argList.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
+      error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
     )
   }
 }

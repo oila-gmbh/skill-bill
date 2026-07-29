@@ -238,20 +238,18 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume rejects saved planning when a governed subtask spec changes`() {
+  fun `resume regenerates saved planning when a governed subtask spec changes`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
     val launchCount = harness.launcher.requests.size
     harness.manifestFileStore.replaceSpec("spec_subtask_1.md", "# Initial subtask contract edited after planning")
 
-    val outcome = harness.sweep.prepare(state, harness.request())
+    val editedState = harness.stateFor(manifest(subtaskCount = 1))
+    val outcome = harness.sweep.prepare(editedState, harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(1, stopped.currentSubtaskId)
-    assertEquals("plan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("cannot be recovered"))
-    assertEquals(launchCount, harness.launcher.requests.size)
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount + 1, harness.launcher.requests.size)
   }
 
   @Test

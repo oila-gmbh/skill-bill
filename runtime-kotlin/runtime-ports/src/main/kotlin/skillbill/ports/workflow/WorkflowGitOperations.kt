@@ -18,34 +18,17 @@ import java.nio.file.Path
 private const val HASH_RADIX_HEX: Int = 16
 private const val NOOP_REVIEW_BASE_SHA_LENGTH: Int = 40
 
-@Suppress("TooManyFunctions") // single cohesive boundary: the git reads and writes a workflow phase needs
 interface WorkflowGitOperations {
+  val scopedCheckpointOperations: WorkflowScopedCheckpointGitOperations
+    get() = UnavailableWorkflowScopedCheckpointGitOperations
+
   fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String? = null): WorkflowGitOperationResult
 
   fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
-  fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
-
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
-
-  fun createScopedCheckpoint(
-    repoRoot: Path,
-    request: WorkflowScopedCheckpointRequest,
-  ): WorkflowScopedCheckpointResult = WorkflowScopedCheckpointResult(
-    status = "error",
-    error = "This git adapter does not support scoped checkpoint transactions.",
-  )
-
-  fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot fingerprint owned paths.")
-
-  fun restoreScopedCheckpointParent(
-    repoRoot: Path,
-    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
-  ): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot restore a checkpoint parent.")
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
@@ -64,6 +47,36 @@ interface WorkflowGitOperations {
   fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
+}
+
+interface WorkflowScopedCheckpointGitOperations {
+  fun createScopedCheckpoint(repoRoot: Path, request: WorkflowScopedCheckpointRequest): WorkflowScopedCheckpointResult
+
+  fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult
+
+  fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult
+}
+
+private object UnavailableWorkflowScopedCheckpointGitOperations : WorkflowScopedCheckpointGitOperations {
+  override fun createScopedCheckpoint(
+    repoRoot: Path,
+    request: WorkflowScopedCheckpointRequest,
+  ): WorkflowScopedCheckpointResult = WorkflowScopedCheckpointResult(
+    status = "error",
+    error = "This git adapter does not support scoped checkpoint transactions.",
+  )
+
+  override fun ownedPathContentIdentities(repoRoot: Path, ownedPaths: List<String>): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot fingerprint owned paths.")
+
+  override fun restoreScopedCheckpointParent(
+    repoRoot: Path,
+    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
+  ): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "error", error = "This git adapter cannot restore a checkpoint parent.")
 }
 
 interface RepositoryFingerprintGitOperations {
@@ -141,20 +154,20 @@ interface RuntimePhaseFileManifestGitOperationsProvider {
 }
 
 fun WorkflowGitOperations.runtimePhaseHeadCommit(repoRoot: Path): WorkflowGitOperationResult =
-  runtimePhaseFileManifestOperations().headCommit(repoRoot)
+  runtimePhaseFileManifestOperations.headCommit(repoRoot)
 
 fun WorkflowGitOperations.runtimePhaseChangedPathsBetweenCommits(
   repoRoot: Path,
   beforeCommit: String,
   afterCommit: String,
-): WorkflowGitOperationResult = runtimePhaseFileManifestOperations().changedPathsBetweenCommits(
+): WorkflowGitOperationResult = runtimePhaseFileManifestOperations.changedPathsBetweenCommits(
   repoRoot,
   beforeCommit,
   afterCommit,
 )
 
-private fun WorkflowGitOperations.runtimePhaseFileManifestOperations(): RuntimePhaseFileManifestGitOperations =
-  (this as? RuntimePhaseFileManifestGitOperationsProvider)?.runtimePhaseFileManifestOperations
+private val WorkflowGitOperations.runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations
+  get() = (this as? RuntimePhaseFileManifestGitOperationsProvider)?.runtimePhaseFileManifestOperations
     ?: NoopRuntimePhaseFileManifestGitOperations
 
 private object NoopRuntimePhaseFileManifestGitOperations : RuntimePhaseFileManifestGitOperations {

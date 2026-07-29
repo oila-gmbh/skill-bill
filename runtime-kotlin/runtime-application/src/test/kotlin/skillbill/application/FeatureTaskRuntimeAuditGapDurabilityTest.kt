@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -106,7 +107,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
               } else {
                 output.replace(
                   "\"observation\":\"fix_verified\"",
-                  "\"observation\":\"fixed\"",
+                  "\"observation\":\"recurrence_verified\"",
                 )
               },
             )
@@ -123,7 +124,22 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       "audit-repair-result",
       "ac-002-gap-1-item-1",
       "result_evidence.observation",
-      "unauthorized evidence observation 'fixed'",
+      "result_evidence.observation must be 'fix_verified' when outcome is 'fixed'",
+    )
+    val retryPrompts = harness.launcher.requests
+      .mapNotNull { it.skillRunRequest.promptOverride }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+      .drop(2)
+    assertTrue(retryPrompts.isNotEmpty())
+    assertTrue(
+      retryPrompts.all {
+        it.contains("result_evidence.observation must be 'fix_verified' when outcome is 'fixed'")
+      },
+      "every correction attempt must receive the exact contract-safe mismatch",
+    )
+    assertFalse(
+      blocked.blockedReason.contains("result_evidence.observation must be"),
+      "the public block remains payload-free",
     )
   }
 
