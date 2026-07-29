@@ -2071,7 +2071,7 @@ internal class FeatureTaskRuntimeRunLoop(
             semanticIteration += 1
             priorSchemaFailure = semanticIncompleteReason
             observability.transition(
-              run.phaseId, agentId, iteration, "implementation_continuation",
+              run.phaseId, agentId, iteration, "semantic_implementation_continuation",
             )
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null

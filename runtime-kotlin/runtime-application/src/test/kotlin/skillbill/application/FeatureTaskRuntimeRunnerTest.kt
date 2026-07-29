@@ -189,6 +189,85 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `implementation continuation reconstructs the durable receipt after a crash`() {
+    var implementLaunches = 0
+    var crashContinuation = true
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        val output = when {
+          phaseId != "implement" -> validJsonOutput(phaseId)
+          ++implementLaunches == 1 -> validJsonOutput(phaseId).replace(
+            "\"completed_task_ids\":[\"task-1\"]",
+            "\"completed_task_ids\":[]",
+          )
+          crashContinuation -> return@RuntimeRecordingLauncher spawnFailedFacts()
+          else -> validJsonOutput(phaseId)
+        }
+        facts(output)
+      },
+    )
+
+    val interrupted = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("implement", interrupted.lastIncompletePhase)
+
+    crashContinuation = false
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val resumedPrompt = requireNotNull(harness.launcher.requests.last {
+      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+    }.skillRunRequest.promptOverride)
+    assertContains(resumedPrompt, "## Continue the implementation")
+    assertContains(resumedPrompt, "completed_task_ids=[]")
+    assertContains(resumedPrompt, "changed_paths=[src/Foo.kt]")
+    assertContains(resumedPrompt, "tests_added=[]")
+    assertContains(resumedPrompt, "tests_updated=[]")
+    assertContains(resumedPrompt, "deviations=[]")
+    assertContains(resumedPrompt, "unresolved_items=[]")
+    assertContains(resumedPrompt, "reconciliation_evidence=Fixture tree at target state.")
+    assertContains(resumedPrompt, "repository_checkpoint=fixture-checkpoint-1")
+    assertContains(resumedPrompt, "failure_disposition=retryable")
+  }
+
+  @Test
+  fun `goal-child cannot advance when implementation receipt omits a plan task`() {
+    var implementLaunches = 0
+    val repoRoot = Files.createTempDirectory("skillbill-goal-child-incomplete-implementation")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = "measured-head-sha" }
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        val output = if (phaseId == "implement" && implementLaunches++ == 0) {
+          validJsonOutput(phaseId).replace(
+            "\"completed_task_ids\":[\"task-1\"]",
+            "\"completed_task_ids\":[]",
+          )
+        } else {
+          validJsonOutput(phaseId)
+        }
+        facts(output)
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertEquals(2, implementLaunches)
+    assertEquals(
+      listOf("implement", "implement"),
+      harness.launchedPhaseOrder().filter { it == "implement" },
+    )
+    val continuationPrompt = requireNotNull(harness.launcher.requests.last {
+      phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "implement"
+    }.skillRunRequest.promptOverride)
+    assertContains(continuationPrompt, "completed_task_ids=[]")
+    assertContains(continuationPrompt, "repository_checkpoint=fixture-checkpoint-1")
+    assertContains(continuationPrompt, "failure_disposition=retryable")
+  }
+
+  @Test
   fun `single-spec completion reconciles the spec Agent line with the ledger-derived finalizing agent`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
 

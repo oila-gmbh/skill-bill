@@ -28,7 +28,7 @@ subtasks:
 - id: 2
   name: "Truthful implementation completion"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_2_truthful_implementation_completion.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260729-133621-aepa"
