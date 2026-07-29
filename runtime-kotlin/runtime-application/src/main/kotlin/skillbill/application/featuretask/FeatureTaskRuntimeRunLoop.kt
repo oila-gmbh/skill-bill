@@ -809,6 +809,7 @@ internal class FeatureTaskRuntimeRunLoop(
         loop = loop,
         generation = generation,
         ownedPaths = ownedPaths,
+        expectedContentIdentities = resolved.workflowOwnedPathContentIdentities,
         observedPaths = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
           ?.get(precedingPhaseId)
           ?.fileManifestIntroduced
@@ -2579,13 +2580,6 @@ internal class FeatureTaskRuntimeRunLoop(
         "Mutating-phase completion cannot resolve the durable workflow-owned path inventory.",
         FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
       )
-    val frozenPaths = resolved.workflowOwnedPaths.distinct().sorted()
-    if (frozenPaths.isEmpty()) {
-      return MutatingCheckpointCompletionBlocked(
-        "Mutating-phase completion has an empty durable workflow-owned path inventory.",
-        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-      )
-    }
     val claimedPaths = JsonSupport.anyToStringAnyMap(output["produced_outputs"])
       .orEmpty()["changed_paths"]
       .let { it as? List<*> }
@@ -2599,6 +2593,29 @@ internal class FeatureTaskRuntimeRunLoop(
       isForeignGovernedPath(path, governedRoot) && path !in claimedPaths
     }.toSet()
     val attributableIntroduced = fileManifest.introduced.filterNot { it in concurrentForeignGovernedPaths }
+    val persistedPaths = resolved.workflowOwnedPaths.distinct().sorted()
+    val frozenPaths = if (
+      persistedPaths.isEmpty() &&
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    ) {
+      reconcileCheckpointPathInventory(
+        repoRoot = run.request.repoRoot,
+        issueKey = run.request.issueKey,
+        specReference = run.request.runInvariants.specReference,
+        specSource = run.specSource,
+        paths = (claimedPaths + attributableIntroduced)
+          .filterNot { it in resolved.baselineOwnedPaths }
+          .sorted(),
+      ).distinct().sorted()
+    } else {
+      persistedPaths
+    }
+    if (frozenPaths.isEmpty()) {
+      return MutatingCheckpointCompletionBlocked(
+        "Mutating-phase completion has an empty durable workflow-owned path inventory.",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
     val escapedPath = (claimedPaths + attributableIntroduced)
       .sorted()
       .firstOrNull { it !in frozenPaths }

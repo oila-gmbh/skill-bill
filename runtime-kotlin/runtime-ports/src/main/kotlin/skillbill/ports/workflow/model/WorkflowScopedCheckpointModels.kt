@@ -8,6 +8,7 @@ data class WorkflowScopedCheckpointRequest(
   val loop: String,
   val generation: Int,
   val ownedPaths: List<String>,
+  val expectedContentIdentities: Map<String, String> = emptyMap(),
   val observedPaths: List<String> = ownedPaths,
   val governedSpecRoot: String? = null,
   val commitMessage: String,

@@ -233,6 +233,37 @@ private object ScopedCheckpointGitOperations {
         "Resolve the case-colliding ownership entries and retry.",
       )
     }
+    val expectedIdentities = request.expectedContentIdentities
+    if (expectedIdentities.isNotEmpty()) {
+      val missingIdentity = paths.firstOrNull { it !in expectedIdentities }
+      if (missingIdentity != null || expectedIdentities.keys.any { it !in paths }) {
+        return policy(
+          "incomplete-owned-content-identities",
+          missingIdentity ?: expectedIdentities.keys.first { it !in paths },
+          "Recapture the complete durable owned-path inventory and its content identities before retrying.",
+        )
+      }
+      val staged = runGitCommand(repoRoot, "diff", "--cached", "--name-only", "-z", "--", *paths.toTypedArray())
+      if (!staged.ok) return failure(staged.error)
+      val stagedOverlap = staged.value.orEmpty().split('\u0000').firstOrNull(String::isNotBlank)
+      if (stagedOverlap != null) {
+        return policy(
+          "ambiguous-owned-path-overlap",
+          stagedOverlap,
+          "Restore or move the foreign staged change at the named path, then retry the workflow checkpoint.",
+        )
+      }
+      val currentIdentities = contentIdentityMap(repoRoot, paths)
+        ?: return failure("Could not capture current owned-path content identities.")
+      val concurrentlyModified = paths.firstOrNull { currentIdentities[it] != expectedIdentities[it] }
+      if (concurrentlyModified != null) {
+        return policy(
+          "ambiguous-owned-path-overlap",
+          concurrentlyModified,
+          "Preserve and reconcile the concurrent working-tree change at the named path, recapture ownership, then retry.",
+        )
+      }
+    }
     val parent = runGitCommand(repoRoot, "rev-parse", "HEAD")
     if (!parent.ok) return failure(parent.error)
     val gitDir = runGitCommand(repoRoot, "rev-parse", "--absolute-git-dir")

@@ -357,6 +357,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         loop = if (state.remediationBaseSha == null) "initial" else "review_fix",
         generation = state.reservedPassNumber ?: state.completedPassCount + 1,
         ownedPaths = resolved.workflowOwnedPaths,
+        expectedContentIdentities = resolved.workflowOwnedPathContentIdentities,
         commitMessage = "chore(skill-bill): immutable review checkpoint for ${continuation.issueKey}",
       ),
     )
