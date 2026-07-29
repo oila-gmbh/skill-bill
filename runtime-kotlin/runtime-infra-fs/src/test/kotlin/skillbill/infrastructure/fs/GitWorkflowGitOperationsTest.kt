@@ -36,7 +36,8 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "add", "foreign-staged.txt")
     Files.writeString(repoRoot.resolve("foreign-unstaged.txt"), "foreign unstaged\n")
     Files.writeString(repoRoot.resolve("foreign-untracked.txt"), "foreign untracked\n")
-    val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
+    val ownedIndexBefore = git(repoRoot, "ls-files", "--stage", "owned.txt")
+    val foreignStagedIndexBefore = git(repoRoot, "ls-files", "--stage", "foreign-staged.txt")
     val foreignBytesBefore = listOf("foreign-staged.txt", "foreign-unstaged.txt", "foreign-untracked.txt")
       .associateWith { Files.readAllBytes(repoRoot.resolve(it)) }
 
@@ -54,7 +55,8 @@ class GitWorkflowGitOperationsTest {
 
     assertTrue(result.ok, result.error)
     assertEquals("owned.txt", git(repoRoot, "show", "--name-only", "--format=", "HEAD"))
-    assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
+    assertEquals(ownedIndexBefore, git(repoRoot, "ls-files", "--stage", "owned.txt"))
+    assertEquals(foreignStagedIndexBefore, git(repoRoot, "ls-files", "--stage", "foreign-staged.txt"))
     foreignBytesBefore.forEach { (path, bytes) ->
       assertContentEquals(bytes, Files.readAllBytes(repoRoot.resolve(path)), path)
     }
@@ -213,8 +215,6 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "add", ".")
     git(repoRoot, "commit", "-m", "initial")
     val operations = GitWorkflowGitOperations()
-    val captured = operations.ownedPathContentIdentities(repoRoot, listOf("shared.txt"))
-      .value.substringAfter('\t')
     Files.writeString(repoRoot.resolve("shared.txt"), "concurrent edit\n")
     val bytesBefore = Files.readAllBytes(repoRoot.resolve("shared.txt"))
     val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
@@ -227,7 +227,6 @@ class GitWorkflowGitOperationsTest {
         loop = "initial",
         generation = 1,
         ownedPaths = listOf("shared.txt"),
-        expectedContentIdentities = mapOf("shared.txt" to captured),
         commitMessage = "snapshot current content",
       ),
     )

@@ -7,17 +7,18 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -302,13 +303,17 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation, resolved) = durable
     val checkpoint = resolved?.checkpointIdentities?.lastOrNull()
-    val result = if (checkpoint == null) {
-      gitOperations.buildGoalSubtaskReviewInput(
-        repoRoot,
-        GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
-        continuation.goalBranch,
+      ?: createAndPersistReviewCheckpoint(
+        workflowId = workflowId,
+        state = state,
+        continuation = continuation,
+        resolved = resolved ?: return GoalSubtaskReviewInputPreparation.MissingState,
+        gitOperations = gitOperations,
+        repoRoot = repoRoot,
+        dbOverride = dbOverride,
       )
-    } else {
+      ?: return GoalSubtaskReviewInputBlocked("Goal-child review checkpoint could not be created and persisted.")
+    val result = run {
       val frozenPaths = checkpoint.ownedPaths.distinct().sorted()
       val digest = MessageDigest.getInstance("SHA-256")
         .digest(frozenPaths.joinToString("\u0000").toByteArray())
@@ -318,7 +323,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       }
       gitOperations.buildScopedGoalSubtaskReviewInput(
         repoRoot,
-        GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
+        GoalSubtaskReviewBaseline(state.remediationBaseSha ?: state.reviewBaseSha, emptyList()),
         continuation.goalBranch,
         checkpoint.commitSha,
         frozenPaths,
@@ -332,6 +337,48 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
+  }
+
+  @Suppress("LongParameterList")
+  private fun createAndPersistReviewCheckpoint(
+    workflowId: String,
+    state: GoalSubtaskReviewState,
+    continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    resolved: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    dbOverride: String?,
+  ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
+    val checkpoint = gitOperations.createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = continuation.goalBranch,
+        phase = "review",
+        loop = if (state.remediationBaseSha == null) "initial" else "review_fix",
+        generation = state.reservedPassNumber ?: state.completedPassCount + 1,
+        ownedPaths = resolved.workflowOwnedPaths,
+        commitMessage = "chore(skill-bill): immutable review checkpoint for ${continuation.issueKey}",
+      ),
+    )
+    val identity = checkpoint.identity ?: return null
+    val persisted = database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val latest = resolvedBranchFrom(artifacts) ?: return@transaction false
+      val updated = latest.copy(checkpointIdentities = latest.checkpointIdentities + identity)
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+      )
+      true
+    }
+    if (!persisted) {
+      gitOperations.restoreScopedCheckpointParent(repoRoot, identity)
+      return null
+    }
+    return identity
   }
 
   @Suppress("ReturnCount", "UnusedPrivateMember")

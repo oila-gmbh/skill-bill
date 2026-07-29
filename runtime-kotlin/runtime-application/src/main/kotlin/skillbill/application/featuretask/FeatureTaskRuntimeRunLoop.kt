@@ -769,6 +769,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return false
   }
 
+  @Suppress("ReturnCount")
   private fun commitCheckpoint(
     precedingPhaseId: String,
     branch: String,
@@ -778,7 +779,6 @@ internal class FeatureTaskRuntimeRunLoop(
     val ownedPaths = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
       ?.workflowOwnedPaths
       .orEmpty()
-    val resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
     if (ownedPaths.isEmpty()) {
       return blockCheckpoint(
         precedingPhaseId,
@@ -787,8 +787,20 @@ internal class FeatureTaskRuntimeRunLoop(
         blockedReason,
       )
     }
+    val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+      ?: return blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        "the durable resolved branch artifact is missing",
+        blockedReason,
+      )
     val loop = activeReentry?.loopId ?: "initial"
-    val generation = activeReentry?.edgeIteration ?: 1
+    val requestedGeneration = activeReentry?.edgeIteration ?: 1
+    val generation = resolved.checkpointIdentities
+      .filter { it.phase == precedingPhaseId && it.loop == loop }
+      .maxOfOrNull { it.generation }
+      ?.let { maxOf(requestedGeneration, it + 1) }
+      ?: requestedGeneration
     val commit = phaseGates.gitOperations.createScopedCheckpoint(
       request.repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -801,7 +813,6 @@ internal class FeatureTaskRuntimeRunLoop(
           ?.get(precedingPhaseId)
           ?.fileManifestIntroduced
           .orEmpty(),
-        expectedContentIdentities = resolvedBranch?.workflowOwnedPathContentIdentities.orEmpty(),
         governedSpecRoot = runCatching {
           request.repoRoot.toAbsolutePath().normalize()
             .relativize(Path.of(request.runInvariants.specReference).toAbsolutePath().normalize())
@@ -1913,6 +1924,12 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun isRetryableGoalReviewPreparation(phaseId: String, reason: String): Boolean {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return false
     if (reason == "Goal-child review requires a persisted immutable checkpoint.") return true
+    if (
+      reason.startsWith("Goal-subtask review input persistence failed") &&
+      reason.contains("does not match the durable review baseline")
+    ) {
+      return true
+    }
     val legacyDatabaseContention =
       reason.startsWith("Goal-subtask review state or durable raw evidence is malformed:") &&
         "[SQLITE_BUSY]" in reason

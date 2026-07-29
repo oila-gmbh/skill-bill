@@ -238,17 +238,38 @@ private object ScopedCheckpointGitOperations {
     val gitDir = runGitCommand(repoRoot, "rev-parse", "--absolute-git-dir")
     if (!gitDir.ok) return failure(gitDir.error)
     val temporaryIndex = Files.createTempFile(Path.of(gitDir.value), "skill-bill-index-", ".tmp")
+    var advancedCommit: String? = null
     return try {
       Files.deleteIfExists(temporaryIndex)
       val environment = mapOf("GIT_INDEX_FILE" to temporaryIndex.toString())
-      val readTree = run(repoRoot, environment, listOf("read-tree", "HEAD"))
+      val readTree = run(repoRoot, environment, listOf("read-tree", parent.value))
       if (!readTree.ok) return failure(readTree.error)
       val add = run(repoRoot, environment, listOf("add", "--all", "--") + paths)
       if (!add.ok) return failure(add.error)
-      val commit = run(repoRoot, environment, listOf("commit", "-m", request.commitMessage))
-      if (!commit.ok) return failure(commit.error)
-      val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
-      if (!head.ok) return failure(head.error)
+      val tree = run(repoRoot, environment, listOf("write-tree"))
+      if (!tree.ok) return failure(tree.error)
+      val commit = run(
+        repoRoot,
+        environment,
+        listOf("commit-tree", tree.value.orEmpty(), "-p", parent.value.orEmpty(), "-m", request.commitMessage),
+      )
+      if (!commit.ok || commit.value.isNullOrBlank()) {
+        return failure(
+          commit.error.ifBlank {
+            "git commit-tree returned no commit."
+          },
+        )
+      }
+      val commitSha = commit.value.trim()
+      val advance = runGitCommand(
+        repoRoot,
+        "update-ref",
+        "refs/heads/${request.branch}",
+        commitSha,
+        parent.value.orEmpty(),
+      )
+      if (!advance.ok) return failure(advance.error)
+      advancedCommit = commitSha
       WorkflowScopedCheckpointResult(
         status = "ok",
         identity = WorkflowCheckpointIdentity(
@@ -259,9 +280,14 @@ private object ScopedCheckpointGitOperations {
           parentSha = parent.value,
           ownedPathDigest = sha256(paths.joinToString("\u0000")),
           ownedPaths = paths,
-          commitSha = head.value,
+          commitSha = commitSha,
         ),
       )
+    } catch (exception: Exception) {
+      advancedCommit?.let { commitSha ->
+        runGitCommand(repoRoot, "update-ref", "refs/heads/${request.branch}", parent.value.orEmpty(), commitSha)
+      }
+      failure(exception.message.orEmpty())
     } finally {
       Files.deleteIfExists(temporaryIndex)
     }

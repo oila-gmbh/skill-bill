@@ -10,7 +10,7 @@ Replace full-worktree checkpoint staging with workflow-owned staging and explici
 2. Pre-existing foreign staged, unstaged, and untracked paths remain byte-for-byte and index-for-index unchanged after a successful checkpoint.
 3. A path introduced by the active phase outside its allowed inventory produces a typed non-retryable policy block before any commit.
 4. A foreign governed `.feature-specs/` path, including a concurrently prepared issue, is never staged, committed, reviewed, or attributed to the active workflow.
-5. Ambiguous overlap between an owned path and a foreign staged or concurrently modified path blocks with the exact path and recovery guidance rather than overwriting either side.
+5. A staged or subsequently modified workflow-owned path is checkpointed from its current working-tree state through the private index; the user's real index and working tree remain byte-for-byte unchanged.
 6. Staging or commit failure restores the pre-checkpoint index state and preserves the working tree; partial index mutation cannot leak into a later user commit.
 7. Checkpoint identity records the branch, phase, loop and generation, parent SHA, owned-path digest, and resulting commit SHA in durable state.
 8. Checkpoint commit messages identify the authority boundary and loop generation sufficiently to distinguish initial implementation, audit repair, and review remediation history.
@@ -31,7 +31,7 @@ Depends on Subtask 1 so checkpoint identities and owned-path provenance survive 
 ## Validation Strategy
 
 - Test clean and dirty repositories with foreign staged, unstaged, untracked, deleted, renamed, and intent-to-add paths.
-- Test owned and foreign path overlap, symlink and case-normalization behavior, commit failure, staging failure, and crash recovery.
+- Test staged and subsequently modified owned paths, foreign path isolation, symlink and case-normalization behavior, commit failure, staging failure, and crash recovery.
 - Verify exact index trees before and after checkpoint operations.
 - Exercise audit and review backward edges, standalone work, and goal-child work.
 - Build a concurrent-spec regression using two issue keys and assert each commit contains only its own paths.
@@ -39,4 +39,3 @@ Depends on Subtask 1 so checkpoint identities and owned-path provenance survive 
 ## Next Path
 
 Continue with Subtask 6 to route oversized work and deterministic quality failures before shallow review cycles begin.
-
