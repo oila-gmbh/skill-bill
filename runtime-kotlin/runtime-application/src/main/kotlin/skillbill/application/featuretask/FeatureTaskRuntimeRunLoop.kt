@@ -31,8 +31,10 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
@@ -72,6 +74,8 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.ImplementationCompleted
+import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
+import skillbill.workflow.taskruntime.model.ImplementationIncomplete
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
@@ -762,12 +766,46 @@ internal class FeatureTaskRuntimeRunLoop(
     commitMessage: (String) -> String,
     blockedReason: (String, String) -> String,
   ): Boolean {
-    val staged = phaseGates.gitOperations.stageAll(request.repoRoot)
-    if (!staged.ok) {
-      return blockCheckpoint(precedingPhaseId, branch, staged.error, blockedReason)
+    val ownedPaths = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+      ?.workflowOwnedPaths
+      .orEmpty()
+    if (ownedPaths.isEmpty()) {
+      return blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        "the durable workflow-owned path inventory is empty",
+        blockedReason,
+      )
     }
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, commitMessage(branch))
-    return if (commit.ok) true else blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)
+    val loop = activeReentry?.loopId ?: "initial"
+    val generation = activeReentry?.edgeIteration ?: 1
+    val commit = phaseGates.gitOperations.createScopedCheckpoint(
+      request.repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = branch,
+        phase = precedingPhaseId,
+        loop = loop,
+        generation = generation,
+        ownedPaths = ownedPaths,
+        governedSpecRoot = runCatching {
+          request.repoRoot.toAbsolutePath().normalize()
+            .relativize(Path.of(request.runInvariants.specReference).toAbsolutePath().normalize())
+            .parent
+            ?.toString()
+            ?.replace('\\', '/')
+        }.getOrNull(),
+        commitMessage = commitMessage(branch) +
+          " [authority=workflow-owned phase=$precedingPhaseId loop=$loop generation=$generation]",
+      ),
+    )
+    if (!commit.ok) return blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)
+    val identity = commit.identity
+      ?: return blockCheckpoint(precedingPhaseId, branch, "scoped checkpoint returned no identity", blockedReason)
+    return if (recorder.recordCheckpointIdentity(request.workflowId, identity, request.dbPathOverride)) {
+      true
+    } else {
+      blockCheckpoint(precedingPhaseId, branch, "checkpoint identity could not be persisted", blockedReason)
+    }
   }
 
   private fun blockCheckpoint(
@@ -1620,11 +1658,22 @@ internal class FeatureTaskRuntimeRunLoop(
         observability,
         "Standalone review is missing the immutable review base captured before implementation.",
       )
-    val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
-      run.request.repoRoot,
-      GoalSubtaskReviewBaseline(reviewBaseSha, resolved.baselineUntrackedPaths),
-      resolved.branch,
-    )
+    val checkpoint = resolved.checkpointIdentities.lastOrNull()
+    val result = if (checkpoint == null) {
+      phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+        run.request.repoRoot,
+        GoalSubtaskReviewBaseline(reviewBaseSha, resolved.baselineUntrackedPaths),
+        resolved.branch,
+      )
+    } else {
+      phaseGates.gitOperations.buildScopedGoalSubtaskReviewInput(
+        run.request.repoRoot,
+        GoalSubtaskReviewBaseline(checkpoint.parentSha, emptyList()),
+        resolved.branch,
+        checkpoint.commitSha,
+        resolved.workflowOwnedPaths,
+      )
+    }
     val input = result.input
       ?: return blockedGoalReviewRun(run, observability, result.error.ifBlank { "Standalone review input failed." })
     return GoalReviewRunReady(run.copy(goalReviewInput = input))
@@ -1931,7 +1980,26 @@ internal class FeatureTaskRuntimeRunLoop(
     var semanticIteration = iteration - budgetBaseOffset
     while (outcome == null) {
       val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
-      outcome = attempt.settledOutcome ?: if (attempt.malformedOutput) {
+      val semanticIncompleteReason = attempt.semanticIncompleteReason
+      outcome = attempt.settledOutcome ?: if (semanticIncompleteReason != null) {
+        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
+          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+            iteration += 1
+            semanticIteration += 1
+            priorSchemaFailure = semanticIncompleteReason
+            observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
+            null
+          }
+          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+            run,
+            iteration,
+            semanticIncompleteReason,
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+            fileManifest = attempt.fileManifest,
+          )
+        }
+      } else if (attempt.malformedOutput) {
         malformedAttemptCount += 1
         val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
           run.phaseId,
@@ -3043,17 +3111,19 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     @Suppress("UNUSED_PARAMETER") repositoryFingerprint: String?,
-  ): PhaseOutcome? {
+  ): AttemptResult? {
     val receipt = implementationReceiptFromOutput(normalizedOutput.envelope)
       ?: return null
     val authoritativePlan = state.authoritativeExecutablePlan()
-      ?: return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Implementation completion validation requires the authoritative executable plan.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        fileManifest = fileManifest,
+      ?: return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          "Implementation completion validation requires the authoritative executable plan.",
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          fileManifest = fileManifest,
+        ),
       )
     val unresolvedObligations = recorder.loadConvergenceState(request.workflowId, request.dbPathOverride)
       ?: UnresolvedConvergence(
@@ -3069,46 +3139,66 @@ internal class FeatureTaskRuntimeRunLoop(
     return when {
       decision.outcome is ImplementationCompleted -> null
       decision.disposition is SemanticIncompleteWorkContinuation -> {
-        val semanticContinuation = decision.disposition as SemanticIncompleteWorkContinuation
-        blockAndPersistInPhase(
-          run,
-          iteration,
-          decision.exactBlockingReason() ?: "Implementation incomplete.",
-          observability,
-          failureDisposition = semanticContinuation.failureDisposition,
+        AttemptResult.semanticIncomplete(
+          implementationContinuationReason(decision),
           fileManifest = fileManifest,
         )
       }
       decision.disposition is SchemaInvalidCorrection -> {
-        blockAndPersistInPhase(
-          run,
-          iteration,
-          "Implementation receipt has schema-invalid output: " +
-            "${(decision.disposition as SchemaInvalidCorrection).schemaViolation}",
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
-          fileManifest = fileManifest,
+        AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            "Implementation receipt has schema-invalid output: " +
+              "${(decision.disposition as SchemaInvalidCorrection).schemaViolation}",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+            fileManifest = fileManifest,
+          ),
         )
       }
       decision.disposition is TerminalBlocked -> {
+        AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            (decision.disposition as TerminalBlocked).reason,
+            observability,
+            failureDisposition = (decision.disposition as TerminalBlocked).disposition,
+            fileManifest = fileManifest,
+          ),
+        )
+      }
+      else -> AttemptResult.settled(
         blockAndPersistInPhase(
           run,
           iteration,
-          (decision.disposition as TerminalBlocked).reason,
+          decision.exactBlockingReason() ?: "Implementation completion denied.",
           observability,
-          failureDisposition = (decision.disposition as TerminalBlocked).disposition,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           fileManifest = fileManifest,
-        )
-      }
-      else -> blockAndPersistInPhase(
-        run,
-        iteration,
-        decision.exactBlockingReason() ?: "Implementation completion denied.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        fileManifest = fileManifest,
+        ),
       )
     }
+  }
+
+  private fun implementationContinuationReason(decision: ImplementationCompletionDecision): String {
+    val incomplete = decision.outcome as ImplementationIncomplete
+    val details = buildList {
+      if (incomplete.missingTaskIds.isNotEmpty()) {
+        add("missing plan task IDs: ${incomplete.missingTaskIds.joinToString()}")
+      }
+      if (incomplete.unresolvedItems.isNotEmpty()) {
+        add("unresolved items: ${incomplete.unresolvedItems.joinToString()}")
+      }
+      if (incomplete.actionableDeviations.isNotEmpty()) {
+        add(
+          "actionable deviations: " +
+            incomplete.actionableDeviations.joinToString { "${it.ref}: ${it.note}" },
+        )
+      }
+    }
+    return "Implementation incomplete; continuing implement with prior receipt. ${details.joinToString("; ")}"
   }
 
   @Suppress("ReturnCount")
@@ -3134,8 +3224,8 @@ internal class FeatureTaskRuntimeRunLoop(
         observability,
         fileManifest,
         repositoryFingerprint,
-      )?.let { outcome ->
-        return AttemptResult.settled(outcome)
+      )?.let { result ->
+        return result
       }
       val persisted = recorder.recordCompletedPhase(
         phaseStateRequest(
@@ -3864,6 +3954,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private sealed interface AttemptResult {
     private data class Settled(val outcome: PhaseOutcome) : AttemptResult
+    private data class SemanticIncomplete(
+      val reason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    ) : AttemptResult
     private data class SchemaInvalid(
       val validationReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
@@ -3872,6 +3966,7 @@ internal class FeatureTaskRuntimeRunLoop(
     ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
+    val semanticIncompleteReason: String? get() = (this as? SemanticIncomplete)?.reason
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
@@ -3879,6 +3974,8 @@ internal class FeatureTaskRuntimeRunLoop(
 
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
+      fun semanticIncomplete(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): AttemptResult =
+        SemanticIncomplete(reason, fileManifest)
       fun schemaInvalid(
         validationReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,

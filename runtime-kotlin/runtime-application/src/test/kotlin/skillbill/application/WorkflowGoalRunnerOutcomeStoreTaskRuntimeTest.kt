@@ -178,53 +178,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       state = state,
       rawReviewResult = """{"verdict":"changes_requested","produced_outputs":{}}""",
     )
-    val artifacts = decodeArtifacts(record.artifactsJson).toMutableMap().apply {
-      put(
-        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
-        mapOf(
-          "review" to FeatureTaskRuntimePhaseRecord(
-            phaseId = "review",
-            status = "completed",
-            attemptCount = 1,
-            startedAt = "2026-07-29T05:00:00Z",
-            firstStartedAt = "2026-07-29T05:00:00Z",
-            finishedAt = "2026-07-29T05:01:00Z",
-            resolvedAgentId = "codex",
-          ).toArtifactMap(),
-          "validate" to FeatureTaskRuntimePhaseRecord(
-            phaseId = "validate",
-            status = "completed",
-            attemptCount = 1,
-            startedAt = "2026-07-29T05:02:00Z",
-            firstStartedAt = "2026-07-29T05:02:00Z",
-            finishedAt = "2026-07-29T05:03:00Z",
-            resolvedAgentId = "codex",
-          ).toArtifactMap(),
-          "write_history" to FeatureTaskRuntimePhaseRecord(
-            phaseId = "write_history",
-            status = "completed",
-            attemptCount = 1,
-            startedAt = "2026-07-29T05:04:00Z",
-            firstStartedAt = "2026-07-29T05:04:00Z",
-            finishedAt = "2026-07-29T05:05:00Z",
-            resolvedAgentId = "codex",
-          ).toArtifactMap(),
-          "commit_push" to FeatureTaskRuntimePhaseRecord(
-            phaseId = "commit_push",
-            status = "completed",
-            attemptCount = 1,
-            startedAt = "2026-07-29T05:06:00Z",
-            firstStartedAt = "2026-07-29T05:06:00Z",
-            finishedAt = "2026-07-29T05:07:00Z",
-            resolvedAgentId = "codex",
-          ).toArtifactMap(),
-        ),
-      )
-      put(
-        GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY,
-        mapOf("${"a".repeat(40)}:legacy:1:checkpoint-unavailable" to mapOf("prior" to true)),
-      )
-    }
+    val artifacts = terminalReviewArtifacts(record)
     workflows.saveFeatureTaskRuntimeWorkflow(
       record.copy(
         workflowStatus = "completed",
@@ -620,6 +574,33 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       phaseId = "implement",
       phaseAttempt = 1,
     )
+}
+
+private fun terminalReviewArtifacts(record: WorkflowStateRecord): Map<String, Any?> =
+  decodeArtifacts(record.artifactsJson).toMutableMap().apply {
+    put(
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
+      listOf("review", "validate", "write_history", "commit_push").mapIndexed { index, phaseId ->
+        phaseId to completedPhaseRecord(phaseId, index)
+      }.toMap(),
+    )
+    put(
+      GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY,
+      mapOf("${"a".repeat(40)}:legacy:1:checkpoint-unavailable" to mapOf("prior" to true)),
+    )
+  }
+
+private fun completedPhaseRecord(phaseId: String, index: Int): Map<String, Any?> {
+  val minute = index * 2
+  return FeatureTaskRuntimePhaseRecord(
+    phaseId = phaseId,
+    status = "completed",
+    attemptCount = 1,
+    startedAt = "2026-07-29T05:${minute.toString().padStart(2, '0')}:00Z",
+    firstStartedAt = "2026-07-29T05:${minute.toString().padStart(2, '0')}:00Z",
+    finishedAt = "2026-07-29T05:${(minute + 1).toString().padStart(2, '0')}:00Z",
+    resolvedAgentId = "codex",
+  ).toArtifactMap()
 }
 
 private object DeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {

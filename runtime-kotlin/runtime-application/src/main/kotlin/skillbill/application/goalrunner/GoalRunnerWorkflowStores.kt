@@ -1803,30 +1803,7 @@ private fun reopenedReviewProjection(
     ?.entries
     ?.associate { (key, value) -> key.toString() to value }
     .orEmpty()
-  val reviewedDeltaDigest = review.state.reviewedDeltaDigest
-  val reviewedRepositoryFingerprint = review.state.reviewedRepositoryFingerprint
-  val generationIdentity = if (
-    reviewedDeltaDigest != null &&
-    reviewedRepositoryFingerprint != null &&
-    review.state.completedPassCount > 0
-  ) {
-    goalSubtaskReviewGenerationId(
-      workflowId = workflowId,
-      reviewBase = review.state.remediationBaseSha
-        ?.takeIf { review.state.completedPassCount == 2 }
-        ?: review.state.reviewBaseSha,
-      reviewedDeltaDigest = reviewedDeltaDigest,
-      passNumber = review.state.completedPassCount,
-      repositoryCheckpoint = reviewedRepositoryFingerprint,
-    )
-  } else {
-    listOf(
-      review.state.reviewBaseSha,
-      review.state.reviewedDeltaDigest ?: "legacy",
-      review.state.completedPassCount.toString(),
-      review.state.reviewedRepositoryFingerprint ?: "checkpoint-unavailable",
-    ).joinToString(":")
-  }
+  val generationIdentity = reviewGenerationIdentity(workflowId, review)
   val historyIdentity = generateSequence(0) { it + 1 }
     .map { reopenIndex ->
       if (reopenIndex == 0) generationIdentity else "$generationIdentity-reopen-$reopenIndex"
@@ -1852,6 +1829,33 @@ private fun reopenedReviewProjection(
       GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
     ),
   )
+}
+
+private fun reviewGenerationIdentity(workflowId: String, review: GoalSubtaskReviewArtifacts): String {
+  val reviewedDeltaDigest = review.state.reviewedDeltaDigest
+  val reviewedRepositoryFingerprint = review.state.reviewedRepositoryFingerprint
+  return if (
+    reviewedDeltaDigest != null &&
+    reviewedRepositoryFingerprint != null &&
+    review.state.completedPassCount > 0
+  ) {
+    goalSubtaskReviewGenerationId(
+      workflowId = workflowId,
+      reviewBase = review.state.remediationBaseSha
+        ?.takeIf { review.state.completedPassCount == 2 }
+        ?: review.state.reviewBaseSha,
+      reviewedDeltaDigest = reviewedDeltaDigest,
+      passNumber = review.state.completedPassCount,
+      repositoryCheckpoint = reviewedRepositoryFingerprint,
+    )
+  } else {
+    listOf(
+      review.state.reviewBaseSha,
+      reviewedDeltaDigest ?: "legacy",
+      review.state.completedPassCount.toString(),
+      reviewedRepositoryFingerprint ?: "checkpoint-unavailable",
+    ).joinToString(":")
+  }
 }
 
 private object ReviewRawOutputFallbackValidator : FeatureTaskRuntimePhaseOutputValidator {

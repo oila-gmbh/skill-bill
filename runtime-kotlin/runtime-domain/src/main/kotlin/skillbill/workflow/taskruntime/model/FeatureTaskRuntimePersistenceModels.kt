@@ -100,6 +100,7 @@ data class FeatureTaskRuntimeResolvedBranch(
   val baselineUntrackedPaths: List<String> = emptyList(),
   val baselineOwnedPaths: List<String> = emptyList(),
   val workflowOwnedPaths: List<String> = emptyList(),
+  val checkpointIdentities: List<WorkflowCheckpointIdentity> = emptyList(),
 ) {
   init {
     require(branch.isNotBlank()) { "FeatureTaskRuntimeResolvedBranch.branch must be non-blank." }
@@ -127,6 +128,9 @@ data class FeatureTaskRuntimeResolvedBranch(
     if (baselineUntrackedPaths.isNotEmpty()) put("baseline_untracked_paths", baselineUntrackedPaths)
     put("baseline_owned_paths", baselineOwnedPaths)
     put("workflow_owned_paths", workflowOwnedPaths)
+    if (checkpointIdentities.isNotEmpty()) {
+      put("checkpoint_identities", checkpointIdentities.map(WorkflowCheckpointIdentity::toArtifactMap))
+    }
   }
 
   companion object {
@@ -145,6 +149,12 @@ data class FeatureTaskRuntimeResolvedBranch(
         .orEmpty(),
       workflowOwnedPaths = (raw["workflow_owned_paths"] as? List<*>)
         ?.map { it as? String ?: error("workflow_owned_paths must contain only strings.") }
+        .orEmpty(),
+      checkpointIdentities = (raw["checkpoint_identities"] as? List<*>)
+        ?.map { entry ->
+          val identity = entry as? Map<*, *> ?: error("checkpoint_identities must contain only objects.")
+          WorkflowCheckpointIdentity.fromArtifactMap(identity.entries.associate { it.key.toString() to it.value })
+        }
         .orEmpty(),
     )
   }

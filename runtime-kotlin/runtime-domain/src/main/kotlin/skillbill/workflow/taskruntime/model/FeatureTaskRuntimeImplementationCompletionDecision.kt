@@ -58,12 +58,6 @@ data class SemanticIncompleteWorkContinuation(
 ) : ImplementationCompletionDisposition {
   override val isTerminal: Boolean = false
   override val isSemanticContinuation: Boolean = true
-
-  init {
-    require(priorReceipt.completedTaskIds.isNotEmpty()) {
-      "SemanticIncompleteWorkContinuation requires a non-empty prior receipt."
-    }
-  }
 }
 
 data class SchemaInvalidCorrection(

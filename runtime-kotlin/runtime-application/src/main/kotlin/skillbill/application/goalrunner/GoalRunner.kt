@@ -416,24 +416,25 @@ class GoalRunner(
       causingLoopEntry,
     )
     return if (reviewReopened) {
-      manifestStore.save(
-        refreshed.copy(manifest = refreshed.manifest.withReopenedReviewSubtasks(setOfNotNull(
-          refreshed.manifest.workflowIdFor(subtaskId),
-        ))),
-        request.dbPathOverride,
-      )
-      val reopenedState = manifestStore.loadByIssueKey(
-        request.issueKey,
-        request.dbPathOverride,
-        request.repoRoot,
-      ) ?: refreshed
-      GoalRunnerIterationResult(state = reopenedState)
+      GoalRunnerIterationResult(state = reopenGoalReviewState(refreshed, subtaskId, request))
     } else {
       dispatchWorkerResult(
         refreshed, subtaskId, reconciled, workerRequestResult, launchReconciliation,
         request, attempted, observability, ledger, attemptStartMillis,
       )
     }
+  }
+
+  private fun reopenGoalReviewState(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+  ): GoalRunnerManifestState {
+    val reopened = state.copy(
+      manifest = state.manifest.withReopenedReviewSubtasks(setOfNotNull(state.manifest.workflowIdFor(subtaskId))),
+    )
+    manifestStore.save(reopened, request.dbPathOverride)
+    return manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: state
   }
 
   private fun dispatchWorkerResult(

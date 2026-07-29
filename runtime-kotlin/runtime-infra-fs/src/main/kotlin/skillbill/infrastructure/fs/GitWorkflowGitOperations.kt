@@ -11,9 +11,13 @@ import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowCheckpointPolicyBlock
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity
 import skillbill.workflow.model.GoalObservabilityChangedFileSummary
 import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
@@ -112,6 +116,11 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
 
   override fun stageAll(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "add", "-A")
 
+  override fun createScopedCheckpoint(
+    repoRoot: Path,
+    request: WorkflowScopedCheckpointRequest,
+  ): WorkflowScopedCheckpointResult = ScopedCheckpointGitOperations.create(repoRoot, request)
+
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     val commit = runGitCommand(repoRoot, "commit", "-m", message)
     return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit
@@ -166,6 +175,112 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     repoRoot: Path,
     request: WorkflowSelectedDiffHunksRequest,
   ): WorkflowSelectedDiffHunksResult = GitRepositoryFingerprintOperations.selectedDiffHunks(repoRoot, request)
+}
+
+private object ScopedCheckpointGitOperations {
+  fun create(repoRoot: Path, request: WorkflowScopedCheckpointRequest): WorkflowScopedCheckpointResult {
+    val paths = request.ownedPaths.mapNotNull { raw ->
+      val normalized = raw.replace('\\', '/').trim().removePrefix("./")
+      if (
+        normalized.isBlank() ||
+        normalized.startsWith("/") ||
+        normalized == ".." ||
+        normalized.startsWith("../") ||
+        "/../" in normalized
+      ) {
+        return policy("invalid-owned-path", raw, "Remove the path from workflow ownership and retry.")
+      }
+      normalized
+    }.distinct().sorted()
+    if (paths.isEmpty()) {
+      return WorkflowScopedCheckpointResult(status = "error", error = "Scoped checkpoint owns no paths.")
+    }
+    val foreignGovernedPath = request.governedSpecRoot?.trimEnd('/')?.let { governedRoot ->
+      paths.firstOrNull { path ->
+        path.startsWith(".feature-specs/") && path != governedRoot && !path.startsWith("$governedRoot/")
+      }
+    }
+    if (foreignGovernedPath != null) {
+      return policy(
+        "foreign-governed-feature-path",
+        foreignGovernedPath,
+        "Remove the foreign feature path from this workflow inventory and resume without staging it.",
+      )
+    }
+    val caseCollision = paths.groupBy(String::lowercase).values.firstOrNull { it.distinct().size > 1 }
+    if (caseCollision != null) {
+      return policy(
+        "case-colliding-owned-paths",
+        caseCollision.sorted().joinToString(","),
+        "Resolve the case-colliding ownership entries and retry.",
+      )
+    }
+    val staged = runGitCommand(repoRoot, "diff", "--cached", "--name-only", "-z")
+    if (!staged.ok) return failure(staged.error)
+    val overlap = staged.value.orEmpty().split('\u0000').firstOrNull { it in paths }
+    if (overlap != null) {
+      return policy(
+        "ambiguous-index-overlap",
+        overlap,
+        "Commit or unstage the named path, then resume the workflow checkpoint.",
+      )
+    }
+    val parent = runGitCommand(repoRoot, "rev-parse", "HEAD")
+    if (!parent.ok) return failure(parent.error)
+    val gitDir = runGitCommand(repoRoot, "rev-parse", "--absolute-git-dir")
+    if (!gitDir.ok) return failure(gitDir.error)
+    val temporaryIndex = Files.createTempFile(Path.of(gitDir.value), "skill-bill-index-", ".tmp")
+    return try {
+      Files.deleteIfExists(temporaryIndex)
+      val environment = mapOf("GIT_INDEX_FILE" to temporaryIndex.toString())
+      val readTree = run(repoRoot, environment, listOf("read-tree", "HEAD"))
+      if (!readTree.ok) return failure(readTree.error)
+      val add = run(repoRoot, environment, listOf("add", "--all", "--") + paths)
+      if (!add.ok) return failure(add.error)
+      val commit = run(repoRoot, environment, listOf("commit", "-m", request.commitMessage))
+      if (!commit.ok) return failure(commit.error)
+      val head = runGitCommand(repoRoot, "rev-parse", "HEAD")
+      if (!head.ok) return failure(head.error)
+      WorkflowScopedCheckpointResult(
+        status = "ok",
+        identity = WorkflowCheckpointIdentity(
+          branch = request.branch,
+          phase = request.phase,
+          loop = request.loop,
+          generation = request.generation,
+          parentSha = parent.value,
+          ownedPathDigest = sha256(paths.joinToString("\u0000")),
+          commitSha = head.value,
+        ),
+      )
+    } finally {
+      Files.deleteIfExists(temporaryIndex)
+    }
+  }
+
+  private fun run(
+    repoRoot: Path,
+    environment: Map<String, String>,
+    args: List<String>,
+  ): WorkflowGitOperationResult {
+    val result = runGitProcess(repoRoot, args, environment)
+    return if (result.exitCode == 0 && !result.timedOut && result.readFailure == null) {
+      WorkflowGitOperationResult(status = "ok", value = result.output)
+    } else {
+      WorkflowGitOperationResult(status = "error", error = result.output.ifBlank { result.readFailure?.message.orEmpty() })
+    }
+  }
+
+  private fun sha256(value: String): String =
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+  private fun policy(code: String, path: String, guidance: String) = WorkflowScopedCheckpointResult(
+    status = "blocked",
+    policyBlock = WorkflowCheckpointPolicyBlock(code, path, guidance),
+    error = "$code at '$path'. $guidance",
+  )
+
+  private fun failure(error: String) = WorkflowScopedCheckpointResult(status = "error", error = error)
 }
 
 private object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOperations {

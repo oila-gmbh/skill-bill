@@ -5,6 +5,8 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -27,6 +29,14 @@ interface WorkflowGitOperations {
   fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
+
+  fun createScopedCheckpoint(
+    repoRoot: Path,
+    request: WorkflowScopedCheckpointRequest,
+  ): WorkflowScopedCheckpointResult = WorkflowScopedCheckpointResult(
+    status = "error",
+    error = "This git adapter does not support scoped checkpoint transactions.",
+  )
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
@@ -158,6 +168,14 @@ interface GoalSubtaskReviewGitOperations {
     expectedBranch: String,
   ): GoalSubtaskReviewInputResult
 
+  fun buildScopedCheckpointInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+    checkpointHead: String,
+    ownedPaths: List<String>,
+  ): GoalSubtaskReviewInputResult = buildInput(repoRoot, baseline, expectedBranch)
+
   fun recoverBaseline(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
@@ -208,6 +226,20 @@ fun WorkflowGitOperations.buildGoalSubtaskReviewInput(
   baseline: GoalSubtaskReviewBaseline,
   expectedBranch: String,
 ): GoalSubtaskReviewInputResult = reviewOperations().buildInput(repoRoot, baseline, expectedBranch)
+
+fun WorkflowGitOperations.buildScopedGoalSubtaskReviewInput(
+  repoRoot: Path,
+  baseline: GoalSubtaskReviewBaseline,
+  expectedBranch: String,
+  checkpointHead: String,
+  ownedPaths: List<String>,
+): GoalSubtaskReviewInputResult = reviewOperations().buildScopedCheckpointInput(
+  repoRoot,
+  baseline,
+  expectedBranch,
+  checkpointHead,
+  ownedPaths,
+)
 
 fun WorkflowGitOperations.recoverGoalSubtaskReviewBaseline(
   repoRoot: Path,

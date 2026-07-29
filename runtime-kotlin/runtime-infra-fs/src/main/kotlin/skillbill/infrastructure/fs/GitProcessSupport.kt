@@ -45,9 +45,18 @@ internal fun runGitForActivity(repoRoot: Path, args: List<String>): WorkflowGitO
 }
 
 internal fun runGitProcess(repoRoot: Path, args: List<String>): GitProcessResult {
-  val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
+  return runGitProcess(repoRoot, args, emptyMap())
+}
+
+internal fun runGitProcess(
+  repoRoot: Path,
+  args: List<String>,
+  environment: Map<String, String>,
+): GitProcessResult {
+  val builder = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
     .redirectErrorStream(true)
-    .start()
+  builder.environment().putAll(environment)
+  val process = builder.start()
   val output = StringBuilder()
   var readFailure: IOException? = null
   val outputThread = thread(start = true, name = "skill-bill-git-output") {

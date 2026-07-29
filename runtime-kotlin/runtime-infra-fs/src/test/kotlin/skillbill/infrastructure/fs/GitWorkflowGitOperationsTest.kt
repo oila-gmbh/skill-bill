@@ -2,9 +2,11 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.buildScopedGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
@@ -15,8 +17,162 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertContentEquals
 
 class GitWorkflowGitOperationsTest {
+  @Test
+  fun `scoped checkpoint commits owned paths without mutating foreign index or worktree state`() {
+    val repoRoot = Files.createTempDirectory("skillbill-scoped-checkpoint")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("owned.txt"), "base\n")
+    Files.writeString(repoRoot.resolve("foreign-staged.txt"), "base\n")
+    Files.writeString(repoRoot.resolve("foreign-unstaged.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("owned.txt"), "owned change\n")
+    Files.writeString(repoRoot.resolve("foreign-staged.txt"), "foreign staged\n")
+    git(repoRoot, "add", "foreign-staged.txt")
+    Files.writeString(repoRoot.resolve("foreign-unstaged.txt"), "foreign unstaged\n")
+    Files.writeString(repoRoot.resolve("foreign-untracked.txt"), "foreign untracked\n")
+    val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
+    val foreignBytesBefore = listOf("foreign-staged.txt", "foreign-unstaged.txt", "foreign-untracked.txt")
+      .associateWith { Files.readAllBytes(repoRoot.resolve(it)) }
+
+    val result = GitWorkflowGitOperations().createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "audit",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf("owned.txt"),
+        commitMessage = "scoped checkpoint",
+      ),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertEquals("owned.txt", git(repoRoot, "show", "--name-only", "--format=", "HEAD"))
+    assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
+    foreignBytesBefore.forEach { (path, bytes) ->
+      assertContentEquals(bytes, Files.readAllBytes(repoRoot.resolve(path)), path)
+    }
+    assertEquals("audit", requireNotNull(result.identity).phase)
+    assertEquals(1, requireNotNull(result.identity).generation)
+  }
+
+  @Test
+  fun `scoped checkpoint blocks an owned path already present in the foreign index`() {
+    val repoRoot = Files.createTempDirectory("skillbill-scoped-checkpoint-overlap")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("shared.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.writeString(repoRoot.resolve("shared.txt"), "foreign staged\n")
+    git(repoRoot, "add", "shared.txt")
+    val headBefore = git(repoRoot, "rev-parse", "HEAD")
+    val indexBefore = Files.readAllBytes(repoRoot.resolve(".git/index"))
+
+    val result = GitWorkflowGitOperations().createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "audit",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf("shared.txt"),
+        commitMessage = "must not commit",
+      ),
+    )
+
+    assertFalse(result.ok)
+    assertEquals("shared.txt", requireNotNull(result.policyBlock).path)
+    assertFalse(requireNotNull(result.policyBlock).retryable)
+    assertContains(requireNotNull(result.policyBlock).recoveryGuidance, "unstage")
+    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+    assertContentEquals(indexBefore, Files.readAllBytes(repoRoot.resolve(".git/index")))
+  }
+
+  @Test
+  fun `SKILL-149 dirt stays outside the SKILL-134 checkpoint and immutable review`() {
+    val repoRoot = Files.createTempDirectory("skillbill-concurrent-spec-regression")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.createDirectories(repoRoot.resolve(".feature-specs/SKILL-134"))
+    Files.writeString(repoRoot.resolve(".feature-specs/SKILL-134/spec.md"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val parent = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve(".feature-specs/SKILL-134/spec.md"), "owned\n")
+    Files.createDirectories(repoRoot.resolve(".feature-specs/SKILL-149"))
+    val foreign = repoRoot.resolve(".feature-specs/SKILL-149/spec.md")
+    Files.writeString(foreign, "concurrent\n")
+    val foreignBefore = Files.readAllBytes(foreign)
+
+    val checkpoint = GitWorkflowGitOperations().createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "implement",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf(".feature-specs/SKILL-134/spec.md"),
+        commitMessage = "SKILL-134 scoped checkpoint",
+      ),
+    )
+    val identity = requireNotNull(checkpoint.identity)
+    Files.writeString(foreign, "concurrent later edit\n")
+    val review = GitWorkflowGitOperations().buildScopedGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline(parent, emptyList()),
+      git(repoRoot, "branch", "--show-current"),
+      identity.commitSha,
+      listOf(".feature-specs/SKILL-134/spec.md"),
+    )
+
+    assertTrue(review.ok, review.error)
+    assertContains(requireNotNull(review.input).trackedDelta, "SKILL-134")
+    assertFalse(requireNotNull(review.input).trackedDelta.contains("SKILL-149"))
+    assertEquals(".feature-specs/SKILL-134/spec.md", git(repoRoot, "show", "--name-only", "--format=", "HEAD"))
+    assertFalse(git(repoRoot, "status", "--porcelain").lines().none { it.contains("SKILL-149") })
+    Files.write(foreign, foreignBefore)
+  }
+
+  @Test
+  fun `foreign governed feature path is a typed pre-commit policy block`() {
+    val repoRoot = Files.createTempDirectory("skillbill-foreign-governed-path")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("README.md"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    Files.createDirectories(repoRoot.resolve(".feature-specs/SKILL-149"))
+    Files.writeString(repoRoot.resolve(".feature-specs/SKILL-149/spec.md"), "foreign\n")
+    val headBefore = git(repoRoot, "rev-parse", "HEAD")
+
+    val result = GitWorkflowGitOperations().createScopedCheckpoint(
+      repoRoot,
+      WorkflowScopedCheckpointRequest(
+        branch = git(repoRoot, "branch", "--show-current"),
+        phase = "implement",
+        loop = "initial",
+        generation = 1,
+        ownedPaths = listOf(".feature-specs/SKILL-149/spec.md"),
+        governedSpecRoot = ".feature-specs/SKILL-134",
+        commitMessage = "must not commit",
+      ),
+    )
+
+    assertEquals("foreign-governed-feature-path", requireNotNull(result.policyBlock).code)
+    assertEquals(".feature-specs/SKILL-149/spec.md", requireNotNull(result.policyBlock).path)
+    assertEquals(headBefore, git(repoRoot, "rev-parse", "HEAD"))
+  }
+
   @Test
   fun `runtime phase commit range reports committed paths`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-runtime-phase")

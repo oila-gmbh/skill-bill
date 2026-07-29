@@ -48,6 +48,61 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     }
   }
 
+  override fun buildScopedCheckpointInput(
+    repoRoot: Path,
+    baseline: GoalSubtaskReviewBaseline,
+    expectedBranch: String,
+    checkpointHead: String,
+    ownedPaths: List<String>,
+  ): GoalSubtaskReviewInputResult {
+    val branch = currentGoalReviewBranch(repoRoot, expectedBranch)
+      ?: return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Scoped review must run on durable branch '$expectedBranch'.",
+      )
+    val normalizedPaths = ownedPaths.distinct().sorted()
+    if (normalizedPaths.isEmpty()) {
+      return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review owns no paths.")
+    }
+    val head = goalReviewGitValue(repoRoot, "rev-parse", "${checkpointHead}^{commit}")?.trim()
+      ?: return GoalSubtaskReviewInputResult(status = "error", error = "Scoped review checkpoint is not a commit.")
+    val changed = goalReviewGitValue(
+      repoRoot,
+      "diff",
+      "--name-only",
+      "-z",
+      baseline.reviewBaseSha,
+      head,
+      "--",
+      *normalizedPaths.toTypedArray(),
+    ) ?: return GoalSubtaskReviewInputResult(status = "error", error = "Could not read scoped review paths.")
+    val escaped = changed.split('\u0000').filter(String::isNotBlank).filterNot { it in normalizedPaths }
+    if (escaped.isNotEmpty()) {
+      return GoalSubtaskReviewInputResult(
+        status = "error",
+        error = "Scoped review contains path outside its persisted inventory: '${escaped.first()}'.",
+      )
+    }
+    val patch = goalReviewGitValue(
+      repoRoot,
+      "diff",
+      "--binary",
+      baseline.reviewBaseSha,
+      head,
+      "--",
+      *normalizedPaths.toTypedArray(),
+    ) ?: return GoalSubtaskReviewInputResult(status = "error", error = "Could not materialize scoped review input.")
+    return GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = baseline.reviewBaseSha,
+        currentHeadSha = head,
+        trackedDelta = patch,
+        ownedUntrackedPatches = "",
+      ),
+    )
+  }
+
   override fun recoverBaseline(
     repoRoot: Path,
     baseline: GoalSubtaskReviewBaseline,
