@@ -30,10 +30,11 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
   )
 
   fun reconcile(input: AuditRepairReconciliation): FeatureTaskRuntimeAuditRepairState {
-    val acceptedPlans = listOfNotNull(input.latestPlan ?: input.prior?.acceptedPlans?.lastOrNull())
+    val acceptedPlans = input.prior?.acceptedPlans.orEmpty() +
+      listOfNotNull(input.latestPlan).filterNot { it == input.prior?.acceptedPlans?.lastOrNull() }
     if (acceptedPlans.isEmpty()) schemaError("Audit-repair state requires an accepted plan.")
     val gaps = reconcileUnresolvedGaps(input)
-    val latestItemIds = acceptedPlans.single().gaps
+    val latestItemIds = acceptedPlans.last().gaps
       .flatMap { it.repairItems }
       .mapTo(linkedSetOf()) { it.repairItemId }
     val allResults = reconcileLatestRepairResults(
@@ -78,7 +79,8 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     input: AuditRepairReconciliation,
     gaps: GapReconciliation,
   ): FeatureTaskRuntimeAuditRepairProgress {
-    val newlyAttemptedCount = input.repairResults.map { it.repairItemId }.distinct().size
+    val priorResultIds = input.prior?.repairItemResults.orEmpty().mapTo(linkedSetOf()) { it.repairItemId }
+    val newlyAttemptedCount = input.repairResults.map { it.repairItemId }.distinct().count { it !in priorResultIds }
     val recurringGapCount = gaps.unresolvedGaps.sumOf { it.recurrence }
     val newGapCount = gaps.unresolvedGaps.count { it.recurrence == 0 }
     return FeatureTaskRuntimeAuditRepairProgress(
@@ -138,7 +140,7 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
       dispositions = dispositions,
       recurringIds = recurringIds,
       latestIds = latestIds,
-      unresolvedGaps = mergeUnresolvedGaps(surviving, marks, latestGaps),
+      unresolvedGaps = mergeUnresolvedGaps(surviving, marks, latestGaps, recurringIds),
       closedGenerationHighWaterMarks = marks,
     )
   }
@@ -163,24 +165,28 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     surviving: List<FeatureTaskRuntimeUnresolvedGap>,
     closedGenerationHighWaterMarks: Map<String, Int>,
     latestGaps: List<FeatureTaskRuntimeAuditGap>,
+    recurringIds: Set<String>,
   ): List<FeatureTaskRuntimeUnresolvedGap> {
-    val survivingLedger = FeatureTaskRuntimeUnresolvedGapLedger(surviving, closedGenerationHighWaterMarks)
     val merged = linkedMapOf<String, FeatureTaskRuntimeUnresolvedGap>()
     surviving.forEach { merged[it.gapId] = it }
     latestGaps.forEach { gap ->
-      val derivedGapId = survivingLedger.allocateGapId(gap.acceptanceCriterionRef)
-      if (gap.gapId != derivedGapId) {
+      val ordinal = gap.gapId.substringAfterLast("-gap-").toIntOrNull()
+        ?: schemaError("Gap '${gap.gapId}' has no numeric stable identity.")
+      val priorGap = merged[gap.gapId]
+      val nextOrdinal = FeatureTaskRuntimeUnresolvedGapLedger(
+        merged.values.toList(),
+        closedGenerationHighWaterMarks,
+      ).nextGapOrdinal(gap.acceptanceCriterionRef)
+      if (priorGap == null && ordinal != nextOrdinal) {
         schemaError(
-          "gap_id '${gap.gapId}' for '${gap.acceptanceCriterionRef}' is not the identifier the runtime " +
-            "derives from durable state; expected '$derivedGapId'.",
+          "New gap_id '${gap.gapId}' for '${gap.acceptanceCriterionRef}' must use the next durable " +
+            "identity ordinal '$nextOrdinal'.",
         )
       }
-      val priorGap = merged[gap.gapId]
       merged[gap.gapId] = FeatureTaskRuntimeUnresolvedGap(
         gapId = gap.gapId,
         acceptanceCriterionRef = gap.acceptanceCriterionRef,
-        generation = gap.gapId.substringAfterLast('-').toIntOrNull()
-          ?: schemaError("Gap '${gap.gapId}' has no numeric generation."),
+        generation = ordinal,
         recurrence = (priorGap?.recurrence ?: 0) + if (gap.gapId in recurringIds) 1 else 0,
       )
     }

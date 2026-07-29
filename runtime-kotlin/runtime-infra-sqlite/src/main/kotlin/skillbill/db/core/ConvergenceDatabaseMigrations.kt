@@ -18,6 +18,11 @@ internal object ConvergenceDatabaseMigrations {
       operation = ::createAuditConvergenceTables,
     ),
     DatabaseMigration(
+      version = 21,
+      name = "retain-audit-history-and-one-active-repair-batch",
+      operation = ::retainAuditHistoryAndOneActiveRepairBatch,
+    ),
+    DatabaseMigration(
       version = 20,
       name = "retain-exact-convergence-parent-identity",
       operation = ::retainExactConvergenceParentIdentity,
@@ -135,6 +140,69 @@ private fun retainConvergenceEvidenceAndClassification(connection: java.sql.Conn
 private fun createAuditConvergenceTables(connection: java.sql.Connection) {
   connection.createStatement().use { statement ->
     AuditConvergenceDatabaseSchema.statements.forEach(statement::execute)
+  }
+}
+
+private fun retainAuditHistoryAndOneActiveRepairBatch(connection: java.sql.Connection) {
+  val hasWorkflowId = connection.createStatement().use { statement ->
+    statement.executeQuery("PRAGMA table_info(feature_task_audit_repair_batches)").use { rows ->
+      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == "workflow_id" }
+    }
+  }
+  if (hasWorkflowId) {
+    connection.createStatement().use { it.execute(AuditConvergenceDatabaseSchema.statements.first {
+      statement -> statement.startsWith("CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_one_active_batch")
+    }) }
+    return
+  }
+  connection.createStatement().use { statement ->
+    val tables = listOf(
+      "feature_task_audit_gaps",
+      "feature_task_audit_repair_batches",
+      "feature_task_audit_repair_items",
+      "feature_task_audit_repair_item_batch_mapping",
+      "feature_task_audit_repair_item_dependencies",
+      "feature_task_audit_repair_item_results",
+      "feature_task_audit_repair_non_regression",
+      "feature_task_audit_gap_dispositions",
+    )
+    tables.forEach { table -> statement.execute("CREATE TEMP TABLE ${table}_v18 AS SELECT * FROM $table") }
+    tables.asReversed().forEach { table -> statement.execute("DROP TABLE $table") }
+    AuditConvergenceDatabaseSchema.statements
+      .filter { sql -> tables.any { table -> sql.startsWith("CREATE TABLE IF NOT EXISTS $table") } }
+      .forEach(statement::execute)
+
+    statement.execute(
+      "INSERT INTO feature_task_audit_gaps SELECT * FROM feature_task_audit_gaps_v18",
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_batches(batch_id, workflow_id, generation_id, is_active)
+      SELECT old.batch_id, generation.workflow_id, old.generation_id,
+        CASE WHEN old.is_active = 1 AND generation.generation = (
+          SELECT MAX(candidate_generation.generation)
+          FROM feature_task_audit_repair_batches_v18 candidate
+          JOIN feature_task_audit_generations candidate_generation
+            ON candidate.generation_id = candidate_generation.generation_id
+          WHERE candidate.is_active = 1
+            AND candidate_generation.workflow_id = generation.workflow_id
+        ) THEN 1 ELSE 0 END
+      FROM feature_task_audit_repair_batches_v18 old
+      JOIN feature_task_audit_generations generation ON old.generation_id = generation.generation_id
+      """.trimIndent(),
+    )
+    listOf(
+      "feature_task_audit_repair_items",
+      "feature_task_audit_repair_item_batch_mapping",
+      "feature_task_audit_repair_item_dependencies",
+      "feature_task_audit_repair_item_results",
+      "feature_task_audit_repair_non_regression",
+      "feature_task_audit_gap_dispositions",
+    ).forEach { table -> statement.execute("INSERT INTO $table SELECT * FROM ${table}_v18") }
+    tables.forEach { table -> statement.execute("DROP TABLE ${table}_v18") }
+    AuditConvergenceDatabaseSchema.statements
+      .filter { it.startsWith("CREATE INDEX") || it.startsWith("CREATE UNIQUE INDEX") }
+      .forEach(statement::execute)
   }
 }
 

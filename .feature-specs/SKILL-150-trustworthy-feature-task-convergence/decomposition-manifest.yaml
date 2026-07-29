@@ -44,7 +44,7 @@ subtasks:
 - id: 3
   name: "Audit repair convergence"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_3_audit_repair_convergence.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260729-144826-hw2o"

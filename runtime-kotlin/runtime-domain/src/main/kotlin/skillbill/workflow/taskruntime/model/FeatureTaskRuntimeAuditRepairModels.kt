@@ -16,7 +16,6 @@ data class FeatureTaskRuntimeAuditRepairPlan(
       "An audit repair plan allows at most $MAX_AUDIT_REPAIR_GAPS gaps, had ${gaps.size}."
     }
     requireUnique(gaps.map { it.gapId }, "gap_id")
-    requireUnique(gaps.map { it.acceptanceCriterionRef }, "acceptance_criterion_ref")
     val items = gaps.flatMap { it.repairItems }
     require(items.size <= MAX_AUDIT_REPAIR_ITEMS) {
       "An audit repair plan allows at most $MAX_AUDIT_REPAIR_ITEMS repair items in total, had ${items.size}."
@@ -186,7 +185,7 @@ data class FeatureTaskRuntimeRepairItem(
 }
 
 enum class FeatureTaskRuntimeRepairItemStatus { PENDING }
-enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED, SUPERSEDED }
+enum class FeatureTaskRuntimeRepairItemOutcome { FIXED, ALREADY_SATISFIED }
 
 data class FeatureTaskRuntimeRepairItemResult(
   val repairItemId: String,
@@ -205,7 +204,6 @@ data class FeatureTaskRuntimeRepairItemResult(
       FeatureTaskRuntimeRepairItemOutcome.FIXED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
       FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
         FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
-      FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED -> FeatureTaskRuntimeEvidence.Observation.FIX_VERIFIED
     }
     require(resultEvidence.observation == expectedObservation) {
       "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
@@ -229,9 +227,10 @@ data class FeatureTaskRuntimeUnresolvedGap(
     }
     require(generation > 0) { "gap generation must be positive, was $generation." }
     require(recurrence >= 0) { "gap recurrence must be non-negative, was $recurrence." }
-    val expectedGapId = "${acceptanceCriterionRef.lowercase()}-gap-$generation"
-    require(gapId == expectedGapId) {
-      "gap_id '$gapId' must equal the stable criterion-generation identifier '$expectedGapId'."
+    require(gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-") &&
+      gapId.substringAfterLast("-gap-").toIntOrNull() == generation
+    ) {
+      "gap_id '$gapId' must retain its criterion and numeric stable identity generation '$generation'."
     }
   }
 }
@@ -265,10 +264,12 @@ data class FeatureTaskRuntimeUnresolvedGapLedger(
     }
   }
 
-  fun allocateGapId(criterionRef: String): String {
+  fun nextGapOrdinal(criterionRef: String): Int {
     requireNonBlank(criterionRef, "acceptance_criterion_ref")
-    unresolvedGaps.firstOrNull { it.acceptanceCriterionRef == criterionRef }?.let { return it.gapId }
-    return "${criterionRef.lowercase()}-gap-${(closedGenerationHighWaterMarks[criterionRef] ?: 0) + 1}"
+    val liveMaximum = unresolvedGaps
+      .filter { it.acceptanceCriterionRef == criterionRef }
+      .maxOfOrNull { it.generation } ?: 0
+    return maxOf(liveMaximum, closedGenerationHighWaterMarks[criterionRef] ?: 0) + 1
   }
 }
 
@@ -304,9 +305,9 @@ data class FeatureTaskRuntimeAuditRepairState(
 ) {
   init {
     require(acceptedPlans.isNotEmpty()) { "Audit repair state must retain at least one accepted plan, had none." }
-    require(acceptedPlans.size == 1) {
-      "Durable audit repair state retains exactly the latest accepted plan, had ${acceptedPlans.size}; " +
-        "historical identity lives in the gap ledger."
+    require(acceptedPlans.size <= MAX_AUDIT_REPAIR_GAPS) {
+      "Durable audit repair state retains at most $MAX_AUDIT_REPAIR_GAPS accepted plans, " +
+        "had ${acceptedPlans.size}."
     }
     require(repairItemResults.size <= MAX_AUDIT_REPAIR_ITEMS) {
       "Durable terminal-result history allows at most $MAX_AUDIT_REPAIR_ITEMS results, had ${repairItemResults.size}."

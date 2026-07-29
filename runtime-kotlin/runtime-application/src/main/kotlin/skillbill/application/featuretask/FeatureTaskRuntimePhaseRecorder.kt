@@ -253,22 +253,6 @@ class FeatureTaskRuntimePhaseRecorder(
       val updatedRecords = LinkedHashMap(existingRecords).apply {
         put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], completionTimestamp))
       }
-      val ledger = phaseLedgerFrom(artifacts)
-      val completion = FeatureTaskRuntimePhaseLedgerEntry(
-        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
-        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-        timestamp = Instant.now().toString(),
-        phaseId = request.phaseId,
-        attemptCount = request.attemptCount,
-        resolvedAgentId = request.resolvedAgentId,
-        loopId = request.loopId,
-        edgeIteration = request.edgeIteration,
-      )
-      val updatedLedger = appendBoundedHistoryBySequence(
-        ledger.map { it.toArtifactMap() },
-        completion.toArtifactMap(),
-        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-      )
       val outputProduced = request.normalizedOutput
         ?.envelope
         ?.get("produced_outputs")
@@ -295,10 +279,10 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
         priorAuditState != null
-      val auditRepairPatch = if (latestPlan != null || repairResults != null || effectiveDispositions != null ||
+      val reconciledAuditState = if (latestPlan != null || repairResults != null || effectiveDispositions != null ||
         reconcilesAuditState
       ) {
-        val reconciledAuditState = if (latestPlan != null && priorAuditState == null) {
+        if (latestPlan != null && priorAuditState == null) {
           CompletenessAuditPhase.handleInitialAudit(
             auditPlan = latestPlan,
             repositoryFingerprint = request.repositoryFingerprint,
@@ -319,12 +303,29 @@ class FeatureTaskRuntimePhaseRecorder(
             ),
           )
         }
-        mapOf(
-          FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(reconciledAuditState),
-        )
       } else {
-        emptyMap()
+        priorAuditState
       }
+      val auditRepairPatch = reconciledAuditState?.let {
+        mapOf(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(it))
+      }.orEmpty()
+      val ledger = phaseLedgerFrom(artifacts)
+      val completion = FeatureTaskRuntimePhaseLedgerEntry(
+        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+        timestamp = Instant.now().toString(),
+        phaseId = request.phaseId,
+        attemptCount = request.attemptCount,
+        resolvedAgentId = request.resolvedAgentId,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+        auditRepairProgress = reconciledAuditState?.progress,
+      )
+      val updatedLedger = appendBoundedHistoryBySequence(
+        ledger.map { it.toArtifactMap() },
+        completion.toArtifactMap(),
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+      )
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -937,6 +938,9 @@ class FeatureTaskRuntimePhaseRecorder(
         blockedReason = request.blockedReason,
         loopId = request.loopId,
         edgeIteration = request.edgeIteration,
+        auditRepairProgress = artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]?.let {
+          auditRepairStateFromWire(it, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY).progress
+        },
       )
       val updatedLedger = appendBoundedHistoryBySequence(
         existing = existingEntries.map { it.toArtifactMap() },

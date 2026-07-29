@@ -448,14 +448,12 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
   }
 
   @Test
-  fun `durable state bounds complete accepted plan retention to the exact latest plan`() {
-    val malformed = auditRepairStateToWire(state()).toMutableMap()
-    val plan = malformed.getValue("latest_plan")
-    malformed["accepted_plans"] = listOf(plan, plan)
+  fun `durable state retains append-only accepted plan history`() {
+    val wire = auditRepairStateToWire(state()).toMutableMap()
+    val plan = wire.getValue("latest_plan")
+    wire["accepted_plans"] = listOf(plan, plan)
 
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      auditRepairStateFromWire(malformed, "audit_repair_state")
-    }
+    assertEquals(2, auditRepairStateFromWire(wire, "audit_repair_state").acceptedPlans.size)
   }
 
   @Test

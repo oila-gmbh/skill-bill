@@ -92,7 +92,6 @@ class AuditRepairCompletionGate(
       result.outcome in setOf(
         FeatureTaskRuntimeRepairItemOutcome.FIXED,
         FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED,
-        FeatureTaskRuntimeRepairItemOutcome.SUPERSEDED,
       )
     }
 

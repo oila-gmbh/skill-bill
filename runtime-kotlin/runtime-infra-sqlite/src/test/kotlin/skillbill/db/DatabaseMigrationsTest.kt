@@ -75,6 +75,7 @@ class DatabaseMigrationsTest {
         18 to "add-audit-convergence-tables",
         19 to "add-feature-task-runtime-adaptive-decisions",
         20 to "retain-exact-convergence-parent-identity",
+        21 to "retain-audit-history-and-one-active-repair-batch",
       ),
       migrationDefinitions,
     )

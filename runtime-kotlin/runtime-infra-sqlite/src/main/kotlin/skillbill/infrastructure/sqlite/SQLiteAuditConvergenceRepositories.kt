@@ -560,7 +560,10 @@ class SQLiteAuditRepairBatchStore(
            required_verification, dependencies
     FROM feature_task_audit_repair_items
     WHERE item_id IN (
-      SELECT item_id FROM feature_task_audit_repair_item_batch_mapping WHERE generation_id = ?
+      SELECT mapping.item_id
+      FROM feature_task_audit_repair_item_batch_mapping mapping
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+      WHERE batch.generation_id = ?
     )
     ORDER BY item_id ASC
       """.trimIndent(),
@@ -589,9 +592,10 @@ class SQLiteAuditRepairBatchStore(
     val dependencies = mutableMapOf<String, MutableList<String>>()
     connection.prepareStatement(
       """
-      SELECT item_id, depends_on_item_id
-      FROM feature_task_audit_repair_item_dependencies
-      WHERE generation_id = ?
+      SELECT dependency.item_id, dependency.depends_on_item_id
+      FROM feature_task_audit_repair_item_dependencies dependency
+      JOIN feature_task_audit_repair_batches batch ON batch.batch_id = dependency.batch_id
+      WHERE batch.generation_id = ?
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, generationId)
@@ -616,7 +620,7 @@ class SQLiteAuditRepairQuery(
              ari.affected_paths_or_symbols, ari.required_verification, ari.dependencies
       FROM feature_task_audit_repair_items ari
       JOIN feature_task_audit_repair_item_batch_mapping m ON ari.item_id = m.item_id
-      JOIN feature_task_audit_repair_batches b ON m.generation_id = b.generation_id
+      JOIN feature_task_audit_repair_batches b ON m.batch_id = b.batch_id
       JOIN feature_task_audit_generations g ON b.generation_id = g.generation_id
       WHERE g.workflow_id = ? AND b.is_active = 1
       AND ari.item_id NOT IN (

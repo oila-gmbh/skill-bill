@@ -754,10 +754,10 @@ private class TestPhaseLedger : skillbill.application.featuretask.PhaseLedger {
           attemptCount = 1,
           resolvedAgentId = "test-agent",
           auditRepairProgress = FeatureTaskRuntimeAuditRepairProgress(
-            firstPassConvergence = firstEntry.value == 1,
+            firstPassConvergence = false,
             newGapCount = 1,
             recurringGapCount = 0,
-            attemptedRepairItemCount = 2,
+            attemptedRepairItemCount = 0,
             resolvedRepairItemCount = 0,
             auditGapIterationCount = 0,
           ),
