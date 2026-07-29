@@ -146,6 +146,17 @@ object FeatureTaskRuntimePhasePromptComposer {
     if (priorSchemaFailure.isNullOrBlank()) {
       return ""
     }
+    if (briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      priorSchemaFailure.startsWith("Implementation incomplete;")
+    ) {
+      return """
+        ## Continue the implementation
+        The prior implementation receipt was schema-valid but did not close the authoritative plan.
+        Continue implementation from this complete bounded durable receipt; do not treat this as schema correction:
+        $priorSchemaFailure
+        Reconcile the current tree to the remaining plan obligations and emit the next bounded receipt.
+      """.trimIndent()
+    }
     val base = """
       ## Previous attempt was REJECTED by the schema gate — correct it now
       Your previous attempt at this phase did not produce schema-valid output and was rejected. Reason:

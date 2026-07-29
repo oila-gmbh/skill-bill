@@ -24,15 +24,23 @@ data class ImplementationCompleted(
 
 data class ImplementationIncomplete(
   val missingTaskIds: List<String>,
+  val unknownTaskIds: List<String>,
   val unresolvedItems: List<String>,
   val actionableDeviations: List<ActionableDeviation>,
+  val openObligationIds: List<String>,
 ) : ImplementationCompletionOutcome {
   override val canAdvance: Boolean = false
 
   init {
-    require(missingTaskIds.isNotEmpty() || unresolvedItems.isNotEmpty() || actionableDeviations.isNotEmpty()) {
+    require(
+      missingTaskIds.isNotEmpty() ||
+        unknownTaskIds.isNotEmpty() ||
+        unresolvedItems.isNotEmpty() ||
+        actionableDeviations.isNotEmpty() ||
+        openObligationIds.isNotEmpty(),
+    ) {
       "ImplementationIncomplete must specify at least one blocker: missing task ID, " +
-        "unresolved item, or actionable deviation."
+        "unknown task ID, unresolved item, actionable deviation, or open durable obligation."
     }
   }
 }
@@ -50,6 +58,11 @@ data class ActionableDeviation(
 sealed interface ImplementationCompletionDisposition {
   val isTerminal: Boolean
   val isSemanticContinuation: Boolean
+}
+
+data object ImplementationAdvance : ImplementationCompletionDisposition {
+  override val isTerminal: Boolean = true
+  override val isSemanticContinuation: Boolean = false
 }
 
 data class SemanticIncompleteWorkContinuation(
@@ -111,7 +124,7 @@ data class ImplementationCompletionDecision(
   val outcome: ImplementationCompletionOutcome,
   val disposition: ImplementationCompletionDisposition,
 ) {
-  val canAdvance: Boolean = outcome.canAdvance && disposition is SemanticIncompleteWorkContinuation
+  val canAdvance: Boolean = outcome.canAdvance && disposition === ImplementationAdvance
 
   fun exactBlockingReason(): String? = when {
     outcome is ImplementationIncomplete && disposition !is SemanticIncompleteWorkContinuation ->
@@ -123,6 +136,8 @@ data class ImplementationCompletionDecision(
           "implementation requested governed decomposition with manifest digest ${disposition.manifestDigest}"
         is SchemaInvalidCorrection ->
           "implementation has schema-invalid output: ${disposition.schemaViolation}"
+        ImplementationAdvance ->
+          "implementation is incomplete and cannot advance"
       }
     outcome is ImplementationCompleted && !outcome.canAdvance ->
       "implementation reported completed but completion decision denied advancement"
@@ -137,29 +152,32 @@ data class ImplementationCompletionDecision(
   fun exactUnresolvedField(): String? = when (outcome) {
     is ImplementationIncomplete -> outcome.unresolvedItems.firstOrNull()
       ?: outcome.actionableDeviations.firstOrNull()?.let { "${it.ref}: ${it.note}" }
+      ?: outcome.unknownTaskIds.firstOrNull()?.let { "unknown completed task ID: $it" }
+      ?: outcome.openObligationIds.firstOrNull()?.let { "open durable obligation: $it" }
     is ImplementationCompleted -> null
   }
 
   companion object {
     fun complete(completedTaskIds: List<String>): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationCompleted(completedTaskIds),
-      disposition = TerminalBlocked(
-        reason = "completion advanced",
-        disposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
-      ),
+      disposition = ImplementationAdvance,
     )
 
     fun incompleteContinue(
       priorReceipt: FeatureTaskRuntimeImplementationReceipt,
       failureDisposition: FeatureTaskRuntimeFailureDisposition,
       missingTaskIds: List<String> = emptyList(),
+      unknownTaskIds: List<String> = emptyList(),
       unresolvedItems: List<String> = emptyList(),
       actionableDeviations: List<ActionableDeviation> = emptyList(),
+      openObligationIds: List<String> = emptyList(),
     ): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationIncomplete(
         missingTaskIds = missingTaskIds,
+        unknownTaskIds = unknownTaskIds,
         unresolvedItems = unresolvedItems,
         actionableDeviations = actionableDeviations,
+        openObligationIds = openObligationIds,
       ),
       disposition = SemanticIncompleteWorkContinuation(
         priorReceipt = priorReceipt,
@@ -168,7 +186,13 @@ data class ImplementationCompletionDecision(
     )
 
     fun schemaInvalid(schemaViolation: String): ImplementationCompletionDecision = ImplementationCompletionDecision(
-      outcome = ImplementationCompleted(emptyList()),
+      outcome = ImplementationIncomplete(
+        missingTaskIds = emptyList(),
+        unknownTaskIds = emptyList(),
+        unresolvedItems = listOf("schema violation"),
+        actionableDeviations = emptyList(),
+        openObligationIds = emptyList(),
+      ),
       disposition = SchemaInvalidCorrection(schemaViolation),
     )
 
@@ -177,18 +201,22 @@ data class ImplementationCompletionDecision(
       disposition: FeatureTaskRuntimeFailureDisposition,
     ): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationIncomplete(
-        missingTaskIds = emptyList(),
+        missingTaskIds = listOf("terminal policy outcome"),
+        unknownTaskIds = emptyList(),
         unresolvedItems = emptyList(),
         actionableDeviations = emptyList(),
+        openObligationIds = emptyList(),
       ),
       disposition = TerminalBlocked(reason, disposition),
     )
 
     fun governedReplan(planDigest: String): ImplementationCompletionDecision = ImplementationCompletionDecision(
       outcome = ImplementationIncomplete(
-        missingTaskIds = emptyList(),
+        missingTaskIds = listOf("governed replan"),
+        unknownTaskIds = emptyList(),
         unresolvedItems = emptyList(),
         actionableDeviations = emptyList(),
+        openObligationIds = emptyList(),
       ),
       disposition = GovernedReplan(planDigest),
     )
@@ -196,9 +224,11 @@ data class ImplementationCompletionDecision(
     fun governedDecomposition(manifestDigest: String): ImplementationCompletionDecision =
       ImplementationCompletionDecision(
         outcome = ImplementationIncomplete(
-          missingTaskIds = emptyList(),
+          missingTaskIds = listOf("governed decomposition"),
+          unknownTaskIds = emptyList(),
           unresolvedItems = emptyList(),
           actionableDeviations = emptyList(),
+          openObligationIds = emptyList(),
         ),
         disposition = GovernedDecomposition(manifestDigest),
       )
@@ -220,23 +250,26 @@ data class ImplementationCompletionContext(
       ActionableDeviation(ref = it.ref, note = it.note)
     }
 
-    val hasOpenUnresolvedObligations = unresolvedObligations.implementationObligations.any {
-      it.status == ConvergenceStatus.OPEN
-    }
+    val openObligationIds = unresolvedObligations.implementationObligations
+      .filter { it.status == ConvergenceStatus.OPEN }
+      .map { it.logicalId }
+      .sorted()
 
     val cannotAdvance = missingTaskIds.isNotEmpty() ||
       unknownCompletedTaskIds.isNotEmpty() ||
       unresolvedItems.isNotEmpty() ||
       actionableDeviations.isNotEmpty() ||
-      hasOpenUnresolvedObligations
+      openObligationIds.isNotEmpty()
 
     return if (cannotAdvance) {
       ImplementationCompletionDecision.incompleteContinue(
         priorReceipt = receipt,
         failureDisposition = receiptToFailureDisposition(receipt),
         missingTaskIds = missingTaskIds,
+        unknownTaskIds = unknownCompletedTaskIds,
         unresolvedItems = unresolvedItems,
         actionableDeviations = actionableDeviations,
+        openObligationIds = openObligationIds,
       )
     } else {
       ImplementationCompletionDecision.complete(completedTaskIds)

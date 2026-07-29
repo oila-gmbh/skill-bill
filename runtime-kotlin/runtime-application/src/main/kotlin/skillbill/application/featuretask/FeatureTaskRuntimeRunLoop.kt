@@ -3319,6 +3319,19 @@ internal class FeatureTaskRuntimeRunLoop(
     return when {
       decision.outcome is ImplementationCompleted -> null
       decision.disposition is SemanticIncompleteWorkContinuation -> {
+        recorder.recordPhaseState(
+          phaseStateRequest(
+            run = run,
+            iteration = iteration,
+            status = STATUS_RUNNING,
+            finished = false,
+            outputArtifact = normalizedOutput.canonicalJson,
+            fileManifest = fileManifest,
+            normalizedOutput = normalizedOutput,
+            repositoryFingerprint = repositoryFingerprint,
+          ),
+          run.request.dbPathOverride,
+        )
         AttemptResult.semanticIncomplete(
           implementationContinuationReason(decision),
           fileManifest = fileManifest,
@@ -3364,9 +3377,14 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun implementationContinuationReason(decision: ImplementationCompletionDecision): String {
     val incomplete = decision.outcome as ImplementationIncomplete
+    val continuation = decision.disposition as SemanticIncompleteWorkContinuation
+    val receipt = continuation.priorReceipt
     val details = buildList {
       if (incomplete.missingTaskIds.isNotEmpty()) {
         add("missing plan task IDs: ${incomplete.missingTaskIds.joinToString()}")
+      }
+      if (incomplete.unknownTaskIds.isNotEmpty()) {
+        add("unknown completed task IDs: ${incomplete.unknownTaskIds.joinToString()}")
       }
       if (incomplete.unresolvedItems.isNotEmpty()) {
         add("unresolved items: ${incomplete.unresolvedItems.joinToString()}")
@@ -3377,8 +3395,23 @@ internal class FeatureTaskRuntimeRunLoop(
             incomplete.actionableDeviations.joinToString { "${it.ref}: ${it.note}" },
         )
       }
+      if (incomplete.openObligationIds.isNotEmpty()) {
+        add("open durable obligations: ${incomplete.openObligationIds.joinToString()}")
+      }
     }
-    return "Implementation incomplete; continuing implement with prior receipt. ${details.joinToString("; ")}"
+    val boundedReceipt = listOf(
+      "completed_task_ids=${receipt.completedTaskIds.joinToString(prefix = "[", postfix = "]")}",
+      "changed_paths=${receipt.changedPaths.joinToString(prefix = "[", postfix = "]")}",
+      "tests_added=${receipt.testsAdded.joinToString(prefix = "[", postfix = "]")}",
+      "tests_updated=${receipt.testsUpdated.joinToString(prefix = "[", postfix = "]")}",
+      "deviations=${receipt.deviations.joinToString(prefix = "[", postfix = "]") { "${it.ref}: ${it.note}" }}",
+      "unresolved_items=${receipt.unresolvedItems.joinToString(prefix = "[", postfix = "]")}",
+      "reconciliation_evidence=${receipt.reconciliationEvidence.evidence}",
+      "repository_checkpoint=${receipt.repositoryCheckpoint.fingerprint}",
+      "failure_disposition=${continuation.failureDisposition.wireValue}",
+    ).joinToString("; ")
+    return "Implementation incomplete; continue the implementation from the durable prior receipt. " +
+      "${details.joinToString("; ")}. Prior receipt: $boundedReceipt"
   }
 
   @Suppress("ReturnCount")
@@ -3690,12 +3723,33 @@ internal class FeatureTaskRuntimeRunLoop(
         emptyList()
       },
       specSource = run.specSource,
-      priorSchemaFailure = priorSchemaFailure,
+      priorSchemaFailure = priorSchemaFailure ?: durableImplementationContinuationReason(run, state),
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       specReference = run.request.runInvariants.specReference,
     )
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun durableImplementationContinuationReason(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+  ): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) return null
+    val envelope = recorder.loadPriorImplementationReceiptEnvelope(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    ) ?: return null
+    val receipt = implementationReceiptFromOutput(envelope) ?: return null
+    val plan = state.authoritativeExecutablePlan() ?: return null
+    val unresolved = recorder.loadConvergenceState(run.request.workflowId, run.request.dbPathOverride)
+      ?: UnresolvedConvergence(emptyList(), emptyList(), emptyList())
+    val decision = implementationCompletionDecisionFromContext(plan, unresolved, receipt)
+    return if (decision.disposition is SemanticIncompleteWorkContinuation) {
+      implementationContinuationReason(decision)
+    } else {
+      null
+    }
   }
 
   @Suppress("ReturnCount")

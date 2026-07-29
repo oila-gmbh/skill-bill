@@ -131,6 +131,26 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `semantic implementation continuation is distinct from schema correction and carries prior receipt`() {
+    val priorReceipt = "Implementation incomplete; continue the implementation from the durable prior receipt. " +
+      "missing plan task IDs: task-2. Prior receipt: completed_task_ids=[task-1]; " +
+      "changed_paths=[src/Main.kt]; deviations=[]; unresolved_items=[]; " +
+      "reconciliation_evidence=tree reconciled; repository_checkpoint=abc; failure_disposition=retryable"
+
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+      priorSchemaFailure = priorReceipt,
+    )
+
+    assertContains(prompt, "## Continue the implementation")
+    assertContains(prompt, "schema-valid")
+    assertContains(prompt, "completed_task_ids=[task-1]")
+    assertContains(prompt, "repository_checkpoint=abc")
+    assertFalse(prompt.contains("REJECTED by the schema gate"))
+  }
+
+  @Test
   fun `validate prompt shows repository checkpoint as a fingerprint object`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
