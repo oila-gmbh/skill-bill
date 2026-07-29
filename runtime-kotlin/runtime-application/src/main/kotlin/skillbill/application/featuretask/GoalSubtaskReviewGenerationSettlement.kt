@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.review.ReviewDiffEvidence
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
@@ -21,6 +22,7 @@ internal data class GoalSubtaskReviewGenerationSettlementRequest(
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition>,
   val repositoryCheckpoint: String?,
+  val reviewedDelta: String,
 )
 
 internal data class GoalSubtaskReviewGenerationSettlement(
@@ -42,9 +44,9 @@ internal fun UnitOfWork.settleGoalSubtaskReviewGeneration(
   }
   require(
     request.blockerDispositions.flatMap(GoalSubtaskBlockerDisposition::evidence)
-      .all { it.startsWith("checkpoint=$repositoryCheckpoint;location=") },
+      .all { dispositionEvidenceReferencesChangedLine(it, repositoryCheckpoint, request.reviewedDelta) },
   ) {
-    "Every carried Blocker disposition must cite a location bound to the active repository checkpoint."
+    "Every carried Blocker disposition must cite a path and line present in the active checkpoint's reviewed delta."
   }
   val completed = request.state.completeReservedPass(
     request.verdict,
@@ -153,3 +155,47 @@ private fun GoalSubtaskBlockerDispositionVerdict.toGenerationDisposition(): Goal
     GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> GoalSubtaskReviewFindingDisposition.STILL_PRESENT
     GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> GoalSubtaskReviewFindingDisposition.SUPERSEDED
   }
+
+internal fun dispositionEvidenceReferencesChangedLine(
+  reference: String,
+  repositoryCheckpoint: String,
+  reviewedDelta: String,
+): Boolean {
+  val location = reference.removePrefix("checkpoint=$repositoryCheckpoint;location=")
+    .takeIf { it != reference } ?: return false
+  val match = Regex("^(.+):(\\d+)$").matchEntire(location) ?: return false
+  val path = match.groupValues[1]
+  val line = match.groupValues[2].toInt()
+  val evidence = ReviewDiffEvidence.parseAttributable(reviewedDelta) ?: return false
+  return evidence.hunks.any { hunk ->
+    if (hunk.path != path) return@any false
+    var newLine = hunk.newStart
+    hunk.content.lineSequence().drop(1).any { diffLine ->
+      when {
+        diffLine.startsWith("+") && !diffLine.startsWith("+++") -> newLine++ == line
+        diffLine.startsWith("-") && !diffLine.startsWith("---") -> false
+        diffLine.startsWith("\\") -> false
+        else -> {
+          newLine++
+          false
+        }
+      }
+    }
+  }
+}
+
+internal fun reviewedDeltaFromArtifacts(artifacts: Map<String, Any?>): String {
+  val raw = artifacts[skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY] as? Map<*, *>
+    ?: error("Goal review completion requires its durable reviewed delta.")
+  val tracked = raw["tracked_delta"] as? String
+    ?: error("Goal review completion requires a durable tracked delta.")
+  val untracked = raw["owned_untracked_patches"] as? String
+    ?: error("Goal review completion requires durable owned untracked patches.")
+  return buildString {
+    append(tracked)
+    if (untracked.isNotBlank()) {
+      if (isNotEmpty() && !endsWith("\n")) append('\n')
+      append(untracked)
+    }
+  }
+}

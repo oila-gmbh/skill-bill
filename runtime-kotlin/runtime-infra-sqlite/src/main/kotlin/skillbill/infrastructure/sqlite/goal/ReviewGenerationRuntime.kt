@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionR
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewSummary
+import java.security.MessageDigest
 import java.sql.Connection
 
 internal class ReviewGenerationRuntime(
@@ -196,18 +197,52 @@ internal class ReviewGenerationRuntime(
         if (rows.next()) rows.getString("generation_id") to rows.getInt("current_pass") else null
       }
     }
-    val reservedPass = connection.prepareStatement(
+    val active = connection.prepareStatement(
       """
-      SELECT json_extract(artifacts_json, '$.goal_subtask_review_state.reserved_pass_number')
-      FROM feature_task_workflows
-      WHERE workflow_id = ?
-        AND json_valid(artifacts_json)
-        AND json_type(artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 'integer'
+      SELECT
+        json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') reserved_pass,
+        CASE
+          WHEN json_extract(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 2
+          THEN COALESCE(
+            json_extract(w.artifacts_json, '$.goal_subtask_review_state.remediation_base_sha'),
+            json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
+          )
+          ELSE json_extract(w.artifacts_json, '$.goal_subtask_review_state.review_base_sha')
+        END review_base,
+        json_extract(w.artifacts_json, '$.goal_subtask_review_state.active_pass_delta_digest') delta_digest,
+        json_extract(p.value, '$.repository_checkpoint.fingerprint') checkpoint
+      FROM feature_task_workflows w
+      LEFT JOIN json_each(w.artifacts_json, '$.feature_task_runtime_delivered_projections') p
+        ON json_extract(p.value, '$.consumer_phase_id') = 'review'
+      WHERE w.workflow_id = ?
+        AND json_valid(w.artifacts_json)
+        AND json_type(w.artifacts_json, '$.goal_subtask_review_state.reserved_pass_number') = 'integer'
+      ORDER BY json_extract(p.value, '$.consumer_delivery_iteration') DESC
+      LIMIT 1
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, workflowId)
-      statement.executeQuery().use { rows -> if (rows.next()) rows.getInt(1) else null }
+      statement.executeQuery().use { rows ->
+        if (!rows.next()) {
+          null
+        } else {
+          val pass = rows.getInt("reserved_pass")
+          val identityParts = listOf(
+            workflowId,
+            rows.getString("review_base"),
+            rows.getString("delta_digest"),
+            pass.toString(),
+            rows.getString("checkpoint"),
+          )
+          val generation = identityParts.takeIf { parts -> parts.all { !it.isNullOrBlank() } }
+            ?.joinToString("\u0000")
+            ?.let(::sha256Hex)
+            ?.let { "review-$it" }
+          generation to pass
+        }
+      }
     }
+    val currentGenerationId = active?.first ?: current?.first
     val terminalCounts = GoalSubtaskReviewFindingDisposition.entries
       .filter(GoalSubtaskReviewFindingDisposition::terminal)
       .associate { disposition ->
@@ -215,10 +250,10 @@ internal class ReviewGenerationRuntime(
       }
     val unresolved = unresolvedBlockers(workflowId)
     return GoalSubtaskReviewSummary(
-      currentGenerationId = current?.first,
-      currentPass = reservedPass ?: current?.second ?: 0,
-      carriedBlockerCount = unresolved.count { it.sourceGenerationId != current?.first },
-      newBlockerCount = unresolved.count { it.sourceGenerationId == current?.first },
+      currentGenerationId = currentGenerationId,
+      currentPass = active?.second ?: current?.second ?: 0,
+      carriedBlockerCount = unresolved.count { it.sourceGenerationId != currentGenerationId },
+      newBlockerCount = unresolved.count { it.sourceGenerationId == currentGenerationId },
       terminalDispositionCounts = terminalCounts,
     )
   }
@@ -271,6 +306,10 @@ internal class ReviewGenerationRuntime(
       statement.executeQuery().use { rows -> if (rows.next()) rows.toFinding() else null }
     }
 }
+
+private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
+  .digest(value.toByteArray())
+  .joinToString("") { byte -> "%02x".format(byte) }
 
 private fun java.sql.ResultSet.toFinding(): GoalSubtaskReviewFinding = GoalSubtaskReviewFinding(
   findingId = getString("finding_id"),

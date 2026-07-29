@@ -551,6 +551,7 @@ class FeatureTaskRuntimePhaseRecorder(
           findings = completion.findings,
           blockerDispositions = completion.blockerDispositions,
           repositoryCheckpoint = request.repositoryFingerprint,
+          reviewedDelta = reviewedDeltaFromArtifacts(artifacts),
         ),
       )
       val completedState = settlement.state

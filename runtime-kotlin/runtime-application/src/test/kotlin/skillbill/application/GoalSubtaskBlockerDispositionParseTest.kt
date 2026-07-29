@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.dispositionEvidenceReferencesChangedLine
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
@@ -39,6 +40,22 @@ class GoalSubtaskBlockerDispositionParseTest {
         output(mapOf("finding_id" to "F-001", "verdict" to "resolved", "evidence" to listOf("line 3"))),
       )
     }
+  }
+
+  @Test
+  fun `disposition evidence must identify an added line in the reviewed delta`() {
+    val delta = """
+      diff --git a/src/Guard.kt b/src/Guard.kt
+      --- a/src/Guard.kt
+      +++ b/src/Guard.kt
+      @@ -10,1 +10,2 @@
+       existing()
+      +guard()
+    """.trimIndent()
+
+    assertTrue(dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:11"), checkpoint, delta))
+    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Guard.kt:12"), checkpoint, delta))
+    assertTrue(!dispositionEvidenceReferencesChangedLine(evidence("src/Fabricated.kt:11"), checkpoint, delta))
   }
 
   @Test

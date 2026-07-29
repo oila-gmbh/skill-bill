@@ -250,6 +250,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         findings = request.findings,
         blockerDispositions = request.blockerDispositions,
         repositoryCheckpoint = request.repositoryCheckpoint,
+        reviewedDelta = reviewedDeltaFromArtifacts(artifacts),
       ),
     )
     val completed = settlement.state

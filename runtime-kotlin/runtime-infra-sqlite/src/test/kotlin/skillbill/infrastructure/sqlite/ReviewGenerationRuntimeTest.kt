@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewFindingDispositionR
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGeneration
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewGenerationIdentity
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,13 +29,40 @@ class ReviewGenerationRuntimeTest {
         """.trimIndent(),
       ).use { statement ->
         statement.setString(1, "workflow-1")
-        statement.setString(2, """{"goal_subtask_review_state":{"reserved_pass_number":2}}""")
+        statement.setString(
+          2,
+          """
+          {
+            "goal_subtask_review_state": {
+              "reserved_pass_number": 2,
+              "review_base_sha": "${"0".repeat(40)}",
+              "active_pass_delta_digest": "${"2".repeat(64)}"
+            },
+            "feature_task_runtime_delivered_projections": {
+              "active": {
+                "consumer_phase_id": "review",
+                "consumer_delivery_iteration": 2,
+                "repository_checkpoint": {"fingerprint": "checkpoint-2"}
+              }
+            }
+          }
+          """.trimIndent(),
+        )
         statement.executeUpdate()
       }
 
       val summary = repository.summary("workflow-1")
 
-      assertEquals("generation-1", summary.currentGenerationId)
+      assertEquals(
+        reviewGenerationId(
+          "workflow-1",
+          "0".repeat(40),
+          "2".repeat(64),
+          2,
+          "checkpoint-2",
+        ),
+        summary.currentGenerationId,
+      )
       assertEquals(2, summary.currentPass)
     }
   }
@@ -268,3 +296,13 @@ class ReviewGenerationRuntimeTest {
     sourceGenerationId = "generation-1",
   )
 }
+
+private fun reviewGenerationId(
+  workflowId: String,
+  reviewBase: String,
+  deltaDigest: String,
+  pass: Int,
+  checkpoint: String,
+): String = "review-" + MessageDigest.getInstance("SHA-256")
+  .digest(listOf(workflowId, reviewBase, deltaDigest, pass.toString(), checkpoint).joinToString("\u0000").toByteArray())
+  .joinToString("") { byte -> "%02x".format(byte) }
