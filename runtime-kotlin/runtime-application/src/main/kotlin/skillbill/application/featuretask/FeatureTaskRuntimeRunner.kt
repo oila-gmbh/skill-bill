@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
@@ -31,6 +32,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.ReviewDeltaClassification
 
@@ -145,6 +148,7 @@ class FeatureTaskRuntimeRunner(
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
       if (runRequest.operatorDecision == null) {
+        reopenMismatchedReviewProjection(runRequest)
         reopenCappedReviewOnChangedDelta(runRequest)
       }
       val state = FeatureTaskRuntimeRunState(
@@ -240,6 +244,38 @@ class FeatureTaskRuntimeRunner(
     if (!cappedReviewIsStale(request)) return
     check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
       "Could not durably reopen the stale capped review for workflow '${request.workflowId}'."
+    }
+  }
+
+  private fun reopenMismatchedReviewProjection(request: FeatureTaskRuntimeRunRequest) {
+    val state = if (isGoalContinuationRun(request)) {
+      goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+    } else {
+      null
+    }?.takeUnless { it.reviewCapReached || it.pausedForOperatorDecision } ?: return
+    val pass = state.passResults.lastOrNull() ?: return
+    val rawResult = goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride) ?: return
+    val output = outputValidator.validateAndReadPhaseOutput(
+      rawResult,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    )
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
+    val expectedVerdict =
+      if (pass.passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES && outcome.unresolvedFindingCount > 0) {
+        FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
+      } else {
+        outcome.verdict
+      }
+    if (
+      pass.verdict == expectedVerdict &&
+      pass.unresolvedFindingCount == outcome.unresolvedFindingCount &&
+      pass.findings == findings
+    ) {
+      return
+    }
+    check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+      "Could not durably reopen the mismatched review projection for workflow '${request.workflowId}'."
     }
   }
 

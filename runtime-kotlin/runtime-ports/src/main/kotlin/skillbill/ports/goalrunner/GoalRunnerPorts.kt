@@ -150,6 +150,8 @@ interface GoalRunnerTerminalOutcomeStore {
 interface GoalRunnerReviewOutcomeStore {
   fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String? = null): GoalSubtaskReviewState? = null
 
+  fun reconcileMismatchedGoalReviewProjection(workflowId: String, dbPathOverride: String? = null): Boolean = false
+
   fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult> =
     emptyList()
 

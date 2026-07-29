@@ -22,6 +22,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -1404,6 +1405,39 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
 // FeatureTaskRuntimeRunnerPersistenceTest so each class stays within its size budget while sharing
 // the same file-private run harness.
 class FeatureTaskRuntimeCappedReviewRecoveryTest {
+  @Test
+  fun `a compact review projection that disagrees with raw evidence reopens review`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-mismatched-review-projection")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "review") reviewLaunches += 1
+      facts(validJsonOutput(phaseId))
+    }
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      launcher,
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val completedLaunches = reviewLaunches
+    harness.replaceLatestReviewProjection(verdict = "changes_requested", unresolvedFindingCount = 1)
+
+    harness.runner.run(harness.request())
+
+    assertTrue(reviewLaunches > completedLaunches)
+    assertTrue(
+      (
+        harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY]
+          as? Map<*, *>
+        ).orEmpty().isNotEmpty(),
+      "the stale replaceable projection is archived before the new generation starts",
+    )
+  }
+
   @Test
   fun `a capped review holds on an unchanged delta and reopens once the reviewed delta changes`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-reopen")
@@ -4145,6 +4179,22 @@ internal class RunnerHarness(
     state.remove("active_pass_delta_digest")
     state.remove("reviewed_head_sha")
     state.remove("reviewed_repository_fingerprint")
+    artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = state
+    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+  }
+
+  fun replaceLatestReviewProjection(verdict: String, unresolvedFindingCount: Int) {
+    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    val state = skillbill.contracts.JsonSupport
+      .anyToStringAnyMap(artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])
+      .orEmpty()
+      .toMutableMap()
+    val passResults = (state["pass_results"] as List<*>).map { rawPass ->
+      skillbill.contracts.JsonSupport.anyToStringAnyMap(rawPass).orEmpty().toMutableMap()
+    }
+    passResults.last()["verdict"] = verdict
+    passResults.last()["unresolved_finding_count"] = unresolvedFindingCount
+    state["pass_results"] = passResults
     artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = state
     repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
   }

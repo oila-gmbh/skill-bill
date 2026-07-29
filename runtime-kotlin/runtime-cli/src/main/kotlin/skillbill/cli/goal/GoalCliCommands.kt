@@ -996,36 +996,37 @@ private fun goalWatchText(payload: Map<String, Any?>): String = buildString {
 }
 
 private fun goalWatchRefreshText(refresh: Map<*, *>): String = buildString {
-  appendLine(
-    "watch_refresh: index=${refresh["refresh_index"]} status=${refresh["status"]} " +
-      "current_subtask=${refresh["current_subtask"] ?: "none"} " +
-      "current_step=${refresh["current_step"] ?: "none"} " +
-      "execution_liveness=${refresh["execution_liveness"] ?: "unknown"} " +
-      "liveness=${refresh["latest_liveness_signal"] ?: "none"}",
-  )
+  appendLine("watch_refresh: index=${refresh["refresh_index"]}")
+  appendLine("  status: ${refresh["status"]}")
+  appendLine("  current_subtask: ${refresh["current_subtask"] ?: "none"}")
+  appendLine("  current_step: ${refresh["current_step"] ?: "none"}")
+  appendLine("  execution_liveness: ${refresh["execution_liveness"] ?: "unknown"}")
+  appendLine("  latest_liveness_signal: ${refresh["latest_liveness_signal"] ?: "none"}")
   refresh["blocked_reason"]?.let {
-    appendLine("watch_blocked: index=${refresh["refresh_index"]} reason=$it")
+    appendLine("  blocked_reason: $it")
   }
-  (refresh["planning"] as? Map<*, *>)?.let { planning ->
-    appendLine(
-      "watch_planning: index=${refresh["refresh_index"]} state=${planning["state"]} " +
-        "shared_preplan=${planning["shared_preplan_prepared"]} " +
-        "planned=${planning["planned_subtask_count"]}/${planning["total_subtask_count"]} " +
-        "current=${planning["current_planning_subtask"] ?: "none"}",
-    )
+  (refresh["planning"] as? Map<*, *>)?.takeIf(Map<*, *>::isPlanningOngoing)?.let { planning ->
+    appendLine("  planning:")
+    appendLine("    state: ${planning["state"]}")
+    appendLine("    shared_preplan_prepared: ${planning["shared_preplan_prepared"]}")
+    appendLine("    planned_subtasks: ${planning["planned_subtask_count"]}/${planning["total_subtask_count"]}")
+    appendLine("    current_subtask: ${planning["current_planning_subtask"] ?: "none"}")
     planning["reason"]?.let {
-      appendLine("watch_planning_reason: index=${refresh["refresh_index"]} reason=$it")
+      appendLine("    reason: $it")
     }
   }
   (refresh["latest_observability_event"] as? Map<*, *>)?.let { event ->
-    appendLine(
-      "watch_observability: index=${refresh["refresh_index"]} phase=${event["workflow_phase"]} " +
-        "role=${event["worker_role"]} liveness=${event["liveness_class"]} " +
-        "sequence=${event["sequence_number"]}",
-    )
+    appendLine("  observability:")
+    appendLine("    phase: ${event["workflow_phase"]}")
+    appendLine("    worker_role: ${event["worker_role"]}")
+    appendLine("    liveness: ${event["liveness_class"]}")
+    appendLine("    sequence: ${event["sequence_number"]}")
   }
   appendDiffStatusLines(refresh, watchIndex = refresh["refresh_index"]?.toString())
 }
+
+private fun Map<*, *>.isPlanningOngoing(): Boolean =
+  this["state"] in setOf("not_started", "preplanned", "partially_planned")
 
 private fun StringBuilder.appendOperatorSurfaceLines(payload: Map<*, *>) {
   val blockedAttemptCount = (payload["blocked_attempt_count"] as? Number)?.toInt() ?: 0

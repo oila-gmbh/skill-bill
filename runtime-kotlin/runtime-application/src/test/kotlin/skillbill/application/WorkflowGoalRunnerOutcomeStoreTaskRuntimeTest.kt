@@ -27,7 +27,9 @@ import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -156,6 +158,65 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
       store.acknowledgeGoalReviewPass("wfl-goal-review", 1)
     }
+  }
+
+  @Test
+  fun `goal resume reopens a terminal child whose compact review projection disagrees with raw evidence`() {
+    val workflows = InMemoryWorkflowStates()
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    val record = goalReviewWorkflowRecord(
+      workflowId = "wfl-goal-review",
+      state = state,
+      rawReviewResult = """{"verdict":"changes_requested","produced_outputs":{}}""",
+    )
+    val artifacts = decodeArtifacts(record.artifactsJson).toMutableMap().apply {
+      put(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
+        mapOf(
+          "review" to FeatureTaskRuntimePhaseRecord(
+            phaseId = "review",
+            status = "completed",
+            attemptCount = 1,
+            startedAt = "2026-07-29T05:00:00Z",
+            firstStartedAt = "2026-07-29T05:00:00Z",
+            finishedAt = "2026-07-29T05:01:00Z",
+            resolvedAgentId = "codex",
+          ).toArtifactMap(),
+        ),
+      )
+    }
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      record.copy(
+        workflowStatus = "completed",
+        currentStepId = "commit_push",
+        artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      phaseOutputValidator = AlwaysValidValidator,
+    )
+
+    assertTrue(store.reconcileMismatchedGoalReviewProjection("wfl-goal-review"))
+
+    val reopened = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-goal-review")).toSnapshot()
+    assertEquals("running", reopened.workflowStatus)
+    assertEquals("review", reopened.currentStepId)
+    val reopenedArtifacts = decodeArtifacts(reopened.artifactsJson)
+    val reopenedState = GoalSubtaskReviewState.fromArtifactMap(
+      JsonSupport.anyToStringAnyMap(reopenedArtifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY]).orEmpty(),
+    )
+    assertEquals(0, reopenedState.completedPassCount)
+    assertTrue((reopenedArtifacts["goal_subtask_review_result_history"] as Map<*, *>).isNotEmpty())
   }
 
   @Test

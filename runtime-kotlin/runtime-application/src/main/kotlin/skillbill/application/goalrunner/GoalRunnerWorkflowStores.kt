@@ -11,6 +11,8 @@ import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.featuretask.GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY
+import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
@@ -89,8 +91,11 @@ import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
@@ -898,6 +903,40 @@ class WorkflowGoalRunnerOutcomeStore(
     database.read(dbPathOverride) { unitOfWork ->
       val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read null
       goalReviewArtifacts(decodeArtifacts(record.artifactsJson))?.state
+    }
+
+  override fun reconcileMismatchedGoalReviewProjection(workflowId: String, dbPathOverride: String?): Boolean =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val review = goalReviewArtifacts(artifacts) ?: return@transaction false
+      if (goalReviewProjectionMatches(review, phaseOutputValidator)) return@transaction false
+      val priorReview = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+        ?: throw InvalidGoalSubtaskReviewStateSchemaError(
+          sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+          fieldPath = "phase_records.review",
+          reason = "must exist before a mismatched terminal review projection can be resumed.",
+        )
+      val reopening = reopenedReviewProjection(artifacts, review, priorReview)
+      val updated = engine.updateRecord(
+        WorkflowFamily.TASK_RUNTIME.definition,
+        record,
+        WorkflowUpdateInput(
+          workflowStatus = "running",
+          currentStepId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          stepUpdates = listOf(
+            mapOf(
+              "step_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              "status" to "running",
+              "attempt_count" to reopening.reviewRecord.attemptCount,
+            ),
+          ),
+          artifactsPatch = reopening.patch,
+          sessionId = record.sessionId.orEmpty(),
+        ),
+      )
+      WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+      true
     }
 
   override fun unemittedGoalReviewPasses(
@@ -1718,6 +1757,61 @@ private fun validatedGoalReviewPasses(
     }
   }
   return review.state.passResults
+}
+
+private fun goalReviewProjectionMatches(
+  review: GoalSubtaskReviewArtifacts,
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+): Boolean = runCatching {
+  validatedGoalReviewPasses(review, phaseOutputValidator)
+}.isSuccess
+
+private data class ReopenedReviewProjection(
+  val reviewRecord: FeatureTaskRuntimePhaseRecord,
+  val patch: Map<String, Any?>,
+)
+
+private fun reopenedReviewProjection(
+  artifacts: Map<String, Any?>,
+  review: GoalSubtaskReviewArtifacts,
+  priorReview: FeatureTaskRuntimePhaseRecord,
+): ReopenedReviewProjection {
+  val reopenedReview = FeatureTaskRuntimePhaseRecord(
+    phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    status = "running",
+    attemptCount = priorReview.attemptCount,
+    startedAt = priorReview.startedAt,
+    firstStartedAt = priorReview.firstStartedAt,
+    resolvedAgentId = REVIEW_INVALIDATION_AGENT_ID,
+  )
+  val phaseRecords = LinkedHashMap(phaseRecordsFrom(artifacts)).apply {
+    put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reopenedReview)
+  }
+  val history = (artifacts[GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY] as? Map<*, *>)
+    ?.entries
+    ?.associate { (key, value) -> key.toString() to value }
+    .orEmpty()
+  val historyIdentity = review.state.reviewedDeltaDigest ?: "legacy-pass-${review.state.completedPassCount}"
+  return ReopenedReviewProjection(
+    reviewRecord = reopenedReview,
+    patch = linkedMapOf(
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+        phaseRecords.mapValues { (_, value) -> value.toArtifactMap() },
+      GOAL_SUBTASK_REVIEW_RESULT_HISTORY_ARTIFACT_KEY to
+        history + mapOf(
+          historyIdentity to linkedMapOf(
+            "state" to review.state.toArtifactMap(),
+            "raw_results" to artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY],
+          ),
+        ),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
+        reviewBaseSha = review.state.reviewBaseSha,
+        baselineUntrackedPaths = review.state.baselineUntrackedPaths,
+        codeReviewMode = review.state.codeReviewMode,
+      ).toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to emptyMap<String, String>(),
+    ),
+  )
 }
 
 private object ReviewRawOutputFallbackValidator : FeatureTaskRuntimePhaseOutputValidator {

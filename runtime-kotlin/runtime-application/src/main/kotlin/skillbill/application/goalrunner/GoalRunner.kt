@@ -100,6 +100,9 @@ class GoalRunner(
     pendingCausingLoopEntry.clear()
     val state = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: return unknownGoal(request.issueKey)
+    state.manifest.subtasks.mapNotNull { it.workflowId }.forEach { workflowId ->
+      outcomeStore.reconcileMismatchedGoalReviewProjection(workflowId, request.dbPathOverride)
+    }
     return when (val preparation = prepareRun(state, request)) {
       is GoalRunPreparation.PreparationBlocked -> preparation.report
       is GoalRunPreparation.Prepared -> runPrepared(preparation)
