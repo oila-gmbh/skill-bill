@@ -111,24 +111,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   """.trimIndent()
 }
 
-// Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
-// (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
-// explicit enumeration and exclude the whole `.feature-specs/{KEY}/` tree. For local mode (default)
-// the section is empty, leaving the commit prompt byte-for-byte unchanged (AC6).
-internal fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH || specSource != SpecSource.LINEAR) {
-    return ""
-  }
-  return """
-    ## Linear-mode commit exclusion
-    This feature's spec_source is `linear`: the local spec scratch is NOT committed. Stage every
-    changed path by explicit enumeration and never run `git add -A` / `git add .`. Exclude the
-    entire `.feature-specs/$issueKey/` directory from staging — the parent spec, every subtask
-    spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
-    or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
-    Linear when a later resume or verify needs it.
-  """.trimIndent()
-}
+internal fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String = ""
 
 // Emits only for the commit phase of a local-mode run when a spec reference is known: the runtime
 // updates the spec file with the run's completion status just before launching commit_push, so the
@@ -197,14 +180,15 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "tests_added, tests_updated, deviations, unresolved_items, " +
     "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation.",
+    "what the latest listed gaps require across any necessary repository path; do not regenerate " +
+    "planning or disturb settled implementation.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address only the carried unresolved actionable Blocker findings on the CURRENT working tree as " +
     "incremental reconciliation. Approved, Major, Minor, and Nit findings, specialist narratives, " +
     "raw review output, and prior repair history are not in this briefing and are not in scope. Do not " +
-    "re-apply the plan from scratch or expand scope beyond the carried Blockers. Treat any fix already " +
-    "present as a no-op. See the mutating-phase idempotency contract below.",
+    "re-apply the plan from scratch or address work unrelated to the carried Blockers. Changes may " +
+    "touch any repository path required to resolve them. Treat any fix already present as a no-op. " +
+    "See the mutating-phase idempotency contract below.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
     "and report defects with concrete file references. Emit produced_outputs.findings with only unresolved " +
@@ -215,7 +199,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
     "test-only concerns as audit gaps. The upstream implementation receipt is a producer CLAIM, not " +
     "evidence: read the repository itself at the resolved checkpoint in the briefing — the diff over its " +
-    "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
+    "base_ref/head_ref plus its repository_changed_paths — and compare that actual state against the plan " +
     "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
     "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
@@ -233,8 +217,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "alongside whether history was written or skipped; do not forward implementation or validation reports.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
     "Stage and commit the implemented, reviewed, audited, validated, and history-updated " +
-    "changes on the resolved feature branch, then push the branch. Stage by explicit enumerated " +
-    "path; never run `git add -A` or `git add .`. Emit commit_push_result " +
+    "changes on the resolved feature branch, then push the branch. Stage the complete current " +
+    "repository delta, including staged, unstaged, deleted, renamed, and untracked paths. Emit commit_push_result " +
     "with commit_sha, branch, base_branch, and pushed status. If goal-continuation suppresses PR, " +
     "this successful phase is the terminal success signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to

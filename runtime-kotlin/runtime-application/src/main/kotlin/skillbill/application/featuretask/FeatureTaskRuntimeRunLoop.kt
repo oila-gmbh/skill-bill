@@ -774,9 +774,21 @@ internal class FeatureTaskRuntimeRunLoop(
     commitMessage: (String) -> String,
     blockedReason: (String, String) -> String,
   ): Boolean {
-    val ownedPaths = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
-      ?.workflowOwnedPaths
-      .orEmpty()
+    val currentRepositoryPaths = phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
+    if (!currentRepositoryPaths.ok) {
+      return blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        "the current repository delta could not be listed: ${currentRepositoryPaths.error}",
+        blockedReason,
+      )
+    }
+    val ownedPaths = currentRepositoryPaths.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .distinct()
+      .sorted()
     if (ownedPaths.isEmpty()) {
       return blockCheckpoint(
         precedingPhaseId,
@@ -821,7 +833,7 @@ internal class FeatureTaskRuntimeRunLoop(
             ?.replace('\\', '/')
         }.getOrNull(),
         commitMessage = commitMessage(branch) +
-          " [authority=workflow-owned phase=$precedingPhaseId loop=$loop generation=$generation]",
+          " [authority=repository-wide phase=$precedingPhaseId loop=$loop generation=$generation]",
       ),
     )
     if (!commit.ok) return blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)

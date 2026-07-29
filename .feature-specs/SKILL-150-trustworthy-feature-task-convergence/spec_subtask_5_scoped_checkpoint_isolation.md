@@ -1,28 +1,27 @@
-# SKILL-150 Subtask 5: Scoped Checkpoint Isolation
+# SKILL-150 Subtask 5: Repository-Wide Checkpoint Convergence
 
 ## Scope
 
-Replace full-worktree checkpoint staging with workflow-owned staging and explicit foreign-change protection. Checkpoints must capture the active workflow's authoritative delta without mutating or committing unrelated user or concurrent-agent work.
+Make every checkpoint capture the complete current repository state. Path ownership remains diagnostic evidence only and never authorizes, rejects, or narrows implementation, repair, review, validation, history, or commit behavior.
 
 ## Acceptance Criteria
 
-1. Checkpoint creation stages only the durable workflow-owned path inventory resolved for the active subtask and phase; production checkpoint code no longer runs repository-wide `git add -A`.
-2. Pre-existing foreign staged, unstaged, and untracked paths remain byte-for-byte and index-for-index unchanged after a successful checkpoint.
-3. A path introduced by the active phase outside its allowed inventory produces a typed non-retryable policy block before any commit.
-4. A foreign governed `.feature-specs/` path, including a concurrently prepared issue, is never staged, committed, reviewed, or attributed to the active workflow.
-5. A staged or subsequently modified workflow-owned path is checkpointed from its current working-tree state through the private index; the user's real index and working tree remain byte-for-byte unchanged.
-6. Staging or commit failure restores the pre-checkpoint index state and preserves the working tree; partial index mutation cannot leak into a later user commit.
-7. Checkpoint identity records the branch, phase, loop and generation, parent SHA, owned-path digest, and resulting commit SHA in durable state.
-8. Checkpoint commit messages identify the authority boundary and loop generation sufficiently to distinguish initial implementation, audit repair, and review remediation history.
-9. Review input is constructed from the immutable checkpoint plus the same owned-path inventory, so unrelated dirt cannot change its semantic delta digest.
-10. A regression reproduces SKILL-149 appearing during SKILL-134 and proves SKILL-149 remains uncommitted and outside review while SKILL-134 either checkpoints only its own files or blocks safely on a real overlap.
+1. Checkpoint creation stages every current tracked, staged, unstaged, deleted, renamed, and untracked repository path.
+2. No durable owned-path inventory acts as an allowlist for a mutating phase or checkpoint.
+3. A path introduced outside the prior inventory is incorporated into the next checkpoint without a policy block or operator decision.
+4. Governed `.feature-specs/` paths receive no special exclusion from repository-wide checkpointing.
+5. The checkpoint uses the current working-tree content for every changed path and may include pre-existing repository changes.
+6. Staging or commit failure remains a technical failure and must not leave a partial checkpoint commit.
+7. Checkpoint identity records the branch, phase, loop and generation, parent SHA, repository-delta digest, included paths, and resulting commit SHA in durable state.
+8. Checkpoint commit messages identify the phase, loop, and generation sufficiently to distinguish initial implementation, audit repair, and review remediation history.
+9. Review input is constructed from the resulting repository-wide checkpoint.
+10. Tests prove that paths added during later audit or review repair are checkpointed without ownership expansion or authorization blockers.
 
 ## Non-Goals
 
-- Deleting, stashing, resetting, or auto-committing foreign user changes.
 - Rewriting existing checkpoint history.
 - Replacing Git with a custom version-control store.
-- Allowing agents to expand their owned inventory through output claims alone.
+- Adding a path-authorization or operator-approval workflow.
 
 ## Dependency Notes
 
@@ -30,11 +29,11 @@ Depends on Subtask 1 so checkpoint identities and owned-path provenance survive 
 
 ## Validation Strategy
 
-- Test clean and dirty repositories with foreign staged, unstaged, untracked, deleted, renamed, and intent-to-add paths.
-- Test staged and subsequently modified owned paths, foreign path isolation, symlink and case-normalization behavior, commit failure, staging failure, and crash recovery.
-- Verify exact index trees before and after checkpoint operations.
+- Test clean and dirty repositories with staged, unstaged, untracked, deleted, renamed, and intent-to-add paths.
+- Test paths first discovered during audit and review repair, symlink and case-normalization behavior, commit failure, staging failure, and crash recovery.
+- Verify checkpoint trees contain the complete repository delta.
 - Exercise audit and review backward edges, standalone work, and goal-child work.
-- Build a concurrent-spec regression using two issue keys and assert each commit contains only its own paths.
+- Build a concurrent-spec regression using two issue keys and assert the checkpoint includes both repositories' current paths without blocking.
 
 ## Next Path
 

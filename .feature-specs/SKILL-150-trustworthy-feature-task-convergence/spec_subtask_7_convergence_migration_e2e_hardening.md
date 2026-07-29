@@ -2,7 +2,7 @@
 
 ## Scope
 
-Complete compatibility, crash recovery, observability, documentation, and end-to-end coverage for the durable convergence model across implementation, audit, pre-review quality, review, validation, goal continuation, and scoped checkpointing.
+Complete compatibility, crash recovery, observability, documentation, and end-to-end coverage for the durable convergence model across implementation, audit, non-test quality checks, review, validation, goal continuation, and scoped checkpointing.
 
 ## Acceptance Criteria
 
@@ -10,7 +10,7 @@ Complete compatibility, crash recovery, observability, documentation, and end-to
 2. Migration preserves unresolved implementation items, audit gaps and repair outcomes, review findings and dispositions, operator decisions, phase attempts, repository checkpoints, and goal-child linkage without duplicating events.
 3. Crash injection before and after every new database transaction and Git checkpoint boundary resumes to one authoritative current state with complete history and no skipped obligation.
 4. Status and watch render bounded current-state summaries plus historical generation counts from durable queries and remain stable across retry and resume.
-5. Telemetry derives implementation continuations, true schema retries, audit first-pass convergence, recurring and new gaps, repair outcomes, review generations, carried Blockers, pre-review quality repairs, and checkpoint-policy blocks from durable evidence.
+5. Telemetry derives implementation continuations, true schema retries, audit first-pass convergence, recurring and new gaps, repair outcomes, review generations, carried Blockers, non-test quality repairs, and checkpoint-policy blocks from durable evidence.
 6. Telemetry and status counts agree with the append-only records and phase ledger for every end-to-end fixture.
 7. A deterministic partial-implementation fixture remains in implementation until every planned task closes and never reaches audit through a status-only change.
 8. A deterministic audit fixture emits one closure-complete repair batch, applies a correct repair, and clears after one follow-up audit; repeated faulty repairs remain visible as recurrence rather than overwritten history.
@@ -50,4 +50,3 @@ scripts/validate_agent_configs
 ## Next Path
 
 Finish SKILL-150 after migration, end-to-end convergence, documentation, and full validation succeed.
-

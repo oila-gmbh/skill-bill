@@ -303,7 +303,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     appendLine("fingerprint: ${escapeBriefingLineBreaks(checkpoint.fingerprint)}")
     checkpoint.baseRef?.let { appendLine("base_ref: ${escapeBriefingLineBreaks(it)}") }
     checkpoint.headRef?.let { appendLine("head_ref: ${escapeBriefingLineBreaks(it)}") }
-    appendLine("scoped_owned_paths:")
+    appendLine("repository_changed_paths:")
     if (checkpoint.workingTreeOwnedPaths.isEmpty()) {
       appendLine("  (none)")
     } else {
@@ -388,7 +388,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       "read the branch diff yourself; it is not delivered in this briefing",
     FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE to
       "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
-      "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
+      "the listed repository_changed_paths — and treat that actual state, not any upstream receipt claim, " +
       "as the evidence for every criterion",
     "current_unit_of_work" to
       "read the current unit of work yourself; it is not delivered in this briefing",

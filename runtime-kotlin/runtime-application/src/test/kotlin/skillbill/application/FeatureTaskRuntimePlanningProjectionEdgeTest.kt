@@ -217,7 +217,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     assertContains(briefing.briefingText, "fingerprint: fixture-checkpoint-1")
     assertContains(briefing.briefingText, "base_ref: ${"0".repeat(40)}")
     assertContains(briefing.briefingText, "head_ref: feat/SKILL-137")
-    assertContains(briefing.briefingText, "scoped_owned_paths:\n  - runtime-domain/model/X.kt")
+    assertContains(briefing.briefingText, "repository_changed_paths:\n  - runtime-domain/model/X.kt")
     assertEquals(
       listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE),
       FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseAudit).derivedContextKeys,

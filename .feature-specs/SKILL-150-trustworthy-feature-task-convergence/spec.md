@@ -14,7 +14,7 @@ The SKILL-134 runtime run exposed interacting reliability failures:
 - review invalidation cleared prior results and unresolved findings when the repository delta changed;
 - checkpoint commits staged the full worktree and committed an unrelated feature spec;
 - a cross-module persistence, privacy, lifecycle, CLI, and recovery change was classified MEDIUM and reviewed at light depth;
-- deterministic compilation and migration failures reached review instead of a pre-review quality seam;
+- deterministic compilation and migration failures were not caught early enough by build checks available to implementation and review;
 - aggregate counters did not preserve enough append-only evidence to explain recurring gaps and review generations.
 
 ## Acceptance Criteria
@@ -25,10 +25,10 @@ The SKILL-134 runtime run exposed interacting reliability failures:
 4. Audit re-entry carries one closure-complete unresolved repair batch, and every subsequent audit dispositions all carried gaps before it can clear the phase.
 5. Review approval is impossible while any prior or current Blocker lacks a durable resolved, superseded, accepted, or otherwise governed terminal disposition.
 6. Repository-delta invalidation creates a new review generation without clearing historical review evidence or the unresolved-finding ledger.
-7. Checkpoint commits stage only the workflow-owned path inventory and preserve unrelated staged, unstaged, and untracked work byte-for-byte.
-8. Foreign governed feature paths introduced outside the active workflow are never committed, reviewed, or attributed to that workflow.
+7. Checkpoint commits capture the complete current repository delta, including staged, unstaged, and untracked files, without an ownership-based authorization gate.
+8. Repository paths discovered during implementation, audit repair, review remediation, validation, or history work may be committed without expanding a durable path allowlist or requesting operator authorization.
 9. Planning automatically escalates or decomposes work whose boundary breadth, task graph, risk, or expected change surface exceeds the resolved feature-size contract.
-10. Cross-cutting or high-risk changes receive an appropriate minimum review depth, and deterministic compile, format, static-analysis, and focused-test failures are repaired before consuming a code-review pass.
+10. Cross-cutting or high-risk changes receive an appropriate minimum review depth. Build, compilation, formatting, and static-analysis checks may run during implementation, review, and validation; test execution runs only during validation.
 11. Legacy active workflows migrate or reconcile into the durable convergence model idempotently, with typed loud failures or quarantine for incompatible state and no silent evidence loss.
 12. Status, watch, and telemetry report implementation continuations, schema retries, audit recurrence, review generations, carried findings, and repair outcomes from durable records without exposing raw phase output.
 13. Crash, resume, operator-decision, changed-delta, and concurrent-dirty-worktree tests prove the same convergence and isolation guarantees in standalone and goal-child execution.
@@ -40,9 +40,10 @@ The SKILL-134 runtime run exposed interacting reliability failures:
 - Use normalized SQLite records when append-only history, stable identity, transactional ownership, or cross-generation queries would otherwise be weakened by replaceable artifact JSON.
 - Keep workflow artifact projections bounded and derived; do not move raw prompts, raw phase responses, private diagnostics, full diffs, or unbounded review text into SQLite or artifact JSON.
 - Preserve dynamic, manifest-driven routing and platform packs. Do not hard-code Kotlin, KMP, or a fixed platform catalogue into orchestration.
-- Preserve explicit operator decisions and bounded retry policies. Reliability changes must not create an unbounded autonomous loop.
+- Preserve bounded retry policies. Repository path ownership must not introduce an operator decision or blocking seam.
 - Preserve the audit test-exclusion contract: completeness audit reports production behavior and implementation gaps; validation owns test execution and failures.
-- Keep final validation authoritative even when a focused pre-review quality seam passes.
+- Permit build and compilation commands in implementation, review, and validation. Do not classify a build command as a test solely because it may compile test sources; commands that execute tests remain validation-only.
+- Keep final validation and its test execution authoritative even when implementation or review build checks pass.
 - Do not weaken audit or review to reduce iteration counts.
 
 ## Non-Goals
@@ -50,6 +51,7 @@ The SKILL-134 runtime run exposed interacting reliability failures:
 - Guaranteeing that every model completes a large feature in one process invocation.
 - Replacing code review with tests or replacing validation with code review.
 - Automatically accepting unresolved findings because their source checkpoint became stale.
+- Preserving unrelated dirty-worktree changes outside workflow checkpoint commits.
 - Storing full agent prompts, raw model responses, or private rejected-output bodies as convergence history.
 - Rewriting or completing SKILL-134 as part of this feature.
 - Squashing or rewriting existing feature branches automatically.
@@ -61,7 +63,7 @@ The SKILL-134 runtime run exposed interacting reliability failures:
 3. Make audit repair state append-only and convergence-gated.
 4. Preserve review findings and dispositions across review generations.
 5. Isolate checkpoint commits to workflow-owned paths.
-6. Add adaptive sizing, review-depth routing, and a pre-review quality seam.
+6. Add adaptive sizing, review-depth routing, and phase-appropriate non-test quality checks.
 7. Migrate legacy state and prove end-to-end recovery, telemetry, and convergence.
 
 ## Validation Strategy
@@ -78,4 +80,3 @@ skill-bill validate
 npx --yes agnix --strict .
 scripts/validate_agent_configs
 ```
-
