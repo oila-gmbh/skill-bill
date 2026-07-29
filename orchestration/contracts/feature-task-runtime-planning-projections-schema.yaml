@@ -330,6 +330,20 @@ $defs:
         maxItems: 100
         items: { type: string, minLength: 1, pattern: ".*\\S.*" }
       unresolvable_repair: { type: object }
+      implementation_outcome:
+        oneOf:
+          - type: object
+            additionalProperties: false
+            required: [kind, plan_digest]
+            properties:
+              kind: { const: "governed_replan" }
+              plan_digest: { $ref: "#/$defs/nonBlank" }
+          - type: object
+            additionalProperties: false
+            required: [kind, manifest_digest]
+            properties:
+              kind: { const: "governed_decomposition" }
+              manifest_digest: { $ref: "#/$defs/nonBlank" }
 
   test_execution:
     type: object

@@ -1110,6 +1110,7 @@ class FeatureTaskRuntimePhaseRecorder(
    */
   @OpenBoundaryMap("Implementation receipt wire map at the persistence boundary")
   fun loadPriorImplementationReceiptEnvelope(workflowId: String, dbOverride: String? = null): Map<String, Any?>? {
+    loadImplementationReceiptAttemptHistory(workflowId, dbOverride).lastOrNull()?.let { return it }
     val records = loadPhaseRecords(workflowId, dbOverride) ?: return null
     val record = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
       ?: return null
@@ -1117,6 +1118,48 @@ class FeatureTaskRuntimePhaseRecorder(
     return JsonSupport.parseObjectOrNull(outputText)
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
+  }
+
+  /**
+   * Appends a bounded implementation receipt to attempt-scoped durable history. Unlike the replaceable
+   * phase record, this survives the next attempt reserving its running snapshot.
+   */
+  internal fun recordImplementationReceiptAttempt(
+    workflowId: String,
+    envelope: Map<String, Any?>,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val prior = (artifacts[IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY] as? List<*>)
+      .orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+    val updated = (prior + envelope).takeLast(IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT)
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY to updated),
+      WorkflowRowAdvance(record.currentStepId, record.workflowStatus),
+    )
+    true
+  }
+
+  @OpenBoundaryMap("Bounded immutable implementation receipt attempt history")
+  private fun loadImplementationReceiptAttemptHistory(
+    workflowId: String,
+    dbOverride: String?,
+  ): List<Map<String, Any?>> = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read emptyList()
+    val raw = decodeArtifacts(record.artifactsJson)[IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY]
+      as? List<*> ?: return@read emptyList()
+    raw.mapIndexed { index, item ->
+      JsonSupport.anyToStringAnyMap(item)
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Implementation receipt attempt history entry $index must be an object.",
+        )
+    }
   }
 
   /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
@@ -1446,6 +1489,10 @@ class FeatureTaskRuntimeDecomposeTerminalRecorder(
       decomposeTerminalFrom(decodeArtifacts(record.artifactsJson))
     }
 }
+
+private const val IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY =
+  "feature_task_runtime_implementation_receipt_attempt_history"
+private const val IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT = 32
 
 // Coarse workflow-row status mirrors the phase transition: a paused phase leaves the row on the
 // non-terminal resumable status, a blocked phase blocks the row, the final phase completing completes

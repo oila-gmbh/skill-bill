@@ -239,8 +239,16 @@ data class ImplementationCompletionContext(
   val authoritativeExecutablePlan: FeatureTaskRuntimeExecutablePlan,
   val unresolvedObligations: UnresolvedConvergence,
   val receipt: FeatureTaskRuntimeImplementationReceipt,
+  val governedOutcome: GovernedImplementationOutcome? = null,
 ) {
   fun completionDecision(): ImplementationCompletionDecision {
+    governedOutcome?.let {
+      return when (it) {
+        is GovernedImplementationOutcome.Replan -> ImplementationCompletionDecision.governedReplan(it.planDigest)
+        is GovernedImplementationOutcome.Decomposition ->
+          ImplementationCompletionDecision.governedDecomposition(it.manifestDigest)
+      }
+    }
     val authoritativeTaskIds = authoritativeExecutablePlan.tasks.map { it.taskId }
     val completedTaskIds = receipt.completedTaskIds
     val missingTaskIds = authoritativeTaskIds - completedTaskIds.toSet()
@@ -285,14 +293,21 @@ data class ImplementationCompletionContext(
   }
 }
 
+sealed interface GovernedImplementationOutcome {
+  data class Replan(val planDigest: String) : GovernedImplementationOutcome
+  data class Decomposition(val manifestDigest: String) : GovernedImplementationOutcome
+}
+
 fun implementationCompletionDecisionFromContext(
   authoritativeExecutablePlan: FeatureTaskRuntimeExecutablePlan,
   unresolvedObligations: UnresolvedConvergence,
   receipt: FeatureTaskRuntimeImplementationReceipt,
+  governedOutcome: GovernedImplementationOutcome? = null,
 ): ImplementationCompletionDecision = ImplementationCompletionContext(
   authoritativeExecutablePlan = authoritativeExecutablePlan,
   unresolvedObligations = unresolvedObligations,
   receipt = receipt,
+  governedOutcome = governedOutcome,
 ).completionDecision()
 
 fun validateImplementationReceiptAgainstPlan(

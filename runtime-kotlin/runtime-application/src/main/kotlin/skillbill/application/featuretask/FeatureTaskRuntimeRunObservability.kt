@@ -109,6 +109,25 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
+  /** Persists a bounded transition classification independently of the generic fix-loop counter. */
+  fun transition(
+    phaseId: String,
+    resolvedAgentId: String,
+    attemptCount: Int,
+    classification: String,
+  ) {
+    appendLedger(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = request.workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        blockedReason = classification,
+      ),
+    )
+  }
+
   fun completed(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
     completedEvent(phaseId, resolvedAgentId, attemptCount)
     appendLedger(

@@ -50,6 +50,51 @@ class FeatureTaskRuntimeImplementationCompletionDecisionTest {
     assertIs<SemanticIncompleteWorkContinuation>(deviated.disposition)
   }
 
+  @Test
+  fun `governed implementation outcomes select replan and decomposition dispositions`() {
+    val completeReceipt = receipt(completedTaskIds = listOf("task-1", "task-2"))
+
+    val replan = implementationCompletionDecisionFromContext(
+      plan(), emptyConvergence(), completeReceipt, GovernedImplementationOutcome.Replan("plan-digest"),
+    )
+    val decomposition = implementationCompletionDecisionFromContext(
+      plan(), emptyConvergence(), completeReceipt, GovernedImplementationOutcome.Decomposition("manifest-digest"),
+    )
+
+    assertIs<GovernedReplan>(replan.disposition)
+    assertIs<GovernedDecomposition>(decomposition.disposition)
+    assertFalse(replan.canAdvance)
+    assertFalse(decomposition.canAdvance)
+  }
+
+  @Test
+  fun `open durable obligation is reported exactly`() {
+    val convergence = UnresolvedConvergence(
+      implementationObligations = listOf(
+        ConvergenceRecord(
+          recordId = ConvergenceIdentities.record(
+            "workflow-1", ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION, "obligation-1", 1,
+          ),
+          logicalId = "obligation-1",
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+          status = ConvergenceStatus.OPEN,
+          summary = "persist receipt",
+          provenance = ConvergenceProvenance("workflow-1", 1, "implement", attempt = 1),
+          evidenceDigest = "a".repeat(64),
+          createdAt = "2026-01-01T00:00:00Z",
+        ),
+      ),
+      auditRepairs = emptyList(),
+      reviewBlockers = emptyList(),
+    )
+
+    val decision = implementationCompletionDecisionFromContext(
+      plan(), convergence, receipt(completedTaskIds = listOf("task-1", "task-2")),
+    )
+
+    assertEquals("open durable obligation: obligation-1", decision.exactUnresolvedField())
+  }
+
   private fun decision(receipt: FeatureTaskRuntimeImplementationReceipt): ImplementationCompletionDecision =
     implementationCompletionDecisionFromContext(plan(), emptyConvergence(), receipt)
 

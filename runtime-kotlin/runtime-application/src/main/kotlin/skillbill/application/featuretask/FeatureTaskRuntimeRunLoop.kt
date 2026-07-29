@@ -73,6 +73,9 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.GovernedDecomposition
+import skillbill.workflow.taskruntime.model.GovernedImplementationOutcome
+import skillbill.workflow.taskruntime.model.GovernedReplan
 import skillbill.workflow.taskruntime.model.ImplementationCompleted
 import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
 import skillbill.workflow.taskruntime.model.ImplementationIncomplete
@@ -2045,6 +2048,14 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration > 1 || state.hasPriorRecord(run.phaseId),
       run.modelDirective,
     )
+    if (iteration > 1 || state.hasPriorRecord(run.phaseId)) {
+      val resumeClassification = when (run.phaseId) {
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "audit_reentry"
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "review_reentry"
+        else -> "crash_resume"
+      }
+      observability.transition(run.phaseId, agentId, iteration, resumeClassification)
+    }
     var outcome: PhaseOutcome? = null
     var priorSchemaFailure: String? = null
     var malformedAttemptCount = 0
@@ -2052,12 +2063,16 @@ internal class FeatureTaskRuntimeRunLoop(
     while (outcome == null) {
       val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
       val semanticIncompleteReason = attempt.semanticIncompleteReason
+      val retryableTerminalReason = attempt.retryableTerminalReason
       outcome = attempt.settledOutcome ?: if (semanticIncompleteReason != null) {
         when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
             semanticIteration += 1
             priorSchemaFailure = semanticIncompleteReason
+            observability.transition(
+              run.phaseId, agentId, iteration, "implementation_continuation",
+            )
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
           }
@@ -2070,6 +2085,25 @@ internal class FeatureTaskRuntimeRunLoop(
             fileManifest = attempt.fileManifest,
           )
         }
+      } else if (retryableTerminalReason != null) {
+        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
+          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+            iteration += 1
+            semanticIteration += 1
+            priorSchemaFailure = retryableTerminalReason
+            observability.transition(run.phaseId, agentId, iteration, "process_retry")
+            null
+          }
+          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+            run,
+            iteration,
+            retryableTerminalReason,
+            observability,
+            failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
+            fileManifest = attempt.fileManifest,
+            outputArtifact = attempt.retryableTerminalOutput,
+          )
+        }
       } else if (attempt.malformedOutput) {
         malformedAttemptCount += 1
         val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
@@ -2079,6 +2113,7 @@ internal class FeatureTaskRuntimeRunLoop(
         if (formatBlock == null) {
           iteration += 1
           priorSchemaFailure = attempt.schemaRetryCorrectionReason
+          observability.transition(run.phaseId, agentId, iteration, "schema_correction")
           observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
           null
         } else {
@@ -2098,6 +2133,7 @@ internal class FeatureTaskRuntimeRunLoop(
             iteration += 1
             semanticIteration += 1
             priorSchemaFailure = attempt.schemaRetryCorrectionReason
+            observability.transition(run.phaseId, agentId, iteration, "schema_correction")
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
           }
@@ -2943,11 +2979,11 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition.retryOnResume &&
       FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
     ) {
-      AttemptResult.schemaInvalid(
-        publicReason = reason,
-        retryCorrectionReason = reason,
+      AttemptResult.retryableTerminal(
+        reason = reason,
+        disposition = disposition,
         fileManifest = fileManifest,
-        rejectedOutput = null,
+        outputArtifact = outputText,
       )
     } else {
       AttemptResult.settled(
@@ -3315,21 +3351,14 @@ internal class FeatureTaskRuntimeRunLoop(
       authoritativeExecutablePlan = authoritativePlan,
       unresolvedObligations = unresolvedObligations,
       receipt = receipt,
+      governedOutcome = governedImplementationOutcome(normalizedOutput.envelope),
     )
     return when {
       decision.outcome is ImplementationCompleted -> null
       decision.disposition is SemanticIncompleteWorkContinuation -> {
-        recorder.recordPhaseState(
-          phaseStateRequest(
-            run = run,
-            iteration = iteration,
-            status = STATUS_RUNNING,
-            finished = false,
-            outputArtifact = normalizedOutput.canonicalJson,
-            fileManifest = fileManifest,
-            normalizedOutput = normalizedOutput,
-            repositoryFingerprint = repositoryFingerprint,
-          ),
+        recorder.recordImplementationReceiptAttempt(
+          run.request.workflowId,
+          normalizedOutput.envelope,
           run.request.dbPathOverride,
         )
         AttemptResult.semanticIncomplete(
@@ -3359,6 +3388,19 @@ internal class FeatureTaskRuntimeRunLoop(
             observability,
             failureDisposition = (decision.disposition as TerminalBlocked).disposition,
             fileManifest = fileManifest,
+          ),
+        )
+      }
+      decision.disposition is GovernedReplan || decision.disposition is GovernedDecomposition -> {
+        AttemptResult.settled(
+          blockAndPersistInPhase(
+            run,
+            iteration,
+            requireNotNull(decision.exactBlockingReason()),
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+            fileManifest = fileManifest,
+            outputArtifact = normalizedOutput.canonicalJson,
           ),
         )
       }
@@ -3412,6 +3454,18 @@ internal class FeatureTaskRuntimeRunLoop(
     ).joinToString("; ")
     return "Implementation incomplete; continue the implementation from the durable prior receipt. " +
       "${details.joinToString("; ")}. Prior receipt: $boundedReceipt"
+  }
+
+  private fun governedImplementationOutcome(output: Map<String, Any?>): GovernedImplementationOutcome? {
+    val produced = JsonSupport.anyToStringAnyMap(output["produced_outputs"]) ?: return null
+    val outcome = JsonSupport.anyToStringAnyMap(produced["implementation_outcome"]) ?: return null
+    return when (outcome["kind"]) {
+      "governed_replan" ->
+        (outcome["plan_digest"] as? String)?.let { GovernedImplementationOutcome.Replan(it) }
+      "governed_decomposition" ->
+        (outcome["manifest_digest"] as? String)?.let { GovernedImplementationOutcome.Decomposition(it) }
+      else -> null
+    }
   }
 
   @Suppress("ReturnCount")
@@ -4205,6 +4259,12 @@ internal class FeatureTaskRuntimeRunLoop(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : AttemptResult
+    private data class RetryableTerminal(
+      val reason: String,
+      val disposition: FeatureTaskRuntimeFailureDisposition,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      val outputArtifact: String,
+    ) : AttemptResult
     private data class SchemaInvalid(
       val publicReason: String,
       val retryCorrectionReason: String,
@@ -4215,9 +4275,19 @@ internal class FeatureTaskRuntimeRunLoop(
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val semanticIncompleteReason: String? get() = (this as? SemanticIncomplete)?.reason
+    val retryableTerminalReason: String? get() = (this as? RetryableTerminal)?.reason
+    val retryableTerminalDisposition: FeatureTaskRuntimeFailureDisposition?
+      get() = (this as? RetryableTerminal)?.disposition
+    val retryableTerminalOutput: String? get() = (this as? RetryableTerminal)?.outputArtifact
     val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.publicReason
     val schemaRetryCorrectionReason: String? get() = (this as? SchemaInvalid)?.retryCorrectionReason
-    val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
+    val fileManifest: FeatureTaskRuntimePhaseFileManifest?
+      get() = when (this) {
+        is SchemaInvalid -> fileManifest
+        is SemanticIncomplete -> fileManifest
+        is RetryableTerminal -> fileManifest
+        is Settled -> null
+      }
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
     val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
 
@@ -4225,6 +4295,12 @@ internal class FeatureTaskRuntimeRunLoop(
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
       fun semanticIncomplete(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): AttemptResult =
         SemanticIncomplete(reason, fileManifest)
+      fun retryableTerminal(
+        reason: String,
+        disposition: FeatureTaskRuntimeFailureDisposition,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+        outputArtifact: String,
+      ): AttemptResult = RetryableTerminal(reason, disposition, fileManifest, outputArtifact)
       fun schemaInvalid(
         publicReason: String,
         retryCorrectionReason: String,
