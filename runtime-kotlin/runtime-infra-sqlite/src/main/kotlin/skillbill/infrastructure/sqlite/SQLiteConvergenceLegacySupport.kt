@@ -35,7 +35,7 @@ internal fun Connection.legacyQuarantineReason(workflowId: String, records: List
   records.any { it.provenance.workflowId != workflowId } -> "workflow_identity_mismatch"
   !legacyRelationshipsAreCompatible(readConvergenceHistory(workflowId), records) -> "invalid_relationship"
   !legacyEvidenceIsCompatible(records) -> CONFLICTING_EVIDENCE
-  records.any { record -> findConvergenceByIdentity(record)?.let { it != record } == true } -> CONFLICTING_EVIDENCE
+  records.any { record -> findConvergenceByIdentity(record)?.let(record::notEqualTo) == true } -> CONFLICTING_EVIDENCE
   else -> null
 }
 
@@ -83,7 +83,6 @@ private fun legacyRelationshipsAreCompatible(
     val expectedParentKind = expectedConvergenceParentKind(record.kind) ?: return@all true
     availableParents[record.parentLogicalId].orEmpty().any {
       it.kind == expectedParentKind &&
-        it.provenance.generation == record.provenance.generation &&
         convergenceReviewPassIsCompatible(record, it)
     }
   }
@@ -98,6 +97,8 @@ private fun legacyEvidenceIsCompatible(records: List<ConvergenceRecord>): Boolea
   }.values
   return groupsAreIdentical(recordIdGroups) && groupsAreIdentical(logicalIdentityGroups)
 }
+
+private fun ConvergenceRecord.notEqualTo(other: ConvergenceRecord): Boolean = this != other
 
 private fun InvalidFeatureTaskRuntimeConvergenceStateSchemaError.toLegacyFailureReason(): String = INVALID_CONTRACT
 

@@ -5,7 +5,11 @@ package skillbill.infrastructure.sqlite
 import skillbill.ports.persistence.AuditGenerationStore
 import skillbill.ports.persistence.AuditRepairBatchStore
 import skillbill.ports.persistence.AuditRepairQuery
+import skillbill.ports.persistence.ConvergenceReplayConflictException
+import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.model.AuditRepairItemResult
+import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
+import skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.AuditGap
 import skillbill.workflow.taskruntime.model.AuditGapDisposition
 import skillbill.workflow.taskruntime.model.AuditGapStatus
@@ -13,13 +17,20 @@ import skillbill.workflow.taskruntime.model.AuditGeneration
 import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
 import skillbill.workflow.taskruntime.model.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditRepairItem
+import skillbill.workflow.taskruntime.model.ConvergenceIdentities
+import skillbill.workflow.taskruntime.model.ConvergenceProvenance
+import skillbill.workflow.taskruntime.model.ConvergenceRecord
+import skillbill.workflow.taskruntime.model.ConvergenceRecordKind
+import skillbill.workflow.taskruntime.model.ConvergenceStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
+import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.sql.Connection
 import java.sql.SQLException
 
 class SQLiteAuditGenerationStore(
   private val connection: Connection,
+  private val convergence: ConvergenceStateRepository = SQLiteConvergenceStateRepository(connection),
 ) : AuditGenerationStore {
   override fun persist(generation: AuditGeneration): AuditGeneration {
     val existing = getLatest(generation.workflowId)
@@ -27,6 +38,7 @@ class SQLiteAuditGenerationStore(
       require(existing == generation) {
         "Conflicting replay for audit generation ${generation.generation} in workflow '${generation.workflowId}'."
       }
+      appendCanonicalGeneration(existing)
       return existing
     }
     require(existing == null || existing.generation < generation.generation) {
@@ -61,6 +73,7 @@ class SQLiteAuditGenerationStore(
       require(replayed == generation) {
         "Persisted audit generation ${generation.generation} did not replay as its complete aggregate."
       }
+      appendCanonicalGeneration(generation)
       if (priorAutoCommit) connection.commit()
       return replayed
     } catch (error: SQLException) {
@@ -471,6 +484,162 @@ class SQLiteAuditGenerationStore(
       }
     }
     return dependencies.mapValues { it.value.toList() }
+  }
+
+  private fun appendCanonicalGeneration(generation: AuditGeneration) {
+    appendCanonicalCheckpoint(generation)
+    generation.gaps.forEach { gap ->
+      val parentLogicalId = appendCanonicalGap(generation, gap)
+      if (gap.status in setOf(AuditGapStatus.RESOLVED, AuditGapStatus.SUPERSEDED)) {
+        appendCanonicalGapDisposition(generation, gap, parentLogicalId)
+      }
+    }
+    generation.repairBatch?.repairItems.orEmpty().forEach { item ->
+      appendCanonicalRepairItem(generation, item)
+    }
+  }
+
+  private fun appendCanonicalCheckpoint(generation: AuditGeneration) {
+    val logicalId = ConvergenceIdentities.logical(
+      generation.workflowId,
+      ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+      "audit:${generation.generationId}",
+    )
+    convergence.appendOrThrow(
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          generation.workflowId,
+          ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+          logicalId,
+          generation.generation,
+        ),
+        logicalId = logicalId,
+        kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+        provenance = ConvergenceProvenance(generation.workflowId, generation.generation, "audit"),
+        evidenceDigest = generation.repositoryCheckpoint.fingerprint,
+        createdAt = generation.createdAt,
+        status = ConvergenceStatus.COMPLETED,
+        summary = "audit generation ${generation.generation} repository checkpoint",
+        evidenceRef = generation.repositoryCheckpoint.evidenceRef.take(CONVERGENCE_REFERENCE_MAX_LENGTH),
+      ),
+    )
+  }
+
+  private fun appendCanonicalGap(generation: AuditGeneration, gap: AuditGap): String {
+    val logicalId = ConvergenceIdentities.logical(
+      generation.workflowId,
+      ConvergenceRecordKind.AUDIT_GAP,
+      gap.gapId,
+    )
+    convergence.appendOrThrow(
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          generation.workflowId,
+          ConvergenceRecordKind.AUDIT_GAP,
+          logicalId,
+          generation.generation,
+        ),
+        logicalId = logicalId,
+        kind = ConvergenceRecordKind.AUDIT_GAP,
+        provenance = ConvergenceProvenance(generation.workflowId, generation.generation, "audit"),
+        evidenceDigest = ConvergenceIdentities.digest(
+          listOf(
+            gap.gapId,
+            gap.acceptanceCriterionRef,
+            gap.failureEvidence.artifactRef.orEmpty(),
+            gap.failureEvidence.checkRef.orEmpty(),
+            gap.diagnosis,
+            gap.affectedBoundary,
+          ).joinToString("|"),
+        ),
+        createdAt = generation.createdAt,
+        status = ConvergenceStatus.OPEN,
+        classification = gap.acceptanceCriterionRef.lowercase().replace('-', '_'),
+        summary = gap.diagnosis.take(CONVERGENCE_SUMMARY_MAX_LENGTH),
+        path = gap.affectedBoundary.take(CONVERGENCE_REFERENCE_MAX_LENGTH),
+      ),
+    )
+    return logicalId
+  }
+
+  private fun appendCanonicalGapDisposition(
+    generation: AuditGeneration,
+    gap: AuditGap,
+    parentLogicalId: String,
+  ) {
+    val logicalId = ConvergenceIdentities.logical(
+      generation.workflowId,
+      ConvergenceRecordKind.AUDIT_REPAIR,
+      "${gap.gapId}:${gap.status.name}",
+    )
+    convergence.appendOrThrow(
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          generation.workflowId,
+          ConvergenceRecordKind.AUDIT_REPAIR,
+          logicalId,
+          generation.generation,
+        ),
+        logicalId = logicalId,
+        kind = ConvergenceRecordKind.AUDIT_REPAIR,
+        provenance = ConvergenceProvenance(generation.workflowId, generation.generation, "audit"),
+        evidenceDigest = ConvergenceIdentities.digest(
+          "${gap.gapId}|${gap.status.name}|${gap.recurrence}|${gap.firstSeenGeneration}",
+        ),
+        createdAt = generation.createdAt,
+        status = ConvergenceStatus.RESOLVED,
+        classification = gap.status.name.lowercase(),
+        summary = "audit gap ${gap.gapId} ${gap.status.name.lowercase()}",
+        parentLogicalId = parentLogicalId,
+      ),
+    )
+  }
+
+  private fun appendCanonicalRepairItem(generation: AuditGeneration, item: AuditRepairItem) {
+    val parentLogicalId = ConvergenceIdentities.logical(
+      generation.workflowId,
+      ConvergenceRecordKind.AUDIT_GAP,
+      item.gapId,
+    )
+    val logicalId = ConvergenceIdentities.logical(
+      generation.workflowId,
+      ConvergenceRecordKind.AUDIT_REPAIR,
+      item.itemId,
+    )
+    convergence.appendOrThrow(
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          generation.workflowId,
+          ConvergenceRecordKind.AUDIT_REPAIR,
+          logicalId,
+          generation.generation,
+        ),
+        logicalId = logicalId,
+        kind = ConvergenceRecordKind.AUDIT_REPAIR,
+        provenance = ConvergenceProvenance(generation.workflowId, generation.generation, "audit"),
+        evidenceDigest = ConvergenceIdentities.digest(
+          listOf(
+            item.itemId,
+            item.gapId,
+            item.intendedOutcome,
+            item.implementationActions.joinToString("|"),
+            item.requiredVerification.joinToString("|"),
+          ).joinToString("|"),
+        ),
+        createdAt = generation.createdAt,
+        status = ConvergenceStatus.OPEN,
+        classification = "repair_item",
+        summary = item.intendedOutcome.take(CONVERGENCE_SUMMARY_MAX_LENGTH),
+        path = item.affectedPathsOrSymbols.firstOrNull()?.take(CONVERGENCE_REFERENCE_MAX_LENGTH),
+        parentLogicalId = parentLogicalId,
+      ),
+    )
+  }
+}
+
+private fun ConvergenceStateRepository.appendOrThrow(record: ConvergenceRecord) {
+  if (append(record) is ReplayResult.Conflict) {
+    throw ConvergenceReplayConflictException(record.recordId)
   }
 }
 

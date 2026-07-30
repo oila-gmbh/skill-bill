@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.ports.persistence.ConvergenceStateRepository
+import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.model.LegacyReconciliation
 import skillbill.workflow.taskruntime.ConvergenceStateSchemaValidator
 import skillbill.workflow.taskruntime.model.CONVERGENCE_STATE_CONTRACT_VERSION
@@ -82,27 +83,24 @@ class SQLiteConvergenceStateRepository(
 
   override fun unresolved(workflowId: String): UnresolvedConvergence {
     val history = history(workflowId)
-    val current = history.currentByLogicalIdentity().values
-    val resolvedParents = current.filter {
+    val terminalParents = history.filter {
       it.kind in setOf(ConvergenceRecordKind.AUDIT_REPAIR, ConvergenceRecordKind.REVIEW_DISPOSITION) &&
-        it.status in setOf(ConvergenceStatus.RESOLVED, ConvergenceStatus.COMPLETED)
-    }.mapNotNullTo(mutableSetOf()) { record ->
-      record.parentLogicalId?.let { it to record.provenance.generation }
-    }
-    fun open(kind: ConvergenceRecordKind) = current.filter {
-      it.kind == kind &&
-        it.status == ConvergenceStatus.OPEN &&
-        (it.logicalId to it.provenance.generation) !in resolvedParents
-    }
+        it.status.isTerminalDisposition()
+    }.mapNotNullTo(mutableSetOf(), ConvergenceRecord::parentLogicalId)
+    fun open(kind: ConvergenceRecordKind) = history
+      .filter { it.kind == kind && it.status == ConvergenceStatus.OPEN && it.logicalId !in terminalParents }
+      .distinctBy(ConvergenceRecord::logicalId)
+      .sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
     val reviewBlockers = history.filter {
       it.kind == ConvergenceRecordKind.REVIEW_FINDING &&
         it.status == ConvergenceStatus.OPEN &&
         it.classification == REVIEW_BLOCKER_CLASSIFICATION &&
-        (it.logicalId to it.provenance.generation) !in resolvedParents
-    }
+        it.logicalId !in terminalParents
+    }.distinctBy(ConvergenceRecord::logicalId)
+      .sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
     return UnresolvedConvergence(
       implementationObligations = open(ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION),
-      auditRepairs = open(ConvergenceRecordKind.AUDIT_REPAIR),
+      auditRepairs = open(ConvergenceRecordKind.AUDIT_GAP),
       reviewBlockers = reviewBlockers,
     )
   }
@@ -114,20 +112,39 @@ class SQLiteConvergenceStateRepository(
     val decoded = decodeLegacyConvergence(encodedSource, sourceDigest, schemaValidator)
     val records = decoded.records
     val quarantineReason = decoded.failureReason ?: connection.legacyQuarantineReason(workflowId, records)
-    val replayConflict = quarantineReason == null &&
-      records.sortedBy { expectedConvergenceParentKind(it.kind) != null }
-        .any { append(it) is ReplayResult.Conflict }
-    val result = when {
-      quarantineReason != null -> LegacyReconciliation.Quarantined(quarantineReason)
-      replayConflict -> LegacyReconciliation.Quarantined(CONFLICTING_EVIDENCE)
-      else -> LegacyReconciliation.Imported(records.size)
+    if (quarantineReason != null) {
+      val result = LegacyReconciliation.Quarantined(quarantineReason)
+      connection.recordLegacyReconciliation(workflowId, sourceDigest, result)
+      return result
     }
-    connection.recordLegacyReconciliation(workflowId, sourceDigest, result)
-    return result
+    val priorAutoCommit = connection.autoCommit
+    if (priorAutoCommit) connection.autoCommit = false
+    return try {
+      val replayConflict = records.sortedBy { expectedConvergenceParentKind(it.kind) != null }
+        .any { append(it) is ReplayResult.Conflict }
+      if (replayConflict) {
+        throw ConvergenceReplayConflictException(records.first().recordId)
+      }
+      val result = LegacyReconciliation.Imported(records.size)
+      connection.recordLegacyReconciliation(workflowId, sourceDigest, result)
+      if (priorAutoCommit) connection.commit()
+      result
+    } catch (error: RuntimeException) {
+      if (priorAutoCommit) connection.rollback()
+      throw error
+    } catch (error: SQLException) {
+      if (priorAutoCommit) connection.rollback()
+      throw error
+    } finally {
+      if (priorAutoCommit) connection.autoCommit = true
+    }
   }
 }
 
 private const val REVIEW_BLOCKER_CLASSIFICATION = "blocker"
+
+private fun ConvergenceStatus.isTerminalDisposition(): Boolean =
+  this in setOf(ConvergenceStatus.RESOLVED, ConvergenceStatus.COMPLETED)
 
 private fun ConvergenceRecord.replayAgainst(proposed: ConvergenceRecord): ReplayResult =
   if (this == proposed) ReplayResult.Identical(this) else ReplayResult.Conflict(this, proposed)

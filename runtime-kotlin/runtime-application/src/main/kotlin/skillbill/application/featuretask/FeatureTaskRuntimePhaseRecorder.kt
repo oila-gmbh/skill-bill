@@ -93,14 +93,7 @@ internal data class FeatureTaskRuntimeProjectionRejection(
   val failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
   val sourceLabel: String,
 )
-
-/**
- * Application-layer write/read seam for feature-task-runtime per-phase records and the
- * append-only phase ledger. Timestamps and durations are always minted here from the runtime
- * clock, never taken from agent-reported values.
- */
 @Inject
-// cohesive durable read/write seam for per-phase records, briefings, ledger, and quarantine evidence
 @Suppress("TooManyFunctions", "LargeClass")
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
@@ -161,17 +154,6 @@ class FeatureTaskRuntimePhaseRecorder(
       it.rejectedOutputDiagnostics?.filePayloads?.release(Path.of(path))
     }
   }
-
-  /**
-   * Persists one per-phase record. A `running` transition for a new attempt re-mints
-   * `started_at` so `duration_millis` measures only the current run (never spanning a
-   * resume gap), while `first_started_at` preserves the original first-started timestamp.
-   * A finishing call mints `finished_at` and derives `duration_millis` from the re-minted
-   * `started_at`. A `blocked` status persists a durable terminal record (with the blocked
-   * reason) so blocked-ness survives ledger pruning. The coarse workflow row is advanced to
-   * the active phase and the matching workflow status. Returns true when the workflow row
-   * exists and was updated.
-   */
   fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
@@ -486,19 +468,6 @@ class FeatureTaskRuntimePhaseRecorder(
       ),
     )
   }
-
-  /**
-   * SKILL-140: durably invalidates a quarantined producer's settled `completed` status so its rejected
-   * record is no longer selected by the handoff contract on this or any resumed run. The rejected
-   * payload is moved from `output_artifact` to `rejected_output` (retained as evidence but no longer a
-   * usable output) and the status returns to `running`, so hydration relaunches the producer and the
-   * regenerated higher-iteration output supersedes it. Only the settled status is touched; the rejected
-   * record's fields are never rewritten or migrated. The regeneration loop context (`loopId`,
-   * `edgeIteration`) is stamped onto the invalidated running record in this same transaction, so the
-   * per-edge cap watermark survives a crash that lands after this commit but before the LOOP_EDGE ledger
-   * write; resume reseeds the cap from the record rather than resetting it to zero (AC-003). Returns true
-   * when the workflow row exists.
-   */
   internal fun invalidateQuarantinedProducerRecord(
     workflowId: String,
     producerPhaseId: String,
@@ -677,15 +646,6 @@ class FeatureTaskRuntimePhaseRecorder(
     require(completion.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     return request
   }
-
-  /**
-   * Durably drops the backward-edge context (loop_id + edge_iteration) from the named phase records
-   * without otherwise mutating them. Used when a wider backward edge restarts a nested loop: the
-   * nested loop's per-phase watermark is stale for the new outer iteration, so it must be cleared at
-   * the durable source of truth or resume reconstruction would re-import the pre-reset count and deny
-   * the fresh per-iteration budget. Phases without a record (or already context-free) are skipped.
-   * Returns true when the workflow row exists.
-   */
   fun clearBackwardEdgeContext(workflowId: String, phaseIds: Collection<String>, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -712,13 +672,6 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
-
-  /**
-   * Persists the assembled per-phase launch briefing keyed by phase id, plus the delivered
-   * projection for that launch under its own artifact key; the latest entry per phase replaces the
-   * prior one. The envelope is schema-validated before it is written, so a violating envelope never
-   * becomes durable state. Returns true when the workflow row exists and was updated.
-   */
   fun recordPhaseBriefing(
     workflowId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
@@ -819,11 +772,6 @@ class FeatureTaskRuntimePhaseRecorder(
       .joinToString(separator = ",") { "${it.phaseId}#${it.iteration}" },
     delivered.repositoryCheckpointFingerprint,
   ).joinToString(separator = "|")
-
-  /**
-   * Records a content-free measurement when projection construction rejects a launch before a
-   * briefing exists. Zero sizes mean no projection crossed the launch boundary.
-   */
   fun recordProjectionRejection(
     workflowId: String,
     consumerPhaseId: String,
@@ -889,11 +837,6 @@ class FeatureTaskRuntimePhaseRecorder(
       )
     }
   }
-
-  /**
-   * Strict read of the per-phase briefings keyed by phase id; an absent key yields an empty
-   * map and a malformed entry loud-fails. Returns null only when the workflow row is absent.
-   */
   fun loadPhaseBriefings(
     workflowId: String,
     dbOverride: String? = null,
@@ -904,12 +847,6 @@ class FeatureTaskRuntimePhaseRecorder(
       handoffEnvelopeValidator.validateEnvelope(envelope, workflowId)
     }
   }
-
-  /**
-   * Strict read of the delivered-projection tier keyed by consumer phase id. Separate from
-   * [loadPhaseBriefings] on purpose: this store holds only envelopes, so no read of it can return
-   * private phase evidence.
-   */
   fun loadDeliveredProjections(
     workflowId: String,
     dbOverride: String? = null,
@@ -939,11 +876,6 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@read null
       auditRepairStateFromWire(artifact, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
     }
-
-  /**
-   * Appends one phase ledger entry, minting the timestamp and assigning the next monotonic
-   * sequence from the persisted max. Returns true when the workflow row exists and was updated.
-   */
   fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
@@ -978,14 +910,6 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
-
-  /**
-   * Appends one quarantined durable record to the private, append-only evidence store. The runtime
-   * only ever grows this list; a prior entry is never mutated or removed by any runtime path (only
-   * out-of-band operator action may). The full wire record is validated against the canonical
-   * quarantine schema before persistence, so a malformed store fails loudly at the write seam.
-   * Returns true when the workflow row exists and was updated.
-   */
   fun appendQuarantineEntry(
     workflowId: String,
     entry: FeatureTaskRuntimeQuarantineEntry,
@@ -995,9 +919,6 @@ class FeatureTaskRuntimePhaseRecorder(
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existing = quarantineEntriesFrom(artifacts)
-    // Crash-replay idempotency: a resume that re-rejects the same producer record at the same
-    // regeneration attempt must not append a duplicate evidence entry. Append only genuinely new
-    // evidence; never mutate or remove a prior entry.
     val alreadyRecorded = existing.any {
       it.producingPhaseId == entry.producingPhaseId &&
         it.producingIteration == entry.producingIteration &&
@@ -1015,11 +936,6 @@ class FeatureTaskRuntimePhaseRecorder(
     )
     true
   }
-
-  /**
-   * Strict read of the private quarantine evidence store in insertion order. An absent key yields an
-   * empty list; a malformed record loud-fails. Returns null only when the workflow row is absent.
-   */
   fun loadQuarantinedRecords(
     workflowId: String,
     dbOverride: String? = null,
@@ -1033,13 +949,6 @@ class FeatureTaskRuntimePhaseRecorder(
     val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
     return featureTaskRuntimeQuarantineEntriesFromWire(raw)
   }
-
-  /**
-   * Persists the run-scoped resolved feature branch exactly once. Idempotent and non-divergent:
-   * when a branch is already persisted this is a no-op (returns true) and never overwrites it, so a
-   * resume/re-run can never force a second or divergent branch for the same run. Returns true when
-   * the workflow row exists; false only when the row is absent.
-   */
   fun recordResolvedBranch(
     workflowId: String,
     resolvedBranch: FeatureTaskRuntimeResolvedBranch,
@@ -1058,11 +967,6 @@ class FeatureTaskRuntimePhaseRecorder(
     )
     true
   }
-
-  /**
-   * Strict read of the run-scoped resolved feature branch. Returns null when the workflow row is
-   * absent or no branch has been resolved yet; a malformed entry loud-fails.
-   */
   fun loadResolvedBranch(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeResolvedBranch? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -1115,11 +1019,6 @@ class FeatureTaskRuntimePhaseRecorder(
     )
     true
   }
-
-  /**
-   * Strict read of the per-phase records keyed by phase id; an absent key yields an empty map
-   * and a malformed record loud-fails. Returns null only when the workflow row is absent.
-   */
   fun loadPhaseRecords(workflowId: String, dbOverride: String? = null): Map<String, FeatureTaskRuntimePhaseRecord>? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -1145,24 +1044,12 @@ class FeatureTaskRuntimePhaseRecorder(
       }
       retry.takeUnless { settledAfterRetry }
     }
-
-  /**
-   * Strict read of the append-only phase ledger. A block is recorded both as a durable terminal
-   * per-phase record (so blocked-ness survives ledger pruning) and as a ledger entry; this read
-   * supplies the supplementary per-attempt detail. Absent key yields an empty list; a malformed
-   * entry loud-fails. Returns null only when the workflow row is absent.
-   */
   fun loadPhaseLedger(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimePhaseLedgerEntry>? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: return@read null
       phaseLedgerFrom(decodeArtifacts(record.artifactsJson))
     }
-
-  /**
-   * Strict read of the unresolved convergence obligations. Returns null only when the workflow row
-   * is absent or convergence-state persistence is unavailable.
-   */
   fun loadConvergenceState(
     workflowId: String,
     dbOverride: String? = null,
@@ -1173,12 +1060,6 @@ class FeatureTaskRuntimePhaseRecorder(
   } catch (_: IllegalStateException) {
     null
   }
-
-  /**
-   * Loads the most recent implementation receipt envelope from durable phase records. Returns null when
-   * the implementation phase has no completed output or the record is absent. The caller is responsible
-   * for parsing the envelope into the typed projection using the appropriate validator.
-   */
   @OpenBoundaryMap("Implementation receipt wire map at the persistence boundary")
   fun loadPriorImplementationReceiptEnvelope(workflowId: String, dbOverride: String? = null): Map<String, Any?>? {
     val latestAttempt = loadImplementationReceiptAttemptHistory(workflowId, dbOverride).lastOrNull()
@@ -1189,11 +1070,6 @@ class FeatureTaskRuntimePhaseRecorder(
       ?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
   }
-
-  /**
-   * Appends a bounded implementation receipt to attempt-scoped durable history. Unlike the replaceable
-   * phase record, this survives the next attempt reserving its running snapshot.
-   */
   internal fun recordImplementationReceiptAttempt(
     workflowId: String,
     envelope: Map<String, Any?>,
@@ -1232,9 +1108,6 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
-
-  /** Reads a workflow row's mode without throwing on a foreign mode, unlike [WorkflowFamily.TASK_RUNTIME.get]. */
   fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
     database.read(dbOverride) { unitOfWork ->
       unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
@@ -1245,10 +1118,6 @@ class FeatureTaskRuntimePhaseRecorder(
       unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     }
 
-  /**
-   * Ensures a runtime workflow row exists, opening one at the definition's initial step when
-   * absent. Idempotent: a no-op when a row already exists.
-   */
   fun ensureWorkflowOpen(
     workflowId: String,
     sessionId: String,
@@ -1297,9 +1166,6 @@ class FeatureTaskRuntimePhaseRecorder(
     patch: Map<String, Any?>,
     advance: WorkflowRowAdvance = WorkflowRowAdvance.keepFrom(record),
   ) {
-    // The per-phase records map is the detailed source of truth; the coarse workflow row AND the
-    // shared per-step steps[] are advanced to agree with it so the generic workflow
-    // get/list/latest and the resume gate do not disagree with FeatureTaskRuntimeStatusService.
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       record,
@@ -1355,7 +1221,7 @@ class FeatureTaskRuntimePhaseRecorder(
     return listOf(
       convergenceImplementationOutcome(request, generation, evidenceDigest, createdAt),
       checkpoint,
-    )
+    ) + convergenceImplementationReceiptRecords(request, generation, createdAt)
   }
 
   private fun reconcileLegacyArtifacts(
@@ -1455,6 +1321,105 @@ private fun convergenceImplementationOutcome(
   )
 }
 
+private fun convergenceImplementationReceiptRecords(
+  request: FeatureTaskRuntimePhaseStateRequest,
+  generation: Int,
+  createdAt: String,
+): List<ConvergenceRecord> {
+  val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: return emptyList()
+  val completedTasks = (produced["completed_task_ids"] as? List<*>)
+    .orEmpty()
+    .mapNotNull { it as? String }
+    .distinct()
+    .map { taskId ->
+      convergenceImplementationReceiptRecord(
+        request = request,
+        generation = generation,
+        createdAt = createdAt,
+        kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        stableKey = "task:$taskId",
+        status = ConvergenceStatus.COMPLETED,
+        classification = "completed_task",
+        summary = "completed implementation task $taskId",
+      )
+    }
+  val unresolved = (produced["unresolved_items"] as? List<*>)
+    .orEmpty()
+    .mapNotNull { value ->
+      when (value) {
+        is String -> value
+        is Map<*, *> -> value["ref"] as? String ?: value["note"] as? String
+        else -> null
+      }
+    }
+    .distinct()
+    .map { item ->
+      convergenceImplementationReceiptRecord(
+        request = request,
+        generation = generation,
+        createdAt = createdAt,
+        kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+        stableKey = "unresolved:$item",
+        status = ConvergenceStatus.OPEN,
+        classification = "unresolved_item",
+        summary = item,
+      )
+    }
+  val deviations = (produced["deviations"] as? List<*>)
+    .orEmpty()
+    .mapNotNull { value -> (value as? Map<*, *>)?.let(JsonSupport::anyToStringAnyMap) }
+    .mapNotNull { deviation ->
+      val ref = deviation["ref"] as? String ?: return@mapNotNull null
+      val note = deviation["note"] as? String ?: return@mapNotNull null
+      ref to note
+    }
+    .distinct()
+    .map { (ref, note) ->
+      convergenceImplementationReceiptRecord(
+        request = request,
+        generation = generation,
+        createdAt = createdAt,
+        kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+        stableKey = "deviation:$ref",
+        status = ConvergenceStatus.OPEN,
+        classification = "deviation",
+        summary = "$ref: $note",
+      )
+    }
+  return completedTasks + unresolved + deviations
+}
+
+private fun convergenceImplementationReceiptRecord(
+  request: FeatureTaskRuntimePhaseStateRequest,
+  generation: Int,
+  createdAt: String,
+  kind: ConvergenceRecordKind,
+  stableKey: String,
+  status: ConvergenceStatus,
+  classification: String,
+  summary: String,
+): ConvergenceRecord {
+  val logicalId = ConvergenceIdentities.logical(request.workflowId, kind, stableKey)
+  return ConvergenceRecord(
+    recordId = ConvergenceIdentities.record(request.workflowId, kind, logicalId, generation),
+    logicalId = logicalId,
+    kind = kind,
+    provenance = ConvergenceProvenance(
+      request.workflowId,
+      generation,
+      "implement",
+      attempt = request.attemptCount,
+    ),
+    evidenceDigest = ConvergenceIdentities.digest("$stableKey|$summary"),
+    createdAt = createdAt,
+    status = status,
+    classification = classification,
+    summary = summary.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+  )
+}
+
 internal fun reconcileLatestRepairResults(
   priorResults: List<FeatureTaskRuntimeRepairItemResult>,
   currentResults: List<FeatureTaskRuntimeRepairItemResult>,
@@ -1473,10 +1438,6 @@ private data class CompletedGoalReviewPhaseRecords(
   val records: Map<String, FeatureTaskRuntimePhaseRecord>,
   val ledger: List<Map<String, Any?>>,
 )
-
-// How the coarse workflow row + shared steps[] advance alongside a per-phase record write. Grouping
-// these together keeps persistPatch a three-argument seam; the default keeps the row untouched for
-// writes (briefings, ledger, resolved branch) that only patch artifacts.
 private data class WorkflowRowAdvance(
   val currentStepId: String,
   val workflowStatus: String,
@@ -1487,21 +1448,9 @@ private data class WorkflowRowAdvance(
       WorkflowRowAdvance(currentStepId = record.currentStepId, workflowStatus = record.workflowStatus)
   }
 }
-
-// Projects the per-phase records map onto shared per-step step_updates so steps[] tracks records
-// in lockstep: each record's runtime status maps to its step status and carries its attempt count.
-// The engine's mergeStepUpdates preserves definition order and leaves unmentioned steps untouched,
-// so prior completed phases keep their completed step and only the touched phases are rewritten.
-//
-// Phase statuses share the step-status vocabulary (running/completed/blocked): a blocked record
-// stays blocked even when it also carries a finished timestamp; otherwise a finished record is
-// completed. An unrecognized status loud-fails rather than silently producing an out-of-vocabulary
-// step status the engine would reject.
 private fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
   fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
-    // A paused record is resumable, not finished: it keeps its paused step status even though the
-    // pause is recorded with a finished timestamp.
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
     record.finishedAt != null -> "completed"
     record.status == "running" || record.status == "completed" -> record.status
@@ -1558,11 +1507,6 @@ class FeatureTaskRuntimeDecomposeTerminalRecorder(
 private const val IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY =
   "feature_task_runtime_implementation_receipt_attempt_history"
 private const val IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT = 32
-
-// Coarse workflow-row status mirrors the phase transition: a paused phase leaves the row on the
-// non-terminal resumable status, a blocked phase blocks the row, the final phase completing completes
-// it, every other transition keeps it running. The per-phase records map remains the detailed source
-// of truth.
 private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> "paused"
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"

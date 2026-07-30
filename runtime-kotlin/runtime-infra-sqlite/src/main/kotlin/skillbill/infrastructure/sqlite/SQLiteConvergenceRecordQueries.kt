@@ -48,7 +48,6 @@ internal fun Connection.requireConvergenceParentRelationship(
   val parent = history.lastOrNull {
     it.logicalId == record.parentLogicalId &&
       it.kind == expectedParentKind &&
-      it.provenance.generation == record.provenance.generation &&
       convergenceReviewPassIsCompatible(record, it)
   }
   require(parent != null) {
@@ -67,7 +66,8 @@ internal fun convergenceReviewPassIsCompatible(child: ConvergenceRecord, parent:
   if (child.kind == ConvergenceRecordKind.REVIEW_DISPOSITION) {
     requireNotNull(child.provenance.reviewPass) >= requireNotNull(parent.provenance.reviewPass)
   } else {
-    child.provenance.reviewPass == parent.provenance.reviewPass
+    child.provenance.generation >= parent.provenance.generation &&
+      child.provenance.reviewPass == parent.provenance.reviewPass
   }
 
 private fun ResultSet.toConvergenceRecord() = ConvergenceRecord(
