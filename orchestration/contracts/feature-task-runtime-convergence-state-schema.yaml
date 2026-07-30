@@ -120,6 +120,15 @@ allOf:
         anyOf:
           - required: [attempt]
           - required: [review_pass]
+  - if:
+      properties:
+        kind:
+          const: legacy_import
+    then:
+      not:
+        anyOf:
+          - required: [attempt]
+          - required: [review_pass]
 $defs:
   identity:
     type: string

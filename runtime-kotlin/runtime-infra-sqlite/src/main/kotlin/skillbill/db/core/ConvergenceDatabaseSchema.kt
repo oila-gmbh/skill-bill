@@ -14,17 +14,33 @@ internal object ConvergenceDatabaseSchema {
   val statements: List<String> = listOf(
     """
     CREATE TABLE IF NOT EXISTS feature_task_convergence_records (
-      record_id TEXT PRIMARY KEY CHECK(length(record_id) BETWEEN 1 AND 160),
+      record_id TEXT PRIMARY KEY CHECK(
+        length(record_id) BETWEEN 1 AND 160 AND
+        substr(record_id, 1, 1) GLOB '[A-Za-z0-9]' AND
+        record_id NOT GLOB '*[^A-Za-z0-9._:/-]*'
+      ),
       contract_version TEXT NOT NULL CHECK(contract_version = '0.1'),
-      workflow_id TEXT NOT NULL CHECK(length(workflow_id) BETWEEN 1 AND 160),
+      workflow_id TEXT NOT NULL CHECK(
+        length(workflow_id) BETWEEN 1 AND 160 AND
+        substr(workflow_id, 1, 1) GLOB '[A-Za-z0-9]' AND
+        workflow_id NOT GLOB '*[^A-Za-z0-9._:/-]*'
+      ),
       record_kind TEXT NOT NULL CHECK(record_kind IN (
         'IMPLEMENTATION_OUTCOME', 'IMPLEMENTATION_OBLIGATION', 'AUDIT_GAP', 'AUDIT_REPAIR',
         'REVIEW_FINDING', 'REVIEW_DISPOSITION', 'REPOSITORY_CHECKPOINT', 'LEGACY_IMPORT'
       )),
       generation INTEGER NOT NULL CHECK(generation BETWEEN 1 AND 2147483647),
-      logical_id TEXT NOT NULL CHECK(length(logical_id) BETWEEN 1 AND 160),
+      logical_id TEXT NOT NULL CHECK(
+        length(logical_id) BETWEEN 1 AND 160 AND
+        substr(logical_id, 1, 1) GLOB '[A-Za-z0-9]' AND
+        logical_id NOT GLOB '*[^A-Za-z0-9._:/-]*'
+      ),
       parent_logical_id TEXT CHECK(
-        parent_logical_id IS NULL OR length(parent_logical_id) BETWEEN 1 AND 160
+        parent_logical_id IS NULL OR (
+          length(parent_logical_id) BETWEEN 1 AND 160 AND
+          substr(parent_logical_id, 1, 1) GLOB '[A-Za-z0-9]' AND
+          parent_logical_id NOT GLOB '*[^A-Za-z0-9._:/-]*'
+        )
       ),
       parent_record_id TEXT,
       phase_id TEXT NOT NULL CHECK(phase_id IN ('implement', 'audit', 'review')),
@@ -41,9 +57,12 @@ internal object ConvergenceDatabaseSchema {
       )),
       summary TEXT CHECK(summary IS NULL OR length(summary) BETWEEN 1 AND 512),
       affected_path TEXT CHECK(affected_path IS NULL OR length(affected_path) BETWEEN 1 AND 512),
-      evidence_digest TEXT NOT NULL CHECK(length(evidence_digest) = 64),
+      evidence_digest TEXT NOT NULL CHECK(
+        length(evidence_digest) = 64 AND
+        evidence_digest NOT GLOB '*[^a-f0-9]*'
+      ),
       evidence_ref TEXT CHECK(evidence_ref IS NULL OR length(evidence_ref) BETWEEN 1 AND 512),
-      created_at TEXT NOT NULL,
+      created_at TEXT NOT NULL CHECK(datetime(created_at) IS NOT NULL),
       CHECK(
         (record_kind IN ('AUDIT_REPAIR', 'REVIEW_DISPOSITION') AND parent_logical_id IS NOT NULL) OR
         (record_kind NOT IN ('AUDIT_REPAIR', 'REVIEW_DISPOSITION') AND parent_logical_id IS NULL)

@@ -3726,6 +3726,8 @@ internal class FeatureTaskRuntimeRunLoop(
           run.request.workflowId,
           normalizedOutput.envelope,
           run.request.dbPathOverride,
+          completionDecision = decision,
+          authoritativePlan = authoritativePlan,
         )
         AttemptResult.semanticIncomplete(
           implementationContinuationReason(decision),
@@ -3895,7 +3897,8 @@ internal class FeatureTaskRuntimeRunLoop(
       recorder.recordImplementationReceiptAttempt(
         run.request.workflowId,
         normalizedOutput.envelope,
-        run.request.dbPathOverride,
+        dbOverride = run.request.dbPathOverride,
+        appendConvergenceRecords = false,
       )
     } else {
       val persisted = recorder.recordCompletedPhase(

@@ -3,6 +3,7 @@ package skillbill.infrastructure.sqlite
 import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.model.LegacyReconciliation
+import skillbill.workflow.taskruntime.ConvergenceStateCodec
 import skillbill.workflow.taskruntime.ConvergenceStateSchemaValidator
 import skillbill.workflow.taskruntime.model.CONVERGENCE_STATE_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
@@ -20,6 +21,10 @@ class SQLiteConvergenceStateRepository(
   private val schemaValidator: ConvergenceStateSchemaValidator = bundledConvergenceStateSchemaValidator(),
 ) : ConvergenceStateRepository {
   override fun append(record: ConvergenceRecord): ReplayResult {
+    schemaValidator.validate(
+      ConvergenceStateCodec.encodeRecord(record),
+      "feature_task_convergence_records:${record.recordId}",
+    )
     val expectedRecordId = ConvergenceIdentities.record(
       record.provenance.workflowId,
       record.kind,

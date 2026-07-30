@@ -99,10 +99,12 @@ object ConvergenceStateCodec {
 
   fun encodeLegacySource(records: List<ConvergenceRecord>): String = buildJsonObject {
     put("contract_version", CONVERGENCE_STATE_CONTRACT_VERSION)
-    put("records", buildJsonArray { records.forEach { add(encodeRecord(it)) } })
+    put("records", buildJsonArray { records.forEach { add(encodeRecordObject(it)) } })
   }.toString()
 
-  private fun encodeRecord(record: ConvergenceRecord): JsonObject = buildJsonObject {
+  fun encodeRecord(record: ConvergenceRecord): String = encodeRecordObject(record).toString()
+
+  private fun encodeRecordObject(record: ConvergenceRecord): JsonObject = buildJsonObject {
     put("contract_version", CONVERGENCE_STATE_CONTRACT_VERSION)
     put("record_id", record.recordId)
     put("workflow_id", record.provenance.workflowId)

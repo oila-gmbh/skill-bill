@@ -143,6 +143,7 @@ internal object AuditConvergenceDatabaseSchema {
       verification_ref TEXT NOT NULL CHECK(length(verification_ref) BETWEEN 1 AND 512),
       disposition_generation INTEGER NOT NULL CHECK(disposition_generation > 0),
       created_at TEXT NOT NULL,
+      UNIQUE(workflow_id, item_id, disposition_generation),
       FOREIGN KEY(workflow_id, item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE,
       FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
@@ -150,6 +151,10 @@ internal object AuditConvergenceDatabaseSchema {
     """
     CREATE INDEX IF NOT EXISTS idx_audit_repair_results_item
       ON feature_task_audit_repair_item_results(item_id)
+    """.trimIndent(),
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_repair_result_generation
+      ON feature_task_audit_repair_item_results(workflow_id, item_id, disposition_generation)
     """.trimIndent(),
     """
     CREATE TABLE IF NOT EXISTS feature_task_audit_repair_non_regression (
@@ -174,8 +179,13 @@ internal object AuditConvergenceDatabaseSchema {
       evidence_check_ref TEXT NOT NULL CHECK(length(evidence_check_ref) BETWEEN 1 AND 256),
       disposition_generation INTEGER NOT NULL CHECK(disposition_generation > 0),
       superseded_by_generation INTEGER CHECK(superseded_by_generation IS NULL OR superseded_by_generation > 0),
+      UNIQUE(workflow_id, gap_id, disposition_generation),
       FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
     )
+    """.trimIndent(),
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_gap_disposition_generation
+      ON feature_task_audit_gap_dispositions(workflow_id, gap_id, disposition_generation)
     """.trimIndent(),
   )
 }

@@ -73,8 +73,45 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       """.trimIndent(),
     )
     statement.execute(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_generation_ordinal " +
-        "ON review_generations(workflow_id, generation_ordinal)",
+      """
+      CREATE TABLE review_generations_v22 (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        generation_ordinal INTEGER NOT NULL CHECK (generation_ordinal > 0),
+        review_base TEXT NOT NULL,
+        reviewed_delta_digest TEXT NOT NULL,
+        repository_checkpoint TEXT NOT NULL,
+        superseded_by_generation_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id),
+        UNIQUE (workflow_id, generation_ordinal)
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO review_generations_v22(
+        workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
+        repository_checkpoint, superseded_by_generation_id, created_at
+      )
+      SELECT workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
+        repository_checkpoint, superseded_by_generation_id, created_at
+      FROM review_generations
+      """.trimIndent(),
+    )
+    statement.execute("DROP TABLE review_generations")
+    statement.execute("ALTER TABLE review_generations_v22 RENAME TO review_generations")
+    statement.execute(
+      """
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_repair_result_generation
+      ON feature_task_audit_repair_item_results(workflow_id, item_id, disposition_generation)
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_gap_disposition_generation
+      ON feature_task_audit_gap_dispositions(workflow_id, gap_id, disposition_generation)
+      """.trimIndent(),
     )
   }
 }

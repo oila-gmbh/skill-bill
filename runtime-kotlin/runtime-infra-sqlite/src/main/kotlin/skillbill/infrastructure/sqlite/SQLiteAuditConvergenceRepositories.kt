@@ -68,6 +68,14 @@ class SQLiteAuditGenerationStore(
 
       persistSatisfiedCriteria(connection, generation)
       persistGaps(connection, generation)
+      if (generation.repairBatch?.isActive == true) {
+        connection.prepareStatement(
+          "UPDATE feature_task_audit_repair_batches SET is_active = 0 WHERE workflow_id = ? AND is_active = 1",
+        ).use { statement ->
+          statement.setString(1, generation.workflowId)
+          statement.executeUpdate()
+        }
+      }
       persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
       val replayed = getByGeneration(generation.workflowId, generation.generation)
       require(replayed == generation) {
@@ -829,7 +837,7 @@ class SQLiteAuditRepairQuery(
     val resultId = ConvergenceIdentities.logical(
       workflowId,
       ConvergenceRecordKind.AUDIT_REPAIR,
-      "${result.itemId}:${result.dispositionGeneration}:${result.outcome.name}",
+      "${result.itemId}:${result.dispositionGeneration}",
     )
     connection.prepareStatement(
       """
