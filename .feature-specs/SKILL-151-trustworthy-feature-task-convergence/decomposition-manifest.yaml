@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Durable convergence contracts and normalized persistence"
   spec_path: ".feature-specs/SKILL-151-trustworthy-feature-task-convergence/spec_subtask_1_durable-convergence-contracts-and-normalized-persistence.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260730-031606-icm0"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

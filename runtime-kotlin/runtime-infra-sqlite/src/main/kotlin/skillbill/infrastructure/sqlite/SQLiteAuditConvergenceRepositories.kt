@@ -26,7 +26,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import java.sql.Connection
-import java.sql.SQLException
 
 class SQLiteAuditGenerationStore(
   private val connection: Connection,
@@ -45,54 +44,41 @@ class SQLiteAuditGenerationStore(
       "Cannot persist generation ${generation.generation} when generation ${existing?.generation} already exists."
     }
 
-    val priorAutoCommit = connection.autoCommit
-    if (priorAutoCommit) connection.autoCommit = false
-    try {
-      connection.prepareStatement(
-        """
+    connection.prepareStatement(
+      """
       INSERT INTO feature_task_audit_generations(
         generation_id, workflow_id, generation, repository_fingerprint, repository_evidence_ref,
         created_at
       ) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(workflow_id, generation) DO NOTHING
-        """.trimIndent(),
-      ).use { stmt ->
-        stmt.setString(1, generation.generationId)
-        stmt.setString(2, generation.workflowId)
-        stmt.setInt(3, generation.generation)
-        stmt.setString(4, generation.repositoryCheckpoint.fingerprint)
-        stmt.setString(5, generation.repositoryCheckpoint.evidenceRef)
-        stmt.setString(6, generation.createdAt)
-        stmt.executeUpdate()
-      }
-
-      persistSatisfiedCriteria(connection, generation)
-      persistGaps(connection, generation)
-      if (generation.repairBatch?.isActive == true) {
-        connection.prepareStatement(
-          "UPDATE feature_task_audit_repair_batches SET is_active = 0 WHERE workflow_id = ? AND is_active = 1",
-        ).use { statement ->
-          statement.setString(1, generation.workflowId)
-          statement.executeUpdate()
-        }
-      }
-      persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
-      val replayed = getByGeneration(generation.workflowId, generation.generation)
-      require(replayed == generation) {
-        "Persisted audit generation ${generation.generation} did not replay as its complete aggregate."
-      }
-      appendCanonicalGeneration(generation)
-      if (priorAutoCommit) connection.commit()
-      return replayed
-    } catch (error: SQLException) {
-      if (priorAutoCommit) connection.rollback()
-      throw error
-    } catch (error: IllegalArgumentException) {
-      if (priorAutoCommit) connection.rollback()
-      throw error
-    } finally {
-      if (priorAutoCommit) connection.autoCommit = true
+      """.trimIndent(),
+    ).use { stmt ->
+      stmt.setString(1, generation.generationId)
+      stmt.setString(2, generation.workflowId)
+      stmt.setInt(3, generation.generation)
+      stmt.setString(4, generation.repositoryCheckpoint.fingerprint)
+      stmt.setString(5, generation.repositoryCheckpoint.evidenceRef)
+      stmt.setString(6, generation.createdAt)
+      stmt.executeUpdate()
     }
+
+    persistSatisfiedCriteria(connection, generation)
+    persistGaps(connection, generation)
+    if (generation.repairBatch?.isActive == true) {
+      connection.prepareStatement(
+        "UPDATE feature_task_audit_repair_batches SET is_active = 0 WHERE workflow_id = ? AND is_active = 1",
+      ).use { statement ->
+        statement.setString(1, generation.workflowId)
+        statement.executeUpdate()
+      }
+    }
+    persistRepairBatch(connection, generation.workflowId, generation.repairBatch)
+    val replayed = getByGeneration(generation.workflowId, generation.generation)
+    require(replayed == generation) {
+      "Persisted audit generation ${generation.generation} did not replay as its complete aggregate."
+    }
+    appendCanonicalGeneration(generation)
+    return replayed
   }
 
   override fun getLatest(workflowId: String): AuditGeneration? = connection.prepareStatement(
@@ -911,7 +897,7 @@ class SQLiteAuditRepairQuery(
         FROM feature_task_audit_repair_item_results result
         WHERE result.workflow_id = g.workflow_id
           AND result.item_id = m.item_id
-          AND result.disposition_generation >= g.generation
+          AND result.disposition_generation = g.generation
       )
       ORDER BY m.item_id ASC
     """.trimIndent(),

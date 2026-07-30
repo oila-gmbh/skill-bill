@@ -13,6 +13,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.WorkflowScopedCheckpointRequest
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -96,14 +97,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-    // An operator-granted retry round re-opens the consumed final pass instead of carrying its stale
-    // result forward, so the fix the operator paid for is actually re-reviewed. The pass number is
-    // unchanged: no new pass is reserved.
     val retryReopened = state.reserveNextPass()
     if (state.retryReviewPending && retryReopened != state) {
-      // The raw results map is keyed by completed pass and is validated against passResults on every
-      // read, so dropping the re-opened pass's result in the same patch is what keeps the record
-      // decodable rather than leaving an orphaned entry behind.
       val keptResults = rawReviewResultsFromArtifacts(artifacts, state)
         .filterKeys { passNumber -> passNumber != state.completedPassCount.toString() }
       savePatch(
@@ -147,9 +142,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     }
     val updated = state.copy(
       reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-      // The staleness check recomputes this digest from the immutable baseline, so only an
-      // immutable-baseline input may set it. A remediation-scoped digest could never match that
-      // recomputation, which would judge every capped subtask stale and reopen it on each resume.
       reviewedDeltaDigest = if (input.reviewBaseSha == state.reviewBaseSha) {
         input.deltaDigest
       } else {
@@ -169,11 +161,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     updated
   }
 
-  /**
-   * The single read-modify-write seam for the durable review state. Every per-field mutator routes
-   * through it so they cannot drift on transaction shape, missing-record handling, or the artifact
-   * key they patch. A transform that returns its input is a no-op write.
-   */
   fun updateReviewState(
     workflowId: String,
     dbOverride: String? = null,
@@ -360,7 +347,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       workflowId = workflowId,
       state = state,
       continuation = continuation,
-      resolved = resolved,
       gitOperations = gitOperations,
       repoRoot = repoRoot,
       dbOverride = dbOverride,
@@ -382,12 +368,19 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     workflowId: String,
     state: GoalSubtaskReviewState,
     continuation: FeatureTaskRuntimeGoalContinuationArtifact,
-    resolved: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
     dbOverride: String?,
   ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
     val scopedCheckpointOperations = gitOperations.scopedCheckpointOperations
+    val currentPaths = gitOperations.repositoryOwnedPaths(repoRoot)
+    if (!currentPaths.ok) return null
+    val reviewPaths = currentPaths.value.orEmpty()
+      .split('\u0000')
+      .filter(String::isNotBlank)
+      .distinct()
+      .sorted()
+    if (reviewPaths.isEmpty()) return null
     val checkpoint = scopedCheckpointOperations.createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -395,8 +388,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         phase = "review",
         loop = if (state.remediationBaseSha == null) "initial" else "review_fix",
         generation = state.reservedPassNumber ?: state.completedPassCount + 1,
-        ownedPaths = resolved.workflowOwnedPaths,
-        expectedContentIdentities = resolved.workflowOwnedPathContentIdentities,
+        ownedPaths = reviewPaths,
         commitMessage = "chore(skill-bill): immutable review checkpoint for ${continuation.issueKey}",
       ),
     )
@@ -454,8 +446,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         rebuilt.error.ifBlank { request.failureMessage }
     }
     val input = requireNotNull(rebuilt.input)
-    // Persisting the recovered baseline and its input is the last step of recovery, not a separate
-    // seam: they must land in one transaction that re-reads the record and re-checks recoverability.
     val persisted = database.transaction(request.execution.dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction null

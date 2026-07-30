@@ -1606,7 +1606,8 @@ private fun auditConvergenceRecords(
   createdAt: String,
 ): List<ConvergenceRecord> {
   val isRepair = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-  val generation = state.decisionGenerations.last().generation + if (isRepair) 1 else 0
+  val sourceGeneration = state.decisionGenerations.last().generation
+  val generation = sourceGeneration + if (isRepair) 1 else 0
   val latestPlan = state.acceptedPlans.last()
   val gaps = latestPlan.gaps.flatMap { gap ->
     val gapLogicalId = ConvergenceIdentities.logical(
@@ -1637,7 +1638,7 @@ private fun auditConvergenceRecords(
       val logicalId = ConvergenceIdentities.logical(
         request.workflowId,
         ConvergenceRecordKind.AUDIT_REPAIR,
-        item.repairItemId,
+        "${item.repairItemId}:$sourceGeneration",
       )
       ConvergenceRecord(
         recordId = ConvergenceIdentities.record(
@@ -1668,7 +1669,7 @@ private fun auditConvergenceRecords(
     val logicalId = ConvergenceIdentities.logical(
       request.workflowId,
       ConvergenceRecordKind.AUDIT_REPAIR,
-      result.repairItemId,
+      "${result.repairItemId}:$sourceGeneration",
     )
     ConvergenceRecord(
       recordId = ConvergenceIdentities.record(
@@ -1793,7 +1794,7 @@ private fun persistNormalizedAuditState(
     }
   }
   if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
-    val generation = state.decisionGenerations.last().generation + 1
+    val generation = state.decisionGenerations.last().generation
     state.repairItemResults.forEach { result ->
       unitOfWork.auditRepairs.appendResult(
         request.workflowId,

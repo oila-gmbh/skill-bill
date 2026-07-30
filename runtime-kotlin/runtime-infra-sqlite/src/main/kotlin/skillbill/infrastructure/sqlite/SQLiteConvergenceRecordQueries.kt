@@ -64,7 +64,11 @@ internal fun expectedConvergenceParentKind(kind: ConvergenceRecordKind): Converg
 
 internal fun convergenceReviewPassIsCompatible(child: ConvergenceRecord, parent: ConvergenceRecord): Boolean =
   if (child.kind == ConvergenceRecordKind.REVIEW_DISPOSITION) {
-    requireNotNull(child.provenance.reviewPass) >= requireNotNull(parent.provenance.reviewPass)
+    child.provenance.generation > parent.provenance.generation ||
+      (
+        child.provenance.generation == parent.provenance.generation &&
+          requireNotNull(child.provenance.reviewPass) >= requireNotNull(parent.provenance.reviewPass)
+        )
   } else {
     child.provenance.generation >= parent.provenance.generation &&
       child.provenance.reviewPass == parent.provenance.reviewPass

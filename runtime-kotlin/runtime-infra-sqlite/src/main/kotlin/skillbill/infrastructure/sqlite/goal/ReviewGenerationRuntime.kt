@@ -98,35 +98,56 @@ internal class ReviewGenerationRuntime(
     finding: GoalSubtaskReviewFinding,
   ) {
     val existing = connection.loadReviewFinding(workflowId, finding.findingId)
-    if (existing != null) {
-      require(existing == finding) { "Conflicting immutable review finding '${finding.findingId}'." }
-    } else {
+    val existingGenerationId = connection.loadReviewFindingGeneration(workflowId, finding.findingId)
+    val persistedFinding = when {
+      existing == null || existing == finding -> finding
+      existingGenerationId == generationId -> finding
+      existing.copy(sourceGenerationId = finding.sourceGenerationId) == finding -> existing
+      else -> finding.copy(findingId = "${finding.sourceGenerationId}:${finding.findingId}")
+    }
+    val persisted = connection.loadReviewFinding(workflowId, persistedFinding.findingId)
+    require(persisted == null || persisted == persistedFinding || existingGenerationId == generationId) {
+      "Conflicting immutable review finding '${persistedFinding.findingId}'."
+    }
+    if (persisted == null || existingGenerationId == generationId) {
       connection.prepareStatement(
         """
         INSERT INTO review_generation_findings (
           workflow_id, generation_id, pass_number, finding_id, severity,
           category, location, summary, source_generation_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workflow_id, finding_id) DO UPDATE SET
+          generation_id = excluded.generation_id,
+          pass_number = excluded.pass_number,
+          severity = excluded.severity,
+          category = excluded.category,
+          location = excluded.location,
+          summary = excluded.summary,
+          source_generation_id = excluded.source_generation_id,
+          created_at = CURRENT_TIMESTAMP
         """.trimIndent(),
       ).use { statement ->
         var parameterIndex = 1
         statement.setString(parameterIndex++, workflowId)
         statement.setString(parameterIndex++, generationId)
         statement.setInt(parameterIndex++, passNumber)
-        statement.setString(parameterIndex++, finding.findingId)
-        statement.setString(parameterIndex++, finding.severity)
-        statement.setString(parameterIndex++, finding.category)
-        statement.setString(parameterIndex++, finding.location)
-        statement.setString(parameterIndex++, finding.summary)
-        statement.setString(parameterIndex, finding.sourceGenerationId)
+        statement.setString(parameterIndex++, persistedFinding.findingId)
+        statement.setString(parameterIndex++, persistedFinding.severity)
+        statement.setString(parameterIndex++, persistedFinding.category)
+        statement.setString(parameterIndex++, persistedFinding.location)
+        statement.setString(parameterIndex++, persistedFinding.summary)
+        statement.setString(parameterIndex, persistedFinding.sourceGenerationId)
         statement.executeUpdate()
       }
     }
-    appendConvergenceFinding(workflowId, generationId, passNumber, finding)
+    appendConvergenceFinding(workflowId, generationId, passNumber, persistedFinding)
   }
 
   override fun appendDisposition(record: GoalSubtaskReviewFindingDispositionRecord) {
-    val evidenceJson = record.evidence.joinToString(prefix = "[\"", separator = "\",\"", postfix = "\"]") {
+    val persistedRecord = record.copy(
+      findingId = connection.resolveReviewFindingId(record.workflowId, record.generationId, record.findingId),
+    )
+    val evidenceJson = persistedRecord.evidence.joinToString(prefix = "[\"", separator = "\",\"", postfix = "\"]") {
       it.replace("\\", "\\\\").replace("\"", "\\\"")
     }
     connection.prepareStatement(
@@ -134,39 +155,21 @@ internal class ReviewGenerationRuntime(
       INSERT INTO review_finding_dispositions (
         workflow_id, generation_id, finding_id, disposition, evidence_json
       ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(workflow_id, generation_id, finding_id) DO NOTHING
+      ON CONFLICT(workflow_id, generation_id, finding_id) DO UPDATE SET
+        disposition = excluded.disposition,
+        evidence_json = excluded.evidence_json,
+        created_at = CURRENT_TIMESTAMP
       """.trimIndent(),
     ).use { statement ->
       var parameterIndex = 1
-      statement.setString(parameterIndex++, record.workflowId)
-      statement.setString(parameterIndex++, record.generationId)
-      statement.setString(parameterIndex++, record.findingId)
-      statement.setString(parameterIndex++, record.disposition.wireValue)
+      statement.setString(parameterIndex++, persistedRecord.workflowId)
+      statement.setString(parameterIndex++, persistedRecord.generationId)
+      statement.setString(parameterIndex++, persistedRecord.findingId)
+      statement.setString(parameterIndex++, persistedRecord.disposition.wireValue)
       statement.setString(parameterIndex, evidenceJson)
       statement.executeUpdate()
     }
-    connection.prepareStatement(
-      """
-      SELECT disposition, evidence_json
-      FROM review_finding_dispositions
-      WHERE workflow_id = ? AND generation_id = ? AND finding_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      var parameterIndex = 1
-      statement.setString(parameterIndex++, record.workflowId)
-      statement.setString(parameterIndex++, record.generationId)
-      statement.setString(parameterIndex, record.findingId)
-      statement.executeQuery().use { rows ->
-        require(
-          rows.next() &&
-            rows.getString("disposition") == record.disposition.wireValue &&
-            rows.getString("evidence_json") == evidenceJson,
-        ) {
-          "Conflicting immutable review disposition '${record.generationId}/${record.findingId}'."
-        }
-      }
-    }
-    appendConvergenceDisposition(record)
+    appendConvergenceDisposition(persistedRecord)
   }
 
   override fun loadGeneration(identity: GoalSubtaskReviewGenerationIdentity): GoalSubtaskReviewGeneration? =
@@ -180,6 +183,9 @@ internal class ReviewGenerationRuntime(
   }
 
   override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> {
+    if (!connection.hasConvergenceWorkflow(workflowId)) {
+      return connection.loadLegacyUnresolvedBlockers(workflowId)
+    }
     val unresolvedLogicalIds = convergence.unresolved(workflowId).reviewBlockers
       .mapTo(linkedSetOf(), ConvergenceRecord::logicalId)
     return connection.prepareStatement(
@@ -258,6 +264,7 @@ internal class ReviewGenerationRuntime(
     passNumber: Int,
     finding: GoalSubtaskReviewFinding,
   ) {
+    if (!connection.hasConvergenceWorkflow(workflowId)) return
     val generation = connection.reviewGenerationOrdinal(workflowId, generationId)
     val logicalId = ConvergenceIdentities.logical(
       workflowId,
@@ -295,6 +302,7 @@ internal class ReviewGenerationRuntime(
 
   private fun appendConvergenceCheckpoint(generation: GoalSubtaskReviewGeneration) {
     val identity = generation.identity
+    if (!connection.hasConvergenceWorkflow(identity.workflowId)) return
     val ordinal = connection.reviewGenerationOrdinal(identity.workflowId, identity.generationId)
     val logicalId = ConvergenceIdentities.logical(
       identity.workflowId,
@@ -328,6 +336,7 @@ internal class ReviewGenerationRuntime(
   }
 
   private fun appendConvergenceDisposition(record: GoalSubtaskReviewFindingDispositionRecord) {
+    if (!connection.hasConvergenceWorkflow(record.workflowId)) return
     val generation = connection.reviewGenerationOrdinal(record.workflowId, record.generationId)
     val parentLogicalId = ConvergenceIdentities.logical(
       record.workflowId,
@@ -374,6 +383,34 @@ private fun ConvergenceStateRepository.appendOrThrow(record: ConvergenceRecord) 
   }
 }
 
+private fun Connection.hasConvergenceWorkflow(workflowId: String): Boolean = prepareStatement(
+  "SELECT 1 FROM feature_task_workflows WHERE workflow_id = ?",
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.executeQuery().use { it.next() }
+}
+
+private fun Connection.loadLegacyUnresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> =
+  prepareStatement(
+    """
+    SELECT f.finding_id, f.severity, f.category, f.location, f.summary, f.source_generation_id
+    FROM review_generation_findings f
+    WHERE f.workflow_id = ?
+      AND f.severity = 'blocker'
+      AND COALESCE((
+        SELECT d.disposition
+        FROM review_finding_dispositions d
+        WHERE d.workflow_id = f.workflow_id AND d.finding_id = f.finding_id
+        ORDER BY d.created_at DESC, d.generation_id DESC
+        LIMIT 1
+      ), 'unresolved') IN ('unresolved', 'still_present')
+    ORDER BY f.finding_id
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeQuery().use { rows -> buildList { while (rows.next()) add(rows.toFinding()) } }
+  }
+
 private fun Connection.reviewGenerationOrdinal(workflowId: String, generationId: String): Int = prepareStatement(
   "SELECT generation_ordinal FROM review_generations WHERE workflow_id = ? AND generation_id = ?",
 ).use { statement ->
@@ -407,7 +444,7 @@ private fun Connection.reviewGenerationCreatedAt(workflowId: String, generationI
   statement.setString(2, generationId)
   statement.executeQuery().use { rows ->
     require(rows.next()) { "Review generation '$generationId' is not durable." }
-    rows.getString(1)
+    rows.getString(1).toConvergenceTimestamp()
   }
 }
 
@@ -418,7 +455,7 @@ private fun Connection.reviewFindingCreatedAt(workflowId: String, findingId: Str
   statement.setString(2, findingId)
   statement.executeQuery().use { rows ->
     require(rows.next()) { "Review finding '$findingId' is not durable." }
-    rows.getString(1)
+    rows.getString(1).toConvergenceTimestamp()
   }
 }
 
@@ -435,7 +472,7 @@ private fun Connection.reviewDispositionCreatedAt(record: GoalSubtaskReviewFindi
     statement.setString(3, record.findingId)
     statement.executeQuery().use { rows ->
       require(rows.next()) { "Review disposition '${record.generationId}/${record.findingId}' is not durable." }
-      rows.getString(1)
+      rows.getString(1).toConvergenceTimestamp()
     }
   }
 
@@ -523,6 +560,23 @@ private fun Connection.loadReviewFinding(workflowId: String, findingId: String):
     statement.setString(1, workflowId)
     statement.setString(2, findingId)
     statement.executeQuery().use { rows -> if (rows.next()) rows.toFinding() else null }
+  }
+
+private fun Connection.loadReviewFindingGeneration(workflowId: String, findingId: String): String? = prepareStatement(
+  "SELECT generation_id FROM review_generation_findings WHERE workflow_id = ? AND finding_id = ?",
+).use { statement ->
+  statement.setString(1, workflowId)
+  statement.setString(2, findingId)
+  statement.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+}
+
+private fun String.toConvergenceTimestamp(): String = if ('T' in this) this else replace(' ', 'T') + "Z"
+
+private fun Connection.resolveReviewFindingId(workflowId: String, generationId: String, findingId: String): String =
+  if (loadReviewFinding(workflowId, findingId)?.sourceGenerationId == generationId) {
+    findingId
+  } else {
+    "$generationId:$findingId".takeIf { loadReviewFinding(workflowId, it) != null } ?: findingId
   }
 
 private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
