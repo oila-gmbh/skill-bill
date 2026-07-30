@@ -825,6 +825,64 @@ class SQLiteAuditRepairBatchStore(
 class SQLiteAuditRepairQuery(
   private val connection: Connection,
 ) : AuditRepairQuery {
+  override fun appendResult(workflowId: String, result: AuditRepairItemResult) {
+    val resultId = ConvergenceIdentities.logical(
+      workflowId,
+      ConvergenceRecordKind.AUDIT_REPAIR,
+      "${result.itemId}:${result.dispositionGeneration}:${result.outcome.name}",
+    )
+    connection.prepareStatement(
+      """
+      INSERT OR IGNORE INTO feature_task_audit_repair_item_results(
+        result_id, item_id, workflow_id, outcome, evidence_ref, verification_ref,
+        disposition_generation, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, resultId)
+      statement.setString(2, result.itemId)
+      statement.setString(3, workflowId)
+      statement.setString(4, result.outcome.name)
+      statement.setString(5, result.evidenceRef)
+      statement.setString(6, result.verificationRef)
+      statement.setInt(7, result.dispositionGeneration)
+      statement.executeUpdate()
+    }
+    require(getPriorResults(workflowId, result.itemId).any { it == result }) {
+      "Conflicting immutable audit repair result '${result.itemId}/${result.dispositionGeneration}'."
+    }
+  }
+
+  override fun appendDisposition(workflowId: String, disposition: AuditGapDisposition) {
+    val dispositionId = ConvergenceIdentities.logical(
+      workflowId,
+      ConvergenceRecordKind.AUDIT_REPAIR,
+      "${disposition.gapId}:${disposition.dispositionGeneration}:${disposition.status.name}",
+    )
+    connection.prepareStatement(
+      """
+      INSERT OR IGNORE INTO feature_task_audit_gap_dispositions(
+        disposition_id, workflow_id, gap_id, status, evidence_observation,
+        evidence_artifact_ref, evidence_check_ref, disposition_generation, superseded_by_generation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, dispositionId)
+      statement.setString(2, workflowId)
+      statement.setString(3, disposition.gapId)
+      statement.setString(4, disposition.status.name)
+      statement.setString(5, disposition.evidence.observation.name)
+      statement.setString(6, disposition.evidence.artifactRef)
+      statement.setString(7, disposition.evidence.checkRef)
+      statement.setInt(8, disposition.dispositionGeneration)
+      statement.setObject(9, disposition.supersededByGeneration)
+      statement.executeUpdate()
+    }
+    require(getAllGapDispositions(workflowId).any { it == disposition }) {
+      "Conflicting immutable audit gap disposition '${disposition.gapId}/${disposition.dispositionGeneration}'."
+    }
+  }
+
   override fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem> = connection.prepareStatement(
     """
       SELECT ari.item_id, ari.gap_id, ari.intended_outcome, ari.implementation_actions,

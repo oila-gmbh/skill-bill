@@ -1,9 +1,9 @@
 package skillbill.infrastructure.sqlite.goal
 
-import skillbill.ports.persistence.ReviewGenerationRepository
 import skillbill.infrastructure.sqlite.SQLiteConvergenceStateRepository
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.ConvergenceStateRepository
+import skillbill.ports.persistence.ReviewGenerationRepository
 import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
@@ -30,14 +30,17 @@ internal class ReviewGenerationRuntime(
     connection.prepareStatement(
       """
       INSERT OR IGNORE INTO review_generations (
-        workflow_id, generation_id, review_base, reviewed_delta_digest,
+        workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
         repository_checkpoint, superseded_by_generation_id
-      ) VALUES (?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, (
+        SELECT COALESCE(MAX(generation_ordinal), 0) + 1 FROM review_generations WHERE workflow_id = ?
+      ), ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       var parameterIndex = 1
       statement.setString(parameterIndex++, identity.workflowId)
       statement.setString(parameterIndex++, identity.generationId)
+      statement.setString(parameterIndex++, identity.workflowId)
       statement.setString(parameterIndex++, identity.reviewBase)
       statement.setString(parameterIndex++, identity.reviewedDeltaDigest)
       statement.setString(parameterIndex++, identity.repositoryCheckpoint)
@@ -176,29 +179,31 @@ internal class ReviewGenerationRuntime(
     statement.executeQuery().use { rows -> rows.next() }
   }
 
-  override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> = connection.prepareStatement(
-    """
+  override fun unresolvedBlockers(workflowId: String): List<GoalSubtaskReviewFinding> {
+    val unresolvedLogicalIds = convergence.unresolved(workflowId).reviewBlockers
+      .mapTo(linkedSetOf(), ConvergenceRecord::logicalId)
+    return connection.prepareStatement(
+      """
       SELECT f.finding_id, f.severity, f.category, f.location, f.summary, f.source_generation_id
       FROM review_generation_findings f
-      JOIN review_generations g
-        ON g.workflow_id = f.workflow_id AND g.generation_id = f.generation_id
       WHERE f.workflow_id = ?
         AND f.severity = 'blocker'
-        AND g.superseded_by_generation_id IS NULL
-        AND COALESCE((
-          SELECT d.disposition
-          FROM review_finding_dispositions d
-          WHERE d.workflow_id = f.workflow_id AND d.finding_id = f.finding_id
-          ORDER BY d.created_at DESC, d.generation_id DESC
-          LIMIT 1
-        ), 'unresolved') IN ('unresolved', 'still_present')
       ORDER BY f.finding_id
-    """.trimIndent(),
-  ).use { statement ->
-    statement.setString(1, workflowId)
-    statement.executeQuery().use { rows ->
-      buildList {
-        while (rows.next()) add(rows.toFinding())
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeQuery().use { rows ->
+        buildList {
+          while (rows.next()) {
+            val finding = rows.toFinding()
+            val logicalId = ConvergenceIdentities.logical(
+              workflowId,
+              ConvergenceRecordKind.REVIEW_FINDING,
+              finding.findingId,
+            )
+            if (logicalId in unresolvedLogicalIds) add(finding)
+          }
+        }
       }
     }
   }
@@ -370,14 +375,7 @@ private fun ConvergenceStateRepository.appendOrThrow(record: ConvergenceRecord) 
 }
 
 private fun Connection.reviewGenerationOrdinal(workflowId: String, generationId: String): Int = prepareStatement(
-  """
-  SELECT COUNT(*)
-  FROM review_generations candidate
-  JOIN review_generations target ON target.workflow_id = candidate.workflow_id
-  WHERE target.workflow_id = ? AND target.generation_id = ?
-    AND (candidate.created_at < target.created_at OR
-      (candidate.created_at = target.created_at AND candidate.generation_id <= target.generation_id))
-  """.trimIndent(),
+  "SELECT generation_ordinal FROM review_generations WHERE workflow_id = ? AND generation_id = ?",
 ).use { statement ->
   statement.setString(1, workflowId)
   statement.setString(2, generationId)

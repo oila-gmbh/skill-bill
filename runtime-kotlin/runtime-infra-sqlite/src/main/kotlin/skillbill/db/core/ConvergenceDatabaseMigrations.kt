@@ -27,8 +27,64 @@ internal object ConvergenceDatabaseMigrations {
       name = "retain-audit-history-and-one-active-repair-batch",
       operation = ::retainAuditHistoryAndOneActiveRepairBatch,
     ),
+    DatabaseMigration(
+      version = 22,
+      name = "align-convergence-record-shapes-and-review-ordinals",
+      operation = ::alignConvergenceRecordShapesAndReviewOrdinals,
+    ),
   )
 }
+
+private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.Connection) {
+  connection.createStatement().use { statement ->
+    statement.execute("DROP INDEX IF EXISTS idx_convergence_history")
+    statement.execute("DROP INDEX IF EXISTS idx_convergence_unresolved")
+    statement.execute("ALTER TABLE feature_task_convergence_records RENAME TO feature_task_convergence_records_v21")
+    statement.execute(ConvergenceDatabaseSchema.statements.first().replace(" IF NOT EXISTS", ""))
+    statement.execute(
+      """
+      INSERT INTO feature_task_convergence_records(
+        record_id, contract_version, workflow_id, record_kind, generation, logical_id,
+        parent_logical_id, parent_record_id, phase_id, attempt, review_pass, record_status,
+        classification, summary, affected_path, evidence_digest, evidence_ref, created_at
+      )
+      SELECT record_id, contract_version, workflow_id, record_kind, generation, logical_id,
+        parent_logical_id, parent_record_id, phase_id, attempt, review_pass, record_status,
+        classification, summary, affected_path, evidence_digest, evidence_ref, created_at
+      FROM feature_task_convergence_records_v21
+      """.trimIndent(),
+    )
+    statement.execute("DROP TABLE feature_task_convergence_records_v21")
+    ConvergenceDatabaseSchema.statements.filter { it.startsWith("CREATE INDEX") }.forEach(statement::execute)
+    if (!connection.hasColumn("review_generations", "generation_ordinal")) {
+      statement.execute("ALTER TABLE review_generations ADD COLUMN generation_ordinal INTEGER")
+    }
+    statement.execute(
+      """
+      UPDATE review_generations
+      SET generation_ordinal = (
+        SELECT COUNT(*)
+        FROM review_generations candidate
+        WHERE candidate.workflow_id = review_generations.workflow_id
+          AND (candidate.created_at < review_generations.created_at OR
+            (candidate.created_at = review_generations.created_at AND
+              candidate.generation_id <= review_generations.generation_id))
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_review_generation_ordinal " +
+        "ON review_generations(workflow_id, generation_ordinal)",
+    )
+  }
+}
+
+private fun java.sql.Connection.hasColumn(table: String, column: String): Boolean =
+  createStatement().use { statement ->
+    statement.executeQuery("PRAGMA table_info($table)").use { rows ->
+      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == column }
+    }
+  }
 
 private fun createInitialConvergenceTables(connection: java.sql.Connection) {
   connection.createStatement().use { statement ->

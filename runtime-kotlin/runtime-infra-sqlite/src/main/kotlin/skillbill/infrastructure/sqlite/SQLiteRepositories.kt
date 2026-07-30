@@ -23,6 +23,9 @@ import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
+import skillbill.ports.persistence.AuditGenerationStore
+import skillbill.ports.persistence.AuditRepairBatchStore
+import skillbill.ports.persistence.AuditRepairQuery
 import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -69,6 +72,9 @@ class SQLiteUnitOfWork(
   override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
     skillbill.db.workflow.GoalPlanningPreparationStore(connection)
   override val convergenceStates: ConvergenceStateRepository = SQLiteConvergenceStateRepository(connection)
+  override val auditGenerations: AuditGenerationStore = SQLiteAuditGenerationStore(connection, convergenceStates)
+  override val auditRepairBatches: AuditRepairBatchStore = SQLiteAuditRepairBatchStore(connection)
+  override val auditRepairs: AuditRepairQuery = SQLiteAuditRepairQuery(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
   override val reviewGenerations: ReviewGenerationRepository = ReviewGenerationRuntime(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =

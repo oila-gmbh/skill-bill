@@ -21,27 +21,49 @@ internal object ConvergenceDatabaseSchema {
         'IMPLEMENTATION_OUTCOME', 'IMPLEMENTATION_OBLIGATION', 'AUDIT_GAP', 'AUDIT_REPAIR',
         'REVIEW_FINDING', 'REVIEW_DISPOSITION', 'REPOSITORY_CHECKPOINT', 'LEGACY_IMPORT'
       )),
-      generation INTEGER NOT NULL CHECK(generation > 0),
+      generation INTEGER NOT NULL CHECK(generation BETWEEN 1 AND 2147483647),
       logical_id TEXT NOT NULL CHECK(length(logical_id) BETWEEN 1 AND 160),
       parent_logical_id TEXT CHECK(
         parent_logical_id IS NULL OR length(parent_logical_id) BETWEEN 1 AND 160
       ),
       parent_record_id TEXT,
       phase_id TEXT NOT NULL CHECK(phase_id IN ('implement', 'audit', 'review')),
-      attempt INTEGER CHECK(attempt IS NULL OR attempt > 0),
-      review_pass INTEGER CHECK(review_pass IS NULL OR review_pass > 0),
+      attempt INTEGER CHECK(attempt IS NULL OR attempt BETWEEN 1 AND 10000),
+      review_pass INTEGER CHECK(review_pass IS NULL OR review_pass BETWEEN 1 AND 10000),
       review_pass_key INTEGER GENERATED ALWAYS AS (COALESCE(review_pass, 0)) STORED,
       record_status TEXT NOT NULL CHECK(
         record_status IN ('OPEN', 'RESOLVED', 'COMPLETED', 'FAILED', 'QUARANTINED')
       ),
       classification TEXT CHECK(classification IS NULL OR (
-        length(classification) BETWEEN 1 AND 64 AND classification GLOB '[a-z]*'
+        length(classification) BETWEEN 1 AND 64 AND
+        substr(classification, 1, 1) GLOB '[a-z]' AND
+        classification NOT GLOB '*[^a-z0-9_-]*'
       )),
       summary TEXT CHECK(summary IS NULL OR length(summary) BETWEEN 1 AND 512),
       affected_path TEXT CHECK(affected_path IS NULL OR length(affected_path) BETWEEN 1 AND 512),
       evidence_digest TEXT NOT NULL CHECK(length(evidence_digest) = 64),
       evidence_ref TEXT CHECK(evidence_ref IS NULL OR length(evidence_ref) BETWEEN 1 AND 512),
       created_at TEXT NOT NULL,
+      CHECK(
+        (record_kind IN ('AUDIT_REPAIR', 'REVIEW_DISPOSITION') AND parent_logical_id IS NOT NULL) OR
+        (record_kind NOT IN ('AUDIT_REPAIR', 'REVIEW_DISPOSITION') AND parent_logical_id IS NULL)
+      ),
+      CHECK(record_kind != 'REVIEW_FINDING' OR record_status = 'OPEN'),
+      CHECK(record_kind != 'REPOSITORY_CHECKPOINT' OR (attempt IS NULL AND review_pass IS NULL)),
+      CHECK(record_kind != 'REPOSITORY_CHECKPOINT' OR evidence_ref IS NOT NULL),
+      CHECK(
+        record_kind NOT IN ('IMPLEMENTATION_OUTCOME', 'IMPLEMENTATION_OBLIGATION') OR
+        (phase_id = 'implement' AND attempt IS NOT NULL AND review_pass IS NULL)
+      ),
+      CHECK(
+        record_kind NOT IN ('AUDIT_GAP', 'AUDIT_REPAIR') OR
+        (phase_id = 'audit' AND attempt IS NULL AND review_pass IS NULL)
+      ),
+      CHECK(
+        record_kind NOT IN ('REVIEW_FINDING', 'REVIEW_DISPOSITION') OR
+        (phase_id = 'review' AND attempt IS NULL AND review_pass IS NOT NULL)
+      ),
+      CHECK(record_kind != 'LEGACY_IMPORT' OR (attempt IS NULL AND review_pass IS NULL)),
       UNIQUE(workflow_id, record_kind, generation, logical_id),
       UNIQUE(workflow_id, record_kind, generation, review_pass_key, logical_id),
       FOREIGN KEY(workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE,

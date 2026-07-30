@@ -25,6 +25,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.model.AuditRepairItemResult as PersistedAuditRepairItemResult
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
@@ -36,6 +37,13 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.AuditGap
+import skillbill.workflow.taskruntime.model.AuditGapDisposition
+import skillbill.workflow.taskruntime.model.AuditGapStatus
+import skillbill.workflow.taskruntime.model.AuditGeneration
+import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
+import skillbill.workflow.taskruntime.model.AuditRepairBatch
+import skillbill.workflow.taskruntime.model.AuditRepairItem
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
 import skillbill.workflow.taskruntime.model.ConvergenceProvenance
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
@@ -78,6 +86,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.ReplayResult
+import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.nio.file.Path
@@ -310,6 +319,15 @@ class FeatureTaskRuntimePhaseRecorder(
         }
       } else {
         priorAuditState
+      }
+      if (convergenceAvailable && reconciledAuditState != null) {
+        persistNormalizedAuditState(unitOfWork, request, reconciledAuditState, completionTimestamp)
+        auditConvergenceRecords(request, reconciledAuditState, completionTimestamp).forEach { convergenceRecord ->
+          when (val result = unitOfWork.convergenceStates.append(convergenceRecord)) {
+            is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(result.proposed.recordId)
+            else -> Unit
+          }
+        }
       }
       val auditRepairPatch = reconciledAuditState?.let {
         mapOf(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(it))
@@ -1081,6 +1099,15 @@ class FeatureTaskRuntimePhaseRecorder(
     val prior = (artifacts[IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY] as? List<*>)
       .orEmpty()
       .mapNotNull(JsonSupport::anyToStringAnyMap)
+    val phaseRecord = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
+    val createdAt = phaseRecord?.startedAt ?: Instant.now().toString()
+    val attempt = phaseRecord?.attemptCount ?: prior.size + 1
+    convergenceImplementationAttemptRecords(workflowId, envelope, attempt, createdAt).forEach { convergenceRecord ->
+      when (val result = unitOfWork.convergenceStates.append(convergenceRecord)) {
+        is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(result.proposed.recordId)
+        else -> Unit
+      }
+    }
     val updated = (prior + envelope).takeLast(IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT)
     persistPatch(
       unitOfWork.workflowStates,
@@ -1333,16 +1360,28 @@ private fun convergenceImplementationReceiptRecords(
     .orEmpty()
     .mapNotNull { it as? String }
     .distinct()
-    .map { taskId ->
-      convergenceImplementationReceiptRecord(
-        request = request,
-        generation = generation,
-        createdAt = createdAt,
-        kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-        stableKey = "task:$taskId",
-        status = ConvergenceStatus.COMPLETED,
-        classification = "completed_task",
-        summary = "completed implementation task $taskId",
+    .flatMap { taskId ->
+      listOf(
+        convergenceImplementationReceiptRecord(
+          request = request,
+          generation = generation,
+          createdAt = createdAt,
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+          stableKey = "task:$taskId",
+          status = ConvergenceStatus.COMPLETED,
+          classification = "completed_task",
+          summary = "completed implementation task $taskId",
+        ),
+        convergenceImplementationReceiptRecord(
+          request = request,
+          generation = generation,
+          createdAt = createdAt,
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+          stableKey = "task:$taskId",
+          status = ConvergenceStatus.COMPLETED,
+          classification = "resolved_item",
+          summary = "resolved implementation obligation $taskId",
+        ),
       )
     }
   val unresolved = (produced["unresolved_items"] as? List<*>)
@@ -1361,7 +1400,7 @@ private fun convergenceImplementationReceiptRecords(
         generation = generation,
         createdAt = createdAt,
         kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        stableKey = "unresolved:$item",
+        stableKey = "task:$item",
         status = ConvergenceStatus.OPEN,
         classification = "unresolved_item",
         summary = item,
@@ -1382,7 +1421,7 @@ private fun convergenceImplementationReceiptRecords(
         generation = generation,
         createdAt = createdAt,
         kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        stableKey = "deviation:$ref",
+        stableKey = "task:$ref",
         status = ConvergenceStatus.OPEN,
         classification = "deviation",
         summary = "$ref: $note",
@@ -1418,6 +1457,306 @@ private fun convergenceImplementationReceiptRecord(
     classification = classification,
     summary = summary.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
   )
+}
+
+private fun convergenceImplementationAttemptRecords(
+  workflowId: String,
+  envelope: Map<String, Any?>,
+  attempt: Int,
+  createdAt: String,
+): List<ConvergenceRecord> {
+  val produced = envelope["produced_outputs"]?.let(JsonSupport::anyToStringAnyMap) ?: return emptyList()
+  val completed = (produced["completed_task_ids"] as? List<*>).orEmpty()
+    .mapNotNull { it as? String }
+    .distinct()
+  val unresolved = (produced["unresolved_items"] as? List<*>).orEmpty().mapNotNull { value ->
+    when (value) {
+      is String -> value
+      is Map<*, *> -> value["ref"] as? String ?: value["note"] as? String
+      else -> null
+    }
+  }.distinct()
+  val deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { value ->
+    (value as? Map<*, *>)?.get("ref") as? String
+  }.distinct()
+  val openRecords = (unresolved + deviations).distinct().map { ref ->
+    val logicalId = ConvergenceIdentities.logical(
+      workflowId,
+      ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+      "task:$ref",
+    )
+    ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        workflowId,
+        ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+        logicalId,
+        attempt,
+      ),
+      logicalId = logicalId,
+      kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+      provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
+      evidenceDigest = ConvergenceIdentities.digest("$ref|${envelope["summary"]}"),
+      createdAt = createdAt,
+      status = ConvergenceStatus.OPEN,
+      classification = "unresolved_item",
+      summary = ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+    )
+  }
+  val completedRecords = completed.flatMap { ref ->
+    listOf(
+      convergenceImplementationAttemptRecord(
+        workflowId,
+        attempt,
+        createdAt,
+        ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        ref,
+        ConvergenceStatus.COMPLETED,
+        "completed_task",
+      ),
+      convergenceImplementationAttemptRecord(
+        workflowId,
+        attempt,
+        createdAt,
+        ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+        ref,
+        ConvergenceStatus.RESOLVED,
+        "resolved_item",
+      ),
+    )
+  }
+  return completedRecords + openRecords
+}
+
+private fun convergenceImplementationAttemptRecord(
+  workflowId: String,
+  attempt: Int,
+  createdAt: String,
+  kind: ConvergenceRecordKind,
+  ref: String,
+  status: ConvergenceStatus,
+  classification: String,
+): ConvergenceRecord {
+  val logicalId = ConvergenceIdentities.logical(workflowId, kind, "task:$ref")
+  return ConvergenceRecord(
+    recordId = ConvergenceIdentities.record(workflowId, kind, logicalId, attempt),
+    logicalId = logicalId,
+    kind = kind,
+    provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
+    evidenceDigest = ConvergenceIdentities.digest("$ref|$status|$classification"),
+    createdAt = createdAt,
+    status = status,
+    classification = classification,
+    summary = ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+  )
+}
+
+private fun auditConvergenceRecords(
+  request: FeatureTaskRuntimePhaseStateRequest,
+  state: FeatureTaskRuntimeAuditRepairState,
+  createdAt: String,
+): List<ConvergenceRecord> {
+  val isRepair = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+  val generation = request.attemptCount * 2 + if (isRepair) 1 else 0
+  val latestPlan = state.acceptedPlans.last()
+  val gaps = latestPlan.gaps.flatMap { gap ->
+    val gapLogicalId = ConvergenceIdentities.logical(
+      request.workflowId,
+      ConvergenceRecordKind.AUDIT_GAP,
+      gap.gapId,
+    )
+    val gapRecord = ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        request.workflowId,
+        ConvergenceRecordKind.AUDIT_GAP,
+        gapLogicalId,
+        generation,
+      ),
+      logicalId = gapLogicalId,
+      kind = ConvergenceRecordKind.AUDIT_GAP,
+      provenance = ConvergenceProvenance(request.workflowId, generation, "audit"),
+      evidenceDigest = ConvergenceIdentities.digest(
+        "${gap.gapId}|${gap.failureEvidence.artifactRef}|${gap.failureEvidence.checkRef}",
+      ),
+      createdAt = createdAt,
+      status = ConvergenceStatus.OPEN,
+      classification = gap.acceptanceCriterionRef.lowercase().replace('-', '_'),
+      summary = gap.diagnosis.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+      path = gap.affectedBoundary.take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
+    )
+    listOf(gapRecord) + gap.repairItems.map { item ->
+      val logicalId = ConvergenceIdentities.logical(
+        request.workflowId,
+        ConvergenceRecordKind.AUDIT_REPAIR,
+        item.repairItemId,
+      )
+      ConvergenceRecord(
+        recordId = ConvergenceIdentities.record(
+          request.workflowId,
+          ConvergenceRecordKind.AUDIT_REPAIR,
+          logicalId,
+          generation,
+        ),
+        logicalId = logicalId,
+        kind = ConvergenceRecordKind.AUDIT_REPAIR,
+        provenance = ConvergenceProvenance(request.workflowId, generation, "audit"),
+        evidenceDigest = ConvergenceIdentities.digest("${item.repairItemId}|${item.intendedOutcome}"),
+        createdAt = createdAt,
+        status = ConvergenceStatus.OPEN,
+        classification = "repair_item",
+        summary = item.intendedOutcome.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+        parentLogicalId = gapLogicalId,
+        path = item.affectedPathsOrSymbols.first()
+          .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
+      )
+    }
+  }
+  if (!isRepair) return emptyList()
+  val terminal = state.repairItemResults.mapNotNull { result ->
+    val gap = state.acceptedPlans.asReversed().asSequence().flatMap { it.gaps.asSequence() }
+      .firstOrNull { candidate -> candidate.repairItems.any { it.repairItemId == result.repairItemId } }
+      ?: return@mapNotNull null
+    val logicalId = ConvergenceIdentities.logical(
+      request.workflowId,
+      ConvergenceRecordKind.AUDIT_REPAIR,
+      result.repairItemId,
+    )
+    ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        request.workflowId,
+        ConvergenceRecordKind.AUDIT_REPAIR,
+        logicalId,
+        generation,
+      ),
+      logicalId = logicalId,
+      kind = ConvergenceRecordKind.AUDIT_REPAIR,
+      provenance = ConvergenceProvenance(request.workflowId, generation, "audit"),
+      evidenceDigest = ConvergenceIdentities.digest(
+        "${result.repairItemId}|${result.outcome.name}|${result.resultEvidence.artifactRef}",
+      ),
+      createdAt = createdAt,
+      status = ConvergenceStatus.RESOLVED,
+      classification = result.outcome.name.lowercase(),
+      summary = "audit repair ${result.repairItemId} ${result.outcome.name.lowercase()}",
+      parentLogicalId = ConvergenceIdentities.logical(
+        request.workflowId,
+        ConvergenceRecordKind.AUDIT_GAP,
+        gap.gapId,
+      ),
+      evidenceRef = result.resultEvidence.artifactRef,
+    )
+  }
+  return terminal
+}
+
+private fun persistNormalizedAuditState(
+  unitOfWork: UnitOfWork,
+  request: FeatureTaskRuntimePhaseStateRequest,
+  state: FeatureTaskRuntimeAuditRepairState,
+  createdAt: String,
+) {
+  if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+    val decision = state.decisionGenerations.last()
+    val generationId = AuditGenerationIdentities.generationId(request.workflowId, decision.generation)
+    val unresolved = state.unresolvedGapLedger.unresolvedGaps.associateBy { it.gapId }
+    val dispositions = state.priorGapDispositions.associateBy { it.gapId }
+    val gaps = decision.plan.gaps.map { gap ->
+      val unresolvedGap = unresolved[gap.gapId]
+      val status = when (dispositions[gap.gapId]?.status) {
+        FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
+        FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
+        FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
+        null -> if (unresolvedGap?.recurrence?.let { it > 0 } == true) {
+          AuditGapStatus.RECURRING
+        } else {
+          AuditGapStatus.NEW
+        }
+      }
+      AuditGap(
+        gapId = gap.gapId,
+        acceptanceCriterionRef = gap.acceptanceCriterionRef,
+        acceptanceCriterionText = gap.acceptanceCriterionText,
+        failureEvidence = gap.failureEvidence,
+        diagnosis = gap.diagnosis,
+        affectedBoundary = gap.affectedBoundary,
+        status = status,
+        recurrence = unresolvedGap?.recurrence ?: 0,
+        firstSeenGeneration = gap.gapId.substringAfterLast("-gap-").toInt(),
+      )
+    }
+    val repairItems = decision.plan.gaps.flatMap { gap ->
+      gap.repairItems.map { item ->
+        AuditRepairItem(
+          itemId = item.repairItemId,
+          gapId = gap.gapId,
+          intendedOutcome = item.intendedOutcome,
+          implementationActions = item.implementationActions,
+          affectedPathsOrSymbols = item.affectedPathsOrSymbols,
+          requiredVerification = item.requiredVerification,
+          dependencies = item.dependsOn,
+        )
+      }
+    }
+    val batch = repairItems.takeIf { it.isNotEmpty() }?.let {
+      AuditRepairBatch(
+        batchId = ConvergenceIdentities.logical(
+          request.workflowId,
+          ConvergenceRecordKind.AUDIT_REPAIR,
+          "batch:$generationId",
+        ),
+        generationId = generationId,
+        repairItems = it,
+        dependencies = it.associate { item -> item.itemId to item.dependencies },
+        isActive = true,
+      )
+    }
+    unitOfWork.auditGenerations.persist(
+      AuditGeneration(
+        generationId = generationId,
+        workflowId = request.workflowId,
+        generation = decision.generation,
+        repositoryCheckpoint = RepositoryCheckpoint(
+          fingerprint = requireNotNull(decision.repositoryFingerprint ?: request.repositoryFingerprint),
+          evidenceRef = "audit:$generationId",
+        ),
+        satisfiedCriterionRefs = state.satisfiedCriterionRefs,
+        gaps = gaps,
+        repairBatch = batch,
+        createdAt = createdAt,
+      ),
+    )
+    state.priorGapDispositions.forEach { disposition ->
+      unitOfWork.auditRepairs.appendDisposition(
+        request.workflowId,
+        AuditGapDisposition(
+          gapId = disposition.gapId,
+          status = when (disposition.status) {
+            FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
+            FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
+            FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
+          },
+          evidence = disposition.evidence,
+          dispositionGeneration = decision.generation,
+          supersededByGeneration = (decision.generation + 1)
+            .takeIf { disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED },
+        ),
+      )
+    }
+  }
+  if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+    val generation = state.decisionGenerations.last().generation
+    state.repairItemResults.forEach { result ->
+      unitOfWork.auditRepairs.appendResult(
+        request.workflowId,
+        PersistedAuditRepairItemResult(
+          itemId = result.repairItemId,
+          outcome = PersistedAuditRepairItemResult.Outcome.valueOf(result.outcome.name),
+          evidenceRef = result.resultEvidence.artifactRef,
+          verificationRef = result.resultEvidence.checkRef,
+          dispositionGeneration = generation,
+        ),
+      )
+    }
+  }
 }
 
 internal fun reconcileLatestRepairResults(

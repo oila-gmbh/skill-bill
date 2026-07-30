@@ -18,10 +18,6 @@ internal object DatabaseColumnMigrations {
     ensureQualityCheckSessionColumns(connection)
     ensureFeatureTaskRuntimeSessionColumns(connection)
     ensureColumn(connection, "feature_task_workflows", "interruption_reason", "TEXT")
-    // apply() is wired both as gated migration version 1 (which runs before version 3 creates
-    // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
-    // heal until the table exists so the early migration-1 pass is a no-op; the unconditional startup
-    // pass heals it once version 3 has created the table (existing DBs gain the columns there).
     val goalSubtaskEventsExists = connection.prepareStatement(
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goal_subtask_events'",
     ).use { statement -> statement.executeQuery().use { resultSet -> resultSet.next() } }
@@ -632,19 +628,21 @@ private object ReviewGenerationIdentityMigration {
           CREATE TABLE review_generations (
             workflow_id TEXT NOT NULL,
             generation_id TEXT NOT NULL,
+            generation_ordinal INTEGER NOT NULL CHECK (generation_ordinal > 0),
             review_base TEXT NOT NULL,
             reviewed_delta_digest TEXT NOT NULL,
             repository_checkpoint TEXT NOT NULL,
             superseded_by_generation_id TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (workflow_id, generation_id)
+            PRIMARY KEY (workflow_id, generation_id),
+            UNIQUE (workflow_id, generation_ordinal)
           )
           """.trimIndent(),
         )
         statement.execute(
           """
           INSERT INTO review_generations
-          SELECT workflow_id, generation_id, review_base, reviewed_delta_digest,
+          SELECT workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
                  repository_checkpoint, superseded_by_generation_id, created_at
           FROM review_generations_legacy
           """.trimIndent(),

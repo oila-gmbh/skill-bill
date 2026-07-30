@@ -83,24 +83,32 @@ class SQLiteConvergenceStateRepository(
 
   override fun unresolved(workflowId: String): UnresolvedConvergence {
     val history = history(workflowId)
-    val terminalParents = history.filter {
+    val current = history.currentByLogicalIdentity().values
+    val terminalParents = current.filter {
       it.kind in setOf(ConvergenceRecordKind.AUDIT_REPAIR, ConvergenceRecordKind.REVIEW_DISPOSITION) &&
         it.status.isTerminalDisposition()
     }.mapNotNullTo(mutableSetOf(), ConvergenceRecord::parentLogicalId)
-    fun open(kind: ConvergenceRecordKind) = history
-      .filter { it.kind == kind && it.status == ConvergenceStatus.OPEN && it.logicalId !in terminalParents }
-      .distinctBy(ConvergenceRecord::logicalId)
+    fun open(kind: ConvergenceRecordKind) = current
+      .filter {
+        it.kind == kind &&
+          it.status == ConvergenceStatus.OPEN &&
+          it.logicalId !in terminalParents
+      }
       .sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
-    val reviewBlockers = history.filter {
+    val reviewBlockers = current.filter {
       it.kind == ConvergenceRecordKind.REVIEW_FINDING &&
         it.status == ConvergenceStatus.OPEN &&
         it.classification == REVIEW_BLOCKER_CLASSIFICATION &&
         it.logicalId !in terminalParents
-    }.distinctBy(ConvergenceRecord::logicalId)
-      .sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
+    }.sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
     return UnresolvedConvergence(
       implementationObligations = open(ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION),
-      auditRepairs = open(ConvergenceRecordKind.AUDIT_GAP),
+      auditRepairs = (
+        open(ConvergenceRecordKind.AUDIT_GAP) +
+          open(ConvergenceRecordKind.AUDIT_REPAIR)
+        ).sortedWith(
+        compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId),
+      ),
       reviewBlockers = reviewBlockers,
     )
   }

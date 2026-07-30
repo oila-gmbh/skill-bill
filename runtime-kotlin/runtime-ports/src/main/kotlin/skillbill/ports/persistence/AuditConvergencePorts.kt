@@ -23,6 +23,14 @@ interface AuditRepairBatchStore {
 }
 
 interface AuditRepairQuery {
+  fun appendResult(workflowId: String, result: AuditRepairItemResult) {
+    error("Audit repair result persistence is not available.")
+  }
+
+  fun appendDisposition(workflowId: String, disposition: AuditGapDisposition) {
+    error("Audit gap disposition persistence is not available.")
+  }
+
   fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem>
   fun getUnresolvedRepairItemsWithDependencies(workflowId: String): Map<AuditRepairItem, List<AuditRepairItem>>
   fun getPriorResults(workflowId: String, itemId: String): List<AuditRepairItemResult>
@@ -52,6 +60,8 @@ object UnavailableAuditRepairBatchStore : AuditRepairBatchStore {
 
 object UnavailableAuditRepairQuery : AuditRepairQuery {
   private fun unavailable(): Nothing = error("Audit repair query is not available.")
+  override fun appendResult(workflowId: String, result: AuditRepairItemResult) = unavailable()
+  override fun appendDisposition(workflowId: String, disposition: AuditGapDisposition) = unavailable()
   override fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem> = unavailable()
   override fun getUnresolvedRepairItemsWithDependencies(
     workflowId: String,

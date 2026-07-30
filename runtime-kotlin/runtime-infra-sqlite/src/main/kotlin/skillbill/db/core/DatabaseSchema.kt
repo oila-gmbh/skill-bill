@@ -167,12 +167,14 @@ internal object DatabaseSchema {
       CREATE TABLE IF NOT EXISTS review_generations (
         workflow_id TEXT NOT NULL,
         generation_id TEXT NOT NULL,
+        generation_ordinal INTEGER NOT NULL CHECK (generation_ordinal > 0),
         review_base TEXT NOT NULL,
         reviewed_delta_digest TEXT NOT NULL,
         repository_checkpoint TEXT NOT NULL,
         superseded_by_generation_id TEXT,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (workflow_id, generation_id)
+        PRIMARY KEY (workflow_id, generation_id),
+        UNIQUE (workflow_id, generation_ordinal)
       )
       """.trimIndent(),
       """

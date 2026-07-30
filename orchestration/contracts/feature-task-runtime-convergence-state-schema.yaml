@@ -99,12 +99,27 @@ allOf:
           enum: [audit_repair, review_disposition]
     then:
       required: [parent_logical_id]
+    else:
+      not:
+        required: [parent_logical_id]
+  - if:
+      properties:
+        kind:
+          const: review_finding
+    then:
+      properties:
+        status:
+          const: open
   - if:
       properties:
         kind:
           enum: [repository_checkpoint]
     then:
       required: [evidence_ref]
+      not:
+        anyOf:
+          - required: [attempt]
+          - required: [review_pass]
 $defs:
   identity:
     type: string

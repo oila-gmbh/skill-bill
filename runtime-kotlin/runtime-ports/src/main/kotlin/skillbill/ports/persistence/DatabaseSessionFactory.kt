@@ -24,6 +24,12 @@ interface UnitOfWork {
   val goalPlanningPreparations: GoalPlanningPreparationRepository
   val convergenceStates: ConvergenceStateRepository
     get() = UnavailableConvergenceStateRepository
+  val auditGenerations: AuditGenerationStore
+    get() = UnavailableAuditGenerationStore
+  val auditRepairBatches: AuditRepairBatchStore
+    get() = UnavailableAuditRepairBatchStore
+  val auditRepairs: AuditRepairQuery
+    get() = UnavailableAuditRepairQuery
   val unaddressedFindings: UnaddressedFindingsRepository
     get() = UnavailableUnaddressedFindingsRepository
   val reviewGenerations: ReviewGenerationRepository
