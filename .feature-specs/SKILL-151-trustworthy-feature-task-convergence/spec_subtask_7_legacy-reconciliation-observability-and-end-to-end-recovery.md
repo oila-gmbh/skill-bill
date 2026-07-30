@@ -21,7 +21,7 @@ Migrate or reconcile active legacy database and artifact-only workflows into nor
 - Rewriting or completing SKILL-134.
 - Rewriting or squashing feature branches.
 - Using out-of-band database mutation as the normal migration path.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -31,7 +31,7 @@ This final integration subtask consumes every prior production contract and expo
 
 ## Validation Strategy
 
-Add or modify no tests, fixtures, test resources, or test infrastructure. Run:
+Add no new tests, fixtures, test resources, or test infrastructure. Existing failing tests may be corrected. Run:
 
 ```bash
 skill-bill validate

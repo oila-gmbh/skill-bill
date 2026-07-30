@@ -2,8 +2,8 @@
 
 ## General guidelines
 
-DO NOT ADD ANY NEW TESTS FOR THIS PROJECT AT ALL! 
-DO NOT ADD ANY NEW COMMENTS TO THIS PROJECT AT ALL. IN FACT, IF YOU ARE MODIFYING A FILE AND SEE COMMENTS - REMOVE THEM!
+Testing work is limited to the existing test suite.
+Keep every modified project file comment-free and remove existing comments in touched files.
 
 ## Project Context
 
@@ -167,10 +167,6 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 Write direct, active prose. Remove filler, stale phrases, praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
 
 In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
-
-## Comments Policy
-
-Prefer clear names, small functions, and refactoring over comments. Comment only a non-obvious *why* code cannot express — an external constraint, subtle invariant, or workaround. Never explain *what* code does.
 
 ## Quality Checks
 

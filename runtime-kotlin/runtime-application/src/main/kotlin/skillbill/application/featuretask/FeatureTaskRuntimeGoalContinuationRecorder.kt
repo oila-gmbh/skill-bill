@@ -347,6 +347,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       workflowId = workflowId,
       state = state,
       continuation = continuation,
+      resolved = resolved,
       gitOperations = gitOperations,
       repoRoot = repoRoot,
       dbOverride = dbOverride,
@@ -368,19 +369,13 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     workflowId: String,
     state: GoalSubtaskReviewState,
     continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    resolved: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
     dbOverride: String?,
   ): skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity? {
     val scopedCheckpointOperations = gitOperations.scopedCheckpointOperations
-    val currentPaths = gitOperations.repositoryOwnedPaths(repoRoot)
-    if (!currentPaths.ok) return null
-    val reviewPaths = currentPaths.value.orEmpty()
-      .split('\u0000')
-      .filter(String::isNotBlank)
-      .distinct()
-      .sorted()
-    if (reviewPaths.isEmpty()) return null
+    val reviewPaths = reviewCheckpointPaths(gitOperations, repoRoot, resolved.workflowOwnedPaths) ?: return null
     val checkpoint = scopedCheckpointOperations.createScopedCheckpoint(
       repoRoot,
       WorkflowScopedCheckpointRequest(
@@ -393,24 +388,47 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ),
     )
     val identity = checkpoint.identity ?: return null
-    val persisted = database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction false
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val latest = resolvedBranchFrom(artifacts) ?: return@transaction false
-      val updated = latest.copy(checkpointIdentities = latest.checkpointIdentities + identity)
-      savePatch(
-        record,
-        unitOfWork.workflowStates,
-        mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
-      )
-      true
-    }
-    if (!persisted) {
+    if (!persistReviewCheckpoint(workflowId, identity, dbOverride)) {
       scopedCheckpointOperations.restoreScopedCheckpointParent(repoRoot, identity)
       return null
     }
     return identity
+  }
+
+  private fun reviewCheckpointPaths(
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    durablePaths: List<String>,
+  ): List<String>? {
+    val currentPaths = gitOperations.repositoryOwnedPaths(repoRoot)
+    if (!currentPaths.ok) return null
+    return (
+      currentPaths.value.orEmpty()
+        .split('\u0000')
+        .filter(String::isNotBlank)
+        .ifEmpty { durablePaths }
+      )
+      .distinct()
+      .sorted()
+      .takeIf(List<String>::isNotEmpty)
+  }
+
+  private fun persistReviewCheckpoint(
+    workflowId: String,
+    identity: skillbill.workflow.taskruntime.model.WorkflowCheckpointIdentity,
+    dbOverride: String?,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val latest = resolvedBranchFrom(artifacts) ?: return@transaction false
+    val updated = latest.copy(checkpointIdentities = latest.checkpointIdentities + identity)
+    savePatch(
+      record,
+      unitOfWork.workflowStates,
+      mapOf(FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY to updated.toArtifactMap()),
+    )
+    true
   }
 
   @Suppress("ReturnCount")

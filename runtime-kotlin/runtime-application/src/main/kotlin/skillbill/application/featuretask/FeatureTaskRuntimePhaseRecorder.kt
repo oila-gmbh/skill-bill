@@ -25,7 +25,6 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
-import skillbill.ports.persistence.model.AuditRepairItemResult as PersistedAuditRepairItemResult
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
@@ -79,14 +78,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
-import skillbill.workflow.taskruntime.model.ImplementationIncomplete
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.ImplementationCompletionDecision
+import skillbill.workflow.taskruntime.model.ImplementationIncomplete
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.ReplayResult
 import skillbill.workflow.taskruntime.model.RepositoryCheckpoint
@@ -95,6 +94,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordTo
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import skillbill.ports.persistence.model.AuditRepairItemResult as PersistedAuditRepairItemResult
 
 internal data class FeatureTaskRuntimeProjectionRejection(
   val workflowId: String,
@@ -105,6 +105,15 @@ internal data class FeatureTaskRuntimeProjectionRejection(
   val failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
   val sourceLabel: String,
 )
+
+internal data class ImplementationReceiptAttemptRequest(
+  val workflowId: String,
+  val envelope: Map<String, Any?>,
+  val completionDecision: ImplementationCompletionDecision? = null,
+  val authoritativePlan: FeatureTaskRuntimeExecutablePlan? = null,
+  val appendConvergenceRecords: Boolean = true,
+)
+
 @Inject
 @Suppress("TooManyFunctions", "LargeClass")
 class FeatureTaskRuntimePhaseRecorder(
@@ -323,14 +332,26 @@ class FeatureTaskRuntimePhaseRecorder(
       } else {
         priorAuditState
       }
-      if (convergenceAvailable && reconciledAuditState != null) {
-        persistNormalizedAuditState(unitOfWork, request, reconciledAuditState, completionTimestamp)
-        auditConvergenceRecords(request, reconciledAuditState, completionTimestamp).forEach { convergenceRecord ->
-          when (val result = unitOfWork.convergenceStates.append(convergenceRecord)) {
-            is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(result.proposed.recordId)
-            else -> Unit
+      val writesAuditConvergence =
+        request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
+          (
+            request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+              request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+            )
+      if (convergenceAvailable && reconciledAuditState != null && writesAuditConvergence) {
+        PhaseAuditConvergence.persistNormalizedState(
+          unitOfWork,
+          request,
+          reconciledAuditState,
+          completionTimestamp,
+        )
+        PhaseAuditConvergence.records(request, reconciledAuditState, completionTimestamp)
+          .forEach { convergenceRecord ->
+            when (val result = unitOfWork.convergenceStates.append(convergenceRecord)) {
+              is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(result.proposed.recordId)
+              else -> Unit
+            }
           }
-        }
       }
       val auditRepairPatch = reconciledAuditState?.let {
         mapOf(FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY to auditRepairStateToWire(it))
@@ -360,6 +381,50 @@ class FeatureTaskRuntimePhaseRecorder(
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
         ) + auditRepairPatch,
+        WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
+      )
+      true
+    }
+  }
+
+  fun recordSupersededPhaseCompletion(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    dbOverride: String? = null,
+  ): Boolean {
+    require(request.status == "completed" && request.finished)
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existingRecords = phaseRecordsFrom(artifacts)
+      val completionTimestamp = existingRecords[request.phaseId]?.finishedAt ?: Instant.now().toString()
+      val updatedRecords = LinkedHashMap(existingRecords).apply {
+        put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], completionTimestamp))
+      }
+      val ledger = phaseLedgerFrom(artifacts)
+      val completion = FeatureTaskRuntimePhaseLedgerEntry(
+        action = FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+        timestamp = Instant.now().toString(),
+        phaseId = request.phaseId,
+        attemptCount = request.attemptCount,
+        resolvedAgentId = request.resolvedAgentId,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+      )
+      val updatedLedger = appendBoundedHistoryBySequence(
+        ledger.map { it.toArtifactMap() },
+        completion.toArtifactMap(),
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+      )
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
+        ),
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true
@@ -1081,6 +1146,7 @@ class FeatureTaskRuntimePhaseRecorder(
   } catch (_: IllegalStateException) {
     null
   }
+
   @OpenBoundaryMap("Implementation receipt wire map at the persistence boundary")
   fun loadPriorImplementationReceiptEnvelope(workflowId: String, dbOverride: String? = null): Map<String, Any?>? {
     val latestAttempt = loadImplementationReceiptAttemptHistory(workflowId, dbOverride).lastOrNull()
@@ -1092,14 +1158,10 @@ class FeatureTaskRuntimePhaseRecorder(
       ?.let(JsonSupport::anyToStringAnyMap)
   }
   internal fun recordImplementationReceiptAttempt(
-    workflowId: String,
-    envelope: Map<String, Any?>,
+    request: ImplementationReceiptAttemptRequest,
     dbOverride: String? = null,
-    completionDecision: ImplementationCompletionDecision? = null,
-    authoritativePlan: FeatureTaskRuntimeExecutablePlan? = null,
-    appendConvergenceRecords: Boolean = true,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val prior = (artifacts[IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_ARTIFACT_KEY] as? List<*>)
@@ -1108,14 +1170,14 @@ class FeatureTaskRuntimePhaseRecorder(
     val phaseRecord = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]
     val createdAt = phaseRecord?.startedAt ?: Instant.now().toString()
     val attempt = phaseRecord?.attemptCount ?: prior.size + 1
-    if (appendConvergenceRecords) {
-      convergenceImplementationAttemptRecords(
-        workflowId,
-        envelope,
+    if (
+      request.appendConvergenceRecords &&
+      unitOfWork.convergenceStates !== UnavailableConvergenceStateRepository
+    ) {
+      PhaseImplementationConvergence.attemptRecords(
+        request,
         attempt,
         createdAt,
-        completionDecision,
-        authoritativePlan,
       ).forEach { convergenceRecord ->
         when (val result = unitOfWork.convergenceStates.append(convergenceRecord)) {
           is ReplayResult.Conflict -> throw ConvergenceReplayConflictException(result.proposed.recordId)
@@ -1123,7 +1185,7 @@ class FeatureTaskRuntimePhaseRecorder(
         }
       }
     }
-    val updated = (prior + envelope).takeLast(IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT)
+    val updated = (prior + request.envelope).takeLast(IMPLEMENTATION_RECEIPT_ATTEMPT_HISTORY_LIMIT)
     persistPatch(
       unitOfWork.workflowStates,
       record,
@@ -1257,13 +1319,13 @@ class FeatureTaskRuntimePhaseRecorder(
   ): List<ConvergenceRecord> {
     if (request.phaseId !in setOf("implement", "audit", "review")) return emptyList()
     val generation = request.edgeIteration ?: request.attemptCount
-    val evidenceDigest = convergenceEvidenceDigest(request)
-    val checkpoint = convergenceCheckpoint(request, generation, evidenceDigest, createdAt)
+    val evidenceDigest = PhaseImplementationConvergence.evidenceDigest(request)
+    val checkpoint = PhaseImplementationConvergence.checkpoint(request, generation, evidenceDigest, createdAt)
     if (request.phaseId != "implement") return listOf(checkpoint)
     return listOf(
-      convergenceImplementationOutcome(request, generation, evidenceDigest, createdAt),
+      PhaseImplementationConvergence.outcome(request, generation, evidenceDigest, createdAt),
       checkpoint,
-    ) + convergenceImplementationReceiptRecords(request, generation, createdAt)
+    ) + PhaseImplementationConvergence.receiptRecords(request, generation, createdAt)
   }
 
   private fun reconcileLegacyArtifacts(
@@ -1285,8 +1347,8 @@ class FeatureTaskRuntimePhaseRecorder(
   }
 }
 
-private fun convergenceEvidenceDigest(request: FeatureTaskRuntimePhaseStateRequest): String =
-  ConvergenceIdentities.digest(
+private object PhaseImplementationConvergence {
+  fun evidenceDigest(request: FeatureTaskRuntimePhaseStateRequest): String = ConvergenceIdentities.digest(
     listOf(
       request.workflowId,
       request.phaseId,
@@ -1299,107 +1361,127 @@ private fun convergenceEvidenceDigest(request: FeatureTaskRuntimePhaseStateReque
     ).joinToString("|"),
   )
 
-private fun convergenceCheckpoint(
-  request: FeatureTaskRuntimePhaseStateRequest,
-  generation: Int,
-  evidenceDigest: String,
-  createdAt: String,
-): ConvergenceRecord {
-  val logicalId = ConvergenceIdentities.logical(
-    request.workflowId,
-    ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-    "${request.phaseId}:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
-  )
-  return ConvergenceRecord(
-    recordId = ConvergenceIdentities.record(
+  fun checkpoint(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    evidenceDigest: String,
+    createdAt: String,
+  ): ConvergenceRecord {
+    val logicalId = ConvergenceIdentities.logical(
       request.workflowId,
       ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-      logicalId,
-      generation,
-    ),
-    logicalId = logicalId,
-    kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
-    provenance = ConvergenceProvenance(request.workflowId, generation, request.phaseId),
-    evidenceDigest = evidenceDigest,
-    createdAt = createdAt,
-    status = ConvergenceStatus.COMPLETED,
-    summary = "${request.phaseId} phase repository checkpoint",
-    evidenceRef = (request.repositoryFingerprint ?: "workflow:${request.workflowId}")
-      .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
-  )
-}
+      "${request.phaseId}:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+    )
+    return ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        request.workflowId,
+        ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+        logicalId,
+        generation,
+      ),
+      logicalId = logicalId,
+      kind = ConvergenceRecordKind.REPOSITORY_CHECKPOINT,
+      provenance = ConvergenceProvenance(request.workflowId, generation, request.phaseId),
+      evidenceDigest = evidenceDigest,
+      createdAt = createdAt,
+      status = ConvergenceStatus.COMPLETED,
+      summary = "${request.phaseId} phase repository checkpoint",
+      evidenceRef = (request.repositoryFingerprint ?: "workflow:${request.workflowId}")
+        .take(skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH),
+    )
+  }
 
-private fun convergenceImplementationOutcome(
-  request: FeatureTaskRuntimePhaseStateRequest,
-  generation: Int,
-  evidenceDigest: String,
-  createdAt: String,
-): ConvergenceRecord {
-  val logicalId = ConvergenceIdentities.logical(
-    request.workflowId,
-    ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-    "attempt:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
-  )
-  return ConvergenceRecord(
-    recordId = ConvergenceIdentities.record(
+  fun outcome(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    evidenceDigest: String,
+    createdAt: String,
+  ): ConvergenceRecord {
+    val logicalId = ConvergenceIdentities.logical(
       request.workflowId,
       ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-      logicalId,
-      generation,
-    ),
-    logicalId = logicalId,
-    kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-    provenance = ConvergenceProvenance(
-      request.workflowId,
-      generation,
-      request.phaseId,
-      attempt = request.attemptCount,
-    ),
-    evidenceDigest = evidenceDigest,
-    createdAt = createdAt,
-    status = ConvergenceStatus.COMPLETED,
-    summary = "implementation attempt ${request.attemptCount} completed",
-    evidenceRef = null,
-  )
-}
+      "attempt:${request.attemptCount}:${request.loopId.orEmpty()}:${request.edgeIteration ?: 0}",
+    )
+    return ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(
+        request.workflowId,
+        ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        logicalId,
+        generation,
+      ),
+      logicalId = logicalId,
+      kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+      provenance = ConvergenceProvenance(
+        request.workflowId,
+        generation,
+        request.phaseId,
+        attempt = request.attemptCount,
+      ),
+      evidenceDigest = evidenceDigest,
+      createdAt = createdAt,
+      status = ConvergenceStatus.COMPLETED,
+      summary = "implementation attempt ${request.attemptCount} completed",
+      evidenceRef = null,
+    )
+  }
 
-private fun convergenceImplementationReceiptRecords(
-  request: FeatureTaskRuntimePhaseStateRequest,
-  generation: Int,
-  createdAt: String,
-): List<ConvergenceRecord> {
-  val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: return emptyList()
-  val completedTasks = (produced["completed_task_ids"] as? List<*>)
+  fun receiptRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    createdAt: String,
+  ): List<ConvergenceRecord> {
+    val produced = request.normalizedOutput?.envelope?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyList()
+    return completedReceiptRecords(request, generation, createdAt, produced) +
+      unresolvedReceiptRecords(request, generation, createdAt, produced) +
+      deviationReceiptRecords(request, generation, createdAt, produced)
+  }
+
+  private fun completedReceiptRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    createdAt: String,
+    produced: Map<String, Any?>,
+  ): List<ConvergenceRecord> = (produced["completed_task_ids"] as? List<*>)
     .orEmpty()
     .mapNotNull { it as? String }
     .distinct()
     .flatMap { taskId ->
       listOf(
-        convergenceImplementationReceiptRecord(
+        receiptRecord(
           request = request,
           generation = generation,
           createdAt = createdAt,
-          kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-          stableKey = "task:$taskId",
-          status = ConvergenceStatus.COMPLETED,
-          classification = "completed_task",
-          summary = "completed implementation task $taskId",
+          input = ConvergenceRecordInput(
+            kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+            stableKey = "task:$taskId",
+            status = ConvergenceStatus.COMPLETED,
+            classification = "completed_task",
+            summary = "completed implementation task $taskId",
+          ),
         ),
-        convergenceImplementationReceiptRecord(
+        receiptRecord(
           request = request,
           generation = generation,
           createdAt = createdAt,
-          kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-          stableKey = "task:$taskId",
-          status = ConvergenceStatus.COMPLETED,
-          classification = "resolved_item",
-          summary = "resolved implementation obligation $taskId",
+          input = ConvergenceRecordInput(
+            kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+            stableKey = "task:$taskId",
+            status = ConvergenceStatus.COMPLETED,
+            classification = "resolved_item",
+            summary = "resolved implementation obligation $taskId",
+          ),
         ),
       )
     }
-  val unresolved = (produced["unresolved_items"] as? List<*>)
+
+  private fun unresolvedReceiptRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    createdAt: String,
+    produced: Map<String, Any?>,
+  ): List<ConvergenceRecord> = (produced["unresolved_items"] as? List<*>)
     .orEmpty()
     .mapNotNull { value ->
       when (value) {
@@ -1410,18 +1492,26 @@ private fun convergenceImplementationReceiptRecords(
     }
     .distinct()
     .map { item ->
-      convergenceImplementationReceiptRecord(
+      receiptRecord(
         request = request,
         generation = generation,
         createdAt = createdAt,
-        kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        stableKey = "task:$item",
-        status = ConvergenceStatus.OPEN,
-        classification = "unresolved_item",
-        summary = item,
+        input = ConvergenceRecordInput(
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+          stableKey = "task:$item",
+          status = ConvergenceStatus.OPEN,
+          classification = "unresolved_item",
+          summary = item,
+        ),
       )
     }
-  val deviations = (produced["deviations"] as? List<*>)
+
+  private fun deviationReceiptRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    createdAt: String,
+    produced: Map<String, Any?>,
+  ): List<ConvergenceRecord> = (produced["deviations"] as? List<*>)
     .orEmpty()
     .mapNotNull { value -> (value as? Map<*, *>)?.let(JsonSupport::anyToStringAnyMap) }
     .mapNotNull { deviation ->
@@ -1431,185 +1521,252 @@ private fun convergenceImplementationReceiptRecords(
     }
     .distinct()
     .map { (ref, note) ->
-      convergenceImplementationReceiptRecord(
+      receiptRecord(
         request = request,
         generation = generation,
         createdAt = createdAt,
-        kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        stableKey = "task:$ref",
-        status = ConvergenceStatus.OPEN,
-        classification = "deviation",
-        summary = "$ref: $note",
+        input = ConvergenceRecordInput(
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+          stableKey = "task:$ref",
+          status = ConvergenceStatus.OPEN,
+          classification = "deviation",
+          summary = "$ref: $note",
+        ),
       )
     }
-  return completedTasks + unresolved + deviations
-}
 
-private fun convergenceImplementationReceiptRecord(
-  request: FeatureTaskRuntimePhaseStateRequest,
-  generation: Int,
-  createdAt: String,
-  kind: ConvergenceRecordKind,
-  stableKey: String,
-  status: ConvergenceStatus,
-  classification: String,
-  summary: String,
-): ConvergenceRecord {
-  val logicalId = ConvergenceIdentities.logical(request.workflowId, kind, stableKey)
-  return ConvergenceRecord(
-    recordId = ConvergenceIdentities.record(request.workflowId, kind, logicalId, generation),
-    logicalId = logicalId,
-    kind = kind,
-    provenance = ConvergenceProvenance(
-      request.workflowId,
-      generation,
-      "implement",
-      attempt = request.attemptCount,
-    ),
-    evidenceDigest = ConvergenceIdentities.digest("$stableKey|$summary"),
-    createdAt = createdAt,
-    status = status,
-    classification = classification,
-    summary = summary.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
-  )
-}
-
-private fun convergenceImplementationAttemptRecords(
-  workflowId: String,
-  envelope: Map<String, Any?>,
-  attempt: Int,
-  createdAt: String,
-  completionDecision: ImplementationCompletionDecision?,
-  authoritativePlan: FeatureTaskRuntimeExecutablePlan?,
-): List<ConvergenceRecord> {
-  val produced = envelope["produced_outputs"]?.let(JsonSupport::anyToStringAnyMap) ?: return emptyList()
-  val completed = (produced["completed_task_ids"] as? List<*>).orEmpty()
-    .mapNotNull { it as? String }
-    .distinct()
-  val unresolved = (produced["unresolved_items"] as? List<*>).orEmpty().mapNotNull { value ->
-    when (value) {
-      is String -> value
-      is Map<*, *> -> value["ref"] as? String ?: value["note"] as? String
-      else -> null
-    }
-  }.distinct()
-  val deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { value ->
-    (value as? Map<*, *>)?.get("ref") as? String
-  }.distinct()
-  val incomplete = completionDecision?.outcome as? ImplementationIncomplete
-  val authoritativeMissing = incomplete?.missingTaskIds.orEmpty().filter { missing ->
-    authoritativePlan?.tasks?.any { it.taskId == missing } == true
-  }
-  val decisionUnresolved = incomplete?.unresolvedItems.orEmpty() +
-    incomplete?.actionableDeviations.orEmpty().map { it.ref }
-  val openRecords = (unresolved + deviations + authoritativeMissing + decisionUnresolved).distinct().map { ref ->
-    val logicalId = ConvergenceIdentities.logical(
-      workflowId,
-      ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-      "task:$ref",
-    )
-    ConvergenceRecord(
-      recordId = ConvergenceIdentities.record(
-        workflowId,
-        ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        logicalId,
-        attempt,
-      ),
+  private fun receiptRecord(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    generation: Int,
+    createdAt: String,
+    input: ConvergenceRecordInput,
+  ): ConvergenceRecord {
+    val logicalId = ConvergenceIdentities.logical(request.workflowId, input.kind, input.stableKey)
+    return ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(request.workflowId, input.kind, logicalId, generation),
       logicalId = logicalId,
-      kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-      provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
-      evidenceDigest = ConvergenceIdentities.digest("$ref|${envelope["summary"]}"),
+      kind = input.kind,
+      provenance = ConvergenceProvenance(
+        request.workflowId,
+        generation,
+        "implement",
+        attempt = request.attemptCount,
+      ),
+      evidenceDigest = ConvergenceIdentities.digest("${input.stableKey}|${input.summary}"),
       createdAt = createdAt,
-      status = ConvergenceStatus.OPEN,
-      classification = "unresolved_item",
-      summary = ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+      status = input.status,
+      classification = input.classification,
+      summary = input.summary.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
     )
   }
-  val completedRecords = completed.flatMap { ref ->
-    listOf(
-      convergenceImplementationAttemptRecord(
-        workflowId,
-        attempt,
-        createdAt,
-        ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-        ref,
-        ConvergenceStatus.COMPLETED,
-        "completed_task",
-      ),
-      convergenceImplementationAttemptRecord(
-        workflowId,
-        attempt,
-        createdAt,
+
+  private data class ConvergenceRecordInput(
+    val kind: ConvergenceRecordKind,
+    val stableKey: String,
+    val status: ConvergenceStatus,
+    val classification: String,
+    val summary: String,
+  )
+
+  fun attemptRecords(
+    request: ImplementationReceiptAttemptRequest,
+    attempt: Int,
+    createdAt: String,
+  ): List<ConvergenceRecord> = AttemptRecords.create(
+    ImplementationAttemptContext(request.workflowId, attempt, createdAt),
+    request.envelope,
+    request.completionDecision,
+    request.authoritativePlan,
+  )
+
+  private object AttemptRecords {
+    fun create(
+      context: ImplementationAttemptContext,
+      envelope: Map<String, Any?>,
+      completionDecision: ImplementationCompletionDecision?,
+      authoritativePlan: FeatureTaskRuntimeExecutablePlan?,
+    ): List<ConvergenceRecord> {
+      val produced = envelope["produced_outputs"]?.let(JsonSupport::anyToStringAnyMap) ?: return emptyList()
+      val completed = (produced["completed_task_ids"] as? List<*>).orEmpty()
+        .mapNotNull { it as? String }
+        .distinct()
+      val incomplete = completionDecision?.outcome as? ImplementationIncomplete
+      val openRefs = unresolvedRefs(produced, incomplete, authoritativePlan)
+      return attemptOutcome(context, completionDecision) +
+        completedRecords(context, completed) +
+        openRecords(context, envelope, openRefs)
+    }
+
+    private fun unresolvedRefs(
+      produced: Map<String, Any?>,
+      incomplete: ImplementationIncomplete?,
+      authoritativePlan: FeatureTaskRuntimeExecutablePlan?,
+    ): List<String> {
+      val unresolved = (produced["unresolved_items"] as? List<*>).orEmpty().mapNotNull { value ->
+        when (value) {
+          is String -> value
+          is Map<*, *> -> value["ref"] as? String ?: value["note"] as? String
+          else -> null
+        }
+      }
+      val deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { value ->
+        (value as? Map<*, *>)?.get("ref") as? String
+      }
+      val authoritativeMissing = incomplete?.missingTaskIds.orEmpty().filter { missing ->
+        authoritativePlan?.tasks?.any { it.taskId == missing } == true
+      }
+      return (
+        unresolved +
+          deviations +
+          authoritativeMissing +
+          incomplete?.unresolvedItems.orEmpty() +
+          incomplete?.actionableDeviations.orEmpty().map { it.ref }
+        ).distinct()
+    }
+
+    private fun completedRecords(
+      context: ImplementationAttemptContext,
+      completed: List<String>,
+    ): List<ConvergenceRecord> = completed.flatMap { ref ->
+      listOf(
+        attemptRecord(
+          context,
+          AttemptRecordInput(
+            ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+            ref,
+            ConvergenceStatus.COMPLETED,
+            "completed_task",
+          ),
+        ),
+        attemptRecord(
+          context,
+          AttemptRecordInput(
+            ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+            ref,
+            ConvergenceStatus.RESOLVED,
+            "resolved_item",
+          ),
+        ),
+      )
+    }
+
+    private fun openRecords(
+      context: ImplementationAttemptContext,
+      envelope: Map<String, Any?>,
+      refs: List<String>,
+    ): List<ConvergenceRecord> = refs.map { ref ->
+      val logicalId = ConvergenceIdentities.logical(
+        context.workflowId,
         ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
-        ref,
-        ConvergenceStatus.RESOLVED,
-        "resolved_item",
-      ),
-    )
-  }
-  val attemptOutcome = if (completionDecision == null) {
-    emptyList()
-  } else {
-    val logicalId = ConvergenceIdentities.logical(
-      workflowId,
-      ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-      "attempt:$attempt",
-    )
-    listOf(
+        "task:$ref",
+      )
       ConvergenceRecord(
         recordId = ConvergenceIdentities.record(
-          workflowId,
-          ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+          context.workflowId,
+          ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
           logicalId,
-          attempt,
+          context.attempt,
         ),
         logicalId = logicalId,
-        kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
-        provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
-        evidenceDigest = ConvergenceIdentities.digest("attempt:$attempt|incomplete"),
-        createdAt = createdAt,
-        status = ConvergenceStatus.FAILED,
-        classification = "semantic_incomplete",
-        summary = "implementation attempt $attempt incomplete",
-      ),
+        kind = ConvergenceRecordKind.IMPLEMENTATION_OBLIGATION,
+        provenance = context.provenance,
+        evidenceDigest = ConvergenceIdentities.digest("$ref|${envelope["summary"]}"),
+        createdAt = context.createdAt,
+        status = ConvergenceStatus.OPEN,
+        classification = "unresolved_item",
+        summary = ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+      )
+    }
+
+    private fun attemptOutcome(
+      context: ImplementationAttemptContext,
+      completionDecision: ImplementationCompletionDecision?,
+    ): List<ConvergenceRecord> = if (completionDecision == null) {
+      emptyList()
+    } else {
+      val logicalId = ConvergenceIdentities.logical(
+        context.workflowId,
+        ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+        "attempt:${context.attempt}",
+      )
+      listOf(
+        ConvergenceRecord(
+          recordId = ConvergenceIdentities.record(
+            context.workflowId,
+            ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+            logicalId,
+            context.attempt,
+          ),
+          logicalId = logicalId,
+          kind = ConvergenceRecordKind.IMPLEMENTATION_OUTCOME,
+          provenance = context.provenance,
+          evidenceDigest = ConvergenceIdentities.digest("attempt:${context.attempt}|incomplete"),
+          createdAt = context.createdAt,
+          status = ConvergenceStatus.FAILED,
+          classification = "semantic_incomplete",
+          summary = "implementation attempt ${context.attempt} incomplete",
+        ),
+      )
+    }
+  }
+
+  private fun attemptRecord(context: ImplementationAttemptContext, input: AttemptRecordInput): ConvergenceRecord {
+    val (workflowId, attempt, createdAt) = context
+    val logicalId = ConvergenceIdentities.logical(workflowId, input.kind, "task:${input.ref}")
+    return ConvergenceRecord(
+      recordId = ConvergenceIdentities.record(workflowId, input.kind, logicalId, attempt),
+      logicalId = logicalId,
+      kind = input.kind,
+      provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
+      evidenceDigest = ConvergenceIdentities.digest("${input.ref}|${input.status}|${input.classification}"),
+      createdAt = createdAt,
+      status = input.status,
+      classification = input.classification,
+      summary = input.ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
     )
   }
-  return attemptOutcome + completedRecords + openRecords
-}
 
-private fun convergenceImplementationAttemptRecord(
-  workflowId: String,
-  attempt: Int,
-  createdAt: String,
-  kind: ConvergenceRecordKind,
-  ref: String,
-  status: ConvergenceStatus,
-  classification: String,
-): ConvergenceRecord {
-  val logicalId = ConvergenceIdentities.logical(workflowId, kind, "task:$ref")
-  return ConvergenceRecord(
-    recordId = ConvergenceIdentities.record(workflowId, kind, logicalId, attempt),
-    logicalId = logicalId,
-    kind = kind,
-    provenance = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt),
-    evidenceDigest = ConvergenceIdentities.digest("$ref|$status|$classification"),
-    createdAt = createdAt,
-    status = status,
-    classification = classification,
-    summary = ref.take(skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH),
+  private data class ImplementationAttemptContext(
+    val workflowId: String,
+    val attempt: Int,
+    val createdAt: String,
+  ) {
+    val provenance: ConvergenceProvenance
+      get() = ConvergenceProvenance(workflowId, attempt, "implement", attempt = attempt)
+  }
+
+  private data class AttemptRecordInput(
+    val kind: ConvergenceRecordKind,
+    val ref: String,
+    val status: ConvergenceStatus,
+    val classification: String,
   )
 }
 
-private fun auditConvergenceRecords(
-  request: FeatureTaskRuntimePhaseStateRequest,
-  state: FeatureTaskRuntimeAuditRepairState,
-  createdAt: String,
-): List<ConvergenceRecord> {
-  val isRepair = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-  val sourceGeneration = state.decisionGenerations.last().generation
-  val generation = sourceGeneration + if (isRepair) 1 else 0
-  val latestPlan = state.acceptedPlans.last()
-  val gaps = latestPlan.gaps.flatMap { gap ->
+private object PhaseAuditConvergence {
+  fun records(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+    createdAt: String,
+  ): List<ConvergenceRecord> {
+    val isRepair = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    val sourceGeneration = state.decisionGenerations.last().generation
+    val generation = sourceGeneration + if (isRepair) 1 else 0
+    val gaps = gapRecords(request, state, sourceGeneration, generation, createdAt)
+    return if (isRepair) {
+      gaps + terminalRecords(request, state, sourceGeneration, generation, createdAt)
+    } else {
+      gaps
+    }
+  }
+
+  private fun gapRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+    sourceGeneration: Int,
+    generation: Int,
+    createdAt: String,
+  ): List<ConvergenceRecord> = state.acceptedPlans.last().gaps.flatMap { gap ->
     val gapLogicalId = ConvergenceIdentities.logical(
       request.workflowId,
       ConvergenceRecordKind.AUDIT_GAP,
@@ -1661,8 +1818,14 @@ private fun auditConvergenceRecords(
       )
     }
   }
-  if (!isRepair) return emptyList()
-  val terminal = state.repairItemResults.mapNotNull { result ->
+
+  private fun terminalRecords(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+    sourceGeneration: Int,
+    generation: Int,
+    createdAt: String,
+  ): List<ConvergenceRecord> = state.repairItemResults.mapNotNull { result ->
     val gap = state.acceptedPlans.asReversed().asSequence().flatMap { it.gaps.asSequence() }
       .firstOrNull { candidate -> candidate.repairItems.any { it.repairItemId == result.repairItemId } }
       ?: return@mapNotNull null
@@ -1696,57 +1859,31 @@ private fun auditConvergenceRecords(
       evidenceRef = result.resultEvidence.artifactRef,
     )
   }
-  return terminal
-}
 
-private fun persistNormalizedAuditState(
-  unitOfWork: UnitOfWork,
-  request: FeatureTaskRuntimePhaseStateRequest,
-  state: FeatureTaskRuntimeAuditRepairState,
-  createdAt: String,
-) {
-  if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+  fun persistNormalizedState(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+    createdAt: String,
+  ) {
+    if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+      persistAuditGeneration(unitOfWork, request, state, createdAt)
+    }
+    if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+      persistRepairResults(unitOfWork, request, state)
+    }
+  }
+
+  private fun persistAuditGeneration(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+    createdAt: String,
+  ) {
     val decision = state.decisionGenerations.last()
     val generationId = AuditGenerationIdentities.generationId(request.workflowId, decision.generation)
-    val unresolved = state.unresolvedGapLedger.unresolvedGaps.associateBy { it.gapId }
-    val dispositions = state.priorGapDispositions.associateBy { it.gapId }
-    val gaps = decision.plan.gaps.map { gap ->
-      val unresolvedGap = unresolved[gap.gapId]
-      val status = when (dispositions[gap.gapId]?.status) {
-        FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
-        FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
-        FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
-        null -> if (unresolvedGap?.recurrence?.let { it > 0 } == true) {
-          AuditGapStatus.RECURRING
-        } else {
-          AuditGapStatus.NEW
-        }
-      }
-      AuditGap(
-        gapId = gap.gapId,
-        acceptanceCriterionRef = gap.acceptanceCriterionRef,
-        acceptanceCriterionText = gap.acceptanceCriterionText,
-        failureEvidence = gap.failureEvidence,
-        diagnosis = gap.diagnosis,
-        affectedBoundary = gap.affectedBoundary,
-        status = status,
-        recurrence = unresolvedGap?.recurrence ?: 0,
-        firstSeenGeneration = gap.gapId.substringAfterLast("-gap-").toInt(),
-      )
-    }
-    val repairItems = decision.plan.gaps.flatMap { gap ->
-      gap.repairItems.map { item ->
-        AuditRepairItem(
-          itemId = item.repairItemId,
-          gapId = gap.gapId,
-          intendedOutcome = item.intendedOutcome,
-          implementationActions = item.implementationActions,
-          affectedPathsOrSymbols = item.affectedPathsOrSymbols,
-          requiredVerification = item.requiredVerification,
-          dependencies = item.dependsOn,
-        )
-      }
-    }
+    val gaps = persistedGaps(state)
+    val repairItems = persistedRepairItems(state)
     val batch = repairItems.takeIf { it.isNotEmpty() }?.let {
       AuditRepairBatch(
         batchId = ConvergenceIdentities.logical(
@@ -1766,7 +1903,9 @@ private fun persistNormalizedAuditState(
         workflowId = request.workflowId,
         generation = decision.generation,
         repositoryCheckpoint = RepositoryCheckpoint(
-          fingerprint = requireNotNull(decision.repositoryFingerprint ?: request.repositoryFingerprint),
+          fingerprint = normalizedRepositoryCheckpointFingerprint(
+            requireNotNull(decision.repositoryFingerprint ?: request.repositoryFingerprint),
+          ),
           evidenceRef = "audit:$generationId",
         ),
         satisfiedCriterionRefs = state.satisfiedCriterionRefs,
@@ -1778,22 +1917,77 @@ private fun persistNormalizedAuditState(
     state.priorGapDispositions.forEach { disposition ->
       unitOfWork.auditRepairs.appendDisposition(
         request.workflowId,
-        AuditGapDisposition(
-          gapId = disposition.gapId,
-          status = when (disposition.status) {
-            FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
-            FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
-            FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
-          },
-          evidence = disposition.evidence,
-          dispositionGeneration = decision.generation,
-          supersededByGeneration = (decision.generation + 1)
-            .takeIf { disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED },
-        ),
+        persistedDisposition(disposition, decision.generation),
       )
     }
   }
-  if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+
+  private fun normalizedRepositoryCheckpointFingerprint(fingerprint: String): String =
+    fingerprint.takeIf { it.matches(Regex("[a-f0-9]{64}")) }
+      ?: ConvergenceIdentities.digest(fingerprint)
+
+  private fun persistedGaps(state: FeatureTaskRuntimeAuditRepairState): List<AuditGap> {
+    val decision = state.decisionGenerations.last()
+    val unresolved = state.unresolvedGapLedger.unresolvedGaps.associateBy { it.gapId }
+    val dispositions = state.priorGapDispositions.associateBy { it.gapId }
+    return decision.plan.gaps.map { gap ->
+      val unresolvedGap = unresolved[gap.gapId]
+      val status = when (dispositions[gap.gapId]?.status) {
+        FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
+        FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
+        FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
+        null -> if ((unresolvedGap?.recurrence ?: 0) > 0) AuditGapStatus.RECURRING else AuditGapStatus.NEW
+      }
+      AuditGap(
+        gapId = gap.gapId,
+        acceptanceCriterionRef = gap.acceptanceCriterionRef,
+        acceptanceCriterionText = gap.acceptanceCriterionText,
+        failureEvidence = gap.failureEvidence,
+        diagnosis = gap.diagnosis,
+        affectedBoundary = gap.affectedBoundary,
+        status = status,
+        recurrence = unresolvedGap?.recurrence ?: 0,
+        firstSeenGeneration = gap.gapId.substringAfterLast("-gap-").toInt(),
+      )
+    }
+  }
+
+  private fun persistedRepairItems(state: FeatureTaskRuntimeAuditRepairState): List<AuditRepairItem> =
+    state.decisionGenerations.last().plan.gaps.flatMap { gap ->
+      gap.repairItems.map { item ->
+        AuditRepairItem(
+          itemId = item.repairItemId,
+          gapId = gap.gapId,
+          intendedOutcome = item.intendedOutcome,
+          implementationActions = item.implementationActions,
+          affectedPathsOrSymbols = item.affectedPathsOrSymbols,
+          requiredVerification = item.requiredVerification,
+          dependencies = item.dependsOn,
+        )
+      }
+    }
+
+  private fun persistedDisposition(
+    disposition: FeatureTaskRuntimePriorGapDisposition,
+    generation: Int,
+  ): AuditGapDisposition = AuditGapDisposition(
+    gapId = disposition.gapId,
+    status = when (disposition.status) {
+      FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED -> AuditGapStatus.RESOLVED
+      FeatureTaskRuntimePriorGapDisposition.Status.RECURRING -> AuditGapStatus.RECURRING
+      FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED -> AuditGapStatus.SUPERSEDED
+    },
+    evidence = disposition.evidence,
+    dispositionGeneration = generation,
+    supersededByGeneration = (generation + 1)
+      .takeIf { disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.SUPERSEDED },
+  )
+
+  private fun persistRepairResults(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    state: FeatureTaskRuntimeAuditRepairState,
+  ) {
     val generation = state.decisionGenerations.last().generation
     state.repairItemResults.forEach { result ->
       unitOfWork.auditRepairs.appendResult(

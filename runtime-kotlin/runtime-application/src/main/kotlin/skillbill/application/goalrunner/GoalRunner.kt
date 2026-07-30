@@ -166,7 +166,23 @@ class GoalRunner(
     effectiveRequest.eventSink.emit(GoalRunnerRunEvent.Started(state.manifest.issueKey))
     val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
-    val sweepOutcome = preparePlanningOrWarning(state, effectiveRequest)
+    val sweepOutcome = when (val outcome = goalPlanningSweep.prepare(state, effectiveRequest)) {
+      is GoalPlanningSweepOutcome.PreparedAll -> outcome
+      is GoalPlanningSweepOutcome.Stopped -> {
+        val report = stopped(
+          issueKey = outcome.issueKey,
+          attempted = emptyList(),
+          subtaskId = outcome.currentSubtaskId,
+          reason = outcome.reason,
+          blockedReason = outcome.blockedReason,
+          workflowId = state.manifest.workflowIdFor(outcome.currentSubtaskId),
+          lastResumableStep = outcome.lastResumableStep,
+        )
+        closeGoalTelemetrySegment(telemetryEmitter, state, report, attempted)
+        emitCompletedGoalEvent(effectiveRequest, report)
+        return report
+      }
+    }
     val loopResult = driveGoalLoop(
       state,
       effectiveRequest,
@@ -328,15 +344,14 @@ class GoalRunner(
     goalBranchSetupFailure(state, selection, request)?.let { failure ->
       return failure
     }
-    val reviewBaseline = goalReviewBaseline(state, subtaskId, request).let { baselineCapture ->
-      baselineCapture.baseline ?: GoalSubtaskReviewBaseline("0".repeat(40), emptyList()).also {
-        printReviewWarning(
-          request,
-          "could not capture the goal-subtask review baseline before implementation for subtask " +
-            "$subtaskId: ${baselineCapture.error.orEmpty()}",
-        )
-      }
-    }
+    val baselineCapture = goalReviewBaseline(state, subtaskId, request)
+    val reviewBaseline = baselineCapture.baseline ?: return blockedReviewBaselineIteration(
+      state,
+      subtaskId,
+      "Could not capture the goal-subtask review baseline before implementation for subtask " +
+        "$subtaskId: ${baselineCapture.error.orEmpty()}",
+      request,
+    )
     val prepared = runCatching {
       prepareAttemptedLaunchWithPlanningFallback(state, subtaskId, request, reviewBaseline, planning)
     }.getOrElse { error -> return blockedOnRecoveryError(state, subtaskId, error, request) }
@@ -504,9 +519,9 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     reviewBaseline: GoalSubtaskReviewBaseline,
     planning: GoalPlanningSweepOutcome.PreparedAll,
-  ): PreparedLaunch = try {
+  ): PreparedLaunch = runCatching {
     prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
-  } catch (error: Throwable) {
+  }.getOrElse { error ->
     if (!error.isPlanningPreparationFailure()) throw error
     printPlanningWarning(
       request,

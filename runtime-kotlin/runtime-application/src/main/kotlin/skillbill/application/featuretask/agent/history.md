@@ -1,5 +1,17 @@
 # featuretask runtime boundary history
 
+## [2026-07-30] SKILL-151 — Durable convergence contracts and normalized persistence
+Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-ports/persistence, runtime-infra-sqlite, orchestration/contracts
+- Made implementation, audit, review, and checkpoint evidence generation-aware and append-only so later settlements cannot erase earlier obligations or outcomes
+- Normalized stable identities, bounded provenance, repair and disposition relationships, and unresolved-obligation queries behind session-aware persistence ports
+- Added additive SQLite schema reconciliation and idempotent legacy import with conflict detection and typed quarantine instead of destructive snapshot replacement
+- Kept artifact JSON as a bounded derived projection while contract/version drift and non-bijective runtime mappings fail closed
+- Pattern: persist immutable convergence evidence transactionally with phase advancement, then derive current state from the cross-generation ledger
+- Reusable: convergence schema/codec, database migrations and schema helpers, session-bound repositories, audit and review recorders, and unresolved-state queries
+- Breaking changes/limitations: normalized convergence state is authoritative; raw prompts, responses, diagnostics, diffs, and unbounded text remain outside durable records
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-29] SKILL-150 — Truthful implementation completion
 Areas: runtime-application/featuretask, runtime-application/model, runtime-domain/taskruntime, runtime-cli/featuretask, orchestration/contracts
 - Gated completed implementation receipts on exact executable-plan task coverage with no unresolved items or actionable deviations

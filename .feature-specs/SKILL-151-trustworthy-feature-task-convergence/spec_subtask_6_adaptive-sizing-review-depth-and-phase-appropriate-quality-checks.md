@@ -19,7 +19,7 @@ Update adaptive policy contracts, complexity signal collection, planning stopper
 ## Non-Goals
 
 - Replacing review with quality checks or validation with review.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -29,7 +29,7 @@ Adaptive decisions consume the versioned policy and truthful obligation model es
 
 ## Validation Strategy
 
-Run existing focused module checks and repository validation commands. Add or modify no tests or fixtures.
+Run existing focused module checks and repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

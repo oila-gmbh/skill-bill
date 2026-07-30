@@ -20,7 +20,7 @@ Update audit convergence repositories, repair continuation, reconciliation, run-
 
 - Weakening audit to reduce iteration count.
 - Moving validation concerns into completeness audit.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -30,7 +30,7 @@ Audit convergence consumes durable evidence from subtask 1 and truthful implemen
 
 ## Validation Strategy
 
-Run existing focused module checks and repository validation commands. Add or modify no tests or fixtures.
+Run existing focused module checks and repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

@@ -27,16 +27,33 @@ internal object ConvergenceDatabaseMigrations {
       name = "retain-audit-history-and-one-active-repair-batch",
       operation = ::retainAuditHistoryAndOneActiveRepairBatch,
     ),
-    DatabaseMigration(
-      version = 22,
-      name = "align-convergence-record-shapes-and-review-ordinals",
-      operation = ::alignConvergenceRecordShapesAndReviewOrdinals,
-    ),
   )
+
+  fun healLegacyShapes(connection: java.sql.Connection) {
+    if (connection.hasColumn("review_generations", "generation_ordinal")) return
+    connection.inImmediateTransaction {
+      ConvergenceShapeMigration.apply(this)
+    }
+  }
 }
 
-private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.Connection) {
-  connection.createStatement().use { statement ->
+private object ConvergenceShapeMigration {
+  fun apply(connection: java.sql.Connection) {
+    connection.createStatement().use { statement ->
+      migrateConvergenceRecords(statement)
+      prepareReviewOrdinals(connection, statement)
+      migrateReviewGenerations(statement)
+      migrateReviewPasses(statement)
+      migrateReviewFindings(statement)
+      migrateReviewDispositions(statement)
+      addAuditMappingColumns(connection, statement)
+      prepareAuditMappings(statement)
+      migrateAuditMappings(statement)
+      createConvergenceIndexes(statement)
+    }
+  }
+
+  private fun migrateConvergenceRecords(statement: java.sql.Statement) {
     statement.execute("DROP INDEX IF EXISTS idx_convergence_history")
     statement.execute("DROP INDEX IF EXISTS idx_convergence_unresolved")
     statement.execute("ALTER TABLE feature_task_convergence_records RENAME TO feature_task_convergence_records_v21")
@@ -56,6 +73,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
     )
     statement.execute("DROP TABLE feature_task_convergence_records_v21")
     ConvergenceDatabaseSchema.statements.filter { it.startsWith("CREATE INDEX") }.forEach(statement::execute)
+  }
+
+  private fun prepareReviewOrdinals(connection: java.sql.Connection, statement: java.sql.Statement) {
     if (!connection.hasColumn("review_generations", "generation_ordinal")) {
       statement.execute("ALTER TABLE review_generations ADD COLUMN generation_ordinal INTEGER")
     }
@@ -80,6 +100,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
     statement.execute("ALTER TABLE review_generation_findings RENAME TO review_generation_findings_v21")
     statement.execute("ALTER TABLE review_generation_passes RENAME TO review_generation_passes_v21")
     statement.execute("ALTER TABLE review_generations RENAME TO review_generations_v21")
+  }
+
+  private fun migrateReviewGenerations(statement: java.sql.Statement) {
     statement.execute(
       """
       CREATE TABLE review_generations (
@@ -107,6 +130,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       FROM review_generations_v21
       """.trimIndent(),
     )
+  }
+
+  private fun migrateReviewPasses(statement: java.sql.Statement) {
     statement.execute(
       """
       CREATE TABLE review_generation_passes (
@@ -128,6 +154,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       FROM review_generation_passes_v21
       """.trimIndent(),
     )
+  }
+
+  private fun migrateReviewFindings(statement: java.sql.Statement) {
     statement.execute(
       """
       CREATE TABLE review_generation_findings (
@@ -155,6 +184,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       FROM review_generation_findings_v21
       """.trimIndent(),
     )
+  }
+
+  private fun migrateReviewDispositions(statement: java.sql.Statement) {
     statement.execute(
       """
       CREATE TABLE review_finding_dispositions (
@@ -191,6 +223,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       ON review_generation_findings(workflow_id, severity, finding_id)
       """.trimIndent(),
     )
+  }
+
+  private fun addAuditMappingColumns(connection: java.sql.Connection, statement: java.sql.Statement) {
     listOf(
       "gap_id TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(gap_id) BETWEEN 1 AND 160)",
       "intended_outcome TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(intended_outcome) BETWEEN 1 AND 2048)",
@@ -206,6 +241,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
         )
       }
     }
+  }
+
+  private fun prepareAuditMappings(statement: java.sql.Statement) {
     statement.execute(
       """
       UPDATE feature_task_audit_repair_item_batch_mapping
@@ -249,6 +287,9 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       "ALTER TABLE feature_task_audit_repair_item_batch_mapping " +
         "RENAME TO feature_task_audit_repair_item_batch_mapping_v21",
     )
+  }
+
+  private fun migrateAuditMappings(statement: java.sql.Statement) {
     statement.execute(
       """
       CREATE TABLE feature_task_audit_repair_item_batch_mapping (
@@ -303,27 +344,29 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
     statement.executeQuery("PRAGMA foreign_key_check").use { violations ->
       require(!violations.next()) { "Migration 22 produced foreign-key violations." }
     }
-    statement.execute(
-      """
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_repair_result_generation
-      ON feature_task_audit_repair_item_results(workflow_id, item_id, disposition_generation)
-      """.trimIndent(),
-    )
-    statement.execute(
-      """
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_gap_disposition_generation
-      ON feature_task_audit_gap_dispositions(workflow_id, gap_id, disposition_generation)
-      """.trimIndent(),
-    )
   }
 }
 
-private fun java.sql.Connection.hasColumn(table: String, column: String): Boolean =
-  createStatement().use { statement ->
-    statement.executeQuery("PRAGMA table_info($table)").use { rows ->
-      generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == column }
-    }
+private fun createConvergenceIndexes(statement: java.sql.Statement) {
+  statement.execute(
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_repair_result_generation
+    ON feature_task_audit_repair_item_results(workflow_id, item_id, disposition_generation)
+    """.trimIndent(),
+  )
+  statement.execute(
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_gap_disposition_generation
+    ON feature_task_audit_gap_dispositions(workflow_id, gap_id, disposition_generation)
+    """.trimIndent(),
+  )
+}
+
+private fun java.sql.Connection.hasColumn(table: String, column: String): Boolean = createStatement().use { statement ->
+  statement.executeQuery("PRAGMA table_info($table)").use { rows ->
+    generateSequence { if (rows.next()) rows.getString("name") else null }.any { it == column }
   }
+}
 
 private fun createInitialConvergenceTables(connection: java.sql.Connection) {
   connection.createStatement().use { statement ->

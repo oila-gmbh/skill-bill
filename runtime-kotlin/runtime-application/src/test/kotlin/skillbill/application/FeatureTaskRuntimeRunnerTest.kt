@@ -699,7 +699,7 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `review fix loop re-runs up to the cap then warns and advances`() {
+  fun `review schema fix loop re-runs up to the cap then blocks`() {
     val harness = runnerHarness(
       validator = ThrowingValidator(failPhases = setOf("review")),
       agentAssignment = phasePerAgentAssignment(),
@@ -707,7 +707,9 @@ class FeatureTaskRuntimeRunnerTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
     val launchedPhases = harness.launchedPhaseOrder()
     assertEquals(1, launchedPhases.count { it == "plan" })
     assertEquals(1, launchedPhases.count { it == "implement" })
@@ -718,13 +720,6 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(
       FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
       harness.launchOrder().count { it == "review" },
-    )
-    assertTrue(
-      harness.events.any {
-        it is FeatureTaskRuntimeRunEvent.Warning &&
-          it.phaseId == "review" &&
-          it.message.contains("exhausted the bounded fix loop")
-      },
     )
   }
 
@@ -773,19 +768,14 @@ class FeatureTaskRuntimeRunnerTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "semantic schema failure")
 
     assertEquals(
       FeatureTaskRuntimeFixLoopPolicy.MAX_FORMAT_RETRY_ATTEMPTS +
         FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS - 1,
       reviewAttempts,
-    )
-    assertTrue(
-      harness.events.any {
-        it is FeatureTaskRuntimeRunEvent.Warning &&
-          it.phaseId == "review" &&
-          it.message.contains("exhausted the bounded fix loop")
-      },
     )
   }
 

@@ -8,8 +8,6 @@ import skillbill.ports.persistence.AuditRepairQuery
 import skillbill.ports.persistence.ConvergenceReplayConflictException
 import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.model.AuditRepairItemResult
-import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
-import skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.AuditGap
 import skillbill.workflow.taskruntime.model.AuditGapDisposition
 import skillbill.workflow.taskruntime.model.AuditGapStatus
@@ -17,6 +15,8 @@ import skillbill.workflow.taskruntime.model.AuditGeneration
 import skillbill.workflow.taskruntime.model.AuditGenerationIdentities
 import skillbill.workflow.taskruntime.model.AuditRepairBatch
 import skillbill.workflow.taskruntime.model.AuditRepairItem
+import skillbill.workflow.taskruntime.model.CONVERGENCE_REFERENCE_MAX_LENGTH
+import skillbill.workflow.taskruntime.model.CONVERGENCE_SUMMARY_MAX_LENGTH
 import skillbill.workflow.taskruntime.model.ConvergenceIdentities
 import skillbill.workflow.taskruntime.model.ConvergenceProvenance
 import skillbill.workflow.taskruntime.model.ConvergenceRecord
@@ -564,11 +564,7 @@ class SQLiteAuditGenerationStore(
     return logicalId
   }
 
-  private fun appendCanonicalGapDisposition(
-    generation: AuditGeneration,
-    gap: AuditGap,
-    parentLogicalId: String,
-  ) {
+  private fun appendCanonicalGapDisposition(generation: AuditGeneration, gap: AuditGap, parentLogicalId: String) {
     val logicalId = ConvergenceIdentities.logical(
       generation.workflowId,
       ConvergenceRecordKind.AUDIT_REPAIR,

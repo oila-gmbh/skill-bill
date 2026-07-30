@@ -19,7 +19,7 @@ Version bounded convergence schemas under `orchestration/contracts/` for impleme
 
 - Storing full prompts, responses, private diagnostics, diffs, or unbounded review text.
 - Replacing manifest-driven platform routing with a fixed platform catalogue.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -29,7 +29,7 @@ This foundation owns the stable identities, transactions, and query seams used b
 
 ## Validation Strategy
 
-Run existing contract, domain, persistence, and repository validation commands. Add or modify no tests or fixtures.
+Run existing contract, domain, persistence, build, test, and repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

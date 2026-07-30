@@ -534,6 +534,10 @@ internal class FeatureTaskRuntimeRunState(
   // this map preserves the prior attempt count and reason across resume.
   fun persistedBlockedReason(phaseId: String): String? = blockedRecords[phaseId]
 
+  fun hasBlockedLedgerEntry(phaseId: String): Boolean = initialLedger.any { entry ->
+    entry.phaseId == phaseId && entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
+  }
+
   // True when the phase carries a stale branch-setup-origin blocked record from a prior run that
   // must be superseded now that branch setup has recovered.
   fun hasBranchSetupBlock(phaseId: String): Boolean = phaseId in branchSetupBlockedPhases

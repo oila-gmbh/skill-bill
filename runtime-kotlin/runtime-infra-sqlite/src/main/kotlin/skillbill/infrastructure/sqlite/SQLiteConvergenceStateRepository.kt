@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.ConvergenceReplayConflictException
+import skillbill.ports.persistence.ConvergenceStateRepository
 import skillbill.ports.persistence.model.LegacyReconciliation
 import skillbill.workflow.taskruntime.ConvergenceStateCodec
 import skillbill.workflow.taskruntime.ConvergenceStateSchemaValidator
@@ -21,17 +21,7 @@ class SQLiteConvergenceStateRepository(
   private val schemaValidator: ConvergenceStateSchemaValidator = bundledConvergenceStateSchemaValidator(),
 ) : ConvergenceStateRepository {
   override fun append(record: ConvergenceRecord): ReplayResult {
-    schemaValidator.validate(
-      ConvergenceStateCodec.encodeRecord(record),
-      "feature_task_convergence_records:${record.recordId}",
-    )
-    val expectedRecordId = ConvergenceIdentities.record(
-      record.provenance.workflowId,
-      record.kind,
-      record.logicalId,
-      record.provenance.generation,
-    )
-    require(record.recordId == expectedRecordId) { "Convergence record identity is not deterministic." }
+    validateRecord(record)
     val parentRecord = connection.requireConvergenceParentRelationship(
       record,
       history(record.provenance.workflowId),
@@ -81,6 +71,20 @@ class SQLiteConvergenceStateRepository(
     return ReplayResult.Appended(record)
   }
 
+  private fun validateRecord(record: ConvergenceRecord) {
+    schemaValidator.validate(
+      ConvergenceStateCodec.encodeRecord(record),
+      "feature_task_convergence_records:${record.recordId}",
+    )
+    val expectedRecordId = ConvergenceIdentities.record(
+      record.provenance.workflowId,
+      record.kind,
+      record.logicalId,
+      record.provenance.generation,
+    )
+    require(record.recordId == expectedRecordId) { "Convergence record identity is not deterministic." }
+  }
+
   override fun history(workflowId: String): List<ConvergenceRecord> = connection.readConvergenceHistory(workflowId)
 
   override fun current(workflowId: String): Map<String, ConvergenceRecord> =
@@ -103,7 +107,7 @@ class SQLiteConvergenceStateRepository(
       }
       .sortedWith(compareBy({ it.provenance.generation }, ConvergenceRecord::createdAt, ConvergenceRecord::recordId))
     val reviewBlockers = current.filter {
-        it.kind == ConvergenceRecordKind.REVIEW_FINDING &&
+      it.kind == ConvergenceRecordKind.REVIEW_FINDING &&
         it.status == ConvergenceStatus.OPEN &&
         it.classification == REVIEW_BLOCKER_CLASSIFICATION &&
         (terminalParentGenerations[it.logicalId] ?: 0) < it.provenance.generation

@@ -20,7 +20,7 @@ Update goal-subtask review state, review generation repositories, finding and di
 
 - Automatically accepting findings because their source checkpoint is stale.
 - Weakening review depth or remediation requirements.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -30,7 +30,7 @@ Review generations use the durable evidence model from subtask 1 and remediation
 
 ## Validation Strategy
 
-Run existing focused module checks and repository validation commands. Add or modify no tests or fixtures.
+Run existing focused module checks and repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

@@ -19,7 +19,7 @@ Update phase-output normalization, implementation completion decisions, phase re
 
 - Guaranteeing completion in one process invocation.
 - Relaxing bounded retry limits or projection validation.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -29,7 +29,7 @@ The implementation settlement gate consumes the stable obligations and receipts 
 
 ## Validation Strategy
 
-Run existing focused module checks and the repository validation commands. Add or modify no tests or fixtures.
+Run existing focused module checks and the repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

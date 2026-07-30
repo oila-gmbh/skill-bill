@@ -898,7 +898,7 @@ private fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTa
     } else if (monitor) {
       state.liveStdout(event.runtimeProgressLine())
     }
-}
+  }
 
 private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
   is FeatureTaskRuntimeRunEvent.RunStarted ->
@@ -919,6 +919,10 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
   is FeatureTaskRuntimeRunEvent.Warning ->
     "feature-task-runtime $workflowId: warning $category at $phaseId: $message; goal execution continues\n"
+  else -> extendedRuntimeProgressLine()
+}
+
+private fun FeatureTaskRuntimeRunEvent.extendedRuntimeProgressLine(): String = when (this) {
   is FeatureTaskRuntimeRunEvent.PlanDecompositionRequired ->
     "feature-task-runtime $workflowId: plan decomposition required score=$boundedScore: " +
       "${rationale.joinToString("; ")}\n"
@@ -932,6 +936,7 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
   is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning ->
     "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
       "Work the first subtask first.\n"
+  else -> error("Feature-task runtime event was already handled by the primary formatter.")
 }
 
 private fun FeatureTaskRuntimeRunEvent.BranchResolved.resolutionLabel(): String = if (reused) "reused" else "created"

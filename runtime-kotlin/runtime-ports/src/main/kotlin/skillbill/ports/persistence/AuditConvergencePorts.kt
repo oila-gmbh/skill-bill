@@ -60,8 +60,6 @@ object UnavailableAuditRepairBatchStore : AuditRepairBatchStore {
 
 object UnavailableAuditRepairQuery : AuditRepairQuery {
   private fun unavailable(): Nothing = error("Audit repair query is not available.")
-  override fun appendResult(workflowId: String, result: AuditRepairItemResult) = unavailable()
-  override fun appendDisposition(workflowId: String, disposition: AuditGapDisposition) = unavailable()
   override fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem> = unavailable()
   override fun getUnresolvedRepairItemsWithDependencies(
     workflowId: String,

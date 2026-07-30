@@ -21,7 +21,7 @@ Update workflow Git operations, scoped checkpoint models and operations, branch 
 - Squashing or rewriting existing feature branches.
 - Path-by-path operator approval.
 - Preserving unrelated changes by committing them into workflow checkpoints.
-- Adding or modifying tests or test infrastructure.
+- Adding new tests or test infrastructure.
 
 ## Dependency Notes
 
@@ -31,7 +31,7 @@ Checkpoint capture depends on stable persisted identity and truthful workflow ob
 
 ## Validation Strategy
 
-Run existing focused module checks and repository validation commands. Add or modify no tests or fixtures.
+Run existing focused module checks and repository validation commands. Fix failing production behavior and correct stale existing test expectations when necessary. Add no new tests or fixtures.
 
 ## Next Path
 

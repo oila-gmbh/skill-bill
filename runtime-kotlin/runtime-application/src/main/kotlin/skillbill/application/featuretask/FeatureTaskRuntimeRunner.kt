@@ -132,14 +132,7 @@ class FeatureTaskRuntimeRunner(
         .orEmpty()
         .mapValues { (_, record) -> record.status }
     }
-    // The durable review-fix loop iteration count for the finished telemetry (AC6): the highest
-    // `review_fix` per-edge watermark from the LOOP_EDGE ledger (0 when the loop never fired).
-    // Sourced from the runtime's own durable ledger, never agent-self-reported, and resolved lazily
-    // inside the telemetry seam's failure isolation so loading it cannot abort or falsely-fail the run.
     val reviewFixIterationCount = { loadReviewFixIterationCount(runRequest) }
-    // The durable audit-gap loop iteration count for the finished telemetry (AC7): the highest
-    // `audit_gap` per-edge watermark from the LOOP_EDGE ledger (0 when the loop never fired), sourced
-    // from the runtime's own ledger and resolved lazily inside the telemetry seam's failure isolation.
     val auditGapIterationCount = { loadAuditGapIterationCount(runRequest) }
     val auditRepairProgress = {
       loadAuditRepairProgress(runRequest)

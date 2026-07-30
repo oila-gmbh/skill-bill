@@ -373,9 +373,6 @@ object GoalRunnerStatusProjector {
         subtask.status
       }
     }
-    // Only goal_runner_supervisor events are persisted; the per-tick foreground heartbeats are console-only.
-    // So a block recorded when a prior run stopped stays the newest stored event while a relaunched child
-    // runs, and rendering it would contradict the live workflow status.
     val authoritativeStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
       ?: currentSubtask?.lastResumableStep
     val signals = statusSignals(extras, authoritativeStep)
@@ -436,7 +433,8 @@ object GoalRunnerStatusProjector {
     val failureSequence = failureEvent?.sequenceNumber
     val latestSequence = (event?.get("sequence_number") as? Number)?.toInt()
     val failureCurrent = failurePhase == authoritativeStep &&
-      (extras.currentAttempt == null || extras.latestFailureAttempt == extras.currentAttempt) &&
+      extras.currentAttempt != null &&
+      extras.latestFailureAttempt == extras.currentAttempt &&
       (latestSequence == null || failureSequence == null || failureSequence >= latestSequence)
     val failure = failureEvent?.let {
       GoalRunnerStatusFailure(

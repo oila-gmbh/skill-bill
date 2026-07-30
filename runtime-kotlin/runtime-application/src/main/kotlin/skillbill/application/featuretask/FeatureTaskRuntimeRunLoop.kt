@@ -194,8 +194,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
 
-  // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
-  // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
   private var recordRejectionSettlementPending: Boolean = false
 
   private fun resumedReentry(): PendingReentry? {
@@ -287,7 +285,9 @@ internal class FeatureTaskRuntimeRunLoop(
         return
       }
     }
-    var phaseId: String? = resumedReentry?.phaseId ?: transitions.forwardPhaseIds.first()
+    val durablePhaseId = initialForwardPhaseId()
+    reconcileReentryWithDurablePhase(durablePhaseId)
+    var phaseId: String? = pendingReentry?.phaseId ?: durablePhaseId
     while (phaseId != null) {
       val settled = advance(phaseId)
       val completedPhaseId = settled.completedPhaseId
@@ -299,9 +299,43 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun initialForwardPhaseId(): String? {
+    val attemptedIncomplete = transitions.forwardPhaseIds
+      .withIndex()
+      .filter { (_, phaseId) ->
+        !state.isComplete(phaseId) &&
+          state.recordFor(phaseId)?.let { record ->
+            record.attemptCount > 0 && record.status in setOf("pending", STATUS_RUNNING, STATUS_BLOCKED)
+          } == true
+      }
+      .maxByOrNull { it.index }
+      ?.value
+    return attemptedIncomplete ?: transitions.forwardPhaseIds
+      .filterNot(transitions.loopOnlyPhaseIds::contains)
+      .firstOrNull { phaseId -> !state.isComplete(phaseId) }
+  }
+
+  private fun reconcileReentryWithDurablePhase(durablePhaseId: String?) {
+    val reentry = pendingReentry ?: return
+    val phaseId = durablePhaseId ?: return
+    val inFlight = state.inFlightReentry(reentry.loopId) ?: return
+    if (phaseId in inFlight.span) {
+      pendingReentry = reentry.copy(phaseId = phaseId)
+      activeReentry = pendingReentry
+      return
+    }
+    val durableIndex = transitions.forwardPhaseIds.indexOf(phaseId)
+    val reentryEndIndex = inFlight.span.maxOf(transitions.forwardPhaseIds::indexOf)
+    if (durableIndex > reentryEndIndex) {
+      state.discardStaleReentry(reentry.loopId)
+      pendingReentry = null
+      activeReentry = null
+    }
+  }
+
   private fun advance(phaseId: String): PhaseSettlement {
     phaseEntryBlockReason(phaseId)?.let { reason ->
-      if (isWarningOnlyPhase(phaseId)) {
+      if (shouldCompleteEntryAsWarning(phaseId, reason)) {
         val output = completePhaseAsWarning(phaseId, reason)
         state.recordCompleted(output)
         return PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
@@ -319,10 +353,6 @@ internal class FeatureTaskRuntimeRunLoop(
     return when {
       decomposed != null -> PhaseSettlement.stop()
       recordRejectionSettlementPending -> {
-        // The launch quarantined an upstream record: settle this consumer with RECORD_REJECTED so the
-        // transition machinery re-enters the producer (or blocks at the regeneration cap). The consumer
-        // itself never settles completed — its durable record stays running and it re-runs after the
-        // producer regenerates.
         recordRejectionSettlementPending = false
         PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)
       }
@@ -354,21 +384,10 @@ internal class FeatureTaskRuntimeRunLoop(
     return reason
   }
 
-  // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared
-  // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
   private fun phaseEntryBlockReason(phaseId: String): String? = entryGateBlockReason(phaseId)
     ?: capExhaustedOnResume(phaseId)
     ?: reconcileCompletedGoalReviewPass(phaseId)
 
-  // The phase-entry seam of the declared ordering gate. drive() can enter a phase directly from a
-  // resumed pending re-entry without ever consulting the transition function, so guarding only the
-  // transition would leave a resume hole through which a stale durable record re-enters a gated
-  // phase. Both seams evaluate the same declaration-owned predicate.
-  //
-  // The violation degrades to a durable, resumable Blocked report rather than an escaping throw:
-  // an uncaught contract exception here would leave the workflow row running with no blocked reason
-  // and skip goal-continuation outcome persistence, so the parent goal could neither resume nor
-  // report. Every other governed gate in this runtime blocks the same way.
   private fun entryGateBlockReason(phaseId: String): String? {
     val settledVerdicts = state.settledVerdictsByPhaseId()
     return transitions.entryGateViolation(phaseId, settledVerdicts)?.let { gate ->
@@ -464,12 +483,12 @@ internal class FeatureTaskRuntimeRunLoop(
             val reason = state.recordFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
               ?.blockedReason
               ?: "Goal-subtask review is paused for an operator decision."
-            val output = completePhaseAsWarning(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
-            state.recordCompleted(output)
-            PhaseSettlement.completed(
+            pauseAt(
               FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-              FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
+              reason,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
             )
+            PhaseSettlement.stop()
           } else {
             settleCarriedForwardGoalReview(
               it,
@@ -548,12 +567,8 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: $detail"
     }
-    val output = completePhaseAsWarning(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
-    state.recordCompleted(output)
-    return PhaseSettlement.completed(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
-    )
+    blockAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
+    return PhaseSettlement.stop()
   }
 
   @Suppress("CyclomaticComplexMethod")
@@ -564,9 +579,11 @@ internal class FeatureTaskRuntimeRunLoop(
       verdict == FeatureTaskRuntimeVerdict.APPROVED &&
       unresolvedReviewBlockerCount() > 0
     ) {
-      return reviewWarningTarget(
+      blockAt(
+        phaseId,
         "Review reported approval while durable Blocker findings remain unresolved.",
       )
+      return null
     }
     val effectiveVerdict = if (
       phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
@@ -579,7 +596,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val edge = matchingBackwardEdge(phaseId, effectiveVerdict)
     edge?.let(::resumeInFlightReviewFix)?.let { return it }
-    val transition = runCatching {
+    val transition = try {
       FeatureTaskRuntimeTransitionFunction.nextTransition(
         declaration = transitions,
         currentPhaseId = phaseId,
@@ -590,12 +607,11 @@ internal class FeatureTaskRuntimeRunLoop(
           unresolvedBlockerPresent = unresolvedBlockerDispositionPresent(),
         ),
       )
-    }.getOrElse { error ->
-      if (error !is FeatureTaskRuntimePhaseOrderViolationError) throw error
+    } catch (error: FeatureTaskRuntimePhaseOrderViolationError) {
       blockAt(error.phaseId, error.message.orEmpty())
-      return null
+      null
     }
-    return transitionTarget(phaseId, edge, effectiveVerdict, transition)
+    return transition?.let { transitionTarget(phaseId, edge, effectiveVerdict, it) }
   }
 
   private fun transitionTarget(
@@ -606,7 +622,7 @@ internal class FeatureTaskRuntimeRunLoop(
   ): String? = when (transition) {
     is FeatureTaskRuntimeNextPhase.TerminalAdvance -> null
     is FeatureTaskRuntimeNextPhase.TerminalBlock -> {
-      if (isWarningOnlyPhase(phaseId)) {
+      if (warnOnCapExhaustion(phaseId, edge)) {
         warningTransitionTarget(
           phaseId,
           capExhaustionReason(
@@ -623,17 +639,19 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     is FeatureTaskRuntimeNextPhase.TerminalPause -> {
-      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-        reviewWarningTarget(
-          "Review pass ${transition.edgeIteration} left ${unresolvedReviewBlockerCount()} " +
-            "Blocker finding(s) unresolved after the bounded remediation attempt.",
-        )
-      } else {
-        pauseOnUnresolvedBlocker(phaseId, transition)
-        null
-      }
+      pauseOnUnresolvedBlocker(phaseId, transition)
+      null
     }
     is FeatureTaskRuntimeNextPhase.Next -> nextTransitionTarget(phaseId, edge, effectiveVerdict, transition)
+  }
+
+  private fun warnOnCapExhaustion(phaseId: String, edge: FeatureTaskRuntimeBackwardEdge?): Boolean = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN ->
+      edge == null || !state.hasBlockedLedgerEntry(edge.destinationPhaseId)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+      !hasUnresolvedReviewBlocker(phaseId) &&
+        (edge == null || !state.hasBlockedLedgerEntry(edge.destinationPhaseId))
+    else -> false
   }
 
   private fun nextTransitionTarget(
@@ -643,9 +661,23 @@ internal class FeatureTaskRuntimeRunLoop(
     transition: FeatureTaskRuntimeNextPhase.Next,
   ): String? {
     val loopId = transition.loopId
-    val exhaustedReviewTarget = exhaustedReviewWarningTarget(phaseId)
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+      reviewSequenceExhausted() &&
+      hasUnresolvedReviewBlocker(phaseId)
+    ) {
+      blockAt(
+        phaseId,
+        capExhaustionReason(
+          FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID,
+          GOAL_SUBTASK_REVIEW_MAX_PASSES,
+          effectiveVerdict,
+          state.unresolvedReviewFindings(phaseId),
+          emptyList(),
+        ),
+      )
+      return null
+    }
     return when {
-      exhaustedReviewTarget != null -> exhaustedReviewTarget
       loopId == null && !establishForwardCheckpoint(phaseId, transition.phaseId) -> null
       loopId == null -> transition.phaseId
       reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
@@ -680,16 +712,6 @@ internal class FeatureTaskRuntimeRunLoop(
    * A disposed pass whose Blockers all resolved or were superseded settles neither and takes the
    * forward transition. Returns true when this settled the transition.
    */
-  private fun exhaustedReviewWarningTarget(phaseId: String): String? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    val sequenceExhausted = state.completedReviewPassNumber() == GOAL_SUBTASK_REVIEW_MAX_PASSES ||
-      state.outputCountFor(phaseId) >= GOAL_SUBTASK_REVIEW_MAX_PASSES
-    if (!sequenceExhausted || state.unresolvedReviewFindings(phaseId).isEmpty()) return null
-    return reviewWarningTarget(
-      "The bounded review sequence ended with ${unresolvedReviewBlockerCount()} unresolved Blocker finding(s).",
-    )
-  }
-
   private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean {
     val normalizedPlan = state.auditRepairPlan(auditPhaseId) ?: return false
     val durableState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return false
@@ -1087,9 +1109,29 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       is FeatureTaskRuntimePlanningStopDecision.Blocked -> {
         printWarning("planning", decision.reason)
-        null
+        persistPlanningBlock(phaseId, decision.reason)
+        decision.reason
       }
     }
+  }
+
+  private fun persistPlanningBlock(phaseId: String, reason: String) {
+    val record = state.recordFor(phaseId)
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_BLOCKED,
+        attemptCount = record?.attemptCount ?: state.nextIteration(phaseId),
+        resolvedAgentId = record?.resolvedAgentId ?: request.invokedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = record?.loopId,
+        edgeIteration = record?.edgeIteration,
+      ),
+      request.dbPathOverride,
+    )
   }
 
   private fun resolvePlanningStop(planOutput: FeatureTaskRuntimePhaseOutput): FeatureTaskRuntimePlanningStopDecision =
@@ -1165,20 +1207,46 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun isWarningOnlyPhase(phaseId: String): Boolean = phaseId in setOf(
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-  )
+  private fun unresolvedReviewBlockerCount(): Int = runCatching {
+    recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride).size
+  }.getOrElse { error ->
+    printWarning(
+      "code review",
+      "Could not read the durable review Blocker ledger: ${error.message.orEmpty()}",
+    )
+    0
+  }
+
+  private fun hasUnresolvedReviewBlocker(phaseId: String): Boolean =
+    state.unresolvedReviewFindings(phaseId).any { it.severity.blocksAdvance } ||
+      unresolvedReviewBlockerCount() > 0
+
+  private fun reviewSequenceExhausted(): Boolean =
+    state.completedReviewPassNumber() == GOAL_SUBTASK_REVIEW_MAX_PASSES ||
+      state.outputCountFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) >=
+      GOAL_SUBTASK_REVIEW_MAX_PASSES
+
+  private fun shouldCompleteEntryAsWarning(phaseId: String, reason: String): Boolean = when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
+      recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+        .orEmpty()[phaseId]
+        ?.failureDisposition == null &&
+        !state.hasBlockedLedgerEntry(phaseId) &&
+        (reason.contains("cap", ignoreCase = true) || reason.contains("exhaust", ignoreCase = true))
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN ->
+      reason.contains("cap", ignoreCase = true) || reason.contains("exhaust", ignoreCase = true)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+      !hasUnresolvedReviewBlocker(phaseId) &&
+        (reason.contains("cap", ignoreCase = true) || reason.contains("exhaust", ignoreCase = true))
+    else -> false
+  }
 
   private fun completePhaseAsWarning(
     phaseId: String,
     reason: String,
     targetObservability: FeatureTaskRuntimeRunObservability = observability,
+    superseded: Boolean = false,
   ): FeatureTaskRuntimePhaseOutput {
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      acceptUnresolvedReviewBlockersAsWarnings()
-    }
     val category = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       "code review"
     } else {
@@ -1193,23 +1261,22 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     ).resolvedAgentId
-    check(
-      recorder.recordCompletedPhase(
-        FeatureTaskRuntimePhaseStateRequest(
-          workflowId = request.workflowId,
-          phaseId = phaseId,
-          status = STATUS_COMPLETED,
-          attemptCount = iteration,
-          resolvedAgentId = resolvedAgentId,
-          finished = true,
-          outputArtifact = outputText,
-          normalizedOutput = normalized,
-        ),
-        request.dbPathOverride,
-      ),
-    ) {
-      "Warning-only phase '$phaseId' could not persist its non-blocking completion."
+    val phaseState = FeatureTaskRuntimePhaseStateRequest(
+      workflowId = request.workflowId,
+      phaseId = phaseId,
+      status = STATUS_COMPLETED,
+      attemptCount = iteration,
+      resolvedAgentId = resolvedAgentId,
+      finished = true,
+      outputArtifact = outputText,
+      normalizedOutput = normalized,
+    )
+    val persisted = if (superseded) {
+      recorder.recordSupersededPhaseCompletion(phaseState, request.dbPathOverride)
+    } else {
+      recorder.recordCompletedPhase(phaseState, request.dbPathOverride)
     }
+    check(persisted)
     targetObservability.completed(phaseId, resolvedAgentId, iteration)
     return FeatureTaskRuntimePhaseOutput(phaseId, iteration, outputText, normalized)
   }
@@ -1262,14 +1329,14 @@ internal class FeatureTaskRuntimeRunLoop(
         "findings" to emptyList<Any?>(),
         "blocker_dispositions" to emptyList<Any?>(),
       )
-      else -> error("Phase '$phaseId' is not warning-only.")
+      else -> error("Phase '$phaseId' cannot complete as a warning.")
     }
     return JsonSupport.mapToJsonString(
       linkedMapOf<String, Any?>(
         "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
         "phase_id" to phaseId,
         "status" to STATUS_COMPLETED,
-        "summary" to "Warning-only $phaseId completion: ${reason.take(1024)}",
+        "summary" to "Warning-only $phaseId completion: ${reason.take(WARNING_SUMMARY_LIMIT)}",
         "produced_outputs" to producedOutputs,
       ).apply {
         if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
@@ -1279,51 +1346,13 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun unresolvedReviewBlockerCount(): Int = runCatching {
-    recorder.unresolvedReviewBlockers(request.workflowId, request.dbPathOverride).size
-  }.getOrElse { error ->
-    printWarning(
-      "code review",
-      "Could not read the durable review Blocker ledger: ${error.message.orEmpty()}",
-    )
-    0
-  }
-
-  private fun acceptUnresolvedReviewBlockersAsWarnings() {
-    if (!isGoalContinuationRun(request) || unresolvedReviewBlockerCount() == 0) return
-    val accepted = runCatching {
-      goalContinuationRecorder.acceptUnresolvedReviewBlockers(
-        request.workflowId,
-        request.dbPathOverride,
-      )
-    }.getOrNull()
-    if (accepted == null) {
-      printWarning(
-        "code review",
-        "Durable Blocker findings could not be marked accepted automatically; they remain in the warning ledger.",
-      )
-    }
-  }
-
-  private fun reviewWarningTarget(reason: String): String? =
-    warningTransitionTarget(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
-
   private fun warningTransitionTarget(phaseId: String, reason: String): String? {
     val category = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
       "code review"
     } else {
       "planning"
     }
-    val detail = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      val count = unresolvedReviewBlockerCount()
-      "$reason ${if (count == 0) "No durable Blocker count is available." else "$count finding(s) remain visible."}"
-    } else {
-      reason
-    }
-    printWarning(category, detail, phaseId)
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-      acceptUnresolvedReviewBlockersAsWarnings()
-    }
+    printWarning(category, reason, phaseId)
     val currentIndex = transitions.forwardPhaseIds.indexOf(phaseId)
     if (currentIndex < 0) return null
     return (currentIndex + 1 until transitions.forwardPhaseIds.size)
@@ -1710,24 +1739,7 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
-    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize).let { declaration ->
-      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
-        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-      ) {
-        declaration.copy(
-          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
-        )
-      } else if (
-        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
-      ) {
-        declaration.copy(
-          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.reviewRetryProjections(),
-        )
-      } else {
-        declaration
-      }
-    }
+    val declaration = phaseDeclarationForReentry(phaseId, request, reentry)
     val run = PhaseRun(
       phaseId = phaseId,
       declaration = declaration,
@@ -1745,46 +1757,82 @@ internal class FeatureTaskRuntimeRunLoop(
     settledFullyClosedAudit(run, state, observability)?.let { return it }
     completedReviewBudgetOutput
       ?.let { output -> settleCompletedReviewBudget(run, state, observability, output) }
-      ?.let { return warningOnlyOutcome(phaseId, it, observability) }
+      ?.let { return warningReviewOutcome(phaseId, it, observability) }
     preLaunchBlock(run, state, observability)
-      ?.let { return warningOnlyOutcome(phaseId, it, observability) }
-    val outcome = runCatching {
-      when (val prepared = prepareGoalReviewRun(run, observability)) {
-        is GoalReviewRunReady -> {
-          // Preflight reads the established review scope rather than rebuilding it, so the gate and
-          // the review it guards can never disagree about which packs this delta routes to.
-          if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-            phaseGates.reviewNativeAgentPreflight(request, prepared.run.goalReviewInput)
-          }
-          runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
-        }
-        GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
-          run = run,
-          state = state,
-          observability = observability,
-        )
-        GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(
-          "Goal-subtask review preparation could not establish the exact durable review scope.",
-        )
-      }
-    }.getOrElse { error ->
-      if (!isWarningOnlyPhase(phaseId)) throw error
-      PhaseOutcome.blocked(
-        "${if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) "Code review" else "Planning"} " +
-          "execution failed: ${error.message.orEmpty()}",
-      )
-    }
-    return warningOnlyOutcome(phaseId, outcome, observability)
+      ?.let { return warningReviewOutcome(phaseId, it, observability) }
+    return warningReviewOutcome(
+      phaseId,
+      executePreparedPhase(run, state, observability, phaseTokenAccumulator),
+      observability,
+    )
   }
 
-  private fun warningOnlyOutcome(
+  private fun warningReviewOutcome(
     phaseId: String,
     outcome: PhaseOutcome,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome = outcome.blockedReason
-      ?.takeIf { isWarningOnlyPhase(phaseId) }
-      ?.let { PhaseOutcome.completed(completePhaseAsWarning(phaseId, it, observability)) }
-      ?: outcome
+    ?.takeIf {
+      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        !hasUnresolvedReviewBlocker(phaseId) &&
+        !isGoalContinuationRun(request) &&
+        !it.contains("output-verification", ignoreCase = true) &&
+        !it.contains("phase-output-schema", ignoreCase = true) &&
+        !it.contains("repository checkpoint", ignoreCase = true) &&
+        !it.contains("reconciliation", ignoreCase = true) &&
+        !it.contains("failed to launch", ignoreCase = true) &&
+        !it.contains("launch timed out", ignoreCase = true) &&
+        !it.contains("launch was interrupted", ignoreCase = true) &&
+        !it.contains("non-zero status", ignoreCase = true)
+    }
+    ?.let { PhaseOutcome.completed(completePhaseAsWarning(phaseId, it, observability)) }
+    ?: outcome
+
+  private fun phaseDeclarationForReentry(
+    phaseId: String,
+    request: FeatureTaskRuntimeRunRequest,
+    reentry: PendingReentry?,
+  ): FeatureTaskRuntimePhaseDeclaration {
+    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize)
+    return when {
+      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID ->
+        declaration.copy(
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
+        )
+      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
+        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ->
+        declaration.copy(
+          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.reviewRetryProjections(),
+        )
+      else -> declaration
+    }
+  }
+
+  private fun executePreparedPhase(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
+  ): PhaseOutcome = when (val prepared = prepareGoalReviewRun(run, observability)) {
+    is GoalReviewRunReady -> {
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+        phaseGates.reviewNativeAgentPreflight(run.request, prepared.run.goalReviewInput)
+      }
+      runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+    }
+    GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
+      run = run,
+      state = state,
+      observability = observability,
+    )
+    GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(
+      recorder.loadPhaseRecords(run.request.workflowId, run.request.dbPathOverride)
+        .orEmpty()[run.phaseId]
+        ?.blockedReason
+        ?: "Goal-subtask review preparation could not establish the exact durable review scope.",
+    )
+  }
 
   private fun settleCompletedReviewBudget(
     run: PhaseRun,
@@ -3314,8 +3362,10 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition.retryOnResume
     ) {
       recorder.recordImplementationReceiptAttempt(
-        run.request.workflowId,
-        outputMap,
+        ImplementationReceiptAttemptRequest(
+          workflowId = run.request.workflowId,
+          envelope = outputMap,
+        ),
         run.request.dbPathOverride,
       )
     }
@@ -3723,11 +3773,13 @@ internal class FeatureTaskRuntimeRunLoop(
       decision.outcome is ImplementationCompleted -> null
       decision.disposition is SemanticIncompleteWorkContinuation -> {
         recorder.recordImplementationReceiptAttempt(
-          run.request.workflowId,
-          normalizedOutput.envelope,
+          ImplementationReceiptAttemptRequest(
+            workflowId = run.request.workflowId,
+            envelope = normalizedOutput.envelope,
+            completionDecision = decision,
+            authoritativePlan = authoritativePlan,
+          ),
           run.request.dbPathOverride,
-          completionDecision = decision,
-          authoritativePlan = authoritativePlan,
         )
         AttemptResult.semanticIncomplete(
           implementationContinuationReason(decision),
@@ -3895,10 +3947,12 @@ internal class FeatureTaskRuntimeRunLoop(
         )
       }
       recorder.recordImplementationReceiptAttempt(
-        run.request.workflowId,
-        normalizedOutput.envelope,
+        ImplementationReceiptAttemptRequest(
+          workflowId = run.request.workflowId,
+          envelope = normalizedOutput.envelope,
+          appendConvergenceRecords = false,
+        ),
         dbOverride = run.request.dbPathOverride,
-        appendConvergenceRecords = false,
       )
     } else {
       val persisted = recorder.recordCompletedPhase(
@@ -4757,3 +4811,4 @@ private const val OWNED_PATH_DELIMITER = '\u0000'
 // Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
 // inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
 private const val MAX_CHECKPOINT_OWNED_PATHS = 500
+private const val WARNING_SUMMARY_LIMIT = 1024

@@ -42,7 +42,7 @@ SKILL-134 exposed interacting reliability failures in truthful implementation co
 - Permit build and compilation commands during implementation, review, and validation.
 - Keep final validation authoritative even when earlier build checks pass.
 - Do not weaken audit or review to reduce iteration counts.
-- Do not add or modify tests, test fixtures, test resources, or test-only infrastructure.
+- Do not add new tests, test fixtures, test resources, or test-only infrastructure. Existing failing tests may be corrected.
 - Do not add comments, and remove comments from any modified file as required by repository instructions.
 - Branch from `base-for-trustworthy-feature-task-convergence`.
 
@@ -55,7 +55,7 @@ SKILL-134 exposed interacting reliability failures in truthful implementation co
 - Storing full agent prompts, raw model responses, private rejected-output bodies, full diffs, or unbounded finding text as convergence history.
 - Rewriting or completing SKILL-134.
 - Squashing or rewriting existing feature branches automatically.
-- Adding or modifying tests or test-only infrastructure.
+- Adding new tests or test-only infrastructure.
 
 ## Validation Strategy
 
@@ -67,3 +67,5 @@ skill-bill validate
 npx --yes agnix --strict .
 scripts/validate_agent_configs
 ```
+
+Build and test execution are required. Fix failing production behavior and correct stale existing test expectations when necessary. Do not add new tests.
