@@ -241,6 +241,65 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
       )
       """.trimIndent(),
     )
+    statement.execute(
+      "ALTER TABLE feature_task_audit_repair_item_dependencies " +
+        "RENAME TO feature_task_audit_repair_item_dependencies_v21",
+    )
+    statement.execute(
+      "ALTER TABLE feature_task_audit_repair_item_batch_mapping " +
+        "RENAME TO feature_task_audit_repair_item_batch_mapping_v21",
+    )
+    statement.execute(
+      """
+      CREATE TABLE feature_task_audit_repair_item_batch_mapping (
+        workflow_id TEXT NOT NULL,
+        batch_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        gap_id TEXT NOT NULL CHECK(length(gap_id) BETWEEN 1 AND 160),
+        intended_outcome TEXT NOT NULL CHECK(length(intended_outcome) BETWEEN 1 AND 2048),
+        implementation_actions TEXT NOT NULL CHECK(length(implementation_actions) > 0),
+        affected_paths_or_symbols TEXT NOT NULL CHECK(length(affected_paths_or_symbols) > 0),
+        required_verification TEXT NOT NULL CHECK(length(required_verification) > 0),
+        dependencies TEXT NOT NULL,
+        PRIMARY KEY(workflow_id, batch_id, item_id),
+        FOREIGN KEY(batch_id) REFERENCES feature_task_audit_repair_batches(batch_id) ON DELETE CASCADE,
+        FOREIGN KEY(workflow_id, item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_item_batch_mapping(
+        workflow_id, batch_id, item_id, gap_id, intended_outcome, implementation_actions,
+        affected_paths_or_symbols, required_verification, dependencies
+      )
+      SELECT workflow_id, batch_id, item_id, gap_id, intended_outcome, implementation_actions,
+        affected_paths_or_symbols, required_verification, dependencies
+      FROM feature_task_audit_repair_item_batch_mapping_v21
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE TABLE feature_task_audit_repair_item_dependencies (
+        workflow_id TEXT NOT NULL,
+        batch_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        depends_on_item_id TEXT NOT NULL,
+        PRIMARY KEY(workflow_id, batch_id, item_id, depends_on_item_id),
+        FOREIGN KEY(workflow_id, batch_id, item_id) REFERENCES feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id) ON DELETE CASCADE,
+        FOREIGN KEY(workflow_id, depends_on_item_id) REFERENCES feature_task_audit_repair_items(workflow_id, item_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO feature_task_audit_repair_item_dependencies
+      SELECT workflow_id, batch_id, item_id, depends_on_item_id
+      FROM feature_task_audit_repair_item_dependencies_v21
+      """.trimIndent(),
+    )
+    statement.execute("DROP TABLE feature_task_audit_repair_item_dependencies_v21")
+    statement.execute("DROP TABLE feature_task_audit_repair_item_batch_mapping_v21")
     statement.executeQuery("PRAGMA foreign_key_check").use { violations ->
       require(!violations.next()) { "Migration 22 produced foreign-key violations." }
     }
