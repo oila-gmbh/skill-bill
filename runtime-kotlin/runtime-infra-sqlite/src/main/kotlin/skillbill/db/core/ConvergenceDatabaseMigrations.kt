@@ -74,7 +74,15 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
     )
     statement.execute(
       """
-      CREATE TABLE review_generations_v22 (
+      ALTER TABLE review_finding_dispositions RENAME TO review_finding_dispositions_v21
+      """.trimIndent(),
+    )
+    statement.execute("ALTER TABLE review_generation_findings RENAME TO review_generation_findings_v21")
+    statement.execute("ALTER TABLE review_generation_passes RENAME TO review_generation_passes_v21")
+    statement.execute("ALTER TABLE review_generations RENAME TO review_generations_v21")
+    statement.execute(
+      """
+      CREATE TABLE review_generations (
         workflow_id TEXT NOT NULL,
         generation_id TEXT NOT NULL,
         generation_ordinal INTEGER NOT NULL CHECK (generation_ordinal > 0),
@@ -90,17 +98,152 @@ private fun alignConvergenceRecordShapesAndReviewOrdinals(connection: java.sql.C
     )
     statement.execute(
       """
-      INSERT INTO review_generations_v22(
+      INSERT INTO review_generations(
         workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
         repository_checkpoint, superseded_by_generation_id, created_at
       )
       SELECT workflow_id, generation_id, generation_ordinal, review_base, reviewed_delta_digest,
         repository_checkpoint, superseded_by_generation_id, created_at
-      FROM review_generations
+      FROM review_generations_v21
       """.trimIndent(),
     )
-    statement.execute("DROP TABLE review_generations")
-    statement.execute("ALTER TABLE review_generations_v22 RENAME TO review_generations")
+    statement.execute(
+      """
+      CREATE TABLE review_generation_passes (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        pass_number INTEGER NOT NULL CHECK (pass_number BETWEEN 1 AND 2),
+        repository_checkpoint TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id, pass_number),
+        FOREIGN KEY (workflow_id, generation_id)
+          REFERENCES review_generations(workflow_id, generation_id)
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO review_generation_passes
+      SELECT workflow_id, generation_id, pass_number, repository_checkpoint, created_at
+      FROM review_generation_passes_v21
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE TABLE review_generation_findings (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        pass_number INTEGER NOT NULL,
+        finding_id TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('blocker', 'major', 'minor', 'nit')),
+        category TEXT NOT NULL,
+        location TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        source_generation_id TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, finding_id),
+        FOREIGN KEY (workflow_id, generation_id, pass_number)
+          REFERENCES review_generation_passes(workflow_id, generation_id, pass_number)
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO review_generation_findings
+      SELECT workflow_id, generation_id, pass_number, finding_id, severity, category, location,
+        summary, source_generation_id, created_at
+      FROM review_generation_findings_v21
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE TABLE review_finding_dispositions (
+        workflow_id TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        finding_id TEXT NOT NULL,
+        disposition TEXT NOT NULL CHECK (
+          disposition IN ('unresolved', 'resolved', 'still_present', 'superseded', 'accepted')
+        ),
+        evidence_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, generation_id, finding_id),
+        FOREIGN KEY (workflow_id, generation_id)
+          REFERENCES review_generations(workflow_id, generation_id),
+        FOREIGN KEY (workflow_id, finding_id)
+          REFERENCES review_generation_findings(workflow_id, finding_id)
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      INSERT INTO review_finding_dispositions
+      SELECT workflow_id, generation_id, finding_id, disposition, evidence_json, created_at
+      FROM review_finding_dispositions_v21
+      """.trimIndent(),
+    )
+    statement.execute("DROP TABLE review_finding_dispositions_v21")
+    statement.execute("DROP TABLE review_generation_findings_v21")
+    statement.execute("DROP TABLE review_generation_passes_v21")
+    statement.execute("DROP TABLE review_generations_v21")
+    statement.execute(
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_findings_unresolved
+      ON review_generation_findings(workflow_id, severity, finding_id)
+      """.trimIndent(),
+    )
+    listOf(
+      "gap_id TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(gap_id) BETWEEN 1 AND 160)",
+      "intended_outcome TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(intended_outcome) BETWEEN 1 AND 2048)",
+      "implementation_actions TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(implementation_actions) > 0)",
+      "affected_paths_or_symbols TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(affected_paths_or_symbols) > 0)",
+      "required_verification TEXT NOT NULL DEFAULT '__legacy__' CHECK(length(required_verification) > 0)",
+      "dependencies TEXT NOT NULL DEFAULT ''",
+    ).forEach { definition ->
+      val column = definition.substringBefore(' ')
+      if (!connection.hasColumn("feature_task_audit_repair_item_batch_mapping", column)) {
+        statement.execute(
+          "ALTER TABLE feature_task_audit_repair_item_batch_mapping ADD COLUMN $definition",
+        )
+      }
+    }
+    statement.execute(
+      """
+      UPDATE feature_task_audit_repair_item_batch_mapping
+      SET gap_id = (
+        SELECT gap_id FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      ),
+      intended_outcome = (
+        SELECT intended_outcome FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      ),
+      implementation_actions = (
+        SELECT implementation_actions FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      ),
+      affected_paths_or_symbols = (
+        SELECT affected_paths_or_symbols FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      ),
+      required_verification = (
+        SELECT required_verification FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      ),
+      dependencies = (
+        SELECT dependencies FROM feature_task_audit_repair_items item
+        WHERE item.workflow_id = feature_task_audit_repair_item_batch_mapping.workflow_id
+          AND item.item_id = feature_task_audit_repair_item_batch_mapping.item_id
+      )
+      """.trimIndent(),
+    )
+    statement.executeQuery("PRAGMA foreign_key_check").use { violations ->
+      require(!violations.next()) { "Migration 22 produced foreign-key violations." }
+    }
     statement.execute(
       """
       CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_repair_result_generation
@@ -329,10 +472,17 @@ private object AuditHistoryMigration {
   private fun migrateRelations(statement: java.sql.Statement) {
     statement.execute(
       """
-      INSERT INTO feature_task_audit_repair_item_batch_mapping
-      SELECT batch.workflow_id, mapping.*
+      INSERT INTO feature_task_audit_repair_item_batch_mapping(
+        workflow_id, batch_id, item_id, gap_id, intended_outcome, implementation_actions,
+        affected_paths_or_symbols, required_verification, dependencies
+      )
+      SELECT batch.workflow_id, mapping.batch_id, mapping.item_id, item.gap_id,
+        item.intended_outcome, item.implementation_actions, item.affected_paths_or_symbols,
+        item.required_verification, item.dependencies
       FROM feature_task_audit_repair_item_batch_mapping_v18 mapping
       JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
+      JOIN feature_task_audit_repair_items item
+        ON item.workflow_id = batch.workflow_id AND item.item_id = mapping.item_id
       """.trimIndent(),
     )
     statement.execute(

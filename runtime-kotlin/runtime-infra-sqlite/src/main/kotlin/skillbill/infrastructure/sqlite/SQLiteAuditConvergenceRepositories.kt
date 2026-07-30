@@ -323,7 +323,7 @@ class SQLiteAuditGenerationStore(
     persistRepairBatchRow(connection, workflowId, batch)
     batch.repairItems.forEach { item ->
       persistRepairItem(connection, workflowId, item)
-      persistRepairItemBatchMapping(connection, workflowId, batch.batchId, item.itemId)
+      persistRepairItemBatchMapping(connection, workflowId, batch.batchId, item)
       batch.dependencies[item.itemId].orEmpty().forEach { dependency ->
         persistRepairItemDependency(connection, workflowId, batch.batchId, item.itemId, dependency)
       }
@@ -373,18 +373,27 @@ class SQLiteAuditGenerationStore(
     connection: Connection,
     workflowId: String,
     batchId: String,
-    itemId: String,
+    item: AuditRepairItem,
   ) {
     connection.prepareStatement(
       """
-      INSERT INTO feature_task_audit_repair_item_batch_mapping(workflow_id, batch_id, item_id)
-      VALUES (?, ?, ?)
+      INSERT INTO feature_task_audit_repair_item_batch_mapping(
+        workflow_id, batch_id, item_id, gap_id, intended_outcome, implementation_actions,
+        affected_paths_or_symbols, required_verification, dependencies
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workflow_id, batch_id, item_id) DO NOTHING
       """.trimIndent(),
     ).use { stmt ->
       stmt.setString(1, workflowId)
       stmt.setString(2, batchId)
-      stmt.setString(3, itemId)
+      stmt.setString(3, item.itemId)
+      stmt.setString(4, item.gapId)
+      stmt.setString(5, item.intendedOutcome)
+      stmt.setString(6, item.implementationActions.joinToString("\n"))
+      stmt.setString(7, item.affectedPathsOrSymbols.joinToString("\n"))
+      stmt.setString(8, item.requiredVerification.joinToString("\n"))
+      stmt.setString(9, item.dependencies.joinToString("\n"))
       stmt.executeUpdate()
     }
   }
@@ -442,11 +451,10 @@ class SQLiteAuditGenerationStore(
   private fun getRepairItems(connection: Connection, generationId: String): List<AuditRepairItem> =
     connection.prepareStatement(
       """
-      SELECT item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
+      SELECT mapping.item_id, mapping.gap_id, mapping.intended_outcome,
+             mapping.implementation_actions, mapping.affected_paths_or_symbols,
              required_verification, dependencies
-      FROM feature_task_audit_repair_items item
-      JOIN feature_task_audit_repair_item_batch_mapping mapping
-        ON mapping.workflow_id = item.workflow_id AND mapping.item_id = item.item_id
+      FROM feature_task_audit_repair_item_batch_mapping mapping
       JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
       WHERE batch.generation_id = ?
       ORDER BY item_id ASC
@@ -777,11 +785,10 @@ class SQLiteAuditRepairBatchStore(
   private fun getRepairItems(connection: Connection, generationId: String): List<AuditRepairItem> =
     connection.prepareStatement(
       """
-    SELECT item_id, gap_id, intended_outcome, implementation_actions, affected_paths_or_symbols,
+    SELECT mapping.item_id, mapping.gap_id, mapping.intended_outcome,
+           mapping.implementation_actions, mapping.affected_paths_or_symbols,
            required_verification, dependencies
-    FROM feature_task_audit_repair_items item
-    JOIN feature_task_audit_repair_item_batch_mapping mapping
-      ON mapping.workflow_id = item.workflow_id AND mapping.item_id = item.item_id
+    FROM feature_task_audit_repair_item_batch_mapping mapping
     JOIN feature_task_audit_repair_batches batch ON batch.batch_id = mapping.batch_id
     WHERE batch.generation_id = ?
     ORDER BY item_id ASC
@@ -893,22 +900,23 @@ class SQLiteAuditRepairQuery(
 
   override fun getUnresolvedRepairItems(workflowId: String): List<AuditRepairItem> = connection.prepareStatement(
     """
-      SELECT ari.item_id, ari.gap_id, ari.intended_outcome, ari.implementation_actions,
-             ari.affected_paths_or_symbols, ari.required_verification, ari.dependencies
-      FROM feature_task_audit_repair_items ari
-      JOIN feature_task_audit_repair_item_batch_mapping m
-        ON ari.workflow_id = m.workflow_id AND ari.item_id = m.item_id
+      SELECT m.item_id, m.gap_id, m.intended_outcome, m.implementation_actions,
+             m.affected_paths_or_symbols, m.required_verification, m.dependencies
+      FROM feature_task_audit_repair_item_batch_mapping m
       JOIN feature_task_audit_repair_batches b ON m.batch_id = b.batch_id
       JOIN feature_task_audit_generations g ON b.generation_id = g.generation_id
       WHERE g.workflow_id = ? AND b.is_active = 1
-      AND ari.item_id NOT IN (
-        SELECT item_id FROM feature_task_audit_repair_item_results WHERE workflow_id = ?
+      AND NOT EXISTS (
+        SELECT 1
+        FROM feature_task_audit_repair_item_results result
+        WHERE result.workflow_id = g.workflow_id
+          AND result.item_id = m.item_id
+          AND result.disposition_generation >= g.generation
       )
-      ORDER BY ari.item_id ASC
+      ORDER BY m.item_id ASC
     """.trimIndent(),
   ).use { stmt ->
     stmt.setString(1, workflowId)
-    stmt.setString(2, workflowId)
     stmt.executeQuery().use { rs ->
       val items = mutableListOf<AuditRepairItem>()
       while (rs.next()) {
