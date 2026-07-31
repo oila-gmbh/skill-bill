@@ -4,6 +4,9 @@ import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.persistence.WorkListRepository
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection
 import java.time.Instant
 import java.time.LocalDateTime
@@ -113,7 +116,10 @@ private fun java.sql.ResultSet.toWorkItem(): WorkItem {
   )
 }
 
-private val validWorkStates = setOf("pending", "running", "blocked", "completed", "failed", "abandoned")
+private val validWorkStates: Set<String> =
+  FeatureImplementWorkflowDefinition.definition.workflowStatuses +
+    FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
+    FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 
 private fun java.sql.ResultSet.required(column: String): String {
   val value = getString(column) ?: invalid(getString("workflow_id").orEmpty(), "missing $column")

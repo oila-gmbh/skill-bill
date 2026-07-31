@@ -3,6 +3,9 @@ package skillbill.db
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
+import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
@@ -36,6 +39,31 @@ class SQLiteWorkListRepositoryTest {
         all.map { it.workflowKind.wireValue },
       )
       assertEquals(listOf("wfv-tie-z", "wfl-tie-a", "goal-new"), repository.list(limit = 3).map { it.workflowId })
+    }
+  }
+
+  @Test
+  fun `work list accepts every workflow status the workflow definitions declare`() {
+    val declaredStatuses =
+      FeatureImplementWorkflowDefinition.definition.workflowStatuses +
+        FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
+        FeatureVerifyWorkflowDefinition.definition.workflowStatuses
+
+    DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+      createWorkListTables(connection)
+      declaredStatuses.forEachIndexed { index, status ->
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            featureTaskWorkflowRow(
+              FeatureTaskWorkflowRow(workflowId = "'wfl-$index'", workflowStatus = status),
+            ),
+          )
+        }
+      }
+
+      val states = SQLiteWorkListRepository(connection).list().map { it.currentState }.toSet()
+
+      assertEquals(declaredStatuses, states)
     }
   }
 
