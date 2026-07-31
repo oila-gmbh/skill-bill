@@ -20,6 +20,7 @@ const val FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY: String = "feature_tas
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY: String = "feature_task_runtime_phase_ledger"
 const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal_planning_import"
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
+const val FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY: String = "feature_task_runtime_review_generation"
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
 

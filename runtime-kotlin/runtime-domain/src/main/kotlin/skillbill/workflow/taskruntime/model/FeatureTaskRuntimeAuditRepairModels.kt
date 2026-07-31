@@ -7,33 +7,55 @@ data class FeatureTaskRuntimeAuditRepairPlan(
   val gaps: List<FeatureTaskRuntimeAuditGap>,
 ) {
   init {
-    require(contractVersion == AUDIT_REPAIR_CONTRACT_VERSION) {
+    requireRule(
+      contractVersion == AUDIT_REPAIR_CONTRACT_VERSION,
+      "contract_version must be '$AUDIT_REPAIR_CONTRACT_VERSION'.",
+    ) {
       "contract_version must be '$AUDIT_REPAIR_CONTRACT_VERSION', was '$contractVersion'."
     }
-    require(gaps.isNotEmpty()) { "An audit repair plan must contain at least one gap, gaps was empty." }
-    require(gaps.size <= MAX_AUDIT_REPAIR_GAPS) {
+    requireRule(
+      gaps.isNotEmpty(),
+      "An audit repair plan must contain at least one gap.",
+    ) { "An audit repair plan must contain at least one gap, gaps was empty." }
+    requireRule(
+      gaps.size <= MAX_AUDIT_REPAIR_GAPS,
+      "An audit repair plan allows at most $MAX_AUDIT_REPAIR_GAPS gaps.",
+    ) {
       "An audit repair plan allows at most $MAX_AUDIT_REPAIR_GAPS gaps, had ${gaps.size}."
     }
     requireUnique(gaps.map { it.gapId }, "gap_id")
     requireUnique(gaps.map { it.acceptanceCriterionRef }, "acceptance_criterion_ref")
     val items = gaps.flatMap { it.repairItems }
-    require(items.size <= MAX_AUDIT_REPAIR_ITEMS) {
+    requireRule(
+      items.size <= MAX_AUDIT_REPAIR_ITEMS,
+      "An audit repair plan allows at most $MAX_AUDIT_REPAIR_ITEMS repair items in total.",
+    ) {
       "An audit repair plan allows at most $MAX_AUDIT_REPAIR_ITEMS repair items in total, had ${items.size}."
     }
     requireUnique(items.map { it.repairItemId }, "repair_item_id")
     val ids = items.mapTo(linkedSetOf()) { it.repairItemId }
     items.forEach { item ->
-      require(item.dependsOn.all(ids::contains)) {
+      requireRule(
+        item.dependsOn.all(ids::contains),
+        "Every depends_on entry must name a repair_item_id the same plan declares.",
+      ) {
         "Repair item '${item.repairItemId}' depends on unknown items ${(item.dependsOn - ids).sorted()}; " +
           "declared items are ${ids.sorted()}."
       }
-      require(item.repairItemId !in item.dependsOn) { "Repair item '${item.repairItemId}' depends on itself." }
+      requireRule(
+        item.repairItemId !in item.dependsOn,
+        "A repair item must not depend on itself.",
+      ) { "Repair item '${item.repairItemId}' depends on itself." }
     }
     requireAcyclic(items)
     gaps.forEach { gap ->
       gap.repairItems.forEachIndexed { index, item ->
         val expectedId = "${gap.gapId}-item-${index + 1}"
-        require(item.repairItemId == expectedId) {
+        requireRule(
+          item.repairItemId == expectedId,
+          "repair_item_id must be the stable ordered child '<gap-id>-item-<ordinal>' of its own gap, " +
+            "numbered from 1 in declaration order.",
+        ) {
           "repair_item_id '${item.repairItemId}' must be the stable ordered child '$expectedId'."
         }
       }
@@ -41,7 +63,10 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     val itemOrder = items.mapIndexed { index, item -> item.repairItemId to index }.toMap()
     items.forEach { item ->
       item.dependsOn.forEach { dependency ->
-        require(itemOrder.getValue(dependency) < itemOrder.getValue(item.repairItemId)) {
+        requireRule(
+          itemOrder.getValue(dependency) < itemOrder.getValue(item.repairItemId),
+          "A repair item must be declared after every repair item its depends_on names.",
+        ) {
           "Repair item '${item.repairItemId}' (index ${itemOrder.getValue(item.repairItemId)}) must appear after " +
             "its dependency '$dependency' (index ${itemOrder.getValue(dependency)})."
         }
@@ -53,7 +78,10 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     requireUnique(reportedCriterionRefs, "reported acceptance criterion")
     val expected = gaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef }
     val reported = reportedCriterionRefs.toSet()
-    require(reported == expected) {
+    requireRule(
+      reported == expected,
+      "Every reported unmet criterion must map exactly once to a declared audit gap.",
+    ) {
       "Every reported unmet criterion must map exactly once to a declared audit gap; " +
         setDifferenceDetail(expected, reported)
     }
@@ -63,14 +91,20 @@ data class FeatureTaskRuntimeAuditRepairPlan(
     requireUnique(results.map { it.repairItemId }, "repair_item_result.repair_item_id")
     val expected = gaps.flatMap { it.repairItems }.mapTo(linkedSetOf()) { it.repairItemId }
     val actual = results.mapTo(linkedSetOf()) { it.repairItemId }
-    require(actual == expected) {
+    requireRule(
+      actual == expected,
+      "repair_item_results must report exactly the accepted plan's repair items.",
+    ) {
       "repair_item_results must report exactly the accepted plan's repair items; " +
         setDifferenceDetail(expected, actual)
     }
     val resultOrder = results.mapIndexed { index, result -> result.repairItemId to index }.toMap()
     gaps.flatMap { it.repairItems }.forEach { item ->
       item.dependsOn.forEach { dependency ->
-        require(resultOrder.getValue(dependency) < resultOrder.getValue(item.repairItemId)) {
+        requireRule(
+          resultOrder.getValue(dependency) < resultOrder.getValue(item.repairItemId),
+          "A repair item result must be reported after every repair item its depends_on names.",
+        ) {
           "Repair item result '${item.repairItemId}' (index ${resultOrder.getValue(item.repairItemId)}) must " +
             "appear after its dependency '$dependency' (index ${resultOrder.getValue(dependency)})."
         }
@@ -98,17 +132,29 @@ data class FeatureTaskRuntimeAuditGap(
     requireNonBlank(gapId, "gap_id")
     requireGapIdPattern(gapId)
     requireNonBlank(acceptanceCriterionRef, "acceptance_criterion_ref")
-    require(ACCEPTANCE_CRITERION_REF.matches(acceptanceCriterionRef)) {
+    requireRule(
+      ACCEPTANCE_CRITERION_REF.matches(acceptanceCriterionRef),
+      "acceptance_criterion_ref must use canonical format 'AC-NNN'.",
+    ) {
       "acceptance_criterion_ref '$acceptanceCriterionRef' must use canonical format 'AC-NNN'."
     }
-    require(gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-")) {
+    requireRule(
+      gapId.startsWith("${acceptanceCriterionRef.lowercase()}-gap-"),
+      "gap_id must belong to its own gap's acceptance_criterion_ref, lowercased.",
+    ) {
       "gap_id '$gapId' must belong to acceptance criterion '$acceptanceCriterionRef'."
     }
     requireNonBlank(acceptanceCriterionText, "acceptance_criterion_text")
     requireNonBlank(diagnosis, "diagnosis")
     requireNonBlank(affectedBoundary, "affected_boundary")
-    require(repairItems.isNotEmpty()) { "Gap '$gapId' must contain at least one repair item, repair_items was empty." }
-    require(repairItems.size <= MAX_AUDIT_REPAIR_ITEMS) {
+    requireRule(
+      repairItems.isNotEmpty(),
+      "Every gap must contain at least one repair item.",
+    ) { "Gap '$gapId' must contain at least one repair item, repair_items was empty." }
+    requireRule(
+      repairItems.size <= MAX_AUDIT_REPAIR_ITEMS,
+      "A gap allows at most $MAX_AUDIT_REPAIR_ITEMS repair items.",
+    ) {
       "Gap '$gapId' allows at most $MAX_AUDIT_REPAIR_ITEMS repair items, had ${repairItems.size}."
     }
   }
@@ -136,17 +182,31 @@ data class FeatureTaskRuntimeEvidence(
   // state through seams no schema validates. Pinned against the schema maxLength by
   // FeatureTaskRuntimeAuditRepairSchemaParityTest.
   init {
-    require(artifactRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH) {
+    requireRule(
+      artifactRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH,
+      "artifact_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters.",
+    ) {
       "artifact_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters, had ${artifactRef.length}."
     }
-    require(SAFE_ARTIFACT_REF.matches(artifactRef)) {
+    requireRule(
+      SAFE_ARTIFACT_REF.matches(artifactRef),
+      "artifact_ref must be a bounded path or symbol reference such as " +
+        "src/main/Example.kt or src/main/Example.kt:Example.",
+    ) {
       "artifact_ref '$artifactRef' must be a bounded path or symbol reference such as " +
         "src/main/Example.kt or src/main/Example.kt:Example."
     }
-    require(checkRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH) {
+    requireRule(
+      checkRef.length <= MAX_AUDIT_REPAIR_REF_LENGTH,
+      "check_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters.",
+    ) {
       "check_ref allows at most $MAX_AUDIT_REPAIR_REF_LENGTH characters, had ${checkRef.length}."
     }
-    require(SAFE_CHECK_REF.matches(checkRef)) {
+    requireRule(
+      SAFE_CHECK_REF.matches(checkRef),
+      "check_ref must match AC-###, F-###, or a name ending in Test or Check, optionally followed " +
+        "by :symbol; examples: AC-005, FeatureTaskRuntimeAuditEntryGateTest, or codeCheck:detekt.",
+    ) {
       "check_ref '$checkRef' must match AC-###, F-###, or a name ending in Test or Check, optionally followed " +
         "by :symbol; examples: AC-005, FeatureTaskRuntimeAuditEntryGateTest, or codeCheck:detekt."
     }
@@ -178,9 +238,18 @@ data class FeatureTaskRuntimeRepairItem(
     requireCompactList(affectedPathsOrSymbols, "affected_paths_or_symbols", MAX_PATH_LIST_ITEMS)
     requireNonBlankList(requiredVerification, "required_verification")
     requireCompactList(requiredVerification, "required_verification", MAX_COMPACT_LIST_ITEMS)
-    require(dependsOn.size <= MAX_COMPACT_LIST_ITEMS) { "depends_on exceeds the durable item limit." }
-    require(dependsOn.all(String::isNotBlank)) { "depends_on entries must be nonblank." }
-    require(status == FeatureTaskRuntimeRepairItemStatus.PENDING) { "Accepted repair items must initially be pending." }
+    requireRule(
+      dependsOn.size <= MAX_COMPACT_LIST_ITEMS,
+      "depends_on exceeds the durable item limit.",
+    ) { "depends_on exceeds the durable item limit." }
+    requireRule(
+      dependsOn.all(String::isNotBlank),
+      "depends_on entries must be nonblank.",
+    ) { "depends_on entries must be nonblank." }
+    requireRule(
+      status == FeatureTaskRuntimeRepairItemStatus.PENDING,
+      "Accepted repair items must initially be pending.",
+    ) { "Accepted repair items must initially be pending." }
   }
 }
 
@@ -205,7 +274,12 @@ data class FeatureTaskRuntimeRepairItemResult(
       FeatureTaskRuntimeRepairItemOutcome.ALREADY_SATISFIED ->
         FeatureTaskRuntimeEvidence.Observation.ALREADY_SATISFIED_VERIFIED
     }
-    require(resultEvidence.observation == expectedObservation) {
+    requireRule(
+      resultEvidence.observation == expectedObservation,
+      "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
+        "'${outcome.wire()}'; outcome 'fixed' pairs with 'fix_verified' and 'already_satisfied' pairs with " +
+        "'already_satisfied_verified'.",
+    ) {
       "result_evidence.observation must be '${expectedObservation.wire()}' when outcome is " +
         "'${outcome.wire()}', was '${resultEvidence.observation.wire()}'; outcome 'fixed' pairs with " +
         "'fix_verified' and 'already_satisfied' pairs with 'already_satisfied_verified'."
@@ -452,7 +526,11 @@ private val REPAIR_ITEM_ID = Regex("ac-[0-9]{3,}-gap-[1-9][0-9]*-item-[1-9][0-9]
 // Dispositions and unresolvable-repair blocks name gaps that must reconcile against the ledger by
 // identity. A free-form id there silently forks the identity the plan and the ledger agree on.
 private fun requireGapIdPattern(gapId: String) {
-  require(GAP_ID.matches(gapId)) {
+  requireRule(
+    GAP_ID.matches(gapId),
+    "gap_id must be the stable criterion-generation identifier '<criterion-ref>-gap-<generation>' " +
+      "in canonical lowercase, for example 'ac-005-gap-1'.",
+  ) {
     "gap_id '$gapId' must be the stable criterion-generation identifier '<criterion-ref>-gap-<generation>' " +
       "in canonical lowercase, for example 'ac-005-gap-1'."
   }
@@ -467,77 +545,15 @@ fun canonicalAuditIdentifier(rawIdentifier: String): String = rawIdentifier.trim
 // messages must name values the way that contract spells them.
 internal fun Enum<*>.wire(): String = name.lowercase()
 
-// A rejection message quotes the offending value so the author can find it, but the value may be the
-// oversized payload that was just rejected, so the excerpt stays bounded and single-line.
-private const val REJECTION_PREVIEW_CHARS: Int = 80
-
-private fun String.preview(): String {
-  val flattened = map { if (it.isISOControl()) ' ' else it }.joinToString("")
-  return if (flattened.length <= REJECTION_PREVIEW_CHARS) {
-    flattened
-  } else {
-    flattened.take(REJECTION_PREVIEW_CHARS) + "…"
-  }
-}
-
-private fun requireNonBlank(value: String, field: String) {
-  require(value.isNotBlank()) { "$field must be nonblank." }
-  requireDurableText(value, field)
-}
-private fun requireNonBlankList(values: List<String>, field: String) {
-  require(values.isNotEmpty()) { "$field must contain at least one entry, was empty." }
-  require(values.all(String::isNotBlank)) {
-    "$field entries must be nonblank; blank at ${values.indexOfFirst(String::isBlank)}."
-  }
-}
-private fun requireCompactList(values: List<String>, field: String, maximumItems: Int) {
-  require(values.size <= maximumItems) {
-    "$field allows at most $maximumItems entries, had ${values.size}."
-  }
-  values.forEach { requireDurableText(it, "$field entry") }
-}
-
-// Every durable text field either describes a code defect or names the work that repairs it, so all of
-// them must be able to carry symbols and commands: `=`, `[]`, and `<>` are ordinary content
-// (`--tests=`, `results[0]`, `List<String>`). Rejecting that punctuation made the fields unsatisfiable
-// for their own purpose. Pasted payloads are excluded structurally instead. The identical rule lives in
-// `compactSummary` in feature-task-runtime-audit-repair-plan-schema.yaml, pinned by
-// FeatureTaskRuntimeAuditRepairSchemaParityTest.
-private fun requireDurableText(value: String, field: String) {
-  require(value.length <= MAX_AUDIT_REPAIR_TEXT_LENGTH) {
-    "$field allows at most $MAX_AUDIT_REPAIR_TEXT_LENGTH characters, had ${value.length}."
-  }
-  require(value.none(Char::isISOControl)) {
-    "$field must be a single-line durable value; \"${value.preview()}\" contains a line break or control character."
-  }
-  require(value.none { it == '`' }) {
-    "$field must not contain code-fence or quoted-source syntax; remove the backticks from \"${value.preview()}\"."
-  }
-  require(!SERIALIZED_PAYLOAD.containsMatchIn(value)) {
-    "$field must be a short single-line description, not serialized, patch, or tool-output syntax; " +
-      "\"${value.preview()}\" looks like a pasted payload."
-  }
-  require(!SUMMARY_ROLE_PREFIX.containsMatchIn(value)) {
-    "$field must not contain a prompt transcript; \"${value.preview()}\" starts with a role prefix."
-  }
-}
-private val SERIALIZED_PAYLOAD = Regex(
-  "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )",
-)
-private val SUMMARY_ROLE_PREFIX = Regex(
-  "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:",
-)
-private fun requireUnique(values: List<String>, field: String) {
-  val duplicates = values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
-  require(duplicates.isEmpty()) { "$field must be unique, duplicated $duplicates." }
-}
 private fun requireAcyclic(items: List<FeatureTaskRuntimeRepairItem>) {
   val byId = items.associateBy { it.repairItemId }
   val visiting = mutableSetOf<String>()
   val visited = mutableSetOf<String>()
   fun visit(id: String) {
     if (id in visited) return
-    require(visiting.add(id)) { "Repair item dependencies must be acyclic (cycle at '$id')." }
+    requireRule(visiting.add(id), "Repair item dependencies must be acyclic.") {
+      "Repair item dependencies must be acyclic (cycle at '$id')."
+    }
     byId.getValue(id).dependsOn.forEach(::visit)
     visiting.remove(id)
     visited.add(id)

@@ -108,6 +108,7 @@ import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
+import skillbill.infrastructure.fs.ProducerOutputEvidenceValidatorAdapter
 import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
@@ -150,6 +151,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.InstalledReviewCatalogPort
@@ -625,6 +627,10 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   fun rejectedOutputDiagnosticMetadataValidator(): RejectedOutputDiagnosticMetadataValidator =
     RejectedOutputDiagnosticMetadataValidatorAdapter()
+
+  @Provides
+  @JvmSynthetic
+  fun producerOutputEvidenceValidator(): ProducerOutputEvidenceValidator = ProducerOutputEvidenceValidatorAdapter()
 
   @Provides
   @JvmSynthetic

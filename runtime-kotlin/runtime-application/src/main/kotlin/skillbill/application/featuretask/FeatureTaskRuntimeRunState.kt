@@ -20,7 +20,10 @@ internal class FeatureTaskRuntimeRunState(
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  initialReviewGeneration: Int = 0,
 ) {
+  private var reviewGeneration: Int = initialReviewGeneration
+
   private val hasDurableReviewInvalidationTombstone: Boolean = initialRecords[
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
   ]?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
@@ -493,6 +496,17 @@ internal class FeatureTaskRuntimeRunState(
     outputs.filter { it.phaseId == phaseId }.maxByOrNull { it.iteration }
 
   fun outputCountFor(phaseId: String): Int = outputs.count { it.phaseId == phaseId }
+
+  fun reviewGeneration(): Int = reviewGeneration
+
+  fun advanceReviewGeneration(next: Int) {
+    if (next > reviewGeneration) reviewGeneration = next
+  }
+
+  // Only the phases a generation restart rewinds carry the ordinal into their evidence key; every
+  // other phase stays generation-blind so its byte-identical re-write remains an idempotent no-op.
+  fun evidenceGeneration(phaseId: String): Int =
+    if (phaseId in FeatureTaskRuntimePhaseWorkflowDefinition.GENERATION_SCOPED_PHASE_IDS) reviewGeneration else 0
 
   fun currentReviewPassNumber(): Int? = currentReviewPassNumber
 

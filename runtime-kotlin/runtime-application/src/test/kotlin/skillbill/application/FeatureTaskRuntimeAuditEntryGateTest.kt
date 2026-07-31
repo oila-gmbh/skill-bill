@@ -3,16 +3,20 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
+import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.featuretask.transitionsFor
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -432,6 +436,107 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertEquals(standalone.loopOnlyPhaseIds, goalChild.loopOnlyPhaseIds)
   }
 
+  @Test
+  fun `a review generation restart over retained evidence advances without discarding the prior generation`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    seedThroughImplement(harness)
+    // The observed database state: the capped generation retained review evidence at both attempts
+    // with differing bytes, and the watermark is about to rewind below them.
+    seedReviewEvidence(harness, attempt = 1, payload = LEGACY_FIRST_REVIEW_PAYLOAD)
+    seedReviewEvidence(harness, attempt = 2, payload = LEGACY_SECOND_REVIEW_PAYLOAD)
+    harness.seedPhase(
+      "review",
+      "running",
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      REVIEW_INVALIDATION_AGENT_ID,
+      null,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(
+      harness.launchedPhaseOrder().contains("review"),
+      "the restarted review must launch; a colliding evidence key aborts the run before it advances",
+    )
+    assertTrue(
+      LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(
+        harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 1, 0)?.payload,
+      ),
+      "the prior generation's attempt-1 evidence must survive byte-for-byte",
+    )
+    assertTrue(
+      LEGACY_SECOND_REVIEW_PAYLOAD.contentEquals(
+        harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0)?.payload,
+      ),
+      "the prior generation's attempt-2 evidence must survive byte-for-byte",
+    )
+    val fresh = harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 1, 1)
+    assertTrue(
+      fresh != null && !LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(fresh.payload),
+      "the fresh review's evidence must land on its own generation rather than the rewound key",
+    )
+    assertNoRawResponseSpan(
+      harness.events.joinToString(" ") { it.toString() },
+      LEGACY_FIRST_REVIEW_MARKER,
+      LEGACY_SECOND_REVIEW_MARKER,
+    )
+  }
+
+  @Test
+  fun `an already-tombstoned workflow reconciles its evidence generation with no operator surgery`() {
+    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    seedThroughImplement(harness)
+    seedReviewEvidence(harness, attempt = 1, payload = LEGACY_FIRST_REVIEW_PAYLOAD)
+    harness.seedPhase(
+      "review",
+      "running",
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      REVIEW_INVALIDATION_AGENT_ID,
+      null,
+    )
+
+    harness.runner.run(harness.request())
+
+    assertEquals(1, reviewGenerationOrdinal(harness))
+    assertEquals(
+      1,
+      harness.io.database.retainedProducerEvidence().count { it.phaseId == "review" && it.generation == 0 },
+      "reconciliation must not discard the prior generation's evidence",
+    )
+
+    harness.runner.run(harness.request())
+
+    assertEquals(
+      1,
+      reviewGenerationOrdinal(harness),
+      "a run that does not restart the generation must leave the durable ordinal alone",
+    )
+  }
+
+  private fun reviewGenerationOrdinal(harness: RunnerHarness): Int = (
+    harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
+      FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY,
+    ] as Number
+    ).toInt()
+
+  private fun seedReviewEvidence(harness: RunnerHarness, attempt: Int, payload: ByteArray) {
+    harness.io.database.retainProducerEvidence(
+      ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = attempt,
+        agentId = phaseAgent("review"),
+        model = "gpt",
+        recordedAt = Instant.parse("2026-06-01T00:00:00Z"),
+        byteSize = payload.size.toLong(),
+        sha256 = RejectedOutputDiagnosticService.sha256(payload),
+        payload = payload,
+        generation = 0,
+      ),
+    )
+  }
+
   private fun seedThroughImplement(harness: RunnerHarness) {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_DIGEST_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_STEPS_OUTPUT)
@@ -443,6 +548,14 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 // complete delta, so the marker tracks the bounding clause the directive now carries.
 private const val PASS_TWO_REMEDIATION_SCOPE =
   "context:feature-remediation, bounded to the remediation delta"
+
+// Retained review bytes from the generation whose attempt watermark is about to rewind. The markers
+// are distinctive so any surface echoing them is caught.
+private const val LEGACY_FIRST_REVIEW_MARKER = "legacy-review-generation-attempt-one"
+private const val LEGACY_SECOND_REVIEW_MARKER = "legacy-review-generation-attempt-two"
+private val LEGACY_FIRST_REVIEW_PAYLOAD = LEGACY_FIRST_REVIEW_MARKER.encodeToByteArray()
+private val LEGACY_SECOND_REVIEW_PAYLOAD = LEGACY_SECOND_REVIEW_MARKER.encodeToByteArray()
+
 private const val FRESH_IMPLEMENT_FIX_MARKER = "fresh-migration-resume-fix"
 private const val FRESH_IMPLEMENT_FIX_OUTPUT =
   """{"contract_version":"0.1","phase_id":"implement_fix","status":"completed","summary":"fix",""" +

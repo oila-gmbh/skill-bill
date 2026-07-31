@@ -146,6 +146,7 @@ class FeatureTaskRuntimeRunner(
         transitions,
         recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         outputValidator,
+        recorder.reconcileReviewGeneration(runRequest.workflowId, runRequest.dbPathOverride),
       )
       val loop = FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeRunLoopDependencies(
@@ -218,7 +219,7 @@ class FeatureTaskRuntimeRunner(
    */
   private fun reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
     if (!cappedReviewIsStale(request)) return
-    check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+    checkNotNull(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
       "Could not durably reopen the stale capped review for workflow '${request.workflowId}'."
     }
   }

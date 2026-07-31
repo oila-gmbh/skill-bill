@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -46,6 +47,21 @@ internal fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntim
       "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY' must decode to a map.",
     )
   return FeatureTaskRuntimeResolvedBranch.fromArtifactMap(entryMap)
+}
+
+internal fun reviewGenerationFrom(artifacts: Map<String, Any?>): Int {
+  val raw = artifacts[FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY] ?: return 0
+  val ordinal = when (raw) {
+    is Int -> raw
+    is Long -> raw.toInt()
+    is Number -> if (raw.toDouble() == raw.toLong().toDouble()) raw.toInt() else null
+    else -> null
+  }
+  return ordinal?.takeIf { it >= 0 }
+    ?: schemaError(
+      "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY' must decode to a " +
+        "non-negative integer; found '$raw'.",
+    )
 }
 
 internal fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeOperatorBlockRetry? {

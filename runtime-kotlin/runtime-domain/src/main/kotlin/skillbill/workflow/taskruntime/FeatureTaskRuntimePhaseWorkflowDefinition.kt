@@ -87,6 +87,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_AUDIT to PHASE_IMPLEMENT,
   )
 
+  // Phases whose attempt watermark a review-generation restart rewinds. Only these carry a non-zero
+  // evidence generation, so every other phase keeps a generation-blind key and a byte-identical
+  // re-write after a restart stays an idempotent no-op.
+  val GENERATION_SCOPED_PHASE_IDS: Set<String> = setOf(PHASE_REVIEW, PHASE_IMPLEMENT_FIX)
+
   val REGENERATION_LOOP_IDS: Set<String> = REGENERATION_LOOP_ID_BY_PRODUCER.values.toSet()
 
   fun isRegenerationLoopId(loopId: String): Boolean = loopId in REGENERATION_LOOP_IDS

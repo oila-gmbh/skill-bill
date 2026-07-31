@@ -241,9 +241,12 @@ internal class FeatureTaskRuntimeRunLoop(
 
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
-      check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+      val generation = checkNotNull(
+        recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride),
+      ) {
         "Could not durably invalidate legacy review evidence for workflow '${request.workflowId}'."
       }
+      state.advanceReviewGeneration(generation)
       state.resetInvalidatedReviewGeneration()
       if (pendingReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
         pendingReentry = null
@@ -1925,14 +1928,14 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         if (formatBlock == null) {
           iteration += 1
-          priorSchemaFailure = attempt.schemaInvalidReason
+          priorSchemaFailure = attempt.schemaInvalidRetryReason
           observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
           null
         } else {
           blockAndPersistInPhase(
             run,
             iteration,
-            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidReason)),
+            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidOperatorReason)),
             observability,
             failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
             fileManifest = attempt.fileManifest,
@@ -1944,14 +1947,14 @@ internal class FeatureTaskRuntimeRunLoop(
           is FeatureTaskRuntimeFixLoopDecision.Retry -> {
             iteration += 1
             semanticIteration += 1
-            priorSchemaFailure = attempt.schemaInvalidReason
+            priorSchemaFailure = attempt.schemaInvalidRetryReason
             observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
             null
           }
           is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
             run,
             iteration,
-            withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidReason)),
+            withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.schemaInvalidOperatorReason)),
             observability,
             failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
             fileManifest = attempt.fileManifest,
@@ -2058,6 +2061,7 @@ internal class FeatureTaskRuntimeRunLoop(
       producer,
       producingIteration,
       request.dbPathOverride,
+      state.evidenceGeneration(producer),
     ) ?: return blockAndPersistInPhase(
       run,
       iteration,
@@ -2072,9 +2076,12 @@ internal class FeatureTaskRuntimeRunLoop(
       run = run,
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
-      reason = payloadFreeRejectionReason(
-        "reconciliation-${rejection.rejectionClass}",
-        rejectionPath(rejection.rejectionDetail),
+      reason = retryRejectionReason(
+        payloadFreeRejectionReason(
+          "reconciliation-${rejection.rejectionClass}",
+          rejectionPath(rejection.rejectionDetail),
+        ),
+        rejection.rejectionDetail,
       ),
       outputBytes = rejectedPayload,
       phaseId = producer,
@@ -2132,6 +2139,7 @@ internal class FeatureTaskRuntimeRunLoop(
         output.phaseId,
         output.iteration.coerceAtLeast(1),
         request.dbPathOverride,
+        state.evidenceGeneration(output.phaseId),
       )
     }
     evidence?.let {
@@ -2139,7 +2147,7 @@ internal class FeatureTaskRuntimeRunLoop(
         run = run,
         iteration = it.attempt,
         rule = "reconciliation-${rejection.rejectionClass}",
-        reason = detail,
+        reason = retryRejectionReason(detail, rejection.rejectionDetail),
         outputBytes = it.payload ?: byteArrayOf(),
         phaseId = it.phaseId,
         agentId = it.agentId,
@@ -2184,6 +2192,23 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun payloadFreeRejectionReason(rule: String, path: String): String =
     "Rejected output violated '$rule' at '$path'. Inspect the private diagnostic for the exact response."
+
+  /**
+   * The retry-facing counterpart of [payloadFreeRejectionReason]. A producer cannot repair an output from a
+   * rule name and a path alone, so the validator's constraint text — the violated rule, the expected shape
+   * and the offending field, all authored from the schema and never from the response — is appended for the
+   * next prompt and for the private diagnostic row. The payload-free sentence stays the prefix so both
+   * readers still learn where the raw response is kept.
+   *
+   * A null or blank [validationReason] means the producing seam had no value-free restatement to offer, so
+   * the payload-free sentence stands alone; the value-bearing variant is never substituted in its place.
+   */
+  private fun retryRejectionReason(payloadFreeReason: String, validationReason: String?): String =
+    if (validationReason.isNullOrBlank()) {
+      payloadFreeReason
+    } else {
+      "$payloadFreeReason Violated constraint: ${boundedSchemaGateDetail(validationReason)}"
+    }
 
   @Suppress("LongParameterList")
   private fun attemptOnce(
@@ -2245,22 +2270,23 @@ internal class FeatureTaskRuntimeRunLoop(
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
     recordRejectedOutput(
-      run, iteration, "phase-output-schema", reason, outputBytes, path = path,
+      run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
     schemaInvalidAttempt(
       reason,
       fileManifest,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+      retryReason = retryRejectionReason(reason, error.payloadFreeReason),
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
     recordRejectedOutput(
-      run, iteration, "audit-repair-plan-schema", reason, outputBytes, path = path,
+      run, iteration, "audit-repair-plan-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
-    schemaInvalidAttempt(reason, fileManifest)
+    schemaInvalidAttempt(reason, fileManifest, retryReason = retryRejectionReason(reason, error.payloadFreeReason))
   }
 
   private fun recordRejectedOutput(
@@ -2293,6 +2319,7 @@ internal class FeatureTaskRuntimeRunLoop(
         truncated = outputTruncated,
       ),
       run.request.dbPathOverride,
+      state.evidenceGeneration(phaseId),
     )
     return RejectedOutputDiagnosticService.stableIdentity(
       run.request.workflowId,
@@ -2320,11 +2347,12 @@ internal class FeatureTaskRuntimeRunLoop(
       val diagnosticRule = structuredIdentity?.first ?: rule
       val path = structuredIdentity?.second ?: rejectionPath(detail)
       val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
+      val retryReason = retryRejectionReason(reason, detail)
       recordRejectedOutput(
-        run, iteration, diagnosticRule, reason, outputBytes, path = path,
+        run, iteration, diagnosticRule, retryReason, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
-      return schemaInvalidAttempt(reason, fileManifest)
+      return schemaInvalidAttempt(reason, fileManifest, retryReason = retryReason)
     }
     firstValidatedOutputRejection(run.phaseId, outputText, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
@@ -2383,15 +2411,16 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
-        request.workflowId,
-        run.phaseId,
-        iteration,
-        run.resolvedAgent.resolvedAgentId,
-        run.modelDirective?.model ?: "unspecified",
-        java.time.Instant.now(),
-        outputByteSize,
-        outputSha256,
-        outputBytes.takeUnless { outputTruncated },
+        workflowId = request.workflowId,
+        phaseId = run.phaseId,
+        attempt = iteration,
+        agentId = run.resolvedAgent.resolvedAgentId,
+        model = run.modelDirective?.model ?: "unspecified",
+        recordedAt = java.time.Instant.now(),
+        byteSize = outputByteSize,
+        sha256 = outputSha256,
+        payload = outputBytes.takeUnless { outputTruncated },
+        generation = state.evidenceGeneration(run.phaseId),
       ),
       run.request.dbPathOverride,
     )
@@ -3133,14 +3162,16 @@ internal class FeatureTaskRuntimeRunLoop(
   // output therefore earns the same fix-loop retries as every other phase: the reserved pass has no completed
   // output, which is the state a resume is already contracted to re-enter rather than treat as terminal.
   private fun schemaInvalidAttempt(
-    reason: String,
+    operatorReason: String,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     malformedOutput: Boolean = false,
+    retryReason: String = operatorReason,
   ): AttemptResult = AttemptResult.schemaInvalid(
-    reason,
-    fileManifest,
-    null,
-    malformedOutput,
+    operatorReason = operatorReason,
+    fileManifest = fileManifest,
+    rejectedOutput = null,
+    malformedOutput = malformedOutput,
+    retryReason = retryReason,
   )
 
   private fun persistPhase(
@@ -3713,15 +3744,28 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private sealed interface AttemptResult {
     private data class Settled(val outcome: PhaseOutcome) : AttemptResult
+
+    /**
+     * The two consumers of a schema-invalid attempt want different text and must not share one string.
+     * [operatorReason] is the payload-free sentence a blocked row, telemetry event or status surface may
+     * carry; [retryReason] is the constraint text the next fix-loop prompt needs to repair the output.
+     *
+     * Bounding belongs to whoever composes [retryReason] — [retryRejectionReason] for validator-authored
+     * text — not to this constructor. Re-bounding a composed string here would spend the validator's
+     * character budget on the runtime's own fixed preamble and truncate exactly the constraint the prompt
+     * exists to deliver.
+     */
     private data class SchemaInvalid(
-      val validationReason: String,
+      val operatorReason: String,
+      val retryReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
       override val malformedOutput: Boolean,
     ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
-    val schemaInvalidReason: String? get() = (this as? SchemaInvalid)?.validationReason
+    val schemaInvalidOperatorReason: String? get() = (this as? SchemaInvalid)?.operatorReason
+    val schemaInvalidRetryReason: String? get() = (this as? SchemaInvalid)?.retryReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest? get() = (this as? SchemaInvalid)?.fileManifest
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
     val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
@@ -3729,11 +3773,18 @@ internal class FeatureTaskRuntimeRunLoop(
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
       fun schemaInvalid(
-        validationReason: String,
+        operatorReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         rejectedOutput: String?,
         malformedOutput: Boolean = false,
-      ): AttemptResult = SchemaInvalid(validationReason, fileManifest, rejectedOutput, malformedOutput)
+        retryReason: String = operatorReason,
+      ): AttemptResult = SchemaInvalid(
+        operatorReason = operatorReason,
+        retryReason = retryReason,
+        fileManifest = fileManifest,
+        rejectedOutput = rejectedOutput,
+        malformedOutput = malformedOutput,
+      )
     }
   }
 

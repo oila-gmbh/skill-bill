@@ -559,11 +559,17 @@ class FeatureTaskRuntimeRunnerTest {
       "the first attempt's prompt carries no correction directive",
     )
     assertContains(reviewPrompts[1], "Previous attempt was REJECTED by the schema gate")
+    // This validator throws without a payloadFreeReason, which is the contract's null-fallback case: the
+    // retry prompt falls back to the payload-free sentence alone and never substitutes the value-bearing
+    // reason. A seam that DOES supply a payload-free restatement is covered in
+    // FeatureTaskRuntimeRejectionConstraintPrivacyTest.
     assertFalse(reviewPrompts[1].contains(reason))
     assertContains(reviewPrompts[1], "Rejected output violated 'phase-output-schema'")
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
     assertTrue(diagnostic.payload?.isNotEmpty() == true)
-    assertFalse(diagnostic.metadata.reason.contains(reason))
+    // The private row records the value-bearing reason alongside the raw bytes, so an operator inspecting
+    // the diagnostic sees the full validator text the public surfaces withheld.
+    assertContains(diagnostic.metadata.reason, reason)
   }
 
   @Test
@@ -5329,6 +5335,16 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
   ),
 )
 
+internal data class ProducerEvidenceKey(
+  val workflowId: String,
+  val phaseId: String,
+  val generation: Int,
+  val attempt: Int,
+)
+
+internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
+  (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
+
 internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
   private val lifecycle: LifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
@@ -5340,10 +5356,25 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val diagnosticRecords =
     linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
-    linkedMapOf<Triple<String, String, Int>, skillbill.ports.persistence.ProducerOutputEvidence>()
+    linkedMapOf<ProducerEvidenceKey, skillbill.ports.persistence.ProducerOutputEvidence>()
 
   fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
     diagnosticRecords.values.toList()
+
+  fun retainedProducerEvidence(): List<skillbill.ports.persistence.ProducerOutputEvidence> =
+    producerEvidence.values.toList()
+
+  fun retainProducerEvidence(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+    unitOfWork().rejectedOutputDiagnostics!!.retainProducerOutput(evidence)
+  }
+
+  fun producerEvidenceAt(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    generation: Int,
+  ): skillbill.ports.persistence.ProducerOutputEvidence? =
+    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -5390,15 +5421,40 @@ internal class RuntimeFakeDatabaseSessionFactory(
 
       override fun delete(selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector): Int = 0
 
+      // Mirrors the SQLite write-once semantics: insert-if-absent, then a read-back equality guard
+      // that raises Conflict on a divergent write to an already-retained key.
       override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
-        producerEvidence.putIfAbsent(Triple(evidence.workflowId, evidence.phaseId, evidence.attempt), evidence)
+        val key = ProducerEvidenceKey(
+          evidence.workflowId,
+          evidence.phaseId,
+          evidence.generation,
+          evidence.attempt,
+        )
+        producerEvidence.putIfAbsent(key, evidence)
+        val retained = producerEvidence.getValue(key)
+        if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
+          !samePayload(retained.payload, evidence.payload)
+        ) {
+          throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict(
+            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}",
+          )
+        }
       }
 
       override fun readProducerOutput(
         workflowId: String,
         phaseId: String,
         attempt: Int,
-      ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence[Triple(workflowId, phaseId, attempt)]
+        generation: Int,
+      ): skillbill.ports.persistence.ProducerOutputEvidence? =
+        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
+          ?: producerEvidence.entries
+            .filter {
+              it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
+                it.key.attempt == attempt && it.key.generation <= generation
+            }
+            .maxByOrNull { it.key.generation }
+            ?.value
     }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(

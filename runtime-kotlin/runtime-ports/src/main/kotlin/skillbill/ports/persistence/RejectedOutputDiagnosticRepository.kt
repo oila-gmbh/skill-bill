@@ -18,12 +18,21 @@ interface RejectedOutputDiagnosticRepository {
   fun retainProducerOutput(evidence: ProducerOutputEvidence) {
     throw RejectedOutputDiagnosticError.Persistence("producer-evidence-unavailable")
   }
-  fun readProducerOutput(workflowId: String, phaseId: String, attempt: Int): ProducerOutputEvidence? = null
+  fun readProducerOutput(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    generation: Int = 0,
+  ): ProducerOutputEvidence? = null
   fun deleteProducerOutputsBefore(before: Instant): Int = 0
 }
 
 fun interface RejectedOutputDiagnosticMetadataValidator {
   fun validate(metadata: RejectedOutputDiagnostic)
+}
+
+fun interface ProducerOutputEvidenceValidator {
+  fun validate(evidence: ProducerOutputEvidence)
 }
 
 fun interface RejectedOutputDiagnosticPermissions {

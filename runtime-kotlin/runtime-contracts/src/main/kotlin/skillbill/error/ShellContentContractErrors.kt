@@ -98,6 +98,9 @@ class WorkflowIssueKeyConflictError(
 class InvalidRejectedOutputDiagnosticSchemaError(message: String) :
   ShellContentContractException(message)
 
+class InvalidProducerOutputEvidenceSchemaError(message: String) :
+  ShellContentContractException(message)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`
@@ -126,6 +129,15 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val sourceLabel: String,
   val reason: String,
   cause: Throwable? = null,
+  /**
+   * The same violation as [reason], restated with schema-side content only: the violated rule, the
+   * expected shape, and the offending field's name or path. It never carries an instance value, a body
+   * fragment, or any other span of the response that failed — [reason] is the value-bearing variant and
+   * belongs only in a private diagnostic row or a local log. Null means the throwing seam had no
+   * mechanically value-free restatement available; a consumer must then fall back to its own payload-free
+   * rejection sentence and must never substitute [reason].
+   */
+  val payloadFreeReason: String? = null,
   val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
     FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
 ) : ShellContentContractException(
@@ -198,6 +210,15 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,
   cause: Throwable? = null,
+  /**
+   * The same violation as [reason], restated with schema-side content only: the violated rule, the
+   * expected shape, and the offending field's name or path. It never carries an instance value, a body
+   * fragment, or any other span of the response that failed — [reason] is the value-bearing variant and
+   * belongs only in a private diagnostic row or a local log. Null means the throwing seam had no
+   * mechanically value-free restatement available; a consumer must then fall back to its own payload-free
+   * rejection sentence and must never substitute [reason].
+   */
+  val payloadFreeReason: String? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime audit repair plan '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

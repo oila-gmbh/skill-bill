@@ -269,6 +269,24 @@ val copyRejectedOutputDiagnosticSchema =
     }
   }
 
+val canonicalProducerOutputEvidenceSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/producer-output-evidence-schema.yaml")
+    .absolutePath
+
+val copyProducerOutputEvidenceSchema =
+  tasks.register<Copy>("copyProducerOutputEvidenceSchema") {
+    val schemaPath = canonicalProducerOutputEvidenceSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-152: canonical producer output evidence schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskExecutionIdentitySchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-execution-identity-schema.yaml")
@@ -501,6 +519,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyRejectedOutputDiagnosticSchema)
+  dependsOn(copyProducerOutputEvidenceSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)

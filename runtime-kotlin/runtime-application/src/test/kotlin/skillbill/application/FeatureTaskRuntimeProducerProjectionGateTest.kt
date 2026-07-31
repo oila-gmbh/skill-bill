@@ -205,7 +205,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
-  fun `the retry prompt carries a private diagnostic pointer without rejected detail`() {
+  fun `the retry prompt carries the violated constraint alongside the private diagnostic pointer`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -221,7 +221,9 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "plan" }
     assertEquals(cap, planPrompts.size)
-    assertPrivateDiagnosticRejection(
+    // A retry prompt is the one surface that must name the constraint: the producer cannot repair an output
+    // it is only told was rejected. The pointer to the private diagnostic stays alongside it.
+    assertRetryPromptNamesConstraint(
       planPrompts[1],
       "producer-projection",
       "projection_kind is missing",
@@ -295,6 +297,84 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     val report = harness.runner.run(harness.request())
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     return ProducerBlockOutcome(blocked, harness.launchedPromptPhaseOrder())
+  }
+
+  // --- SKILL-152 AC-009: the three closed-object rejection classes name their constraint ---------
+
+  @Test
+  fun `an extra key on a closed projection object is absorbed and consumes no fix-loop attempt`() {
+    // AC-005: an undeclared key on a closed variant carries no governed meaning and could never have
+    // reached a consumer, so the canonicalizer discards it before validation instead of spending an
+    // attempt. The still-rejecting classes below carry the AC-009 retry-prompt naming assertion.
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") PLAN_WITH_UNDECLARED_TOP_LEVEL_KEY else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    )
+
+    harness.runner.run(harness.request())
+
+    val launched = harness.launchedPromptPhaseOrder()
+    assertEquals(1, launched.count { it == "plan" }, "an absorbed extra key must not cost a fix-loop attempt")
+    assertTrue(launched.contains("implement"), "the absorbed plan must advance to its consumer")
+    harness.launcher.requests.forEach { request ->
+      assertNoRawResponseSpan(requireNotNull(request.skillRunRequest.promptOverride), "private body")
+    }
+  }
+
+  @Test
+  fun `a missing required field on a closed projection object names the required property`() {
+    val retryPrompt = firstRealValidatorRetryPrompt("plan", PLAN_TASK_MISSING_TEST_OBLIGATIONS)
+
+    assertRetryPromptNamesConstraint(
+      retryPrompt,
+      "producer-projection",
+      "required property 'test_obligations' not found",
+    )
+  }
+
+  @Test
+  fun `a wrong-typed field on a closed projection object names the found and expected types`() {
+    val retryPrompt = firstRealValidatorRetryPrompt("plan", PLAN_TASKS_AS_STRING)
+
+    assertRetryPromptNamesConstraint(
+      retryPrompt,
+      "producer-projection",
+      "string found, array expected",
+    )
+  }
+
+  @Test
+  fun `a receipt asserting reconciled false is told which envelope carries unfinished work`() {
+    val retryPrompt = firstRealValidatorRetryPrompt("implement", RECEIPT_ASSERTING_UNRECONCILED)
+
+    assertRetryPromptNamesConstraint(retryPrompt, "producer-projection", "must be the constant value")
+    assertContains(retryPrompt, "A 'completed' implementation_receipt asserts a reconciled working tree")
+    assertContains(retryPrompt, "leave this phase through a 'blocked' or 'failed' envelope instead")
+  }
+
+  // Drives the real Draft 2020-12 validator so the rejection text is the schema's, not the typed parse's,
+  // and returns the first retry prompt for the target phase.
+  private fun firstRealValidatorRetryPrompt(targetPhase: String, malformedOutput: String): String {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == targetPhase) malformedOutput else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val prompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == targetPhase }
+    assertEquals(cap, prompts.size, "$targetPhase must retry to the cap on an unrepaired rejection")
+    return prompts[1]
   }
 
   // --- helpers ----------------------------------------------------------------------------------
@@ -419,4 +499,37 @@ private val VALIDATION_CHECKPOINT_AS_STRING: String = envelope(
   "validate",
   """{"validation_result":{"validation_status":"passed","checks":[{"name":"check","status":"passed"}],""" +
     """"repository_checkpoint":"repository_checkpoint=fixture-checkpoint-1"}}""",
+)
+
+// SKILL-152 AC-009 fixtures: one per closed-object rejection class, each otherwise conforming so the
+// asserted constraint is the only violation the schema reports.
+
+private val PLAN_WITH_UNDECLARED_TOP_LEVEL_KEY: String = envelope(
+  "plan",
+  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
+    """"tasks":[{"task_id":"task-1","description":"t","criterion_refs":["AC-001"],""" +
+    """"test_obligations":["parity"]}],"validation_strategy":["v"],"smuggled_narration":"private body"}""",
+)
+
+private val PLAN_TASK_MISSING_TEST_OBLIGATIONS: String = envelope(
+  "plan",
+  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
+    """"tasks":[{"task_id":"task-1","description":"t","criterion_refs":["AC-001"]}],""" +
+    """"validation_strategy":["v"]}""",
+)
+
+private val PLAN_TASKS_AS_STRING: String = envelope(
+  "plan",
+  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
+    """"tasks":"task-1 does the work","validation_strategy":["v"]}""",
+)
+
+// reconciled_state stays true so the separate mutating-phase reconciliation gate passes and the receipt
+// actually reaches the projection gate, where `reconciled` is const:true and rejects.
+private val RECEIPT_ASSERTING_UNRECONCILED: String = envelope(
+  "implement",
+  """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+    """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
+    """"reconciliation_evidence":{"reconciled":false,"evidence":"Work is unfinished."},""" +
+    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}""",
 )
