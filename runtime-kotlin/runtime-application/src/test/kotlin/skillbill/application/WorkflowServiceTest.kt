@@ -33,6 +33,7 @@ import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
@@ -81,6 +82,7 @@ import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
@@ -886,6 +888,42 @@ class WorkflowServiceTest {
 
     assertEquals("blocked", state?.manifest?.status)
     assertEquals("wfl-child", state?.manifest?.subtasks?.single()?.workflowId)
+  }
+
+  @Test
+  fun `an archived manifest on a superseded contract does not fail another goal's read`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-archived-legacy")
+    val activePath = repoRoot.resolve(".feature-specs/SKILL-8-implementation/decomposition-manifest.yaml")
+    val archivedPath = repoRoot.resolve(".feature-specs/done/SKILL-80-telemetry/decomposition-manifest.yaml")
+    Files.createDirectories(activePath.parent)
+    Files.createDirectories(archivedPath.parent)
+    Files.writeString(
+      activePath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "blocked").copy(issueKey = "SKILL-8"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    Files.writeString(archivedPath, LEGACY_CONTRACT_MANIFEST_YAML)
+    val store = manifestStore(rejecting = setOf(archivedPath.toString()))
+
+    val state = store.loadByIssueKey("SKILL-8", repoRoot = repoRoot)
+
+    assertEquals("blocked", state?.manifest?.status)
+  }
+
+  @Test
+  fun `a schema-invalid manifest claiming this goal's issue key still loud-fails`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-in-scope-invalid")
+    val brokenPath = repoRoot.resolve(".feature-specs/SKILL-8-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(brokenPath.parent)
+    Files.writeString(brokenPath, LEGACY_CONTRACT_MANIFEST_YAML.replace("SKILL-80", "SKILL-8"))
+    val store = manifestStore(rejecting = setOf(brokenPath.toString()))
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      store.loadByIssueKey("SKILL-8", repoRoot = repoRoot)
+    }
   }
 
   /**
@@ -2586,6 +2624,38 @@ private fun workflowRecord(
     ),
   ).toRecord()
 }
+
+private const val LEGACY_CONTRACT_MANIFEST_YAML: String = """
+---
+contract_version: "0.3"
+issue_key: "SKILL-80"
+current_subtask_intent:
+  subtask_id: null
+  action: "complete"
+subtasks:
+  - id: 1
+    status: "completed"
+---
+"""
+
+private fun manifestStore(rejecting: Set<String>) = WorkflowGoalRunnerManifestStore(
+  database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+  workflowSnapshotValidator = testWorkflowSnapshotValidator,
+  decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
+  decompositionManifestFileStore = TestDecompositionManifestFileStore,
+  phaseOutputValidator = AlwaysValidValidator,
+  planningProjectionValidator = realPlanningProjectionValidator,
+)
+
+private fun rejectingDecompositionManifestValidator(rejectedSources: Set<String>): DecompositionManifestValidator =
+  object : DecompositionManifestValidator by testDecompositionManifestValidator {
+    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> {
+      if (sourceLabel in rejectedSources) {
+        throw InvalidDecompositionManifestSchemaError(sourceLabel, "contract_version: must be '0.5'")
+      }
+      return testDecompositionManifestValidator.validateYamlText(yamlText, sourceLabel)
+    }
+  }
 
 private fun decompositionRuntime(status: String): DecompositionManifest = DecompositionManifest(
   issueKey = "SKILL-52.1",

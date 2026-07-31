@@ -24,6 +24,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -106,6 +107,7 @@ import java.time.format.DateTimeFormatter
 // SKILL-87: under requireStalenessEvidence, a running candidate counts as alive (not stale) when any
 // declared-liveness or snapshot-update signal lands within this window. Generous enough that a long
 // but legitimately quiet first phase is never mistaken for a dead subtask.
+private val DECLARED_ISSUE_KEY = Regex("""issue_key:\s*(\S+)""")
 private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
@@ -695,13 +697,29 @@ class WorkflowGoalRunnerManifestStore(
     return if (reuse) mapOf(runtimeEntry) else mapOf("plan" to mapOf("mode" to "decompose"), runtimeEntry)
   }
 
+  // The scan walks every manifest in the repo, including archived ones written against superseded
+  // contract versions. A file that fails validation is only this goal's problem when it claims this
+  // goal's issue key; otherwise it is somebody else's record and must not fail the read.
+  private fun loadScannedManifestOrNull(path: Path, issueKey: String): DecompositionManifest? = try {
+    loadManifestOrNull(path, decompositionManifestValidator, decompositionManifestFileStore)
+  } catch (error: InvalidDecompositionManifestSchemaError) {
+    if (declaredIssueKey(path) == issueKey) throw error
+    null
+  }
+
+  private fun declaredIssueKey(path: Path): String? = runCatching { decompositionManifestFileStore.readText(path) }
+    .getOrNull()
+    ?.lineSequence()
+    ?.firstNotNullOfOrNull { line -> DECLARED_ISSUE_KEY.matchEntire(line.trim())?.groupValues?.get(1) }
+    ?.trim('"', '\'')
+
   private fun findProjectedManifest(repoRoot: Path, issueKey: String) =
     decompositionManifestFileStore.findDecompositionManifestFiles(repoRoot)
       .asSequence()
       .sortedBy { path -> path.toString() }
       .filter { path -> path.mayContainIssueKey(repoRoot, issueKey) }
       .mapNotNull { path ->
-        loadManifestOrNull(path, decompositionManifestValidator, decompositionManifestFileStore)
+        loadScannedManifestOrNull(path, issueKey)
           ?.let { manifest -> ProjectedManifestCandidate(path, manifest) }
       }
       .filter { candidate -> candidate.manifest.issueKey == issueKey }
@@ -872,10 +890,14 @@ private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
       (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
   }
 
+// Bare containment makes 'SKILL-8' match every 'SKILL-8x' path, so an unrelated goal's manifest gets
+// loaded and its failures attributed here. The key must end at a non-alphanumeric boundary.
 private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
   runCatching { repoRoot.relativize(this).toString() }
     .getOrElse { toString() }
-    .contains(issueKey)
+    .let { candidate ->
+      Regex("(?<![A-Za-z0-9])${Regex.escape(issueKey)}(?![A-Za-z0-9])").containsMatchIn(candidate)
+    }
 
 @Inject
 @Suppress("LongParameterList", "LargeClass") // one cohesive goal-runner outcome store; bundling would only hide it
