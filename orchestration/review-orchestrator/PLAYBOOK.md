@@ -21,6 +21,7 @@ Do not reference this repo-relative path directly from installable skills — us
 - Report `Minor` findings, or `Medium`/`Low` confidence findings, only when they tie to an explicit contract violation, user-visible bug, regression risk, quality gate failure, or persisted learning
 - Always report evidence-backed `Blocker` and `Major` findings. Do not suppress concrete correctness, security, persistence, lifecycle, testing, accessibility, or contract defects because they fall outside the low-value reporting threshold
 - Severity is defined by observable consequence. Use `behavior_correctness` as the calibration reference: `Blocker` means the change breaks correctness or safety; `Major` means the change materially worsens behavior for a demonstrated scenario. Stylistic, speculative, or pre-existing observations are `Minor`, `Nit`, or suppressed by the SKILL-115 admission gate. The closed rating enum is `Blocker`, `Major`, `Minor`.
+- Absent, thin, or incomplete test coverage is capped at `Minor`, never `Blocker` or `Major`, and is still subject to the reporting threshold above. A test that exists but asserts the wrong behavior, is tautological, or masks a production defect is a defect in the changed code and keeps normal severity calibration.
 - Confidence: `High | Medium | Low`
 - Keep each specialist review pass to at most 7 findings
 - Include a minimal concrete fix for each finding
