@@ -14,8 +14,10 @@ import com.networknt.schema.ValidationMessage
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairRuleViolation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemStatus
@@ -48,9 +50,11 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
       featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors, instance))
+      val reasons = formatViolationReasons(errors.sortedWith(violationOrdering), instance)
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
-        reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
+        reason = reasons.valueBearing,
+        payloadFreeReason = reasons.payloadFree,
       )
     }
     validateAuditRepairPlan(instance, sourceLabel)
@@ -59,6 +63,8 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "phase_id must match the executing phase '$sourceLabel' but was '${phaseId.orEmpty()}'.",
+        // sourceLabel is the runtime's own phase id, so naming the expectation carries no response content.
+        payloadFreeReason = "phase_id must match the executing phase '$sourceLabel'.",
       )
     }
   }
@@ -70,8 +76,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     if (!unmetCriteria.isArray || unmetCriteria.isEmpty) return
     val plan = producedOutputs.path("audit_repair_plan")
     try {
-      val errors = auditRepairSchema.validate(plan)
-      require(errors.isEmpty()) { formatValidationReason(errors.sortedWith(violationOrdering), plan) }
+      requireAuditRepairPlanSchema(plan, sourceLabel)
       decodeAuditRepairPlan(plan).requireExactCriterionCoverage(
         unmetCriteria.map {
           it.path("acceptance_criterion_ref").asText()
@@ -82,15 +87,35 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         sourceLabel = sourceLabel,
         reason = "produced_outputs.audit_repair_plan: ${error.reason}",
         cause = error,
+        payloadFreeReason = error.payloadFreeReason?.let { "produced_outputs.audit_repair_plan: $it" },
       )
     } catch (error: IllegalArgumentException) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "produced_outputs.audit_repair_plan: ${error.message.orEmpty()}",
         cause = error,
+        payloadFreeReason = "produced_outputs.audit_repair_plan: ${auditRepairRuleRestatement(error)}",
       )
     }
   }
+
+  private fun requireAuditRepairPlanSchema(plan: JsonNode, sourceLabel: String) {
+    val errors = auditRepairSchema.validate(plan)
+    if (errors.isEmpty()) return
+    val reasons = formatViolationReasons(errors.sortedWith(violationOrdering), plan)
+    throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+      sourceLabel = sourceLabel,
+      reason = reasons.valueBearing,
+      payloadFreeReason = reasons.payloadFree,
+    )
+  }
+
+  // A typed rule violation carries its own value-free restatement of the rule it enforces; anything else
+  // reaching this seam is restated as the rule family so the retry prompt still names the constraint
+  // rather than only the pointer it failed at.
+  private fun auditRepairRuleRestatement(error: IllegalArgumentException): String =
+    (error as? FeatureTaskRuntimeAuditRepairRuleViolation)?.payloadFreeMessage
+      ?: FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
 
   private fun decodeAuditRepairPlan(node: JsonNode): FeatureTaskRuntimeAuditRepairPlan =
     FeatureTaskRuntimeAuditRepairPlan(
@@ -267,6 +292,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "Phase output contains multiple conflicting schema-valid envelopes.",
+        payloadFreeReason = "Phase output contains multiple conflicting schema-valid envelopes.",
       )
     }
     envelopeCandidates.firstOrNull()?.let { return it }
@@ -310,6 +336,9 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           sourceLabel = sourceLabel,
           reason = "Phase output is malformed: ${error.originalMessage.orEmpty()}",
           cause = error,
+          // Jackson's originalMessage quotes the offending token, so only the prefix survives here. The
+          // prompt composer keys its unparseable-root correction on that prefix.
+          payloadFreeReason = "Phase output is malformed: it is not parseable as a single JSON object.",
           failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
         )
       }
@@ -317,6 +346,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "<root> must be an object.",
+        payloadFreeReason = "<root> must be an object.",
         failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
       )
     }
@@ -330,6 +360,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       sourceLabel = sourceLabel,
       reason = "Phase output root object cannot be converted to a string-keyed map: ${error.message.orEmpty()}",
       cause = error,
+      payloadFreeReason = "Phase output root object cannot be converted to a string-keyed map.",
     )
   }
 
@@ -365,33 +396,34 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       "violations=${parts.joinToString(", ")} totalViolations=${errors.size}"
   }
 
-  private fun formatValidationReason(sorted: List<ValidationMessage>, instance: JsonNode): String {
-    val firstError = sorted.first()
-    val instanceLocation = firstError.instanceLocation?.toString().orEmpty()
-    val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(instanceLocation).ifBlank { "<root>" }
-    val offendingValue = extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, instanceLocation)
-    return buildString {
-      append(fieldPath)
-      append(": ")
-      append(firstError.message)
-      if (offendingValue.isNotBlank()) {
-        append(" — offending value: ")
-        append(offendingValue)
-      }
-      sorted.drop(1).forEach { other ->
-        val otherLocation = other.instanceLocation?.toString().orEmpty()
-        val otherPath = featureTaskRuntimePhaseOutputDottedFieldPath(otherLocation).ifBlank { "<root>" }
-        val otherValue = extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, otherLocation)
-        append(" | ")
-        append(otherPath)
-        append(": ")
-        append(other.message)
-        if (otherValue.isNotBlank()) {
-          append(" — offending value: ")
-          append(otherValue)
+  /**
+   * Both renderings of one violation list. [valueBearing] is the long-standing text, offending values
+   * included, and belongs only in a private diagnostic row or a local log; [payloadFree] is the same rule
+   * and field-path content with every offending value omitted, and is the only variant a retry prompt or
+   * operator surface may carry. They are emitted from a single traversal so the rule and path content of
+   * the two can never drift apart.
+   */
+  private data class PhaseOutputViolationReasons(val valueBearing: String, val payloadFree: String)
+
+  private fun formatViolationReasons(
+    sorted: List<ValidationMessage>,
+    instance: JsonNode,
+  ): PhaseOutputViolationReasons {
+    val violations = sorted.map { error ->
+      val location = error.instanceLocation?.toString().orEmpty()
+      val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }
+      val head = "$fieldPath: ${error.message}"
+      head to extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, location)
+    }
+    fun render(includeOffendingValues: Boolean): String =
+      violations.joinToString(separator = " | ") { (head, offendingValue) ->
+        if (includeOffendingValues && offendingValue.isNotBlank()) {
+          "$head — offending value: $offendingValue"
+        } else {
+          head
         }
       }
-    }
+    return PhaseOutputViolationReasons(valueBearing = render(true), payloadFree = render(false))
   }
 
   private val violationOrdering: Comparator<ValidationMessage> = compareBy(

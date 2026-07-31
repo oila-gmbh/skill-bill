@@ -9,7 +9,20 @@ package skillbill.workflow.taskruntime.model
  *
  * It never synthesizes missing fields, reorders or drops collection entries, or coerces types: a value
  * of an unexpected shape is passed through untouched so the schema and the typed models reject it
- * exactly as before. Anti-paste rejection stays with the schema — canonicalization strips backticks and
+ * exactly as before.
+ *
+ * One governed exception: every fully-enumerated closed object listed in
+ * [FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS] — the four top-level variants as well as the nested
+ * ones — has its unknown keys discarded before strict validation, so an extra-key-only rejection does not
+ * consume a fix-loop attempt on a key that carries no governed meaning for any contract. The discard is
+ * safe at the top level because each variant is `additionalProperties: false`, so an undeclared key could
+ * never have reached a consumer anyway, and because the foreign-owned co-residents another contract
+ * requires on the same output — `_goal_planning_shared_context`, `reconciled_state`, `repair_item_results`,
+ * `deferred_repair_item_ids`, `unresolvable_repair` — are declared properties of their variants and are
+ * therefore retained, as are `projection_kind` and `contract_version`. The standing invariants hold across
+ * the discard: no field is synthesized, no type is coerced, and no governed field is dropped.
+ *
+ * Anti-paste rejection stays with the schema — canonicalization strips backticks and
  * collapses tab runs but never removes an interior line break, so a multi-line paste keeps the CR/LF the
  * `compactSummary` no-line-break guard refuses and any `^`-anchored diff marker stays at its line start
  * where the anti-paste pattern still catches it, and a pasted JSON/diff body still rejects.
@@ -27,15 +40,28 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
    */
   fun canonicalize(produced: Map<String, Any?>): FeatureTaskRuntimeProjectionCanonicalization {
     val records = mutableListOf<FeatureTaskRuntimeProjectionCanonicalizationRecord>()
-    val declaredIds = buildDeclaredIdMap(produced)
-    val canonical = LinkedHashMap<String, Any?>(produced.size)
-    produced.forEach { (key, value) ->
+    val governed = discardUnknownTopLevelKeys(produced, records)
+    val declaredIds = buildDeclaredIdMap(governed)
+    val canonical = LinkedHashMap<String, Any?>(governed.size)
+    governed.forEach { (key, value) ->
       canonical[key] = canonicalizeTopLevel(key, value, declaredIds, records)
     }
     return FeatureTaskRuntimeProjectionCanonicalization(
       canonical = canonical,
       diagnostics = records.take(MAX_CANONICALIZATION_RECORDS),
     )
+  }
+
+  // The variant to prune against is chosen by the observed `projection_kind`, which the parse gate has
+  // already matched against the consuming declaration. An absent or unrecognized kind prunes nothing:
+  // the schema's oneOf rejects it, and guessing a variant there could delete a declared field.
+  private fun discardUnknownTopLevelKeys(
+    produced: Map<String, Any?>,
+    records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+  ): Map<String, Any?> {
+    val kind = produced["projection_kind"] as? String ?: return produced
+    val governedKeys = FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS[kind] ?: return produced
+    return discardUnknownKeys(produced, governedKeys, kind, records)
   }
 
   // Declared ids are the tasks[].task_id and task_commitments[].task_id positions; references
@@ -67,13 +93,32 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
       mapEntries(value) { index, entry -> canonicalizeCommitmentEntry(entry, records, index) }
     "deviations" -> mapEntries(value) { index, entry -> canonicalizeDeviationEntry(entry, records, index) }
     "completed_task_ids" -> canonicalizeReferenceIds(value, declaredIds, records, key)
-    "rollout" -> mapObject(value) { trimNonBlank(it, "notes", records, "rollout.notes") }
-    "reconciliation_evidence" ->
-      mapObject(value) { trimNonBlank(it, "evidence", records, "reconciliation_evidence.evidence") }
+    "tests_executed" -> discardUnknownKeysInEntries(value, TEST_EXECUTION_KEYS, key, records)
+    "rollout" -> mapObject(value) {
+      trimNonBlank(
+        discardUnknownKeys(it, ROLLOUT_KEYS, key, records),
+        "notes",
+        records,
+        "rollout.notes",
+      )
+    }
+    "reconciliation_evidence" -> mapObject(value) {
+      trimNonBlank(
+        discardUnknownKeys(it, RECONCILIATION_EVIDENCE_KEYS, key, records),
+        "evidence",
+        records,
+        "reconciliation_evidence.evidence",
+      )
+    }
     "repository_checkpoint" -> mapObject(value) { checkpoint ->
       trimNonBlank(
         trimNonBlank(
-          trimNonBlank(checkpoint, "fingerprint", records, "repository_checkpoint.fingerprint"),
+          trimNonBlank(
+            discardUnknownKeys(checkpoint, REPOSITORY_CHECKPOINT_KEYS, key, records),
+            "fingerprint",
+            records,
+            "repository_checkpoint.fingerprint",
+          ),
           "base_ref",
           records,
           "repository_checkpoint.base_ref",
@@ -93,8 +138,9 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
     index: Int,
   ): Map<String, Any?> {
-    val result = LinkedHashMap<String, Any?>(entry.size)
-    entry.forEach { (key, value) ->
+    val governed = discardUnknownKeys(entry, PLAN_TASK_KEYS, "tasks[$index]", records)
+    val result = LinkedHashMap<String, Any?>(governed.size)
+    governed.forEach { (key, value) ->
       result[key] = when (key) {
         "task_id" -> canonicalizeDeclaredId(value, records, "tasks[$index].task_id")
         "depends_on" -> canonicalizeReferenceIds(value, declaredIds, records, "tasks[$index].depends_on")
@@ -111,8 +157,9 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
     index: Int,
   ): Map<String, Any?> {
-    val result = LinkedHashMap<String, Any?>(entry.size)
-    entry.forEach { (key, value) ->
+    val governed = discardUnknownKeys(entry, TASK_COMMITMENT_KEYS, "task_commitments[$index]", records)
+    val result = LinkedHashMap<String, Any?>(governed.size)
+    governed.forEach { (key, value) ->
       result[key] = when (key) {
         "task_id" -> canonicalizeDeclaredId(value, records, "task_commitments[$index].task_id")
         in NONBLANK_STRING_LIST_KEYS -> trimStringList(value, records, "task_commitments[$index].$key")
@@ -127,8 +174,9 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
     index: Int,
   ): Map<String, Any?> {
-    val result = LinkedHashMap<String, Any?>(entry.size)
-    entry.forEach { (key, value) ->
+    val governed = discardUnknownKeys(entry, DEVIATION_KEYS, "deviations[$index]", records)
+    val result = LinkedHashMap<String, Any?>(governed.size)
+    governed.forEach { (key, value) ->
       result[key] = when (key) {
         "ref" -> trimNonBlankValue(value, records, "deviations[$index].ref")
         "note" -> canonicalizeCompactSummary(value, records, "deviations[$index].note")
@@ -199,6 +247,46 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     return list.mapIndexed { index, raw -> trimNonBlankValue(raw, records, "$fieldPath[$index]") }
   }
 
+  // Scoped to fully-enumerated closed objects, top-level variants included. An unknown key there carries
+  // no governed meaning for any contract and could not have survived `additionalProperties: false`, so
+  // discarding it costs nothing and spares the fix loop an attempt. The discarded key's value is never
+  // recorded.
+  private fun discardUnknownKeys(
+    map: Map<String, Any?>,
+    governedKeys: Set<String>,
+    fieldPath: String,
+    records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+  ): Map<String, Any?> {
+    if (map.keys.all { it in governedKeys }) return map
+    val retained = LinkedHashMap<String, Any?>(map.size)
+    map.forEach { (key, value) ->
+      if (key in governedKeys) {
+        retained[key] = value
+      } else {
+        records += textFreeRecord(
+          "$fieldPath.${key.take(MAX_RECORDED_ID_LENGTH)}",
+          listOf(FeatureTaskRuntimeProjectionCanonicalizationTransform.UNKNOWN_KEY_DISCARDED),
+        )
+      }
+    }
+    return retained
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun discardUnknownKeysInEntries(
+    value: Any?,
+    governedKeys: Set<String>,
+    fieldPath: String,
+    records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+  ): Any? {
+    val list = value as? List<*> ?: return value
+    return list.mapIndexed { index, entry ->
+      val stringKeyed = (entry as? Map<*, *>)?.takeIf { map -> map.keys.all { it is String } }
+        ?: return@mapIndexed entry
+      discardUnknownKeys(stringKeyed as Map<String, Any?>, governedKeys, "$fieldPath[$index]", records)
+    }
+  }
+
   private fun trimNonBlank(
     map: Map<String, Any?>,
     key: String,
@@ -259,8 +347,9 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     return transform(map.stringKeyedView())
   }
 
-  // Reads the wire object as a string-keyed map without dropping or coercing entries; a non-string key
-  // would violate the wire contract and is left for the schema to reject.
+  // Reads the wire object as a string-keyed map without coercing entries; a non-string key would violate
+  // the wire contract and is left for the schema to reject. The unknown-key discard applies only to a
+  // string-keyed view, so a non-string-keyed map is never pruned.
   @Suppress("UNCHECKED_CAST")
   private fun Map<*, *>.stringKeyedView(): Map<String, Any?> =
     if (keys.all { it is String }) this as Map<String, Any?> else LinkedHashMap()
@@ -286,6 +375,17 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     "test_obligations",
     "constraints",
   )
+
+  private val RECONCILIATION_EVIDENCE_KEYS = governedKeysOf("reconciliation_evidence")
+  private val ROLLOUT_KEYS = governedKeysOf("preplanning_digest.rollout")
+  private val REPOSITORY_CHECKPOINT_KEYS = governedKeysOf("repositoryCheckpoint")
+  private val PLAN_TASK_KEYS = governedKeysOf("plan_task")
+  private val TASK_COMMITMENT_KEYS = governedKeysOf("task_commitment")
+  private val TEST_EXECUTION_KEYS = governedKeysOf("test_execution")
+  private val DEVIATION_KEYS = governedKeysOf("deviation")
+
+  private fun governedKeysOf(schemaDefName: String): Set<String> =
+    FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS.getValue(schemaDefName)
 
   /**
    * Task-id rule: trim, lowercase, replace underscore/whitespace runs with a single hyphen, strip
@@ -325,7 +425,77 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
   TABS_TO_SPACE("tabs_to_space"),
   BACKTICKS_STRIPPED("backticks_stripped"),
   TRIMMED("trimmed"),
+  UNKNOWN_KEY_DISCARDED("unknown_key_discarded"),
 }
+
+/**
+ * Governed key sets of the fully-enumerated closed projection objects — the four top-level variants and
+ * every nested one — keyed by their location in
+ * `orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml`: a `$defs` name, or a
+ * `<variant>.<property>` path for an inline object. A top-level variant's entry is keyed by its
+ * `projection_kind`, which is also its `$defs` name. Parity with the schema is asserted by
+ * [skillbill.workflow.taskruntime.model] canonicalization parity coverage, so a schema property addition
+ * that is not mirrored here fails a test instead of silently becoming an unknown key. The foreign-owned
+ * co-residents (`_goal_planning_shared_context`, `reconciled_state`, `repair_item_results`,
+ * `deferred_repair_item_ids`, `unresolvable_repair`) are declared properties of their variants, so they
+ * appear here and the prune retains them.
+ */
+internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set<String>> = mapOf(
+  "preplanning_digest" to setOf(
+    "projection_kind",
+    "contract_version",
+    "affected_boundaries",
+    "patterns_and_decisions",
+    "risks",
+    "rollout",
+    "validation_strategy",
+    "unresolved_questions",
+    "evidence_refs",
+    "_goal_planning_shared_context",
+  ),
+  "executable_plan" to setOf(
+    "projection_kind",
+    "contract_version",
+    "mode",
+    "tasks",
+    "validation_strategy",
+    "decomposition_subtask_count",
+    "decomposition_manifest_ref",
+  ),
+  "plan_commitment" to setOf("projection_kind", "contract_version", "task_commitments"),
+  "implementation_receipt" to setOf(
+    "projection_kind",
+    "contract_version",
+    "completed_task_ids",
+    "changed_paths",
+    "tests_added",
+    "tests_updated",
+    "tests_executed",
+    "deviations",
+    "unresolved_items",
+    "reconciliation_evidence",
+    "repository_checkpoint",
+    "reconciled_state",
+    "repair_item_results",
+    "deferred_repair_item_ids",
+    "unresolvable_repair",
+  ),
+  "reconciliation_evidence" to setOf("reconciled", "evidence"),
+  "preplanning_digest.rollout" to setOf("flag_required", "flag_pattern", "notes"),
+  "repositoryCheckpoint" to setOf("fingerprint", "base_ref", "head_ref", "working_tree_owned_paths"),
+  "plan_task" to setOf(
+    "task_id",
+    "depends_on",
+    "description",
+    "criterion_refs",
+    "target_paths_or_symbols",
+    "test_obligations",
+    "constraints",
+  ),
+  "task_commitment" to setOf("task_id", "criterion_refs", "test_obligations", "constraints"),
+  "test_execution" to setOf("name", "outcome"),
+  "deviation" to setOf("ref", "note"),
+)
 
 /** The count cap on recorded canonicalizations, so diagnostics stay bounded regardless of projection
  *  size. */

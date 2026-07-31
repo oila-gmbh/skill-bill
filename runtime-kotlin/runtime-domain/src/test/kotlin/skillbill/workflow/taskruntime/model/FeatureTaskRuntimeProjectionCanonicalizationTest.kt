@@ -182,6 +182,174 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
     )
   }
 
+  // --- SKILL-152 AC-005: the scoped unknown-key discard -----------------------------------------
+
+  @Test
+  fun `an unknown key on a nested closed object is discarded and recorded without its value`() {
+    val produced = mapOf(
+      "reconciliation_evidence" to mapOf(
+        "reconciled" to true,
+        "evidence" to "tree at target",
+        "confidence" to "a private body fragment",
+      ),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val evidence = result.canonical["reconciliation_evidence"] as Map<*, *>
+    assertEquals(mapOf("reconciled" to true, "evidence" to "tree at target"), evidence)
+    val record = result.diagnostics.single { it.fieldPath == "reconciliation_evidence.confidence" }
+    assertEquals(listOf(Transform.UNKNOWN_KEY_DISCARDED), record.transforms)
+    assertNull(record.originalId, "a discard must never record the discarded key's value")
+    assertNull(record.canonicalId)
+  }
+
+  @Test
+  fun `the discard reaches every nested closed object and leaves governed fields intact`() {
+    val produced = mapOf(
+      "tasks" to listOf(
+        mapOf(
+          "task_id" to "task-1",
+          "description" to "d",
+          "criterion_refs" to listOf("AC-001"),
+          "test_obligations" to listOf("t"),
+          "estimate" to "2d",
+        ),
+      ),
+      "task_commitments" to listOf(
+        mapOf(
+          "task_id" to "task-1",
+          "criterion_refs" to listOf("AC-001"),
+          "test_obligations" to listOf("t"),
+          "owner" to "me",
+        ),
+      ),
+      "tests_executed" to listOf(mapOf("name" to "FooTest", "outcome" to "passed", "duration_ms" to 12)),
+      "deviations" to listOf(mapOf("ref" to "AC-001", "note" to "n", "severity" to "minor")),
+      "rollout" to mapOf("flag_required" to false, "notes" to "n", "owner" to "me"),
+      "repository_checkpoint" to mapOf("fingerprint" to "abc", "dirty" to true),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val discarded = result.diagnostics
+      .filter { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }
+      .map { it.fieldPath }
+    assertEquals(
+      listOf(
+        "tasks[0].estimate",
+        "task_commitments[0].owner",
+        "tests_executed[0].duration_ms",
+        "deviations[0].severity",
+        "rollout.owner",
+        "repository_checkpoint.dirty",
+      ).sorted(),
+      discarded.sorted(),
+    )
+    // Every governed field survives the prune.
+    val task = (result.canonical["tasks"] as List<*>).single() as Map<*, *>
+    assertEquals(setOf("task_id", "description", "criterion_refs", "test_obligations"), task.keys)
+    val checkpoint = result.canonical["repository_checkpoint"] as Map<*, *>
+    assertEquals("abc", checkpoint["fingerprint"])
+  }
+
+  @Test
+  fun `the discard never synthesizes a missing field nor coerces a type`() {
+    val produced = mapOf(
+      // A required governed field is absent and an unknown key is present: only the unknown key goes.
+      "reconciliation_evidence" to mapOf("reconciled" to true, "extra" to 1),
+      // A wrong-typed governed field keeps its wrong type for the schema to reject.
+      "rollout" to mapOf("flag_required" to "yes", "notes" to "n", "extra" to 1),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val evidence = result.canonical["reconciliation_evidence"] as Map<*, *>
+    assertEquals(mapOf("reconciled" to true), evidence, "no field may be synthesized to satisfy the schema")
+    val rollout = result.canonical["rollout"] as Map<*, *>
+    assertEquals("yes", rollout["flag_required"], "a wrong-typed governed field must not be coerced")
+  }
+
+  @Test
+  fun `a declared co-resident survives while an undeclared top-level key is discarded`() {
+    // The co-residents another contract requires on the same output are declared properties of the
+    // variant, so the top-level prune retains them; only a key no variant declares goes.
+    val produced = mapOf(
+      "projection_kind" to "implementation_receipt",
+      "contract_version" to "0.1",
+      "reconciled_state" to mapOf("reconciled" to true),
+      "repair_item_results" to listOf(mapOf("repair_item_id" to "ac-001-gap-1-item-1")),
+      "deferred_repair_item_ids" to listOf("ac-001-gap-1-item-2"),
+      "unresolvable_repair" to mapOf("reason" to "blocked"),
+      "narration" to "how the work went",
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(produced.keys - "narration", result.canonical.keys)
+    assertEquals(
+      listOf("implementation_receipt.narration"),
+      result.diagnostics
+        .filter { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }
+        .map { it.fieldPath },
+    )
+  }
+
+  @Test
+  fun `the goal-planning shared context survives the preplanning digest prune`() {
+    val sharedContext = mapOf("goal_id" to "SKILL-152")
+    val produced = mapOf(
+      "projection_kind" to "preplanning_digest",
+      "contract_version" to "0.1",
+      "_goal_planning_shared_context" to sharedContext,
+      "presentation_summary" to "prose the consumer never asked for",
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(sharedContext, result.canonical["_goal_planning_shared_context"])
+    assertEquals("preplanning_digest", result.canonical["projection_kind"])
+    assertEquals("0.1", result.canonical["contract_version"])
+    assertTrue("presentation_summary" !in result.canonical.keys)
+  }
+
+  @Test
+  fun `an unrecognized projection kind prunes nothing`() {
+    // Guessing a variant for an unknown kind could delete a declared field; the schema's oneOf rejects it.
+    val produced = mapOf("projection_kind" to "something_else", "narration" to "kept")
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(produced.keys, result.canonical.keys)
+    assertTrue(result.diagnostics.none { it.transforms.contains(Transform.UNKNOWN_KEY_DISCARDED) })
+  }
+
+  @Test
+  fun `a non-string-keyed nested object is never pruned`() {
+    val produced = mapOf("reconciliation_evidence" to mapOf(1 to "not-a-string-key"))
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertTrue(
+      result.diagnostics.none { it.transforms.contains(Transform.UNKNOWN_KEY_DISCARDED) },
+      "the discard applies only to a string-keyed view",
+    )
+  }
+
+  @Test
+  fun `a discarded key name is length-bounded in the record`() {
+    val longKey = "k".repeat(MAX_RECORDED_ID_LENGTH + 40)
+    val produced = mapOf("reconciliation_evidence" to mapOf("reconciled" to true, longKey to "v"))
+
+    val record = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced).diagnostics
+      .single { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }
+
+    assertTrue(
+      record.fieldPath.length <= "reconciliation_evidence.".length + MAX_RECORDED_ID_LENGTH,
+      "a recorded discarded key must be length-bounded: ${record.fieldPath.length}",
+    )
+  }
+
   private fun taskMap(taskId: String, dependsOn: List<String>? = null, description: String = "d"): Map<String, Any?> =
     buildMap {
       put("task_id", taskId)

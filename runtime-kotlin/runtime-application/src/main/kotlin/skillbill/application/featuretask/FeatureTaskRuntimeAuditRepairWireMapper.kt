@@ -2,9 +2,11 @@ package skillbill.application.featuretask
 
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairRuleViolation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
@@ -197,7 +199,13 @@ private inline fun <T> auditRepairPlanMapping(source: String, block: () -> T): T
 } catch (error: InvalidWorkflowStateSchemaError) {
   throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(source, error.message.orEmpty(), error)
 } catch (error: IllegalArgumentException) {
-  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(source, error.message.orEmpty(), error)
+  throw InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
+    sourceLabel = source,
+    reason = error.message.orEmpty(),
+    cause = error,
+    payloadFreeReason = (error as? FeatureTaskRuntimeAuditRepairRuleViolation)?.payloadFreeMessage
+      ?: FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY,
+  )
 }
 
 private fun durableAuditRepairPlanFromWire(value: Any?, source: String): FeatureTaskRuntimeAuditRepairPlan = try {

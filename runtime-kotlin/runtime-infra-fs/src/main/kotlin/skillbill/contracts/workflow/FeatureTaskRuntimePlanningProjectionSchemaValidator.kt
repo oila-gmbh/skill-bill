@@ -61,12 +61,21 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
     "implementation_receipt",
   )
 
-  private fun formatReason(errors: Set<ValidationMessage>): String =
-    errors.sortedBy { it.instanceLocation?.toString().orEmpty() }
-      .take(MAX_REPORTED_VIOLATIONS)
-      .joinToString(separator = " | ") { error ->
-        "${error.instanceLocation?.toString()?.ifBlank { "<root>" } ?: "<root>"}: ${error.message.orEmpty()}"
-      } + if (errors.size > MAX_REPORTED_VIOLATIONS) " (+${errors.size - MAX_REPORTED_VIOLATIONS} more)" else ""
+  private fun formatReason(errors: Set<ValidationMessage>): String = errors.sortedBy { instanceLocationOf(it) }
+    .take(MAX_REPORTED_VIOLATIONS)
+    .joinToString(separator = " | ") { locatedMessage(it) } +
+    if (errors.size > MAX_REPORTED_VIOLATIONS) " (+${errors.size - MAX_REPORTED_VIOLATIONS} more)" else ""
+
+  // Every networknt message template renders the instance location as its leading argument, so prefixing
+  // the location again would report each violated location twice. Only an absent or blank location, which
+  // renders as an empty leading argument, needs the explicit root marker.
+  private fun locatedMessage(error: ValidationMessage): String {
+    val message = error.message.orEmpty()
+    if (instanceLocationOf(error).isNotBlank()) return message
+    return "$ROOT_INSTANCE_LOCATION: ${message.removePrefix(":").trim()}"
+  }
+
+  private fun instanceLocationOf(error: ValidationMessage): String = error.instanceLocation?.toString().orEmpty()
 
   fun assertIdentity(yamlNode: JsonNode) {
     val loadedId = yamlNode.path("\$id").asText("")
@@ -83,6 +92,8 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
   }
 
   private const val MAX_REPORTED_VIOLATIONS: Int = 3
+
+  private const val ROOT_INSTANCE_LOCATION: String = "<root>"
 }
 
 private fun loadPlanningProjectionsSchemaDocument(): JsonNode = try {

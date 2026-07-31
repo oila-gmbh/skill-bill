@@ -3,6 +3,7 @@ package skillbill.contracts.workflow
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -246,6 +247,67 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
     }.exceptionOrNull() is InvalidFeatureTaskRuntimePlanningProjectionSchemaError
     assertTrue(rejects { it["criterion_refs"] = emptyList<String>() }, "empty criterion_refs")
     assertTrue(rejects { it["test_obligations"] = emptyList<String>() }, "empty test_obligations")
+  }
+
+  // --- SKILL-152 AC-007: one report per violated instance location -------------------------------
+
+  @Test
+  fun `a violated instance location is reported exactly once`() {
+    // networknt renders the instance location as the leading argument of every message template, so a
+    // reason that also prefixed the location reported each one twice and halved the useful text inside the
+    // bounded retry prompt.
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
+        payload = linkedMapOf<String, Any?>(
+          "projection_kind" to "implementation_receipt",
+          "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+          "completed_task_ids" to listOf("task-01"),
+          "changed_paths" to listOf("runtime-domain/model/X.kt"),
+          "tests_executed" to listOf(linkedMapOf("name" to "XTest.kt", "outcome" to "passed")),
+          "reconciliation_evidence" to linkedMapOf("reconciled" to true),
+          "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
+        ),
+        sourceLabel = "implement#1",
+      )
+    }
+
+    val location = "\$.reconciliation_evidence"
+    assertEquals(
+      1,
+      Regex(Regex.escape(location)).findAll(error.reason).count(),
+      "the violated location must appear once, not once per formatting layer: ${error.reason}",
+    )
+    assertContains(error.reason, "required property 'evidence' not found")
+  }
+
+  @Test
+  fun `each location in a multi-violation reason is reported once`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
+        payload = linkedMapOf<String, Any?>(
+          "projection_kind" to "executable_plan",
+          "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+          "mode" to "direct",
+          "tasks" to listOf(linkedMapOf("task_id" to "task-01")),
+          "validation_strategy" to listOf("focused gradle"),
+        ),
+        sourceLabel = "plan#1",
+      )
+    }
+
+    // Every reported segment carries its own single location; no segment repeats one.
+    error.reason.removeSuffix(" more)").split(" | ").forEach { segment ->
+      val locations = Regex("""\$(?:\.[A-Za-z0-9_-]+|\[[0-9]+])+""")
+        .findAll(segment)
+        .map(MatchResult::value)
+        .filter { it.isNotBlank() }
+        .toList()
+      assertEquals(
+        locations.distinct().size,
+        locations.size,
+        "a reported violation repeated its instance location: $segment",
+      )
+    }
   }
 
   @Test

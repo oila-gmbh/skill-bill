@@ -1,3 +1,18 @@
+## [2026-07-31] SKILL-152 actionable rejection feedback and deterministic absorption (subtask 1)
+Areas: runtime-kotlin/runtime-{domain,infra-fs,application,contracts}
+- A schema rejection now carries two reasons, not one: `AttemptResult.SchemaInvalid` splits into `operatorReason` (payload-free, for blocked rows, telemetry, status) and `retryReason` (validator constraint text, for the next fix-loop prompt). One string serving both audiences had forced the strictest audience to win, starving the retrying producer of the detail only it needed.
+- The two typed schema errors gained an additive `payloadFreeReason: String?`; every pre-existing `reason` string stays byte-identical because the repo-wide `" — offending value: "` convention is test-pinned. A validator that cannot mechanically strip values leaves it null and the consumer falls back to its payload-free sentence rather than substituting the value-bearing text. reusable
+- Pattern for adding a value-free variant to a value-bearing message: render both from one traversal of the same violation list (`PhaseOutputViolationReasons`) so rule and field-path content cannot drift. reusable
+- Domain `require` rules that need a value-free restatement use `requireRule(condition, payloadFreeMessage) { message }` throwing `FeatureTaskRuntimeAuditRepairRuleViolation : IllegalArgumentException`, so every existing catch arm and `assertFailsWith` keeps observing the same type. reusable
+- Canonicalization now discards unknown keys on every fully-enumerated closed object, top-level variants included, narrowing the SKILL-140 invariant that it never drops. Safe at the top level because each variant is `additionalProperties: false` and the foreign-owned co-residents other contracts require are declared properties, so a schema-derived key set retains them.
+- Prune scope is declared in one `FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS` map guarded by a schema-parity test, so a schema property addition fails a test instead of silently becoming an unknown key. reusable
+- Every networknt message template already renders the instance location as its leading argument; prefixing it again double-reports the location. The planning-projection validator now drops the prefix — the phase-output validator still carries it (F-001, deferred).
+- Behavior change: a top-level extra key on a closed projection object is absorbed rather than rejected, so it no longer consumes a fix-loop attempt. Two pre-existing tests asserting retry-to-cap on that class were rewritten; cap behavior stays pinned by non-absorbable classes.
+- Gotcha for audit-phase tests: the phase-output schema's audit branch forbids an author-supplied `audit_repair_plan` (`not: {anyOf: [...]}`), because the runtime expands compact `gaps` into the plan. Reach the repair-plan seam through compact gaps that survive `compactAuditGap` and fail an expanded-plan rule, or exercise the typed rule directly.
+- Known limitation: `payloadFreeReason` stays null on the domain-decode `IllegalArgumentException` arm reached through `FeatureTaskRuntimeAuditRepairWireMapper`, so those rejections fall back to the rule-family restatement rather than the specific rule.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 11/11 implemented
+
 ## [2026-07-28] SKILL-132 MCP and CLI compatibility surface sweep (subtask 4)
 Areas: runtime-kotlin/runtime-{mcp,cli,core,domain}, orchestration/{contracts,telemetry-contract}, docs, scripts, skills/bill-feature-{goal,task-runtime}
 - Removed the duplicate `feature_task_runtime_*` MCP family, continuation lookup endpoint, and six-consumerless-tool Readian bridge together with registry, dispatch, schemas, mappers, composition, tests, telemetry branches, and documentation.

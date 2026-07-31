@@ -129,9 +129,10 @@ internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<S
 }
 
 /**
- * The one bound on validator-authored detail carried into an operator-facing reason. Every gate that
- * embeds a validation failure goes through this, so a runaway validator message can never widen a
- * blocked row or a retry prompt beyond the single agreed ceiling.
+ * The single ceiling on validator-authored detail. Every path that carries a validation failure onward —
+ * an operator-facing blocked reason through [withSchemaGateDetail], and the constraint text a fix-loop
+ * retry prompt and its private diagnostic row receive — passes through this one bound, so no validator
+ * message can widen either surface past [SCHEMA_GATE_DETAIL_MAX_CHARS].
  */
 internal fun boundedSchemaGateDetail(validationReason: String): String =
   if (validationReason.length <= SCHEMA_GATE_DETAIL_MAX_CHARS) {

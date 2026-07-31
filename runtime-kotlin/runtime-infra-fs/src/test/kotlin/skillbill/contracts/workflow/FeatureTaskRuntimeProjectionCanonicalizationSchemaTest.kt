@@ -5,6 +5,7 @@ package skillbill.contracts.workflow
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import kotlin.test.Test
@@ -112,15 +113,21 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
     }
   }
 
+  // AC-005: an undeclared key on a fully-enumerated closed object — including a top-level variant — is
+  // discarded during canonicalization, so it never reaches the strict schema and never costs an attempt.
   @Test
-  fun `an unknown key under additionalProperties false rejects`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+  fun `an unknown key on a closed object is absorbed and the projection advances`() {
+    val digest = assertIs<FeatureTaskRuntimePrePlanningDigest>(
       parseDigest(
         """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"],"bogus":1}""",
-      )
-    }
-    assertEquals(true, error.reason.contains("additionalProperties") || error.reason.contains("bogus"))
+          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n","bogus_nested":1},""" +
+          """"validation_strategy":["v"],"bogus":1}""",
+      ),
+    )
+
+    assertEquals(listOf("b"), digest.affectedBoundaries)
+    assertEquals(listOf("r"), digest.risks)
+    assertEquals("n", digest.rollout.notes)
   }
 
   @Test

@@ -559,11 +559,17 @@ class FeatureTaskRuntimeRunnerTest {
       "the first attempt's prompt carries no correction directive",
     )
     assertContains(reviewPrompts[1], "Previous attempt was REJECTED by the schema gate")
+    // This validator throws without a payloadFreeReason, which is the contract's null-fallback case: the
+    // retry prompt falls back to the payload-free sentence alone and never substitutes the value-bearing
+    // reason. A seam that DOES supply a payload-free restatement is covered in
+    // FeatureTaskRuntimeRejectionConstraintPrivacyTest.
     assertFalse(reviewPrompts[1].contains(reason))
     assertContains(reviewPrompts[1], "Rejected output violated 'phase-output-schema'")
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
     assertTrue(diagnostic.payload?.isNotEmpty() == true)
-    assertFalse(diagnostic.metadata.reason.contains(reason))
+    // The private row records the value-bearing reason alongside the raw bytes, so an operator inspecting
+    // the diagnostic sees the full validator text the public surfaces withheld.
+    assertContains(diagnostic.metadata.reason, reason)
   }
 
   @Test
