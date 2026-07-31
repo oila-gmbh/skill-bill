@@ -15,6 +15,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -42,6 +43,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BL
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
@@ -88,7 +90,7 @@ internal data class FeatureTaskRuntimeProjectionRejection(
  */
 @Inject
 // cohesive durable read/write seam for per-phase records, briefings, ledger, and quarantine evidence
-@Suppress("TooManyFunctions", "LargeClass")
+@Suppress("TooManyFunctions", "LargeClass", "LongParameterList")
 class FeatureTaskRuntimePhaseRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -96,46 +98,60 @@ class FeatureTaskRuntimePhaseRecorder(
   private val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
   private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
+  private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-  fun recordRejectedOutput(request: RejectedOutputDiagnosticRequest, dbOverride: String? = null) =
-    database.transaction(dbOverride) { unitOfWork ->
-      val repository = unitOfWork.rejectedOutputDiagnostics
-        ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
-      val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
-        ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
-      val service = RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator)
-      service.retainProducerOutput(
-        ProducerOutputEvidence(
-          workflowId = request.workflowId,
-          phaseId = request.phaseId,
-          attempt = request.attempt,
-          agentId = request.agentId,
-          model = request.model,
-          recordedAt = java.time.Instant.now(),
-          byteSize = request.observedByteSize,
-          sha256 = request.observedSha256,
-          payload = request.rawResponse.takeUnless { request.truncated },
-        ),
-      )
-      service.record(request)
-    }
+  fun recordRejectedOutput(
+    request: RejectedOutputDiagnosticRequest,
+    dbOverride: String? = null,
+    producerGeneration: Int = 0,
+  ) = database.transaction(dbOverride) { unitOfWork ->
+    val service = diagnosticService(unitOfWork)
+    service.retainProducerOutput(
+      ProducerOutputEvidence(
+        workflowId = request.workflowId,
+        phaseId = request.phaseId,
+        attempt = request.attempt,
+        agentId = request.agentId,
+        model = request.model,
+        recordedAt = java.time.Instant.now(),
+        byteSize = request.observedByteSize,
+        sha256 = request.observedSha256,
+        payload = request.rawResponse.takeUnless { request.truncated },
+        generation = producerGeneration,
+      ),
+    )
+    service.record(request)
+  }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =
     database.transaction(dbOverride) { unitOfWork ->
-      val repository = unitOfWork.rejectedOutputDiagnostics
-        ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
-      val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
-        ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
-      RejectedOutputDiagnosticService(repository, permissions, rejectedOutputDiagnosticMetadataValidator)
-        .retainProducerOutput(evidence)
+      diagnosticService(unitOfWork).retainProducerOutput(evidence)
     }
 
-  fun producerOutput(workflowId: String, phaseId: String, attempt: Int, dbOverride: String? = null) =
-    database.read(dbOverride) {
-      it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt)
-    }
+  fun producerOutput(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    dbOverride: String? = null,
+    generation: Int = 0,
+  ) = database.read(dbOverride) {
+    it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, generation)
+  }
+
+  private fun diagnosticService(unitOfWork: UnitOfWork): RejectedOutputDiagnosticService {
+    val repository = unitOfWork.rejectedOutputDiagnostics
+      ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+    val permissions = unitOfWork.rejectedOutputDiagnosticPermissions
+      ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable")
+    return RejectedOutputDiagnosticService(
+      repository = repository,
+      permissions = permissions,
+      metadataValidator = rejectedOutputDiagnosticMetadataValidator,
+      producerEvidenceValidator = producerOutputEvidenceValidator,
+    )
+  }
 
   /**
    * Persists one per-phase record. A `running` transition for a new attempt re-mints
@@ -294,14 +310,20 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  internal fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String? = null): Boolean =
+  /**
+   * Returns the review-generation ordinal in force after the invalidation, or null when the workflow
+   * row is absent. The ordinal keys retained producer evidence, so it must advance in the same
+   * transaction that rewinds the attempt watermarks.
+   */
+  internal fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String? = null): Int? =
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction false
+        ?: return@transaction null
       val artifacts = decodeArtifacts(record.artifactsJson)
+      val storedGeneration = reviewGenerationFrom(artifacts)
       val existingRecords = phaseRecordsFrom(artifacts)
       val previousReview = existingRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
-        ?: return@transaction true
+        ?: return@transaction storedGeneration
       val tombstone = FeatureTaskRuntimePhaseRecord(
         phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         status = STATUS_RUNNING,
@@ -313,9 +335,11 @@ class FeatureTaskRuntimePhaseRecorder(
       val updatedRecords = LinkedHashMap(existingRecords).apply {
         put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, tombstone)
       }
+      val nextGeneration = storedGeneration + 1
       val patch = linkedMapOf<String, Any?>(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+        FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY to nextGeneration,
       )
       GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state?.let { state ->
         patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = GoalSubtaskReviewState.initial(
@@ -336,7 +360,30 @@ class FeatureTaskRuntimePhaseRecorder(
           stepUpdates = stepUpdatesFrom(updatedRecords),
         ),
       )
-      true
+      nextGeneration
+    }
+
+  /**
+   * Brings a workflow tombstoned before the review-generation ordinal existed up to generation 1 on
+   * its next run. Such a workflow never re-enters the invalidation seam, so without this it would
+   * keep writing fresh review evidence at the prior generation's key. The ordinal is durable and only
+   * ever advances, so it stays at 1 once the fresh review overwrites the tombstone.
+   */
+  internal fun reconcileReviewGeneration(workflowId: String, dbOverride: String? = null): Int =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction 0
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val storedGeneration = reviewGenerationFrom(artifacts)
+      val tombstoned = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
+        ?.resolvedAgentId == REVIEW_INVALIDATION_AGENT_ID
+      if (!tombstoned || storedGeneration > 0) return@transaction storedGeneration
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY to 1),
+      )
+      1
     }
 
   /**

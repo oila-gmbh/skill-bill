@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
@@ -115,13 +116,14 @@ class SqliteRejectedOutputDiagnosticRepository(
       connection.prepareStatement(
         """
         INSERT OR IGNORE INTO producer_output_evidence
-        (workflow_id, phase_id, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
       ).use {
         var index = 1
         it.setString(index++, evidence.workflowId)
         it.setString(index++, evidence.phaseId)
+        it.setInt(index++, evidence.generation)
         it.setInt(index++, evidence.attempt)
         it.setString(index++, evidence.agentId)
         it.setString(index++, evidence.model)
@@ -131,38 +133,35 @@ class SqliteRejectedOutputDiagnosticRepository(
         it.setBytes(index, evidence.payload)
         it.executeUpdate()
       }
-      val retained = readProducerOutput(evidence.workflowId, evidence.phaseId, evidence.attempt)
-        ?: throw RejectedOutputDiagnosticError.Persistence("retain-producer-output-readback")
+      val retained = connection.queryProducerEvidence(
+        workflowId = evidence.workflowId,
+        phaseId = evidence.phaseId,
+        attempt = evidence.attempt,
+        generation = evidence.generation,
+        exactGeneration = true,
+      ) ?: throw RejectedOutputDiagnosticError.Persistence("retain-producer-output-readback")
       if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
         !payloadsEqual(retained.payload, evidence.payload)
       ) {
-        throw RejectedOutputDiagnosticError.Conflict("${evidence.workflowId}:${evidence.phaseId}:${evidence.attempt}")
+        throw RejectedOutputDiagnosticError.Conflict(evidence.evidenceKey())
       }
     }
   }
 
-  override fun readProducerOutput(workflowId: String, phaseId: String, attempt: Int): ProducerOutputEvidence? =
-    persistence("read-producer-output") {
-      connection.prepareStatement(
-        "SELECT * FROM producer_output_evidence WHERE workflow_id = ? AND phase_id = ? AND attempt = ?",
-      ).use {
-        var index = 1
-        it.setString(index++, workflowId)
-        it.setString(index++, phaseId)
-        it.setInt(index, attempt)
-        it.executeQuery().use { row ->
-          if (!row.next()) {
-            null
-          } else {
-            ProducerOutputEvidence(
-              row.getString("workflow_id"), row.getString("phase_id"), row.getInt("attempt"),
-              row.getString("agent_id"), row.getString("model"), Instant.parse(row.getString("recorded_at")),
-              row.getLong("byte_size"), row.getString("sha256"), row.getBytes("payload"),
-            )
-          }
-        }
-      }
-    }
+  override fun readProducerOutput(
+    workflowId: String,
+    phaseId: String,
+    attempt: Int,
+    generation: Int,
+  ): ProducerOutputEvidence? = persistence("read-producer-output") {
+    connection.queryProducerEvidence(
+      workflowId = workflowId,
+      phaseId = phaseId,
+      attempt = attempt,
+      generation = generation,
+      exactGeneration = false,
+    )
+  }
 
   override fun deleteProducerOutputsBefore(before: Instant): Int = persistence("delete-producer-outputs") {
     connection.prepareStatement("DELETE FROM producer_output_evidence WHERE recorded_at < ?").use {
@@ -242,3 +241,53 @@ private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: Rejected
 
 private fun payloadsEqual(left: ByteArray?, right: ByteArray?): Boolean =
   (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
+
+private fun ProducerOutputEvidence.evidenceKey(): String = "$workflowId:$phaseId:$generation:$attempt"
+
+private fun Connection.queryProducerEvidence(
+  workflowId: String,
+  phaseId: String,
+  attempt: Int,
+  generation: Int,
+  exactGeneration: Boolean,
+): ProducerOutputEvidence? {
+  val generationClause =
+    if (exactGeneration) "generation = ?" else "generation <= ? ORDER BY generation DESC LIMIT 1"
+  return prepareStatement(
+    """
+    SELECT * FROM producer_output_evidence
+    WHERE workflow_id = ? AND phase_id = ? AND attempt = ? AND $generationClause
+    """.trimIndent(),
+  ).use {
+    var index = 1
+    it.setString(index++, workflowId)
+    it.setString(index++, phaseId)
+    it.setInt(index++, attempt)
+    it.setInt(index, generation)
+    it.executeQuery().use { row -> if (row.next()) row.toProducerEvidence() else null }
+  }
+}
+
+private fun ResultSet.toProducerEvidence(): ProducerOutputEvidence {
+  val workflowId = getString("workflow_id")
+  val phaseId = getString("phase_id")
+  val attempt = getInt("attempt")
+  val generation = getInt("generation")
+  if (getObject("generation") == null || generation < 0) {
+    throw InvalidProducerOutputEvidenceSchemaError(
+      "Producer output evidence '$workflowId:$phaseId:$attempt' carries an unusable generation.",
+    )
+  }
+  return ProducerOutputEvidence(
+    workflowId = workflowId,
+    phaseId = phaseId,
+    attempt = attempt,
+    agentId = getString("agent_id"),
+    model = getString("model"),
+    recordedAt = Instant.parse(getString("recorded_at")),
+    byteSize = getLong("byte_size"),
+    sha256 = getString("sha256"),
+    payload = getBytes("payload"),
+    generation = generation,
+  )
+}

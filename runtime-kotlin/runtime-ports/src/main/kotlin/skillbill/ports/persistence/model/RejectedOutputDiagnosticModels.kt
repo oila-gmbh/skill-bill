@@ -43,9 +43,14 @@ data class ProducerOutputEvidence(
   val byteSize: Long,
   val sha256: String,
   val payload: ByteArray?,
+  val generation: Int = 0,
 ) {
-  override fun toString(): String =
-    "ProducerOutputEvidence(workflowId=$workflowId, phaseId=$phaseId, attempt=$attempt, payload=<hidden>)"
+  init {
+    require(generation >= 0) { "Producer output evidence generation must not be negative." }
+  }
+
+  override fun toString(): String = "ProducerOutputEvidence(workflowId=$workflowId, phaseId=$phaseId, " +
+    "generation=$generation, attempt=$attempt, payload=<hidden>)"
 }
 
 sealed class RejectedOutputDiagnosticError(message: String) : RuntimeException(message) {

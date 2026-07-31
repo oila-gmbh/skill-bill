@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -70,6 +71,7 @@ class DatabaseMigrationsTest {
         13 to "allow-goal-planning-phase-output-0-3",
         14 to "add-rejected-output-diagnostics",
         15 to "add-private-producer-output-evidence",
+        16 to "rekey-producer-output-evidence-by-generation",
       ),
       migrationDefinitions,
     )
@@ -99,6 +101,66 @@ class DatabaseMigrationsTest {
         row.version == 8 && row.name == "add-goal-planning-preparations"
       }
       assertNotNull(migration, "Migration version 8 add-goal-planning-preparations should be recorded.")
+    }
+  }
+
+  @Test
+  fun `migration v16 rekeys producer output evidence without losing a row`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v16-producer-evidence").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 16")
+        statement.executeUpdate("DROP TABLE producer_output_evidence")
+        statement.executeUpdate(PRE_GENERATION_PRODUCER_OUTPUT_EVIDENCE_SQL)
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO producer_output_evidence
+        (workflow_id, phase_id, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+      ).use { statement ->
+        listOf(1 to byteArrayOf(7, 8), 2 to null).forEach { (attempt, payload) ->
+          statement.setString(1, "wfl-legacy")
+          statement.setString(2, "review")
+          statement.setInt(3, attempt)
+          statement.setString(4, "codex")
+          statement.setString(5, "gpt")
+          statement.setString(6, "2026-07-28T10:00:0${attempt}Z")
+          statement.setLong(7, payload?.size?.toLong() ?: 0L)
+          statement.setString(8, attempt.toString().repeat(64))
+          statement.setBytes(9, payload)
+          statement.executeUpdate()
+        }
+      }
+    }
+
+    val migratedDdl = DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertNotNull(
+        migrationRows(connection).singleOrNull { row ->
+          row.version == 16 && row.name == "rekey-producer-output-evidence-by-generation"
+        },
+      )
+      val rows = producerEvidenceRows(connection)
+      assertEquals(2, rows.size)
+      assertEquals(listOf(0, 0), rows.map { it.generation })
+      assertEquals(listOf(1, 2), rows.map { it.attempt })
+      assertEquals(listOf("2026-07-28T10:00:01Z", "2026-07-28T10:00:02Z"), rows.map { it.recordedAt })
+      assertEquals(listOf("1".repeat(64), "2".repeat(64)), rows.map { it.sha256 })
+      assertContentEquals(byteArrayOf(7, 8), rows[0].payload)
+      assertEquals(null, rows[1].payload)
+      producerEvidenceDdl(connection)
+    }
+
+    val baseSchemaPath = Files.createTempDirectory("runtime-kotlin-db-v16-base-schema").resolve("base.db")
+    DriverManager.getConnection("jdbc:sqlite:$baseSchemaPath").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+      assertEquals(
+        producerEvidenceDdl(connection),
+        migratedDdl,
+        "the migration DDL and the base-schema DDL must not drift",
+      )
     }
   }
 
@@ -1242,6 +1304,37 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun producerEvidenceDdl(connection: java.sql.Connection): String =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
+      ).use { rows ->
+        check(rows.next()) { "producer_output_evidence is absent." }
+        rows.getString("sql")
+      }
+    }
+
+  private fun producerEvidenceRows(connection: java.sql.Connection): List<ProducerEvidenceRow> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(
+        "SELECT generation, attempt, recorded_at, sha256, payload FROM producer_output_evidence ORDER BY attempt",
+      ).use { rows ->
+        buildList {
+          while (rows.next()) {
+            add(
+              ProducerEvidenceRow(
+                generation = rows.getInt("generation"),
+                attempt = rows.getInt("attempt"),
+                recordedAt = rows.getString("recorded_at"),
+                sha256 = rows.getString("sha256"),
+                payload = rows.getBytes("payload"),
+              ),
+            )
+          }
+        }
+      }
+    }
+
   private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
@@ -1343,7 +1436,26 @@ class DatabaseMigrationsTest {
     val appliedAt: String,
   )
 
+  private data class ProducerEvidenceRow(
+    val generation: Int,
+    val attempt: Int,
+    val recordedAt: String,
+    val sha256: String,
+    val payload: ByteArray?,
+  )
+
   private companion object {
+    const val PRE_GENERATION_PRODUCER_OUTPUT_EVIDENCE_SQL: String =
+      """
+      CREATE TABLE producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, attempt)
+      )
+      """
+
     const val CREATE_LEGACY_FEATURE_TASK_RUNTIME_SESSIONS_SQL: String =
       """
       CREATE TABLE feature_task_runtime_sessions (

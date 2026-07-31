@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnostic
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
@@ -25,6 +26,7 @@ class RejectedOutputDiagnosticService(
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val config: RejectedOutputDiagnosticConfig = RejectedOutputDiagnosticConfig(),
   private val clock: Clock = Clock.systemUTC(),
+  private val producerEvidenceValidator: ProducerOutputEvidenceValidator = { },
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
@@ -59,6 +61,7 @@ class RejectedOutputDiagnosticService(
   }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence) {
+    producerEvidenceValidator.validate(evidence)
     applyRestrictivePermissions()
     cleanup()
     repository.retainProducerOutput(evidence)
@@ -120,6 +123,9 @@ class RejectedOutputDiagnosticService(
   }
 
   companion object {
+    // SKILL-152: this identity stays generation-blind. It is stored durably on quarantine entries as
+    // `diagnosticIdentity`, so adding the review generation would rewrite already-persisted identities.
+    // A review-generation restart can therefore still collide here; that widening is tracked separately.
     fun stableIdentity(workflowId: String, phaseId: String, attempt: Int): String =
       "rod_${sha256("$workflowId\u0000$phaseId\u0000$attempt".encodeToByteArray())}"
 

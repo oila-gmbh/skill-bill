@@ -1,0 +1,47 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/producer-output-evidence-schema.yaml
+title: Producer output evidence
+description: Safe metadata for one retained producer phase output, keyed by review generation and attempt. Raw bytes are stored separately and never validated here.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - phase_id
+  - generation
+  - attempt
+  - agent_id
+  - model
+  - recorded_at
+  - byte_size
+  - sha256
+properties:
+  contract_version:
+    const: "0.1"
+  workflow_id:
+    type: string
+    minLength: 1
+  phase_id:
+    type: string
+    minLength: 1
+  generation:
+    type: integer
+    minimum: 0
+  attempt:
+    type: integer
+    minimum: 1
+  agent_id:
+    type: string
+    minLength: 1
+  model:
+    type: string
+    minLength: 1
+  recorded_at:
+    type: string
+    format: date-time
+  byte_size:
+    type: integer
+    minimum: 0
+  sha256:
+    type: string
+    pattern: "^[0-9a-f]{64}$"

@@ -241,9 +241,12 @@ internal class FeatureTaskRuntimeRunLoop(
 
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
-      check(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
+      val generation = checkNotNull(
+        recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride),
+      ) {
         "Could not durably invalidate legacy review evidence for workflow '${request.workflowId}'."
       }
+      state.advanceReviewGeneration(generation)
       state.resetInvalidatedReviewGeneration()
       if (pendingReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
         pendingReentry = null
@@ -2058,6 +2061,7 @@ internal class FeatureTaskRuntimeRunLoop(
       producer,
       producingIteration,
       request.dbPathOverride,
+      state.evidenceGeneration(producer),
     ) ?: return blockAndPersistInPhase(
       run,
       iteration,
@@ -2135,6 +2139,7 @@ internal class FeatureTaskRuntimeRunLoop(
         output.phaseId,
         output.iteration.coerceAtLeast(1),
         request.dbPathOverride,
+        state.evidenceGeneration(output.phaseId),
       )
     }
     evidence?.let {
@@ -2314,6 +2319,7 @@ internal class FeatureTaskRuntimeRunLoop(
         truncated = outputTruncated,
       ),
       run.request.dbPathOverride,
+      state.evidenceGeneration(phaseId),
     )
     return RejectedOutputDiagnosticService.stableIdentity(
       run.request.workflowId,
@@ -2405,15 +2411,16 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
-        request.workflowId,
-        run.phaseId,
-        iteration,
-        run.resolvedAgent.resolvedAgentId,
-        run.modelDirective?.model ?: "unspecified",
-        java.time.Instant.now(),
-        outputByteSize,
-        outputSha256,
-        outputBytes.takeUnless { outputTruncated },
+        workflowId = request.workflowId,
+        phaseId = run.phaseId,
+        attempt = iteration,
+        agentId = run.resolvedAgent.resolvedAgentId,
+        model = run.modelDirective?.model ?: "unspecified",
+        recordedAt = java.time.Instant.now(),
+        byteSize = outputByteSize,
+        sha256 = outputSha256,
+        payload = outputBytes.takeUnless { outputTruncated },
+        generation = state.evidenceGeneration(run.phaseId),
       ),
       run.request.dbPathOverride,
     )
