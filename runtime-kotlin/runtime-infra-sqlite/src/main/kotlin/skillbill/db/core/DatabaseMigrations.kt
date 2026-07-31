@@ -494,36 +494,43 @@ internal object DatabaseMigrations {
         version = 16,
         name = "rekey-producer-output-evidence-by-generation",
         operation = { connection ->
-          connection.createStatement().use {
-            // SQLite cannot widen a PRIMARY KEY in place, so the table is rebuilt and every
-            // pre-generation row is carried across at generation 0.
-            it.execute(
-              "ALTER TABLE producer_output_evidence RENAME TO producer_output_evidence_pre_generation",
-            )
-            it.execute(
-              """
-              CREATE TABLE IF NOT EXISTS producer_output_evidence (
-                workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
-                generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
-                attempt INTEGER NOT NULL CHECK (attempt > 0),
-                agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
-                byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
-                PRIMARY KEY (workflow_id, phase_id, generation, attempt)
+          val alreadyRekeyed = connection.prepareStatement(
+            "SELECT 1 FROM pragma_table_info('producer_output_evidence') WHERE name = 'generation'",
+          ).use { statement ->
+            statement.executeQuery().use { resultSet -> resultSet.next() }
+          }
+          if (!alreadyRekeyed) {
+            connection.createStatement().use {
+              // SQLite cannot widen a PRIMARY KEY in place, so the table is rebuilt and every
+              // pre-generation row is carried across at generation 0.
+              it.execute(
+                "ALTER TABLE producer_output_evidence RENAME TO producer_output_evidence_pre_generation",
               )
-              """.trimIndent(),
-            )
-            it.execute(
-              """
-              INSERT INTO producer_output_evidence (
-                workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at,
-                byte_size, sha256, payload
+              it.execute(
+                """
+                CREATE TABLE IF NOT EXISTS producer_output_evidence (
+                  workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+                  generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+                  attempt INTEGER NOT NULL CHECK (attempt > 0),
+                  agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+                  byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+                  PRIMARY KEY (workflow_id, phase_id, generation, attempt)
+                )
+                """.trimIndent(),
               )
-              SELECT workflow_id, phase_id, 0, attempt, agent_id, model, recorded_at,
-                     byte_size, sha256, payload
-              FROM producer_output_evidence_pre_generation
-              """.trimIndent(),
-            )
-            it.execute("DROP TABLE producer_output_evidence_pre_generation")
+              it.execute(
+                """
+                INSERT INTO producer_output_evidence (
+                  workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at,
+                  byte_size, sha256, payload
+                )
+                SELECT workflow_id, phase_id, 0, attempt, agent_id, model, recorded_at,
+                       byte_size, sha256, payload
+                FROM producer_output_evidence_pre_generation
+                """.trimIndent(),
+              )
+              it.execute("DROP TABLE producer_output_evidence_pre_generation")
+            }
           }
         },
       ),
@@ -531,42 +538,14 @@ internal object DatabaseMigrations {
 
   fun apply(connection: Connection) {
     connection.inImmediateTransaction {
-      val appliedVersions = appliedMigrationVersions(this)
+      MigrationLedger.ensureNameKeyed(this)
+      val appliedNames = MigrationLedger.appliedNames(this)
       migrations
-        .filterNot { migration -> migration.version in appliedVersions }
+        .filterNot { migration -> migration.name in appliedNames }
         .forEach { migration ->
           migration.apply(this)
-          recordMigration(migration)
+          MigrationLedger.record(this, migration)
         }
-    }
-  }
-
-  private fun appliedMigrationVersions(connection: Connection): Set<Int> = connection.prepareStatement(
-    """
-      SELECT version
-      FROM schema_migrations
-      ORDER BY version
-    """.trimIndent(),
-  ).use { statement ->
-    statement.executeQuery().use { resultSet ->
-      buildSet {
-        while (resultSet.next()) {
-          add(resultSet.getInt("version"))
-        }
-      }
-    }
-  }
-
-  private fun Connection.recordMigration(migration: DatabaseMigration) {
-    prepareStatement(
-      """
-      INSERT INTO schema_migrations (version, name)
-      VALUES (?, ?)
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setInt(1, migration.version)
-      statement.setString(2, migration.name)
-      statement.executeUpdate()
     }
   }
 

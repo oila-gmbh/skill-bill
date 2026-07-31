@@ -102,8 +102,8 @@ internal object DatabaseSchema {
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS schema_migrations (
-        version INTEGER PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
+        name TEXT PRIMARY KEY,
+        version INTEGER NOT NULL,
         applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
       """.trimIndent(),

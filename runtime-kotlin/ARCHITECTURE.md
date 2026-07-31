@@ -587,7 +587,9 @@ runtime-ports
     modules live under explicit `model` packages. Services, runtimes, and port
     interfaces import those models instead of declaring public models inline.
 14. SQLite schema changes are append-only versioned migrations recorded in
-    `schema_migrations`.
+    `schema_migrations`, keyed by migration name. Version numbers order the list
+    but do not identify a migration: branches assign them independently, so two
+    lineages can ship different migrations under the same number.
 
 The subsystem package set is:
 

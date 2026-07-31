@@ -105,6 +105,56 @@ class DatabaseMigrationsTest {
   }
 
   @Test
+  fun `a version recorded under a foreign name does not skip this build's migration`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-version-collision").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DROP TABLE schema_migrations")
+        statement.executeUpdate(VERSION_KEYED_SCHEMA_MIGRATIONS_SQL)
+        DatabaseMigrations.migrations.forEach { migration ->
+          val name = if (migration.version == 16) "add-feature-task-convergence-state" else migration.name
+          statement.executeUpdate(
+            "INSERT INTO schema_migrations (version, name) VALUES (${migration.version}, '$name')",
+          )
+        }
+        statement.executeUpdate("DROP TABLE producer_output_evidence")
+        statement.executeUpdate(PRE_GENERATION_PRODUCER_OUTPUT_EVIDENCE_SQL)
+      }
+
+      DatabaseMigrations.apply(connection)
+
+      assertTrue(
+        columnNames(connection, "producer_output_evidence").contains("generation"),
+        "The branch-numbered ledger row must not mask this build's version 16 migration.",
+      )
+      val names = migrationRows(connection).map { row -> row.name }
+      assertTrue(
+        names.contains("add-feature-task-convergence-state"),
+        "The already-applied foreign migration must stay recorded.",
+      )
+      assertTrue(
+        names.contains("rekey-producer-output-evidence-by-generation"),
+        "This build's version 16 migration must be recorded once it runs.",
+      )
+    }
+  }
+
+  @Test
+  fun `applying twice against a name keyed ledger is a no-op`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-idempotent-apply").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val before = migrationRows(connection).map { row -> row.name }
+
+      DatabaseMigrations.apply(connection)
+
+      assertEquals(before, migrationRows(connection).map { row -> row.name })
+      assertTrue(columnNames(connection, "producer_output_evidence").contains("generation"))
+    }
+  }
+
+  @Test
   fun `migration v16 rekeys producer output evidence without losing a row`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-v16-producer-evidence").resolve("metrics.db")
 
@@ -1242,6 +1292,18 @@ class DatabaseMigrationsTest {
       }
     }
 
+  private fun columnNames(connection: java.sql.Connection, table: String): Set<String> =
+    connection.prepareStatement("SELECT name FROM pragma_table_info(?)").use { statement ->
+      statement.setString(1, table)
+      statement.executeQuery().use { resultSet ->
+        buildSet {
+          while (resultSet.next()) {
+            add(resultSet.getString("name"))
+          }
+        }
+      }
+    }
+
   private fun migrationRows(connection: java.sql.Connection): List<MigrationRow> = connection.prepareStatement(
     """
       SELECT version, name, applied_at
@@ -1445,6 +1507,15 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    const val VERSION_KEYED_SCHEMA_MIGRATIONS_SQL: String =
+      """
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """
+
     const val PRE_GENERATION_PRODUCER_OUTPUT_EVIDENCE_SQL: String =
       """
       CREATE TABLE producer_output_evidence (
