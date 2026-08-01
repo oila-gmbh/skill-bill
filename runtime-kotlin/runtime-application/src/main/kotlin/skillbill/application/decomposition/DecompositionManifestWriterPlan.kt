@@ -110,6 +110,12 @@ internal fun executionModel(plan: Map<String, Any?>): DecompositionExecutionMode
     ?: invalidManifest("<planning-result>", "execution_model '$raw' is not supported.")
 }
 
+internal fun baseBranch(plan: Map<String, Any?>, sourceLabel: String): String {
+  val raw = plan["base_branch"] ?: return "main"
+  return (raw as? String)?.takeIf(String::isNotBlank)
+    ?: invalidManifest(sourceLabel, "base_branch must be a nonblank string when present.")
+}
+
 internal fun parseStackBranches(plan: Map<String, Any?>): List<DecompositionStackBranch> =
   (plan["stack_branches"] as? List<*>).orEmpty().mapIndexed { index, raw ->
     val item = raw.asStringAnyMap("<planning-result>", "stack_branches[$index]")

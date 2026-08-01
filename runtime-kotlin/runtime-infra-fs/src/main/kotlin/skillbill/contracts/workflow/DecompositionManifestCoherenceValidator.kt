@@ -17,20 +17,11 @@ internal object DecompositionManifestCoherenceValidator {
   private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String, specSource: String): Set<Int> {
     val subtaskIds = mutableSetOf<Int>()
     val specPaths = mutableSetOf<String>()
-    var previousId = 0
     subtasks.forEachIndexed { index, subtask ->
       val id = subtask["id"].asExactInt(sourceLabel, "subtasks[$index].id")
       if (!subtaskIds.add(id)) {
         coherenceFailure(sourceLabel, "subtasks[$index].id", "Duplicate subtask id '$id'.")
       }
-      if (id <= previousId) {
-        coherenceFailure(
-          sourceLabel,
-          "subtasks[$index].id",
-          "Subtask ids must be unique and strictly ascending in execution order.",
-        )
-      }
-      previousId = id
       val specPath = subtask["spec_path"]?.toString().orEmpty()
       if (!specPaths.add(specPath)) {
         coherenceFailure(sourceLabel, "subtasks[$index].spec_path", "Duplicate subtask spec_path '$specPath'.")

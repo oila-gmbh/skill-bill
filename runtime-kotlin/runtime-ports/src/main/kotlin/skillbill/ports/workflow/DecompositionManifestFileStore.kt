@@ -10,6 +10,38 @@ interface DecompositionManifestFileStore {
   fun writeTextAtomically(target: Path, content: String)
 
   /**
+   * Publishes a prepared text bundle and verifies it before returning. If verification or any
+   * write fails, restore the exact pre-write contents so callers never observe a partial bundle.
+   */
+  fun <T> writeBundleAtomically(writes: List<Pair<Path, String>>, verify: () -> T): T {
+    data class Snapshot(val path: Path, val existed: Boolean, val content: String?)
+
+    val snapshots = writes.distinctBy { (path, _) -> path }.map { (path, _) ->
+      val existed = isRegularFile(path)
+      Snapshot(path, existed, if (existed) readText(path) else null)
+    }
+    try {
+      writes.forEach { (path, content) -> writeTextAtomically(path, content) }
+      return verify()
+    } catch (failure: Throwable) {
+      snapshots.asReversed().forEach { snapshot ->
+        runCatching {
+          if (snapshot.existed) {
+            writeTextAtomically(snapshot.path, requireNotNull(snapshot.content))
+          } else {
+            deleteIfExists(snapshot.path)
+          }
+        }.onFailure(failure::addSuppressed)
+      }
+      throw failure
+    }
+  }
+
+  fun deleteIfExists(target: Path) {
+    java.nio.file.Files.deleteIfExists(target)
+  }
+
+  /**
    * Serializes a schema-validated decomposition-manifest wire map to YAML
    * text. The raw map is the canonical wire-shape envelope at the
    * infra/codec serialization seam — it mirrors the

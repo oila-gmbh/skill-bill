@@ -145,6 +145,17 @@ class DecompositionManifestValidationTest {
   }
 
   @Test
+  fun `subtask array order is execution order independent of numeric ids`() {
+    val wireMap = validWireMap()
+    val subtasks = wireMap.mutableSubtasks()
+    subtasks[0]["id"] = 2
+    subtasks[1]["id"] = 1
+    subtasks[1]["dependencies"] = emptyList<Map<String, Any?>>()
+
+    decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "array-order-subtasks")
+  }
+
+  @Test
   fun `current subtask intent must reference declared subtask at application decode seam`() {
     val wireMap = validWireMap()
     wireMap.mutableCurrentSubtaskIntent()["subtask_id"] = 99

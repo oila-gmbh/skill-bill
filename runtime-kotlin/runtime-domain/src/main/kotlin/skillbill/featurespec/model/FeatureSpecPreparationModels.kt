@@ -1,5 +1,6 @@
 package skillbill.featurespec.model
 
+import skillbill.workflow.model.DecompositionManifestRepairEvidence
 import skillbill.workflow.model.SpecSource
 
 enum class FeatureSpecPreparationMode(val wireValue: String) {
@@ -60,4 +61,5 @@ data class FeatureSpecWriteResult(
   val featureImplementPath: String,
   val decompositionManifestPath: String,
   val subtaskSpecPaths: List<String>,
+  val repairEvidence: List<DecompositionManifestRepairEvidence> = emptyList(),
 )

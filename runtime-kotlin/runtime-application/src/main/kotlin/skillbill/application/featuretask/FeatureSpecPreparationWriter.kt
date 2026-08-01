@@ -87,16 +87,22 @@ class FeatureSpecPreparationWriter(
       validator = decompositionManifestValidator,
       fileStore = fileStore,
     )
-    fileStore.writeTextAtomically(parentSpecPath, parentSpecText)
-    subtaskRecords.forEach { fileStore.writeTextAtomically(it.path, it.text) }
-    fileStore.writeTextAtomically(preparedManifest.manifestPath, preparedManifest.yaml)
-    loadValidatedDecompositionManifest(preparedManifest.manifestPath, fileStore, decompositionManifestValidator)
+    val loaded = fileStore.writeBundleAtomically(
+      writes = buildList {
+        add(parentSpecPath to parentSpecText)
+        subtaskRecords.forEach { add(it.path to it.text) }
+        add(preparedManifest.manifestPath to preparedManifest.yaml)
+      },
+    ) {
+      loadValidatedDecompositionManifest(preparedManifest.manifestPath, fileStore, decompositionManifestValidator)
+    }
     return FeatureSpecWriteResult(
       mode = request.decision.mode,
       parentSpecPath = parentSpecRelativePath,
       featureImplementPath = parentSpecRelativePath,
       decompositionManifestPath = repoRelativePath(repoRoot, preparedManifest.manifestPath),
       subtaskSpecPaths = subtaskRecords.map(PreparedSubtask::relativePath),
+      repairEvidence = preparedManifest.repairEvidence + listOfNotNull(loaded.repairEvidence),
     )
   }
 

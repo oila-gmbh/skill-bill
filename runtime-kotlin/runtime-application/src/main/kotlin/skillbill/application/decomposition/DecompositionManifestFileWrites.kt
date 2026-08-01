@@ -8,6 +8,7 @@ import skillbill.workflow.model.DecompositionManifestRepairEvidence
 import skillbill.workflow.model.DecompositionManifestValidationResult
 import skillbill.workflow.model.requireAccepted
 import skillbill.workflow.toWireMap
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
 /**
@@ -38,6 +39,16 @@ internal fun loadValidatedDecompositionManifest(
     manifest = DecompositionManifestCodec.decodeMap(validated.manifest, path.toString()),
     repairEvidence = validated.repairEvidence,
   )
+}
+
+internal fun loadValidatedDecompositionManifestOrNull(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+): LoadedDecompositionManifest? = try {
+  loadValidatedDecompositionManifest(path, fileStore, validator)
+} catch (_: NoSuchFileException) {
+  null
 }
 
 internal data class ValidatedDecompositionManifestYaml(

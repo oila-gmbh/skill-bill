@@ -36,5 +36,5 @@ data class DecompositionManifestRuntimeUpdate(
 data class DecompositionManifestWriteResult(
   val manifestPath: Path,
   val manifest: DecompositionManifest,
-  val repairEvidence: DecompositionManifestRepairEvidence? = null,
+  val repairEvidence: List<DecompositionManifestRepairEvidence> = emptyList(),
 )

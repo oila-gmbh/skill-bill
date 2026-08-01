@@ -129,7 +129,7 @@ object DecompositionManifestWriter {
     return DecompositionManifestWriteResult(
       manifestPath = prepared.manifestPath,
       manifest = loaded.manifest,
-      repairEvidence = prepared.repairEvidence ?: loaded.repairEvidence,
+      repairEvidence = prepared.repairEvidence + listOfNotNull(loaded.repairEvidence),
     )
   }
 
@@ -141,7 +141,8 @@ object DecompositionManifestWriter {
   ): PreparedDecompositionManifestWrite {
     assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()
-    val existing = loadManifestOrNull(manifestPath, validator, fileStore)
+    val existingLoad = loadValidatedDecompositionManifestOrNull(manifestPath, fileStore, validator)
+    val existing = existingLoad?.manifest
     val manifest = request.toManifest()
       .assertExecutionModelCanReplace(existing, manifestPath)
       .withPreservedRuntimeState(existing)
@@ -154,7 +155,7 @@ object DecompositionManifestWriter {
       manifestPath = manifestPath,
       manifest = projectedManifest,
       yaml = encoded.yamlText,
-      repairEvidence = encoded.repairEvidence,
+      repairEvidence = listOfNotNull(existingLoad?.repairEvidence, encoded.repairEvidence),
     )
   }
 
@@ -174,7 +175,7 @@ object DecompositionManifestWriter {
       repoRoot = repoRoot,
       parentSpecPath = parentSpecPath,
       planningResult = plan,
-      baseBranch = plan["base_branch"]?.toString()?.takeIf(String::isNotBlank) ?: "main",
+      baseBranch = baseBranch(plan, parentSpecPath.toString()),
       featureBranch = when (executionModel) {
         DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
           branchName.ifBlank { defaultFeatureBranch(parentSpecPath) }
@@ -259,7 +260,7 @@ internal data class PreparedDecompositionManifestWrite(
   val manifestPath: Path,
   val manifest: DecompositionManifest,
   val yaml: String,
-  val repairEvidence: skillbill.workflow.model.DecompositionManifestRepairEvidence? = null,
+  val repairEvidence: List<skillbill.workflow.model.DecompositionManifestRepairEvidence> = emptyList(),
 )
 
 private fun assertParentSpecIsNotDecomposedSubtask(
@@ -340,7 +341,7 @@ private fun writeProjection(
   DecompositionManifestWriteResult(
     manifestPath = manifestPath,
     manifest = loaded.manifest,
-    repairEvidence = encoded.repairEvidence ?: loaded.repairEvidence,
+    repairEvidence = listOfNotNull(encoded.repairEvidence, loaded.repairEvidence),
   )
 } catch (_: IOException) {
   null

@@ -525,6 +525,24 @@ class DecompositionManifestWriterTest {
     assertContains(oversized.reason, "id must be an integer")
   }
 
+  @Test
+  fun `decomposition planning rejects non string base branch without coercion`() {
+    val repoRoot = Files.createTempDirectory("skillbill-decomposition-base-branch-shape")
+    val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
+    val plan = decompositionPlan(parentSpecPath).toMutableMap().apply { put("base_branch", 17) }
+
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      writeFromWorkflowUpdate(
+        repoRoot = repoRoot,
+        existingArtifactsJson = "{}",
+        artifactsPatch = mapOf("plan" to plan),
+      )
+    }
+
+    assertContains(error.reason, "base_branch")
+    assertContains(error.reason, "nonblank string")
+  }
+
   private fun decompositionPlan(
     parentSpecPath: java.nio.file.Path = java.nio.file.Path.of(".feature-specs/SKILL-51-decomposition/spec.md"),
   ): Map<String, Any?> = linkedMapOf(
