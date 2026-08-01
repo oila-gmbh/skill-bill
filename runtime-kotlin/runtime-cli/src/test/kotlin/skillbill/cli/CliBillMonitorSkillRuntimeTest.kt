@@ -31,8 +31,6 @@ class CliBillMonitorSkillRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(
       setOf(
-        "status",
-        "issue_key",
         "complete_count",
         "pending_count",
         "blocked_count",
@@ -47,6 +45,8 @@ class CliBillMonitorSkillRuntimeTest {
     assertContains(result.stdout, "pending: 2")
     assertContains(result.stdout, "blocked: 0")
     assertContains(result.stdout, "resumable_state:")
+    assertFalse(result.stdout.contains("goal:"))
+    assertFalse(result.stdout.contains("status:"))
     assertFalse(result.stdout.contains("active_agent"))
     assertFalse(result.stdout.contains("paused"))
     assertFalse(result.stdout.contains("planning"))
@@ -98,6 +98,7 @@ class CliBillMonitorSkillRuntimeTest {
     )
 
     assertEquals(1, result.exitCode)
+    assertEquals(setOf("status", "issue_key", "resumable_state"), result.payload!!.keys)
     assertContains(result.stdout, "status: not_found")
     assertContains(result.stdout, "resumable_state: not_found")
     assertTrue(launcher.childLaunches.isEmpty())

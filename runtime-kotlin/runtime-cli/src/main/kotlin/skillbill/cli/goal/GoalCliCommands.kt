@@ -793,8 +793,6 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
 
 private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
   linkedMapOf(
-    "status" to "ok",
-    "issue_key" to singleLineBounded(it.issueKey),
     "complete_count" to it.completeCount,
     "pending_count" to it.pendingCount,
     "blocked_count" to it.blockedCount,
@@ -806,12 +804,6 @@ private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: Stri
 } ?: linkedMapOf(
   "status" to "not_found",
   "issue_key" to singleLineBounded(issueKey),
-  "complete_count" to 0,
-  "pending_count" to 0,
-  "blocked_count" to 0,
-  "current_subtask" to null,
-  "current_step" to null,
-  "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
   "resumable_state" to "not_found",
 )
 
@@ -876,9 +868,13 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendDiffStatusLines(payload)
 }
 
-private fun goalMonitorStatusText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
+private fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload["status"] == "not_found") {
+  buildString {
+    appendLine("goal: ${payload["issue_key"]}")
+    appendLine("status: not_found")
+    appendLine("resumable_state: not_found")
+  }
+} else buildString {
   appendLine("complete: ${payload["complete_count"]}")
   appendLine("pending: ${payload["pending_count"]}")
   appendLine("blocked: ${payload["blocked_count"]}")
@@ -888,7 +884,7 @@ private fun goalMonitorStatusText(payload: Map<String, Any?>): String = buildStr
   appendLine("resumable_state: ${payload["resumable_state"]}")
 }
 
-private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+private fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey("status") || this["status"] == "ok") 0 else 1
 
 private fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
 
