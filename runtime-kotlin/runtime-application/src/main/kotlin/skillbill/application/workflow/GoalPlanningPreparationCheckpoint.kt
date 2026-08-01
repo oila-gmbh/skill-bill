@@ -18,6 +18,7 @@ import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 
 @Inject
@@ -35,8 +36,9 @@ class GoalPlanningPreparationCheckpoint(
     GoalPlanningPreparationValidator(phaseOutputValidator, planningProjectionValidator)
 
   fun checkpoint(record: GoalPlanningPreparationRecord, dbOverride: String? = null) {
-    validate(record)
-    database.read(dbOverride) { unitOfWork -> unitOfWork.goalPlanningPreparations.markPrepared(record) }
+    val canonical = preparationValidator.canonicalize(record)
+    envelopeValidator.validate(canonical.toEnvelopeMap(), "${canonical.parentGoalWorkflowId}#${canonical.subtaskId}")
+    database.read(dbOverride) { unitOfWork -> unitOfWork.goalPlanningPreparations.markPrepared(canonical) }
   }
 
   fun validate(record: GoalPlanningPreparationRecord) {
@@ -237,17 +239,21 @@ internal class GoalPlanningPreparationProjectionGate(
   private fun sharedPreplanEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = checkpoint.identity.parentGoalWorkflowId
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
-    val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.preplanPayload, "preplan")
-    requireHash(checkpoint.payloadSha256, checkpoint.preplanPayload, label)
-    return label to envelope
+    val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
+      .requireAcceptedOutput("preplan")
+      .normalizedOutput
+    requireHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
+    return label to normalized.envelope
   }
 
   private fun subtaskPlanEnvelope(checkpoint: GoalSubtaskPlanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
-    val envelope = phaseOutputValidator.validateAndReadPhaseOutput(checkpoint.planPayload, "plan")
-    requireHash(checkpoint.payloadSha256, checkpoint.planPayload, label)
-    return label to envelope
+    val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
+      .requireAcceptedOutput("plan")
+      .normalizedOutput
+    requireHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
+    return label to normalized.envelope
   }
 
   private fun requireHash(expected: String, payload: String, label: String) {

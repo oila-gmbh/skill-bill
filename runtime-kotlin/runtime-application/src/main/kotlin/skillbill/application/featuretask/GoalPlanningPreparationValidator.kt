@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -8,6 +7,7 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.security.MessageDigest
 
 class GoalPlanningPreparationValidator(
@@ -15,35 +15,37 @@ class GoalPlanningPreparationValidator(
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   fun validate(record: GoalPlanningPreparationRecord) {
-    val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
-    outputValidator.validatePhaseOutputText(record.preplanPayload, PREPLAN_PHASE_ID)
-    outputValidator.validatePhaseOutputText(record.planPayload, PLAN_PHASE_ID)
-    val failure = envelopeFailure(record) ?: provenanceFailure(record)
-    failure?.let { throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it) }
-    requireCompleted(record.preplanPayload, PREPLAN_PHASE_ID, label)
-    requireCompleted(record.planPayload, PLAN_PHASE_ID, label)
-    requireValidProjection(record.preplanPayload, PREPLAN_PHASE_ID, label)
-    requireValidProjection(record.planPayload, PLAN_PHASE_ID, label)
+    canonicalize(record)
   }
 
-  private fun requireValidProjection(payload: String, phaseId: String, label: String) {
-    val envelope = JsonSupport.parseObjectOrNull(payload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: throw InvalidGoalPlanningPreparationSchemaError(
-        sourceLabel = label,
-        fieldPath = "${phaseId}_payload",
-        reason = "payload is not a JSON object",
-      )
+  fun canonicalize(record: GoalPlanningPreparationRecord): GoalPlanningPreparationRecord {
+    val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
+    val preplan = outputValidator.validatePhaseOutput(record.preplanPayload, PREPLAN_PHASE_ID)
+      .requireAcceptedOutput(PREPLAN_PHASE_ID)
+      .normalizedOutput
+      .envelope
+    val plan = outputValidator.validatePhaseOutput(record.planPayload, PLAN_PHASE_ID)
+      .requireAcceptedOutput(PLAN_PHASE_ID)
+      .normalizedOutput
+      .envelope
+    val failure = envelopeFailure(record) ?: provenanceFailure(record)
+    failure?.let { throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it) }
+    requireCompleted(preplan, PREPLAN_PHASE_ID, label)
+    requireCompleted(plan, PLAN_PHASE_ID, label)
+    requireValidProjection(preplan, PREPLAN_PHASE_ID, label)
+    requireValidProjection(plan, PLAN_PHASE_ID, label)
+    return record.copy(
+      preplanPayload = skillbill.contracts.JsonSupport.mapToJsonString(preplan),
+      planPayload = skillbill.contracts.JsonSupport.mapToJsonString(plan),
+    )
+  }
+
+  private fun requireValidProjection(envelope: Map<String, Any?>, phaseId: String, label: String) {
     requireValidPlanningProjection(envelope, phaseId, label, planningProjectionValidator)
   }
 
-  private fun requireCompleted(payload: String, phaseId: String, label: String) {
-    val status = JsonSupport.parseObjectOrNull(payload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get("status")
-      ?.toString()
+  private fun requireCompleted(payload: Map<String, Any?>, phaseId: String, label: String) {
+    val status = payload["status"]?.toString()
     if (status != "completed") {
       throw InvalidGoalPlanningPreparationSchemaError(
         sourceLabel = label,

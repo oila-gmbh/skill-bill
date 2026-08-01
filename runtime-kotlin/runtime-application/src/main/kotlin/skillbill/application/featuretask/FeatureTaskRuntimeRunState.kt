@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
 @Suppress("TooManyFunctions")
 internal class FeatureTaskRuntimeRunState(
@@ -65,8 +66,8 @@ internal class FeatureTaskRuntimeRunState(
   // invalid artifact is genuine corruption rather than evidence.
   private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
     record.outputArtifact?.let { artifact ->
-      val normalized = try {
-        outputValidator.normalizePhaseOutput(artifact, record.phaseId)
+      val accepted = try {
+        outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
         if (record.status == STATUS_COMPLETED) throw error
         return@let null
@@ -74,8 +75,9 @@ internal class FeatureTaskRuntimeRunState(
       FeatureTaskRuntimePhaseOutput(
         phaseId = record.phaseId,
         iteration = record.attemptCount,
-        payload = normalized.canonicalJson,
-        normalizedOutput = normalized,
+        payload = accepted.normalizedOutput.canonicalJson,
+        normalizedOutput = accepted.normalizedOutput,
+        repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
       )
     }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
@@ -456,7 +458,10 @@ internal class FeatureTaskRuntimeRunState(
         ?.let(JsonSupport::jsonElementToValue)
         ?.let(JsonSupport::anyToStringAnyMap)
         ?: runCatching {
-          outputValidator.validateAndReadPhaseOutput(payload, sourceLabel = output.phaseId)
+          outputValidator.validatePhaseOutput(payload, sourceLabel = output.phaseId)
+            .requireAcceptedOutput(output.phaseId)
+            .normalizedOutput
+            .envelope
         }.getOrNull()
         ?: emptyMap()
     }

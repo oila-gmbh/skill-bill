@@ -1083,6 +1083,7 @@ class FeatureTaskRuntimePhaseRecorder(
       loopId = request.loopId,
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
+      repairEvidence = request.repairEvidence,
     )
   }
 

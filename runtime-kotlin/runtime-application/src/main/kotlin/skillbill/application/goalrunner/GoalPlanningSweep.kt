@@ -48,6 +48,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
@@ -196,7 +197,7 @@ class DefaultGoalPlanningSweep(
     // producer gate runs on. Gating the raw child stdout would let an enrichment that invalidates the
     // projection settle unchecked.
     val preplanProduction = producePhase(shared, request, null, runInvariants, PHASE_PREPLAN, emptyList()) { raw ->
-      enrichPreplan(raw, shared.planningPacket).also { outputValidator.validatePhaseOutputText(it, PHASE_PREPLAN) }
+      enrichPreplan(raw, shared.planningPacket)
     }
     if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
     val preplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
@@ -327,11 +328,25 @@ class DefaultGoalPlanningSweep(
         recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
         return production
       }
-      val payload = finalizePayload((production as GoalPlanningPhaseProduction.Captured).payload)
-      val gateReason = projectionGateReason(payload, phaseId)
+      val captured = production as GoalPlanningPhaseProduction.Captured
+      val payload = finalizePayload(captured.payload)
+      val accepted = if (payload == captured.payload) {
+        skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
+          normalizedOutput = captured.normalizedOutput,
+          repairEvidence = captured.repairEvidence,
+        )
+      } else {
+        outputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
+      }
+      val canonicalPayload = accepted.normalizedOutput.canonicalJson
+      val gateReason = projectionGateReason(canonicalPayload, phaseId)
       if (gateReason == null) {
         recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
-        return GoalPlanningPhaseProduction.Captured(payload)
+        return GoalPlanningPhaseProduction.Captured(
+          canonicalPayload,
+          accepted.normalizedOutput,
+          accepted.repairEvidence ?: captured.repairEvidence.takeIf { payload == captured.payload },
+        )
       }
       recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
       priorSchemaFailure = gateReason
@@ -426,14 +441,21 @@ class DefaultGoalPlanningSweep(
       ?: return GoalPlanningPhaseProduction.Stopped(
         stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
       )
-    return runCatching { outputValidator.validateAndReadPhaseOutput(stdout, phaseId) }.fold(
-      onSuccess = { payload ->
+    return runCatching {
+      outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
+    }.fold(
+      onSuccess = { accepted ->
+        val payload = accepted.normalizedOutput.envelope
         if (payload["status"] != "completed") {
           GoalPlanningPhaseProduction.Stopped(
             stopped(shared, currentSubtaskId, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
           )
         } else {
-          GoalPlanningPhaseProduction.Captured(JsonSupport.mapToJsonString(payload))
+          GoalPlanningPhaseProduction.Captured(
+            accepted.normalizedOutput.canonicalJson,
+            accepted.normalizedOutput,
+            accepted.repairEvidence,
+          )
         }
       },
       onFailure = { error ->
