@@ -327,6 +327,17 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
           ),
         )
       }
+      scan.firstMismatchedClosing?.let { mismatch ->
+        mismatch.missingCloser?.let { missingCloser ->
+          add(
+            Candidate(
+              text = text.substring(0, mismatch.offset) + missingCloser + text.substring(mismatch.offset),
+              format = format,
+              changedOffset = mismatch.offset,
+            ),
+          )
+        }
+      }
       if (scan.openingStack.size == 1) {
         add(
           Candidate(
@@ -390,6 +401,7 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
   private fun scanDelimiters(text: String): DelimiterScan {
     val stack = ArrayDeque<Char>()
     val unmatched = mutableListOf<Int>()
+    var firstMismatchedClosing: MismatchedClosing? = null
     var inDouble = false
     var inSingle = false
     var escaped = false
@@ -410,10 +422,22 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
         '\'' -> inSingle = true
         '{' -> stack.addLast('}')
         '[' -> stack.addLast(']')
-        '}', ']' -> if (stack.lastOrNull() == ch) stack.removeLast() else unmatched += index
+        '}', ']' -> if (stack.lastOrNull() == ch) {
+          stack.removeLast()
+        } else {
+          unmatched += index
+          if (firstMismatchedClosing == null) {
+            val missingCloser = stack.lastOrNull()
+            val enclosingCloser = if (stack.size >= 2) stack.elementAt(stack.size - 2) else null
+            firstMismatchedClosing = MismatchedClosing(
+              offset = index,
+              missingCloser = missingCloser.takeIf { it != null && enclosingCloser == ch },
+            )
+          }
+        }
       }
     }
-    return DelimiterScan(stack.toList(), unmatched)
+    return DelimiterScan(stack.toList(), unmatched, firstMismatchedClosing)
   }
 
   private fun balancedTopLevelObjectSpans(text: String): List<IntRange> {
@@ -497,6 +521,12 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
   private data class DelimiterScan(
     val openingStack: List<Char>,
     val unmatchedClosingOffsets: List<Int>,
+    val firstMismatchedClosing: MismatchedClosing?,
+  )
+
+  private data class MismatchedClosing(
+    val offset: Int,
+    val missingCloser: Char?,
   )
 
   private data class TextCandidate(val text: String)

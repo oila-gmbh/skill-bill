@@ -56,6 +56,23 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `one missing nested delimiter is inserted before the existing outer closer`() {
+    val validNestedJson =
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.","produced_outputs":{"tasks":[{"id":"task-1"}]}}"""
+    val malformed = validNestedJson.replace("[{\"id\":\"task-1\"}]}}", "[{\"id\":\"task-1\"}}}")
+
+    val result = adapter.validatePhaseOutput(malformed, "plan")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER, repaired.evidence.operation)
+    assertEquals(sha256(malformed), repaired.evidence.originalDigest)
+    assertEquals(sha256(validNestedJson), repaired.evidence.repairedDigest)
+    @Suppress("UNCHECKED_CAST")
+    val producedOutputs = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(listOf(mapOf("id" to "task-1")), producedOutputs["tasks"])
+  }
+
+  @Test
   fun `structural characters inside JSON strings remain unchanged`() {
     val payload =
       """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"literal } ] and escaped \"quote\"","produced_outputs":{"tasks":["task-1"]}}"""
