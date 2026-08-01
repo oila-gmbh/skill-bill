@@ -1,5 +1,6 @@
 package skillbill.workflow
 
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
@@ -8,8 +9,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairO
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.requireAccepted
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 
@@ -61,5 +64,35 @@ class FeatureTaskRuntimePhaseOutputValidationModelsTest {
     assertEquals(3, evidence.sourceLocation.line)
     assertEquals(4, evidence.sourceLocation.column)
     assertFalse(evidence.toString().contains("payload"))
+  }
+
+  @Test
+  fun `repair evidence round trips through the artifact map and rejects unknown fields`() {
+    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+      originalDigest = "a".repeat(64),
+      repairedDigest = "b".repeat(64),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("plan", 5, 1, 6),
+    )
+
+    assertEquals(evidence, FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(evidence.toArtifactMap()))
+    assertFailsWith<IllegalArgumentException> {
+      FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(evidence.toArtifactMap() + ("unexpected" to true))
+    }
+  }
+
+  @Test
+  fun `rejected result converts to a typed throwing seam with its stable failure code`() {
+    val rejected = FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+      code = FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
+      reason = "multiple candidates",
+    )
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      rejected.requireAccepted("plan")
+    }
+
+    assertEquals("ambiguous_repair", error.failureCode)
   }
 }

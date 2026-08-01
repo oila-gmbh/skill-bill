@@ -1,3 +1,32 @@
+## [2026-08-01] SKILL-154 subtask 3 — Monitor-only bill-monitor skill and status integration
+Areas: runtime-cli/goal, runtime-infra-fs/scaffold, governed skills, docs, .feature-specs/SKILL-154
+- Added `bill-monitor` as a governed read-only entry point with dynamic catalog/install coverage and same-thread monitor-mode guidance.
+- The monitor status seam canonicalizes the repository, performs one bounded snapshot, and exposes only counts, current location, liveness, and resumable state. reusable
+- Pattern: keep monitor output separate from full goal status and reject diff, malformed-issue, launch, resume, watch, and mutation paths before execution.
+- Known limitation: monitor mode does not carry across a new conversation; an explicit invocation is required to re-establish the read-only contract.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-01] SKILL-154 subtask 2 — Deterministic goal pause and completion control
+Areas: runtime-application/{goalrunner,model}, runtime-cli/goal, runtime-domain/goalrunner, runtime-infra-fs/{agentrun,process}, runtime-infra-sqlite/{workflow,migrations}, runtime-ports/{agentrun,goalrunner,persistence}, orchestration/contracts/telemetry, .feature-specs/SKILL-154
+- Added predeclared stop-after-subtask and durable idempotent operator pause control; the pause is applied after terminal child completion is persisted and before the next child is selected or launched.
+- Resume preserves the parent workflow identity, planning checkpoints, commits, lease/generation fencing, and child continuation state, then starts at the first pending runnable subtask. reusable
+- The foreground driver treats the original child process result as the bounded completion signal, without repeated status, log, filesystem, or database polling. reusable
+- Pattern: persist completed-child state and the parent pause boundary atomically, then re-read the control projection before selecting the next child. reusable
+- Breaking changes/limitations: a resumed parent keeps its existing stop-after policy; OS interrupts remain only an interruption fallback, not the operator pause protocol.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-01] SKILL-154 subtask 1 — Context-efficient skill and goal orchestration
+Areas: runtime-application/{goalrunner,workflow}, runtime-cli/goal, runtime-domain/{goalrunner,workflow}, runtime-infra-fs/{goalplanning,install}, runtime-infra-sqlite/{goalrunner,migrations}, runtime-ports/{goalrunner,persistence}, runtime-contracts/errors, docs, governed feature skills, .feature-specs/SKILL-154
+- Added compact supplied-versus-installed skill identity validation, bounded goal-planning context discovery, and thin `{status, commit_sha, workflow_id}` terminal retention.
+- Goal launch/completion guidance now exposes one monitoring block and one terminal notification; bounded repository searches and fresh-conversation handoffs name the canonical repository path and issue key.
+- Added durable goal-runner control, planning-context projections, and workflow input selection seams with contract coverage for identity mismatch, messaging, bounded output, and retention shape. reusable
+- Pattern: keep child payloads, transcripts, and durable evidence out of the parent conversation while passing only validated projections and canonical handoff metadata. reusable
+- Breaking changes/limitations: mismatched supplied/installed skill identities loud-fail with both source identities; pause protocol and bill-monitor remain out of scope.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-26] SKILL-146 subtask 3 — Bounded feature-task phase projections
 Areas: runtime-application/featuretask
 - Tightened audit-remediation and review-retry launches to their dedicated bounded projection sets instead of rebuilding broad upstream receipts

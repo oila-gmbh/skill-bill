@@ -321,6 +321,24 @@ class FeatureSpecSkillWiringContractTest {
     assertRuntimeCompletionRules(runtime)
   }
 
+  @Test
+  fun `feature family uses canonical thin fresh-conversation handoff`() {
+    val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
+    val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
+    val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
+    val capabilities = Files.readString(repoRootFromTest().resolve("docs/capabilities.md"))
+    listOf(feature, goal, runtime).forEach { content ->
+      assertContains(content, "canonical repository realpath")
+      assertContains(content, "issue key")
+      assertContains(content, "Do not copy")
+      assertContains(content, "raw child")
+    }
+    assertContains(feature, "repository: repo-root-realpath-v1:/absolute/path/to/repository")
+    assertContains(goal, "inspect or resume the existing runtime state")
+    assertContains(runtime, "sufficient durable-state handoff data")
+    assertContains(capabilities, "canonical repository realpath and issue key are sufficient")
+  }
+
   private fun assertSharedCompletionRules(surfaces: Map<String, String>) {
     val sharedRules = listOf(
       "Do not run `skill-bill goal watch` in-session, at any interval or refresh count.",
@@ -371,6 +389,14 @@ class FeatureSpecSkillWiringContractTest {
     assertFalse(goal.contains("Keep live output enabled"))
     assertContains(goal, "For the user to follow the goal in their own terminal")
     assertFalse(goal.contains("--max-refreshes"))
+    assertContains(goal, "one launch notice, one copyable read-only monitoring")
+    assertContains(goal, "Repeated progress, heartbeat, wait,")
+    assertFalse(goal.contains("goal_event:"))
+    assertContains(goal, "at most 32 files")
+    assertContains(goal, "4,096 bytes per excerpt")
+    assertContains(goal, "32 KiB total")
+    assertContains(goal, "must not emit unrestricted")
+    assertContains(goal, "only `{status, commit_sha, workflow_id}`")
   }
 
   private fun assertRuntimeCompletionRules(runtime: String) {

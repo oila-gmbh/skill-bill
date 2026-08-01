@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -23,6 +25,8 @@ import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
@@ -35,6 +39,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -44,12 +49,16 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.model.GoalRunnerCompletionPersistenceResult
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorization
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
@@ -65,8 +74,6 @@ import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -104,7 +111,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration
 
 class GoalRunnerTest {
   @Test
@@ -308,7 +314,7 @@ class GoalRunnerTest {
   }
 
   @Test
-  fun `resume after stop skips completed subtasks and continues from blocked subtask`() {
+  fun `resume after stop reconciles a terminal child before continuing`() {
     val initial = manifest(subtaskCount = 3)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
       .withBlockedSubtask(2, workflowId = "wfl-2", reason = "validation failed")
@@ -328,7 +334,7 @@ class GoalRunnerTest {
     val report = runner.run(runRequest())
 
     assertIs<GoalRunnerRunReport.Completed>(report)
-    assertEquals(listOf(2, 3), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf(3), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertEquals("complete", store.manifest.status)
     assertEquals(listOf("sha-1", "sha-2", "sha-3"), store.manifest.subtasks.map { it.commitSha })
   }
@@ -356,7 +362,7 @@ class GoalRunnerTest {
     assertContains(stopped.stop.blockedReason, "last_resumable_step")
     assertEquals("blocked", store.manifest.subtasks.single { it.id == 1 }.status)
     assertEquals(listOf("wfl-1"), outcomes.blockedWorkflows.map { it.workflowId })
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
     assertEquals(null, launcher.requests.first().skillRunRequest.timeout)
     assertEquals(null, launcher.requests.first().skillRunRequest.progressIdleTimeout)
     // SKILL-64 Subtask 3 (F-PF01): the legacy progress probe and the declared
@@ -377,7 +383,7 @@ class GoalRunnerTest {
   }
 
   @Test
-  fun `missing terminal outcome retries once and can recover`() {
+  fun `missing terminal outcome does not retry after the process result`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()
     var launches = 0
@@ -394,46 +400,17 @@ class GoalRunnerTest {
 
     val report = runner.run(runRequest())
 
-    val completed = assertIs<GoalRunnerRunReport.Completed>(report)
-    assertEquals(listOf(1), completed.attemptedSubtasks)
-    assertEquals(2, launcher.requests.size)
-    assertEquals("complete", store.manifest.status)
-    assertEquals("sha-1", store.manifest.subtasks.single().commitSha)
-  }
-
-  @Test
-  fun `late terminal outcome recovery uses synthetic timing without retry launch`() {
-    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
-    val outcomes = RecordingOutcomeStore()
-    val timing = RecordingTimingPort {
-      outcomes["wfl-1"] = completeOutcome(1)
-      RuntimeWaitResult.COMPLETED
-    }
-    val launcher = RecordingSubtaskLauncher { request ->
-      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
-      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
-      launchFacts()
-    }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-      timing = timing,
-    )
-
-    val report = runner.run(runRequest())
-
-    assertIs<GoalRunnerRunReport.Completed>(report)
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
     assertEquals(1, launcher.requests.size)
-    assertEquals(listOf(200L), timing.delays.map { it.inWholeMilliseconds })
+    assertEquals(1, launches)
+    assertEquals("blocked", store.manifest.status)
   }
 
   @Test
-  fun `interrupted late terminal wait stops synthetic wait attempts`() {
+  fun `late terminal outcome is not polled after the child process exits`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()
-    val timing = RecordingTimingPort { RuntimeWaitResult.INTERRUPTED }
     val launcher = RecordingSubtaskLauncher { request ->
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
@@ -444,18 +421,40 @@ class GoalRunnerTest {
       subtaskLauncher = launcher,
       outcomeStore = outcomes,
       pullRequestPort = RecordingPullRequestPort(),
-      timing = timing,
     )
 
     val report = runner.run(runRequest())
 
-    assertIs<GoalRunnerRunReport.Stopped>(report)
-    assertEquals(listOf(200L), timing.delays.map { it.inWholeMilliseconds })
-    assertEquals(2, launcher.requests.size)
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
+    assertEquals(1, launcher.requests.size)
   }
 
   @Test
-  fun `missing terminal retry uses retry launch output for worker requests`() {
+  fun `an interrupted child result does not trigger a late retry launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      launchFacts(interrupted = true)
+    }
+    val runner = GoalRunner(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    )
+
+    val report = runner.run(runRequest())
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.INTERRUPTED, stopped.stop.reason)
+    assertEquals(1, launcher.requests.size)
+  }
+
+  @Test
+  fun `missing terminal result does not retry a worker request launch`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()
     var launches = 0
@@ -486,13 +485,10 @@ class GoalRunnerTest {
 
     val report = runner.run(runRequest())
 
-    val completed = assertIs<GoalRunnerRunReport.Completed>(report)
-    assertEquals(listOf(1, 2), completed.attemptedSubtasks)
-    assertEquals("Retry follow up", store.manifest.subtasks.single { it.id == 2 }.name)
-    assertTrue(store.manifest.subtasks.none { it.name == "Stale first follow up" })
-    val accepted = outcomes.workerSubtaskRequestOutcomes.first().outcomes.single()
-    assertIs<GoalRunnerWorkerSubtaskRequestOutcome.Accepted>(accepted)
-    assertEquals("Retry follow up", accepted.request.name)
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
+    assertEquals(1, launches)
+    assertEquals(1, launcher.requests.size)
   }
 
   @Test
@@ -788,6 +784,170 @@ class GoalRunnerTest {
   )
 }
 
+class GoalRunnerReviewPolicyPersistenceTest {
+  @Test
+  fun `resume without add-ons carries the durable selection into child policy and continuation`() {
+    val addOn = PersistedAgentAddonSelectionEntry(
+      slug = "goal-context",
+      sourceIdentity = "/tmp/skillbill-goal-runner/goal-context/agent-addon.yaml",
+      contentSha256 = "a".repeat(64),
+    )
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    store.persistReviewPolicy(
+      parentWorkflowId = "wfl-parent",
+      policy = GoalRunnerReviewPolicy(
+        codeReviewMode = CodeReviewExecutionMode.DEFAULT,
+        agentAddonSelection = AgentAddonSelection(listOf(addOn)),
+      ),
+    )
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      store.mutate { current -> current.withWorkflowId(1, "wfl-1") }
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+
+    GoalRunner(store, launcher, outcomes, RecordingPullRequestPort()).run(runRequest())
+
+    assertEquals(
+      AgentAddonSelection(listOf(addOn)),
+      store.newChildWorkflowSetups.single().reviewPolicy.agentAddonSelection,
+    )
+    assertEquals(
+      AgentAddonSelection(listOf(addOn)),
+      launcher.requests.single().skillRunRequest.goalContinuation?.agentAddonSelection,
+    )
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+class GoalRunnerPauseLaunchBoundaryTest {
+  @Test
+  fun `targeted completion records the pause boundary before a dependent launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest().copy(stopAfterSubtaskId = 1))
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(report)
+    assertEquals(GoalRunnerStopReason.PAUSED, stopped.stop.reason)
+    assertEquals(listOf(1), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertEquals(1, store.boundaryTransitionCount)
+    assertTrue(store.controlState.paused)
+    assertTrue(store.controlState.stopAfterConsumed)
+    assertEquals("complete", store.manifest.subtasks.single { it.id == 1 }.status)
+    assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `a completed target is reconciled to pause before selecting its dependent`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val launcher = RecordingSubtaskLauncher { launchFacts() }
+    val runner = GoalRunner(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort())
+
+    val report = runner.run(runRequest().copy(stopAfterSubtaskId = 1))
+
+    assertEquals(GoalRunnerStopReason.PAUSED, assertIs<GoalRunnerRunReport.Stopped>(report).stop.reason)
+    assertTrue(launcher.requests.isEmpty())
+    assertTrue(store.controlState.paused)
+    assertTrue(store.controlState.stopAfterConsumed)
+    assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `an operator pause racing child completion is consumed once before the next launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.requestPauseForTest()
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertEquals(GoalRunnerStopReason.PAUSED, assertIs<GoalRunnerRunReport.Stopped>(report).stop.reason)
+    assertEquals(listOf(1), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertTrue(store.controlState.paused)
+    assertTrue(store.controlState.pauseConsumed)
+    assertEquals("operator_request", store.controlState.pauseReason)
+    assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `pause committed at launch authorization denies the dependent child launch`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    store.beforeLaunchAuthorization = { subtaskId ->
+      if (subtaskId == 2) store.requestPauseForTest()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertEquals(GoalRunnerStopReason.PAUSED, assertIs<GoalRunnerRunReport.Stopped>(report).stop.reason)
+    assertEquals(listOf(1), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertTrue(store.controlState.paused)
+    assertTrue(store.controlState.pauseConsumed)
+    assertEquals("operator_request", store.controlState.pauseReason)
+    assertEquals("pending", store.manifest.subtasks.single { it.id == 2 }.status)
+  }
+
+  @Test
+  fun `an explicit launch clears a pause request that never reached a boundary`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    store.requestPauseForTest()
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertFalse(store.controlState.pauseRequested)
+    assertFalse(store.controlState.paused)
+    assertEquals(null, store.controlState.pauseReason)
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
 class GoalRunnerHandoffTest {
   @Test
   fun `completed subtask does not dirty projection before next review baseline`() {
@@ -1068,6 +1228,33 @@ class GoalRunnerStatusProjectionTest {
       ).executionLiveness,
     )
     assertEquals(0, failingHarness.ownershipWriteCount)
+  }
+
+  @Test
+  fun `execution liveness uses the parent lease before a child workflow exists`() {
+    val store = InMemoryGoalManifestStore(manifest(subtaskCount = 1)).apply {
+      executionLeaseForTest = GoalRunnerExecutionLease(
+        generation = 1,
+        ownerToken = "parent-owner",
+        hostIdentity = "host",
+        bootIdentity = "boot",
+        pid = 42,
+        processBirthToken = "birth-42",
+        heartbeatAt = "2026-07-27T11:59:50Z",
+        expiresAt = "2026-07-27T12:00:01Z",
+      )
+    }
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+    )
+
+    assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
+
+    store.executionLeaseForTest = store.executionLeaseForTest!!.copy(expiresAt = "2026-07-27T11:59:59Z")
+    assertEquals(ExecutionLiveness.IDLE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
   }
 
   @Test
@@ -1489,6 +1676,58 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(1, status.completeCount)
     assertEquals(2, status.currentSubtaskId)
     assertEquals("pending_launch", status.currentStep)
+  }
+}
+
+class GoalRunnerPauseStatusTest {
+  @Test
+  fun `pause is consumed when the goal is stranded before launching a subtask`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    val result = service.pause(
+      issueKey = "SKILL-56",
+      dbPathOverride = null,
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    )
+
+    assertEquals("paused", result.status)
+    assertTrue(result.paused)
+    assertTrue(result.pauseRequested)
+    assertTrue(store.controlState.paused)
+    assertEquals(1, store.boundaryTransitionCount)
+  }
+
+  @Test
+  fun `resume clears a pause request that never reached a boundary`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    store.requestPauseForTest()
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    val result = service.resume(
+      issueKey = "SKILL-56",
+      dbPathOverride = null,
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    )
+
+    assertEquals("resumed", result.status)
+    assertEquals("operator_request", result.clearedPauseReason)
+    assertFalse(store.controlState.pauseRequested)
+    assertFalse(store.controlState.paused)
+  }
+
+  @Test
+  fun `resume reports not_paused when no pause boundary is durable`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    val result = service.resume(
+      issueKey = "SKILL-56",
+      dbPathOverride = null,
+      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    )
+
+    assertEquals("not_paused", result.status)
   }
 }
 
@@ -2057,6 +2296,46 @@ class GoalRunnerObservabilityTest {
   )
 }
 
+class GoalRunnerManifestReconciliationTest {
+  @Test
+  fun `goal run reconciles terminal child before selecting the next subtask`() {
+    val staleManifest = manifest(subtaskCount = 2).copy(
+      status = "in_progress",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+      subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+        if (subtask.id == 1) subtask.copy(status = "pending", workflowId = "wfl-1") else subtask
+      },
+    )
+    val store = InMemoryGoalManifestStore(staleManifest)
+    val outcomes = RecordingOutcomeStore().apply {
+      authoritativeOutcomesBySubtask[1] = completeOutcome(1)
+    }
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      assertEquals(2, subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-2") }
+      outcomes["wfl-2"] = completeOutcome(2)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+        invokedAgentId = "claude",
+        dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+      ),
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf(2), store.newChildWorkflowSetups.map { it.subtaskId })
+    assertEquals("complete", store.manifest.subtasks.first { it.id == 1 }.status)
+    assertEquals("sha-1", store.manifest.subtasks.first { it.id == 1 }.commitSha)
+  }
+}
+
 internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
   private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
@@ -2068,6 +2347,13 @@ internal class InMemoryGoalManifestStore(
     private set
   var runtimeStateSaveCount: Int = 0
     private set
+  var controlState: GoalRunnerControlState = GoalRunnerControlState()
+    private set
+  var executionLeaseForTest: GoalRunnerExecutionLease? = null
+  var boundaryTransitionCount: Int = 0
+    private set
+  var beforeLaunchAuthorization: ((Int) -> Unit)? = null
+  private var persistedReviewPolicy: GoalRunnerReviewPolicy? = null
   val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
   val acceptedParentWorkflowIds: MutableList<String> = mutableListOf()
   var acceptances: Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
@@ -2093,6 +2379,130 @@ internal class InMemoryGoalManifestStore(
     return state.copy(dbPath = dbPathOverride ?: state.dbPath, manifest = manifest)
   }
 
+  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState = controlState
+
+  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
+    executionLeaseForTest
+
+  override fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState {
+    controlState = controlState.copy(
+      pauseRequested = true,
+      pauseReason = controlState.pauseReason ?: "operator_request",
+    )
+    return controlState
+  }
+
+  override fun authorizeSubtaskLaunch(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerLaunchAuthorization {
+    val spawnAuthorization = object : AgentRunSpawnAuthorization {
+      override fun <T> withAuthorization(spawn: () -> T): T {
+        beforeLaunchAuthorization?.invoke(subtaskId)
+        if (controlState.requiresPauseBoundary(state.manifest)) {
+          throw GoalRunnerLaunchAuthorizationDeniedException(controlState)
+        }
+        return spawn()
+      }
+    }
+    return GoalRunnerLaunchAuthorization(
+      authorized = !controlState.requiresPauseBoundary(state.manifest),
+      controlState = controlState,
+      spawnAuthorization = spawnAuthorization,
+    )
+  }
+
+  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
+    persistedReviewPolicy
+
+  override fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String?,
+  ): GoalRunnerReviewPolicy {
+    persistedReviewPolicy = policy
+    return policy
+  }
+
+  override fun persistStopAfterSubtask(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState {
+    controlState = controlState.copy(stopAfterSubtaskId = controlState.stopAfterSubtaskId ?: subtaskId)
+    return controlState
+  }
+
+  fun requestPauseForTest() {
+    controlState = controlState.copy(
+      pauseRequested = true,
+      pauseReason = controlState.pauseReason ?: "operator_request",
+    )
+  }
+
+  override fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
+    val targetReached = controlState.stopAfterSubtaskId?.let { targetId ->
+      state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
+    } == true && !controlState.stopAfterConsumed
+    if (!controlState.requiresPauseBoundary(state.manifest)) return state
+    controlState = when {
+      controlState.paused -> controlState.copy(stopAfterConsumed = controlState.stopAfterConsumed || targetReached)
+      controlState.pauseRequested -> controlState.copy(
+        pauseConsumed = true,
+        paused = true,
+        pauseReason = controlState.pauseReason ?: "operator_request",
+        stopAfterConsumed = controlState.stopAfterConsumed || targetReached,
+      )
+      else -> controlState.copy(
+        paused = true,
+        pauseReason = "stop_after_subtask",
+        stopAfterConsumed = true,
+      )
+    }
+    boundaryTransitionCount += 1
+    return state.copy(controlState = controlState)
+  }
+
+  override fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState {
+    controlState = controlState.copy(
+      pauseRequested = false,
+      pauseConsumed = false,
+      paused = false,
+      pauseReason = null,
+    )
+    return loadByIssueKey(manifest.issueKey, dbPathOverride, null)!!.copy(controlState = controlState)
+  }
+
+  override fun saveCompletedSubtaskAtBoundary(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerCompletionPersistenceResult {
+    runtimeStateSaveCount += 1
+    manifest = state.manifest
+    val targetReached = controlState.stopAfterSubtaskId == subtaskId && !controlState.stopAfterConsumed
+    val operatorRequested = controlState.pauseRequested && !controlState.pauseConsumed
+    val shouldPause = controlState.paused || targetReached || operatorRequested
+    if (shouldPause) {
+      controlState = controlState.copy(
+        pauseConsumed = controlState.pauseConsumed || operatorRequested,
+        paused = true,
+        pauseReason = when {
+          controlState.paused -> controlState.pauseReason
+          operatorRequested -> "operator_request"
+          else -> "stop_after_subtask"
+        },
+        stopAfterConsumed = controlState.stopAfterConsumed || targetReached,
+      )
+      boundaryTransitionCount += 1
+    }
+    return GoalRunnerCompletionPersistenceResult(
+      state = state.copy(manifest = manifest, controlState = controlState),
+      paused = shouldPause,
+    )
+  }
+
   override fun saveHardReset(
     state: GoalRunnerManifestState,
     dbPathOverride: String?,
@@ -2100,6 +2510,7 @@ internal class InMemoryGoalManifestStore(
   ): GoalRunnerManifestState {
     hardReset?.invoke(state, dbPathOverride)
     acceptances = emptyMap()
+    controlState = GoalRunnerControlState()
     return save(state, dbPathOverride)
   }
 
@@ -2714,8 +3125,11 @@ internal class RecordingSubtaskLauncher(
   val requests: MutableList<GoalRunnerSubtaskLaunchRequest> = mutableListOf()
 
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
-    requests += request
-    return result(request)
+    val launch = {
+      requests += request
+      result(request)
+    }
+    return request.skillRunRequest.spawnAuthorization?.withAuthorization(launch) ?: launch()
   }
 }
 
@@ -2900,17 +3314,6 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
       error = "Goal review baseline recovery is not used by this goal runner fixture.",
     )
   }
-
-private class RecordingTimingPort(
-  private val result: () -> RuntimeWaitResult,
-) : RuntimeTimingPort {
-  val delays: MutableList<Duration> = mutableListOf()
-
-  override fun wait(duration: Duration): RuntimeWaitResult {
-    delays += duration
-    return result()
-  }
-}
 
 internal fun manifest(subtaskCount: Int): DecompositionManifest = DecompositionManifest(
   issueKey = "SKILL-56",

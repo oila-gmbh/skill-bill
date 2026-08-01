@@ -8,6 +8,7 @@ import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.db.core.inImmediateTransaction
+import skillbill.db.core.inReadTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -37,7 +38,7 @@ class GoalPlanningPreparationStore(
     blockedReason: String?,
   ): GoalPlanningStatusSnapshot = translateSqlFailure(parentGoalWorkflowId, blockedSubtaskId ?: 0) {
     validateStatusRequest(parentGoalWorkflowId, orderedSubtaskIds, blockedSubtaskId, blockedReason)
-    connection.inImmediateTransaction {
+    connection.inReadTransaction {
       val shared = hasPreparedSharedPreplan(parentGoalWorkflowId)
       val plannedIds = preparedPlanIds(parentGoalWorkflowId)
       validatePreparedPlanIds(parentGoalWorkflowId, orderedSubtaskIds, plannedIds)

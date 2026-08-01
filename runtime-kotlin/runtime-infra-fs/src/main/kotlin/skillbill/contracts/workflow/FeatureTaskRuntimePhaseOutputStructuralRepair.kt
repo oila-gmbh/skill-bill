@@ -318,6 +318,7 @@ private object StrictPhaseOutputParser {
 
   private fun looksLikeYamlFlow(text: String): Boolean =
     Regex("(?s)^\\s*\\{\\s*[A-Za-z_][A-Za-z0-9_-]*\\s*:").containsMatchIn(text) ||
+      Regex("""(?s)^\s*\{\s*"[^"]*"\s*:[^{}]*,\s*[A-Za-z_][A-Za-z0-9_-]*\s*:""").containsMatchIn(text) ||
       containsSingleQuoteOutsideDoubleString(text)
 
   private fun containsSingleQuoteOutsideDoubleString(text: String): Boolean {
@@ -343,7 +344,7 @@ private object StrictPhaseOutputParser {
   }
 }
 
-private object StructuralRepairCandidateEngine {
+internal object StructuralRepairCandidateEngine {
   private const val MAX_CANDIDATES = 8
 
   fun repairExactText(
@@ -376,7 +377,7 @@ private object StructuralRepairCandidateEngine {
   private fun collectCandidates(text: String): CandidateGeneration {
     val formats = StrictPhaseOutputParser.formatsFor(text)
     val generatedByFormat = formats.associateWith { format ->
-      StructuralRepairSyntax.generateCandidates(text, format)
+      StructuralRepairSyntax.generateCandidates(text, format, MAX_CANDIDATES)
     }
     val candidates = generatedByFormat.flatMap { (format, generated) ->
       generated.take(MAX_CANDIDATES).map { candidate -> candidate.copy(format = format) }
@@ -387,12 +388,14 @@ private object StructuralRepairCandidateEngine {
         !StructuralRepairSyntax.isConservativeYamlFlow(text)
     return CandidateGeneration(
       candidates = candidates,
-      limitExceeded = generatedByFormat.values.any { it.size > MAX_CANDIDATES },
+      limitExceeded = formats.any { format ->
+        StructuralRepairSyntax.exceedsCandidateLimit(text, format, MAX_CANDIDATES)
+      } || generatedByFormat.values.any { it.size > MAX_CANDIDATES },
       unsupportedYaml = unsupportedYaml,
     )
   }
 
-  private fun evaluateCandidates(
+  internal fun evaluateCandidates(
     candidates: List<Candidate>,
     originalText: String,
     sourceLabel: String,
@@ -469,13 +472,17 @@ private object StructuralRepairCandidateEngine {
 }
 
 private object StructuralRepairSyntax {
-  fun generateCandidates(text: String, format: FeatureTaskRuntimePhaseOutputFormat): List<Candidate> {
+  fun generateCandidates(
+    text: String,
+    format: FeatureTaskRuntimePhaseOutputFormat,
+    maxCandidates: Int,
+  ): List<Candidate> {
     if (format == FeatureTaskRuntimePhaseOutputFormat.YAML && !isConservativeYamlFlow(text)) {
       return emptyList()
     }
     val scan = scanDelimiters(text)
     val candidates = buildList {
-      scan.unmatchedClosingOffsets.forEach { offset ->
+      scan.unmatchedClosingOffsets.asSequence().take(maxCandidates + 1).forEach { offset ->
         add(Candidate(text.removeRange(offset, offset + 1), format, offset))
       }
       scan.firstMismatchedClosing?.let { mismatch ->
@@ -494,6 +501,15 @@ private object StructuralRepairSyntax {
       }
     }
     return candidates.distinctBy(Candidate::text)
+  }
+
+  fun exceedsCandidateLimit(text: String, format: FeatureTaskRuntimePhaseOutputFormat, maxCandidates: Int): Boolean {
+    if (format == FeatureTaskRuntimePhaseOutputFormat.YAML && !isConservativeYamlFlow(text)) return false
+    val scan = scanDelimiters(text)
+    val candidateCount = scan.unmatchedClosingOffsets.size +
+      (if (scan.firstMismatchedClosing?.missingCloser != null) 1 else 0) +
+      (if (scan.openingStack.size == 1) 1 else 0)
+    return candidateCount > maxCandidates
   }
 
   fun isConservativeYamlFlow(text: String): Boolean {
@@ -702,7 +718,7 @@ private data class CandidateGeneration(
   val unsupportedYaml: Boolean,
 )
 
-private data class Candidate(
+internal data class Candidate(
   val text: String,
   val format: FeatureTaskRuntimePhaseOutputFormat,
   val changedOffset: Int,

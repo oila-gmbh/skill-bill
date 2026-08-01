@@ -74,6 +74,8 @@ Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_c
 
 When a subtask's work landed outside the runtime — a child blocked and the implementation was finished by hand on the feature branch — the runtime cannot see it and will keep proposing that subtask again. Record it with `skill-bill goal accept <issue-key> --subtask <id> --commit <sha> --reason <text>`, which validates the commit and writes a durable acceptance the goal reconciles from. Do not edit `decomposition-manifest.yaml` to force progress.
 
+A goal reported as paused carries a durable operator pause. Launching the goal again clears it and continues; `skill-bill goal resume <issue-key>` clears the pause boundary without starting child runs when you want the state cleared first. Do not reset or hand-edit durable state to leave a pause.
+
 For `no_match`, invoke `bill-feature-spec` first in the current session unless the direct-dispatch rules below find existing governed artifacts. Do not write spec artifacts directly and do not fork spec-preparation logic.
 
 Wait for `bill-feature-spec` to produce a parent spec, one or more executable subtask specs, and a schema-valid manifest under `.feature-specs/{ISSUE_KEY}-{feature-name}/`. Preparation mode is sizing metadata and does not select the executor.
@@ -96,6 +98,21 @@ For every authoritative manifest, regardless of preparation mode or subtask card
 - Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
 
 If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surface the failure instead of guessing a route.
+
+## Fresh-conversation follow-up
+
+For a fresh conversation, the durable handoff is the canonical repository realpath
+and issue key. The next session should inspect or resume the existing runtime
+state from those values:
+
+```text
+repository: repo-root-realpath-v1:/absolute/path/to/repository
+issue_key: SKILL-154
+```
+
+Do not copy the transcript or transfer planning, implementation, audit, review,
+validation, diagnostic, or raw child payloads. Durable workflow state and the
+governed child context are authoritative.
 
 ## Status Requests
 

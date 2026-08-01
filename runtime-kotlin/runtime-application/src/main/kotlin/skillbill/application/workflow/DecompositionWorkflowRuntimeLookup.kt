@@ -44,8 +44,11 @@ internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
     .filter { row ->
       val snapshot = row.toSnapshot()
       !snapshot.isGoalContinuationChildWorkflow() &&
-        snapshot.hasDecompositionPlan() &&
-        row.issueKey == normalizedIssueKey
+        row.issueKey == normalizedIssueKey &&
+        (
+          snapshot.hasDecompositionPlan() ||
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY in decodeArtifacts(snapshot.artifactsJson)
+          )
     }
     .forEach { row ->
       val manifest = row.toSnapshot().decompositionRuntime(validator)
@@ -89,7 +92,10 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
     val snapshot = row.toSnapshot()
     if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
-    if (snapshot.hasDecompositionPlan() && manifest.issueKey == normalizedIssueKey) {
+    if (
+      (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == normalizedIssueKey) &&
+      manifest.issueKey == normalizedIssueKey
+    ) {
       DecomposedParentCandidate(row, manifest)
     } else {
       null
@@ -112,7 +118,9 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflowForRuntime(
   validator: DecompositionManifestValidator,
 ): WorkflowStateRecord? = listFeatureImplementWorkflows(Int.MAX_VALUE).firstOrNull { row ->
   val snapshot = row.toSnapshot()
-  snapshot.hasDecompositionPlan() && snapshot.decompositionRuntime(validator)?.sameRuntimeIdentity(manifest) == true
+  !snapshot.isGoalContinuationChildWorkflow() &&
+    (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == manifest.issueKey) &&
+    snapshot.decompositionRuntime(validator)?.sameRuntimeIdentity(manifest) == true
 }
 
 private fun DecompositionManifest.sameRuntimeIdentity(other: DecompositionManifest): Boolean =
@@ -183,7 +191,7 @@ private fun DecomposedParentCandidate.isStaleAbandonedLineage(
 internal fun DecompositionManifest.isActiveGoalRuntime(): Boolean = status !in setOf("complete", "skipped") &&
   subtasks.any { subtask -> subtask.status !in setOf("complete", "skipped") }
 
-private fun WorkflowStateSnapshot.isGoalContinuationChildWorkflow(): Boolean {
+internal fun WorkflowStateSnapshot.isGoalContinuationChildWorkflow(): Boolean {
   val goalContinuation = decodeArtifacts(artifactsJson)["goal_continuation"].asStringAnyMapOrNull() ?: return false
   return goalContinuation["enabled"] == true ||
     goalContinuation.containsKey("issue_key") ||

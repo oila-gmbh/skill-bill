@@ -46,11 +46,14 @@ enum class GoalRunnerStopReason {
    * awaiting the bounded operator decision; the subtask stays resumable at its recorded step.
    */
   AWAITING_OPERATOR_DECISION,
+
+  /** The parent reached a durable operator or stop-after-subtask pause boundary. */
+  PAUSED,
   ;
 
   companion object {
     /** Stop reasons that leave the subtask resumable rather than stopped. */
-    val RESUMABLE_STOP_REASONS = setOf(RECONCILED_RESUMABLE, AWAITING_OPERATOR_DECISION)
+    val RESUMABLE_STOP_REASONS = setOf(RECONCILED_RESUMABLE, AWAITING_OPERATOR_DECISION, PAUSED)
   }
 }
 
@@ -216,6 +219,61 @@ sealed interface GoalRunnerSelection {
   data object Done : GoalRunnerSelection
 }
 
+data class GoalRunnerExecutionLease(
+  val generation: Long,
+  val ownerToken: String,
+  val hostIdentity: String,
+  val bootIdentity: String,
+  val pid: Long,
+  val processBirthToken: String,
+  val heartbeatAt: String,
+  val expiresAt: String,
+) {
+  init {
+    require(generation > 0) { "execution lease generation must be positive." }
+    require(ownerToken.isNotBlank()) { "execution lease ownerToken must not be blank." }
+    require(hostIdentity.isNotBlank()) { "execution lease hostIdentity must not be blank." }
+    require(bootIdentity.isNotBlank()) { "execution lease bootIdentity must not be blank." }
+    require(pid > 0) { "execution lease pid must be positive." }
+    require(processBirthToken.isNotBlank()) { "execution lease processBirthToken must not be blank." }
+    require(heartbeatAt.isNotBlank()) { "execution lease heartbeatAt must not be blank." }
+    require(expiresAt.isNotBlank()) { "execution lease expiresAt must not be blank." }
+  }
+}
+
+/** Durable parent-owned pause, stop-after, and execution state, separate from the checked-in manifest. */
+data class GoalRunnerControlState(
+  val stopAfterSubtaskId: Int? = null,
+  val pauseRequested: Boolean = false,
+  val pauseConsumed: Boolean = false,
+  val paused: Boolean = false,
+  val pauseReason: String? = null,
+  val stopAfterConsumed: Boolean = false,
+  val repositoryIdentity: String? = null,
+  val executionLease: GoalRunnerExecutionLease? = null,
+) {
+  init {
+    stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
+    require(!pauseConsumed || pauseRequested) {
+      "pauseConsumed cannot be true when pauseRequested is false."
+    }
+    require(!stopAfterConsumed || stopAfterSubtaskId != null) {
+      "stopAfterConsumed requires stopAfterSubtaskId."
+    }
+    pauseReason?.let { require(it.isNotBlank()) { "pauseReason must not be blank when provided." } }
+    require(!paused || pauseReason != null) { "paused control state requires pauseReason." }
+    repositoryIdentity?.let {
+      require(it.isNotBlank()) { "repositoryIdentity must not be blank when provided." }
+    }
+  }
+
+  fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (
+    stopAfterSubtaskId != null &&
+      !stopAfterConsumed &&
+      manifest.subtasks.any { it.id == stopAfterSubtaskId && it.status == "complete" }
+    )
+}
+
 data class GoalRunnerStopReport(
   val issueKey: String,
   val subtaskId: Int,
@@ -239,6 +297,7 @@ sealed interface GoalRunnerRunReport {
     val subtasksBlocked: Int,
     val unaddressedFindingCount: Int? = 0,
     val unaddressedSeverityBreakdown: Map<String, Int> = emptyMap(),
+    val featureName: String? = null,
   ) : GoalRunnerRunReport
 
   data class Stopped(
@@ -293,6 +352,10 @@ data class GoalRunnerStatusProjection(
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+  val paused: Boolean = false,
+  val pauseRequested: Boolean = false,
+  val pauseReason: String? = null,
+  val stopAfterSubtaskId: Int? = null,
 )
 
 /**
@@ -329,6 +392,10 @@ data class GoalRunnerStatusProjectionExtras(
   val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
   val findingsInScope: Int? = null,
   val outOfBandAcceptances: List<GoalRunnerAcceptedSubtask> = emptyList(),
+  val paused: Boolean = false,
+  val pauseRequested: Boolean = false,
+  val pauseReason: String? = null,
+  val stopAfterSubtaskId: Int? = null,
 )
 
 object GoalRunnerStatusProjector {
@@ -374,6 +441,10 @@ object GoalRunnerStatusProjector {
       reAttemptCauseCounts = extras.reAttemptCauseCounts,
       findingsInScope = extras.findingsInScope,
       outOfBandAcceptances = extras.outOfBandAcceptances,
+      paused = extras.paused,
+      pauseRequested = extras.pauseRequested,
+      pauseReason = extras.pauseReason,
+      stopAfterSubtaskId = extras.stopAfterSubtaskId,
     )
   }
 

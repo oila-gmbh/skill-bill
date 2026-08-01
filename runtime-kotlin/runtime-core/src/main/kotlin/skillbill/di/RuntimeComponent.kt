@@ -12,11 +12,13 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
+import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.DurableGoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
@@ -358,6 +360,12 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalRunnerExecutionCoordinator(
+    coordinator: DefaultGoalRunnerExecutionCoordinator,
+  ): GoalRunnerExecutionCoordinator = coordinator
 
   @Provides
   @JvmSynthetic

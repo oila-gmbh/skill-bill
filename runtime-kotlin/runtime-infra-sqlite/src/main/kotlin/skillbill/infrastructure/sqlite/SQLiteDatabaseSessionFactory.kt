@@ -23,7 +23,7 @@ class SQLiteDatabaseSessionFactory(
 
   override fun databaseExists(dbOverride: String?): Boolean = Files.exists(resolveDbPath(dbOverride))
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openReadDb(
     cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,

@@ -40,6 +40,14 @@ class DecompositionManifestSchemaValidatorTest {
   }
 
   @Test
+  fun `contract 0_5 linear manifest without an issue id remains readable for legacy recovery`() {
+    DecompositionManifestSchemaValidator.validateYamlText(
+      validManifestYaml(specSourceValue = "linear"),
+      "legacy-linear-spec-source.yaml",
+    )
+  }
+
+  @Test
   fun `manifest with unsupported spec_source value fails with typed schema error`() {
     val yaml = validManifestYaml(specSourceValue = "github")
 

@@ -152,7 +152,9 @@ class DecompositionManifestValidationTest {
     subtasks[1]["id"] = 1
     subtasks[1]["dependencies"] = emptyList<Map<String, Any?>>()
 
-    decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "array-order-subtasks")
+    val decoded = decodeDecompositionManifestMap(wireMap, realDecompositionManifestValidator, "array-order-subtasks")
+
+    assertEquals(listOf(2, 1), decoded.subtasks.map { it.id })
   }
 
   @Test

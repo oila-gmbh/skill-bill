@@ -1,8 +1,10 @@
 package skillbill.application.workflow
 
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
+import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -112,6 +114,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
   unitOfWork: UnitOfWork,
   validator: DecompositionManifestValidator,
 ) {
+  migrateLegacyGoalRunnerControls(unitOfWork, parentRecord)
   val updatedParent = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
     parentRecord,
@@ -119,17 +122,22 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
       workflowStatus = parentRecord.workflowStatus,
       currentStepId = parentRecord.currentStepId,
       stepUpdates = null,
-      artifactsPatch = mapOf(
-        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-          manifest,
-          validator,
+      artifactsPatch = LinkedHashMap(decodeArtifacts(parentRecord.artifactsJson)).apply {
+        remove("goal_review_policy")
+        remove("goal_out_of_band_acceptances")
+        put(
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-        ),
-      ),
+          encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+        )
+      },
       sessionId = parentRecord.sessionId.orEmpty(),
+      replaceArtifacts = true,
     ),
   )
-  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updatedParent)
+  WorkflowFamily.IMPLEMENT.saveRecord(
+    unitOfWork.workflowStates,
+    updatedParent.toRecord().copy(issueKey = manifest.issueKey),
+  )
 }
 
 internal fun DecompositionManifest.withStartedSubtask(

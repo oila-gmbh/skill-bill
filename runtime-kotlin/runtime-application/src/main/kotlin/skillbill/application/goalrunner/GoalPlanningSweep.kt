@@ -17,7 +17,9 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -25,8 +27,10 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -39,6 +43,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
@@ -65,6 +70,8 @@ internal data class GoalPlanningSharedContext(
   val issueKey: String,
   val normalizedIssueKey: String,
   val parentWorkflowId: String,
+  val manifest: DecompositionManifest,
+  val controlState: GoalRunnerControlState,
   val repositoryIdentity: String,
   val parentSpec: String,
   val parentSpecHash: String,
@@ -78,7 +85,7 @@ internal data class GoalPlanningSharedContext(
   val planningPacket: Map<String, Any?>,
 )
 
-@Suppress("LongParameterList", "TooManyFunctions")
+@Suppress("LargeClass", "LongParameterList", "TooManyFunctions")
 @Inject
 class DefaultGoalPlanningSweep(
   private val checkpoint: GoalPlanningPreparationCheckpoint,
@@ -89,6 +96,7 @@ class DefaultGoalPlanningSweep(
   private val contextDiscovery: GoalPlanningContextDiscovery,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   private val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+  private val manifestStore: GoalRunnerManifestStore,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -319,7 +327,7 @@ class DefaultGoalPlanningSweep(
     var priorSchemaFailure: String? = null
     repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) { attemptIndex ->
       val attempt = attemptIndex + 1
-      val production = produceAttempt(
+      val production = produceAttemptOrStop(
         shared,
         request,
         subtask,
@@ -328,11 +336,21 @@ class DefaultGoalPlanningSweep(
         recordedOutputs,
         priorSchemaFailure,
       )
-      if (production is GoalPlanningPhaseProduction.Stopped) {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-        return production
+      when (production) {
+        is GoalPlanningPhaseProduction.Stopped -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          return production
+        }
+
+        is GoalPlanningPhaseProduction.SchemaRejected -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          priorSchemaFailure = production.reason
+          return@repeat
+        }
+
+        is GoalPlanningPhaseProduction.Captured -> Unit
       }
-      val captured = production as GoalPlanningPhaseProduction.Captured
+      val captured = production
       val payload = finalizePayload(captured.payload)
       val accepted = if (payload == captured.payload) {
         skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
@@ -359,6 +377,36 @@ class DefaultGoalPlanningSweep(
     }
     return GoalPlanningPhaseProduction.Stopped(
       stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, priorSchemaFailure.orEmpty()), phaseId),
+    )
+  }
+
+  @Suppress("TooGenericExceptionCaught")
+  private fun produceAttemptOrStop(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
+  ): GoalPlanningPhaseProduction = try {
+    produceAttempt(
+      shared,
+      request,
+      subtask,
+      runInvariants,
+      phaseId,
+      recordedOutputs,
+      priorSchemaFailure,
+    )
+  } catch (error: Exception) {
+    GoalPlanningPhaseProduction.Stopped(
+      stopped(
+        shared,
+        subtask?.id ?: 0,
+        unexpectedPlanningFailureReason(phaseId, error),
+        phaseId,
+      ),
     )
   }
 
@@ -392,10 +440,11 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun fixLoopExhaustedReason(phaseId: String, lastFailure: String): String =
-    "Goal planning '$phaseId' produced a projection-invalid output on every attempt " +
+    "Goal planning '$phaseId' produced schema-invalid output on every attempt " +
       "(cap=${FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS}); nothing was checkpointed. " +
-      "Last projection failure: $lastFailure"
+      "Last schema failure: $lastFailure"
 
+  @Suppress("ReturnCount")
   private fun produceAttempt(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
@@ -406,6 +455,7 @@ class DefaultGoalPlanningSweep(
     priorSchemaFailure: String?,
   ): GoalPlanningPhaseProduction {
     val currentSubtaskId = subtask?.id ?: 0
+    planningPauseOutcome(shared, currentSubtaskId, phaseId)?.let { return it }
     // A recovered shared preplan is already settled by the time its bounded projection is parsed here,
     // so an unhandled rejection would crash the goal driver with no Stopped outcome, no blocked_reason
     // and no closed telemetry segment, then crash identically on every resume. Block durably instead.
@@ -422,52 +472,106 @@ class DefaultGoalPlanningSweep(
           stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
         )
       }
-    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
-    val outcome = subtaskLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = shared.invokedAgentId,
-        configuredAgentOverrideId = shared.configuredAgentOverrideId,
-        skillRunRequest = SkillRunRequest(
-          issueKey = request.issueKey,
-          repoRoot = shared.repoRoot,
-          subtaskId = subtask?.id,
-          dbPathOverride = shared.dbPathOverride,
-          // Planning checkpoints only after the child exits, so it emits no durable progress
-          // token and no worktree activity. It proves liveness by streaming output instead:
-          // the idle window then bounds silence, and the budget bounds total time.
-          timeout = request.planningBudget,
-          progressIdleTimeout = request.progressIdleTimeout,
-          outputSink = request.outputSink,
-          promptOverride = prompt,
-          streamOutputForLiveness = true,
-        ),
-      ),
-    )
+    val outcome = runCatching { launchPlanningAttempt(shared, request, subtask, phaseId, prompt) }
+      .getOrElse { error ->
+        if (error is GoalRunnerLaunchAuthorizationDeniedException) {
+          return planningPauseOutcome(shared, currentSubtaskId, phaseId, error.controlState.pauseReason)
+            ?: error("planning pause outcome was unexpectedly absent")
+        }
+        throw error
+      }
     val stdout = stdoutFor(outcome)
       ?: return GoalPlanningPhaseProduction.Stopped(
         stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
       )
-    return runCatching {
-      outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
-    }.fold(
-      onSuccess = { accepted ->
-        val payload = accepted.normalizedOutput.envelope
-        if (payload["status"] != "completed") {
-          GoalPlanningPhaseProduction.Stopped(
-            stopped(shared, currentSubtaskId, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
-          )
-        } else {
-          GoalPlanningPhaseProduction.Captured(
-            accepted.normalizedOutput.canonicalJson,
-            accepted.normalizedOutput,
-            accepted.repairEvidence,
-          )
-        }
-      },
-      onFailure = { error ->
-        GoalPlanningPhaseProduction.Stopped(stopped(shared, currentSubtaskId, malformedReason(phaseId, error), phaseId))
-      },
+    return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId)
+  }
+
+  private fun planningPauseOutcome(
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+    pauseReason: String? = null,
+  ): GoalPlanningPhaseProduction.Stopped? {
+    val controls = manifestStore.controlState(shared.parentWorkflowId, shared.dbPathOverride)
+    if (!controls.requiresPauseBoundary(shared.manifest)) return null
+    val reason = pauseReason?.let { " (reason=$it)" }.orEmpty()
+    return GoalPlanningPhaseProduction.Stopped(
+      stopped(
+        shared,
+        subtaskId,
+        "Goal planning reached a durable pause boundary before launching phase '$phaseId'$reason.",
+        phaseId,
+        GoalRunnerStopReason.PAUSED,
+      ),
     )
+  }
+
+  private fun validatePlanningAttemptOutput(
+    stdout: String,
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+  ): GoalPlanningPhaseProduction = runCatching {
+    outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
+  }.fold(
+    onSuccess = { accepted ->
+      val payload = accepted.normalizedOutput.envelope
+      if (payload["status"] != "completed") {
+        GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, subtaskId, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
+        )
+      } else {
+        GoalPlanningPhaseProduction.Captured(
+          accepted.normalizedOutput.canonicalJson,
+          accepted.normalizedOutput,
+          accepted.repairEvidence,
+        )
+      }
+    },
+    onFailure = { error ->
+      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        GoalPlanningPhaseProduction.SchemaRejected(
+          error.payloadFreeReason ?: "Goal planning phase output was rejected by its schema contract.",
+        )
+      } else {
+        GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, subtaskId, malformedReason(phaseId, error), phaseId),
+        )
+      }
+    },
+  )
+
+  private fun launchPlanningAttempt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    phaseId: String,
+    prompt: String,
+  ): AgentRunLaunchOutcome {
+    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
+    val launch = {
+      subtaskLauncher.launch(
+        GoalRunnerSubtaskLaunchRequest(
+          invokedAgentId = shared.invokedAgentId,
+          configuredAgentOverrideId = shared.configuredAgentOverrideId,
+          skillRunRequest = SkillRunRequest(
+            issueKey = request.issueKey,
+            repoRoot = shared.repoRoot,
+            subtaskId = subtask?.id,
+            dbPathOverride = shared.dbPathOverride,
+            timeout = request.planningBudget,
+            progressIdleTimeout = request.progressIdleTimeout,
+            outputSink = request.outputSink,
+            promptOverride = prompt,
+            streamOutputForLiveness = true,
+          ),
+        ),
+      )
+    }
+    return manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride)
+      ?.withAuthorization(launch)
+      ?: launch()
   }
 
   private fun composePlanningPrompt(
@@ -542,6 +646,8 @@ class DefaultGoalPlanningSweep(
       issueKey = request.issueKey,
       normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
       parentWorkflowId = state.parentWorkflowId,
+      manifest = state.manifest,
+      controlState = state.controlState,
       repositoryIdentity = repositoryIdentity,
       parentSpec = parentSpec,
       parentSpecHash = parentSpecHash,
@@ -618,6 +724,10 @@ class DefaultGoalPlanningSweep(
   private fun malformedReason(phaseId: String, error: Throwable): String =
     "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
 
+  private fun unexpectedPlanningFailureReason(phaseId: String, error: Exception): String =
+    "Goal planning '$phaseId' failed before its output could be checkpointed: " +
+      "${error::class.simpleName ?: "Exception"}: ${error.message.orEmpty()}"
+
   private fun unsuccessfulStatusReason(phaseId: String, status: Any?): String =
     "Goal planning '$phaseId' stopped with status '${status ?: "missing"}'; its output was not checkpointed."
 
@@ -645,10 +755,11 @@ class DefaultGoalPlanningSweep(
     subtaskId: Int,
     blockedReason: String,
     lastResumableStep: String = PHASE_PREPLAN,
+    reason: GoalRunnerStopReason = GoalRunnerStopReason.BLOCKED,
   ): GoalPlanningSweepOutcome.Stopped = GoalPlanningSweepOutcome.Stopped(
     issueKey = shared.issueKey,
     currentSubtaskId = subtaskId,
-    reason = GoalRunnerStopReason.BLOCKED,
+    reason = reason,
     blockedReason = blockedReason,
     lastResumableStep = lastResumableStep,
   )

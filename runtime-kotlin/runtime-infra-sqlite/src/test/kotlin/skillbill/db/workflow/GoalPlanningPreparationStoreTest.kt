@@ -5,6 +5,8 @@ import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
+import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
@@ -15,6 +17,7 @@ import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -49,6 +52,26 @@ class GoalPlanningPreparationStoreTest {
       assertEquals(GoalPlanningStatusState.PREPARED, prepared.state)
       assertNull(prepared.currentPlanningSubtaskId)
       assertNull(prepared.reason)
+    }
+  }
+
+  @Test
+  fun `bounded status reads while another connection holds the writer lock`() {
+    val tempDir = Files.createTempDirectory("skillbill-planning-status-contention")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    database.read(dbPath.toString()) { Unit }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+      try {
+        val status = database.read(dbPath.toString()) { unitOfWork ->
+          unitOfWork.goalPlanningPreparations.boundedStatus("goal-contention", listOf(1, 2))
+        }
+        assertEquals(GoalPlanningStatusState.NOT_STARTED, status.state)
+      } finally {
+        writer.createStatement().use { it.execute("ROLLBACK") }
+      }
     }
   }
 

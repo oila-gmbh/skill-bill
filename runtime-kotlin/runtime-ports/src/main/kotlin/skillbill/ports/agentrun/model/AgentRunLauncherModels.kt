@@ -47,6 +47,7 @@ data class SkillRunRequest(
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
   val nativeReviewWorkerName: String? = null,
+  val spawnAuthorization: AgentRunSpawnAuthorization? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -70,6 +71,10 @@ data class SkillRunRequest(
       "A native review worker name is valid only for a governed review launch."
     }
   }
+}
+
+interface AgentRunSpawnAuthorization {
+  fun <T> withAuthorization(spawn: () -> T): T
 }
 
 enum class ConversationIsolation(val forkTurns: String) {

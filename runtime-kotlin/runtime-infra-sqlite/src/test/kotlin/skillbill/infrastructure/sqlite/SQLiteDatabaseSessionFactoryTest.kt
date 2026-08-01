@@ -6,6 +6,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.nio.file.Files
+import java.sql.DriverManager
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -61,6 +62,29 @@ class SQLiteDatabaseSessionFactoryTest {
     assertEquals(false, database.databaseExists(dbPath.toString()))
     database.read(dbPath.toString()) { Unit }
     assertEquals(true, database.databaseExists(dbPath.toString()))
+  }
+
+  @Test
+  fun `read opens an existing database while another connection holds the writer lock`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-contention")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val workflowId = "wfl-read-contention"
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+      try {
+        val status = database.read(dbPath.toString()) { unitOfWork ->
+          unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        }
+        assertEquals("running", status)
+      } finally {
+        writer.createStatement().use { it.execute("ROLLBACK") }
+      }
+    }
   }
 
   @Test

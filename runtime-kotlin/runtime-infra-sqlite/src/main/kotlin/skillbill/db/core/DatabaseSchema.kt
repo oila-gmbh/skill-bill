@@ -26,6 +26,7 @@ internal object DatabaseSchema {
       "goal_planning_preparations",
       "goal_shared_preplans",
       "goal_subtask_plans",
+      "goal_runner_controls",
       "telemetry_reconciliation_state",
       "unaddressed_findings",
       "rejected_output_diagnostics",
@@ -465,6 +466,15 @@ internal object DatabaseSchema {
         mode TEXT NOT NULL DEFAULT 'runtime',
         finished_event_emitted_at TEXT,
         PRIMARY KEY (parent_workflow_id, issue_key)
+      )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS goal_runner_controls (
+        parent_workflow_id TEXT PRIMARY KEY,
+        review_policy_json TEXT,
+        out_of_band_acceptances_json TEXT NOT NULL DEFAULT '[]',
+        control_state_json TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
       """.trimIndent(),
       """

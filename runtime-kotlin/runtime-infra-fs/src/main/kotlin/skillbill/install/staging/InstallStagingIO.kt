@@ -3,6 +3,7 @@
 package skillbill.install.staging
 
 import skillbill.agentaddon.AgentAddonPointer
+import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.model.RenderedSkill
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
@@ -70,7 +71,10 @@ internal fun reuseInstallStaging(
     stream
       .sorted()
       .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-      .filter { path -> path.fileName.toString() != INSTALL_STAGING_CONTENT_HASH_FILENAME }
+      .filter { path ->
+        path.fileName.toString() != INSTALL_STAGING_CONTENT_HASH_FILENAME &&
+          path.fileName.toString() != SKILL_CONTENT_IDENTITY_FILENAME
+      }
       .filter { path -> path.toAbsolutePath().normalize() != skillFileNormalized }
       .toList()
   }

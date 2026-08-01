@@ -553,34 +553,22 @@ internal object DatabaseMigrations {
       DatabaseMigration(
         version = 17,
         name = "persist-goal-planning-repair-evidence",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            listOf("goal_shared_preplans", "goal_subtask_plans").forEach { table ->
-              val hasEvidenceColumn = statement.executeQuery(
-                "SELECT 1 FROM pragma_table_info('$table') WHERE name = 'repair_evidence_json'",
-              ).use { rows -> rows.next() }
-              if (!hasEvidenceColumn) {
-                statement.execute("ALTER TABLE $table ADD COLUMN repair_evidence_json TEXT")
-              }
-            }
-          }
-        },
+        operation = ::persistGoalPlanningRepairEvidence,
       ),
       DatabaseMigration(
         version = 18,
         name = "persist-legacy-goal-planning-repair-evidence",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            listOf("preplan_repair_evidence_json", "plan_repair_evidence_json").forEach { column ->
-              val hasEvidenceColumn = statement.executeQuery(
-                "SELECT 1 FROM pragma_table_info('goal_planning_preparations') WHERE name = '$column'",
-              ).use { rows -> rows.next() }
-              if (!hasEvidenceColumn) {
-                statement.execute("ALTER TABLE goal_planning_preparations ADD COLUMN $column TEXT")
-              }
-            }
-          }
-        },
+        operation = ::persistLegacyGoalPlanningRepairEvidence,
+      ),
+      DatabaseMigration(
+        version = 19,
+        name = "add-goal-runner-controls",
+        operation = ::addGoalRunnerControls,
+      ),
+      DatabaseMigration(
+        version = 20,
+        name = "add-goal-runner-control-state",
+        operation = ::addGoalRunnerControlState,
       ),
     ).also(::requireDeterministicMigrations)
 
@@ -614,6 +602,58 @@ internal object DatabaseMigrations {
       statement.executeQuery().use { rows -> rows.next() }
     }
     return if (hasRepairEvidence) ",\n                repair_evidence_json TEXT" else ""
+  }
+}
+
+private fun persistGoalPlanningRepairEvidence(connection: Connection) {
+  connection.createStatement().use { statement ->
+    listOf("goal_shared_preplans", "goal_subtask_plans").forEach { table ->
+      val hasEvidenceColumn = statement.executeQuery(
+        "SELECT 1 FROM pragma_table_info('$table') WHERE name = 'repair_evidence_json'",
+      ).use { rows -> rows.next() }
+      if (!hasEvidenceColumn) {
+        statement.execute("ALTER TABLE $table ADD COLUMN repair_evidence_json TEXT")
+      }
+    }
+  }
+}
+
+private fun persistLegacyGoalPlanningRepairEvidence(connection: Connection) {
+  connection.createStatement().use { statement ->
+    listOf("preplan_repair_evidence_json", "plan_repair_evidence_json").forEach { column ->
+      val hasEvidenceColumn = statement.executeQuery(
+        "SELECT 1 FROM pragma_table_info('goal_planning_preparations') WHERE name = '$column'",
+      ).use { rows -> rows.next() }
+      if (!hasEvidenceColumn) {
+        statement.execute("ALTER TABLE goal_planning_preparations ADD COLUMN $column TEXT")
+      }
+    }
+  }
+}
+
+private fun addGoalRunnerControls(connection: Connection) {
+  connection.createStatement().use { statement ->
+    statement.execute(
+      """
+      CREATE TABLE IF NOT EXISTS goal_runner_controls (
+        parent_workflow_id TEXT PRIMARY KEY,
+        review_policy_json TEXT,
+        out_of_band_acceptances_json TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+    )
+  }
+}
+
+private fun addGoalRunnerControlState(connection: Connection) {
+  connection.createStatement().use { statement ->
+    val hasControlState = statement.executeQuery(
+      "SELECT 1 FROM pragma_table_info('goal_runner_controls') WHERE name = 'control_state_json'",
+    ).use { rows -> rows.next() }
+    if (!hasControlState) {
+      statement.execute("ALTER TABLE goal_runner_controls ADD COLUMN control_state_json TEXT")
+    }
   }
 }
 
@@ -653,6 +693,19 @@ internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -
     createStatement().use { it.execute("COMMIT") }
     result
   } catch (error: Exception) {
+    rollbackImmediateTransaction()
+    throw error
+  }
+}
+
+@Suppress("TooGenericExceptionCaught")
+internal inline fun <T> Connection.inReadTransaction(block: Connection.() -> T): T {
+  createStatement().use { it.execute("BEGIN") }
+  return try {
+    val result = block()
+    createStatement().use { it.execute("COMMIT") }
+    result
+  } catch (error: Throwable) {
     rollbackImmediateTransaction()
     throw error
   }

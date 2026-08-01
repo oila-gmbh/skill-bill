@@ -15,16 +15,17 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
-import skillbill.application.model.DEFAULT_GOAL_EVENT_SEQUENCE_START
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
+import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
-import skillbill.application.model.GoalRunnerRunEvent
+import skillbill.application.model.GoalRunnerResumeResult
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.system.RuntimeProvenanceService
@@ -50,11 +51,18 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 @Inject
+class GoalControlSubcommands(
+  val pause: GoalPauseCommand,
+  val resume: GoalResumeCommand,
+  val reset: GoalResetCommand,
+  val accept: GoalAcceptCommand,
+)
+
+@Inject
 class GoalRunSubcommands(
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
-  val reset: GoalResetCommand,
-  val accept: GoalAcceptCommand,
+  val controls: GoalControlSubcommands,
   val findings: GoalFindingsCommand,
 )
 
@@ -108,6 +116,10 @@ class GoalRunCommand(
       "${DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes}). Planning writes no durable progress, so it is " +
       "bounded by this budget rather than the progress-idle timeout. Pass 0 to disable.",
   ).int().default(DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes.toInt())
+  private val stopAfterSubtask by option(
+    "--stop-after-subtask",
+    help = "Pause the parent after this positive subtask ID reaches durable terminal success.",
+  ).int()
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
@@ -123,8 +135,10 @@ class GoalRunCommand(
     subcommands(
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
-      goalRunSubcommands.reset,
-      goalRunSubcommands.accept,
+      goalRunSubcommands.controls.pause,
+      goalRunSubcommands.controls.resume,
+      goalRunSubcommands.controls.reset,
+      goalRunSubcommands.controls.accept,
       goalRunSubcommands.findings,
     )
   }
@@ -144,6 +158,9 @@ class GoalRunCommand(
       ),
     )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
+    if (stopAfterSubtask != null && requireNotNull(stopAfterSubtask) <= 0) {
+      throw UsageError("--stop-after-subtask must be a positive integer.")
+    }
     val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
     val receivingAgents = listOfNotNull(
       invokedAgentId,
@@ -160,10 +177,14 @@ class GoalRunCommand(
         receivingAgents,
       )
     }
+    val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
+      ?: Path.of("").toAbsolutePath().normalize()
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
       state = state,
       liveOutput = !noLiveOutput,
+      repoRoot = effectiveRepoRoot,
+      dbOverride = state.dbOverride,
       runtimeProvenance = runtimeProvenanceService.current(
         executablePathHint = state.environment[RUNTIME_EXECUTABLE_ENV],
         classPath = state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
@@ -172,7 +193,9 @@ class GoalRunCommand(
       ),
     )
     presenter.emitStartupProvenance()
-    val report = goalRunner.run(runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter))
+    val report = goalRunner.run(
+      runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter, effectiveRepoRoot),
+    )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
   }
@@ -182,9 +205,10 @@ class GoalRunCommand(
     invokedAgentId: String,
     hydratedSelection: HydratedAgentAddonSelection,
     presenter: GoalRunPresenter,
+    effectiveRepoRoot: Path,
   ): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = runIssueKey,
-    repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
     dbPathOverride = state.dbOverride,
@@ -196,6 +220,7 @@ class GoalRunCommand(
     codeReviewMode = parseCodeReviewMode(codeReviewMode),
     parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
     agentAddonSelection = hydratedSelection,
+    stopAfterSubtaskId = stopAfterSubtask,
   )
 }
 
@@ -253,6 +278,10 @@ class GoalStatusCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("status", "Show read-only decomposed goal status.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val monitorOnly by option(
+    "--monitor",
+    help = "Render one bounded read-only snapshot for bill-monitor; never launches or polls a goal.",
+  ).flag(default = false)
   private val agent by option(
     "--agent",
     help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
@@ -285,15 +314,31 @@ class GoalStatusCommand(
   ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
 
   override fun run() {
+    val options = statusCliRequestOptions()
+    if (options.monitorOnly && !FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(options.issueKey)) {
+      throw UsageError(
+        "Monitor requires one supported issue key matching " +
+          "${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
+      )
+    }
+    if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {
+      throw UsageError("Monitor accepts only one bounded status snapshot; omit diff options.")
+    }
     val projection = goalRunnerStatusService.status(
-      state.goalStatusRequest(statusCliRequestOptions()),
+      state.goalStatusRequest(options),
     )
-    val payload = projection.toGoalStatusCliMap(issueKey)
-    state.completeText(goalStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
+    val payload = if (options.monitorOnly) {
+      projection.toBoundedGoalStatusCliMap(issueKey)
+    } else {
+      projection.toGoalStatusCliMap(issueKey)
+    }
+    val text = if (options.monitorOnly) goalMonitorStatusText(payload) else goalStatusText(payload)
+    state.completeText(text, payload, exitCode = payload.goalStatusExitCode())
   }
 
   private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
     issueKey = issueKey,
+    monitorOnly = monitorOnly,
     agent = agent,
     agentOverride = agentOverride,
     repoRoot = repoRoot,
@@ -305,6 +350,44 @@ class GoalStatusCommand(
       selectedDiffMaxBytes = diffHunkMaxBytes,
     ),
   )
+}
+
+@Inject
+class GoalPauseCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("pause", "Request a durable pause for an already-running goal.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
+
+  override fun run() {
+    val result = goalRunnerStatusService.pause(
+      issueKey,
+      state.dbOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+    )
+    val payload = result.toGoalPauseCliMap()
+    state.completeText(goalPauseText(payload), payload, exitCode = payload.goalPauseExitCode())
+  }
+}
+
+@Inject
+class GoalResumeCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("resume", "Clear a durable pause for a goal without starting child runs.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
+
+  override fun run() {
+    val result = goalRunnerStatusService.resume(
+      issueKey,
+      state.dbOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+    )
+    val payload = result.toGoalResumeCliMap()
+    state.completeText(goalResumeText(payload), payload, exitCode = payload.goalPauseExitCode())
+  }
 }
 
 @Inject
@@ -548,87 +631,26 @@ private class GoalRunPresenter(
   private val issueKey: String,
   private val state: CliRunState,
   private val liveOutput: Boolean,
+  private val repoRoot: Path,
+  private val dbOverride: String?,
   private val runtimeProvenance: RuntimeProvenanceContract,
 ) {
-  private val lock = Any()
-  private var activeSubtaskId: Int? = null
-  private var activeStepId: String? = null
-  private var lastLivenessClass: String = GOAL_LIVENESS_IDLE
-  private var sawRawChildOutputSinceLastHeartbeat: Boolean = false
-  private var observabilitySequence: Int = 0
-
-  // SKILL-64 Subtask 3 (AC16): distinct goal_event sequence space.
-  private var goalEventSequence: Int = DEFAULT_GOAL_EVENT_SEQUENCE_START
-  private var lastEmittedStatus: String? = null
-  private var lastEmittedStep: String? = null
-
   fun emitStartupProvenance() {
-    state.liveStdout(
-      "goal $issueKey: runtime executable=${runtimeProvenance.executablePath} " +
-        "version=${runtimeProvenance.version} build_id=${runtimeProvenance.buildId}\n",
-    )
-  }
-
-  fun eventSink(): skillbill.application.model.GoalRunnerEventSink =
-    skillbill.application.model.GoalRunnerEventSink { event ->
-      synchronized(lock) {
-        // SKILL-64 Subtask 3 (AC24): derive step from the authoritative durable
-        // workflow store carried on the event, never a hardcoded local default.
-        when (event) {
-          is GoalRunnerRunEvent.SubtaskStarted -> {
-            activeSubtaskId = event.subtaskId
-            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
-            lastLivenessClass = GOAL_LIVENESS_IDLE
-            sawRawChildOutputSinceLastHeartbeat = false
-          }
-          is GoalRunnerRunEvent.SubtaskCompleted -> {
-            activeSubtaskId = event.subtaskId
-            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
-            lastLivenessClass = GOAL_LIVENESS_DURABLE_PROGRESS
-            sawRawChildOutputSinceLastHeartbeat = false
-          }
-          is GoalRunnerRunEvent.SubtaskStopped -> {
-            activeSubtaskId = event.subtaskId
-            activeStepId = event.currentStepId?.takeIf(String::isNotBlank) ?: activeStepId
-          }
-          is GoalRunnerRunEvent.SubtaskReviewSummary -> {
-            activeSubtaskId = event.subtaskId
-            activeStepId = "review"
-          }
-          else -> Unit
-        }
-        state.liveStdout(event.progressLine())
-        emitGoalEvent(event)
-      }
+    val commandPrefix = buildString {
+      append("skill-bill")
+      dbOverride?.let { append(" --db ").append(shellQuote(it)) }
     }
-
-  // SKILL-64 Subtask 3 (AC16): machine-consumable transition stream. Emits one
-  // stable-prefixed `goal_event:` line ONLY on a meaningful change (subtask
-  // change, phase/step transition, blocked, failed, completion, terminal
-  // reconciliation), never per heartbeat, using a monotonic sequence in a space
-  // distinct from observabilitySequence.
-  private fun emitGoalEvent(event: GoalRunnerRunEvent) {
-    val transition = goalEventTransition(event) ?: return
-    val prevStatus = lastEmittedStatus
-    val prevStep = lastEmittedStep
-    val subtask = transition.subtaskId?.toString() ?: activeSubtaskId?.toString() ?: "unknown"
-    val step = activeStepId ?: "unknown"
-    goalEventSequence += 1
-    val reviewSummary = (event as? GoalRunnerRunEvent.SubtaskReviewSummary)?.let { summary ->
-      " review_pass=${summary.passNumber} finding_count=${summary.findingCount} " +
-        "unresolved_finding_count=${summary.unresolvedFindingCount} compact_findings=" +
-        summary.findings.joinToString("|") { finding ->
-          "${finding.severity}:${finding.label}:${finding.text}".replace(Regex("\\s+"), "_")
-        }
-    }.orEmpty()
+    val rootArgument = "--repo-root ${shellQuote(repoRoot.toString())}"
     state.liveStdout(
-      "goal_event: issue_key=$issueKey subtask_id=$subtask prev_step=${prevStep ?: "none"} " +
-        "current_step=$step prev_status=${prevStatus ?: "none"} current_status=${transition.currentStatus} " +
-        "event_kind=${transition.eventKind}$reviewSummary sequence_number=$goalEventSequence\n",
+      "goal $issueKey: launched runtime executable=${runtimeProvenance.executablePath} " +
+        "version=${runtimeProvenance.version} build_id=${runtimeProvenance.buildId}\n" +
+        "monitor (read-only; mutates nothing; no model tokens):\n" +
+        "$commandPrefix goal watch $issueKey $rootArgument --interval-seconds 5\n" +
+        "$commandPrefix goal status $issueKey $rootArgument --diff-stat\n",
     )
-    lastEmittedStatus = transition.currentStatus
-    lastEmittedStep = step
   }
+
+  fun eventSink(): skillbill.application.model.GoalRunnerEventSink = skillbill.application.model.GoalRunnerEventSink { }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE
@@ -639,142 +661,8 @@ private class GoalRunPresenter(
           AgentRunOutputStream.STDOUT -> state.liveStdout(text)
           AgentRunOutputStream.STDERR -> state.liveStderr(text)
         }
-        return@AgentRunOutputSink
-      }
-      synchronized(lock) {
-        handleStructuredProgressText(text)
       }
     }
-  }
-
-  private fun handleStructuredProgressText(text: String) {
-    text.lines().forEach { rawLine ->
-      val line = rawLine.trim()
-      if (line.isBlank()) {
-        return@forEach
-      }
-      when {
-        line.startsWith("skill-bill: workflow progress:") -> handleWorkflowProgressLine(line)
-        line.startsWith("skill-bill: goal planning") -> state.liveStdout(line + "\n")
-        line.startsWith("skill-bill: file activity observed;") -> lastLivenessClass = GOAL_LIVENESS_FILE_ACTIVITY
-        line.startsWith("skill-bill: status heartbeat") -> {
-          // The heartbeat line carries the current workflow label in "; workflow: <label>" —
-          // parse it so activeStepId stays in sync even when workflow progress lines
-          // are missed (e.g. transient null token stopped pollWorkflowProgress).
-          line.substringAfter("; workflow: ", "").takeIf(String::isNotBlank)
-            ?.let { workflowSection -> parseSubtaskAndStepFromLabel(workflowSection) }
-          emitStructuredHeartbeat()
-        }
-        !line.startsWith("skill-bill:") -> sawRawChildOutputSinceLastHeartbeat = true
-      }
-    }
-  }
-
-  private fun handleWorkflowProgressLine(line: String) {
-    val label = line.substringAfter("skill-bill: workflow progress:").trim()
-    parseSubtaskAndStepFromLabel(label)
-    lastLivenessClass = when {
-      "durable_progress" in label -> GOAL_LIVENESS_DURABLE_PROGRESS
-      "file activity" in label.lowercase() -> GOAL_LIVENESS_FILE_ACTIVITY
-      else -> lastLivenessClass
-    }
-  }
-
-  private fun emitStructuredHeartbeat() {
-    val heartbeatLiveness = when {
-      lastLivenessClass == GOAL_LIVENESS_DURABLE_PROGRESS -> GOAL_LIVENESS_DURABLE_PROGRESS
-      lastLivenessClass == GOAL_LIVENESS_FILE_ACTIVITY -> GOAL_LIVENESS_FILE_ACTIVITY
-      sawRawChildOutputSinceLastHeartbeat -> GOAL_LIVENESS_OUTPUT_ONLY
-      else -> GOAL_LIVENESS_IDLE
-    }
-    val subtask = activeSubtaskId?.toString() ?: "unknown"
-    val step = activeStepId ?: "unknown"
-    state.liveStdout(
-      "goal $issueKey: heartbeat subtask=$subtask step=$step liveness=$heartbeatLiveness\n",
-    )
-    observabilitySequence += 1
-    state.liveStdout(
-      "goal_observability: issue_key=$issueKey subtask_id=$subtask workflow_phase=$step " +
-        "worker_role=foreground liveness_class=$heartbeatLiveness sequence_number=$observabilitySequence\n",
-    )
-    sawRawChildOutputSinceLastHeartbeat = false
-    if (heartbeatLiveness != GOAL_LIVENESS_DURABLE_PROGRESS) {
-      lastLivenessClass = heartbeatLiveness
-    }
-  }
-
-  private fun parseSubtaskAndStepFromLabel(label: String) {
-    GOAL_SUBTASK_REGEX.find(label)?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { subtaskId ->
-      activeSubtaskId = subtaskId
-    }
-    GOAL_STEP_REGEX.find(label)?.groupValues?.getOrNull(1)?.let { stepId ->
-      activeStepId = stepId
-    }
-  }
-}
-
-// SKILL-64 Subtask 3 (AC16): maps a run event to a goal_event transition.
-// Every GoalRunnerRunEvent is itself a meaningful state change; per-tick
-// heartbeats are NOT run events and never reach this path.
-private data class GoalEventTransition(
-  val subtaskId: Int?,
-  val currentStatus: String,
-  val eventKind: String,
-)
-
-private fun goalEventTransition(event: GoalRunnerRunEvent): GoalEventTransition? = when (event) {
-  is GoalRunnerRunEvent.Started -> GoalEventTransition(null, "started", "goal_started")
-  is GoalRunnerRunEvent.SubtaskStarted ->
-    GoalEventTransition(event.subtaskId, "in_progress", "subtask_${event.action}")
-  is GoalRunnerRunEvent.SubtaskCompleted ->
-    GoalEventTransition(event.subtaskId, "complete", "subtask_completed")
-  is GoalRunnerRunEvent.SubtaskStopped ->
-    GoalEventTransition(event.subtaskId, event.reason, "subtask_stopped")
-  is GoalRunnerRunEvent.SubtaskReviewSummary ->
-    GoalEventTransition(event.subtaskId, event.verdict, "subtask_review_summary")
-  is GoalRunnerRunEvent.Completed ->
-    GoalEventTransition(null, "complete", "terminal_reconciliation")
-}
-
-private fun GoalRunnerRunEvent.progressLine(): String = when (this) {
-  is GoalRunnerRunEvent.Started -> "goal $issueKey: started\n"
-  is GoalRunnerRunEvent.SubtaskStarted -> "goal $issueKey: subtask $subtaskId $action\n"
-  is GoalRunnerRunEvent.SubtaskCompleted -> "goal $issueKey: subtask $subtaskId complete\n"
-  is GoalRunnerRunEvent.SubtaskStopped ->
-    "goal $issueKey: subtask $subtaskId stopped ($reason): $blockedReason\n"
-  is GoalRunnerRunEvent.SubtaskReviewSummary -> buildString {
-    append("goal review: subtask=")
-    append(subtaskId)
-    append(" pass=")
-    append(passNumber)
-    append(' ')
-    append(verdict)
-    append(" findings=")
-    append(findingCount)
-    append(" unresolved=")
-    append(unresolvedFindingCount)
-    findings.forEach { finding ->
-      append("\n  ")
-      append(finding.severity.replaceFirstChar(Char::uppercase))
-      append(' ')
-      append(finding.label)
-      append(" — ")
-      append(finding.text)
-    }
-    append('\n')
-  }
-  is GoalRunnerRunEvent.Completed -> buildString {
-    append("goal $issueKey: completion confirmed")
-    append(" complete=")
-    append(completedCount)
-    append(" pending=")
-    append(pendingCount)
-    append(" blocked=")
-    append(blockedCount)
-    append(" pr_status=")
-    append(pullRequestStatus)
-    pullRequestUrl?.let { append(" ($it)") }
-    append('\n')
   }
 }
 
@@ -782,6 +670,7 @@ private fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (thi
   is GoalRunnerRunReport.Completed -> linkedMapOf(
     "status" to "complete",
     "issue_key" to issueKey,
+    "feature_name" to featureName,
     "attempted_subtasks" to attemptedSubtasks,
     "subtasks_completed" to subtasksCompleted,
     "subtasks_pending" to subtasksPending,
@@ -803,8 +692,37 @@ private fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (thi
   )
 }
 
+private fun GoalRunnerPauseResult.toGoalPauseCliMap(): Map<String, Any?> = linkedMapOf(
+  "status" to status,
+  "issue_key" to issueKey,
+  "parent_workflow_id" to parentWorkflowId,
+  "paused" to paused,
+  "pause_requested" to pauseRequested,
+  "pause_reason" to pauseReason,
+)
+
+private fun goalPauseText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  payload["pause_reason"]?.let { appendLine("reason: $it") }
+}
+
+private fun GoalRunnerResumeResult.toGoalResumeCliMap(): Map<String, Any?> = linkedMapOf(
+  "status" to status,
+  "issue_key" to issueKey,
+  "parent_workflow_id" to parentWorkflowId,
+  "paused" to false,
+  "pause_requested" to false,
+  "cleared_pause_reason" to clearedPauseReason,
+)
+
+private fun goalResumeText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  payload["cleared_pause_reason"]?.let { appendLine("cleared reason: $it") }
+}
+
 private data class GoalStatusCliRequestOptions(
   val issueKey: String,
+  val monitorOnly: Boolean = false,
   val agent: String?,
   val agentOverride: String?,
   val repoRoot: String?,
@@ -825,7 +743,9 @@ private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions):
     invokedAgentId = resolveInvokedAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
     dbPathOverride = dbOverride,
-    repoRoot = options.repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    repoRoot = options.repoRoot?.let(Path::of)
+      ?.let { root -> if (options.monitorOnly) canonicalRepositoryRoot(root) else root.toAbsolutePath().normalize() }
+      ?: if (options.monitorOnly) canonicalRepositoryRoot(Path.of("")) else Path.of("").toAbsolutePath().normalize(),
     includeDiffStat = options.diff.includeDiffStat,
     selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
     selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,
@@ -833,31 +753,50 @@ private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions):
     selectedDiffMaxBytes = options.diff.selectedDiffMaxBytes,
   )
 
-private fun goalRunText(payload: Map<String, Any?>): String = buildString {
-  appendLine("goal: ${payload["issue_key"]}")
-  appendLine("status: ${payload["status"]}")
-  appendLine("attempted_subtasks: ${(payload["attempted_subtasks"] as? List<*>).orEmpty().joinToString()}")
-  payload["subtasks_completed"]?.let { appendLine("subtasks_completed: $it") }
-  payload["subtasks_pending"]?.let { appendLine("subtasks_pending: $it") }
-  payload["subtasks_blocked"]?.let { appendLine("subtasks_blocked: $it") }
-  unaddressedFindingsLine(payload)?.let(::appendLine)
-  payload["pull_request_status"]?.let { appendLine("pull_request_status: $it") }
-  payload["pull_request_url"]?.let { appendLine("pull_request_url: $it") }
-  payload["subtask_id"]?.let { appendLine("subtask_id: $it") }
-  payload["reason"]?.let { appendLine("reason: $it") }
-  payload["blocked_reason"]?.let { appendLine("blocked_reason: $it") }
-  payload["workflow_id"]?.let { appendLine("workflow_id: $it") }
-  payload["last_resumable_step"]?.let { appendLine("last_resumable_step: $it") }
+private fun goalRunText(payload: Map<String, Any?>): String = when (payload["status"]) {
+  "complete" -> buildString {
+    appendLine("goal ${payload["issue_key"]}: finished")
+    append("summary: ")
+    append(singleLineBounded(payload["feature_name"]?.toString().orEmpty().ifBlank { "goal" }))
+    append(" — ")
+    val completedCount = (payload["subtasks_completed"] as? Number)?.toInt() ?: 0
+    val pendingCount = (payload["subtasks_pending"] as? Number)?.toInt() ?: 0
+    val blockedCount = (payload["subtasks_blocked"] as? Number)?.toInt() ?: 0
+    val totalCount = completedCount + pendingCount + blockedCount
+    append(completedCount)
+    append("/")
+    append(totalCount)
+    append(" subtasks complete; pending=")
+    append(pendingCount)
+    append("; blocked=")
+    append(blockedCount)
+    payload["pull_request_url"]?.toString()?.takeIf(String::isNotBlank)?.let { url ->
+      append("; PR ")
+      append(singleLineBounded(url))
+    }
+    appendLine()
+  }
+  else -> buildString {
+    val reason = payload["reason"]?.toString()?.lowercase().orEmpty()
+    val verb = when {
+      reason == "paused" -> "paused"
+      reason.contains("failed") || reason.contains("timeout") -> "failed"
+      else -> "blocked"
+    }
+    append("goal ${payload["issue_key"]}: $verb")
+    payload["subtask_id"]?.let { append(" at subtask $it") }
+    append(" — ")
+    append(singleLineBounded(payload["blocked_reason"]?.toString() ?: reason.ifBlank { "terminal outcome" }))
+    appendLine()
+  }
 }
 
-private fun unaddressedFindingsLine(payload: Map<String, Any?>): String? {
-  if (!payload.containsKey("unaddressed_findings")) return null
-  val count = payload["unaddressed_findings"]
-    ?: return "unaddressed_findings=unreadable (run `skill-bill goal findings --issue-key ${payload["issue_key"]}`)"
-  val breakdown = payload["unaddressed_severity_breakdown"] as? Map<*, *> ?: emptyMap<String, Int>()
-  return "unaddressed_findings=$count blocker=${breakdown["blocker"] ?: 0} major=${breakdown["major"] ?: 0} " +
-    "minor=${breakdown["minor"] ?: 0} nit=${breakdown["nit"] ?: 0}"
-}
+private fun singleLineBounded(value: String, limit: Int = MAX_TERMINAL_FIELD_CHARS): String =
+  value.replace(Regex("\\s+"), " ").trim().take(limit)
+
+private const val MAX_TERMINAL_FIELD_CHARS = 240
+
+private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
 
@@ -873,6 +812,10 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "active_agent" to it.activeAgent,
     "execution_liveness" to it.executionLiveness.wireValue,
     "latest_liveness_signal" to it.latestLivenessSignal,
+    "paused" to it.paused,
+    "pause_requested" to it.pauseRequested,
+    "pause_reason" to it.pauseReason,
+    "stop_after_subtask" to it.stopAfterSubtaskId,
   ).apply {
     it.planning?.let { planning ->
       put(
@@ -904,7 +847,37 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "active_agent" to null,
   "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
   "latest_liveness_signal" to null,
+  "paused" to false,
+  "pause_requested" to false,
+  "pause_reason" to null,
+  "stop_after_subtask" to null,
 )
+
+private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
+  linkedMapOf(
+    "complete_count" to it.completeCount,
+    "pending_count" to it.pendingCount,
+    "blocked_count" to it.blockedCount,
+    "current_subtask" to it.currentSubtaskId,
+    "current_step" to it.currentStep?.let(::singleLineBounded),
+    "execution_liveness" to it.executionLiveness.wireValue,
+    "resumable_state" to it.monitorResumableState(),
+  )
+} ?: linkedMapOf(
+  "status" to "not_found",
+  "issue_key" to singleLineBounded(issueKey),
+  "resumable_state" to "not_found",
+)
+
+private fun GoalRunnerStatusProjection.monitorResumableState(): String = currentStep.let { step ->
+  when {
+    paused -> "paused"
+    pauseRequested -> "pause_requested"
+    currentSubtaskId == null && pendingCount == 0 && blockedCount == 0 -> "complete"
+    step.isNullOrBlank() -> "resumable"
+    else -> "resumable_at:${singleLineBounded(step)}"
+  }
+}
 
 private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
   if (projection.blockedAttemptCount > 0) put("blocked_attempt_count", projection.blockedAttemptCount)
@@ -939,6 +912,10 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("execution_liveness: ${payload["execution_liveness"]}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  appendLine("paused: ${payload["paused"]}")
+  appendLine("pause_requested: ${payload["pause_requested"]}")
+  appendLine("pause_reason: ${payload["pause_reason"] ?: "none"}")
+  appendLine("stop_after_subtask: ${payload["stop_after_subtask"] ?: "none"}")
   (payload["planning"] as? Map<*, *>)?.let { planning ->
     appendLine(
       "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
@@ -957,14 +934,44 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendDiffStatusLines(payload)
 }
 
-private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+private fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload["status"] == "not_found") {
+  buildString {
+    appendLine("goal: ${payload["issue_key"]}")
+    appendLine("status: not_found")
+    appendLine("resumable_state: not_found")
+  }
+} else {
+  buildString {
+    appendLine("complete: ${payload["complete_count"]}")
+    appendLine("pending: ${payload["pending_count"]}")
+    appendLine("blocked: ${payload["blocked_count"]}")
+    appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
+    appendLine("current_step: ${payload["current_step"] ?: "none"}")
+    appendLine("execution_liveness: ${payload["execution_liveness"]}")
+    appendLine("resumable_state: ${payload["resumable_state"]}")
+  }
+}
+
+private fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey("status") || this["status"] == "ok") 0 else 1
+
+private fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
 
+private fun canonicalRepositoryRoot(start: Path): Path {
+  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
+  var candidate = resolvedStart
+  while (!candidate.resolve(".git").toFile().exists()) {
+    candidate = candidate.parent ?: return resolvedStart
+  }
+  return candidate.toRealPath()
+}
+
 private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {
     this["status"] == "not_found" -> "not_found"
+    this["paused"] == true || this["pause_requested"] == true -> "goal_paused"
     (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
     idleStop -> "goal_idle"
     maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"
@@ -1205,10 +1212,6 @@ private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<Strin
 // detected invoking-agent context is available.
 private const val DEFAULT_GOAL_AGENT = "codex"
 private const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
-private const val GOAL_LIVENESS_DURABLE_PROGRESS = "durable_progress"
-private const val GOAL_LIVENESS_FILE_ACTIVITY = "file_activity"
-private const val GOAL_LIVENESS_OUTPUT_ONLY = "output_only"
-private const val GOAL_LIVENESS_IDLE = "idle"
 private const val DEFAULT_GOAL_WATCH_INTERVAL_SECONDS = 5
 private const val DEFAULT_GOAL_WATCH_REFRESHES = 0
 internal const val IDLE_STOP_CONSECUTIVE_REFRESHES = 3
@@ -1216,5 +1219,3 @@ private const val MILLIS_PER_SECOND = 1_000L
 private const val RUNTIME_EXECUTABLE_ENV = "SKILL_BILL_RUNTIME_EXECUTABLE"
 private const val RUNTIME_CLASSPATH_ENV = "SKILL_BILL_RUNTIME_CLASSPATH"
 private const val RUNTIME_PATH_SEPARATOR_ENV = "SKILL_BILL_PATH_SEPARATOR"
-private val GOAL_SUBTASK_REGEX = Regex("""\bsubtask\s+(\d+)\b""")
-private val GOAL_STEP_REGEX = Regex("""\bstep\s+([a-zA-Z0-9_-]+)\b""")

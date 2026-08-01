@@ -5,6 +5,7 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.model.GoalPlanningAttemptRecord
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
@@ -19,6 +20,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
@@ -55,6 +57,7 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -310,6 +313,7 @@ class GoalPlanningSweepTest {
       fixtures.manifestFileStore,
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
 
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
@@ -327,6 +331,7 @@ class GoalPlanningSweepTest {
       fixtures.manifestFileStore,
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
 
     val resumed = initial.copy(
@@ -342,6 +347,33 @@ class GoalPlanningSweepTest {
     assertEquals(listOf(2), runTwoLauncher.subtaskIds)
     assertEquals(2, fixtures.preparedCount())
     assertEquals(1, discovery.calls, "resume must recover the durable packet without repeating discovery")
+  }
+
+  @Test
+  fun `unexpected planning launch failure becomes a resumable stopped outcome`() {
+    val attempts = mutableListOf<GoalPlanningAttemptRecord>()
+    val harness = sweepHarness(
+      planningAttemptRecorder = GoalPlanningAttemptRecorder { attempts += it },
+    ) { phase, subtaskId, _ ->
+      if (phase == "plan" && subtaskId == 2) {
+        error("simulated planning launcher failure")
+      }
+      validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(2, stopped.currentSubtaskId)
+    assertEquals("plan", stopped.lastResumableStep)
+    assertContains(stopped.blockedReason, "simulated planning launcher failure")
+    assertEquals(1, harness.preparedCount())
+    assertEquals(
+      listOf("preplan:SUCCEEDED", "plan:SUCCEEDED", "plan:FAILED"),
+      attempts.map {
+        "${it.phaseId}:${it.outcome}"
+      },
+    )
   }
 
   @Test
@@ -465,7 +497,28 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `malformed phase output stops before mutation with no checkpointed pair`() {
+  fun `malformed phase output retries with the schema correction before checkpointing`() {
+    var attempts = 0
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan" && attempts++ == 0) {
+        launchFacts(stdout = "not a json object")
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf("preplan", "preplan", "plan"), harness.launcher.phases)
+    val retryPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
+    assertContains(retryPrompt, "Previous attempt was REJECTED by the schema gate")
+    assertContains(retryPrompt, "Goal planning phase output was rejected by its schema contract.")
+    assertEquals(1, harness.preparedCount())
+  }
+
+  @Test
+  fun `malformed phase output stops at the bounded schema retry cap without checkpointing`() {
     val harness = sweepHarness { _, _, _ -> launchFacts(stdout = "not a json object") }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
@@ -474,6 +527,8 @@ class GoalPlanningSweepTest {
     assertEquals(0, stopped.currentSubtaskId)
     assertEquals("preplan", stopped.lastResumableStep)
     assertEquals(0, harness.preparedCount())
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertTrue(stopped.blockedReason.contains("schema-invalid output"), stopped.blockedReason)
   }
 
   @Test
@@ -510,6 +565,7 @@ class GoalPlanningSweepTest {
       fixtures.manifestFileStore,
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
     assertIs<GoalPlanningSweepOutcome.Stopped>(
       settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
@@ -525,6 +581,7 @@ class GoalPlanningSweepTest {
       fixtures.manifestFileStore,
       fakeContextDiscovery,
       RejectingSweepPlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
 
     val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
@@ -570,6 +627,7 @@ class GoalPlanningSweepTest {
       fixtures.manifestFileStore,
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -638,6 +696,7 @@ class GoalPlanningSweepTest {
       ThrowingManifestFileStore(),
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+      manifestStore = NoopGoalPlanningManifestStore,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -1435,6 +1494,7 @@ private fun sweepHarness(
     contextDiscovery,
     planningProjectionValidator,
     planningAttemptRecorder,
+    manifestStore = NoopGoalPlanningManifestStore,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }
@@ -1453,6 +1513,13 @@ private val fakeContextDiscovery = GoalPlanningContextDiscovery {
     boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
     validationGuidance = "Run focused Gradle checks.",
   )
+}
+
+private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
 }
 
 private class CountingContextDiscovery : GoalPlanningContextDiscovery {

@@ -36,7 +36,15 @@ import kotlin.time.DurationUnit
 @Inject
 class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   override fun run(request: AgentRunProcessRequest): AgentRunProcessResult {
-    val processStart = startProcess(request)
+    var startedProcess: ProcessStart? = null
+    val processStart = runCatching {
+      request.spawnAuthorization?.withAuthorization {
+        startProcess(request).also { startedProcess = it }
+      } ?: startProcess(request).also { startedProcess = it }
+    }.getOrElse { failure ->
+      cleanupProcessStart(startedProcess)
+      throw failure
+    }
     return when (processStart) {
       is ProcessStart.Failed -> spawnFailure(processStart.error)
       is ProcessStart.Started -> runStartedProcess(
@@ -259,6 +267,17 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     val masterStream = PosixLib.masterInputStream(masterFd)
     val masterCloseable = AutoCloseable { PosixLib.closeFd(masterFd) }
     return ProcessStart.PtyStarted(process, masterStream, masterCloseable)
+  }
+
+  private fun cleanupProcessStart(start: ProcessStart?) {
+    when (start) {
+      is ProcessStart.Started -> reapLiveProcesses(listOf(start.process))
+      is ProcessStart.PtyStarted -> {
+        reapLiveProcesses(listOf(start.process))
+        runCatching { start.ptyMasterCloseable.close() }
+      }
+      is ProcessStart.Failed, null -> Unit
+    }
   }
 }
 

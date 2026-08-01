@@ -3,10 +3,50 @@ package skillbill.launcher.process
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
 class JvmAgentRunProcessRunnerTest {
+  @Test
+  fun `foreground process result is returned once as the bounded terminal result`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf terminal-result"),
+        workingDirectory = Path.of("."),
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertEquals("terminal-result", result.stdout)
+    assertEquals(false, result.timedOut)
+    assertEquals(false, result.interrupted)
+    assertEquals(false, result.spawnFailed)
+  }
+
+  @Test
+  fun `spawn authorization surrounds process creation and not terminal waiting`() {
+    var authorizationEntered = false
+    var authorizationExited = false
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf terminal-result"),
+        workingDirectory = Path.of("."),
+        spawnAuthorization = object : AgentRunSpawnAuthorization {
+          override fun <T> withAuthorization(spawn: () -> T): T {
+            authorizationEntered = true
+            return spawn().also { authorizationExited = true }
+          }
+        },
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertEquals("terminal-result", result.stdout)
+    assertEquals(true, authorizationEntered)
+    assertEquals(true, authorizationExited)
+  }
+
   @Test
   fun `reap destroys a process that exits and does not forcibly kill it`() {
     val process = FakeReapableProcess(staysAlive = false)

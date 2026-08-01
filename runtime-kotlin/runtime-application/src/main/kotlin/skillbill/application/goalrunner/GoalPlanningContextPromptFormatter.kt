@@ -16,6 +16,12 @@ internal object GoalPlanningContextPromptFormatter {
         },
       )
       append(JsonSupport.mapToJsonString(packet))
+      append(
+        "\nThis is child-only planning context. Do not copy its payload, implementation summary, " +
+          "audit, review, diagnostic, or raw child output into the parent conversation or parent projection.",
+      )
+      append(" The parent retains manifest metadata, the current subtask index, and terminal outcomes only: ")
+      append("{status, commit_sha, workflow_id}.")
       if (phaseId == "plan") {
         val currentSubtask = requireNotNull(subtask) { "plan context requires a governed subtask" }
         append("\nCurrent governed sub-spec: ")

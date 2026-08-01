@@ -6,6 +6,7 @@ import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -46,6 +47,7 @@ data class AgentRunProcessRequest(
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
   val nativeReviewLifecycleCallbacks: NativeReviewLifecycleCallbacks? = null,
+  val spawnAuthorization: AgentRunSpawnAuthorization? = null,
 ) {
   init {
     require(command.isNotEmpty()) { "Agent run command is required." }

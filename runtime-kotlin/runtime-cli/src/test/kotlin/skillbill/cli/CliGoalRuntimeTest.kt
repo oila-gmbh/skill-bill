@@ -57,9 +57,171 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "Run a decomposed goal in the foreground.")
     assertContains(result.stdout, "status")
     assertContains(result.stdout, "watch")
+    assertContains(result.stdout, "pause")
+    assertContains(result.stdout, "resume")
     assertContains(result.stdout, "reset")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
+  }
+
+  @Test
+  fun `goal run accepts positive stop-after subtask and does not launch the next child`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--stop-after-subtask", "1")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "goal SKILL-901: paused")
+    assertEquals(listOf(1), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+    assertContains(status.stdout, "paused: true")
+    assertContains(status.stdout, "stop_after_subtask: 1")
+    assertContains(status.stdout, "complete: 1")
+  }
+
+  @Test
+  fun `goal run rejects missing and non-positive stop-after subtask values`() {
+    val missingFixture = goalFixture(subtaskCount = 1)
+    val missing = CliRuntime.run(
+      missingFixture.goalCommand(extra = listOf("--stop-after-subtask")),
+      missingFixture.context(launcher = GoalFixtureAgentRunLauncher(missingFixture)),
+    )
+    assertEquals(1, missing.exitCode, missing.stdout)
+    assertContains(missing.stdout, "option --stop-after-subtask requires a value")
+
+    val zeroFixture = goalFixture(subtaskCount = 1)
+    val zero = CliRuntime.run(
+      zeroFixture.goalCommand(extra = listOf("--stop-after-subtask", "0")),
+      zeroFixture.context(launcher = GoalFixtureAgentRunLauncher(zeroFixture)),
+    )
+    assertEquals(1, zero.exitCode, zero.stdout)
+    assertContains(zero.stdout, "--stop-after-subtask must be a positive integer")
+
+    val unknownFixture = goalFixture(subtaskCount = 1)
+    val unknown = CliRuntime.run(
+      unknownFixture.goalCommand(extra = listOf("--stop-after-subtask", "99")),
+      unknownFixture.context(launcher = GoalFixtureAgentRunLauncher(unknownFixture)),
+    )
+    assertEquals(1, unknown.exitCode, unknown.stdout)
+    assertContains(unknown.stdout, "has no subtask '99'")
+  }
+
+  @Test
+  fun `goal pause is consumed at an unlaunched boundary and remains idempotent`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = listOf(
+      "--db",
+      fixture.dbPath.toString(),
+      "goal",
+      "pause",
+      "SKILL-901",
+      "--repo-root",
+      fixture.tempDir.toString(),
+    )
+
+    val first = CliRuntime.run(command, fixture.context(launcher = launcher))
+    val second = CliRuntime.run(command, fixture.context(launcher = launcher))
+
+    assertEquals(0, first.exitCode, first.stdout)
+    assertEquals(0, second.exitCode, second.stdout)
+    assertContains(first.stdout, "goal SKILL-901: paused")
+    assertContains(first.stdout, "reason: operator_request")
+    assertEquals(true, first.payload?.get("pause_requested"))
+    assertEquals(true, first.payload?.get("paused"))
+    assertEquals(true, second.payload?.get("pause_requested"))
+    assertEquals(true, second.payload?.get("paused"))
+    assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal resume clears a durable pause and reports not_paused when nothing is paused`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val pauseCommand = goalControlCommand(fixture, "pause")
+    val resumeCommand = goalControlCommand(fixture, "resume")
+
+    CliRuntime.run(pauseCommand, fixture.context(launcher = launcher))
+    forcePendingPauseRequest(fixture.dbPath)
+    val resumed = CliRuntime.run(resumeCommand, fixture.context(launcher = launcher))
+    val again = CliRuntime.run(resumeCommand, fixture.context(launcher = launcher))
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, resumed.exitCode, resumed.stdout)
+    assertContains(resumed.stdout, "goal SKILL-901: resumed")
+    assertContains(resumed.stdout, "cleared reason: operator_request")
+    assertEquals(false, resumed.payload?.get("paused"))
+    assertEquals(false, resumed.payload?.get("pause_requested"))
+    assertEquals("not_paused", again.payload?.get("status"))
+    assertContains(status.stdout, "paused: false")
+    assertContains(status.stdout, "pause_requested: false")
+    assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal launch clears a pause request that never reached a boundary`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    CliRuntime.run(goalControlCommand(fixture, "pause"), fixture.context(launcher = launcher))
+    forcePendingPauseRequest(fixture.dbPath)
+
+    val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(listOf(1), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
+    assertContains(status.stdout, "paused: false")
+    assertContains(status.stdout, "pause_requested: false")
+  }
+
+  @Test
+  fun `goal watch stops after a durable pause without polling forever`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "pause",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = launcher),
+    ).also { result -> assertEquals(0, result.exitCode, result.stdout) }
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--interval-seconds",
+        "0",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, watch.exitCode, watch.stdout)
+    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals("goal_paused", watch.payload?.get("stop_reason"))
   }
 
   @Test
@@ -72,6 +234,7 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "Runs git diff --numstat once")
     assertContains(status.stdout, "--diff-hunk")
     assertContains(status.stdout, "noisier")
+    assertContains(status.stdout, "--monitor")
     assertEquals(0, watch.exitCode, watch.stdout)
     assertContains(watch.stdout, "--interval-seconds")
     assertContains(watch.stdout, "repeated git cost")
@@ -191,7 +354,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal foreground run completes all subtasks and prints live progress`() {
+  fun `goal foreground run completes all subtasks with bounded terminal surfaces`() {
     val fixture = goalFixture(subtaskCount = 2)
     val liveStdout = StringBuilder()
     val liveStderr = StringBuilder()
@@ -207,19 +370,17 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(result.stdout, "status: complete")
-    assertContains(result.stdout, "attempted_subtasks: 1, 2")
-    assertContains(result.stdout, "subtasks_pending: 0")
-    assertContains(result.stdout, "subtasks_blocked: 0")
-    assertContains(result.stdout, "unaddressed_findings=0 blocker=0 major=0 minor=0 nit=0")
-    assertContains(result.stdout, "pull_request_status: opened")
-    assertContains(result.stdout, "pull_request_url: https://github.com/example/skill-bill/pull/901")
+    assertContains(result.stdout, "goal SKILL-901: finished")
+    assertContains(result.stdout, "summary: ")
+    assertContains(result.stdout, "2/2 subtasks complete; pending=0; blocked=0")
+    assertContains(result.stdout, "PR https://github.com/example/skill-bill/pull/901")
+    assertEquals(2, result.stdout.lines().count { it.isNotBlank() })
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
-    assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
-    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
+    assertContains(liveStdout.toString(), "goal status SKILL-901 --repo-root")
     assertContains(liveStdout.toString(), "child-1-stdout")
-    assertContains(liveStdout.toString(), "goal SKILL-901: completion confirmed")
     assertContains(liveStderr.toString(), "child-1-stderr")
     assertEquals(listOf(null, null), launcher.childLaunches.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
@@ -249,7 +410,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal run emits goal_event transition lines on meaningful changes with distinct sequence space`() {
+  fun `goal run does not relay progress or transition events`() {
     val fixture = goalFixture(subtaskCount = 1)
     val liveStdout = StringBuilder()
 
@@ -263,24 +424,15 @@ class CliGoalRuntimeTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     val output = liveStdout.toString()
-    // AC16: stable prefix + required keys, emitted on transitions.
-    assertContains(output, "goal_event: issue_key=SKILL-901")
-    assertContains(output, "event_kind=goal_started")
-    assertContains(output, "event_kind=subtask_completed")
-    assertContains(output, "event_kind=terminal_reconciliation")
-    // AC16: distinct sequence space (>= 20000), not the observability 10000 space.
-    val goalEventSequences = Regex("""goal_event:[^\n]*sequence_number=(\d+)""")
-      .findAll(output)
-      .map { it.groupValues[1].toInt() }
-      .toList()
-    assertTrue(goalEventSequences.isNotEmpty(), output)
-    assertTrue(
-      goalEventSequences.all { it >= 20_000 },
-      "goal_event sequence space must be distinct: $goalEventSequences",
-    )
-    // Meaningful-change only: far fewer goal_event lines than heartbeat lines.
-    val heartbeatCount = Regex("""goal SKILL-901: heartbeat""").findAll(output).count()
-    assertTrue(goalEventSequences.size <= heartbeatCount + goalEventSequences.size, output)
+    assertEquals(1, output.lines().count { it.startsWith("goal SKILL-901: launched") })
+    assertContains(output, "goal watch SKILL-901 --repo-root")
+    assertContains(output, "goal status SKILL-901 --repo-root")
+    assertFalse(output.contains("goal_event:"), output)
+    assertFalse(output.contains("heartbeat"), output)
+    assertFalse(output.contains("goal_observability:"), output)
+    assertFalse(output.contains("child-1-stdout"), output)
+    assertFalse(output.contains("child-1-stderr"), output)
+    assertContains(result.stdout, "goal SKILL-901: finished")
   }
 
   @Test
@@ -334,7 +486,7 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `goal default live output emits structured heartbeat and hides raw child output`() {
+  fun `goal default live output emits the monitoring block and hides raw child output`() {
     val fixture = goalFixture(subtaskCount = 1)
     val liveStdout = StringBuilder()
     val liveStderr = StringBuilder()
@@ -349,16 +501,11 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(
-      liveStdout.toString(),
-      "goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress",
-    )
-    assertContains(
-      liveStdout.toString(),
-      "goal_observability: issue_key=SKILL-901 subtask_id=1 workflow_phase=implement " +
-        "worker_role=foreground liveness_class=durable_progress sequence_number=1",
-    )
-    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
+    assertContains(liveStdout.toString(), "goal status SKILL-901 --repo-root")
+    assertFalse(liveStdout.toString().contains("heartbeat"), liveStdout.toString())
+    assertFalse(liveStdout.toString().contains("goal_observability:"), liveStdout.toString())
+    assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals(false, liveStderr.toString().contains("child-1-stderr"), liveStderr.toString())
@@ -855,7 +1002,7 @@ class CliGoalExecutionOptionsTest {
   }
 
   @Test
-  fun `goal no-live-output keeps progress but suppresses child output tee`() {
+  fun `goal no-live-output keeps launch monitoring but suppresses child output tee`() {
     val fixture = goalFixture(subtaskCount = 1)
     val liveStdout = StringBuilder()
     val liveStderr = StringBuilder()
@@ -870,9 +1017,10 @@ class CliGoalExecutionOptionsTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(liveStdout.toString(), "goal SKILL-901: runtime executable=")
+    assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
-    assertContains(liveStdout.toString(), "goal SKILL-901: subtask 1 start")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
+    assertFalse(liveStdout.toString().contains("heartbeat"), liveStdout.toString())
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals("", liveStderr.toString())
   }
@@ -885,9 +1033,7 @@ class CliGoalExecutionOptionsTest {
     val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
 
     assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "status: stopped")
-    assertContains(result.stdout, "subtask_id: 2")
-    assertContains(result.stdout, "reason: failed")
+    assertContains(result.stdout, "goal SKILL-901: failed at subtask 2")
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     assertEquals(0, fixture.pullRequests.requests.size)
 
@@ -914,11 +1060,10 @@ class CliGoalExecutionOptionsTest {
     val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
 
     assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "reason: no_terminal_store_outcome")
+    assertContains(result.stdout, "goal SKILL-901: blocked at subtask 1")
     assertContains(result.stdout, "without a terminal workflow-store outcome")
-    assertContains(result.stdout, "last_resumable_step")
-    assertContains(result.stdout, "workflow_id: ")
-    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()
+    assertTrue(workflowId.isNotBlank())
     val child = runGoalJson(
       listOf(
         "--db",
@@ -948,7 +1093,7 @@ class CliGoalExecutionOptionsTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(result.stdout, "status: complete")
+    assertContains(result.stdout, "goal SKILL-901: finished")
     assertEquals(recoveredDb.toString(), launcher.childLaunches.single().skillRunRequest.dbPathOverride)
   }
 
@@ -1047,31 +1192,20 @@ class CliGoalUnaddressedFindingsTest {
       fixture.context(launcher = GoalFixtureAgentRunLauncher(fixture)),
     )
 
-    assertContains(result.stdout, "unaddressed_findings=unreadable")
-    assertFalse(result.stdout.contains("unaddressed_findings=0"))
+    assertContains(result.stdout, "goal SKILL-901: finished")
+    assertFalse(result.stdout.contains("Poison row persisted"))
+    assertFalse(result.stdout.contains("unaddressed_findings"))
   }
 }
 
-/**
- * SKILL-64 Subtask 4 (AC3): transition-only monitoring coverage. Kept in its own
- * class so it does not push the broad [CliGoalRuntimeTest] over the detekt
- * LargeClass threshold.
- */
+/** Bounded default goal output coverage, isolated from the broad runtime suite. */
 class CliGoalTransitionMonitoringTest {
   @Test
   @Suppress("LongMethod")
-  fun `goal run transition stream omits heartbeat chatter while reporting starts blocked failed and completion`() {
-    // A multi-subtask run with a failing subtask must emit goal_event lines ONLY
-    // on meaningful changes (goal_started, subtask start, subtask completion,
-    // blocked/failed stop) while routine heartbeat chatter is excluded from the
-    // transition stream, and sparse liveness (the structured
-    // heartbeat/observability lines) is still reported. The goal_event count must
-    // be materially less than the routine heartbeat count.
+  fun `goal run emits only launch monitoring and one bounded terminal notification`() {
     val fixture = goalFixture(subtaskCount = 2)
     val liveStdout = StringBuilder()
-    // Each child emits many routine heartbeats; the transition stream must not
-    // grow with them.
-    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2, heartbeatChatterCount = 8)
+    val launcher = GoalFixtureAgentRunLauncher(fixture, failSubtask = 2, childDiagnosticChatterCount = 8)
 
     val result = CliRuntime.run(
       fixture.goalCommand(),
@@ -1083,43 +1217,16 @@ class CliGoalTransitionMonitoringTest {
 
     assertEquals(1, result.exitCode, result.stdout)
     val output = liveStdout.toString()
-
-    // Starts, phase transitions, and completion are all reported on the
-    // transition stream.
-    assertContains(output, "event_kind=goal_started")
-    assertContains(output, "event_kind=subtask_completed")
-    // Blocked/failed terminal state for the failing subtask is reported.
-    assertContains(output, "event_kind=subtask_stopped")
-    assertContains(output, "current_status=failed")
-
-    // Distinct sequence space (>= 20000), not the observability 10000/1-based space.
-    val goalEventLines = output.lines().filter { it.startsWith("goal_event:") }
-    val goalEventSequences = goalEventLines
-      .mapNotNull { Regex("""sequence_number=(\d+)""").find(it)?.groupValues?.get(1)?.toInt() }
-    assertTrue(goalEventSequences.isNotEmpty(), output)
-    assertTrue(
-      goalEventSequences.all { it >= 20_000 },
-      "goal_event sequence space must be distinct: $goalEventSequences",
-    )
-
-    // Routine heartbeat chatter is NOT promoted to the transition stream, and
-    // sparse liveness is still reported via the structured heartbeat lines.
-    val heartbeatCount = output.lines().count { it.startsWith("goal SKILL-901: heartbeat") }
-    val observabilityCount = output.lines().count { it.startsWith("goal_observability:") }
-    assertTrue(heartbeatCount > 0, output)
-    assertTrue(observabilityCount > 0, output)
-    assertTrue(
-      goalEventLines.none { it.contains("heartbeat") },
-      "goal_event transition lines must never carry routine heartbeat chatter: $goalEventLines",
-    )
-    // Materially less: the transition stream is far smaller than the routine
-    // heartbeat chatter (16 heartbeats across two subtasks vs. a handful of
-    // transitions).
-    assertTrue(
-      goalEventLines.size < heartbeatCount,
-      "goal_event count (${goalEventLines.size}) must be materially less than " +
-        "heartbeat count ($heartbeatCount): $output",
-    )
+    assertEquals(1, output.lines().count { it.startsWith("goal SKILL-901: launched") })
+    assertContains(output, "goal watch SKILL-901 --repo-root")
+    assertContains(output, "goal status SKILL-901 --repo-root")
+    assertFalse(output.contains("goal_event:"), output)
+    assertFalse(output.contains("heartbeat"), output)
+    assertFalse(output.contains("goal_observability:"), output)
+    assertFalse(output.contains("child-1-stdout"), output)
+    assertFalse(output.contains("child-1-stderr"), output)
+    assertContains(result.stdout, "goal SKILL-901: failed at subtask 2")
+    assertEquals(1, result.stdout.lines().count { it.isNotBlank() })
   }
 }
 
@@ -1583,11 +1690,9 @@ internal class GoalFixtureAgentRunLauncher(
   private val fixture: GoalCliFixture,
   private val failSubtask: Int? = null,
   private val noTerminalSubtask: Int? = null,
-  // SKILL-64 Subtask 4 (AC3): number of routine status-heartbeat lines each
-  // child emits. The default is 1 (legacy behavior); transition-monitoring
-  // tests raise it to prove the goal_event transition stream stays far smaller
-  // than the routine heartbeat chatter.
-  private val heartbeatChatterCount: Int = 1,
+  // Multiple child diagnostic lines keep the default-output contract honest: none
+  // may be relayed by the parent, regardless of child output volume.
+  private val childDiagnosticChatterCount: Int = 1,
 ) : AgentRunLauncher {
   val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
   val childLaunches: MutableList<AgentRunLaunchRequest> = mutableListOf()
@@ -1607,7 +1712,7 @@ internal class GoalFixtureAgentRunLauncher(
       "skill-bill: workflow progress: subtask $subtaskId " +
         "workflow wfl-$subtaskId step implement durable_progress step=implement\n",
     )
-    repeat(heartbeatChatterCount) {
+    repeat(childDiagnosticChatterCount) {
       skillRequest.outputSink.write(
         AgentRunOutputStream.STDERR,
         "skill-bill: status heartbeat (90s): child run still active; workflow: " +
@@ -1707,6 +1812,45 @@ internal class RecordingGoalPullRequestPort : GoalPullRequestPort {
   override fun open(request: GoalPullRequestRequest): GoalPullRequestResult {
     requests += request
     return GoalPullRequestResult.Opened("https://github.com/example/skill-bill/pull/901")
+  }
+}
+
+private fun goalControlCommand(fixture: GoalCliFixture, subcommand: String): List<String> = listOf(
+  "--db",
+  fixture.dbPath.toString(),
+  "goal",
+  subcommand,
+  "SKILL-901",
+  "--repo-root",
+  fixture.tempDir.toString(),
+)
+
+private fun forcePendingPauseRequest(dbPath: Path) {
+  DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    val rows = mutableListOf<Pair<String, String>>()
+    connection.prepareStatement(
+      "SELECT parent_workflow_id, control_state_json FROM goal_runner_controls",
+    ).use { statement ->
+      statement.executeQuery().use { result ->
+        while (result.next()) rows += result.getString(1) to result.getString(2)
+      }
+    }
+    rows.forEach { (parentWorkflowId, json) ->
+      val state = JsonSupport.anyToStringAnyMap(
+        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(json))),
+      ).orEmpty().toMutableMap()
+      state["paused"] = false
+      state["pause_requested"] = true
+      state["pause_consumed"] = false
+      state["pause_reason"] = "operator_request"
+      connection.prepareStatement(
+        "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
+      ).use { statement ->
+        statement.setString(1, JsonSupport.mapToJsonString(state))
+        statement.setString(2, parentWorkflowId)
+        statement.executeUpdate()
+      }
+    }
   }
 }
 

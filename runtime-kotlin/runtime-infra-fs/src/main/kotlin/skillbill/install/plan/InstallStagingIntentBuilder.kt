@@ -1,5 +1,6 @@
 package skillbill.install.plan
 
+import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
@@ -83,7 +84,8 @@ private fun buildSkillStagingPathIntent(
   validateAgentAddonPointerNamespace(
     skill.name,
     authoredStagingNames(skill.sourceDir, authored) + internal.sidecarNames + pointers.map { it.second.name } +
-      internal.supportPointers.map { it.name } + listOf("SKILL.md", ".content-hash"),
+      internal.supportPointers.map { it.name } +
+      listOf("SKILL.md", ".content-hash", SKILL_CONTENT_IDENTITY_FILENAME),
     addonPointers,
   )
   val contentHash = computeInstallContentHash(

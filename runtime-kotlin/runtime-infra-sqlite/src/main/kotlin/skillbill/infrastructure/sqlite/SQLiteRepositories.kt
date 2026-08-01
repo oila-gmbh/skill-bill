@@ -65,6 +65,8 @@ class SQLiteUnitOfWork(
   override val workList: WorkListRepository = SQLiteWorkListRepository(connection)
   override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
     skillbill.db.workflow.GoalPlanningPreparationStore(connection)
+  override val goalRunnerControls: skillbill.ports.persistence.GoalRunnerControlRepository =
+    skillbill.db.workflow.GoalRunnerControlStore(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)

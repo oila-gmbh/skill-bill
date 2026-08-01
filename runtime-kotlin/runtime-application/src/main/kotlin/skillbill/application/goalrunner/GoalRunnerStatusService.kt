@@ -8,10 +8,12 @@ import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
+import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
+import skillbill.application.model.GoalRunnerResumeResult
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -19,12 +21,11 @@ import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
@@ -40,6 +41,12 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
+private const val NO_CURRENT_SUBTASK_ID = 0
+private const val NO_CURRENT_SUBTASK_ACTION = "none"
+private const val SUBTASK_ACTION_START = "start"
+private const val SUBTASK_STATUS_IN_PROGRESS = "in_progress"
+private const val SUBTASK_STATUS_PENDING = "pending"
+
 @Inject
 @Suppress("TooManyFunctions") // single cohesive boundary: status projection, reset, accept, and reconciliation
 class GoalRunnerStatusService(
@@ -53,16 +60,8 @@ class GoalRunnerStatusService(
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?.let { loadedState ->
-        val authoritativeOutcomes = outcomeStore.authoritativeOutcomes(
-          issueKey = loadedState.manifest.issueKey,
-          dbPathOverride = request.dbPathOverride,
-        )
         val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
-        val manifest = loadedState.manifest.reconciledWithTerminalOutcomes(
-          request.dbPathOverride,
-          authoritativeOutcomes,
-          acceptances,
-        )
+        val manifest = reconcileStatusManifest(loadedState, request, acceptances)
         val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
           subtask.id == manifest.currentSubtaskIntent.subtaskId
         }
@@ -80,7 +79,11 @@ class GoalRunnerStatusService(
           manifest = manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
           extras = GoalRunnerStatusProjectionExtras(
-            executionLiveness = resolveExecutionLiveness(currentSubtask, request.dbPathOverride),
+            executionLiveness = resolveExecutionLiveness(
+              parentWorkflowId = loadedState.parentWorkflowId,
+              currentSubtask = currentSubtask,
+              dbPathOverride = request.dbPathOverride,
+            ),
             planning = manifestStore.planningStatus(
               loadedState.parentWorkflowId,
               manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
@@ -101,17 +104,111 @@ class GoalRunnerStatusService(
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
             findingsInScope = ledgerSummary?.findingsInScope,
             outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
+            paused = loadedState.controlState.paused,
+            pauseRequested = loadedState.controlState.pauseRequested,
+            pauseReason = loadedState.controlState.pauseReason,
+            stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
           ),
         )
       }
   }
 
+  private fun reconcileStatusManifest(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerStatusRequest,
+    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
+  ): DecompositionManifest = reconcileGoalManifest(
+    manifest = state.manifest,
+    dbPathOverride = request.dbPathOverride,
+    authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
+    acceptances = acceptances,
+    outcomeStore = outcomeStore,
+  )
+
+  /** Write the operator pause boundary directly; this does not inspect status, logs, files, or child state. */
+  fun pause(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerPauseResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
+    val repositoryIdentity = goalRepositoryIdentity(repoRoot)
+    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity, dbPathOverride)
+    val control = manifestStore.requestPause(loaded.parentWorkflowId, dbPathOverride)
+      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
+    val effectiveControl = if (
+      control.requiresPauseBoundary(loaded.manifest) && loaded.manifest.isAtUnlaunchedBoundary()
+    ) {
+      manifestStore.pauseAtBoundary(
+        loaded.copy(controlState = control),
+        dbPathOverride,
+      ).controlState
+    } else {
+      control
+    }
+    return GoalRunnerPauseResult(
+      issueKey = issueKey,
+      parentWorkflowId = loaded.parentWorkflowId,
+      status = if (effectiveControl.paused) "paused" else "requested",
+      paused = effectiveControl.paused,
+      pauseRequested = effectiveControl.pauseRequested,
+      pauseReason = effectiveControl.pauseReason,
+    )
+  }
+
+  /**
+   * Clear the operator pause boundary without starting child runs. A pause request that never
+   * reached a boundary leaves `pauseRequested` set with `paused` false, so both fields clear here.
+   */
+  fun resume(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerResumeResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+      ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
+    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
+    val before = manifestStore.controlState(loaded.parentWorkflowId, dbPathOverride)
+    if (!before.paused && !before.pauseRequested) {
+      return GoalRunnerResumeResult(
+        issueKey = issueKey,
+        parentWorkflowId = loaded.parentWorkflowId,
+        status = "not_paused",
+      )
+    }
+    manifestStore.resume(loaded.parentWorkflowId, dbPathOverride)
+      ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
+    return GoalRunnerResumeResult(
+      issueKey = issueKey,
+      parentWorkflowId = loaded.parentWorkflowId,
+      status = "resumed",
+      clearedPauseReason = before.pauseReason,
+    )
+  }
+
+  private fun DecompositionManifest.isAtUnlaunchedBoundary(): Boolean {
+    val currentSubtask = subtasks.firstOrNull { it.id == currentSubtaskIntent.subtaskId }
+    val activeChildExists = subtasks.any { subtask ->
+      subtask.status == SUBTASK_STATUS_IN_PROGRESS && subtask.workflowId?.isNotBlank() == true
+    }
+    val unselected = currentSubtaskIntent.subtaskId == NO_CURRENT_SUBTASK_ID &&
+      currentSubtaskIntent.action == NO_CURRENT_SUBTASK_ACTION
+    val selectedButNotLaunched = currentSubtask?.let { subtask ->
+      subtask.status == SUBTASK_STATUS_PENDING &&
+        subtask.workflowId.isNullOrBlank() &&
+        currentSubtaskIntent.action == SUBTASK_ACTION_START
+    } == true
+    return !activeChildExists && (unselected || selectedButNotLaunched)
+  }
+
   private fun resolveExecutionLiveness(
+    parentWorkflowId: String,
     currentSubtask: DecompositionSubtask?,
     dbPathOverride: String?,
   ): ExecutionLiveness {
     val workflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
-      ?: return ExecutionLiveness.UNKNOWN
+      ?: return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
     return runCatching {
       if (phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) != FeatureTaskWorkflowMode.RUNTIME) {
         ExecutionLiveness.UNKNOWN
@@ -125,6 +222,17 @@ class GoalRunnerStatusService(
       }
     }.getOrDefault(ExecutionLiveness.UNKNOWN)
   }
+
+  private fun resolveParentExecutionLiveness(parentWorkflowId: String, dbPathOverride: String?): ExecutionLiveness =
+    runCatching {
+      val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
+        ?: return@runCatching ExecutionLiveness.UNKNOWN
+      if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
+        ExecutionLiveness.LIVE
+      } else {
+        ExecutionLiveness.IDLE
+      }
+    }.getOrDefault(ExecutionLiveness.UNKNOWN)
 
   private fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =
     values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId).map { acceptance ->
@@ -314,10 +422,12 @@ class GoalRunnerStatusService(
     } else {
       manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
     } ?: loaded
-    val reconciled = refreshed.manifest.reconciledWithTerminalOutcomes(
-      request.dbPathOverride,
-      outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
-      manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId, request.dbPathOverride),
+    val reconciled = reconcileGoalManifest(
+      manifest = refreshed.manifest,
+      dbPathOverride = request.dbPathOverride,
+      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
+      acceptances = manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId, request.dbPathOverride),
+      outcomeStore = outcomeStore,
     )
     val saved = manifestStore.save(refreshed.copy(manifest = reconciled), request.dbPathOverride)
     return GoalRunnerAcceptResult.Accepted(
@@ -395,130 +505,6 @@ class GoalRunnerStatusService(
       !satisfied
     }?.subtaskId
   }
-
-  private fun DecompositionManifest.reconciledWithTerminalOutcomes(
-    dbPathOverride: String?,
-    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
-    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-  ): DecompositionManifest {
-    val reconciledSubtasks = subtasks.map { subtask ->
-      reconciledSubtask(subtask, dbPathOverride, authoritativeOutcomes, acceptances)
-    }
-    return copy(subtasks = reconciledSubtasks)
-      .withParentStatus()
-      .withDerivedCurrentIntent()
-  }
-
-  private fun DecompositionManifest.reconciledSubtask(
-    subtask: DecompositionSubtask,
-    dbPathOverride: String?,
-    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
-    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-  ): DecompositionSubtask {
-    val workflowId = subtask.workflowId?.takeIf(String::isNotBlank)
-    val outcome = workflowId?.let { id ->
-      preferredTerminalOutcome(subtask, id, dbPathOverride, authoritativeOutcomes)
-    }
-    // Runtime evidence wins: an acceptance only speaks for a subtask the runtime never carried to
-    // completion itself, so it can never downgrade or overwrite a genuine COMPLETE outcome.
-    acceptances[subtask.id]
-      ?.takeIf { outcome?.status != GoalRunnerTerminalStatus.COMPLETE }
-      ?.let { acceptance ->
-        return subtask.copy(
-          status = "complete",
-          commitSha = acceptance.commitSha,
-          blockedReason = null,
-          lastResumableStep = null,
-        )
-      }
-    val staleRetryOutcome = workflowId != null &&
-      outcome?.workflowId == workflowId &&
-      outcome.status != GoalRunnerTerminalStatus.COMPLETE &&
-      outcomeStore.progress(workflowId, dbPathOverride)?.workflowStatus == "running"
-    return if (staleRetryOutcome) {
-      subtask.copy(status = "in_progress", blockedReason = null)
-    } else if (outcome == null || shouldPreserveCompletedSubtask(subtask, outcome)) {
-      subtask
-    } else {
-      val status = outcome.toManifestStatus()
-      subtask.copy(
-        status = status,
-        workflowId = outcome.workflowId.takeIf(String::isNotBlank) ?: subtask.workflowId,
-        commitSha = outcome.commitSha ?: subtask.commitSha,
-        blockedReason = outcome.blockedReason
-          ?.takeIf { status == "blocked" }
-          ?: subtask.blockedReason.takeIf { status == "blocked" },
-        lastResumableStep = outcome.lastResumableStep ?: subtask.lastResumableStep,
-      )
-    }
-  }
-
-  private fun DecompositionManifest.preferredTerminalOutcome(
-    subtask: DecompositionSubtask,
-    workflowId: String,
-    dbPathOverride: String?,
-    authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
-  ): GoalRunnerStoredOutcome? = authoritativeOutcomes[subtask.id]
-    ?.takeIf { outcome -> canApplyAuthoritativeOutcome(subtask, workflowId, outcome) }
-    ?: outcomeStore.terminalOutcome(
-      workflowId = workflowId,
-      issueKey = issueKey,
-      subtaskId = subtask.id,
-      dbPathOverride = dbPathOverride,
-    )
-}
-
-private fun canApplyAuthoritativeOutcome(
-  subtask: DecompositionSubtask,
-  workflowId: String,
-  outcome: GoalRunnerStoredOutcome,
-): Boolean {
-  val resetPendingSubtask = subtask.status == "pending" && subtask.workflowId.isNullOrBlank()
-  if (resetPendingSubtask && outcome.status != GoalRunnerTerminalStatus.COMPLETE) {
-    return false
-  }
-  // Do not let non-complete sibling outcomes overwrite an active retry workflow.
-  val nonCompleteSibling = outcome.workflowId != workflowId && outcome.status != GoalRunnerTerminalStatus.COMPLETE
-  return subtask.status != "in_progress" || !nonCompleteSibling
-}
-
-private fun shouldPreserveCompletedSubtask(subtask: DecompositionSubtask, outcome: GoalRunnerStoredOutcome): Boolean =
-  subtask.status == "complete" &&
-    !subtask.commitSha.isNullOrBlank() &&
-    outcome.status != GoalRunnerTerminalStatus.COMPLETE
-
-private fun GoalRunnerStoredOutcome.toManifestStatus(): String = when (status) {
-  GoalRunnerTerminalStatus.COMPLETE -> "complete"
-  // A crash-reconciled row is resumable, not blocked: keep the subtask in_progress so resume continues.
-  GoalRunnerTerminalStatus.RECONCILABLE -> "in_progress"
-  // A paused child awaits the operator decision and stays resumable, so it is not blocked either.
-  GoalRunnerTerminalStatus.PAUSED -> "in_progress"
-  GoalRunnerTerminalStatus.BLOCKED,
-  GoalRunnerTerminalStatus.FAILED,
-  GoalRunnerTerminalStatus.TIMEOUT,
-  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
-  -> "blocked"
-}
-
-private fun DecompositionManifest.withDerivedCurrentIntent(): DecompositionManifest {
-  val nextIntent = subtasks.firstOrNull { it.status == "blocked" }?.let { blocked ->
-    CurrentSubtaskIntent(subtaskId = blocked.id, action = "blocked")
-  } ?: subtasks.firstOrNull { it.status == "in_progress" }?.let { inProgress ->
-    CurrentSubtaskIntent(subtaskId = inProgress.id, action = "resume")
-  } ?: firstRunnablePendingSubtask()?.let { pending ->
-    CurrentSubtaskIntent(subtaskId = pending.id, action = "start")
-  } ?: CurrentSubtaskIntent(subtaskId = 0, action = "complete")
-  return copy(currentSubtaskIntent = nextIntent)
-}
-
-private fun DecompositionManifest.firstRunnablePendingSubtask(): DecompositionSubtask? {
-  val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
-  return subtasks.firstOrNull { subtask ->
-    subtask.status == "pending" && subtask.dependencies.all { dependency ->
-      val dependencySubtask = subtasksById[dependency.subtaskId]
-      dependencySubtask?.status in setOf("complete", "skipped") || (dependency.optional && dependency.skipped)
-    }
-  } ?: subtasks.firstOrNull { it.status == "pending" }
 }
 
 private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {

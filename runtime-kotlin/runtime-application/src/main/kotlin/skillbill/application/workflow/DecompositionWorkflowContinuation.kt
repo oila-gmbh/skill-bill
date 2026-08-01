@@ -3,9 +3,11 @@
 package skillbill.application.workflow
 
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withBlockedSubtask
+import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.GoalContinuationOutcome
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.normalizeRequiredIssueKey
@@ -97,6 +99,7 @@ internal class DecompositionWorkflowContinuation(
       WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
       "plan",
     )
+    existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
     val imported = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       base,
@@ -113,25 +116,9 @@ internal class DecompositionWorkflowContinuation(
             mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
           )
         },
-        artifactsPatch = if (existing != null) {
-          mapOf(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              validator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          )
-        } else {
-          mapOf(
-            "plan" to mapOf("mode" to "decompose"),
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              validator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          )
-        },
+        artifactsPatch = parentProjectionArtifacts(manifest, validator, base.artifactsJson),
         sessionId = base.sessionId.orEmpty(),
+        replaceArtifacts = true,
       ),
     )
     WorkflowFamily.IMPLEMENT.saveRecord(
@@ -384,6 +371,19 @@ internal class DecompositionWorkflowContinuation(
       }
     }
   }
+}
+
+private fun parentProjectionArtifacts(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+  existingArtifactsJson: String,
+): Map<String, Any?> = LinkedHashMap(decodeArtifacts(existingArtifactsJson)).apply {
+  remove("goal_review_policy")
+  remove("goal_out_of_band_acceptances")
+  put(
+    DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+    encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+  )
 }
 
 private fun terminalSubtaskResult(

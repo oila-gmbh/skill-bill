@@ -74,6 +74,8 @@ class DatabaseMigrationsTest {
         16 to "rekey-producer-output-evidence-by-generation",
         17 to "persist-goal-planning-repair-evidence",
         18 to "persist-legacy-goal-planning-repair-evidence",
+        19 to "add-goal-runner-controls",
+        20 to "add-goal-runner-control-state",
       ),
       migrationDefinitions,
     )

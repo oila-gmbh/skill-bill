@@ -1,19 +1,25 @@
 package skillbill.ports.goalrunner
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.model.GoalRunnerCompletionPersistenceResult
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
@@ -56,6 +62,90 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
 
   fun saveRuntimeState(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState =
     save(state, dbPathOverride)
+
+  fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState =
+    GoalRunnerControlState()
+
+  fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease? = null
+
+  fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String? = null,
+    dbPathOverride: String? = null,
+  ): Boolean = true
+
+  fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String? = null,
+  ): Boolean = true
+
+  fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String? = null,
+  ): Boolean = true
+
+  fun bindRepositoryIdentity(
+    parentWorkflowId: String,
+    repositoryIdentity: String,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState {
+    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity is required." }
+    return controlState(parentWorkflowId, dbPathOverride)
+  }
+
+  fun persistStopAfterSubtask(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState = GoalRunnerControlState(stopAfterSubtaskId = subtaskId)
+
+  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
+
+  fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerPausePersistenceResult? = null
+
+  /**
+   * Atomically authorize the next child launch against the durable parent controls. The decision
+   * is the launch boundary: a pause request committed before this transaction denies the launch;
+   * a request committed after it is observed at the next parent boundary.
+   */
+  fun authorizeSubtaskLaunch(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String? = null,
+  ): GoalRunnerLaunchAuthorization {
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    val controls = controlState(state.parentWorkflowId, dbPathOverride)
+    return GoalRunnerLaunchAuthorization(
+      authorized = !controls.requiresPauseBoundary(state.manifest),
+      controlState = controls,
+    )
+  }
+
+  /** Atomically authorize a planning-agent launch against the durable parent pause boundary. */
+  fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String? = null): AgentRunSpawnAuthorization? =
+    null
+
+  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
+
+  /** Persist terminal child completion and the parent pause boundary in one transaction. */
+  fun saveCompletedSubtaskAtBoundary(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String? = null,
+  ): GoalRunnerCompletionPersistenceResult = GoalRunnerCompletionPersistenceResult(
+    state = saveRuntimeState(state, dbPathOverride),
+    paused = false,
+  )
+
+  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
 
   fun saveHardReset(
     state: GoalRunnerManifestState,
