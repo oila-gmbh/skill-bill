@@ -43,20 +43,20 @@ internal data class SkillContentIdentity(
       val source = sourceSkillDir.toAbsolutePath().normalize()
       val contentFile = source.resolve("content.md")
       if (!Files.isRegularFile(contentFile)) {
-        throw InvalidSkillContentIdentityError(source.toString(), "content.md is missing")
+        invalidIdentity(source.toString(), "content.md is missing")
       }
       val content = Files.readAllBytes(contentFile)
       val metadata = runCatching {
         parseSkillFrontmatter(content.toString(StandardCharsets.UTF_8))
       }.getOrElse { error ->
-        throw InvalidSkillContentIdentityError(
+        invalidIdentity(
           source.toString(),
           "content.md frontmatter could not be normalized",
           error,
         )
       }
       if (metadata.isEmpty()) {
-        throw InvalidSkillContentIdentityError(source.toString(), "content.md frontmatter is missing")
+        invalidIdentity(source.toString(), "content.md frontmatter is missing")
       }
       val canonical = runCatching { source.toRealPath().toString() }.getOrElse { source.toString() }
       return SkillContentIdentity(canonical, sha256(content), metadata.toSortedMap())
@@ -66,12 +66,12 @@ internal data class SkillContentIdentity(
     fun fromInstalled(stagingDir: Path): SkillContentIdentity {
       val marker = stagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
       if (!Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
-        throw InvalidSkillContentIdentityError(stagingDir.toString(), "identity marker is missing")
+        invalidIdentity(stagingDir.toString(), "identity marker is missing")
       }
       val parsed = JsonSupport.parseObjectOrNull(Files.readString(marker, StandardCharsets.UTF_8))
         ?.let(JsonSupport::jsonElementToValue)
         ?.let(JsonSupport::anyToStringAnyMap)
-        ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "identity marker is not an object")
+        ?: invalidIdentity(stagingDir.toString(), "identity marker is not an object")
       val expectedFields = setOf(
         "contract_version",
         "canonical_source_identity",
@@ -79,25 +79,28 @@ internal data class SkillContentIdentity(
         "normalized_metadata",
       )
       if (parsed.keys != expectedFields) {
-        throw InvalidSkillContentIdentityError(stagingDir.toString(), "identity marker fields are invalid")
+        invalidIdentity(stagingDir.toString(), "identity marker fields are invalid")
       }
       if (parsed["contract_version"] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
-        throw InvalidSkillContentIdentityError(stagingDir.toString(), "identity marker contract version is invalid")
+        invalidIdentity(stagingDir.toString(), "identity marker contract version is invalid")
       }
       val source = parsed["canonical_source_identity"] as? String
-        ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "canonical source identity is missing")
+        ?: invalidIdentity(stagingDir.toString(), "canonical source identity is missing")
       val digest = parsed["exact_content_sha256"] as? String
-        ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "exact content digest is missing")
+        ?: invalidIdentity(stagingDir.toString(), "exact content digest is missing")
       val metadata = (parsed["normalized_metadata"] as? Map<*, *>)
         ?.entries
         ?.associate { (key, value) ->
-          (key as? String ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "metadata key is invalid")) to
-            (value as? String ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "metadata value is invalid"))
+          val normalizedKey = key as? String
+            ?: invalidIdentity(stagingDir.toString(), "metadata key is invalid")
+          val normalizedValue = value as? String
+            ?: invalidIdentity(stagingDir.toString(), "metadata value is invalid")
+          normalizedKey to normalizedValue
         }
-        ?: throw InvalidSkillContentIdentityError(stagingDir.toString(), "normalized metadata is missing")
+        ?: invalidIdentity(stagingDir.toString(), "normalized metadata is missing")
       return runCatching { SkillContentIdentity(source, digest, metadata.toSortedMap()) }
         .getOrElse { error ->
-          throw InvalidSkillContentIdentityError(stagingDir.toString(), error.message ?: "identity values are invalid", error)
+          invalidIdentity(stagingDir.toString(), error.message ?: "identity values are invalid", error)
         }
     }
 
@@ -105,7 +108,7 @@ internal data class SkillContentIdentity(
       val parsed = JsonSupport.parseObjectOrNull(compact)
         ?.let(JsonSupport::jsonElementToValue)
         ?.let(JsonSupport::anyToStringAnyMap)
-        ?: throw InvalidSkillContentIdentityError(sourceLabel, "compact identity is not an object")
+        ?: invalidIdentity(sourceLabel, "compact identity is not an object")
       val expectedFields = setOf(
         "contract_version",
         "canonical_source_identity",
@@ -113,25 +116,26 @@ internal data class SkillContentIdentity(
         "normalized_metadata",
       )
       if (parsed.keys != expectedFields) {
-        throw InvalidSkillContentIdentityError(sourceLabel, "compact identity fields are invalid")
+        invalidIdentity(sourceLabel, "compact identity fields are invalid")
       }
       if (parsed["contract_version"] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
-        throw InvalidSkillContentIdentityError(sourceLabel, "compact identity contract version is invalid")
+        invalidIdentity(sourceLabel, "compact identity contract version is invalid")
       }
       val source = parsed["canonical_source_identity"] as? String
-        ?: throw InvalidSkillContentIdentityError(sourceLabel, "canonical source identity is missing")
+        ?: invalidIdentity(sourceLabel, "canonical source identity is missing")
       val digest = parsed["exact_content_sha256"] as? String
-        ?: throw InvalidSkillContentIdentityError(sourceLabel, "exact content digest is missing")
+        ?: invalidIdentity(sourceLabel, "exact content digest is missing")
       val metadata = (parsed["normalized_metadata"] as? Map<*, *>)
         ?.entries
         ?.associate { (key, value) ->
-          (key as? String ?: throw InvalidSkillContentIdentityError(sourceLabel, "metadata key is invalid")) to
-            (value as? String ?: throw InvalidSkillContentIdentityError(sourceLabel, "metadata value is invalid"))
+          val normalizedKey = key as? String ?: invalidIdentity(sourceLabel, "metadata key is invalid")
+          val normalizedValue = value as? String ?: invalidIdentity(sourceLabel, "metadata value is invalid")
+          normalizedKey to normalizedValue
         }
-        ?: throw InvalidSkillContentIdentityError(sourceLabel, "normalized metadata is missing")
+        ?: invalidIdentity(sourceLabel, "normalized metadata is missing")
       return runCatching { SkillContentIdentity(source, digest, metadata.toSortedMap()) }
         .getOrElse { error ->
-          throw InvalidSkillContentIdentityError(sourceLabel, error.message ?: "identity values are invalid", error)
+          invalidIdentity(sourceLabel, error.message ?: "identity values are invalid", error)
         }
     }
 
@@ -142,6 +146,9 @@ internal data class SkillContentIdentity(
     }
 
     private val SHA256_PATTERN = Regex("[0-9a-f]{64}")
+
+    private fun invalidIdentity(sourceLabel: String, reason: String, cause: Throwable? = null): Nothing =
+      throw InvalidSkillContentIdentityError(sourceLabel, reason, cause)
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
       .digest(bytes)
@@ -155,20 +162,15 @@ internal fun suppliedSkillContentIdentity(sourceSkillDir: Path): SkillContentIde
 internal fun installedSkillContentIdentity(stagingDir: Path): SkillContentIdentity =
   SkillContentIdentity.fromInstalled(stagingDir)
 
-internal fun requireMatchingSkillContentIdentity(
-  supplied: SkillContentIdentity,
-  installed: SkillContentIdentity,
-) = SkillContentIdentity.requireMatch(supplied, installed)
+internal fun requireMatchingSkillContentIdentity(supplied: SkillContentIdentity, installed: SkillContentIdentity) =
+  SkillContentIdentity.requireMatch(supplied, installed)
 
 /**
  * Session routing seam for callers that already have a compact supplied identity. A matching
  * marker is sufficient to route without replaying the installed SKILL.md body. The supplied
  * identity is mandatory so a session cannot bypass the comparison.
  */
-internal fun routeInstalledSkillBody(
-  suppliedCompactIdentity: String,
-  installedStagingDir: Path,
-): Unit {
+internal fun routeInstalledSkillBody(suppliedCompactIdentity: String, installedStagingDir: Path) {
   val suppliedIdentity = SkillContentIdentity.fromCompact(suppliedCompactIdentity, "supplied")
   val installedIdentity = SkillContentIdentity.fromInstalled(installedStagingDir)
   SkillContentIdentity.requireMatch(suppliedIdentity, installedIdentity)

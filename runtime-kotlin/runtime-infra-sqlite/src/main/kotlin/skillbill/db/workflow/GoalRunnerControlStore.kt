@@ -15,10 +15,7 @@ internal class GoalRunnerControlStore(
   override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? =
     selectJson(parentWorkflowId, "review_policy_json")?.let { decodeReviewPolicy(it) }
 
-  override fun persistReviewPolicy(
-    parentWorkflowId: String,
-    policy: GoalRunnerReviewPolicy,
-  ): GoalRunnerReviewPolicy {
+  override fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy {
     connection.prepareStatement(
       """
       INSERT INTO goal_runner_controls (parent_workflow_id, review_policy_json)
@@ -80,15 +77,14 @@ internal class GoalRunnerControlStore(
     }
   }
 
-  private fun selectJson(parentWorkflowId: String, column: String): String? =
-    connection.prepareStatement(
-      "SELECT $column FROM goal_runner_controls WHERE parent_workflow_id = ?",
-    ).use { statement ->
-      statement.setString(1, parentWorkflowId)
-      statement.executeQuery().use { rows ->
-        if (rows.next()) rows.getString(1)?.takeIf(String::isNotBlank) else null
-      }
+  private fun selectJson(parentWorkflowId: String, column: String): String? = connection.prepareStatement(
+    "SELECT $column FROM goal_runner_controls WHERE parent_workflow_id = ?",
+  ).use { statement ->
+    statement.setString(1, parentWorkflowId)
+    statement.executeQuery().use { rows ->
+      if (rows.next()) rows.getString(1)?.takeIf(String::isNotBlank) else null
     }
+  }
 }
 
 private fun GoalRunnerReviewPolicy.toArtifactMap(): Map<String, Any?> = buildMap {

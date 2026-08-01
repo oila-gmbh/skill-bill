@@ -1,8 +1,8 @@
 package skillbill.install.plan
 
+import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
-import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.scaffold.authoring.InternalSkillDeclaration
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.authoring.requireValidInternalSkillClassification

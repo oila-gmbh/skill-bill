@@ -1,5 +1,6 @@
 package skillbill.db
 
+import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
@@ -29,7 +30,8 @@ class GoalRunnerControlStoreTest {
       assertEquals(policy, store.reviewPolicy("parent-1"))
       assertEquals(mapOf(2 to acceptance), store.outOfBandAcceptances("parent-1"))
       connection.prepareStatement(
-        "SELECT review_policy_json, out_of_band_acceptances_json FROM goal_runner_controls WHERE parent_workflow_id = ?",
+        "SELECT review_policy_json, out_of_band_acceptances_json " +
+          "FROM goal_runner_controls WHERE parent_workflow_id = ?",
       ).use { statement ->
         statement.setString(1, "parent-1")
         statement.executeQuery().use { rows ->

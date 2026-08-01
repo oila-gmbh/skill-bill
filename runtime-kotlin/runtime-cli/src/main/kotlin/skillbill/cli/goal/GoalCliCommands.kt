@@ -558,8 +558,7 @@ private class GoalRunPresenter(
     )
   }
 
-  fun eventSink(): skillbill.application.model.GoalRunnerEventSink =
-    skillbill.application.model.GoalRunnerEventSink { }
+  fun eventSink(): skillbill.application.model.GoalRunnerEventSink = skillbill.application.model.GoalRunnerEventSink { }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE

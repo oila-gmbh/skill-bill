@@ -99,9 +99,9 @@ If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surfac
 
 ## Fresh-conversation follow-up
 
-For a fresh conversation, the durable handoff is the canonical repository
-realpath and issue key. The next session should inspect or resume the existing
-runtime state from those values:
+For a fresh conversation, the durable handoff is the canonical repository realpath
+and issue key. The next session should inspect or resume the existing runtime
+state from those values:
 
 ```text
 repository: repo-root-realpath-v1:/absolute/path/to/repository

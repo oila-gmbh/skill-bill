@@ -3,6 +3,7 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.withRetriedSubtask
+import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.UnitOfWork
@@ -60,8 +61,12 @@ internal fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
     sessionId = parent.sessionId.orEmpty(),
     replaceArtifacts = true,
   )
+  migrateLegacyGoalRunnerControls(unitOfWork, parent)
   val updatedParent = updateRecord(WorkflowFamily.IMPLEMENT.definition, parent, parentInput)
-  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updatedParent)
+  WorkflowFamily.IMPLEMENT.saveRecord(
+    unitOfWork.workflowStates,
+    updatedParent.toRecord().copy(issueKey = retriedManifest.issueKey),
+  )
   return updatedParent.artifactsJson
 }
 

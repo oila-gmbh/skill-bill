@@ -1,14 +1,14 @@
 package skillbill.install.apply
 
+import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
+import skillbill.install.identity.installedSkillContentIdentity
+import skillbill.install.identity.requireMatchingSkillContentIdentity
+import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.model.RenderedSkill
-import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
-import skillbill.install.identity.installedSkillContentIdentity
-import skillbill.install.identity.requireMatchingSkillContentIdentity
-import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.staging.GeneratedSupportPointer
 import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
@@ -98,21 +98,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
       agentAddonPointers = agentAddonPointers,
     ),
   )
-  val currentIdentity = suppliedSkillContentIdentity(inputs.resolvedSource)
-  if (java.nio.file.Files.isRegularFile(
-      inputs.expectedStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME),
-      java.nio.file.LinkOption.NOFOLLOW_LINKS,
-    )
-  ) {
-    requireMatchingSkillContentIdentity(
-      currentIdentity,
-      installedSkillContentIdentity(inputs.expectedStagingDir),
-    )
-  }
-  require(currentHash == intent.contentHash) {
-    "Planned staging for '${skill.name}' expected hash '${intent.contentHash}' but current source resolves " +
-      "to '$currentHash'. Re-run planInstall before applyInstall."
-  }
+  validatePlannedStagingSource(inputs, currentHash)
   val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
     internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name } +
     SKILL_CONTENT_IDENTITY_FILENAME
@@ -142,6 +128,20 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
       "'${inputs.expectedStagingDir}' with hash '${intent.contentHash}'."
   }
   return staged
+}
+
+private fun validatePlannedStagingSource(inputs: PlannedStagingMaterialization, currentHash: String) {
+  val marker = inputs.expectedStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
+  if (java.nio.file.Files.isRegularFile(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+    requireMatchingSkillContentIdentity(
+      suppliedSkillContentIdentity(inputs.resolvedSource),
+      installedSkillContentIdentity(inputs.expectedStagingDir),
+    )
+  }
+  require(currentHash == inputs.intent.contentHash) {
+    "Planned staging for '${inputs.skill.name}' expected hash '${inputs.intent.contentHash}' but current source " +
+      "resolves to '$currentHash'. Re-run planInstall before applyInstall."
+  }
 }
 
 private fun plannedSupportPointers(inputs: PlannedStagingMaterialization) = generatedSupportPointersFor(

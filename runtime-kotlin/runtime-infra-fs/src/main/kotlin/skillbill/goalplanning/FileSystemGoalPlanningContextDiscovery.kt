@@ -6,20 +6,23 @@ import skillbill.ports.goalrunner.model.GoalPlanningContext
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.isDirectory
-import kotlin.io.path.isRegularFile
 
 @Inject
 class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   override fun discover(repoRoot: Path): GoalPlanningContext {
     val budget = DiscoveryBudget()
-    val canonicalRoot = repoRoot.toAbsolutePath().normalize()
+    val canonicalRoot = repoRoot.toRealPathOrNull() ?: repoRoot.toAbsolutePath().normalize()
     val packsRoot = canonicalRoot.resolve("platform-packs")
     return GoalPlanningContext(
       platformPacks = discoverPackFiles(canonicalRoot, packsRoot, "platform.yaml", budget),
       boundaryMemory = discoverPackFiles(canonicalRoot, packsRoot, "agent/history.md", budget) +
         discoverPackFiles(canonicalRoot, packsRoot, "agent/decisions.md", budget),
-      validationGuidance = readBounded(canonicalRoot.resolve("AGENTS.md"), "AGENTS.md", budget).orEmpty(),
+      validationGuidance = readBounded(
+        canonicalRoot,
+        canonicalRoot.resolve("AGENTS.md"),
+        "AGENTS.md",
+        budget,
+      ).orEmpty(),
     )
   }
 
@@ -29,35 +32,65 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     relativeName: String,
     budget: DiscoveryBudget,
   ): Map<String, String> {
-    if (!packsRoot.isDirectory()) return emptyMap()
-    val packDirs = Files.list(packsRoot).use { entries ->
-      entries.filter { path -> Files.isDirectory(path) }.sorted().toList()
-    }
+    val canonicalPacksRoot = packsRoot.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: return emptyMap()
+    if (!Files.isDirectory(canonicalPacksRoot)) return emptyMap()
+    val packDirs = Files.list(canonicalPacksRoot).use { entries ->
+      entries.filter { path -> Files.isDirectory(path) }
+        .sorted()
+        .toList()
+    }.mapNotNull { path -> path.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } }
     return packDirs.mapNotNull { packDir ->
       val candidate = packDir.resolve(relativeName)
       val relative = repoRoot.relativize(candidate).joinToString("/")
-      readBounded(candidate, relative, budget)?.let { content -> relative to content }
+      readBounded(repoRoot, candidate, relative, budget)?.let { content -> relative to content }
     }.toMap()
   }
 
-  private fun readBounded(path: Path, relative: String, budget: DiscoveryBudget): String? {
-    if (!budget.canRead() || !Files.isRegularFile(path)) return null
-    val fileBytes = runCatching { Files.size(path) }.getOrNull() ?: return null
-    val bytesToRead = minOf(fileBytes, MAX_CONTEXT_EXCERPT_BYTES.toLong(), budget.remainingBytes()).toInt()
-    if (bytesToRead <= 0) {
+  private fun readBounded(repoRoot: Path, path: Path, relative: String, budget: DiscoveryBudget): String? {
+    val readable = boundedReadableFile(repoRoot, path, budget) ?: return null
+    if (readable.bytesToRead <= 0) {
       budget.record(0)
       return null
     }
     val bytes = runCatching {
-      Files.newInputStream(path).use { input -> input.readNBytes(bytesToRead) }
+      Files.newInputStream(readable.path).use { input -> input.readNBytes(readable.bytesToRead) }
     }.getOrNull() ?: return null
     budget.record(bytes.size.toLong())
     val excerpt = bytes.toString(StandardCharsets.UTF_8)
       .replace("\r\n", "\n")
       .replace('\r', '\n')
-    val suffix = if (fileBytes > bytes.size) "\n…[$relative excerpt bounded]" else ""
+    val suffix = if (readable.fileBytes > bytes.size) "\n…[$relative excerpt bounded]" else ""
     return excerpt + suffix
   }
+
+  private fun boundedReadableFile(repoRoot: Path, path: Path, budget: DiscoveryBudget): BoundedReadableFile? =
+    if (!budget.canRead()) {
+      null
+    } else {
+      path.toRealPathOrNull()
+        ?.takeIf { canonical -> canonical.startsWith(repoRoot) && Files.isRegularFile(canonical) }
+        ?.let { canonical ->
+          runCatching { Files.size(canonical) }.getOrNull()?.let { fileBytes ->
+            BoundedReadableFile(
+              path = canonical,
+              fileBytes = fileBytes,
+              bytesToRead = minOf(
+                fileBytes,
+                MAX_CONTEXT_EXCERPT_BYTES.toLong(),
+                budget.remainingBytes(),
+              ).toInt(),
+            )
+          }
+        }
+    }
+
+  private fun Path.toRealPathOrNull(): Path? = runCatching { toRealPath() }.getOrNull()
+
+  private data class BoundedReadableFile(
+    val path: Path,
+    val fileBytes: Long,
+    val bytesToRead: Int,
+  )
 
   private class DiscoveryBudget {
     private var fileCount = 0

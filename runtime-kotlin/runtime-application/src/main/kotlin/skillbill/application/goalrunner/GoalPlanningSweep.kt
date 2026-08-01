@@ -433,27 +433,7 @@ class DefaultGoalPlanningSweep(
           stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
         )
       }
-    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
-    val outcome = subtaskLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = shared.invokedAgentId,
-        configuredAgentOverrideId = shared.configuredAgentOverrideId,
-        skillRunRequest = SkillRunRequest(
-          issueKey = request.issueKey,
-          repoRoot = shared.repoRoot,
-          subtaskId = subtask?.id,
-          dbPathOverride = shared.dbPathOverride,
-          // Planning checkpoints only after the child exits, so it emits no durable progress
-          // token and no worktree activity. It proves liveness by streaming output instead:
-          // the idle window then bounds silence, and the budget bounds total time.
-          timeout = request.planningBudget,
-          progressIdleTimeout = request.progressIdleTimeout,
-          outputSink = request.outputSink,
-          promptOverride = prompt,
-          streamOutputForLiveness = true,
-        ),
-      ),
-    )
+    val outcome = launchPlanningAttempt(shared, request, subtask, phaseId, prompt)
     val stdout = stdoutFor(outcome)
       ?: return GoalPlanningPhaseProduction.Stopped(
         stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
@@ -486,6 +466,33 @@ class DefaultGoalPlanningSweep(
           )
         }
       },
+    )
+  }
+
+  private fun launchPlanningAttempt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    phaseId: String,
+    prompt: String,
+  ): AgentRunLaunchOutcome {
+    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
+    return subtaskLauncher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = shared.invokedAgentId,
+        configuredAgentOverrideId = shared.configuredAgentOverrideId,
+        skillRunRequest = SkillRunRequest(
+          issueKey = request.issueKey,
+          repoRoot = shared.repoRoot,
+          subtaskId = subtask?.id,
+          dbPathOverride = shared.dbPathOverride,
+          timeout = request.planningBudget,
+          progressIdleTimeout = request.progressIdleTimeout,
+          outputSink = request.outputSink,
+          promptOverride = prompt,
+          streamOutputForLiveness = true,
+        ),
+      ),
     )
   }
 

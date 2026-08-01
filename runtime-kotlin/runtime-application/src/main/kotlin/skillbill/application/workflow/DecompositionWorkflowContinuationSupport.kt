@@ -3,6 +3,7 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
+import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -112,6 +113,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
   unitOfWork: UnitOfWork,
   validator: DecompositionManifestValidator,
 ) {
+  migrateLegacyGoalRunnerControls(unitOfWork, parentRecord)
   val updatedParent = updateRecord(
     WorkflowFamily.IMPLEMENT.definition,
     parentRecord,
@@ -130,7 +132,10 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
       replaceArtifacts = true,
     ),
   )
-  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updatedParent)
+  WorkflowFamily.IMPLEMENT.saveRecord(
+    unitOfWork.workflowStates,
+    updatedParent.toRecord().copy(issueKey = manifest.issueKey),
+  )
 }
 
 internal fun DecompositionManifest.withStartedSubtask(

@@ -10,10 +10,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 interface GoalRunnerControlRepository {
   fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = null
 
-  fun persistReviewPolicy(
-    parentWorkflowId: String,
-    policy: GoalRunnerReviewPolicy,
-  ): GoalRunnerReviewPolicy = policy
+  fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy = policy
 
   fun outOfBandAcceptances(parentWorkflowId: String): Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
 

@@ -3,12 +3,12 @@
 package skillbill.install.staging
 
 import skillbill.agentaddon.AgentAddonPointer
-import skillbill.install.model.InstallPlanSkill
-import skillbill.install.model.RenderedSkill
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.SkillContentIdentity
 import skillbill.install.identity.routeInstalledSkillBody
 import skillbill.install.identity.suppliedSkillContentIdentity
+import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.resolveTarget
@@ -297,15 +297,7 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     if (Files.isDirectory(packsRoot)) {
       Files.createSymbolicLink(tempDir.resolve("platform-packs"), packsRoot)
     }
-    Files.write(
-      tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
-      inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
-    )
-    Files.writeString(
-      tempDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME),
-      inputs.contentIdentity.compact(),
-      StandardCharsets.UTF_8,
-    )
+    writeInstallStagingMarkers(tempDir, inputs)
     promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true
     val finalSkillFile = inputs.finalStagingDir.resolve(tempDir.relativize(skillFileInTemp))
@@ -340,6 +332,18 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
     throw error
   }
+}
+
+private fun writeInstallStagingMarkers(tempDir: Path, inputs: FreshInstallInputs) {
+  Files.write(
+    tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
+    inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
+  )
+  Files.writeString(
+    tempDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME),
+    inputs.contentIdentity.compact(),
+    StandardCharsets.UTF_8,
+  )
 }
 
 internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {

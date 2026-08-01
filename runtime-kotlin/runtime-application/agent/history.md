@@ -1,3 +1,13 @@
+## [2026-08-01] SKILL-154 subtask 1 — Context-efficient skill and goal orchestration
+Areas: runtime-application/{goalrunner,workflow}, runtime-cli/goal, runtime-domain/{goalrunner,workflow}, runtime-infra-fs/{goalplanning,install}, runtime-infra-sqlite/{goalrunner,migrations}, runtime-ports/{goalrunner,persistence}, runtime-contracts/errors, docs, governed feature skills, .feature-specs/SKILL-154
+- Added compact supplied-versus-installed skill identity validation, bounded goal-planning context discovery, and thin `{status, commit_sha, workflow_id}` terminal retention.
+- Goal launch/completion guidance now exposes one monitoring block and one terminal notification; bounded repository searches and fresh-conversation handoffs name the canonical repository path and issue key.
+- Added durable goal-runner control, planning-context projections, and workflow input selection seams with contract coverage for identity mismatch, messaging, bounded output, and retention shape. reusable
+- Pattern: keep child payloads, transcripts, and durable evidence out of the parent conversation while passing only validated projections and canonical handoff metadata. reusable
+- Breaking changes/limitations: mismatched supplied/installed skill identities loud-fail with both source identities; pause protocol and bill-monitor remain out of scope.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-07-26] SKILL-146 subtask 3 — Bounded feature-task phase projections
 Areas: runtime-application/featuretask
 - Tightened audit-remediation and review-retry launches to their dedicated bounded projection sets instead of rebuilding broad upstream receipts

@@ -1,5 +1,6 @@
 package skillbill.install.plan
 
+import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
@@ -8,7 +9,6 @@ import skillbill.install.model.InstallStagingPathIntent
 import skillbill.install.staging.GeneratedSupportPointer
 import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
-import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor

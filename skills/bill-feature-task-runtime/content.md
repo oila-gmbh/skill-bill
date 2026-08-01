@@ -47,9 +47,8 @@ directly from the spec at launch — this skill does not parse or restate them.
 
 ## Fresh-conversation follow-up
 
-When continuing from a fresh conversation, pass only the canonical repository
-realpath and issue key to the runtime continuation lookup. Those values are
-sufficient durable-state handoff data:
+When continuing from a fresh conversation, pass only the canonical repository realpath
+and issue key to the runtime continuation lookup. Those values are sufficient durable-state handoff data:
 
 ```text
 repository: repo-root-realpath-v1:/absolute/path/to/repository

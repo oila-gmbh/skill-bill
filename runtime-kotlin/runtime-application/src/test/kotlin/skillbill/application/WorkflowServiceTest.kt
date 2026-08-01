@@ -25,7 +25,8 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
-import skillbill.application.workflow.hasDecompositionPlan
+import skillbill.application.workflow.isGoalContinuationChildWorkflow
+import skillbill.application.workflow.persistParentDecompositionRuntime
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
@@ -50,11 +51,13 @@ import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
+import skillbill.ports.persistence.GoalRunnerControlRepository
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
@@ -2505,6 +2508,56 @@ class WorkflowGoalRunnerProgressStoreTest {
     assertEquals("completed", steps.getValue("preplan"))
     assertEquals("running", steps.getValue("implement"))
   }
+
+  @Test
+  fun `parent projection migrates legacy controls before replacing its artifacts`() {
+    val manifest = decompositionRuntime(status = "in_progress")
+    val acceptance = mapOf(
+      "subtask_id" to 1,
+      "commit_sha" to "abc1234",
+      "reason" to "implemented outside the runtime",
+      "accepted_at" to "2026-08-01T12:00:00Z",
+    )
+    val parent = workflowRecord(
+      workflowId = "wfl-legacy-parent",
+      artifactsPatch = mapOf(
+        "plan" to mapOf("mode" to "decompose"),
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+          encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+        "goal_review_policy" to mapOf(
+          "code_review_mode" to CodeReviewExecutionMode.INLINE.wireValue,
+        ),
+        "goal_out_of_band_acceptances" to listOf(acceptance),
+      ),
+    ).copy(issueKey = manifest.issueKey)
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(parent)
+    val controls = RecordingGoalRunnerControlRepository()
+
+    FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls).transaction(null) { unitOfWork ->
+      testWorkflowEngine.persistParentDecompositionRuntime(
+        parent.toSnapshot(),
+        manifest,
+        unitOfWork,
+        testDecompositionManifestValidator,
+      )
+    }
+
+    assertEquals(GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE), controls.reviewPolicy("wfl-legacy-parent"))
+    assertEquals(
+      GoalRunnerOutOfBandAcceptance(
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "implemented outside the runtime",
+        acceptedAt = "2026-08-01T12:00:00Z",
+      ),
+      controls.outOfBandAcceptances("wfl-legacy-parent").getValue(1),
+    )
+    val persistedArtifacts = decodeWorkflowArtifactsForTest(
+      requireNotNull(workflows.getFeatureImplementWorkflow("wfl-legacy-parent")).artifactsJson,
+    )
+    assertEquals(setOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY), persistedArtifacts.keys)
+  }
 }
 
 /**
@@ -3228,6 +3281,8 @@ internal class FakeDatabaseSessionFactory(
   private val fakeDbPath: Path = Path.of("/fake/metrics.db"),
   private val planningPreparations: GoalPlanningPreparationRepository =
     skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository,
+  private val goalRunnerControls: GoalRunnerControlRepository =
+    skillbill.ports.persistence.EmptyGoalRunnerControlRepository,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
@@ -3249,6 +3304,30 @@ internal class FakeDatabaseSessionFactory(
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = planningPreparations
+    override val goalRunnerControls = this@FakeDatabaseSessionFactory.goalRunnerControls
+  }
+}
+
+private class RecordingGoalRunnerControlRepository : GoalRunnerControlRepository {
+  private val policies = mutableMapOf<String, GoalRunnerReviewPolicy>()
+  private val acceptances = mutableMapOf<String, MutableMap<Int, GoalRunnerOutOfBandAcceptance>>()
+
+  override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = policies[parentWorkflowId]
+
+  override fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy {
+    policies[parentWorkflowId] = policy
+    return policy
+  }
+
+  override fun outOfBandAcceptances(parentWorkflowId: String): Map<Int, GoalRunnerOutOfBandAcceptance> =
+    acceptances[parentWorkflowId].orEmpty()
+
+  override fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+  ): GoalRunnerOutOfBandAcceptance {
+    acceptances.getOrPut(parentWorkflowId, ::mutableMapOf)[acceptance.subtaskId] = acceptance
+    return acceptance
   }
 }
 
@@ -3382,6 +3461,14 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     return true
   }
 }
+
+private fun InMemoryWorkflowStates.decomposedParentRows(issueKey: String): List<WorkflowStateRecord> =
+  listFeatureImplementWorkflows(Int.MAX_VALUE).filter { row ->
+    val snapshot = row.toSnapshot()
+    row.issueKey == issueKey &&
+      !snapshot.isGoalContinuationChildWorkflow() &&
+      snapshot.decompositionRuntime(testDecompositionManifestValidator) != null
+  }
 
 class DecompositionDiskBootstrapTest {
   @Test
@@ -3543,7 +3630,8 @@ class DecompositionDiskBootstrapTest {
   /**
    * SKILL-141 Subtask 1 AC-004: when a pre-existing parent row has a corrupt decomposition artifact
    * (findDecomposedParentWorkflow requires a valid decode and filters it out), the secondary
-   * issueKey+hasDecompositionPlan search must reclaim it so bootstrap does not mint a second orphaned id.
+   * issue-key plus legacy plan-marker search must reclaim it so bootstrap does not mint a second
+   * orphaned id.
    */
   @Test
   fun `continueDecomposedParentByIssueKey reuses existing parent when decomposition artifact is corrupt`() {
@@ -3574,7 +3662,7 @@ class DecompositionDiskBootstrapTest {
     )
     val workflows = InMemoryWorkflowStates()
     // Insert existing parent with a corrupt decomposition_runtime artifact. findDecomposedParentWorkflow
-    // requires a valid Map decode and silently excludes this row; the secondary issueKey+hasDecompositionPlan
+    // requires a valid Map decode and silently excludes this row; the secondary legacy-parent
     // search must find it so no second parent id is minted.
     workflows.saveFeatureImplementWorkflow(
       workflowRecord(
@@ -3600,8 +3688,7 @@ class DecompositionDiskBootstrapTest {
     assertEquals("paused", parentRow.workflowStatus)
     // No second parent should have been minted: only one row must carry both the
     // decompose-mode plan artifact and the issue key (child subtask rows don't have it).
-    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
-      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    val parentRows = workflows.decomposedParentRows("SKILL-TEST")
     assertEquals(1, parentRows.size, "Bootstrap must reuse the existing parent, not mint a second one.")
     assertEquals("wfl-corrupt-parent", parentRows.single().workflowId)
     assertNotNull(
@@ -3654,16 +3741,14 @@ class DecompositionDiskBootstrapTest {
     db.transaction<ContinuationStepResult>(null) { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
-    val parentRowsAfterFirst = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
-      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    val parentRowsAfterFirst = workflows.decomposedParentRows("SKILL-TEST")
     assertEquals(1, parentRowsAfterFirst.size)
     val firstParentId = parentRowsAfterFirst.single().workflowId
 
     db.transaction<ContinuationStepResult>(null) { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
-    val parentRowsAfterSecond = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
-      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    val parentRowsAfterSecond = workflows.decomposedParentRows("SKILL-TEST")
 
     assertEquals(1, parentRowsAfterSecond.size, "Repeat call must not mint a second parent row")
     assertEquals(
@@ -3730,8 +3815,7 @@ class DecompositionDiskBootstrapTest {
     db.transaction<ContinuationStepResult>(null) { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
-    val parentRows = workflows.listFeatureImplementWorkflows(Int.MAX_VALUE)
-      .filter { it.issueKey == "SKILL-TEST" && it.toSnapshot().hasDecompositionPlan() }
+    val parentRows = workflows.decomposedParentRows("SKILL-TEST")
     assertEquals(1, parentRows.size, "Two calls must not mint a second parent row")
     assertEquals("wfl-corrupt-idempotent", parentRows.single().workflowId, "Both calls must reuse the original row")
   }
