@@ -57,9 +57,74 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "Run a decomposed goal in the foreground.")
     assertContains(result.stdout, "status")
     assertContains(result.stdout, "watch")
+    assertContains(result.stdout, "pause")
     assertContains(result.stdout, "reset")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
+  }
+
+  @Test
+  fun `goal run accepts positive stop-after subtask and does not launch the next child`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--stop-after-subtask", "1")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "goal SKILL-901: paused")
+    assertEquals(listOf(1), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+    assertContains(status.stdout, "paused: true")
+    assertContains(status.stdout, "stop_after_subtask: 1")
+    assertContains(status.stdout, "complete: 1")
+  }
+
+  @Test
+  fun `goal run rejects missing and non-positive stop-after subtask values`() {
+    val missingFixture = goalFixture(subtaskCount = 1)
+    val missing = CliRuntime.run(
+      missingFixture.goalCommand(extra = listOf("--stop-after-subtask")),
+      missingFixture.context(launcher = GoalFixtureAgentRunLauncher(missingFixture)),
+    )
+    assertEquals(1, missing.exitCode, missing.stdout)
+    assertContains(missing.stdout, "Missing argument for option --stop-after-subtask")
+
+    val zeroFixture = goalFixture(subtaskCount = 1)
+    val zero = CliRuntime.run(
+      zeroFixture.goalCommand(extra = listOf("--stop-after-subtask", "0")),
+      zeroFixture.context(launcher = GoalFixtureAgentRunLauncher(zeroFixture)),
+    )
+    assertEquals(1, zero.exitCode, zero.stdout)
+    assertContains(zero.stdout, "--stop-after-subtask must be a positive integer")
+  }
+
+  @Test
+  fun `goal pause is durable and idempotent with bounded output`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = listOf(
+      "--db",
+      fixture.dbPath.toString(),
+      "goal",
+      "pause",
+      "SKILL-901",
+    )
+
+    val first = CliRuntime.run(command, fixture.context(launcher = launcher))
+    val second = CliRuntime.run(command, fixture.context(launcher = launcher))
+
+    assertEquals(0, first.exitCode, first.stdout)
+    assertEquals(0, second.exitCode, second.stdout)
+    assertEquals(first.stdout, second.stdout)
+    assertContains(first.stdout, "goal SKILL-901: requested")
+    assertContains(first.stdout, "reason: operator_request")
+    assertEquals(emptyList(), launcher.childLaunches)
   }
 
   @Test

@@ -8,6 +8,22 @@ import java.util.concurrent.TimeUnit
 
 class JvmAgentRunProcessRunnerTest {
   @Test
+  fun `foreground process result is returned once as the bounded terminal result`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf terminal-result"),
+        workingDirectory = Path.of("."),
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertEquals("terminal-result", result.stdout)
+    assertEquals(false, result.timedOut)
+    assertEquals(false, result.interrupted)
+    assertEquals(false, result.spawnFailed)
+  }
+
+  @Test
   fun `reap destroys a process that exits and does not forcibly kill it`() {
     val process = FakeReapableProcess(staysAlive = false)
 

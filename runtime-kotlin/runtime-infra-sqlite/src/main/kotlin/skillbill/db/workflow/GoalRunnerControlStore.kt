@@ -3,6 +3,7 @@ package skillbill.db.workflow
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.persistence.GoalRunnerControlRepository
@@ -12,6 +13,42 @@ import java.sql.Connection
 internal class GoalRunnerControlStore(
   private val connection: Connection,
 ) : GoalRunnerControlRepository {
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+    selectJson(parentWorkflowId, "control_state_json")?.let(::decodeControlState) ?: GoalRunnerControlState()
+
+  override fun persistControlState(
+    parentWorkflowId: String,
+    state: GoalRunnerControlState,
+  ): GoalRunnerControlState {
+    connection.prepareStatement(
+      """
+      INSERT INTO goal_runner_controls (parent_workflow_id, control_state_json)
+      VALUES (?, ?)
+      ON CONFLICT(parent_workflow_id) DO UPDATE SET
+        control_state_json = excluded.control_state_json,
+        updated_at = CURRENT_TIMESTAMP
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, parentWorkflowId)
+      statement.setString(2, JsonSupport.mapToJsonString(state.toArtifactMap()))
+      statement.executeUpdate()
+    }
+    return state
+  }
+
+  override fun clearControlState(parentWorkflowId: String) {
+    connection.prepareStatement(
+      """
+      UPDATE goal_runner_controls
+      SET control_state_json = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE parent_workflow_id = ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, parentWorkflowId)
+      statement.executeUpdate()
+    }
+  }
+
   override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? =
     selectJson(parentWorkflowId, "review_policy_json")?.let { decodeReviewPolicy(it) }
 
@@ -109,6 +146,72 @@ private fun GoalRunnerOutOfBandAcceptance.toArtifactMap(): Map<String, Any?> = m
   "commit_sha" to commitSha,
   "reason" to reason,
   "accepted_at" to acceptedAt,
+)
+
+private fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
+  "stop_after_subtask_id" to stopAfterSubtaskId,
+  "pause_requested" to pauseRequested,
+  "pause_consumed" to pauseConsumed,
+  "paused" to paused,
+  "pause_reason" to pauseReason,
+  "stop_after_consumed" to stopAfterConsumed,
+)
+
+private fun decodeControlState(raw: String): GoalRunnerControlState {
+  val state = JsonSupport.parseObjectOrNull(raw)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: error("Goal runner control state durable record must be an object.")
+  val allowedKeys = setOf(
+    "stop_after_subtask_id",
+    "pause_requested",
+    "pause_consumed",
+    "paused",
+    "pause_reason",
+    "stop_after_consumed",
+  )
+  state.keys.forEach { key ->
+    require(key in allowedKeys) { "Goal runner control state has unsupported field '$key'." }
+  }
+  return GoalRunnerControlState(
+    stopAfterSubtaskId = state["stop_after_subtask_id"].toPositiveIntOrNull("stop_after_subtask_id"),
+    pauseRequested = state.booleanOrDefault("pause_requested", false),
+    pauseConsumed = state.booleanOrDefault("pause_consumed", false),
+    paused = state.booleanOrDefault("paused", false),
+    pauseReason = state.nullableString("pause_reason"),
+    stopAfterConsumed = state.booleanOrDefault("stop_after_consumed", false),
+  )
+}
+
+private fun Map<String, Any?>.booleanOrDefault(key: String, default: Boolean): Boolean {
+  if (!containsKey(key)) return default
+  return when (val value = this[key]) {
+    null -> error("Goal runner control state field '$key' must be a boolean.")
+    is Boolean -> value
+    else -> error("Goal runner control state field '$key' must be a boolean.")
+  }
+}
+
+private fun Map<String, Any?>.nullableString(key: String): String? = when (val value = this[key]) {
+  null -> null
+  is String -> value
+  else -> error("Goal runner control state field '$key' must be a string or null.")
+}
+
+private fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
+  null -> null
+  is Byte -> toInt()
+  is Short -> toInt()
+  is Int -> this
+  is Long -> takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
+  is java.math.BigInteger -> runCatching { intValueExact() }.getOrNull()
+  is java.math.BigDecimal -> runCatching { toBigIntegerExact().intValueExact() }.getOrNull()
+  is Number -> runCatching { java.math.BigDecimal(toString()).intValueExact() }.getOrNull()
+  else -> error("Goal runner control state field '$key' must be a positive integer or null.")
+}?.also {
+  require(it > 0) { "Goal runner control state field '$key' must be positive." }
+} ?: if (this == null) null else error(
+  "Goal runner control state field '$key' must be a positive integer or null.",
 )
 
 private fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {

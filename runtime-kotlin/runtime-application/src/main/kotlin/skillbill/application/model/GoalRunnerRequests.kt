@@ -27,6 +27,7 @@ data class GoalRunnerRunRequest(
   /** Null means reuse the parent goal's durable parallel lane, or run one lane for a new parent. */
   val parallelReviewAgent: String? = null,
   val agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
+  val stopAfterSubtaskId: Int? = null,
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
 ) {
   init {
@@ -34,6 +35,7 @@ data class GoalRunnerRunRequest(
     require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
     parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
+    stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }
     }
@@ -44,6 +46,20 @@ data class GoalRunnerRunRequest(
       require(budget.isPositive()) { "planningBudget must be positive when provided." }
     }
     require(observabilitySequenceStart >= 0) { "observabilitySequenceStart must be non-negative." }
+  }
+}
+
+data class GoalRunnerPauseResult(
+  val issueKey: String,
+  val parentWorkflowId: String? = null,
+  val status: String,
+  val paused: Boolean = false,
+  val pauseRequested: Boolean = false,
+  val pauseReason: String? = null,
+) {
+  init {
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(status.isNotBlank()) { "status is required." }
   }
 }
 

@@ -2,12 +2,14 @@ package skillbill.db
 
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalRunnerControlStore
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class GoalRunnerControlStoreTest {
   @Test
@@ -29,6 +31,7 @@ class GoalRunnerControlStoreTest {
 
       assertEquals(policy, store.reviewPolicy("parent-1"))
       assertEquals(mapOf(2 to acceptance), store.outOfBandAcceptances("parent-1"))
+      assertEquals(GoalRunnerControlState(), store.controlState("parent-1"))
       connection.prepareStatement(
         "SELECT review_policy_json, out_of_band_acceptances_json " +
           "FROM goal_runner_controls WHERE parent_workflow_id = ?",
@@ -40,6 +43,57 @@ class GoalRunnerControlStoreTest {
           check(rows.getString("out_of_band_acceptances_json").contains("commit_sha"))
         }
       }
+    }
+  }
+
+  @Test
+  fun `missing control state is legacy compatible and malformed state fails loudly`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-control-state").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertEquals(GoalRunnerControlState(), store.controlState("missing-parent"))
+
+      val state = GoalRunnerControlState(
+        stopAfterSubtaskId = 2,
+        pauseRequested = true,
+        pauseConsumed = true,
+        paused = true,
+        pauseReason = "operator_request",
+      )
+      store.persistControlState("parent-1", state)
+      assertEquals(state, store.controlState("parent-1"))
+
+      connection.prepareStatement(
+        "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
+      ).use { statement ->
+        statement.setString(1, "{\"paused\":true,\"unsupported\":true}")
+        statement.setString(2, "parent-1")
+        statement.executeUpdate()
+      }
+      assertFailsWith<IllegalArgumentException> { store.controlState("parent-1") }
+    }
+  }
+
+  @Test
+  fun `control state survives a reopened database and duplicate writes remain stable`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-control-restart").resolve("metrics.db")
+    val state = GoalRunnerControlState(
+      stopAfterSubtaskId = 4,
+      pauseRequested = true,
+      pauseConsumed = true,
+      paused = true,
+      pauseReason = "operator_request",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertEquals(state, store.persistControlState("parent-restart", state))
+      assertEquals(state, store.persistControlState("parent-restart", state))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(state, GoalRunnerControlStore(connection).controlState("parent-restart"))
     }
   }
 }

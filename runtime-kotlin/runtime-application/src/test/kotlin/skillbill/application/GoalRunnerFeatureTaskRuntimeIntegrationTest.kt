@@ -7,6 +7,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -25,6 +26,46 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GoalRunnerFeatureTaskRuntimeIntegrationTest {
+  @Test
+  fun `integration goal run resumes after a durable targeted pause without relaunching the completed child`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val paused = runner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+        invokedAgentId = INVOKED_AGENT,
+        stopAfterSubtaskId = 1,
+      ),
+    )
+    assertEquals(GoalRunnerStopReason.PAUSED, assertIs<GoalRunnerRunReport.Stopped>(paused).stop.reason)
+    assertEquals(listOf(1), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertTrue(store.controlState.paused)
+
+    val resumed = runner.run(
+      GoalRunnerRunRequest(
+        issueKey = "SKILL-56",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+        invokedAgentId = INVOKED_AGENT,
+        stopAfterSubtaskId = 1,
+      ),
+    )
+    assertIs<GoalRunnerRunReport.Completed>(resumed)
+    assertEquals(listOf(1, 2), launcher.requests.mapNotNull { it.skillRunRequest.subtaskId })
+    assertEquals("complete", store.manifest.status)
+    assertEquals("complete", store.manifest.subtasks.single { it.id == 2 }.status)
+    assertTrue(store.controlState.stopAfterConsumed)
+    assertTrue(!store.controlState.paused)
+  }
+
   @Test
   fun `goal runner completes when the typed commit receipt carries its commit sha`() {
     val parity = goalChildParityRun(

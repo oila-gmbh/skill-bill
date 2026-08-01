@@ -10,6 +10,7 @@ import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
+import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.model.GoalRunnerStatusRequest
@@ -101,9 +102,28 @@ class GoalRunnerStatusService(
             reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
             findingsInScope = ledgerSummary?.findingsInScope,
             outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
+            paused = loadedState.controlState.paused,
+            pauseRequested = loadedState.controlState.pauseRequested,
+            pauseReason = loadedState.controlState.pauseReason,
+            stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
           ),
         )
       }
+  }
+
+  /** Write the operator pause boundary directly; this does not inspect status, logs, files, or child state. */
+  fun pause(issueKey: String, dbPathOverride: String?): GoalRunnerPauseResult {
+    val persisted = manifestStore.requestPauseByIssueKey(issueKey, dbPathOverride)
+      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
+    val control = persisted.controlState
+    return GoalRunnerPauseResult(
+      issueKey = issueKey,
+      parentWorkflowId = persisted.parentWorkflowId,
+      status = if (control.paused) "paused" else "requested",
+      paused = control.paused,
+      pauseRequested = control.pauseRequested,
+      pauseReason = control.pauseReason,
+    )
   }
 
   private fun resolveExecutionLiveness(

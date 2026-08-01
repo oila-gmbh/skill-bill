@@ -1,6 +1,7 @@
 package skillbill.ports.goalrunner.model
 
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalSessionAccounting
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.workflow.model.DecompositionManifest
@@ -11,6 +12,17 @@ data class GoalRunnerManifestState(
   val parentWorkflowId: String,
   val dbPath: String,
   val manifest: DecompositionManifest,
+  val controlState: GoalRunnerControlState = GoalRunnerControlState(),
+)
+
+data class GoalRunnerCompletionPersistenceResult(
+  val state: GoalRunnerManifestState,
+  val paused: Boolean,
+)
+
+data class GoalRunnerPausePersistenceResult(
+  val parentWorkflowId: String,
+  val controlState: GoalRunnerControlState,
 )
 
 // Reconciliation-policy knobs for reconcileAuthoritativeOutcomes. Defaults preserve the aggressive

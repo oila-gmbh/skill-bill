@@ -473,6 +473,7 @@ internal object DatabaseSchema {
         parent_workflow_id TEXT PRIMARY KEY,
         review_policy_json TEXT,
         out_of_band_acceptances_json TEXT NOT NULL DEFAULT '[]',
+        control_state_json TEXT,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
       """.trimIndent(),

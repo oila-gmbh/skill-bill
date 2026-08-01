@@ -565,6 +565,11 @@ internal object DatabaseMigrations {
         name = "add-goal-runner-controls",
         operation = ::addGoalRunnerControls,
       ),
+      DatabaseMigration(
+        version = 20,
+        name = "add-goal-runner-control-state",
+        operation = ::addGoalRunnerControlState,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -638,6 +643,17 @@ private fun addGoalRunnerControls(connection: Connection) {
       )
       """.trimIndent(),
     )
+  }
+}
+
+private fun addGoalRunnerControlState(connection: Connection) {
+  connection.createStatement().use { statement ->
+    val hasControlState = statement.executeQuery(
+      "SELECT 1 FROM pragma_table_info('goal_runner_controls') WHERE name = 'control_state_json'",
+    ).use { rows -> rows.next() }
+    if (!hasControlState) {
+      statement.execute("ALTER TABLE goal_runner_controls ADD COLUMN control_state_json TEXT")
+    }
   }
 }
 

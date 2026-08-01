@@ -1,6 +1,7 @@
 package skillbill.ports.persistence
 
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 
 /**
@@ -8,6 +9,12 @@ import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
  * be copied into the compact manifest projection consumed by orchestration.
  */
 interface GoalRunnerControlRepository {
+  fun controlState(parentWorkflowId: String): GoalRunnerControlState = GoalRunnerControlState()
+
+  fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState = state
+
+  fun clearControlState(parentWorkflowId: String) = Unit
+
   fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = null
 
   fun persistReviewPolicy(parentWorkflowId: String, policy: GoalRunnerReviewPolicy): GoalRunnerReviewPolicy = policy

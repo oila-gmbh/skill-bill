@@ -21,6 +21,7 @@ import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
+import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerRunRequest
@@ -51,6 +52,7 @@ import kotlin.time.Duration.Companion.minutes
 class GoalRunSubcommands(
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
+  val pause: GoalPauseCommand,
   val reset: GoalResetCommand,
   val accept: GoalAcceptCommand,
   val findings: GoalFindingsCommand,
@@ -106,6 +108,10 @@ class GoalRunCommand(
       "${DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes}). Planning writes no durable progress, so it is " +
       "bounded by this budget rather than the progress-idle timeout. Pass 0 to disable.",
   ).int().default(DEFAULT_GOAL_PLANNING_BUDGET.inWholeMinutes.toInt())
+  private val stopAfterSubtask by option(
+    "--stop-after-subtask",
+    help = "Pause the parent after this positive subtask ID reaches durable terminal success.",
+  ).int()
   private val noLiveOutput by option(
     "--no-live-output",
     help = "Do not tee child stdout/stderr or structured observability lines to this terminal.",
@@ -121,6 +127,7 @@ class GoalRunCommand(
     subcommands(
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
+      goalRunSubcommands.pause,
       goalRunSubcommands.reset,
       goalRunSubcommands.accept,
       goalRunSubcommands.findings,
@@ -142,6 +149,9 @@ class GoalRunCommand(
       ),
     )
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
+    if (stopAfterSubtask != null && requireNotNull(stopAfterSubtask) <= 0) {
+      throw UsageError("--stop-after-subtask must be a positive integer.")
+    }
     val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
     val receivingAgents = listOfNotNull(
       invokedAgentId,
@@ -194,6 +204,7 @@ class GoalRunCommand(
     codeReviewMode = parseCodeReviewMode(codeReviewMode),
     parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
     agentAddonSelection = hydratedSelection,
+    stopAfterSubtaskId = stopAfterSubtask,
   )
 }
 
@@ -303,6 +314,20 @@ class GoalStatusCommand(
       selectedDiffMaxBytes = diffHunkMaxBytes,
     ),
   )
+}
+
+@Inject
+class GoalPauseCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("pause", "Request a durable pause for an already-running goal.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+
+  override fun run() {
+    val result = goalRunnerStatusService.pause(issueKey, state.dbOverride)
+    val payload = result.toGoalPauseCliMap()
+    state.completeText(goalPauseText(payload), payload, exitCode = payload.goalPauseExitCode())
+  }
 }
 
 @Inject
@@ -600,6 +625,20 @@ private fun GoalRunnerRunReport.toGoalRunCliMap(): Map<String, Any?> = when (thi
   )
 }
 
+private fun GoalRunnerPauseResult.toGoalPauseCliMap(): Map<String, Any?> = linkedMapOf(
+  "status" to status,
+  "issue_key" to issueKey,
+  "parent_workflow_id" to parentWorkflowId,
+  "paused" to paused,
+  "pause_requested" to pauseRequested,
+  "pause_reason" to pauseReason,
+)
+
+private fun goalPauseText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  payload["pause_reason"]?.let { appendLine("reason: $it") }
+}
+
 private data class GoalStatusCliRequestOptions(
   val issueKey: String,
   val agent: String?,
@@ -655,7 +694,11 @@ private fun goalRunText(payload: Map<String, Any?>): String = when (payload["sta
   }
   else -> buildString {
     val reason = payload["reason"]?.toString()?.lowercase().orEmpty()
-    val verb = if (reason.contains("failed") || reason.contains("timeout")) "failed" else "blocked"
+    val verb = when {
+      reason == "paused" -> "paused"
+      reason.contains("failed") || reason.contains("timeout") -> "failed"
+      else -> "blocked"
+    }
     append("goal ${payload["issue_key"]}: $verb")
     payload["subtask_id"]?.let { append(" at subtask $it") }
     append(" — ")
@@ -683,6 +726,10 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
     "active_agent" to it.activeAgent,
     "execution_liveness" to it.executionLiveness.wireValue,
     "latest_liveness_signal" to it.latestLivenessSignal,
+    "paused" to it.paused,
+    "pause_requested" to it.pauseRequested,
+    "pause_reason" to it.pauseReason,
+    "stop_after_subtask" to it.stopAfterSubtaskId,
   ).apply {
     it.planning?.let { planning ->
       put(
@@ -714,6 +761,10 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "active_agent" to null,
   "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
   "latest_liveness_signal" to null,
+  "paused" to false,
+  "pause_requested" to false,
+  "pause_reason" to null,
+  "stop_after_subtask" to null,
 )
 
 private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
@@ -749,6 +800,10 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendLine("active_agent: ${payload["active_agent"] ?: "none"}")
   appendLine("execution_liveness: ${payload["execution_liveness"]}")
   appendLine("latest_liveness_signal: ${payload["latest_liveness_signal"] ?: "none"}")
+  appendLine("paused: ${payload["paused"]}")
+  appendLine("pause_requested: ${payload["pause_requested"]}")
+  appendLine("pause_reason: ${payload["pause_reason"] ?: "none"}")
+  appendLine("stop_after_subtask: ${payload["stop_after_subtask"] ?: "none"}")
   (payload["planning"] as? Map<*, *>)?.let { planning ->
     appendLine(
       "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
@@ -768,6 +823,8 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
+
+private fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
