@@ -11,11 +11,10 @@ import kotlin.test.assertTrue
 @Suppress("LargeClass")
 class InstallerShellDelegationTest {
   // This suite drives install.sh end-to-end and asserts the Linux installer flow
-  // (headless $DISPLAY/$WAYLAND_DISPLAY desktop gating, no-desktop prebuilt/from-source
-  // paths, .deb extraction, the util-linux `script` PTY harness). macOS/Windows
-  // install.sh legitimately diverges (desktop defaults to yes, BSD `script`), so the
-  // suite runs on the Linux CI leg and skips elsewhere; macOS install behavior is
-  // covered by scripts/install_smoke_test.sh.
+  // (prebuilt/from-source paths, the util-linux `script` PTY harness). macOS/Windows
+  // install.sh legitimately diverges (BSD `script`), so the suite runs on the Linux
+  // CI leg and skips elsewhere; macOS install behavior is covered by
+  // scripts/install_smoke_test.sh.
   @org.junit.jupiter.api.BeforeEach
   fun assumeLinuxHost() {
     org.junit.jupiter.api.Assumptions.assumeTrue(
@@ -53,16 +52,6 @@ class InstallerShellDelegationTest {
     assertContains(installScript, "exec \"\\\$runtime_cli\" update \"\\\${passthrough[@]+\\\${passthrough[@]}}\"")
     assertExternalAddonOverlayOrdering(installScript)
     assertFalse(installScript.contains("update_check_status"))
-    // The Gradle desktop build is now gated behind --from-source: the helper and the
-    // Gradle task must still exist (from-source coverage), but only run when
-    // INSTALL_SOURCE=source. The prebuilt path fetches + extracts instead.
-    assertContains(installScript, "build_desktop_app_distribution")
-    assertContains(installScript, ":runtime-desktop:prepareDesktopAppDistributable")
-    assertContains(installScript, "if [[ \"\$INSTALL_SOURCE\" != \"source\" ]]; then")
-    assertContains(installScript, "fetch_and_extract_desktop_app")
-    assertContains(installScript, "install_desktop_app")
-    assertContains(installScript, "desktop_host_os")
-    assertContains(installScript, "printf '%s' \"/Applications\"")
     assertFalse(installScript.contains("prompt_for_mcp_registration"))
     assertFalse(installScript.contains("Enter MCP choice"))
     assertFalse(installScript.contains("install register-mcp"))
@@ -359,50 +348,6 @@ class InstallerShellDelegationTest {
   }
 
   @Test
-  fun `display gating defaults headless to no and explicit flag forces install`() {
-    // Headless (no DISPLAY/WAYLAND_DISPLAY), non-interactive → desktop default no.
-    val headless = runPrebuiltInstaller(releaseValid = true)
-    assertEquals(0, headless.exitCode, headless.output)
-    assertContains(headless.output, "Desktop app:    no")
-
-    // Explicit --with-desktop-app forces yes even non-interactive.
-    val forced = runPrebuiltInstaller(releaseValid = true, extraArgs = listOf("--with-desktop-app"))
-    assertEquals(0, forced.exitCode, forced.output)
-    assertContains(forced.output, "Desktop app:    yes")
-  }
-
-  @Test
-  fun `interactive headless empty input defaults desktop app to no`() {
-    // A TTY-attached but headless session (no DISPLAY/WAYLAND_DISPLAY): pressing
-    // Enter at the desktop prompt must resolve to the gated default (skip), not the
-    // old hardcoded install. Driven under a real PTY via `script`.
-    val run = runPrebuiltInstaller(
-      releaseValid = true,
-      options = PrebuiltOptions(desktopInput = "", interactiveTty = true),
-    )
-    assertEquals(0, run.exitCode, run.output)
-    assertContains(run.output, "Desktop app:    no")
-  }
-
-  @Test
-  fun `prebuilt desktop extract installs app launcher and prints unsigned hint`() {
-    assumeDebHost()
-    val run = runPrebuiltInstaller(releaseValid = true, extraArgs = listOf("--with-desktop-app"))
-
-    assertEquals(0, run.exitCode, run.output)
-    assertContains(run.output, "Desktop app installed")
-    assertTrue(
-      Files.exists(run.binDir.resolve("skillbill-desktop")),
-      "skillbill-desktop launcher should be installed",
-    )
-    // Linux has no signing gate, so no unsigned hint is printed on the deb host.
-    assertFalse(
-      run.output.contains("unsigned for v1"),
-      "Linux desktop install must not print a Gatekeeper/SmartScreen hint",
-    )
-  }
-
-  @Test
   fun `install plan summary is printed before any mutation`() {
     // Do NOT set SKILL_BILL_SKIP_PREINSTALL_UNINSTALL: the plan must print before
     // the pre-install uninstall mutates anything.
@@ -418,42 +363,6 @@ class InstallerShellDelegationTest {
     assertTrue(cleanupIndex >= 0, "pre-install cleanup must run. Output:\n${run.output}")
     assertTrue(planIndex < cleanupIndex, "the plan must print before the first mutation")
     assertContains(run.output, "Reverse everything with:")
-  }
-
-  @Test
-  fun `desktop-app-only installs only the desktop app and is idempotent`() {
-    assumeDebHost()
-    val first = runPrebuiltInstaller(releaseValid = true, extraArgs = listOf("--desktop-app-only"))
-    assertEquals(0, first.exitCode, first.output)
-    assertContains(first.output, "Desktop app installed")
-    // No runtime apply on the desktop-only path.
-    assertFalse(
-      first.runtimeLog.contains("install\tapply") || first.runtimeLog.contains("apply"),
-      "desktop-app-only must not run runtime apply. Log:\n${first.runtimeLog}",
-    )
-    assertTrue(
-      Files.exists(first.binDir.resolve("skillbill-desktop")),
-      "desktop launcher should be installed",
-    )
-
-    // Re-run against the same home/binDir: idempotent, still succeeds.
-    val second = runPrebuiltInstaller(
-      releaseValid = true,
-      extraArgs = listOf("--desktop-app-only"),
-      reuse = PrebuiltReuse(first.home, first.binDir, first.desktopDir),
-    )
-    assertEquals(0, second.exitCode, second.output)
-    assertContains(second.output, "Desktop app installed")
-  }
-
-  @Test
-  fun `uninstaller removes prebuilt desktop install`() {
-    // The prebuilt desktop install reuses the same per-user locations and launcher
-    // names, so the existing uninstaller covers it.
-    val run = runUninstallerShellWithDesktopInstall()
-    assertEquals(0, run.exitCode, run.output)
-    assertFalse(Files.exists(run.appTarget), "desktop app should be removed")
-    assertFalse(Files.exists(run.launcherPath), "desktop launcher should be removed")
   }
 
   private fun runInstallerShell(input: String): InstallerShellRun = runInstallerShell(input, fromSource = false)
@@ -488,11 +397,6 @@ class InstallerShellDelegationTest {
         environment()["SKILL_BILL_SKIP_PREINSTALL_UNINSTALL"] = "1"
         environment()["SKILL_BILL_TEST_RUNTIME_LOG"] = logPath.toString()
         environment().remove("SKILL_BILL_GOAL_CONTINUATION")
-        // Headless + non-interactive: scrub inherited desktop-session signals so the
-        // desktop-app prompt deterministically defaults to "no" (no Gradle desktop
-        // build is needed for these runtime-apply argv assertions).
-        environment().remove("DISPLAY")
-        environment().remove("WAYLAND_DISPLAY")
       }
       .start()
     process.outputStream.bufferedWriter().use { writer -> writer.write(input) }
@@ -669,8 +573,8 @@ class InstallerShellDelegationTest {
   // Drive install.sh over a STAGED RELEASE directory (SKILL_BILL_RELEASE_DIR) with
   // no network and no Gradle skip-build hatch, so the real prebuilt fetch +
   // checksum-verify + unpack path runs end-to-end. The staged dir contains fake
-  // runtime-cli/runtime-mcp .zip images (each with a real bin/<base>), a desktop
-  // installer for this host, and matching `<hex>␣␣<name>` .sha256 siblings.
+  // runtime-cli/runtime-mcp .zip images (each with a real bin/<base>) and matching
+  // `<hex>␣␣<name>` .sha256 siblings.
   private fun runPrebuiltInstaller(
     releaseValid: Boolean,
     extraArgs: List<String> = emptyList(),
@@ -682,7 +586,6 @@ class InstallerShellDelegationTest {
     // so `./gradlew check` does not ERROR for contributors without libarchive-tools.
     PrebuiltReleaseStager.assumeReleaseStagingTools()
     if (options.interactiveTty) {
-      // The interactive desktop default is only reachable with a real TTY on stdin.
       // `script` allocates a PTY; gate the test on its presence so it skips cleanly
       // rather than failing on hosts without util-linux.
       org.junit.jupiter.api.Assumptions.assumeTrue(
@@ -690,17 +593,15 @@ class InstallerShellDelegationTest {
         "interactive-TTY install test requires `script` (util-linux) on PATH",
       )
     }
-    val desktopOnly = extraArgs.contains("--desktop-app-only")
     val repoRoot = Files.createTempDirectory("skillbill-prebuilt-repo")
     val home = reuse?.home ?: Files.createTempDirectory("skillbill-prebuilt-home")
     val binDir = reuse?.binDir ?: Files.createTempDirectory("skillbill-prebuilt-bin")
-    val desktopDir = reuse?.desktopDir ?: Files.createTempDirectory("skillbill-prebuilt-desktop")
     val releaseDir = Files.createTempDirectory("skillbill-prebuilt-release")
     val logPath = Files.createTempFile("skillbill-prebuilt-runtime", ".log")
     seedPrebuiltRepo(repoRoot)
     stageRelease(releaseDir, releaseValid, options.omitRuntimeAssets)
 
-    val command = PrebuiltReleaseStager.buildPrebuiltCommand(repoRoot, extraArgs, desktopDir, options.interactiveTty)
+    val command = PrebuiltReleaseStager.buildPrebuiltCommand(repoRoot, extraArgs, options.interactiveTty)
     val builder = ProcessBuilder(command)
       .directory(repoRoot.toFile())
       .redirectErrorStream(true)
@@ -715,14 +616,10 @@ class InstallerShellDelegationTest {
     if (options.seedPriorInstall) {
       Files.createDirectories(home.resolve(".skill-bill"))
     }
-    // Headless by default: drop any inherited desktop-session signals.
-    builder.environment().remove("DISPLAY")
-    builder.environment().remove("WAYLAND_DISPLAY")
-
     val process = builder.start()
-    // The full flow prompts for agent/platform/telemetry/desktop; feed a stable
-    // base-only single-agent selection. The desktop-only path reads no input.
-    val input = if (desktopOnly) "" else "1\ncopilot\nbase only\noff\n${options.desktopInput}\n"
+    // The full flow prompts for agent/platform/telemetry; feed a stable
+    // base-only single-agent selection.
+    val input = "1\ncopilot\nbase only\noff\n"
     process.outputStream.bufferedWriter().use { writer -> writer.write(input) }
     val output = process.inputStream.bufferedReader().readText()
     val exitCode = process.waitFor()
@@ -731,7 +628,6 @@ class InstallerShellDelegationTest {
     return PrebuiltInstallerRun(
       home = home,
       binDir = binDir,
-      desktopDir = desktopDir,
       exitCode = exitCode,
       output = output,
       runtimeLog = runtimeLog,
@@ -747,33 +643,21 @@ class InstallerShellDelegationTest {
     // WHOLE orchestration/ tree present in the clone to copy into the COPY.
     InstallerShellFixtures.seedAuthoredSource(repoRoot)
     // The full flow + pre-install uninstall expect the build-dir runtime + a Gradle
-    // wrapper (the latter only used on the auto-fallback path). Seed both plus the
-    // desktop icon install_linux_desktop_entry copies.
+    // wrapper (the latter only used on the auto-fallback path).
     InstallerShellFixtures.seedInstallerRuntime(repoRoot)
     InstallerShellFixtures.seedFakeGradlew(repoRoot)
-    InstallerShellFixtures.seedDesktopIcon(repoRoot)
   }
 
   // Stage a fake GitHub release directory for SKILL_BILL_RELEASE_DIR. Runtime images
-  // are real .zip files containing bin/<base>; the desktop installer is a real .deb
-  // (ar + data.tar) on Linux hosts so ar/tar extraction is genuinely exercised. When
-  // releaseValid is false, the runtime-cli checksum is corrupted to exercise AC2.
+  // are real .zip files containing bin/<base>. When releaseValid is false, the
+  // runtime-cli checksum is corrupted to exercise AC2.
   private fun stageRelease(releaseDir: Path, releaseValid: Boolean, omitRuntimeAssets: Boolean) {
     PrebuiltReleaseStager.stage(releaseDir, releaseValid, omitRuntimeAssets)
-  }
-
-  private fun hostTokenForTests(): String = PrebuiltReleaseStager.hostToken()
-
-  private fun assumeDebHost() {
-    org.junit.jupiter.api.Assumptions.assumeTrue(
-      hostTokenForTests() == "linux-x64",
-      "desktop-extract assertions require a linux-x64 host with ar/tar",
-    )
   }
 }
 
 // Cohesive fixture-seeding helpers for the installer/uninstaller shell tests: runtime
-// stubs, platform packs, authored source, and desktop-install fixtures. Extracted to a
+// stubs, platform packs, authored source, and uninstaller desktop-cleanup fixtures. Extracted to a
 // standalone object so InstallerShellDelegationTest stays under detekt's LargeClass
 // threshold (mirroring PrebuiltReleaseStager). These helpers are pure: they only write
 // fixture files under the caller-provided paths and never touch test instance state.
@@ -1114,12 +998,6 @@ internal object InstallerShellFixtures {
     gradlew.toFile().setExecutable(true)
   }
 
-  fun seedDesktopIcon(repoRoot: Path) {
-    val icon = repoRoot.resolve("runtime-kotlin/runtime-desktop/icons/icon.png")
-    Files.createDirectories(icon.parent)
-    Files.write(icon, byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47))
-  }
-
   fun seedDesktopInstall(desktopRoot: Path, binDir: Path): DesktopInstallFixture {
     val os = currentDesktopOs()
     val appTarget = when (os) {
@@ -1182,24 +1060,20 @@ private data class InstallerShellRun(
 private data class PrebuiltReuse(
   val home: Path,
   val binDir: Path,
-  val desktopDir: Path,
 )
 
-// Optional knobs for the prebuilt flow. `desktopInput` is the answer fed to the
-// desktop-app prompt (e.g. "skip", "" for Enter); `interactiveTty` runs the
-// installer under a real PTY so the interactive (non-piped) prompt branch executes.
+// Optional knobs for the prebuilt flow. `interactiveTty` runs the installer under a
+// real PTY so the interactive (non-piped) prompt branch executes.
 private data class PrebuiltOptions(
   val omitRuntimeAssets: Boolean = false,
   val skipPreinstallUninstall: Boolean = true,
   val seedPriorInstall: Boolean = false,
-  val desktopInput: String = "skip",
   val interactiveTty: Boolean = false,
 )
 
 private data class PrebuiltInstallerRun(
   val home: Path,
   val binDir: Path,
-  val desktopDir: Path,
   val exitCode: Int,
   val output: String,
   val runtimeLog: String,
@@ -1238,9 +1112,9 @@ private data class UninstallRun(
 )
 
 // Builds a fake GitHub-release directory (for SKILL_BILL_RELEASE_DIR) carrying real
-// runtime-cli/runtime-mcp image zips, a per-host desktop installer, and matching
-// `<hex>␣␣<name>` .sha256 siblings. Kept as a standalone helper to keep the test
-// class focused (and under detekt's LargeClass threshold).
+// runtime-cli/runtime-mcp image zips and matching `<hex>␣␣<name>` .sha256 siblings.
+// Kept as a standalone helper to keep the test class focused (and under detekt's
+// LargeClass threshold).
 private object PrebuiltReleaseStager {
   private const val VERSION = "9.9.9"
 
@@ -1259,21 +1133,14 @@ private object PrebuiltReleaseStager {
     return "$os-$arch"
   }
 
-  // The staged release fixtures author runtime image zips with bsdtar and, on a
-  // linux-x64 host, a real .deb with ar. Skip (not fail) the prebuilt-path tests
-  // when that tooling is missing so `./gradlew check` stays green for contributors
-  // without libarchive-tools (bsdtar) or binutils (ar).
+  // The staged release fixtures author runtime image zips with bsdtar. Skip (not
+  // fail) the prebuilt-path tests when that tooling is missing so `./gradlew check`
+  // stays green for contributors without libarchive-tools (bsdtar).
   fun assumeReleaseStagingTools() {
     org.junit.jupiter.api.Assumptions.assumeTrue(
       toolOnPath("bsdtar"),
       "staged-release runtime image zips require bsdtar on PATH",
     )
-    if (hostToken() == "linux-x64") {
-      org.junit.jupiter.api.Assumptions.assumeTrue(
-        toolOnPath("ar"),
-        "the staged-release .deb fixture requires ar on PATH",
-      )
-    }
   }
 
   fun toolOnPath(tool: String): Boolean = (System.getenv("PATH") ?: "")
@@ -1281,24 +1148,15 @@ private object PrebuiltReleaseStager {
     .filter { it.isNotEmpty() }
     .any { dir -> Files.isExecutable(Path.of(dir).resolve(tool)) }
 
-  fun buildPrebuiltCommand(
-    repoRoot: Path,
-    extraArgs: List<String>,
-    desktopDir: Path,
-    interactiveTty: Boolean,
-  ): List<String> {
+  fun buildPrebuiltCommand(repoRoot: Path, extraArgs: List<String>, interactiveTty: Boolean): List<String> {
     val installArgs = mutableListOf(repoRoot.resolve("install.sh").toString())
     installArgs.addAll(extraArgs)
-    if (extraArgs.none { it == "--desktop-app-dir" }) {
-      installArgs.add("--desktop-app-dir")
-      installArgs.add(desktopDir.toString())
-    }
     if (!interactiveTty) {
       return listOf("bash") + installArgs
     }
     // `script -qec "<cmd>" /dev/null` runs the installer under a PTY so the installer
-    // sees a TTY on stdin and takes the interactive desktop-prompt branch. `script`
-    // still forwards our piped stdin into the PTY.
+    // sees a TTY on stdin and takes the interactive prompt branch. `script` still
+    // forwards our piped stdin into the PTY.
     val quoted = (listOf("bash") + installArgs).joinToString(" ") { "'${it.replace("'", "'\\''")}'" }
     return listOf("script", "-qec", quoted, "/dev/null")
   }
@@ -1312,25 +1170,6 @@ private object PrebuiltReleaseStager {
       writeRuntimeImageZip(mcpZip, "runtime-mcp")
       writeChecksumSibling(cliZip, corrupt = !releaseValid)
       writeChecksumSibling(mcpZip, corrupt = false)
-    }
-    when (token) {
-      "linux-x64" -> {
-        val deb = releaseDir.resolve("SkillBill-$VERSION-$token.deb")
-        writeDebDesktopInstaller(deb)
-        writeChecksumSibling(deb, corrupt = false)
-      }
-      else -> {
-        // Non-deb hosts: stage a placeholder so resolve_release_assets matches; the
-        // desktop-extract assertions are gated behind assumeDebHost().
-        val ext = when {
-          token.startsWith("macos") -> "dmg"
-          token.startsWith("windows") -> "msi"
-          else -> "deb"
-        }
-        val installer = releaseDir.resolve("SkillBill-$VERSION-$token.$ext")
-        Files.write(installer, byteArrayOf(0))
-        writeChecksumSibling(installer, corrupt = false)
-      }
     }
   }
 
@@ -1353,30 +1192,6 @@ private object PrebuiltReleaseStager {
     Files.createDirectories(lib)
     Files.writeString(lib.resolve("$base.jar"), "stub")
     runOrThrow(staging, listOf("bsdtar", "-a", "-cf", zipPath.toString(), base))
-  }
-
-  // Build a minimal but real .deb: `ar` archive containing debian-binary,
-  // control.tar.gz, and data.tar.gz; data.tar.gz carries the jpackage app layout
-  // (opt/skillbill/SkillBill/bin/SkillBill + lib/). This exercises the real
-  // ar + tar extraction path on Linux CI hosts.
-  private fun writeDebDesktopInstaller(debPath: Path) {
-    val staging = Files.createTempDirectory("skillbill-deb")
-    val appRoot = staging.resolve("data/opt/skillbill/SkillBill")
-    Files.createDirectories(appRoot.resolve("bin"))
-    Files.createDirectories(appRoot.resolve("lib"))
-    val appLauncher = appRoot.resolve("bin/SkillBill")
-    Files.writeString(appLauncher, "#!/usr/bin/env bash\nexit 0\n")
-    appLauncher.toFile().setExecutable(true)
-    Files.writeString(appRoot.resolve("lib/app.jar"), "stub")
-
-    val controlDir = staging.resolve("control")
-    Files.createDirectories(controlDir)
-    Files.writeString(controlDir.resolve("control"), "Package: skillbill\nVersion: 9.9.9\n")
-
-    runOrThrow(staging, listOf("tar", "-czf", "data.tar.gz", "-C", "data", "."))
-    runOrThrow(staging, listOf("tar", "-czf", "control.tar.gz", "-C", "control", "."))
-    Files.writeString(staging.resolve("debian-binary"), "2.0\n")
-    runOrThrow(staging, listOf("ar", "rc", debPath.toString(), "debian-binary", "control.tar.gz", "data.tar.gz"))
   }
 
   private fun writeChecksumSibling(asset: Path, corrupt: Boolean) {

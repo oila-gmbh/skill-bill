@@ -8,7 +8,7 @@ package skillbill.ports.scaffold.model
  *
  * Replaces the legacy `statusPayload(...)` open-boundary `Map<String, Any?>` that
  * SKILL-52.1 subtask 3 carried verbatim through each result's `payload` field. The
- * adapter-owned wire mappers (`runtime-cli` / `runtime-desktop`) rebuild the legacy
+ * adapter-owned wire mappers (`runtime-cli`) rebuild the legacy
  * ordered wire map from these typed fields in the exact producer key order
  * (`skill_name`, `package`, `platform`, `family`, `area`, `content_file`,
  * `render_command`, `completion_status`, `section_count`, `sections`,

@@ -755,7 +755,6 @@ class CliRuntimeTest {
         "v0.2.0",
         "--prefer-upstream",
         "--clean",
-        "--no-desktop-app",
       ),
     )
     val payload = decodeJsonObject(json.stdout)
@@ -763,34 +762,34 @@ class CliRuntimeTest {
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals("dry_run", payload["status"])
     assertEquals(
-      "$EXPECTED_UPDATE_COMMAND --release v0.2.0 --no-desktop-app --prefer-upstream --clean",
+      "$EXPECTED_UPDATE_COMMAND --release v0.2.0 --prefer-upstream --clean",
       payload["command"],
     )
     assertEquals(
-      listOf("--reuse-last-selection", "--release", "v0.2.0", "--no-desktop-app", "--prefer-upstream", "--clean"),
+      listOf("--reuse-last-selection", "--release", "v0.2.0", "--prefer-upstream", "--clean"),
       payload["installer_args"],
     )
   }
 
   @Test
   fun `update dry-run json escapes shell-quoted command arguments`() {
-    val desktopAppDir = "dir\"\\with quote"
+    val releaseTag = "tag\"\\with quote"
     val json = CliRuntime.run(
       listOf(
         "update",
         "--dry-run",
         "--format",
         "json",
-        "--desktop-app-dir",
-        desktopAppDir,
+        "--release",
+        releaseTag,
       ),
     )
     val payload = decodeJsonObject(json.stdout)
 
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals("dry_run", payload["status"])
-    assertEquals("$EXPECTED_UPDATE_COMMAND --desktop-app-dir 'dir\"\\with quote'", payload["command"])
-    assertEquals(listOf("--reuse-last-selection", "--desktop-app-dir", desktopAppDir), payload["installer_args"])
+    assertEquals("$EXPECTED_UPDATE_COMMAND --release 'tag\"\\with quote'", payload["command"])
+    assertEquals(listOf("--reuse-last-selection", "--release", releaseTag), payload["installer_args"])
   }
 
   @Test
@@ -804,7 +803,6 @@ class CliRuntimeTest {
         "update",
         "--release",
         "v0.4.0",
-        "--no-desktop-app",
         "--format",
         "json",
       ),
@@ -821,7 +819,7 @@ class CliRuntimeTest {
     assertEquals("installer ok\n", payload["installer_output"])
     assertEquals("bash", command.executable)
     assertEquals(
-      listOf("-c", "$EXPECTED_UPDATE_COMMAND --release v0.4.0 --no-desktop-app"),
+      listOf("-c", "$EXPECTED_UPDATE_COMMAND --release v0.4.0"),
       command.arguments,
     )
     assertEquals(home.toString(), command.environment["HOME"])
@@ -867,14 +865,6 @@ class CliRuntimeTest {
     assertEquals("installed version is newer than the latest release", payload["reason"])
     assertTrue(runner.commands.isEmpty(), "installer must not run when local version is ahead")
     assertEquals(1, capturedRequests.size)
-  }
-
-  @Test
-  fun `update rejects conflicting desktop app options`() {
-    val result = CliRuntime.run(listOf("update", "--dry-run", "--with-desktop-app", "--no-desktop-app"))
-
-    assertEquals(1, result.exitCode)
-    assertContains(result.stdout, "--with-desktop-app and --no-desktop-app cannot be used together")
   }
 
   @Test

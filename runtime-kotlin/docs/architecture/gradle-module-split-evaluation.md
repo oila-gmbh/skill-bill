@@ -18,7 +18,6 @@ cleanly:
 - `runtime-infra-fs`
 - `runtime-core`
 - `runtime-cli`
-- `runtime-desktop`
 - `runtime-mcp`
 
 `runtime-core` is now the integration/composition module instead of the owner
@@ -45,9 +44,6 @@ of all runtime implementation code.
   compatibility API umbrella over the shared runtime modules.
 - `runtime-cli`: Clikt command tree, CLI option validation, terminal
   presenters, JSON output, help/completion surfaces, and CLI tests.
-- `runtime-desktop`: optional Compose Multiplatform JVM desktop Skill Bill app shell
-  with Iteration 01 presentation, local in-memory state, and read-only
-  placeholder gateways.
 - `runtime-mcp`: MCP adapter surface, MCP payload shaping, MCP tests, and the
   runtime smoke test that verifies cross-module declarations.
 
@@ -66,7 +62,6 @@ composition surfaces.
 - `runtime-infra-http`
 - `runtime-infra-fs`
 - `runtime-cli`
-- `runtime-desktop`
 - `runtime-mcp`
 
 ## Deeper Split Blockers
@@ -98,7 +93,7 @@ No known package-level upward dependencies remain for the implemented split.
   `runtime-infra-fs`. Workflow runtime-surface metadata lives in
   `runtime-application`; `runtime-core` is limited to DI composition and module
   metadata while continuing to re-export the shared modules for existing
-  CLI/MCP/Desktop callers.
+  CLI/MCP callers.
 
 ## Proven Boundaries Today
 
@@ -116,12 +111,6 @@ and useful now:
 - Telemetry compatibility facades depend on ports rather than infrastructure
   adapters.
 - CLI and MCP are independently compiled adapter modules.
-- The optional desktop Skill Bill app compiles as an isolated JVM desktop module and
-  does not own governed runtime behavior. Its nested desktop modules preserve
-  app/core/feature dependency direction and keep lightweight preferences in
-  `runtime-desktop:core:datastore`, typed route/back-stack ownership in
-  `runtime-desktop:core:navigation`, and Room3 persistence foundation in
-  `runtime-desktop:core:database`.
 - Contract, domain, port, application, SQLite, HTTP, and filesystem runtime
   layers compile as independent Gradle modules.
 - Module-owned SQLite tests now live with `runtime-infra-sqlite`, so tests can

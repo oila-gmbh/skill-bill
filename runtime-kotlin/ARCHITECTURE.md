@@ -23,7 +23,7 @@ behind those ports. `runtime-core` is only the composition root and runtime
 metadata module.
 
 ```text
-runtime-cli / runtime-mcp / runtime-desktop data gateways
+runtime-cli / runtime-mcp data gateways
   -> runtime-application use cases
     -> runtime-ports
       -> runtime-domain models and rules
@@ -90,8 +90,8 @@ runtime-core
   `RuntimeCoreCompositionOnlyTest` as a no-regression guard: the exact
   `api(project(...))` and `implementation(project(...))` edge sets on
   `runtime-core/build.gradle.kts` are pinned, and the test fails if any
-  infrastructure (`runtime-infra-*`) or entrypoint (`runtime-cli`, `runtime-mcp`,
-  `runtime-desktop`) module ever appears as `api(...)`.
+  infrastructure (`runtime-infra-*`) or entrypoint (`runtime-cli`, `runtime-mcp`)
+  module ever appears as `api(...)`.
 - `runtime-cli`: Clikt command tree, option validation, terminal rendering,
   JSON output, help, completion surfaces, and CLI runtime context creation.
   SKILL-52.2 subtask 5 narrows the main-source project dependency allow-list to
@@ -101,25 +101,6 @@ runtime-core
   test sources; the infrastructure adapters are resolved through
   `RuntimeComponent` (kotlin-inject). The allow-list is enforced by
   `RuntimeAdapterDependencyAllowlistTest`.
-- `runtime-desktop`: optional Compose Multiplatform JVM desktop app. It owns
-  the desktop app-shell, navigation, Room/datastore state, design system,
-  desktop feature screens, and desktop data gateways. Shared governed behavior
-  stays in runtime services and ports. SKILL-52.2 subtask 5 narrows
-  `runtime-desktop:core:data` jvmMain to `runtime-application`,
-  `runtime-contracts`, `runtime-core`, `runtime-domain`, and `runtime-ports`
-  (plus the desktop-internal `core:common`/`core:database`/`core:domain`
-  modules already declared on commonMain). `runtime-infra-fs` is dropped from
-  jvmMain — the desktop data gateways have no concrete
-  `skillbill.infrastructure.fs.*` imports outside jvmTest; filesystem adapters
-  resolve through `RuntimeComponent`. `runtime-contracts` is now explicit so
-  the gateways' direct `skillbill.error.*` imports
-  (`SkillBillRuntimeException`, `InvalidScaffoldPayloadError`,
-  `MissingInstallSelectionRecordError`, `ScaffoldRollbackError`) do not depend
-  on transitive runtime-application API. `runtime-desktop:feature:skillbill`
-  declares no upstream runtime-application / runtime-domain / runtime-ports /
-  runtime-contracts dependencies — the data gateway crosses the runtime
-  boundary, and the feature module talks to gateways through desktop-domain
-  port types. Allow-lists are enforced by `RuntimeAdapterDependencyAllowlistTest`.
 - `runtime-mcp`: MCP adapter surface, MCP-specific payload shaping, stdio
   server, MCP telemetry schema validation, and MCP runtime context creation.
   SKILL-52.2 subtask 5 narrows the main-source project dependency allow-list to
@@ -141,17 +122,6 @@ runtime-infra-fs
 runtime-infra-http
 runtime-infra-sqlite
 runtime-cli
-runtime-desktop
-runtime-desktop:core:common
-runtime-desktop:core:data
-runtime-desktop:core:database
-runtime-desktop:core:datastore
-runtime-desktop:core:designsystem
-runtime-desktop:core:domain
-runtime-desktop:core:navigation
-runtime-desktop:core:testing
-runtime-desktop:core:ui
-runtime-desktop:feature:skillbill
 runtime-mcp
 runtime-ports
 ```
@@ -243,17 +213,15 @@ runtime-ports
 - `skillbill.mcp`: MCP adapter code. It validates MCP input, shapes MCP
   payloads, owns MCP-specific schema seams, and delegates shared behavior to
   application services or ports.
-- `skillbill.desktop`: desktop app-shell and feature code. Desktop data
-  gateways call application services and ports.
 
 ## Boundary Rules
 
-1. CLI, MCP, and desktop data gateways are entry adapters. They validate and
+1. CLI and MCP data gateways are entry adapters. They validate and
    translate input, then delegate to application use cases or ports.
 2. Application owns workflow and use-case orchestration. It must not depend on
    Clikt, Compose, MCP adapter types, JDBC, Java HTTP clients, or concrete
    infrastructure packages.
-3. Domain packages must not depend on CLI, MCP, desktop, JDBC, Java HTTP
+3. Domain packages must not depend on CLI, MCP, JDBC, Java HTTP
    clients, filesystem APIs, process environment APIs, infrastructure packages,
    or application services.
 4. Port packages must not depend on application, infrastructure, entry
@@ -379,26 +347,6 @@ runtime-ports
     raw-map scaffold endpoint, an `McpScaffoldResultMappers` file will
     be reintroduced alongside that wiring.
 
-    **Closed desktop debt (SKILL-52.2 subtask 5):** the desktop adapter
-    at `runtime-desktop/core/data/.../RuntimeRepoBrowserService.kt` was
-    historically a third reader of the `@OpenBoundaryMap` `payload` map
-    for `list`, `validate`, and `saveExactContent`. SKILL-52.2 subtask
-    5 lifts the three remaining service-level reads:
-    `saveExactContent` returns the typed `ScaffoldSaveExactContentResult`
-    (the return value is unused beyond signalling success), `validate`
-    consumes the typed `ScaffoldValidateResult.status` field for the
-    pass/fail decision, and `list` consumes a typed
-    `List<AuthoredSkillEntry>` projected by a dedicated mapper. SKILL-52.3
-    subtask 3 then retired the `@OpenBoundaryMap` `payload` fields on the
-    scaffold result DTOs entirely, so the desktop
-    `runtime-desktop:core:data/.../service/mapper/` files
-    (`ScaffoldListResultMapper`, `ValidationSummaryMapper`) now consume the
-    typed `ScaffoldListResult.skills` / `ScaffoldValidateResult.status` +
-    `issues` fields directly with no raw-map indexing. The
-    `RuntimeDesktopGatewayPolicyTest` architecture test forbids raw-map
-    `.payload[` reads in the desktop service/mapper sources outright and
-    fails on any regression.
-
     Service/gateway PUBLIC APIs MAY NOT return raw `Map<String, Any?>`.
     Once a producer is typed (subtask 3 retired the eight
     `ScaffoldGateway` raw-map producers — `list`, `show`, `explain`,
@@ -411,8 +359,7 @@ runtime-ports
     typed-result-model `payload` fields that SKILL-52.1 subtask 3 left as
     exemplars were retired in SKILL-52.3 subtask 3: each `Scaffold*Result`
     DTO is now fully typed and the wire map is rebuilt in the adapter
-    mappers (`runtime-cli` `ScaffoldCliResultMappers`, desktop
-    `ScaffoldListResultMapper` / `ValidationSummaryMapper`).
+    mappers (`runtime-cli` `ScaffoldCliResultMappers`).
 
     <!-- open-boundary-allowlist:start -->
 
@@ -571,10 +518,8 @@ runtime-ports
     Inner-layer test sources in `runtime-application`, `runtime-domain`, and
     `runtime-ports` are also part of this boundary: their `src/test/kotlin`,
     `src/jvmTest/kotlin`, and `src/commonTest/kotlin` roots must not import
-    `skillbill.infrastructure.*`, `skillbill.cli.*`, `skillbill.mcp.*`, or
-    `skillbill.desktop.*`. Adapter, infrastructure, and desktop test trees,
-    including `runtime-desktop/core/data/src/jvmTest`, are outside that
-    inner-layer scan.
+    `skillbill.infrastructure.*`, `skillbill.cli.*`, or `skillbill.mcp.*`.
+    Adapter and infrastructure test trees are outside that inner-layer scan.
 12. `java.nio.file.Path` is allowed in application, domain, and port public
     models and contracts only as an inert value type: callers may carry,
     compare, resolve, normalize, and render path values as data. Filesystem IO,
@@ -601,7 +546,6 @@ skillbill.cli
 skillbill.config
 skillbill.contracts
 skillbill.db
-skillbill.desktop
 skillbill.di
 skillbill.domain.skillremove
 skillbill.error
@@ -1042,13 +986,13 @@ The architecture tests enforce the following rules:
 - `runtime-core` does not directly re-export contract or concrete
   infrastructure modules as adapter API, and its transitive API closure stays
   limited to the documented Kotlin-Inject generated ABI closure.
-- Top-level runtime modules do not depend upward, on desktop modules, or on
-  sibling concrete adapters where forbidden.
-- Infrastructure modules do not depend on runtime-core, CLI, MCP, desktop, or
+- Top-level runtime modules do not depend upward or on sibling concrete
+  adapters where forbidden.
+- Infrastructure modules do not depend on runtime-core, CLI, MCP, or
   sibling concrete infrastructure adapters.
-- CLI, MCP, and desktop adapters declare direct runtime dependencies and do not
+- CLI and MCP adapters declare direct runtime dependencies and do not
   use runtime-core as an implementation umbrella.
-- CLI, MCP, and desktop adapters call application services and ports instead
+- CLI and MCP adapters call application services and ports instead
   of importing concrete install, scaffold, native-agent, launcher,
   skill-remove, SQLite, HTTP, validation, or filesystem implementation
   internals.

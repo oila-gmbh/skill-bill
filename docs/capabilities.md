@@ -88,28 +88,7 @@ When planning detects work is too big (rules of thumb: more than 15 atomic tasks
 </details>
 
 <details>
-<summary><b>5. Full Compose Desktop UI hiding all of the above</b></summary>
-
-`runtime-desktop` is a real native app on top of all of this, not just a CLI. Modular Compose Multiplatform build with kotlin-inject DI, KSP-generated components, and platform packaging targets.
-
-What the UI gives the user without exposing the machinery:
-
-- Tree-based skill/artifact browser — authored skills, generated artifacts, platform packs, all navigable in one view.
-- First-run setup dialog and repo directory chooser.
-- Scaffold wizard — deterministic `skill-bill new` prompts backed by the same payload contract used by automation; the tree selection jumps to the newly authored file on success.
-- Validate-agent-configs runner — the manifest/drift validator wired as a button with a result panel.
-- Confirm-deletion dialog — for deterministic `skill-bill remove`, with safety prompts built in.
-- Command palette — keyboard-driven action surface for all operations.
-- Keyboard accelerators and accessibility-friendly navigation.
-- Repo file-change observer — external edits (e.g. from a coding agent) reflect in the tree without manual refresh.
-- Packaging configuration that produces real installable artifacts.
-
-All of the symlink installs, manifest validation, platform-pack routing, native-agent generation, telemetry, and workflow state happens underneath without ever leaking into the user's view.
-
-</details>
-
-<details>
-<summary><b>6. Stateful, resumable workflows with native subagents</b></summary>
+<summary><b>5. Stateful, resumable workflows with native subagents</b></summary>
 
 `bill-feature-task` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
 
@@ -124,7 +103,7 @@ For every prepared goal, including a one-subtask goal, the foreground `skill-bil
 </details>
 
 <details>
-<summary><b>7. <code>content.md</code> is the default authored surface; runtime files are generated</b></summary>
+<summary><b>6. <code>content.md</code> is the default authored surface; runtime files are generated</b></summary>
 
 A skill author usually touches exactly one file. Free-form markdown, frontmatter on top, prose body underneath, write it however you want. Documented governed sidecar contracts are the narrow exception. No JSON, no schema, no boilerplate.
 
@@ -142,7 +121,7 @@ The author contract is: write the body, declare the description, use documented 
 </details>
 
 <details>
-<summary><b>8. Per-project skill fine-tuning via <code>.agents/skill-overrides.md</code></b></summary>
+<summary><b>7. Per-project skill fine-tuning via <code>.agents/skill-overrides.md</code></b></summary>
 
 Every skill reads the project's override file as part of its shared ceremony, so you can change skill behavior for a specific repo without forking or editing the skill source. The file lives in the repo, is versioned with the code, and applies to whichever agent is running.
 
@@ -155,14 +134,14 @@ Net effect: you fine-tune `bill-code-review` with an extra checklist item, or fo
 </details>
 
 <details>
-<summary><b>9. Per-module memory</b></summary>
+<summary><b>8. Per-module memory</b></summary>
 
 Every module/package has its own `agent/decisions.md` and `agent/history.md`. The `/bill-boundary-decisions` and `/bill-boundary-history` skills know how to write high-signal entries with hygiene rules that keep history from rotting. Result: cross-session institutional knowledge attached to the code itself, not to your head or a wiki. You can see it in this very repo — `agent/decisions.md` records the exact incident that hardened the override read in #8. That is how the system stays self-aware across sessions and contributors.
 
 </details>
 
 <details>
-<summary><b>10. First-class, transport-resilient structured telemetry</b></summary>
+<summary><b>9. First-class, transport-resilient structured telemetry</b></summary>
 
 Every skill that matters emits typed telemetry, not just log lines.
 
@@ -185,7 +164,7 @@ Runtime process ownership is a separate fenced lease, never part of the immutabl
 </details>
 
 <details>
-<summary><b>11. Strict, declarative skill-set contract with drift protection</b></summary>
+<summary><b>10. Strict, declarative skill-set contract with drift protection</b></summary>
 
 Every platform pack is anchored by a `platform.yaml` that declares: contract version, routing signals, the full set of declared code-review areas and their content-file paths, the declared quality-check file, and pointer files (auto-generated so no one hand-edits them). Backed by `scripts/validate_agent_configs`, which fails the build if the on-disk layout does not match the manifest (missing files, stray skills, broken pointers, agent-install inconsistencies). You cannot accidentally rename a skill, half-delete an area, or let one agent's copy diverge from another. Render/install regenerates pointers from the manifest, and validation refuses to let drift land.
 

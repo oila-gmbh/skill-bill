@@ -29,28 +29,6 @@ class RuntimeArchitectureTest {
       runtimeRoot.resolve("runtime-infra-http/src/main/kotlin"),
       runtimeRoot.resolve("runtime-infra-sqlite/src/main/kotlin"),
       runtimeRoot.resolve("runtime-cli/src/main/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/src/jvmMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/common/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/data/src/commonMain/kotlin"),
-      // SKILL-52.3 subtask 5 (AC2): the desktop data gateway jvmMain source set
-      // is where the desktop adapter's runtime `skillbill.*` imports actually
-      // live. Adding it puts the central import/raw-map scanners over the
-      // gateway source instead of relying solely on the Gradle allow-list test.
-      // Verified clean: jvmMain imports only skillbill.*.model[.command],
-      // application services, ports, error, di, and model types.
-      runtimeRoot.resolve("runtime-desktop/core/data/src/jvmMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/feature/skillbill/src/jvmMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/database/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/database/src/jvmMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/datastore/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/datastore/src/jvmMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/designsystem/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/domain/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/navigation/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/testing/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/core/ui/src/commonMain/kotlin"),
-      runtimeRoot.resolve("runtime-desktop/feature/skillbill/src/commonMain/kotlin"),
       runtimeRoot.resolve("runtime-mcp/src/main/kotlin"),
       runtimeRoot.resolve("runtime-ports/src/main/kotlin"),
     )
@@ -88,7 +66,6 @@ class RuntimeArchitectureTest {
         "com.github.ajalt.clikt",
         "org.jetbrains.compose",
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
       ),
     )
@@ -432,7 +409,6 @@ class RuntimeArchitectureTest {
         "kotlin.io.path",
         "skillbill.cli",
         "skillbill.db",
-        "skillbill.desktop",
         "skillbill.infrastructure",
         "skillbill.mcp",
       ),
@@ -822,7 +798,6 @@ class RuntimeArchitectureTest {
     assertContains(evaluation, "runtime-infra-sqlite")
     assertContains(evaluation, "runtime-infra-http")
     assertContains(evaluation, "runtime-cli")
-    assertContains(evaluation, "runtime-desktop")
     assertContains(evaluation, "runtime-mcp")
     assertContains(evaluation, "RuntimeContext")
     assertContains(evaluation, "Resolved Split Blockers")
@@ -1403,12 +1378,11 @@ class RuntimeArchitectureTest {
   }
 
   @Test
-  fun `inner layer test sources do not import adapters infrastructure or desktop packages`() {
+  fun `inner layer test sources do not import adapters or infrastructure packages`() {
     val forbiddenPrefixes = listOf(
       "skillbill.infrastructure.",
       "skillbill.cli.",
       "skillbill.mcp.",
-      "skillbill.desktop.",
     )
     val violations = innerLayerTestSourceFiles().flatMap { file ->
       file.imports
@@ -2020,9 +1994,9 @@ class RuntimeArchitectureTest {
       // `optionalSpecialistSubagents`, `rejectLeafSubagentSpecialists`,
       // `rejectBaselineLayersForNonPlatformPack`, `resolvePlatformPackSelection`,
       // `resolvePlatformPackDefaults`) — are RETIRED. The two public overloads now accept a
-      // typed `ScaffoldCommandRequest`; CLI / MCP / Desktop adapters parse to the typed model
+      // typed `ScaffoldCommandRequest`; CLI / MCP adapters parse to the typed model
       // at the adapter boundary. The 9 policy helpers were either inlined into the adapter
-      // parsers (CLI / MCP / Desktop) or relocated as `internal` raw-map helpers inside
+      // parsers (CLI / MCP) or relocated as `internal` raw-map helpers inside
       // `runtime-infra-fs` (see `runtime-infra-fs/.../scaffold/ScaffoldPayloadMapPolicy.kt`),
       // which the raw-map architecture scanner does not walk.
       // SKILL-52.3 subtask 4: lifecycle telemetry payload helpers and the

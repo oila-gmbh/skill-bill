@@ -268,8 +268,6 @@ class InstallPolicyOwnershipArchitectureTest {
     runtimeRoot.resolve("runtime-infra-fs/src/main/kotlin"),
     runtimeRoot.resolve("runtime-infra-http/src/main/kotlin"),
     runtimeRoot.resolve("runtime-infra-sqlite/src/main/kotlin"),
-    runtimeRoot.resolve("runtime-desktop/core/data/src/commonMain/kotlin"),
-    runtimeRoot.resolve("runtime-desktop/core/data/src/jvmMain/kotlin"),
   ).flatMap(::kotlinFilesUnder)
 
   private fun Path.toSlashPath(): String = toString().replace('\\', '/')

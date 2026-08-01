@@ -1,8 +1,8 @@
 # runtime-kotlin
 
 Standalone Kotlin runtime for the local `skill-bill` CLI, MCP server, install
-planner/apply path, desktop app backend, telemetry, workflow state, scaffolding,
-and governed validation.
+planner/apply path, telemetry, workflow state, scaffolding, and governed
+validation.
 
 ## Build
 
@@ -89,99 +89,8 @@ The local smoke test only exercises `version` / stdio-init; full per-module path
 verification (e.g. every jlink module the telemetry HTTP path needs) happens in CI
 (subtask 3).
 
-> The existing `:runtime-cli:installDist` / `:runtime-mcp:installDist` outputs and
-> the desktop bundling that consumes them are **unchanged** — the runtime images
-> are an additive, separate distribution path.
-
-## Desktop App installers
-
-The Compose desktop app (`runtime-desktop`) packages into native installers via
-jpackage, **each bundling its own JRE** — end users need **no system JDK** to run
-the installed app. The staged Skill Bill runtime resources
-(`skill-bill-runtime/{runtime-cli,runtime-mcp,skills,platform-packs,orchestration}`)
-are bundled inside the app as well.
-
-Build the Linux installers and produce their canonical, checksummed artifacts:
-
-```bash
-(cd runtime-kotlin && ./gradlew :runtime-desktop:packageDeb :runtime-desktop:packageRpm)
-(cd runtime-kotlin && ./gradlew :runtime-desktop:packageDesktopInstallers)
-```
-
-`packageDesktopInstallers` is the convenience aggregate: it depends on the per-format
-package tasks (`packageDeb`, `packageRpm`, and on their respective OS, `packageDmg` /
-`packageMsi`), then renames each produced installer to the canonical name and writes a
-`.sha256` sidecar next to it.
-
-> **Host tooling.** jpackage shells out to the OS's native packaging tools, so
-> `packageDeb` needs `dpkg-deb` (+ `fakeroot`) and `packageRpm` needs `rpmbuild` on the
-> build host. Without them jpackage fails with `Invalid or unsupported type: [deb]`; install
-> the tool (e.g. `dpkg`/`rpm-build`) or run on a CI runner that has it. The app image and
-> the canonical rename/`.sha256` step do not need these tools.
-
-### Artifact naming
-
-Each installer is renamed to:
-
-```
-SkillBill-<version>-<os>-<arch>.<ext>
-SkillBill-<version>-<os>-<arch>.<ext>.sha256
-```
-
-`<version>` is the full `project.version` (e.g. `0.1.0-SNAPSHOT`). `<os>-<arch>` is the
-canonical token from the same contract subtask 1 exposes
-(`resolveHostRuntimeToken`: `macos-arm64` / `macos-x64` / `windows-x64` / `linux-x64`).
-The embedded jpackage `--app-version` is a strict numeric `MAJOR.MINOR.PATCH` derived
-from `project.version` (`0.1.0-SNAPSHOT` -> `0.1.0`), since jpackage rejects qualifiers.
-Renamed artifacts land under each format's Compose output dir:
-
-```
-runtime-desktop/build/compose/binaries/main/deb/SkillBill-<version>-linux-x64.deb
-runtime-desktop/build/compose/binaries/main/deb/SkillBill-<version>-linux-x64.deb.sha256
-runtime-desktop/build/compose/binaries/main/rpm/SkillBill-<version>-linux-x64.rpm
-runtime-desktop/build/compose/binaries/main/rpm/SkillBill-<version>-linux-x64.rpm.sha256
-```
-
-Verify a checksum from inside the format dir:
-
-```bash
-(cd runtime-desktop/build/compose/binaries/main/deb && sha256sum -c SkillBill-*-linux-x64.deb.sha256)
-```
-
-**Cross-compilation is not supported.** Locally only the Linux host's `.deb` / `.rpm`
-are reproducible; `.dmg` (macOS) and `.msi` (Windows) build on matching CI runners
-(subtask 3). The `packageDmg` / `packageMsi` rename tasks are wired identically and run
-there.
-
-### Signing
-
-Installers ship **unsigned for v1** (see `agent/decisions.md`,
-"Ship desktop installers UNSIGNED for v1"). End users open the app through the OS
-escape hatch — macOS Gatekeeper: right-click the app -> **Open** -> **Open**; Windows
-SmartScreen: **More info** -> **Run anyway**.
-
-### Maintainer from-source path (unchanged)
-
-The existing from-source desktop path still works for maintainers:
-
-```bash
-(cd runtime-kotlin && ./gradlew :runtime-desktop:prepareDesktopAppDistributable)
-# or via the repo installer:
-./install.sh --with-desktop-app
-```
-
-`prepareDesktopAppDistributable` produces an executable app image under
-`runtime-desktop/build/compose/binaries/main/app` with the bundled runtime scripts
-marked executable. This path is untouched by the installer work.
-
-### Verified-OS matrix
-
-| OS / arch     | Installer(s) | `.deb`/`.rpm` built | App image + bundled JRE + staged resources | GUI launch | Notes |
-|---------------|--------------|---------------------|---------------------------------------------|------------|-------|
-| `linux-x64`   | `.deb`, `.rpm` | **not on this host** — `dpkg-deb` / `rpmbuild` absent, jpackage reports "Invalid or unsupported type: [deb]"; build on a host with those tools (CI) | **verified present** — `createDistributable` / `prepareDesktopAppDistributable` produced `build/compose/binaries/main/app/SkillBill` with the `bin/SkillBill` launcher, the bundled JRE under `lib/runtime` (`libjvm.so`/`libjava.so`), and the staged `skill-bill-runtime/{runtime-cli,runtime-mcp,skills,platform-packs,orchestration}` | not exercised (headless) | canonical rename + `.sha256` task verified end-to-end against a `.deb`-shaped artifact (`sha256sum -c` OK); a real `.deb`/`.rpm` install + GUI launch is deferred to a host with the packaging tools and a display |
-| `macos-arm64` | `.dmg`       | CI (subtask 3)      | CI (subtask 3)                              | CI (subtask 3) | cannot reproduce from a Linux host |
-| `macos-x64`   | `.dmg`       | CI (subtask 3)      | CI (subtask 3)                              | CI (subtask 3) | cannot reproduce from a Linux host |
-| `windows-x64` | `.msi`       | CI (subtask 3)      | CI (subtask 3)                              | CI (subtask 3) | cannot reproduce from a Linux host |
+> The existing `:runtime-cli:installDist` / `:runtime-mcp:installDist` outputs are
+> **unchanged** — the runtime images are an additive, separate distribution path.
 
 ## IntelliJ / Android Studio
 

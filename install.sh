@@ -21,19 +21,6 @@ RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
 RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
 RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
-DESKTOP_APP_DEFAULT_NAME="SkillBill"
-DESKTOP_APP_INSTALL="prompt"
-DESKTOP_APP_INSTALL_DIR="${SKILL_BILL_DESKTOP_APP_DIR:-}"
-DESKTOP_APP_INSTALLED_PATH=""
-DESKTOP_APP_LAUNCHER_PATH=""
-# When the prebuilt path extracts a desktop app payload it records the extracted
-# app tree here; install_desktop_app honors it instead of the Gradle build dir.
-DESKTOP_APP_PREBUILT_SOURCE_PATH=""
-# For Linux .deb/.rpm payloads this records the full extraction root (above the
-# app tree), so install_linux_desktop_entry can locate the packaged icon. The
-# prebuilt source is never RUNTIME_KOTLIN_DIR-relative (the release bundle has
-# no runtime-kotlin checkout), so the icon must come from inside this payload.
-DESKTOP_APP_PREBUILT_PAYLOAD_DIR=""
 # SKILL-76 subtask 2: space-separated skill-relative paths whose both-changed
 # reconcile conflict the user accepted (overwrote). Surfaced in the install summary.
 RECONCILE_CONFLICT_PATHS=""
@@ -42,7 +29,6 @@ RECONCILE_CONFLICT_PATHS=""
 # standalone downloaded installer falls back to published prebuilt release assets.
 INSTALL_SOURCE="auto"
 RELEASE_TAG="${SKILL_BILL_RELEASE_TAG:-}"
-DESKTOP_APP_ONLY=0
 REUSE_LAST_SELECTION=0
 PREFER_UPSTREAM=0
 CLEAN_INSTALL=0
@@ -84,30 +70,18 @@ MCP_REGISTRATION="register"
 
 usage() {
   cat <<USAGE
-Usage: ./install.sh [--from-source] [--release TAG]
-                    [--with-desktop-app|--no-desktop-app] [--desktop-app-dir PATH]
-                    [--desktop-app-only] [--reuse-last-selection]
+Usage: ./install.sh [--from-source] [--release TAG] [--reuse-last-selection]
 
 By default a local checkout builds and installs from source. A standalone
 downloaded installer uses checksum-verified prebuilt release images.
 
 Options:
-  --from-source            Force building the runtime (and desktop app) from
-                           source with Gradle. Ignores --release. Requires a JDK.
+  --from-source            Force building the runtime from source with Gradle.
+                           Ignores --release. Requires a JDK.
   --release TAG            Install a specific release tag instead of the latest
                            stable release. Ignored with --from-source.
-  --with-desktop-app       Install the optional desktop app from the prebuilt
-                           installer (non-interactive).
-  --no-desktop-app         Skip desktop app installation (non-interactive).
-  --desktop-app-dir PATH   Override the per-user desktop app install directory.
-  --desktop-app-only       Install ONLY the prebuilt desktop app (skip the full
-                           installer). Use this to add the desktop app later
-                           without re-running the full install.
   --reuse-last-selection   Reuse the latest successful agent, platform,
                            telemetry, and MCP choices from ~/.skill-bill.
-                           Desktop app install uses the normal non-interactive
-                           default unless --with-desktop-app or --no-desktop-app
-                           is provided.
   --prefer-upstream        When a skill changed both upstream and locally,
                            overwrite the local copy with the upstream version
                            instead of keeping local. Useful for non-interactive
@@ -126,20 +100,8 @@ parse_args() {
         usage
         exit 0
         ;;
-      --with-desktop-app|--install-desktop-app)
-        DESKTOP_APP_INSTALL="yes"
-        shift
-        ;;
-      --no-desktop-app|--skip-desktop-app)
-        DESKTOP_APP_INSTALL="no"
-        shift
-        ;;
       --from-source)
         INSTALL_SOURCE="source"
-        shift
-        ;;
-      --desktop-app-only)
-        DESKTOP_APP_ONLY=1
         shift
         ;;
       --reuse-last-selection)
@@ -176,22 +138,6 @@ parse_args() {
         fi
         shift
         ;;
-      --desktop-app-dir)
-        if [[ $# -lt 2 || -z "$(trim_string "$2")" ]]; then
-          err "--desktop-app-dir requires a path."
-          exit 1
-        fi
-        DESKTOP_APP_INSTALL_DIR="$2"
-        shift 2
-        ;;
-      --desktop-app-dir=*)
-        DESKTOP_APP_INSTALL_DIR="${1#--desktop-app-dir=}"
-        if [[ -z "$(trim_string "$DESKTOP_APP_INSTALL_DIR")" ]]; then
-          err "--desktop-app-dir requires a path."
-          exit 1
-        fi
-        shift
-        ;;
       *)
         err "Unknown argument: $1"
         usage
@@ -199,12 +145,6 @@ parse_args() {
         ;;
     esac
   done
-
-  if [[ "$DESKTOP_APP_ONLY" -eq 1 && "$REUSE_LAST_SELECTION" -eq 1 ]]; then
-    err "--reuse-last-selection cannot be combined with --desktop-app-only."
-    err "Run the full installer with --reuse-last-selection, or run --desktop-app-only by itself."
-    exit 1
-  fi
 }
 
 local_source_checkout_available() {
@@ -281,16 +221,8 @@ bootstrap_release_installer_if_needed() {
   exec bash -s -- "${bootstrap_args[@]+"${bootstrap_args[@]}"}" <<<"$installer"
 }
 
-host_path() {
-  local path="$1"
-  if command -v cygpath >/dev/null 2>&1; then
-    cygpath -u "$path"
-  else
-    printf '%s' "$path"
-  fi
-}
 
-desktop_host_os() {
+host_os() {
   local uname_s
   uname_s="$(uname -s 2>/dev/null || printf 'unknown')"
   case "$uname_s" in
@@ -364,7 +296,7 @@ detect_host_arch() {
 HOST_TOKEN_UNSUPPORTED=""
 host_token() {
   local os arch token
-  os="$(desktop_host_os)"
+  os="$(host_os)"
   arch="$(detect_host_arch)"
   token="$os-$arch"
   case "$token" in
@@ -635,14 +567,12 @@ clean_install_state() {
 }
 
 # Resolve the prebuilt asset filenames for this host by SUFFIX matching, not by
-# exact filename: runtime-cli `.zip`, runtime-mcp `.zip`, and the desktop
-# installer (.dmg/.msi/.deb/.rpm) whose names end with `<host-token>.<ext>`.
-# Writes to the named output vars. Returns 1 (unsupported signal) when the host
+# exact filename: runtime-cli `.zip` and runtime-mcp `.zip` whose names end with
+# `<host-token>.zip`. Writes to the named output vars. Returns 1 (unsupported signal) when the host
 # token is unsupported OR no runtime asset matches it, so the caller auto-falls
 # back to --from-source.
 RESOLVED_RUNTIME_CLI_ASSET=""
 RESOLVED_RUNTIME_MCP_ASSET=""
-RESOLVED_DESKTOP_ASSET=""
 resolve_release_assets() {
   local token
   if ! token="$(host_token)"; then
@@ -656,7 +586,6 @@ resolve_release_assets() {
 
   RESOLVED_RUNTIME_CLI_ASSET=""
   RESOLVED_RUNTIME_MCP_ASSET=""
-  RESOLVED_DESKTOP_ASSET=""
 
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
@@ -670,9 +599,6 @@ resolve_release_assets() {
       runtime-mcp-*"$token".zip)
         RESOLVED_RUNTIME_MCP_ASSET="$name"
         ;;
-      *"$token".dmg|*"$token".msi|*"$token".deb|*"$token".rpm)
-        RESOLVED_DESKTOP_ASSET="$name"
-        ;;
     esac
   done <<< "$names"
 
@@ -682,146 +608,20 @@ resolve_release_assets() {
   fi
 }
 
-default_desktop_app_install_dir() {
-  local os="$1"
-  case "$os" in
-    macos)
-      printf '%s' "/Applications"
-      ;;
-    linux)
-      printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/skillbill/desktop"
-      ;;
-    windows)
-      if [[ -n "${LOCALAPPDATA:-}" ]]; then
-        host_path "$LOCALAPPDATA/SkillBill/Desktop"
-      else
-        printf '%s' "$HOME/AppData/Local/SkillBill/Desktop"
-      fi
-      ;;
-    *)
-      printf '%s' "$HOME/.skill-bill/desktop"
-      ;;
-  esac
-}
 
-# AC4 default gating: report PURELY whether this host is a real desktop session.
-# Linux: $DISPLAY or $WAYLAND_DISPLAY set → desktop; macOS/Windows → always a
-# desktop; unknown → not a desktop. Returns 0 (yes/desktop) or 1 (no/headless).
-# TTY-awareness is the caller's concern, not this helper's.
-desktop_session_default_yes() {
-  local os
-  os="$(desktop_host_os)"
-  case "$os" in
-    linux)
-      if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
-        return 0
-      fi
-      return 1
-      ;;
-    macos|windows)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
 
-prompt_for_desktop_app_install() {
-  local input
-  local normalized
-
-  if [[ "$DESKTOP_APP_INSTALL" != "prompt" ]]; then
-    return 0
-  fi
-
-  # Gated default driven solely by whether this is a real desktop session.
-  # Headless (SSH/CI/no-DISPLAY) → skip; desktop → install. Explicit
-  # --with/--no-desktop-app already short-circuited above via the != prompt guard.
-  local default_choice
-  if desktop_session_default_yes; then
-    default_choice="yes"
-  else
-    default_choice="no"
-  fi
-
-  # Non-interactive (no TTY) and reuse mode resolve to the gated default WITHOUT
-  # blocking on read. The shared install-selection record owns runtime choices
-  # only; explicit --with/--no-desktop-app remains the desktop override.
-  if ! prompt_input_available || [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
-    DESKTOP_APP_INSTALL="$default_choice"
-    return 0
-  fi
-
-  local default_hint
-  if [[ "$default_choice" == "yes" ]]; then
-    default_hint="1"
-  else
-    default_hint="2"
-  fi
-
-  while true; do
-    echo ""
-    info "Install the optional Skill Bill desktop app for this user?"
-    if [[ "$default_choice" == "yes" ]]; then
-      printf "  1. install (default)\n"
-      printf "  2. skip\n"
-    else
-      printf "  1. install\n"
-      printf "  2. skip (default)\n"
-    fi
-    printf "${CYAN}▸${NC} Enter desktop app choice [${default_hint}]: "
-    if ! read_prompt_input input; then
-      input=""
-    fi
-
-    normalized="$(printf '%s' "$(trim_string "$input")" | tr '[:upper:]' '[:lower:]')"
-    case "$normalized" in
-      "")
-        DESKTOP_APP_INSTALL="$default_choice"
-        return 0
-        ;;
-      1|install|yes|y)
-        DESKTOP_APP_INSTALL="yes"
-        return 0
-        ;;
-      2|skip|no|n)
-        DESKTOP_APP_INSTALL="no"
-        return 0
-        ;;
-      *)
-        warn "Enter 1, 2, install, skip, or press Enter for the default (${default_choice})."
-        ;;
-    esac
-  done
-}
 
 # AC6: print exactly what the installer will change on the system and how to
-# reverse it, BEFORE any mutation runs. `mode` is "full" (the whole install) or
-# "desktop-only" (the --desktop-app-only path).
+# reverse it, BEFORE any mutation runs.
 print_install_plan() {
-  local mode="${1:-full}"
-  local os
-  os="$(desktop_host_os)"
   echo ""
   printf "${CYAN}━━━ What this installer will change ━━━${NC}\n"
   echo ""
-  if [[ "$mode" == "desktop-only" ]]; then
-    info "Desktop app: install the prebuilt SkillBill app under ${DESKTOP_APP_INSTALL_DIR:-$(default_desktop_app_install_dir "$os")}"
-    info "Desktop launcher: $RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
-    if [[ "$os" == "linux" ]]; then
-      info "Linux desktop entry: ${XDG_DATA_HOME:-$HOME/.local/share}/applications/skillbill.desktop"
-    fi
-  else
-    info "Clean-slate reset: re-runs ./uninstall.sh first, wiping ~/.skill-bill and removing prior Skill Bill agent symlinks, launchers, and MCP registrations."
-    info "Agent symlinks: links Skill Bill skills into your selected agents' skill/command directories."
-    info "Runtime: installs the Kotlin runtime under $RUNTIME_INSTALL_ROOT"
-    info "Launchers: $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
-    info "MCP registration: registers the skill-bill MCP server with your selected agents."
-    if [[ "$DESKTOP_APP_INSTALL" != "no" ]]; then
-      info "Desktop app (if chosen): installs under ${DESKTOP_APP_INSTALL_DIR:-$(default_desktop_app_install_dir "$os")} with a skillbill-desktop launcher."
-    fi
-  fi
+  info "Clean-slate reset: re-runs ./uninstall.sh first, wiping ~/.skill-bill and removing prior Skill Bill agent symlinks, launchers, and MCP registrations."
+  info "Agent symlinks: links Skill Bill skills into your selected agents' skill/command directories."
+  info "Runtime: installs the Kotlin runtime under $RUNTIME_INSTALL_ROOT"
+  info "Launchers: $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
+  info "MCP registration: registers the skill-bill MCP server with your selected agents."
   echo ""
   info "Reverse everything with: $PLUGIN_DIR/uninstall.sh"
   echo ""
@@ -1520,411 +1320,19 @@ install_runtime_launchers() {
   fi
 }
 
-build_desktop_app_distribution() {
-  local gradlew="$RUNTIME_KOTLIN_DIR/gradlew"
 
-  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
-    return 0
-  fi
 
-  # Only the from-source path builds the desktop app with Gradle. On the prebuilt
-  # path the installer downloads + extracts the published installer instead (see
-  # fetch_and_extract_desktop_app), so skip the Gradle build entirely.
-  if [[ "$INSTALL_SOURCE" != "source" ]]; then
-    return 0
-  fi
 
-  if [[ ! -x "$gradlew" ]]; then
-    err "Missing Gradle wrapper: $gradlew"
-    return 1
-  fi
 
-  info "Building desktop app distributable for the current host..."
-  (
-    cd "$RUNTIME_KOTLIN_DIR"
-    ./gradlew -q :runtime-desktop:prepareDesktopAppDistributable
-  )
-  ok "Desktop app distributable ready"
-}
 
-# Prebuilt desktop install: download + verify the host's desktop installer asset
-# and EXTRACT the app payload WITHOUT running the system installer, so the per-user
-# install stays self-contained and reversible by uninstall.sh. Extraction is
-# format-specific:
-#   .deb → ar x + extract data.tar.{xz,gz,zst}
-#   .rpm → rpm2cpio | cpio -idm (or bsdtar -xf)
-#   .dmg → hdiutil attach -nobrowse, copy .app, detach (macOS)
-#   .msi → msiexec /a /qn TARGETDIR= (or lessmsi) (Windows)
-# The located app tree is recorded in DESKTOP_APP_PREBUILT_SOURCE_PATH, which the
-# EXISTING install_desktop_app consumes via desktop_app_source_path.
-extract_deb_desktop_payload() {
-  local asset="$1"
-  local extract_dir="$2"
-  mkdir -p "$extract_dir"
-  (
-    cd "$extract_dir"
-    ar x "$asset"
-  )
-  local data_archive
-  data_archive="$(find "$extract_dir" -maxdepth 1 -type f -name 'data.tar.*' -print 2>/dev/null | head -n1)"
-  if [[ -z "$data_archive" ]]; then
-    err "No data.tar.* payload found inside $asset"
-    return 1
-  fi
-  local payload_dir="$extract_dir/payload"
-  mkdir -p "$payload_dir"
-  if command -v bsdtar >/dev/null 2>&1; then
-    bsdtar -xf "$data_archive" -C "$payload_dir"
-  else
-    case "$data_archive" in
-      *.xz)  tar -xJf "$data_archive" -C "$payload_dir" ;;
-      *.gz)  tar -xzf "$data_archive" -C "$payload_dir" ;;
-      *.zst)
-        if tar --help 2>&1 | grep -q -- '--zstd'; then
-          tar --zstd -xf "$data_archive" -C "$payload_dir"
-        else
-          err "tar lacks zstd support and bsdtar is unavailable for: $data_archive"
-          return 1
-        fi
-        ;;
-      *)
-        err "Unsupported .deb data archive format: $data_archive"
-        return 1
-        ;;
-    esac
-  fi
-  printf '%s' "$payload_dir"
-}
 
-extract_rpm_desktop_payload() {
-  local asset="$1"
-  local extract_dir="$2"
-  local payload_dir="$extract_dir/payload"
-  mkdir -p "$payload_dir"
-  if command -v rpm2cpio >/dev/null 2>&1 && command -v cpio >/dev/null 2>&1; then
-    (
-      cd "$payload_dir"
-      rpm2cpio "$asset" | cpio -idm --quiet
-    )
-  elif command -v bsdtar >/dev/null 2>&1; then
-    bsdtar -xf "$asset" -C "$payload_dir"
-  else
-    err "Cannot extract .rpm: need rpm2cpio+cpio or bsdtar."
-    return 1
-  fi
-  printf '%s' "$payload_dir"
-}
 
-extract_dmg_desktop_payload() {
-  local asset="$1"
-  local extract_dir="$2"
-  local payload_dir="$extract_dir/payload"
-  mkdir -p "$payload_dir"
-  local mount_point
-  mount_point="$(mktemp -d "$extract_dir/mount.XXXXXX")"
-  if ! hdiutil attach -nobrowse -quiet -mountpoint "$mount_point" "$asset"; then
-    err "Failed to attach DMG: $asset"
-    return 1
-  fi
-  local app_src
-  app_src="$(find "$mount_point" -maxdepth 2 -type d -name "*.app" -print 2>/dev/null | head -n1)"
-  if [[ -n "$app_src" ]]; then
-    cp -R "$app_src" "$payload_dir/"
-  fi
-  hdiutil detach -quiet "$mount_point" || true
-  if [[ -z "$app_src" ]]; then
-    err "No .app bundle found inside DMG: $asset"
-    return 1
-  fi
-  printf '%s' "$payload_dir"
-}
 
-extract_msi_desktop_payload() {
-  local asset="$1"
-  local extract_dir="$2"
-  local payload_dir="$extract_dir/payload"
-  mkdir -p "$payload_dir"
-  local target
-  if command -v cygpath >/dev/null 2>&1; then
-    target="$(cygpath -w "$payload_dir")"
-  else
-    target="$payload_dir"
-  fi
-  if command -v msiexec >/dev/null 2>&1; then
-    msiexec /a "$asset" /qn TARGETDIR="$target"
-  elif command -v lessmsi >/dev/null 2>&1; then
-    lessmsi x "$asset" "$payload_dir/"
-  else
-    err "Cannot extract .msi: need msiexec or lessmsi."
-    return 1
-  fi
-  printf '%s' "$payload_dir"
-}
 
-# Find the installed-app tree inside an extracted installer payload. jpackage lays
-# the app down under .../<Name>.app (macOS), .../opt/<name> or .../<Name> with a
-# bin/<Name> launcher (Linux .deb/.rpm), or a directory containing bin/<Name>.bat
-# (Windows). Returns the directory desktop_app_source_path should treat as the
-# prebuilt app root.
-locate_extracted_desktop_app() {
-  local payload_dir="$1"
-  local os="$2"
-  local app_path
 
-  if [[ "$os" == "macos" ]]; then
-    app_path="$(find "$payload_dir" -maxdepth 6 -type d -name "$DESKTOP_APP_DEFAULT_NAME.app" -print 2>/dev/null | head -n1)"
-    if [[ -n "$app_path" ]]; then
-      printf '%s' "$app_path"
-      return 0
-    fi
-    app_path="$(find "$payload_dir" -maxdepth 6 -type d -name "*.app" -print 2>/dev/null | head -n1)"
-    if [[ -n "$app_path" ]]; then
-      printf '%s' "$app_path"
-      return 0
-    fi
-    err "Could not locate a .app bundle in extracted payload: $payload_dir"
-    return 1
-  fi
 
-  local launcher_name="$DESKTOP_APP_DEFAULT_NAME"
-  if [[ "$os" == "windows" ]]; then
-    launcher_name="$DESKTOP_APP_DEFAULT_NAME.bat"
-  fi
-  local launcher_path
-  launcher_path="$(find "$payload_dir" -type f -path "*/bin/$launcher_name" -print 2>/dev/null | head -n1)"
-  if [[ -z "$launcher_path" ]]; then
-    err "Could not locate bin/$launcher_name in extracted payload: $payload_dir"
-    return 1
-  fi
-  # The app root is the directory that contains bin/<launcher> (one level above bin/).
-  printf '%s' "$(dirname "$(dirname "$launcher_path")")"
-}
 
-fetch_and_extract_desktop_app() {
-  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
-    return 0
-  fi
-  if [[ -z "$RESOLVED_DESKTOP_ASSET" ]]; then
-    err "No prebuilt desktop installer asset matched this host."
-    return 1
-  fi
 
-  local os work_dir asset extract_dir payload_dir app_path
-  os="$(desktop_host_os)"
-  init_prebuilt_work_dir
-  work_dir="$(prebuilt_work_dir)"
-  extract_dir="$work_dir/desktop-extract"
-  rm -rf "$extract_dir"
-  mkdir -p "$extract_dir"
-
-  info "Fetching prebuilt desktop installer: $RESOLVED_DESKTOP_ASSET"
-  asset="$(fetch_release_asset "$RESOLVED_DESKTOP_ASSET")" || return 1
-  verify_sha256 "$asset" || return 1
-
-  info "Extracting desktop app payload (no system installer is run)"
-  case "$RESOLVED_DESKTOP_ASSET" in
-    *.deb) payload_dir="$(extract_deb_desktop_payload "$asset" "$extract_dir")" || return 1 ;;
-    *.rpm) payload_dir="$(extract_rpm_desktop_payload "$asset" "$extract_dir")" || return 1 ;;
-    *.dmg) payload_dir="$(extract_dmg_desktop_payload "$asset" "$extract_dir")" || return 1 ;;
-    *.msi) payload_dir="$(extract_msi_desktop_payload "$asset" "$extract_dir")" || return 1 ;;
-    *)
-      err "Unsupported desktop installer format: $RESOLVED_DESKTOP_ASSET"
-      return 1
-      ;;
-  esac
-
-  app_path="$(locate_extracted_desktop_app "$payload_dir" "$os")" || return 1
-  DESKTOP_APP_PREBUILT_SOURCE_PATH="$app_path"
-  if [[ "$os" == "linux" ]]; then
-    DESKTOP_APP_PREBUILT_PAYLOAD_DIR="$payload_dir"
-  fi
-  ok "Desktop app payload extracted"
-}
-
-desktop_app_source_path() {
-  local os="$1"
-
-  # Prebuilt path: the extracted installer payload is the source of truth.
-  if [[ -n "$DESKTOP_APP_PREBUILT_SOURCE_PATH" ]]; then
-    printf '%s' "$DESKTOP_APP_PREBUILT_SOURCE_PATH"
-    return 0
-  fi
-
-  local app_root="$RUNTIME_KOTLIN_DIR/runtime-desktop/build/compose/binaries/main/app"
-  if [[ "$os" == "macos" && -d "$app_root/$DESKTOP_APP_DEFAULT_NAME.app" ]]; then
-    printf '%s' "$app_root/$DESKTOP_APP_DEFAULT_NAME.app"
-    return 0
-  fi
-
-  printf '%s' "$app_root/$DESKTOP_APP_DEFAULT_NAME"
-}
-
-make_desktop_binaries_executable() {
-  local app_path="$1"
-  find "$app_path" -type f \( \
-    -path '*/Contents/MacOS/*' -o \
-    -path '*/bin/*' \
-  \) -exec chmod u+x {} + 2>/dev/null || true
-}
-
-install_desktop_launcher() {
-  local os="$1"
-  local app_target="$2"
-  local launcher_path
-  local executable
-  local windows_executable
-
-  mkdir -p "$RUNTIME_LAUNCHER_BIN_DIR"
-  case "$os" in
-    macos)
-      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
-      executable="$app_target/Contents/MacOS/$DESKTOP_APP_DEFAULT_NAME"
-      ;;
-    windows)
-      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop.cmd"
-      executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME.bat"
-      if command -v cygpath >/dev/null 2>&1; then
-        windows_executable="$(cygpath -w "$executable")"
-      else
-        windows_executable="$executable"
-      fi
-      cat > "$launcher_path" <<CMD
-@echo off
-call "$windows_executable" %*
-CMD
-      DESKTOP_APP_LAUNCHER_PATH="$launcher_path"
-      ok "  linked desktop launcher → $launcher_path"
-      return 0
-      ;;
-    *)
-      launcher_path="$RUNTIME_LAUNCHER_BIN_DIR/skillbill-desktop"
-      executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
-      ;;
-  esac
-
-  if [[ ! -x "$executable" ]]; then
-    warn "  skipped desktop launcher because executable is missing: $executable"
-    return 0
-  fi
-  ln -sfn "$executable" "$launcher_path"
-  DESKTOP_APP_LAUNCHER_PATH="$launcher_path"
-  ok "  linked desktop launcher → $launcher_path"
-}
-
-# Locate the app icon for the Linux desktop entry. Prebuilt (piped curl) installs
-# never have a runtime-kotlin checkout, so the icon must come from inside the
-# jpackage deb/rpm payload that was already extracted; local/dev installs fall
-# back to the icon next to the Gradle build.
-linux_desktop_icon_src() {
-  if [[ -n "$DESKTOP_APP_PREBUILT_PAYLOAD_DIR" ]]; then
-    find "$DESKTOP_APP_PREBUILT_PAYLOAD_DIR" -type f -iname '*.png' \
-      \( -ipath '*icons*hicolor*apps*' -o -ipath '*/lib/*' \) -print 2>/dev/null | head -n1
-    return 0
-  fi
-  printf '%s' "$RUNTIME_KOTLIN_DIR/runtime-desktop/icons/icon.png"
-}
-
-install_linux_desktop_entry() {
-  local app_target="$1"
-  local desktop_file="${XDG_DATA_HOME:-$HOME/.local/share}/applications/skillbill.desktop"
-  local icon_file="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/skillbill.png"
-  local executable="$app_target/bin/$DESKTOP_APP_DEFAULT_NAME"
-  local icon_src
-  icon_src="$(linux_desktop_icon_src)"
-
-  if [[ ! -x "$executable" ]]; then
-    warn "  skipped Linux desktop entry because executable is missing: $executable"
-    return 0
-  fi
-
-  mkdir -p "$(dirname "$desktop_file")" "$(dirname "$icon_file")"
-  if [[ -n "$icon_src" && -f "$icon_src" ]]; then
-    cp "$icon_src" "$icon_file"
-  else
-    warn "  skipped desktop icon because no packaged icon was found"
-  fi
-  cat > "$desktop_file" <<DESKTOP
-[Desktop Entry]
-Type=Application
-Name=SkillBill
-GenericName=SkillBill Desktop Runtime
-Comment=Compose Desktop runtime for SkillBill
-Exec=$executable
-Icon=skillbill
-Terminal=false
-Categories=Development;IDE;
-StartupWMClass=SkillBill
-DESKTOP
-  ok "  installed Linux desktop entry → $desktop_file"
-}
-
-install_desktop_app() {
-  local os
-  local source_path
-  local install_root
-  local target_path
-
-  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
-    return 0
-  fi
-
-  os="$(desktop_host_os)"
-  source_path="$(desktop_app_source_path "$os")"
-  if [[ ! -d "$source_path" ]]; then
-    err "Missing desktop app distributable: $source_path"
-    return 1
-  fi
-
-  install_root="${DESKTOP_APP_INSTALL_DIR:-$(default_desktop_app_install_dir "$os")}"
-  install_root="$(host_path "$install_root")"
-  case "$os" in
-    macos)
-      target_path="$install_root/$DESKTOP_APP_DEFAULT_NAME.app"
-      ;;
-    *)
-      target_path="$install_root/$DESKTOP_APP_DEFAULT_NAME"
-      ;;
-  esac
-  DESKTOP_APP_INSTALLED_PATH="$target_path"
-
-  info "Installing desktop app to: $target_path"
-  rm -rf "$target_path"
-  mkdir -p "$install_root"
-  cp -R "$source_path" "$target_path"
-  make_desktop_binaries_executable "$target_path"
-  install_desktop_launcher "$os" "$target_path"
-  if [[ "$os" == "linux" ]]; then
-    install_linux_desktop_entry "$target_path"
-  fi
-  ok "Desktop app installed"
-}
-
-# AC5: the v1 desktop installers ship UNSIGNED (runtime-kotlin/agent/decisions.md,
-# 2026-05-29 "Ship desktop installers UNSIGNED for v1"). After a successful desktop
-# install, surface the OS-specific "open anyway" steps VERBATIM from that decision.
-# Linux has no OS-level signing gate, so nothing is printed there.
-print_desktop_unsigned_hint() {
-  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
-    return 0
-  fi
-  local os
-  os="$(desktop_host_os)"
-  case "$os" in
-    macos)
-      echo ""
-      warn "The desktop app is unsigned for v1. To open it the first time:"
-      info "  macOS (Gatekeeper): Right-click (or Control-click) the app in Finder -> Open -> Open in the confirmation dialog. Alternatively: System Settings -> Privacy & Security -> Open Anyway."
-      ;;
-    windows)
-      echo ""
-      warn "The desktop app is unsigned for v1. To open it the first time:"
-      info "  Windows (SmartScreen): On the \"Windows protected your PC\" dialog, click More info -> Run anyway."
-      ;;
-    *)
-      :
-      ;;
-  esac
-}
 
 get_agent_path() {
   run_runtime_cli install agent-path "$1"
@@ -2646,69 +2054,11 @@ selected_platform_label() {
   esac
 }
 
-# Prepare the desktop app payload right before installing it. On --from-source the
-# Gradle build already ran; on the prebuilt path resolve the desktop asset (if not
-# already resolved by the runtime step) and fetch+extract it. Idempotent.
-prepare_desktop_app_payload() {
-  if [[ "$DESKTOP_APP_INSTALL" != "yes" ]]; then
-    return 0
-  fi
-  if [[ "$INSTALL_SOURCE" == "source" ]]; then
-    # build_desktop_app_distribution already produced the Gradle output.
-    return 0
-  fi
-  if [[ -z "$RESOLVED_DESKTOP_ASSET" ]]; then
-    if ! resolve_release_assets; then
-      warn "No prebuilt desktop installer matched this host (token: ${HOST_TOKEN_UNSUPPORTED:-unknown}); skipping desktop app."
-      DESKTOP_APP_INSTALL="no"
-      return 0
-    fi
-  fi
-  if [[ -z "$RESOLVED_DESKTOP_ASSET" ]]; then
-    warn "No prebuilt desktop installer asset is published for this host; skipping desktop app."
-    DESKTOP_APP_INSTALL="no"
-    return 0
-  fi
-  fetch_and_extract_desktop_app
-}
 
-# AC11 desktop-only path (--desktop-app-only): install ONLY the prebuilt desktop
-# app — no runtime build, no agent/platform/telemetry prompts, no runtime apply,
-# no pre-install uninstall. Re-runnable/idempotent. Honors --release and the
-# offline seams.
-run_desktop_only_install() {
-  print_install_plan "desktop-only"
-  check_prebuilt_dependencies || exit 1
-  if ! resolve_release_assets; then
-    err "Cannot install the desktop app: no prebuilt release assets matched this host (token: ${HOST_TOKEN_UNSUPPORTED:-unknown})."
-    err "Re-run the full installer with --from-source to build the desktop app from source."
-    exit 1
-  fi
-  if [[ -z "$RESOLVED_DESKTOP_ASSET" ]]; then
-    err "No prebuilt desktop installer asset is published for this host."
-    exit 1
-  fi
-
-  DESKTOP_APP_INSTALL="yes"
-  fetch_and_extract_desktop_app
-  install_desktop_app
-
-  echo ""
-  printf "${GREEN}━━━ Desktop app installed ━━━${NC}\n"
-  echo ""
-  info "Desktop app:     ${DESKTOP_APP_INSTALLED_PATH:-installed for $(desktop_host_os)}"
-  if [[ -n "$DESKTOP_APP_LAUNCHER_PATH" ]]; then
-    info "Desktop launcher: $DESKTOP_APP_LAUNCHER_PATH"
-  fi
-  print_desktop_unsigned_hint
-  echo ""
-  info "Reverse with: $PLUGIN_DIR/uninstall.sh"
-  echo ""
-}
 
 run_full_install() {
   bundle_bootstrap_if_needed
-  print_install_plan "full"
+  print_install_plan
   if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     build_platform_packages
     replay_last_install_selection
@@ -2735,10 +2085,7 @@ run_full_install() {
     prompt_for_platform_selection
     prompt_for_telemetry_preference
   fi
-  prompt_for_desktop_app_install
   install_runtime_launchers
-  build_desktop_app_distribution
-  prepare_desktop_app_payload
   build_runtime_install_args
 
   echo ""
@@ -2748,7 +2095,6 @@ run_full_install() {
   info "Platforms:      $SELECTED_PLATFORM_LABEL"
   info "Telemetry:      $TELEMETRY_LEVEL"
   info "MCP:            $MCP_REGISTRATION"
-  info "Desktop app:    $DESKTOP_APP_INSTALL"
   if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     info "Selections:     reused latest successful install selection"
   fi
@@ -2756,7 +2102,6 @@ run_full_install() {
 
   apply_external_addon_overlay
   apply_runtime_install
-  install_desktop_app
 
   printf "${GREEN}━━━ Installation complete ━━━${NC}\n"
   echo ""
@@ -2778,15 +2123,6 @@ run_full_install() {
   if [[ "$REUSE_LAST_SELECTION" -eq 1 ]]; then
     info "Selections:      reused latest successful install selection"
   fi
-  if [[ "$DESKTOP_APP_INSTALL" == "yes" ]]; then
-    info "Desktop app:     ${DESKTOP_APP_INSTALLED_PATH:-installed for $(desktop_host_os)}"
-    if [[ -n "$DESKTOP_APP_LAUNCHER_PATH" ]]; then
-      info "Desktop launcher: $DESKTOP_APP_LAUNCHER_PATH"
-    fi
-  else
-    info "Desktop app:     skipped"
-  fi
-
   if [[ "$AGENT_SELECTION_MODE" == "manual" && ${#AGENT_NAMES[@]} -gt 0 ]]; then
     for i in "${!AGENT_NAMES[@]}"; do
       info "Installed agent: ${AGENT_NAMES[$i]} → ${AGENT_PATHS[$i]}"
@@ -2797,8 +2133,6 @@ run_full_install() {
 
   print_claude_roots_summary
 
-  print_desktop_unsigned_hint
-
   print_postinstall_path_warning
   print_postinstall_agent_warning
 
@@ -2807,8 +2141,7 @@ run_full_install() {
   if [[ "$TELEMETRY_LEVEL" != "off" ]]; then
     info "Telemetry uses the default Skill Bill relay automatically. Override it with SKILL_BILL_TELEMETRY_PROXY_URL or ~/.skill-bill/config.json."
   fi
-  info "Add the desktop app later (no full reinstall) with: $PLUGIN_DIR/install.sh --desktop-app-only"
-  info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or desktop app choices."
+  info "Run './install.sh' again to reinstall with different agent, platform, telemetry, or MCP choices."
   info "Next step:       open your agent and run /bill-feature-task or /bill-code-review"
   echo ""
 }
@@ -2816,8 +2149,4 @@ run_full_install() {
 parse_args "$@"
 bootstrap_release_installer_if_needed
 resolve_install_source
-if [[ "$DESKTOP_APP_ONLY" -eq 1 ]]; then
-  run_desktop_only_install
-else
-  run_full_install
-fi
+run_full_install

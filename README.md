@@ -60,7 +60,6 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 - structured telemetry through a pluggable proxy you can self-host
 - per-project overrides so the same skill behaves differently per repo without forking
 - per-module memory so institutional knowledge lives next to the code
-- a Compose Desktop UI for authoring, validation, scaffolding, and install — no CLI required
 
 [Capability deep-dive →](docs/capabilities.md)
 
@@ -135,7 +134,7 @@ Omit `mode:` to use delegated review, or pass `mode:auto` explicitly to resolve 
 - [Getting Started](docs/getting-started.md): install flow, CLI surfaces, agent support tiers, and MCP tool groups
 - [Getting Started for Teams](docs/getting-started-for-teams.md): rollout guidance, customization strategy, and adoption patterns
 - [Skill Bill Teams Roadmap](docs/team-control-plane-roadmap.md): staged path from team bundle sync to admin editing, telemetry-driven tuning, and hosted org controls
-- [Capability Deep-dive](docs/capabilities.md): the full system — one-shot install, durable workflows, platform packs, decomposition, Desktop UI, telemetry, overrides, memory, and governance
+- [Capability Deep-dive](docs/capabilities.md): the full system — one-shot install, durable workflows, platform packs, decomposition, telemetry, overrides, memory, and governance
 - [Skill Source And Generation Model](docs/skill-source-generation.md): `content.md` vs generated `SKILL.md`, support pointers, install staging, and native-agent generation
 - [External Addon Sources](docs/external-addons.md): overlay private or team-specific review add-ons onto an installed pack, kept out of the shared repo
 - [Review Telemetry](docs/review-telemetry.md): telemetry contract, learnings, local DB usage, and remote proxy stats

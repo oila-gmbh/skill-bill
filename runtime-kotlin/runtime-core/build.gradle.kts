@@ -3,7 +3,7 @@ plugins {
   id("skillbill.jvm-library")
   id("skillbill.quality")
   // SKILL-48 C8: publish the shared `repoRootFromTest()` helper to downstream test code
-  // (runtime-core's own tests and runtime-desktop:feature:skillbill jvmTest) via the
+  // (runtime-core's own tests) via the
   // `java-test-fixtures` plugin so the four prior copies collapse into one source.
   `java-test-fixtures`
 }

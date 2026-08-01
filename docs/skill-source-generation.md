@@ -429,12 +429,12 @@ source skill directory.
 Re-run `./install.sh` after source, renderer, or support pointer changes so
 installed agents receive a fresh staging hash.
 
-The terminal installer and desktop first-run wizard both use this same
+The terminal installer uses this same
 runtime-owned install plan/apply path. Their choices may change which agents,
 platform packs, telemetry level, or MCP registrations are applied, but they do
 not change the governed source shape. Base skills remain part of every install;
 optional platform packs are selected from manifests; generated wrappers,
-support pointers, provider-native agent files, and packaged desktop outputs
+support pointers and provider-native agent files
 remain install/render artifacts instead of authored source.
 
 Review-capable install plans include the unique manifest-declared
@@ -547,7 +547,7 @@ in that external add-on source directory and creates or updates the source's
 consumer skill directories. It does not ask for body text or raw consumer
 directories. The authoring sequence is: create the skeleton, edit the generated
 add-on markdown file, then validate/render/install through the normal repo
-checks. The desktop wizard registers external add-on sources in
+checks. The installer registers external add-on sources in
 `external_addon_sources` after successful creation so the app tree and install
 overlay can discover them; scripted callers that invoke the raw scaffold payload
 directly still need to register the source themselves. Scripted payloads may

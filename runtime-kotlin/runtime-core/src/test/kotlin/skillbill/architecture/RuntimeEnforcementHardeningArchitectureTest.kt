@@ -388,7 +388,6 @@ class RuntimeEnforcementHardeningArchitectureTest {
     val SOURCE_TEXT_LAYER_RULES: Map<String, List<String>> = mapOf(
       "runtime-application/src/main/kotlin" to listOf(
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",
@@ -396,7 +395,6 @@ class RuntimeEnforcementHardeningArchitectureTest {
       ),
       "runtime-domain/src/main/kotlin" to listOf(
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",
@@ -404,7 +402,6 @@ class RuntimeEnforcementHardeningArchitectureTest {
       ),
       "runtime-ports/src/main/kotlin" to listOf(
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",

@@ -48,8 +48,6 @@ archive plus its `.sha256` sidecar to the GitHub Release for that tag:
 
 - self-contained runtime images for **CLI** and **MCP**
   (`runtime-cli-<version>-<os>-<arch>.zip`, `runtime-mcp-<version>-<os>-<arch>.zip`)
-- desktop installers (`SkillBill-<version>-<os>-<arch>.<ext>`):
-  `.dmg` on macOS, `.msi` on Windows, `.deb` + `.rpm` on Linux
 
 The `<os>-<arch>` token is the canonical set `macos-arm64` / `windows-x64` /
 `linux-x64`, so downstream installers can resolve the correct asset by host. Each
@@ -187,8 +185,8 @@ under the hood.
    ```
 
 7. Confirm the `Release` workflow succeeds and the GitHub Release appears with
-   generated notes and the per-OS runtime-image + desktop-installer assets (each
-   with its `.sha256`) attached. Confirm the published artifacts passed the
+   generated notes and the per-OS runtime-image assets (each with its `.sha256`)
+   attached. Confirm the published artifacts passed the
    root-license byte check on their native release-matrix host.
 
 ## Installing from a release

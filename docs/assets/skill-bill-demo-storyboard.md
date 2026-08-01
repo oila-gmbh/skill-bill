@@ -35,9 +35,3 @@ and swapped in for the static placeholder
 - Keep secrets, tokens, and private repo names out of frame.
 - If the full run is too long for a tight loop, cut at shot 7 ("PR ready") and drop the rest frame.
 
-## Alternate flow (if the spec→PR run is hard to film cleanly)
-
-Storyboard the **desktop app** instead: launch the Compose Desktop app, show the
-tree-based skill/artifact browser, run the scaffold wizard to author a new skill,
-and show the tree selection jump to the newly created file — same 18–24s budget,
-same "deep machinery, trivial to use" message.
