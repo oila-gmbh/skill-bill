@@ -3,10 +3,9 @@ package dev.skillbill.runtime.buildlogic
 import java.io.File
 import java.security.MessageDigest
 
-// SKILL-55 (F-001): single source of truth for the SHA-256 sidecar contract shared by
-// BOTH the runtime-image zips (RuntimeImageConventionPlugin) and the desktop installers
-// (runtime-desktop/build.gradle.kts). Subtask 3/4 verifiers rely on this sidecar being
-// byte-identical across artifact kinds, so the streaming digest, the buffer size, and the
+// SKILL-55 (F-001): single source of truth for the SHA-256 sidecar contract used by the
+// runtime-image zips (RuntimeImageConventionPlugin). Release verifiers rely on this sidecar
+// being byte-identical across artifacts, so the streaming digest, the buffer size, and the
 // `<hex>  <name>\n` (two-space, trailing-newline, `sha256sum -c` compatible) format live
 // here ONCE rather than being re-implemented per consumer.
 //
@@ -39,7 +38,7 @@ fun sha256Hex(file: File): String {
  * Write a SHA-256 sidecar next to [archive], named `<archive>.sha256`, in the canonical
  * `<hex>  <name>\n` format (two spaces, trailing newline) that `sha256sum -c` accepts. The
  * embedded name is [archive].name (the bare file name, not a path), matching the existing
- * runtime-image and desktop-installer behavior.
+ * runtime-image behavior.
  *
  * @return the sidecar [File] that was written.
  */

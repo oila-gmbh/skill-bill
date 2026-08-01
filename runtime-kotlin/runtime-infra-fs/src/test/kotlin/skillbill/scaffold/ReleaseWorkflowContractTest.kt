@@ -18,10 +18,6 @@ class ReleaseWorkflowContractTest {
     listOf(
       "runtime-cli-\${RELEASE_VERSION}-\${host_token}.zip",
       "runtime-mcp-\${RELEASE_VERSION}-\${host_token}.zip",
-      "SkillBill-\${RELEASE_VERSION}-\${host_token}.dmg",
-      "SkillBill-\${RELEASE_VERSION}-\${host_token}.msi",
-      "SkillBill-\${RELEASE_VERSION}-\${host_token}.deb",
-      "SkillBill-\${RELEASE_VERSION}-\${host_token}.rpm",
       "skill-bill-skills-\${RELEASE_VERSION}.tar.gz",
     ).forEach { path -> assertTrue(workflow.contains(path), path) }
     assertTrue(workflow.contains("scripts/verify_release_artifact_licenses \"\${artifacts[@]}\""))
@@ -29,12 +25,11 @@ class ReleaseWorkflowContractTest {
     assertTrue(workflow.contains("for artifact in \"\${artifacts[@]}\""))
     assertTrue(workflow.contains("License drift probe unexpectedly accepted \${artifact}."))
     assertTrue(workflow.contains("grep -q 'LICENSE bytes differ'"))
-    assertTrue(workflow.contains("choco install lessmsi --yes --no-progress"))
     assertTrue(workflow.contains("cp \"\${artifact}\" \"\${artifact}.sha256\" release-assets/"))
     assertTrue(workflow.contains("path: release-assets/"))
     assertTrue(workflow.contains("artifact_names=("))
     assertTrue(workflow.contains("Missing expected release asset"))
-    assertFalse(workflow.contains("binaries/main/*/SkillBill-*"))
+    assertFalse(workflow.contains("SkillBill-"))
   }
 
   @Test

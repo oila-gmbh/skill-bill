@@ -280,14 +280,6 @@ class PlatformPackSchemaCleanupTest {
         "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/scaffold/" +
           "ShellContentLoaderParityTest.kt",
       ),
-      repoRoot.resolve(
-        "runtime-kotlin/runtime-desktop/core/data/src/jvmTest/kotlin/skillbill/desktop/core/data/" +
-          "service/RuntimeRepoBrowserContractsGroupTest.kt",
-      ),
-      repoRoot.resolve(
-        "runtime-kotlin/runtime-desktop/feature/skillbill/src/jvmTest/kotlin/skillbill/desktop/" +
-          "feature/skillbill/state/PlatformPackSchemaViewerStateTest.kt",
-      ),
     )
     migratedSources.filter(Files::exists).forEach { source ->
       val text = Files.readString(source)

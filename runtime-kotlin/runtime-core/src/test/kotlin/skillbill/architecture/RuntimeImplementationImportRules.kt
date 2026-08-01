@@ -70,7 +70,7 @@ internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreB
     setOf(":runtime-application", ":runtime-contracts", ":runtime-domain", ":runtime-ports"),
     runtimeCoreApiDependencyClosure(runtimeRoot, runtimeCoreApiDependencies),
     "runtime-core's generated public API closure must stay limited to the documented Kotlin-Inject " +
-      "ABI closure; it must not transitively re-export concrete infrastructure, CLI, MCP, or Desktop modules.",
+      "ABI closure; it must not transitively re-export concrete infrastructure, CLI, or MCP modules.",
   )
   val architecture = runtimeRoot.resolve("ARCHITECTURE.md").toFile().readText()
   val normalizedArchitecture = architecture.replace(Regex("\\s+"), " ")

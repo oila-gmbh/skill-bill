@@ -12,7 +12,7 @@ Non-negotiable contracts:
 - `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.
 - `agent-addons/<slug>/` contains only user-owned `agent-addon.yaml` and `content.md`.
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
-- Discovery, install, routing, validation, and desktop surfaces stay dynamic and manifest-driven.
+- Discovery, install, routing, and validation surfaces stay dynamic and manifest-driven.
 - Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.
 
 ## Product Intent
@@ -90,8 +90,6 @@ Every YAML under `orchestration/contracts/` is a runtime contract. New contract 
 4. Add a typed `Invalid<Contract>SchemaError` extending `ShellContentContractException`.
 5. Loud-fail at every parse seam.
 6. Bundle the YAML onto the JVM classpath with a configuration-cache-friendly Gradle `Copy` task using `inputs.file` and an execution-time `doFirst {}` existence guard.
-
-Runtime contract schemas are internal implementation details and stay out of the desktop user-facing tree.
 
 Schema introductions and version bumps loud-fail legacy records; the runtime quarantines and regenerates them in-band, out-of-band surgery the fallback. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
 

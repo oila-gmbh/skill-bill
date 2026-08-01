@@ -56,7 +56,6 @@ class ImplementationOwnershipArchitectureTest {
       ":runtime-core",
       ":runtime-cli",
       ":runtime-mcp",
-      ":runtime-desktop",
       ":runtime-infra-http",
       ":runtime-infra-sqlite",
     )
@@ -74,7 +73,6 @@ class ImplementationOwnershipArchitectureTest {
         "runtime-core/src/main/kotlin",
         "runtime-cli/src/main/kotlin",
         "runtime-mcp/src/main/kotlin",
-        "runtime-desktop",
         "runtime-infra-http/src/main/kotlin",
         "runtime-infra-sqlite/src/main/kotlin",
       ),
@@ -100,7 +98,7 @@ class ImplementationOwnershipArchitectureTest {
       emptyList(),
       violations,
       "Moved runtime-infra-fs implementation packages must use ports/domain/contracts instead of concrete " +
-        "runtime-core, CLI, MCP, Desktop, HTTP, or SQLite adapter packages.",
+        "runtime-core, CLI, MCP, HTTP, or SQLite adapter packages.",
     )
   }
 
@@ -202,7 +200,7 @@ class ImplementationOwnershipArchitectureTest {
 
   @Test
   fun `infrastructure modules do not depend on adapters or runtime core`() {
-    val forbiddenProjectDependencies = listOf(":runtime-core", ":runtime-cli", ":runtime-mcp", ":runtime-desktop")
+    val forbiddenProjectDependencies = listOf(":runtime-core", ":runtime-cli", ":runtime-mcp")
     val violations = listOf("runtime-infra-fs", "runtime-infra-http", "runtime-infra-sqlite")
       .flatMap { module ->
         val build = runtimeRoot.resolve("$module/build.gradle.kts").readText()
@@ -222,7 +220,6 @@ class ImplementationOwnershipArchitectureTest {
     val layerRules = mapOf(
       "runtime-application/src/main/kotlin" to listOf(
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",
@@ -234,7 +231,6 @@ class ImplementationOwnershipArchitectureTest {
         "java.sql",
         "skillbill.application",
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",
@@ -247,7 +243,6 @@ class ImplementationOwnershipArchitectureTest {
         "java.sql",
         "skillbill.application",
         "skillbill.cli",
-        "skillbill.desktop",
         "skillbill.mcp",
         "skillbill.db",
         "skillbill.di",
@@ -271,15 +266,12 @@ class ImplementationOwnershipArchitectureTest {
   }
 
   @Test
-  fun `cli mcp and desktop data declare direct runtime dependencies beside runtime core`() {
+  fun `cli and mcp declare direct runtime dependencies beside runtime core`() {
     // SKILL-52.2 subtask 5: narrowed allow-list. The infrastructure modules
     // (`:runtime-infra-fs`, `:runtime-infra-http`) were dropped because none
     // of these adapters concretely import `skillbill.infrastructure.*` outside
     // test sources — infrastructure adapters are resolved through
-    // `RuntimeComponent` (kotlin-inject) instead. `runtime-desktop:core:data`
-    // gains an explicit `:runtime-contracts` edge so its direct
-    // `skillbill.error.*` imports do not depend on transitive runtime-application
-    // API. The exact allow-list per adapter is pinned by
+    // `RuntimeComponent` (kotlin-inject) instead. The exact allow-list per adapter is pinned by
     // `RuntimeAdapterDependencyAllowlistTest`; this test asserts only that the
     // declared dependencies are present (it does not enforce the exact set).
     val adapterDependencies = mapOf(
@@ -291,13 +283,6 @@ class ImplementationOwnershipArchitectureTest {
         ":runtime-ports",
       ),
       "runtime-mcp/build.gradle.kts" to listOf(
-        ":runtime-application",
-        ":runtime-contracts",
-        ":runtime-core",
-        ":runtime-domain",
-        ":runtime-ports",
-      ),
-      "runtime-desktop/core/data/build.gradle.kts" to listOf(
         ":runtime-application",
         ":runtime-contracts",
         ":runtime-core",
@@ -366,15 +351,10 @@ class ImplementationOwnershipArchitectureTest {
   }
 
   @Test
-  fun `cli mcp and desktop adapters do not import concrete runtime implementations`() {
+  fun `cli and mcp adapters do not import concrete runtime implementations`() {
     val adapterSourceRoots = listOf(
       "runtime-cli/src/main/kotlin",
       "runtime-mcp/src/main/kotlin",
-      "runtime-desktop/core/data/src/commonMain/kotlin",
-      "runtime-desktop/core/data/src/jvmMain/kotlin",
-      "runtime-desktop/core/domain/src/commonMain/kotlin",
-      "runtime-desktop/feature/skillbill/src/commonMain/kotlin",
-      "runtime-desktop/feature/skillbill/src/jvmMain/kotlin",
     )
     val violations = adapterSourceRoots
       .map { sourceRoot -> runtimeRoot.resolve(sourceRoot) }
@@ -389,7 +369,7 @@ class ImplementationOwnershipArchitectureTest {
     assertEquals(
       emptyList(),
       violations,
-      "CLI, MCP, and Desktop adapters must go through application services and ports instead of " +
+      "CLI and MCP adapters must go through application services and ports instead of " +
         "concrete install, scaffold, native-agent, launcher, validation, or filesystem implementations.",
     )
   }

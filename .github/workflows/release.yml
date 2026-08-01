@@ -28,8 +28,8 @@ concurrency:
 
 jobs:
   # Phase 1: per-OS artifact producers. Each matrix leg runs on a host whose
-  # native toolchain can build that OS/arch's runtime images + desktop installer
-  # (jlink/jpackage cannot cross-compile). fail-fast:false so one host failing
+  # native toolchain can build that OS/arch's runtime images (jlink cannot
+  # cross-compile). fail-fast:false so one host failing
   # does not abort the others. The canonical <os>-<arch> token (host_token) is the
   # SAME contract subtasks 1-2 bake into the artifact filenames and subtask 4
   # resolves by host (resolveHostRuntimeToken).
@@ -49,17 +49,12 @@ jobs:
           # `runs-on: ${{ fromJSON(matrix.runner) }}` expression.
           - runner: '["self-hosted", "macmini"]'
             host_token: macos-arm64
-            installer_tasks: ":runtime-desktop:canonicalRenameDmgInstaller"
           # Windows x64.
           - runner: '["windows-latest"]'
             host_token: windows-x64
-            installer_tasks: ":runtime-desktop:canonicalRenameMsiInstaller"
-          # Linux x64 (produces both .deb and .rpm).
+          # Linux x64.
           - runner: '["ubuntu-latest"]'
             host_token: linux-x64
-            installer_tasks: >-
-              :runtime-desktop:canonicalRenameDebInstaller
-              :runtime-desktop:canonicalRenameRpmInstaller
 
     steps:
       - name: Check out repository
@@ -92,21 +87,6 @@ jobs:
           scripts/validate_release_ref "$raw" "${validation_args[@]}"
           echo "RELEASE_VERSION=${raw#v}" >> "$GITHUB_ENV"
 
-      # Linux desktop installers shell out to native packaging tools: .deb needs
-      # dpkg-deb (+ fakeroot), .rpm needs rpmbuild. Without them jpackage fails
-      # with "Invalid or unsupported type". Hosted ubuntu has dpkg-deb already;
-      # install the rest so packageDeb/packageRpm succeed.
-      - name: Install Linux packaging tooling
-        if: matrix.host_token == 'linux-x64'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fakeroot rpm
-
-      - name: Install MSI inspection tooling
-        if: matrix.host_token == 'windows-x64'
-        shell: bash
-        run: choco install lessmsi --yes --no-progress
-
       # AC1/AC5: self-contained per-OS runtime images for CLI + MCP. runtimeZip is
       # finalizedBy its .sha256 task, so each produces archive + .sha256. Badass
       # Runtime tasks are not configuration-cache compatible, so do NOT pass
@@ -117,18 +97,6 @@ jobs:
         run: |
           cd runtime-kotlin
           ./gradlew :runtime-cli:runtimeZip :runtime-mcp:runtimeZip
-
-      # AC1/AC5: desktop installer(s) for this host only. The packageDesktopInstallers
-      # aggregate depends on ALL four formats (deb/rpm/dmg/msi) and would pull in
-      # non-host package tasks that jpackage cannot build on this OS, so we invoke
-      # only the host-native canonicalRename<Format>Installer task(s). Each rename
-      # task depends on its package<Format> task and writes the canonical
-      # SkillBill-<version>-<os>-<arch>.<ext> + .sha256.
-      - name: Build desktop installer
-        shell: bash
-        run: |
-          cd runtime-kotlin
-          ./gradlew ${{ matrix.installer_tasks }}
 
       - name: Bundle skills archive
         if: matrix.host_token == 'linux-x64'
@@ -143,24 +111,15 @@ jobs:
         run: |
           set -euo pipefail
           host_token="${{ matrix.host_token }}"
-          desktop_dir="runtime-kotlin/runtime-desktop/build/compose/binaries/main"
           artifacts=(
             "runtime-kotlin/runtime-cli/build/runtime-image/runtime-cli-${RELEASE_VERSION}-${host_token}.zip"
             "runtime-kotlin/runtime-mcp/build/runtime-image/runtime-mcp-${RELEASE_VERSION}-${host_token}.zip"
           )
           case "${host_token}" in
-            macos-arm64)
-              artifacts+=("${desktop_dir}/dmg/SkillBill-${RELEASE_VERSION}-${host_token}.dmg")
-              ;;
-            windows-x64)
-              artifacts+=("${desktop_dir}/msi/SkillBill-${RELEASE_VERSION}-${host_token}.msi")
+            macos-arm64|windows-x64)
               ;;
             linux-x64)
-              artifacts+=(
-                "${desktop_dir}/deb/SkillBill-${RELEASE_VERSION}-${host_token}.deb"
-                "${desktop_dir}/rpm/SkillBill-${RELEASE_VERSION}-${host_token}.rpm"
-                "skill-bill-skills-${RELEASE_VERSION}.tar.gz"
-              )
+              artifacts+=("skill-bill-skills-${RELEASE_VERSION}.tar.gz")
               ;;
             *)
               echo "Unsupported release host token: ${host_token}." >&2
@@ -194,8 +153,7 @@ jobs:
 
       # AC2/AC5: upload every verified archive + its .sha256 under an artifact
       # named with the canonical host token so the publish job can collect them.
-      # The runtime-image zips live under <module>/build/runtime-image/ and the
-      # installers under runtime-desktop/build/compose/binaries/main/<format>/.
+      # The runtime-image zips live under <module>/build/runtime-image/.
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -326,14 +284,10 @@ jobs:
           artifact_names=(
             "runtime-cli-${release_version}-macos-arm64.zip"
             "runtime-mcp-${release_version}-macos-arm64.zip"
-            "SkillBill-${release_version}-macos-arm64.dmg"
             "runtime-cli-${release_version}-windows-x64.zip"
             "runtime-mcp-${release_version}-windows-x64.zip"
-            "SkillBill-${release_version}-windows-x64.msi"
             "runtime-cli-${release_version}-linux-x64.zip"
             "runtime-mcp-${release_version}-linux-x64.zip"
-            "SkillBill-${release_version}-linux-x64.deb"
-            "SkillBill-${release_version}-linux-x64.rpm"
             "skill-bill-skills-${release_version}.tar.gz"
           )
           asset_names=()

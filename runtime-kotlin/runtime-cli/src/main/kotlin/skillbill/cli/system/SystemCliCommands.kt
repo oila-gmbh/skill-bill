@@ -57,11 +57,6 @@ class UpdateCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("update", "Update Skill Bill by running the official installer.") {
   private val release by option("--release", help = "Install a specific release tag instead of latest stable.")
-  private val withDesktopApp by option("--with-desktop-app", help = "Install the optional desktop app.")
-    .flag(default = false)
-  private val noDesktopApp by option("--no-desktop-app", help = "Skip desktop app installation.")
-    .flag(default = false)
-  private val desktopAppDir by option("--desktop-app-dir", help = "Override the desktop app install directory.")
   private val preferUpstream by option(
     "--prefer-upstream",
     help = "Overwrite local skill conflicts with the upstream version.",
@@ -75,9 +70,6 @@ class UpdateCommand(
   private val format by formatOption()
 
   override fun run() {
-    require(!(withDesktopApp && noDesktopApp)) {
-      "--with-desktop-app and --no-desktop-app cannot be used together."
-    }
     val plan = updatePlan()
     if (dryRun) {
       state.complete(plan.toPayload("dry_run"), format)
@@ -106,12 +98,6 @@ class UpdateCommand(
       add("--reuse-last-selection")
       release?.let {
         add("--release")
-        add(it)
-      }
-      if (withDesktopApp) add("--with-desktop-app")
-      if (noDesktopApp) add("--no-desktop-app")
-      desktopAppDir?.let {
-        add("--desktop-app-dir")
         add(it)
       }
       if (preferUpstream) add("--prefer-upstream")

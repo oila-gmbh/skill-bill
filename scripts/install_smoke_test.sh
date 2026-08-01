@@ -246,7 +246,7 @@ run_install() {
     SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
     SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
     "${extra_env[@]}" \
-    bash "$INSTALL_SH" --reuse-last-selection --no-desktop-app "$@" \
+    bash "$INSTALL_SH" --reuse-last-selection "$@" \
     </dev/null
 }
 
@@ -257,7 +257,7 @@ run_interactive_install_with_blank_defaults() {
     SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
     SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
     SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
-    bash "$INSTALL_SH" --no-desktop-app \
+    bash "$INSTALL_SH" \
     <<< $'\n\n\n\n\n\n\n\n'
 }
 
@@ -312,7 +312,7 @@ CURL
     env \
       HOME="$fake_home" \
       PATH="$work:$PATH" \
-      bash -c 'cat install.sh | bash -s -- --no-desktop-app' \
+      bash -c 'cat install.sh | bash -s --' \
       </dev/null
   )
 }
@@ -337,7 +337,7 @@ else
 fi
 
 if [[ "$BOOTSTRAP_OUTPUT" == *"release_bootstrap=1"* &&
-  "$BOOTSTRAP_OUTPUT" == *"release_args: [--release] [v9.9.9] [--no-desktop-app]"* ]]; then
+  "$BOOTSTRAP_OUTPUT" == *"release_args: [--release] [v9.9.9]"* ]]; then
   pass "release installer receives pinned latest release args"
 else
   fail "release installer args unexpected: $BOOTSTRAP_OUTPUT"
@@ -467,7 +467,7 @@ env \
   SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
   SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
   SKILL_BILL_SMOKE_HAS_CONFLICTS=1 \
-  bash "$INSTALL_SH" --reuse-last-selection --no-desktop-app --prefer-upstream \
+  bash "$INSTALL_SH" --reuse-last-selection --prefer-upstream \
   </dev/null
 pass "install.sh --prefer-upstream exited 0"
 
@@ -493,7 +493,7 @@ FOREIGN_OUTPUT="$(
     SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
     SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
     SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
-    bash -c 'cat "$1" | bash -s -- --no-desktop-app' _ "$INSTALL_SH" \
+    bash -c 'cat "$1" | bash -s --' _ "$INSTALL_SH" \
     </dev/null
 )"
 pass "piped install from foreign dir exited 0"
@@ -520,7 +520,7 @@ GATE_OUTPUT="$(
     HOME="$FAKE_HOME" \
     SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
     SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
-    bash "$INSTALL_SH" --no-desktop-app \
+    bash "$INSTALL_SH" \
     <<< $'\n\n\n\n'
 )"
 pass "fresh-machine interactive install exited 0"

@@ -17,7 +17,7 @@ class RuntimeGradleModuleLayeringTest {
     }
 
   @Test
-  fun `settings declares runtime modules including desktop starter graph`() {
+  fun `settings declares runtime modules`() {
     val expectedModules =
       setOf(
         "runtime-application",
@@ -28,17 +28,6 @@ class RuntimeGradleModuleLayeringTest {
         "runtime-infra-http",
         "runtime-infra-sqlite",
         "runtime-cli",
-        "runtime-desktop",
-        "runtime-desktop:core:common",
-        "runtime-desktop:core:data",
-        "runtime-desktop:core:database",
-        "runtime-desktop:core:datastore",
-        "runtime-desktop:core:designsystem",
-        "runtime-desktop:core:domain",
-        "runtime-desktop:core:navigation",
-        "runtime-desktop:core:testing",
-        "runtime-desktop:core:ui",
-        "runtime-desktop:feature:skillbill",
         "runtime-mcp",
         "runtime-ports",
       )
@@ -47,26 +36,21 @@ class RuntimeGradleModuleLayeringTest {
   }
 
   @Test
-  fun `top level runtime modules do not depend upward or on desktop`() {
+  fun `top level runtime modules do not depend upward`() {
     assertNoProjectDependencies("runtime-contracts")
     assertNoProjectDependencies(
       "runtime-domain",
       "runtime-ports",
       "runtime-application",
       "runtime-core",
-      "runtime-desktop",
     )
-    assertNoProjectDependencies("runtime-ports", "runtime-application", "runtime-core", "runtime-desktop")
+    assertNoProjectDependencies("runtime-ports", "runtime-application", "runtime-core")
     assertNoProjectDependencies(
       "runtime-application",
       "runtime-infra-fs",
       "runtime-infra-http",
       "runtime-infra-sqlite",
-      "runtime-desktop",
     )
-    assertNoProjectDependencies("runtime-core", "runtime-desktop")
-    assertNoProjectDependencies("runtime-cli", "runtime-desktop")
-    assertNoProjectDependencies("runtime-mcp", "runtime-desktop")
 
     listOf("runtime-infra-fs", "runtime-infra-http", "runtime-infra-sqlite").forEach { moduleName ->
       assertNoProjectDependencies(
@@ -74,92 +58,9 @@ class RuntimeGradleModuleLayeringTest {
         "runtime-application",
         "runtime-core",
         "runtime-cli",
-        "runtime-desktop",
         "runtime-mcp",
       )
     }
-  }
-
-  @Test
-  fun `non desktop runtime modules do not import desktop packages`() {
-    val violations = declaredSettingsModules()
-      .filter { moduleName -> moduleName.startsWith("runtime-") && !moduleName.startsWith("runtime-desktop") }
-      .flatMap { moduleName ->
-        val sourceRoot = runtimeRoot.resolve("${moduleName.replace(':', '/')}/src/main/kotlin")
-        if (!Files.isDirectory(sourceRoot)) {
-          emptyList()
-        } else {
-          Files.walk(sourceRoot).use { paths ->
-            paths
-              .filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
-              .flatMap { path ->
-                val text = Files.readString(path)
-                importPattern.findAll(text)
-                  .map { match -> match.groupValues[1].substringBefore(" as ") }
-                  .filter { importedName -> importedName.startsWith("skillbill.desktop") }
-                  .map { importedName -> "${runtimeRoot.relativize(path)} imports $importedName" }
-                  .toList()
-                  .stream()
-              }
-              .toList()
-          }
-        }
-      }
-
-    assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
-  }
-
-  @Test
-  fun `desktop starter modules keep app core and feature dependency direction`() {
-    assertNoProjectDependencies(
-      "runtime-desktop",
-      "runtime-application",
-      "runtime-contracts",
-      "runtime-core",
-      "runtime-domain",
-      "runtime-infra-fs",
-      "runtime-infra-http",
-      "runtime-infra-sqlite",
-      "runtime-cli",
-      "runtime-mcp",
-      "runtime-ports",
-    )
-    assertNoProjectDependencies("runtime-desktop:core:common")
-    assertNoProjectDependencies(
-      "runtime-desktop:core:domain",
-      "runtime-desktop:core:data",
-      "runtime-desktop:core:ui",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies(
-      "runtime-desktop:core:data",
-      "runtime-desktop:core:ui",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies(
-      "runtime-desktop:core:database",
-      "runtime-desktop:core:data",
-      "runtime-desktop:core:ui",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies(
-      "runtime-desktop:core:datastore",
-      "runtime-desktop:core:data",
-      "runtime-desktop:core:ui",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies(
-      "runtime-desktop:core:designsystem",
-      "runtime-desktop:core:data",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies(
-      "runtime-desktop:core:ui",
-      "runtime-desktop:core:data",
-      "runtime-desktop:feature:skillbill",
-    )
-    assertNoProjectDependencies("runtime-desktop:core:navigation", "runtime-desktop:feature:skillbill")
-    assertNoProjectDependencies("runtime-desktop:core:testing", "runtime-desktop:feature:skillbill")
   }
 
   private fun declaredSettingsModules(): Set<String> {
@@ -204,17 +105,12 @@ class RuntimeGradleModuleLayeringTest {
   }
 
   private companion object {
-    val importPattern: Regex = Regex("^import\\s+([A-Za-z0-9_.*]+)", RegexOption.MULTILINE)
-
     val TEST_CONFIGURATIONS: List<String> = listOf(
       "testImplementation",
       "testFixturesImplementation",
       "testFixturesApi",
       "testRuntimeOnly",
       "testCompileOnly",
-      "androidTestImplementation",
-      "jvmTestImplementation",
-      "commonTestImplementation",
     )
   }
 }

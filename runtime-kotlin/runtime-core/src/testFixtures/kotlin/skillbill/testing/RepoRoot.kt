@@ -17,7 +17,7 @@ import java.nio.file.Path
  * the filesystem root without finding both markers.
  *
  * This helper consolidates four near-identical copies that previously lived inside the
- * runtime-core and runtime-desktop test sources (`PlatformPackSchemaContractVersionTest`,
+ * runtime-core test sources (`PlatformPackSchemaContractVersionTest`,
  * `PlatformPackSchemaValidatesExistingPacksTest`,
  * `RuntimeRepoBrowserContractsGroupTest`, `PlatformPackSchemaViewerStateTest`).
  *

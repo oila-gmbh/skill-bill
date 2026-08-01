@@ -21,7 +21,7 @@ class RuntimeArchitectureDocumentationTest {
   fun `architecture document declares package ownership and dependency direction`() {
     val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
 
-    assertContains(architecture, "runtime-cli / runtime-mcp / runtime-desktop data gateways")
+    assertContains(architecture, "runtime-cli / runtime-mcp data gateways")
     assertContains(architecture, "-> runtime-application use cases")
     assertContains(architecture, "runtime-core")
     assertContains(architecture, "Package Ownership")
@@ -89,7 +89,6 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.config",
         "skillbill.contracts",
         "skillbill.db",
-        "skillbill.desktop",
         "skillbill.di",
         "skillbill.domain.skillremove",
         "skillbill.error",

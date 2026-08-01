@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  * `api(:runtime-application)` and `api(:runtime-ports)` (kotlin-inject needs the
  * generated service/port types to be public), but it MUST NOT grow `api(...)`
  * edges to infrastructure (`runtime-infra-*`) or entrypoint
- * (`runtime-cli`, `runtime-mcp`, `runtime-desktop`) modules.
+ * (`runtime-cli`, `runtime-mcp`) modules.
  *
  * This test pins:
  *  1. The exact `api(project(...))` set on `runtime-core`.
@@ -75,8 +75,7 @@ class RuntimeCoreCompositionOnlyTest {
       apiEdges.filter { edge ->
         edge.startsWith("runtime-infra-") ||
           edge == "runtime-cli" ||
-          edge == "runtime-mcp" ||
-          edge.startsWith("runtime-desktop")
+          edge == "runtime-mcp"
       }
     assertTrue(
       banned.isEmpty(),

@@ -30,12 +30,10 @@ dependencies {
   // Badass Runtime artifact on the plugin classpath of every project that applies the
   // convention plugin, so `pluginManager.apply("org.beryx.runtime")` resolves.
   implementation(libs.beryx.runtime.gradle.plugin)
-  // SKILL-55 subtask 2 (task 6): unit-test the pure DesktopVersions helper. build-logic is
-  // a SEPARATE included build with its own dependency declarations; it reuses the shared
-  // version catalog (settings.gradle.kts maps `../gradle/libs.versions.toml`), so the same
-  // junit-jupiter alias runtime-desktop's jvmTest uses resolves here too. The pure helper
-  // under test references no Gradle types, so plain JUnit5 (no kotlin-test junit5 binding)
-  // is sufficient and keeps the included-build test classpath minimal.
+  // build-logic is a SEPARATE included build with its own dependency declarations; it
+  // reuses the shared version catalog (settings.gradle.kts maps `../gradle/libs.versions.toml`).
+  // The helpers under test reference no Gradle types, so plain JUnit5 (no kotlin-test junit5
+  // binding) is sufficient and keeps the included-build test classpath minimal.
   testImplementation(libs.junit.jupiter)
   // Gradle's test worker needs the JUnit Platform launcher on the test runtime classpath.
   // In application/library projects the Kotlin/Java plugins add it implicitly; this
@@ -107,26 +105,6 @@ gradlePlugin {
     register("jvmLibrary") {
       id = "skillbill.jvm-library"
       implementationClass = "JvmLibraryConventionPlugin"
-    }
-    register("kmpComposeApplication") {
-      id = "skillbill.kmp-compose-application"
-      implementationClass = "KmpComposeApplicationConventionPlugin"
-    }
-    register("kmpLibrary") {
-      id = "skillbill.kmp-library"
-      implementationClass = "KmpLibraryConventionPlugin"
-    }
-    register("kmpCompose") {
-      id = "skillbill.kmp-compose"
-      implementationClass = "KmpComposeConventionPlugin"
-    }
-    register("kmpApplication") {
-      id = "skillbill.kmp-application"
-      implementationClass = "KmpApplicationConventionPlugin"
-    }
-    register("kmpKotlinInject") {
-      id = "skillbill.kmp-kotlininject"
-      implementationClass = "KmpKotlinInjectConventionPlugin"
     }
     register("quality") {
       id = "skillbill.quality"

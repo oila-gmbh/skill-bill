@@ -158,7 +158,7 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
       notCompatibleWithConfigurationCache("Sidecar follows the not-cacheable runtimeZip task.")
       doLast {
         // F-001: delegate to the shared sidecar writer so the `<hex>  <name>\n` format
-        // stays byte-identical with runtime-desktop's installer sidecars. The sidecar it
+        // stays byte-identical across release artifacts. The sidecar it
         // writes (<archive>.sha256) is exactly the declared `checksumPath` output above.
         writeSha256Sidecar(File(archivePath))
       }

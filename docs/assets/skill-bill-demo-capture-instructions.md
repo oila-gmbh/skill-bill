@@ -63,8 +63,6 @@ Recording:
 - **asciinema** + **agg** (`asciinema rec` → `agg demo.cast docs/assets/skill-bill-demo.gif`)
   — best for pure-terminal flows; crisp text, tiny files.
 - **terminalizer** — terminal recorder with built-in GIF export and theming.
-- **OBS Studio** — for the desktop-app alternate flow, or any GUI capture; export
-  MP4, then convert.
 
 Encode / convert (GIF):
 

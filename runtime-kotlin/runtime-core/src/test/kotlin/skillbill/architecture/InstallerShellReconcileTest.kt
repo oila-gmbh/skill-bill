@@ -26,9 +26,8 @@ class InstallerShellReconcileTest {
       }
     }
 
-  // The TTY-bypass accept scenario drives install.sh's desktop-install summary, which
-  // defaults differently per OS; it asserts the Linux flow, so it runs on the Linux CI
-  // leg and skips elsewhere.
+  // The TTY-bypass accept scenario asserts the Linux installer flow, so it runs on
+  // the Linux CI leg and skips elsewhere.
   private fun assumeLinuxHost() {
     org.junit.jupiter.api.Assumptions.assumeTrue(
       System.getProperty("os.name").lowercase().startsWith("linux"),

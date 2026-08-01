@@ -131,7 +131,7 @@ skill-bill new-addon --platform ios --name acme-review --addon-location-path ~/d
 The normal `skill-bill new` add-on wizard also lets you choose `external` as the add-on source.
 Both paths create or update `addon-manifest.yaml` in the external directory and write the skeleton
 markdown file there instead of editing the repo's `platform-packs/<platform>/addons/` directory.
-The desktop wizard also registers the selected directory in `external_addon_sources` so the add-on
+The installer also registers the selected directory in `external_addon_sources` so the add-on
 appears in the app tree on refresh.
 
 ## addon-manifest.yaml Format

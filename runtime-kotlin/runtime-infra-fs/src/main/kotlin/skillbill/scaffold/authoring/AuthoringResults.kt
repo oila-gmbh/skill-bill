@@ -7,7 +7,7 @@ import skillbill.ports.scaffold.model.ScaffoldSkillStatus
  * and consumed by `FileSystemScaffoldGateway`. These replace the legacy
  * `Map<String, Any?>` open-boundary payloads so the gateway constructs the typed port
  * result DTOs from strongly-typed fields. Wire-shape serialization lives in the
- * adapter mappers (`runtime-cli` / `runtime-desktop`).
+ * adapter mappers (`runtime-cli`).
  */
 internal data class AuthoringListResult(
   val repoRoot: String,

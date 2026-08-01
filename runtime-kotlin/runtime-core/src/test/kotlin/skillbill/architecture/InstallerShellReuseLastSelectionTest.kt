@@ -24,7 +24,6 @@ class InstallerShellReuseLastSelectionTest {
     assertEquals(0, run.exitCode, run.output)
     assertContains(run.output, "Reusing latest successful install selections")
     assertContains(run.output, "Selections:     reused latest successful install selection")
-    assertFalse(run.output.contains("Install the optional Skill Bill desktop app"), run.output)
     assertEquals(
       expectedApplyArgs(run) + listOf(
         "--agent",
@@ -66,18 +65,6 @@ class InstallerShellReuseLastSelectionTest {
     assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
     assertContains(run.output, "current telemetry configuration could not be read or validated")
     assertFalse(run.output.contains("Pre-install cleanup"), "cleanup must not run after telemetry read failure")
-  }
-
-  @Test
-  fun `installer shell rejects desktop-only with reuse-last-selection`() {
-    val run = runInstaller(
-      extraArgs = listOf("--desktop-app-only", "--reuse-last-selection"),
-      options = InstallerRunOptions(skipPreinstallUninstall = false),
-    )
-
-    assertFalse(run.exitCode == 0, "installer should fail. Output:\n${run.output}")
-    assertContains(run.output, "--reuse-last-selection cannot be combined with --desktop-app-only")
-    assertFalse(run.output.contains("Pre-install cleanup"), "cleanup must not run for incompatible arguments")
   }
 
   @Test

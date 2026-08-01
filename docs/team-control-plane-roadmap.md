@@ -66,7 +66,7 @@ Non-goals:
 
 - No hosted account system.
 - No remote permissions model.
-- No admin dashboard beyond CLI or existing desktop primitives.
+- No admin dashboard beyond CLI primitives.
 
 Success signal:
 
@@ -81,12 +81,11 @@ dropping to raw repository editing for every change.
 
 Core capabilities:
 
-- Desktop surfaces for editing authored `content.md`, platform pack manifests,
+- Editing surfaces for authored `content.md`, platform pack manifests,
   add-ons, and team overrides.
 - Diff preview before publish.
 - Validation before publish, including `skill-bill validate` and
   `scripts/validate_agent_configs` equivalent checks.
-- Bundle publish action from the desktop app.
 - Rollback to a previous bundle version.
 - Optional proposal flow where maintainers can edit but only admins can publish.
 
