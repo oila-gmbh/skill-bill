@@ -5,18 +5,19 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailure
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import java.security.MessageDigest
 
 class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   private val adapter = FeatureTaskRuntimePhaseOutputValidatorAdapter()
 
   private val validJson =
-    """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.","produced_outputs":{"tasks":["task-1"]}}"""
+    """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+      """"produced_outputs":{"tasks":["task-1"]}}"""
 
   @Test
   fun `valid JSON is accepted unchanged and is not rewritten`() {
@@ -50,7 +51,10 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     val result = adapter.validatePhaseOutput(malformed, "plan")
 
     val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
-    assertEquals(FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER, repaired.evidence.operation)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      repaired.evidence.operation,
+    )
     assertEquals(sha256(malformed), repaired.evidence.originalDigest)
     assertEquals(sha256(validJson), repaired.evidence.repairedDigest)
   }
@@ -58,13 +62,17 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `one missing nested delimiter is inserted before the existing outer closer`() {
     val validNestedJson =
-      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.","produced_outputs":{"tasks":[{"id":"task-1"}]}}"""
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+        """"produced_outputs":{"tasks":[{"id":"task-1"}]}}"""
     val malformed = validNestedJson.replace("[{\"id\":\"task-1\"}]}}", "[{\"id\":\"task-1\"}}}")
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
 
     val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
-    assertEquals(FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER, repaired.evidence.operation)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      repaired.evidence.operation,
+    )
     assertEquals(sha256(malformed), repaired.evidence.originalDigest)
     assertEquals(sha256(validNestedJson), repaired.evidence.repairedDigest)
     @Suppress("UNCHECKED_CAST")
@@ -73,9 +81,57 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `failed whole-response repair does not suppress a valid embedded envelope`() {
+    val wrapped =
+      "{discarded response prefix\n" +
+        "```json\n" +
+        validJson +
+        "\n```"
+
+    val result = adapter.validatePhaseOutput(wrapped, "plan")
+
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+    assertEquals("plan", accepted.normalizedOutput.envelope["phase_id"])
+  }
+
+  @Test
+  fun `malformed embedded envelope is repaired with evidence`() {
+    val malformed = validJson.dropLast(1)
+    val wrapped = "The final answer is:\n```json\n$malformed\n```"
+
+    val result = adapter.validatePhaseOutput(wrapped, "plan")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      repaired.evidence.operation,
+    )
+    assertEquals(sha256(malformed), repaired.evidence.originalDigest)
+    assertEquals(sha256(validJson), repaired.evidence.repairedDigest)
+    assertTrue(repaired.evidence.sourceLocation.offset > 0)
+  }
+
+  @Test
+  fun `extracted envelope does not discard an extra closing bracket`() {
+    val malformed = "$validJson]"
+    val wrapped = "The final answer is:\n$malformed"
+
+    val result = adapter.validatePhaseOutput(wrapped, "plan")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      repaired.evidence.operation,
+    )
+    assertEquals(sha256(malformed), repaired.evidence.originalDigest)
+    assertEquals(sha256(validJson), repaired.evidence.repairedDigest)
+  }
+
+  @Test
   fun `structural characters inside JSON strings remain unchanged`() {
     val payload =
-      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"literal } ] and escaped \"quote\"","produced_outputs":{"tasks":["task-1"]}}"""
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed",""" +
+        """"summary":"literal } ] and escaped \"quote\"","produced_outputs":{"tasks":["task-1"]}}"""
 
     val result = adapter.validatePhaseOutput(payload, "plan")
 
@@ -96,7 +152,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   @Test
   fun `repaired syntax that fails schema remains rejected`() {
-    val malformed = """{"contract_version":"0.3","phase_id":"plan","status":"completed"""
+    val malformed = """{"contract_version":"0.3","phase_id":"plan","status":"completed"}""".dropLast(1)
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
 

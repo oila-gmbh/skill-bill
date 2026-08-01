@@ -45,7 +45,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val auditRepairSchema: JsonSchema by lazy { loadAuditRepairPlanSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
   private val yamlMapper: YAMLMapper by lazy {
-    YAMLMapper(YAMLFactory().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION))
+    YAMLMapper(YAMLFactory().apply { enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION) })
   }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
 

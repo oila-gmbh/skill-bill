@@ -1,5 +1,14 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-01] SKILL-153 phase-output structural repair (subtask 1)
+Areas: runtime-kotlin/{runtime-infra-fs,runtime-domain,runtime-contracts}, .feature-specs/SKILL-153-phase-output-structural-repair
+- Added typed unchanged/repaired/rejected phase-output results and redacted repair evidence with format, contract version, digests, operation, and source location. reusable
+- Structural repair uses bounded JSON/YAML candidates, preserves scalar content, requires exactly one candidate, reparses strictly, then follows the existing schema path. reusable
+- Embedded envelopes retain their source bounds so a valid inner payload is not masked by an invalid surrounding response; regression tests cover extra/missing delimiters, strings, ambiguity, and evidence digests.
+- Known limitation: YAML repair remains restricted to conservative parser-supported flow structures; semantic, indentation, quoting, anchors, duplicate-key, and block-structure changes stay rejected.
+Feature flag: N/A
+Acceptance criteria: subtask 1: 8/8 implemented
+
 ## [2026-07-27] SKILL-132 Orphan runtime contract asset audit (subtask 3)
 Areas: runtime-kotlin/runtime-infra-fs, .feature-specs/SKILL-132-runtime-kotlin-dead-code-sweep
 - Audited four bundled contract schemas (execution-identity, worker-ownership, goal-subtask-review-state, review-context) for orphan status; all four reached an `active` disposition, so nothing was removed.

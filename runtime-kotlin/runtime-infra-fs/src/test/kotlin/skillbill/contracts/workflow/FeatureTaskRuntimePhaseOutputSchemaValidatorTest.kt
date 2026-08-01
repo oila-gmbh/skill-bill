@@ -33,7 +33,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
   @Test
   fun `adapter repair result is followed by the existing phase schema path`() {
-    val malformed = """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok","produced_outputs":{"tasks":["task-1"]}}]"""
+    val malformed =
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok",""" +
+        """"produced_outputs":{"tasks":["task-1"]}}]"""
 
     val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(malformed, "plan")
 
