@@ -140,6 +140,8 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val payloadFreeReason: String? = null,
   val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
     FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
+  /** Stable wire code used by the typed adapter result; old callers may omit it. */
+  val failureCode: String = "schema_invalid",
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

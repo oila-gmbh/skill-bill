@@ -7,6 +7,13 @@ package skillbill.contracts.workflow
 const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.3"
 
 /**
+ * Version of the typed phase-output validation result and repair-evidence contract.
+ * This is independent from the wire envelope schema version above: the result is
+ * an adapter/domain contract and does not change the phase-output payload shape.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION: String = "0.1"
+
+/**
  * Single source of truth for where the canonical feature-task-runtime
  * per-phase output schema lives. The Gradle copy task in
  * `runtime-infra-fs/build.gradle.kts` must mirror these values because

@@ -2,10 +2,12 @@
 
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
@@ -42,7 +44,9 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val schema: JsonSchema by lazy { loadFeatureTaskRuntimePhaseOutputSchema() }
   private val auditRepairSchema: JsonSchema by lazy { loadAuditRepairPlanSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
-  private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
+  private val yamlMapper: YAMLMapper by lazy {
+    YAMLMapper(YAMLFactory().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION))
+  }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
 
   fun validate(phaseOutput: Map<String, Any?>, sourceLabel: String) {
@@ -65,6 +69,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         reason = "phase_id must match the executing phase '$sourceLabel' but was '${phaseId.orEmpty()}'.",
         // sourceLabel is the runtime's own phase id, so naming the expectation carries no response content.
         payloadFreeReason = "phase_id must match the executing phase '$sourceLabel'.",
+        failureCode = "phase_id_mismatch",
       )
     }
   }
@@ -95,6 +100,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         reason = "produced_outputs.audit_repair_plan: ${error.message.orEmpty()}",
         cause = error,
         payloadFreeReason = "produced_outputs.audit_repair_plan: ${auditRepairRuleRestatement(error)}",
+        failureCode = "semantic_invalid",
       )
     }
   }
@@ -340,6 +346,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           // prompt composer keys its unparseable-root correction on that prefix.
           payloadFreeReason = "Phase output is malformed: it is not parseable as a single JSON object.",
           failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+          failureCode = "malformed",
         )
       }
     if (node == null || !node.isObject) {
@@ -348,6 +355,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         reason = "<root> must be an object.",
         payloadFreeReason = "<root> must be an object.",
         failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+        failureCode = "root_not_object",
       )
     }
     return node

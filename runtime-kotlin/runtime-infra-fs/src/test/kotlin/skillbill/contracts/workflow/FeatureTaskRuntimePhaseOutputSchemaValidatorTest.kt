@@ -32,6 +32,16 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `adapter repair result is followed by the existing phase schema path`() {
+    val malformed = """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"ok","produced_outputs":{"tasks":["task-1"]}}]"""
+
+    val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(malformed, "plan")
+
+    assertContains(normalized.canonicalJson, "\"phase_id\":\"plan\"")
+    assertEquals("plan", normalized.envelope["phase_id"])
+  }
+
+  @Test
   fun `audit repair schema loader translates malformed yaml`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError> {
       loadAuditRepairPlanSchemaText("properties: [", "malformed-yaml")
