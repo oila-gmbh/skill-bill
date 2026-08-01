@@ -8,9 +8,9 @@ import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
+import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
-import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.model.GoalRunnerStatusRequest

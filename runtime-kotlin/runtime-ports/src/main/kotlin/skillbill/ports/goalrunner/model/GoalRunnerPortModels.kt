@@ -3,6 +3,7 @@ package skillbill.ports.goalrunner.model
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalSessionAccounting
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.GoalProgressEvent
@@ -24,6 +25,16 @@ data class GoalRunnerPausePersistenceResult(
   val parentWorkflowId: String,
   val controlState: GoalRunnerControlState,
 )
+
+data class GoalRunnerLaunchAuthorization(
+  val authorized: Boolean,
+  val controlState: GoalRunnerControlState,
+  val spawnAuthorization: AgentRunSpawnAuthorization? = null,
+)
+
+class GoalRunnerLaunchAuthorizationDeniedException(
+  val controlState: GoalRunnerControlState,
+) : IllegalStateException("Goal runner launch authorization was denied by a durable pause boundary.")
 
 // Reconciliation-policy knobs for reconcileAuthoritativeOutcomes. Defaults preserve the aggressive
 // set-membership semantics. [requireStalenessEvidence] (SKILL-87) flips the inactive stale-block path

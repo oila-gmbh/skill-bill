@@ -1,3 +1,13 @@
+## [2026-08-01] SKILL-154 subtask 2 — Deterministic goal pause and completion control
+Areas: runtime-application/{goalrunner,model}, runtime-cli/goal, runtime-domain/goalrunner, runtime-infra-fs/{agentrun,process}, runtime-infra-sqlite/{workflow,migrations}, runtime-ports/{agentrun,goalrunner,persistence}, orchestration/contracts/telemetry, .feature-specs/SKILL-154
+- Added predeclared stop-after-subtask and durable idempotent operator pause control; the pause is applied after terminal child completion is persisted and before the next child is selected or launched.
+- Resume preserves the parent workflow identity, planning checkpoints, commits, lease/generation fencing, and child continuation state, then starts at the first pending runnable subtask. reusable
+- The foreground driver treats the original child process result as the bounded completion signal, without repeated status, log, filesystem, or database polling. reusable
+- Pattern: persist completed-child state and the parent pause boundary atomically, then re-read the control projection before selecting the next child. reusable
+- Breaking changes/limitations: a resumed parent keeps its existing stop-after policy; OS interrupts remain only an interruption fallback, not the operator pause protocol.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-01] SKILL-154 subtask 1 — Context-efficient skill and goal orchestration
 Areas: runtime-application/{goalrunner,workflow}, runtime-cli/goal, runtime-domain/{goalrunner,workflow}, runtime-infra-fs/{goalplanning,install}, runtime-infra-sqlite/{goalrunner,migrations}, runtime-ports/{goalrunner,persistence}, runtime-contracts/errors, docs, governed feature skills, .feature-specs/SKILL-154
 - Added compact supplied-versus-installed skill identity validation, bounded goal-planning context discovery, and thin `{status, commit_sha, workflow_id}` terminal retention.

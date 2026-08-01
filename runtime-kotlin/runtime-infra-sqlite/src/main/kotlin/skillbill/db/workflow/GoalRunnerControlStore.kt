@@ -16,10 +16,7 @@ internal class GoalRunnerControlStore(
   override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
     selectJson(parentWorkflowId, "control_state_json")?.let(::decodeControlState) ?: GoalRunnerControlState()
 
-  override fun persistControlState(
-    parentWorkflowId: String,
-    state: GoalRunnerControlState,
-  ): GoalRunnerControlState {
+  override fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState {
     connection.prepareStatement(
       """
       INSERT INTO goal_runner_controls (parent_workflow_id, control_state_json)
@@ -210,9 +207,13 @@ private fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
   else -> error("Goal runner control state field '$key' must be a positive integer or null.")
 }?.also {
   require(it > 0) { "Goal runner control state field '$key' must be positive." }
-} ?: if (this == null) null else error(
-  "Goal runner control state field '$key' must be a positive integer or null.",
-)
+} ?: if (this == null) {
+  null
+} else {
+  error(
+    "Goal runner control state field '$key' must be a positive integer or null.",
+  )
+}
 
 private fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
   val policy = JsonSupport.parseObjectOrNull(raw)

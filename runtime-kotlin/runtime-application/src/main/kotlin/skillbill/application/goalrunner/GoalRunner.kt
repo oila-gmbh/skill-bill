@@ -20,6 +20,7 @@ import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerLivenessState
@@ -35,6 +36,7 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -47,6 +49,7 @@ import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
@@ -112,27 +115,51 @@ class GoalRunner(
 
   private fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
     val persistedControl = manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
-    if (request.stopAfterSubtaskId != null &&
-      persistedControl.stopAfterSubtaskId != null &&
-      persistedControl.stopAfterSubtaskId != request.stopAfterSubtaskId
-    ) {
-      return GoalRunPreparation.PreparationBlocked(
-        stopped(
-          issueKey = request.issueKey,
-          attempted = emptyList(),
-          subtaskId = state.manifest.currentSubtaskIntent.subtaskId,
-          reason = GoalRunnerStopReason.BLOCKED,
-          blockedReason = "Cannot change stop-after subtask policy on goal resume: parent workflow " +
-            "'${state.parentWorkflowId}' is pinned to subtask ${persistedControl.stopAfterSubtaskId}.",
-          workflowId = state.parentWorkflowId,
-          lastResumableStep = "preplan",
-        ),
-      )
-    }
+    stopAfterPolicyMismatch(state, request, persistedControl)?.let { return it }
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
     persistedReviewPolicy?.let { policy ->
       reviewPolicyMismatch(state, request, policy)?.let { return it }
     }
+    val effectiveReviewPolicy = persistEffectiveReviewPolicy(state, request, persistedReviewPolicy)
+    val effectiveControl = persistEffectiveStopAfterPolicy(state, request, persistedControl)
+    val preparedState = resumeForRun(state, request, effectiveControl)
+    return GoalRunPreparation.Prepared(
+      preparedState,
+      request.copy(
+        codeReviewMode = effectiveReviewPolicy.codeReviewMode,
+        parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
+        stopAfterSubtaskId = request.stopAfterSubtaskId ?: persistedControl.stopAfterSubtaskId,
+      ),
+    )
+  }
+
+  private fun stopAfterPolicyMismatch(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    persistedControl: GoalRunnerControlState,
+  ): GoalRunPreparation.PreparationBlocked? {
+    val requested = request.stopAfterSubtaskId ?: return null
+    val persisted = persistedControl.stopAfterSubtaskId ?: return null
+    if (persisted == requested) return null
+    return GoalRunPreparation.PreparationBlocked(
+      stopped(
+        issueKey = request.issueKey,
+        attempted = emptyList(),
+        subtaskId = state.manifest.currentSubtaskIntent.subtaskId,
+        reason = GoalRunnerStopReason.BLOCKED,
+        blockedReason = "Cannot change stop-after subtask policy on goal resume: parent workflow " +
+          "'${state.parentWorkflowId}' is pinned to subtask $persisted.",
+        workflowId = state.parentWorkflowId,
+        lastResumableStep = "preplan",
+      ),
+    )
+  }
+
+  private fun persistEffectiveReviewPolicy(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    persistedReviewPolicy: GoalRunnerReviewPolicy?,
+  ): GoalRunnerReviewPolicy {
     val requestedAgentAddonSelection = request.agentAddonSelection.persisted
     val effectiveAgentAddonSelection = requestedAgentAddonSelection
       .takeUnless { it.entries.isEmpty() }
@@ -145,40 +172,43 @@ class GoalRunner(
       parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
       agentAddonSelection = effectiveAgentAddonSelection,
     )
-    val effectiveReviewPolicy = manifestStore.persistReviewPolicy(
+    return manifestStore.persistReviewPolicy(
       parentWorkflowId = state.parentWorkflowId,
       policy = requestedReviewPolicy,
       dbPathOverride = request.dbPathOverride,
     )
-    val effectiveStopAfter = request.stopAfterSubtaskId ?: persistedControl.stopAfterSubtaskId
-    val effectiveControl = if (request.stopAfterSubtaskId != null && persistedControl.stopAfterSubtaskId == null) {
-      manifestStore.persistStopAfterSubtask(
-        state.parentWorkflowId,
-        request.stopAfterSubtaskId,
-        request.dbPathOverride,
-      )
-    } else {
-      persistedControl
-    }
+  }
+
+  private fun persistEffectiveStopAfterPolicy(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    persistedControl: GoalRunnerControlState,
+  ): GoalRunnerControlState = if (request.stopAfterSubtaskId != null && persistedControl.stopAfterSubtaskId == null) {
+    manifestStore.persistStopAfterSubtask(
+      state.parentWorkflowId,
+      request.stopAfterSubtaskId,
+      request.dbPathOverride,
+    )
+  } else {
+    persistedControl
+  }
+
+  private fun resumeForRun(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    effectiveControl: GoalRunnerControlState,
+  ): GoalRunnerManifestState {
     val resumedState = if (effectiveControl.paused) {
       manifestStore.resume(state.parentWorkflowId, request.dbPathOverride) ?: state
     } else {
       state
     }
-    val preparedState = resumedState.copy(
+    return resumedState.copy(
       controlState = if (effectiveControl.paused) {
         manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
       } else {
         effectiveControl
       },
-    )
-    return GoalRunPreparation.Prepared(
-      preparedState,
-      request.copy(
-        codeReviewMode = effectiveReviewPolicy.codeReviewMode,
-        parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
-        stopAfterSubtaskId = effectiveStopAfter,
-      ),
     )
   }
 
@@ -224,8 +254,9 @@ class GoalRunner(
     val telemetryEmitter =
       GoalRunnerTelemetryEmitter(telemetry, clock, state, effectiveRequest.dbPathOverride).also { it.goalStarted() }
     pauseBeforePlanning(state, effectiveRequest)?.let { paused ->
-      closeGoalTelemetrySegment(telemetryEmitter, paused.state, paused.report, attempted)
-      return paused.report
+      val pausedReport = requireNotNull(paused.report)
+      closeGoalTelemetrySegment(telemetryEmitter, paused.state, pausedReport, attempted)
+      return pausedReport
     }
     val sweepOutcome = goalPlanningSweep.prepare(state, effectiveRequest)
     if (sweepOutcome is GoalPlanningSweepOutcome.Stopped) {
@@ -294,7 +325,9 @@ class GoalRunner(
                 terminalReport = result.report
               }
           is GoalRunnerSelection.Run -> {
-            if (currentPlanning.identity != null && currentPlanning.hydrationFor(selection.decision.subtask.id) == null) {
+            val planningHydrationMissing = currentPlanning.identity != null &&
+              currentPlanning.hydrationFor(selection.decision.subtask.id) == null
+            if (planningHydrationMissing) {
               when (val refreshedPlanning = goalPlanningSweep.prepare(state, request)) {
                 is GoalPlanningSweepOutcome.PreparedAll -> currentPlanning = refreshedPlanning
                 is GoalPlanningSweepOutcome.Stopped -> {
@@ -425,8 +458,9 @@ class GoalRunner(
   private fun pauseBeforeLaunch(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
+    knownControl: GoalRunnerControlState? = null,
   ): GoalRunnerIterationResult? {
-    val control = manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
+    val control = knownControl ?: manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
     if (!control.requiresPauseBoundary(state.manifest)) return null
     val pausedState = manifestStore.pauseAtBoundary(
       state.copy(controlState = control),
@@ -461,46 +495,31 @@ class GoalRunner(
     telemetryEmitter: GoalRunnerTelemetryEmitter?,
     planning: GoalPlanningSweepOutcome.PreparedAll,
   ): GoalRunnerIterationResult {
-    val subtaskId = selection.decision.subtask.id
-    pauseBeforeLaunch(state, request)?.let { return it }
-    goalBranchSetupFailure(state, selection, request)?.let { failure ->
-      return failure
+    val prepared = when (val result = prepareSelectedSubtask(state, selection, request, planning)) {
+      is SelectedSubtaskPreparation.Stopped -> return result.result
+      is SelectedSubtaskPreparation.Ready -> result
     }
-    val baselineCapture = goalReviewBaseline(state, subtaskId, request)
-    if (!baselineCapture.ok) {
-      return blockedReviewBaselineIteration(
-        state,
-        subtaskId,
-        "Could not capture the goal-subtask review baseline before implementation. " +
-          "Refusing to substitute a branch-wide scope. ${baselineCapture.error}",
+    val launch = when (
+      val result = authorizeAndLaunchSelectedSubtask(
+        prepared,
+        selection,
         request,
+        attempted,
+        telemetryEmitter,
       )
+    ) {
+      is SelectedSubtaskLaunch.Stopped -> return result.result
+      is SelectedSubtaskLaunch.Completed -> result
     }
-    val reviewBaseline = requireNotNull(baselineCapture.baseline)
-    val prepared = runCatching {
-      prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
-    }.getOrElse { error -> return blockedOnRecoveryError(state, subtaskId, error, request) }
-    val attemptedState = prepared.state
-    pauseBeforeLaunch(attemptedState, request)?.let { return it }
-    attempted += subtaskId
-    emitSubtaskStarted(attemptedState, subtaskId, selection, request, telemetryEmitter)
-    val attemptStartMillis = clock.millis()
-    val (launchReconciliation, workerRequestResult) = launchSubtaskWithWorkerResult(
-      attemptedState,
-      subtaskId,
-      request,
-      prepared.openWithAssignedId,
-      reviewBaseline,
-    )
-    val refreshed = workerRequestResult.state
-    val reconciled = launchReconciliation.reconciled
-    val reAttemptCause = pendingReAttemptCause.remove(subtaskId)
-    val causingLoopEntry = pendingCausingLoopEntry.remove(subtaskId)
+    val refreshed = launch.workerRequestResult.state
+    val reconciled = launch.reconciliation.reconciled
+    val reAttemptCause = pendingReAttemptCause.remove(prepared.subtaskId)
+    val causingLoopEntry = pendingCausingLoopEntry.remove(prepared.subtaskId)
     recordPostLaunchState(
       refreshed,
-      subtaskId,
+      prepared.subtaskId,
       selection,
-      launchReconciliation,
+      launch.reconciliation,
       request,
       observability,
       ledger,
@@ -508,10 +527,107 @@ class GoalRunner(
       causingLoopEntry,
     )
     return dispatchWorkerResult(
-      refreshed, subtaskId, reconciled, workerRequestResult, launchReconciliation,
-      request, attempted, observability, ledger, attemptStartMillis,
+      refreshed, prepared.subtaskId, reconciled, launch.workerRequestResult, launch.reconciliation,
+      request, attempted, observability, ledger, launch.attemptStartMillis,
     )
   }
+
+  private fun prepareSelectedSubtask(
+    state: GoalRunnerManifestState,
+    selection: GoalRunnerSelection.Run,
+    request: GoalRunnerRunRequest,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
+  ): SelectedSubtaskPreparation {
+    val earlyStop = pauseBeforeLaunch(state, request) ?: goalBranchSetupFailure(state, selection, request)
+    return earlyStop?.let(SelectedSubtaskPreparation::Stopped)
+      ?: prepareSelectedSubtaskState(state, selection.decision.subtask.id, request, planning)
+  }
+
+  private fun prepareSelectedSubtaskState(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    request: GoalRunnerRunRequest,
+    planning: GoalPlanningSweepOutcome.PreparedAll,
+  ): SelectedSubtaskPreparation {
+    val baselineCapture = goalReviewBaseline(state, subtaskId, request)
+    if (!baselineCapture.ok) {
+      return SelectedSubtaskPreparation.Stopped(
+        blockedReviewBaselineIteration(
+          state,
+          subtaskId,
+          "Could not capture the goal-subtask review baseline before implementation. " +
+            "Refusing to substitute a branch-wide scope. ${baselineCapture.error}",
+          request,
+        ),
+      )
+    }
+    val reviewBaseline = requireNotNull(baselineCapture.baseline)
+    return runCatching {
+      prepareAttemptedLaunch(state, subtaskId, request, reviewBaseline, planning)
+    }.fold(
+      onSuccess = { prepared ->
+        SelectedSubtaskPreparation.Ready(
+          subtaskId = subtaskId,
+          attemptedState = prepared.state,
+          openWithAssignedId = prepared.openWithAssignedId,
+          reviewBaseline = reviewBaseline,
+        )
+      },
+      onFailure = { error ->
+        SelectedSubtaskPreparation.Stopped(blockedOnRecoveryError(state, subtaskId, error, request))
+      },
+    )
+  }
+
+  private fun authorizeAndLaunchSelectedSubtask(
+    prepared: SelectedSubtaskPreparation.Ready,
+    selection: GoalRunnerSelection.Run,
+    request: GoalRunnerRunRequest,
+    attempted: MutableList<Int>,
+    telemetryEmitter: GoalRunnerTelemetryEmitter?,
+  ): SelectedSubtaskLaunch {
+    val subtaskId = prepared.subtaskId
+    val launchAuthorization = manifestStore.authorizeSubtaskLaunch(
+      prepared.attemptedState,
+      subtaskId,
+      request.dbPathOverride,
+    )
+    if (!launchAuthorization.authorized) {
+      return SelectedSubtaskLaunch.Stopped(
+        deniedLaunchPause(prepared.attemptedState, request, launchAuthorization.controlState, subtaskId),
+      )
+    }
+    attempted += subtaskId
+    emitSubtaskStarted(prepared.attemptedState, subtaskId, selection, request, telemetryEmitter)
+    val attemptStartMillis = clock.millis()
+    val (launchReconciliation, workerRequestResult) = try {
+      launchSubtaskWithWorkerResult(
+        prepared.attemptedState,
+        subtaskId,
+        request,
+        prepared.openWithAssignedId,
+        prepared.reviewBaseline,
+        launchAuthorization.spawnAuthorization,
+      )
+    } catch (denied: GoalRunnerLaunchAuthorizationDeniedException) {
+      return SelectedSubtaskLaunch.Stopped(
+        deniedLaunchPause(prepared.attemptedState, request, denied.controlState, subtaskId),
+      )
+    }
+    return SelectedSubtaskLaunch.Completed(
+      reconciliation = launchReconciliation,
+      workerRequestResult = workerRequestResult,
+      attemptStartMillis = attemptStartMillis,
+    )
+  }
+
+  private fun deniedLaunchPause(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    controlState: GoalRunnerControlState,
+    subtaskId: Int,
+  ): GoalRunnerIterationResult = pauseBeforeLaunch(state, request, controlState)
+    ?: error("Subtask $subtaskId launch authorization was denied without a durable pause boundary.")
 
   private fun dispatchWorkerResult(
     state: GoalRunnerManifestState,
@@ -603,8 +719,16 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     assignedWorkflowId: String?,
     reviewBaseline: GoalSubtaskReviewBaseline,
+    spawnAuthorization: AgentRunSpawnAuthorization?,
   ): Pair<GoalRunnerLaunchReconciliation, GoalRunnerWorkerRequestHandlingResult> {
-    val launchReconciliation = launchAndReconcileSubtask(state, subtaskId, request, assignedWorkflowId, reviewBaseline)
+    val launchReconciliation = launchAndReconcileSubtask(
+      state,
+      subtaskId,
+      request,
+      assignedWorkflowId,
+      reviewBaseline,
+      spawnAuthorization,
+    )
     val workerRequestResult = workerRequestHandler.handle(
       state = launchReconciliation.refreshed,
       launchOutcome = launchReconciliation.launchOutcome,
@@ -620,6 +744,7 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     assignedWorkflowId: String?,
     reviewBaseline: GoalSubtaskReviewBaseline,
+    spawnAuthorization: AgentRunSpawnAuthorization?,
   ): GoalRunnerLaunchReconciliation {
     val launchOutcome = subtaskLauncher.launch(
       reconciler.subtaskLaunchRequest(
@@ -628,9 +753,10 @@ class GoalRunner(
         request,
         assignedWorkflowId = assignedWorkflowId,
         reviewBaseline = reviewBaseline,
+        spawnAuthorization = spawnAuthorization,
       ),
     )
-    return reconciler.reconcileLaunchOutcome(state, launchOutcome, subtaskId, request, reviewBaseline)
+    return reconciler.reconcileLaunchOutcome(state, launchOutcome, subtaskId, request)
   }
 
   private fun goalReviewBaseline(
@@ -1462,6 +1588,7 @@ internal class GoalRunnerLaunchReconciler(
     // SKILL-87: non-null only on a first run; routes the child through open-with-this-id, not resume.
     assignedWorkflowId: String? = null,
     reviewBaseline: GoalSubtaskReviewBaseline? = null,
+    spawnAuthorization: AgentRunSpawnAuthorization? = null,
   ): GoalRunnerSubtaskLaunchRequest {
     val tickReader = GoalRunnerTickProgressReader(
       manifestStore = manifestStore,
@@ -1498,6 +1625,7 @@ internal class GoalRunnerLaunchReconciler(
         readOnlyPhase = goalContinuation?.lastResumableStep ==
           FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         goalContinuation = goalContinuation,
+        spawnAuthorization = spawnAuthorization,
       ),
     )
   }
@@ -1552,7 +1680,6 @@ internal class GoalRunnerLaunchReconciler(
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
-    reviewBaseline: GoalSubtaskReviewBaseline? = null,
   ): GoalRunnerLaunchReconciliation {
     val refreshed = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
       ?: attemptedState
@@ -1590,7 +1717,6 @@ internal class GoalRunnerLaunchReconciler(
       diagnostics = recovery?.diagnostics ?: malformedResultJsonDiagnostics(reconciled, launchOutcome),
     )
   }
-
 
   private fun missingResultPrefixRecovery(
     refreshed: GoalRunnerManifestState,
@@ -1642,7 +1768,6 @@ internal class GoalRunnerLaunchReconciler(
       dbPathOverride = request.dbPathOverride,
     )[subtaskId]
   }
-
 }
 
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
@@ -2055,6 +2180,27 @@ private data class PreparedLaunch(
   val state: GoalRunnerManifestState,
   val openWithAssignedId: String?,
 )
+
+private sealed interface SelectedSubtaskPreparation {
+  class Ready(
+    val subtaskId: Int,
+    val attemptedState: GoalRunnerManifestState,
+    val openWithAssignedId: String?,
+    val reviewBaseline: GoalSubtaskReviewBaseline,
+  ) : SelectedSubtaskPreparation
+
+  class Stopped(val result: GoalRunnerIterationResult) : SelectedSubtaskPreparation
+}
+
+private sealed interface SelectedSubtaskLaunch {
+  class Completed(
+    val reconciliation: GoalRunnerLaunchReconciliation,
+    val workerRequestResult: GoalRunnerWorkerRequestHandlingResult,
+    val attemptStartMillis: Long,
+  ) : SelectedSubtaskLaunch
+
+  class Stopped(val result: GoalRunnerIterationResult) : SelectedSubtaskLaunch
+}
 
 private data class LaunchRecordingContext(
   val workflowId: String,

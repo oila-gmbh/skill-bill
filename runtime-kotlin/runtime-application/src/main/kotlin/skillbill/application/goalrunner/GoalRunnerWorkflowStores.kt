@@ -32,12 +32,13 @@ import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_LIMIT
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
@@ -46,6 +47,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.model.GoalRunnerCompletionPersistenceResult
+import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
@@ -149,6 +151,9 @@ class WorkflowGoalRunnerManifestStore(
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator)
   private val parentProjection = GoalParentProjectionWriter(engine, decompositionManifestValidator)
+  private val controls = GoalRunnerControlCoordinator(database, decompositionManifestValidator) { unitOfWork, state ->
+    saveWorkflowProjectionInTransaction(unitOfWork, state)
+  }
 
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
@@ -207,146 +212,37 @@ class WorkflowGoalRunnerManifestStore(
     saveWorkflowProjection(state, dbPathOverride).state
 
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
-    database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.controlState(parentWorkflowId) }
+    controls.controlState(parentWorkflowId, dbPathOverride)
+
+  override fun authorizeSubtaskLaunch(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerLaunchAuthorization = controls.authorizeSubtaskLaunch(state, subtaskId, dbPathOverride)
 
   override fun persistStopAfterSubtask(
     parentWorkflowId: String,
     subtaskId: Int,
     dbPathOverride: String?,
-  ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
-    require(subtaskId > 0) { "stop-after subtask id must be positive." }
-    val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
-    require(existing.stopAfterSubtaskId == null || existing.stopAfterSubtaskId == subtaskId) {
-      "Goal parent '$parentWorkflowId' already has stop-after subtask ${existing.stopAfterSubtaskId}."
-    }
-    if (existing.stopAfterSubtaskId == null) {
-      unitOfWork.goalRunnerControls.persistControlState(
-        parentWorkflowId,
-        existing.copy(stopAfterSubtaskId = subtaskId),
-      )
-    } else {
-      existing
-    }
-  }
+  ): GoalRunnerControlState = controls.persistStopAfterSubtask(parentWorkflowId, subtaskId, dbPathOverride)
 
   override fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
-    database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@transaction null
-      migrateLegacyGoalRunnerControls(unitOfWork, parent)
-      val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
-      if (existing.paused || existing.pauseRequested) {
-        existing
-      } else {
-        unitOfWork.goalRunnerControls.persistControlState(
-          parentWorkflowId,
-          existing.copy(
-            pauseRequested = true,
-            pauseConsumed = false,
-            pauseReason = "operator_request",
-          ),
-        )
-      }
-    }
+    controls.requestPause(parentWorkflowId, dbPathOverride)
 
-  override fun requestPauseByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-  ): GoalRunnerPausePersistenceResult? = database.transaction(dbPathOverride) { unitOfWork ->
-    val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
-      issueKey,
-      decompositionManifestValidator,
-    ) ?: return@transaction null
-    migrateLegacyGoalRunnerControls(unitOfWork, parent)
-    val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
-    val control = if (existing.paused || existing.pauseRequested) {
-      existing
-    } else {
-      unitOfWork.goalRunnerControls.persistControlState(
-        parent.workflowId,
-        existing.copy(
-          pauseRequested = true,
-          pauseConsumed = false,
-          pauseReason = "operator_request",
-        ),
-      )
-    }
-    GoalRunnerPausePersistenceResult(parent.workflowId, control)
-  }
+  override fun requestPauseByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerPausePersistenceResult? =
+    controls.requestPauseByIssueKey(issueKey, dbPathOverride)
 
   override fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState? =
-    database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
-        ?: return@transaction null
-      migrateLegacyGoalRunnerControls(unitOfWork, parent)
-      val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
-      val resumed = if (existing.paused) {
-        unitOfWork.goalRunnerControls.persistControlState(
-          parentWorkflowId,
-          existing.copy(
-            pauseRequested = false,
-            pauseConsumed = false,
-            paused = false,
-            pauseReason = null,
-          ),
-        )
-      } else {
-        existing
-      }
-      val manifest = parent.decompositionRuntime(decompositionManifestValidator)
-        ?: return@transaction null
-      GoalRunnerManifestState(
-        parentWorkflowId = parent.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        manifest = manifest,
-        controlState = resumed,
-      )
-    }
+    controls.resume(parentWorkflowId, dbPathOverride)
 
-  override fun pauseAtBoundary(
-    state: GoalRunnerManifestState,
-    dbPathOverride: String?,
-  ): GoalRunnerManifestState = database.transaction(dbPathOverride) { unitOfWork ->
-    val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-      ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-    migrateLegacyGoalRunnerControls(unitOfWork, existing)
-    val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
-    val targetReached = controls.stopAfterSubtaskId?.let { targetId ->
-      state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
-    } == true && !controls.stopAfterConsumed
-    val pausedControls = if (controls.requiresPauseBoundary(state.manifest)) {
-      controls.pauseAtOperatorBoundary(targetReached)
-    } else {
-      controls
-    }
-    val saved = saveWorkflowProjectionInTransaction(unitOfWork, state)
-    if (pausedControls != controls) {
-      unitOfWork.goalRunnerControls.persistControlState(existing.workflowId, pausedControls)
-    }
-    saved.state.copy(controlState = pausedControls)
-  }
+  override fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
+    controls.pauseAtBoundary(state, dbPathOverride)
 
   override fun saveCompletedSubtaskAtBoundary(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-  ): GoalRunnerCompletionPersistenceResult = database.transaction(dbPathOverride) { unitOfWork ->
-    val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
-      ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
-    migrateLegacyGoalRunnerControls(unitOfWork, existing)
-    val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
-    val targetReached = controls.stopAfterSubtaskId == subtaskId && !controls.stopAfterConsumed
-    val operatorRequested = controls.pauseRequested && !controls.pauseConsumed
-    val shouldPause = controls.requiresPauseBoundary(state.manifest) || targetReached || operatorRequested
-    val nextControls = if (shouldPause) controls.pauseAtOperatorBoundary(targetReached) else controls
-    val saved = saveWorkflowProjectionInTransaction(unitOfWork, state)
-    if (nextControls != controls) {
-      unitOfWork.goalRunnerControls.persistControlState(existing.workflowId, nextControls)
-    }
-    GoalRunnerCompletionPersistenceResult(
-      state = saved.state.copy(controlState = nextControls),
-      paused = shouldPause,
-    )
-  }
+  ): GoalRunnerCompletionPersistenceResult = controls.saveCompletedSubtaskAtBoundary(state, subtaskId, dbPathOverride)
 
   override fun saveHardReset(
     state: GoalRunnerManifestState,
@@ -866,6 +762,172 @@ class WorkflowGoalRunnerManifestStore(
       }
 }
 
+private class GoalRunnerControlCoordinator(
+  private val database: DatabaseSessionFactory,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val saveProjection: (UnitOfWork, GoalRunnerManifestState) -> SavedManifestProjection,
+) {
+  fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+    database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.controlState(parentWorkflowId) }
+
+  fun authorizeSubtaskLaunch(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerLaunchAuthorization = database.transaction(dbPathOverride) { unitOfWork ->
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    val existing = requireParent(unitOfWork, state.parentWorkflowId)
+    val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
+    GoalRunnerLaunchAuthorization(
+      authorized = !controls.requiresPauseBoundary(state.manifest),
+      controlState = controls,
+      spawnAuthorization = spawnAuthorization(state, dbPathOverride),
+    )
+  }
+
+  fun persistStopAfterSubtask(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
+    require(subtaskId > 0) { "stop-after subtask id must be positive." }
+    val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+    require(existing.stopAfterSubtaskId == null || existing.stopAfterSubtaskId == subtaskId) {
+      "Goal parent '$parentWorkflowId' already has stop-after subtask ${existing.stopAfterSubtaskId}."
+    }
+    existing.stopAfterSubtaskId?.let { existing }
+      ?: unitOfWork.goalRunnerControls.persistControlState(
+        parentWorkflowId,
+        existing.copy(stopAfterSubtaskId = subtaskId),
+      )
+  }
+
+  fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
+        migrateLegacyGoalRunnerControls(unitOfWork, parent)
+        persistPauseRequest(unitOfWork, parentWorkflowId)
+      }
+    }
+
+  fun requestPauseByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerPausePersistenceResult? =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+        issueKey,
+        decompositionManifestValidator,
+      ) ?: return@transaction null
+      migrateLegacyGoalRunnerControls(unitOfWork, parent.toSnapshot())
+      GoalRunnerPausePersistenceResult(parent.workflowId, persistPauseRequest(unitOfWork, parent.workflowId))
+    }
+
+  fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState? =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?: return@transaction null
+      migrateLegacyGoalRunnerControls(unitOfWork, parent)
+      val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+      val resumed = if (existing.paused) {
+        unitOfWork.goalRunnerControls.persistControlState(
+          parentWorkflowId,
+          existing.copy(
+            pauseRequested = false,
+            pauseConsumed = false,
+            paused = false,
+            pauseReason = null,
+          ),
+        )
+      } else {
+        existing
+      }
+      parent.decompositionRuntime(decompositionManifestValidator)?.let { manifest ->
+        GoalRunnerManifestState(
+          parentWorkflowId = parent.workflowId,
+          dbPath = unitOfWork.dbPath.toString(),
+          manifest = manifest,
+          controlState = resumed,
+        )
+      }
+    }
+
+  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val parent = requireParent(unitOfWork, state.parentWorkflowId)
+      val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+      val targetReached = controls.targetReached(state)
+      val pausedControls = if (controls.requiresPauseBoundary(state.manifest)) {
+        controls.pauseAtOperatorBoundary(targetReached)
+      } else {
+        controls
+      }
+      val saved = saveProjection(unitOfWork, state)
+      if (pausedControls != controls) {
+        unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, pausedControls)
+      }
+      saved.state.copy(controlState = pausedControls)
+    }
+
+  fun saveCompletedSubtaskAtBoundary(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerCompletionPersistenceResult = database.transaction(dbPathOverride) { unitOfWork ->
+    val parent = requireParent(unitOfWork, state.parentWorkflowId)
+    val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+    val targetReached = controls.stopAfterSubtaskId == subtaskId && !controls.stopAfterConsumed
+    val operatorRequested = controls.pauseRequested && !controls.pauseConsumed
+    val shouldPause = controls.requiresPauseBoundary(state.manifest) || targetReached || operatorRequested
+    val nextControls = if (shouldPause) controls.pauseAtOperatorBoundary(targetReached) else controls
+    val saved = saveProjection(unitOfWork, state)
+    if (nextControls != controls) {
+      unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, nextControls)
+    }
+    GoalRunnerCompletionPersistenceResult(
+      state = saved.state.copy(controlState = nextControls),
+      paused = shouldPause,
+    )
+  }
+
+  private fun requireParent(unitOfWork: UnitOfWork, parentWorkflowId: String): WorkflowStateSnapshot {
+    val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: error("Unknown decomposed parent workflow '$parentWorkflowId'.")
+    migrateLegacyGoalRunnerControls(unitOfWork, parent)
+    return parent
+  }
+
+  private fun spawnAuthorization(state: GoalRunnerManifestState, dbPathOverride: String?): AgentRunSpawnAuthorization =
+    object : AgentRunSpawnAuthorization {
+      override fun <T> withAuthorization(spawn: () -> T): T = database.transaction(dbPathOverride) { unitOfWork ->
+        val parent = requireParent(unitOfWork, state.parentWorkflowId)
+        val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+        if (controls.requiresPauseBoundary(state.manifest)) {
+          throw skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+        }
+        spawn()
+      }
+    }
+
+  private fun persistPauseRequest(unitOfWork: UnitOfWork, parentWorkflowId: String): GoalRunnerControlState {
+    val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+    return if (existing.paused || existing.pauseRequested) {
+      existing
+    } else {
+      unitOfWork.goalRunnerControls.persistControlState(
+        parentWorkflowId,
+        existing.copy(
+          pauseRequested = true,
+          pauseConsumed = false,
+          pauseReason = "operator_request",
+        ),
+      )
+    }
+  }
+
+  private fun GoalRunnerControlState.targetReached(state: GoalRunnerManifestState): Boolean =
+    stopAfterSubtaskId?.let { targetId ->
+      state.manifest.subtasks.any { it.id == targetId && it.status == "complete" }
+    } == true && !stopAfterConsumed
+}
+
 private class GoalParentProjectionWriter(
   private val engine: WorkflowEngine,
   private val validator: DecompositionManifestValidator,
@@ -994,21 +1056,22 @@ private fun outOfBandAcceptancesFromLegacyArtifacts(
   }
 }
 
-private fun GoalRunnerControlState.pauseAtOperatorBoundary(targetReached: Boolean = false): GoalRunnerControlState = when {
-  paused -> copy(stopAfterConsumed = stopAfterConsumed || targetReached)
-  pauseRequested -> copy(
-    pauseConsumed = true,
-    paused = true,
-    pauseReason = pauseReason ?: "operator_request",
-    stopAfterConsumed = stopAfterConsumed || targetReached,
-  )
-  targetReached -> copy(
-    paused = true,
-    pauseReason = "stop_after_subtask",
-    stopAfterConsumed = true,
-  )
-  else -> this
-}
+private fun GoalRunnerControlState.pauseAtOperatorBoundary(targetReached: Boolean = false): GoalRunnerControlState =
+  when {
+    paused -> copy(stopAfterConsumed = stopAfterConsumed || targetReached)
+    pauseRequested -> copy(
+      pauseConsumed = true,
+      paused = true,
+      pauseReason = pauseReason ?: "operator_request",
+      stopAfterConsumed = stopAfterConsumed || targetReached,
+    )
+    targetReached -> copy(
+      paused = true,
+      pauseReason = "stop_after_subtask",
+      stopAfterConsumed = true,
+    )
+    else -> this
+  }
 
 private fun decodeGoalAgentAddonSelection(raw: Any?): skillbill.agentaddon.model.AgentAddonSelection {
   val values = raw ?: return skillbill.agentaddon.model.AgentAddonSelection()

@@ -1,7 +1,7 @@
 package skillbill.ports.persistence
 
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 
 /**

@@ -248,6 +248,8 @@ $defs:
       - RECONCILED_RESUMABLE
       # SKILL-142: the child paused for the bounded operator decision. Resumable, not stopped.
       - AWAITING_OPERATOR_DECISION
+      # SKILL-154: the goal parent reached a durable operator or stop-after pause boundary.
+      - PAUSED
   freeObjectShape:
     type: object
   reviewChildStep:

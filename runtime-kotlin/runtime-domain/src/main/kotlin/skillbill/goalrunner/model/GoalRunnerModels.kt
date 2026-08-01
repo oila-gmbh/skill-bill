@@ -240,12 +240,11 @@ data class GoalRunnerControlState(
     require(!paused || pauseReason != null) { "paused control state requires pauseReason." }
   }
 
-  fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean =
-    pauseRequested || paused || (
-      stopAfterSubtaskId != null &&
-        !stopAfterConsumed &&
-        manifest.subtasks.any { it.id == stopAfterSubtaskId && it.status == "complete" }
-      )
+  fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (
+    stopAfterSubtaskId != null &&
+      !stopAfterConsumed &&
+      manifest.subtasks.any { it.id == stopAfterSubtaskId && it.status == "complete" }
+    )
 }
 
 data class GoalRunnerStopReport(

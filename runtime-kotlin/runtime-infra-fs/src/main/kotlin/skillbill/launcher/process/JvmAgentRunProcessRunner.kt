@@ -36,7 +36,9 @@ import kotlin.time.DurationUnit
 @Inject
 class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   override fun run(request: AgentRunProcessRequest): AgentRunProcessResult {
-    val processStart = startProcess(request)
+    val processStart = request.spawnAuthorization?.withAuthorization {
+      startProcess(request)
+    } ?: startProcess(request)
     return when (processStart) {
       is ProcessStart.Failed -> spawnFailure(processStart.error)
       is ProcessStart.Started -> runStartedProcess(

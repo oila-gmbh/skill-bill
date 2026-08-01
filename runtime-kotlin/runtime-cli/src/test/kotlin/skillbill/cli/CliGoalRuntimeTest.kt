@@ -93,7 +93,7 @@ class CliGoalRuntimeTest {
       missingFixture.context(launcher = GoalFixtureAgentRunLauncher(missingFixture)),
     )
     assertEquals(1, missing.exitCode, missing.stdout)
-    assertContains(missing.stdout, "Missing argument for option --stop-after-subtask")
+    assertContains(missing.stdout, "option --stop-after-subtask requires a value")
 
     val zeroFixture = goalFixture(subtaskCount = 1)
     val zero = CliRuntime.run(

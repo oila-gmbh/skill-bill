@@ -95,6 +95,7 @@ class ProcessAgentRunAdapter(
     nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
       commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
     },
+    spawnAuthorization = request.spawnAuthorization,
   )
 
   private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =
