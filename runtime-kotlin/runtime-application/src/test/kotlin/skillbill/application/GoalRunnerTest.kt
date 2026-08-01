@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
@@ -52,6 +54,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
@@ -106,6 +109,40 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GoalRunnerTest {
+  @Test
+  fun `resume without add-ons carries the durable selection into child policy and continuation`() {
+    val addOn = PersistedAgentAddonSelectionEntry(
+      slug = "goal-context",
+      sourceIdentity = "/tmp/skillbill-goal-runner/goal-context/agent-addon.yaml",
+      contentSha256 = "a".repeat(64),
+    )
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    store.persistReviewPolicy(
+      parentWorkflowId = "wfl-parent",
+      policy = GoalRunnerReviewPolicy(
+        codeReviewMode = CodeReviewExecutionMode.DEFAULT,
+        agentAddonSelection = AgentAddonSelection(listOf(addOn)),
+      ),
+    )
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      store.mutate { current -> current.withWorkflowId(1, "wfl-1") }
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+
+    GoalRunner(store, launcher, outcomes, RecordingPullRequestPort()).run(runRequest())
+
+    assertEquals(
+      AgentAddonSelection(listOf(addOn)),
+      store.newChildWorkflowSetups.single().reviewPolicy.agentAddonSelection,
+    )
+    assertEquals(
+      AgentAddonSelection(listOf(addOn)),
+      launcher.requests.single().skillRunRequest.goalContinuation?.agentAddonSelection,
+    )
+  }
+
   @Test
   fun `happy path launches each subtask once and opens one final pr`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
@@ -2126,6 +2163,7 @@ internal class InMemoryGoalManifestStore(
     private set
   var boundaryTransitionCount: Int = 0
     private set
+  private var persistedReviewPolicy: GoalRunnerReviewPolicy? = null
   val newChildWorkflowSetups: MutableList<GoalRunnerChildWorkflowSetup> = mutableListOf()
   val acceptedParentWorkflowIds: MutableList<String> = mutableListOf()
   var acceptances: Map<Int, GoalRunnerOutOfBandAcceptance> = emptyMap()
@@ -2152,6 +2190,18 @@ internal class InMemoryGoalManifestStore(
   }
 
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState = controlState
+
+  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
+    persistedReviewPolicy
+
+  override fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String?,
+  ): GoalRunnerReviewPolicy {
+    persistedReviewPolicy = policy
+    return policy
+  }
 
   override fun persistStopAfterSubtask(
     parentWorkflowId: String,

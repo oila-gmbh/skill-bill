@@ -70,6 +70,14 @@ import java.nio.file.Path
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
+private fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
+  parentWorkflowId: String,
+  request: GoalRunnerRunRequest,
+): AgentAddonSelection = request.agentAddonSelection.persisted
+  .takeUnless { it.entries.isEmpty() }
+  ?: reviewPolicy(parentWorkflowId, request.dbPathOverride)?.agentAddonSelection
+  ?: AgentAddonSelection()
+
 @Inject
 class GoalRunner(
   private val manifestStore: GoalRunnerManifestStore,
@@ -769,7 +777,7 @@ class GoalRunner(
           reviewPolicy = GoalRunnerReviewPolicy(
             codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
             parallelReviewAgent = request.parallelReviewAgent,
-            agentAddonSelection = request.agentAddonSelection.persisted,
+            agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
           ),
           planningHydration = planning.hydrationFor(subtaskId),
         ),
@@ -1526,7 +1534,7 @@ internal class GoalRunnerLaunchReconciler(
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
         parallelReviewAgent = request.parallelReviewAgent,
-        agentAddonSelection = request.agentAddonSelection.persisted,
+        agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
           ?.let { workflowId -> outcomeStore.goalSubtaskReviewState(workflowId, request.dbPathOverride) }
           ?.let { reviewState ->
