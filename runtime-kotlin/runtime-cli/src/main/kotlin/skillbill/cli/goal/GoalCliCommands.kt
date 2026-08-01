@@ -303,7 +303,8 @@ class GoalStatusCommand(
     val options = statusCliRequestOptions()
     if (options.monitorOnly && !FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(options.issueKey)) {
       throw UsageError(
-        "Monitor requires one supported issue key matching ${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
+        "Monitor requires one supported issue key matching " +
+          "${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
       )
     }
     if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {
@@ -807,10 +808,12 @@ private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: Stri
   "resumable_state" to "not_found",
 )
 
-private fun GoalRunnerStatusProjection.monitorResumableState(): String = when {
-  currentSubtaskId == null && pendingCount == 0 && blockedCount == 0 -> "complete"
-  currentStep.isNullOrBlank() -> "resumable"
-  else -> "resumable_at:${singleLineBounded(currentStep)}"
+private fun GoalRunnerStatusProjection.monitorResumableState(): String = currentStep.let { step ->
+  when {
+    currentSubtaskId == null && pendingCount == 0 && blockedCount == 0 -> "complete"
+    step.isNullOrBlank() -> "resumable"
+    else -> "resumable_at:${singleLineBounded(step)}"
+  }
 }
 
 private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
@@ -874,14 +877,16 @@ private fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payl
     appendLine("status: not_found")
     appendLine("resumable_state: not_found")
   }
-} else buildString {
-  appendLine("complete: ${payload["complete_count"]}")
-  appendLine("pending: ${payload["pending_count"]}")
-  appendLine("blocked: ${payload["blocked_count"]}")
-  appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
-  appendLine("current_step: ${payload["current_step"] ?: "none"}")
-  appendLine("execution_liveness: ${payload["execution_liveness"]}")
-  appendLine("resumable_state: ${payload["resumable_state"]}")
+} else {
+  buildString {
+    appendLine("complete: ${payload["complete_count"]}")
+    appendLine("pending: ${payload["pending_count"]}")
+    appendLine("blocked: ${payload["blocked_count"]}")
+    appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
+    appendLine("current_step: ${payload["current_step"] ?: "none"}")
+    appendLine("execution_liveness: ${payload["execution_liveness"]}")
+    appendLine("resumable_state: ${payload["resumable_state"]}")
+  }
 }
 
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey("status") || this["status"] == "ok") 0 else 1

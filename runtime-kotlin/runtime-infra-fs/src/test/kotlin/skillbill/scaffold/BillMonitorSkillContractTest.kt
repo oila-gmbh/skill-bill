@@ -4,8 +4,10 @@ import skillbill.install.plan.discoverBaseSkills
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.scaffold.authoring.discoverTargets
 import skillbill.scaffold.authoring.renderAuthoringTarget
+import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -23,7 +25,7 @@ class BillMonitorSkillContractTest {
     assertContains(content, "--repo-root /absolute/path/to/repository --monitor")
     assertContains(content, "complete, pending, and blocked counts")
     assertContains(content, "exit monitor mode")
-    assertContains(content, "For an explicit status follow-up")
+    assertTrue(Regex("For an explicit\\s+status follow-up").containsMatchIn(content))
     assertContains(content, "refuse the request")
     assertContains(content, "skill-bill goal watch PROJECT-123 --interval-seconds 5")
     assertEquals(1, content.lines().count { line -> line.trimStart().startsWith("skill-bill goal status") })
@@ -46,7 +48,9 @@ class BillMonitorSkillContractTest {
     )
     val report = RepoValidationRuntime.validateRepo(root)
     assertFalse(
-      report.issues.any { issue -> issue.contains("README.md catalog is missing skills") && issue.contains("bill-monitor") },
+      report.issues.any { issue ->
+        issue.contains("README.md catalog is missing skills") && issue.contains("bill-monitor")
+      },
       report.issues.joinToString("\n"),
     )
   }

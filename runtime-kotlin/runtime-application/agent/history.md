@@ -1,3 +1,12 @@
+## [2026-08-01] SKILL-154 subtask 3 — Monitor-only bill-monitor skill and status integration
+Areas: runtime-cli/goal, runtime-infra-fs/scaffold, governed skills, docs, .feature-specs/SKILL-154
+- Added `bill-monitor` as a governed read-only entry point with dynamic catalog/install coverage and same-thread monitor-mode guidance.
+- The monitor status seam canonicalizes the repository, performs one bounded snapshot, and exposes only counts, current location, liveness, and resumable state. reusable
+- Pattern: keep monitor output separate from full goal status and reject diff, malformed-issue, launch, resume, watch, and mutation paths before execution.
+- Known limitation: monitor mode does not carry across a new conversation; an explicit invocation is required to re-establish the read-only contract.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-01] SKILL-154 subtask 2 — Deterministic goal pause and completion control
 Areas: runtime-application/{goalrunner,model}, runtime-cli/goal, runtime-domain/goalrunner, runtime-infra-fs/{agentrun,process}, runtime-infra-sqlite/{workflow,migrations}, runtime-ports/{agentrun,goalrunner,persistence}, orchestration/contracts/telemetry, .feature-specs/SKILL-154
 - Added predeclared stop-after-subtask and durable idempotent operator pause control; the pause is applied after terminal child completion is persisted and before the next child is selected or launched.
