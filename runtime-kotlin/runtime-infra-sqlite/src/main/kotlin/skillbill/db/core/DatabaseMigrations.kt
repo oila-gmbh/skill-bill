@@ -49,7 +49,9 @@ internal object DatabaseMigrations {
                 governed_spec_path TEXT NOT NULL,
                 mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
                 route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_2")
+              },
                 FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
               )
               """.trimIndent(),
@@ -113,7 +115,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL,
                 preplan_payload_json TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_2")
+              },
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (parent_goal_workflow_id, subtask_id)
               )
@@ -212,7 +216,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')),
                 payload_sha256 TEXT NOT NULL,
                 preplan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_2")
+              },
                 UNIQUE(normalized_issue_key, repository_identity)
               )
               """.trimIndent(),
@@ -237,7 +243,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.1', '0.2')),
                 payload_sha256 TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_2")
+              },
                 PRIMARY KEY(parent_goal_workflow_id, subtask_id),
                 UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
                 UNIQUE(parent_goal_workflow_id, manifest_order),
@@ -301,7 +309,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.2'),
                 payload_sha256 TEXT NOT NULL,
                 preplan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_strict_0_2")
+              },
                 UNIQUE(normalized_issue_key, repository_identity)
               )
               """.trimIndent(),
@@ -326,7 +336,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.2'),
                 payload_sha256 TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_strict_0_2")
+              },
                 PRIMARY KEY(parent_goal_workflow_id, subtask_id),
                 UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
                 UNIQUE(parent_goal_workflow_id, manifest_order),
@@ -386,7 +398,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.2', '0.3')),
                 payload_sha256 TEXT NOT NULL,
                 preplan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_3")
+              },
                 UNIQUE(normalized_issue_key, repository_identity)
               )
               """.trimIndent(),
@@ -411,7 +425,9 @@ internal object DatabaseMigrations {
                 phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version IN ('0.2', '0.3')),
                 payload_sha256 TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+                connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_3")
+              },
                 PRIMARY KEY(parent_goal_workflow_id, subtask_id),
                 UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
                 UNIQUE(parent_goal_workflow_id, manifest_order),
@@ -588,6 +604,16 @@ internal object DatabaseMigrations {
     require(versions == versions.sorted()) { "Database migrations must be ordered by version." }
     require(versions.toSet().size == versions.size) { "Database migration versions must be unique." }
     require(names.toSet().size == names.size) { "Database migration names must be unique." }
+  }
+
+  private fun Connection.optionalRepairEvidenceColumn(table: String): String {
+    val hasRepairEvidence = prepareStatement(
+      "SELECT 1 FROM pragma_table_info(?) WHERE name = 'repair_evidence_json'",
+    ).use { statement ->
+      statement.setString(1, table)
+      statement.executeQuery().use { rows -> rows.next() }
+    }
+    return if (hasRepairEvidence) ",\n                repair_evidence_json TEXT" else ""
   }
 }
 

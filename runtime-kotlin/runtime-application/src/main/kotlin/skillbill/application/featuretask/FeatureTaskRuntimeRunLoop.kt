@@ -517,7 +517,13 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     if (reentry != null) pendingReentry = null
     state.recordCompleted(
-      FeatureTaskRuntimePhaseOutput(phaseId, iteration, normalizedOutput.canonicalJson, normalizedOutput, repairEvidence),
+      FeatureTaskRuntimePhaseOutput(
+        phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        repairEvidence,
+      ),
     )
   }
 
@@ -1747,36 +1753,27 @@ internal class FeatureTaskRuntimeRunLoop(
     return GoalReviewRunPreparation.Blocked
   }
 
+  private class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
+
   private fun settleCarriedForwardGoalReview(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome {
-    val output = runCatching {
-      goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
-    }.getOrElse { error ->
-      return blockAndPersist(
-        run,
-        state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
-          error.message.orEmpty(),
-        observability,
-      )
-    }
-      ?: return blockAndPersist(
-        run,
-        state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is missing.",
-        observability,
-      )
     val acceptedOutput = runCatching {
+      val output = goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+        ?: throw MissingCarriedForwardGoalReviewResultException()
       outputValidator.validatePhaseOutput(output, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
     }.getOrElse { error ->
+      val detail = if (error is MissingCarriedForwardGoalReviewResultException) {
+        "missing."
+      } else {
+        "malformed: ${error.message.orEmpty()}"
+      }
       return blockAndPersist(
         run,
         state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
-          error.message.orEmpty(),
+        "Goal-subtask review pass budget is exhausted but its durable raw review result is $detail",
         observability,
       )
     }
@@ -1792,22 +1789,11 @@ internal class FeatureTaskRuntimeRunLoop(
       repairEvidence = acceptedOutput.repairEvidence,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    val persisted = runCatching {
-      recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
-    }.getOrElse { error ->
+    carriedForwardReviewPersistenceFailure(phaseState, run)?.let { failure ->
       return blockAndPersist(
         run,
         iteration,
-        "Carried-forward goal review could not atomically persist its canonical result: " +
-          error.message.orEmpty(),
-        observability,
-      )
-    }
-    if (!persisted) {
-      return blockAndPersist(
-        run,
-        iteration,
-        "Carried-forward goal review could not atomically persist its canonical result.",
+        failure,
         observability,
       )
     }
@@ -1820,6 +1806,19 @@ internal class FeatureTaskRuntimeRunLoop(
         normalizedOutput,
         acceptedOutput.repairEvidence,
       ),
+    )
+  }
+
+  private fun carriedForwardReviewPersistenceFailure(
+    phaseState: FeatureTaskRuntimePhaseStateRequest,
+    run: PhaseRun,
+  ): String? {
+    val prefix = "Carried-forward goal review could not atomically persist its canonical result."
+    return runCatching {
+      recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    }.fold(
+      onSuccess = { persisted -> if (persisted) null else prefix },
+      onFailure = { error -> "$prefix ${error.message.orEmpty()}" },
     )
   }
 

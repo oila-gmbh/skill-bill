@@ -26,8 +26,14 @@ interface FeatureTaskRuntimePhaseOutputValidator {
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
-      code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
+      code = if (error.failureKind == skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED) {
+        FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED
+      } else {
+        FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode)
+      },
       reason = error.payloadFreeReason ?: "Phase output was rejected by the phase-output contract.",
+      diagnosticReason = error.reason,
+      payloadFreeReason = error.payloadFreeReason,
     )
   }
 

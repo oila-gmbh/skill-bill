@@ -1,3 +1,13 @@
+## [2026-08-01] SKILL-153 phase-output structural repair (subtask 3)
+Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-ports,runtime-core}, orchestration/contracts, scripts, .feature-specs/SKILL-153-phase-output-structural-repair
+- Planning and feature-task handoffs now validate repaired phase output through one producer-side projection gate, persisting accepted repair evidence atomically with the accepted result and transition while keeping malformed raw payloads out of normal outputs.
+- Goal-planning preparation and sweep paths share typed validation, persistence, retry, duplicate-submission, crash/resume, and diagnostic-redaction behavior; schema and migration seams remain contract-backed. reusable
+- Pattern: keep structural repair producer-side and reuse attempt, artifact, diagnostic, and transition persistence protocols so consumers receive only validated bounded projections. reusable
+- Provider-neutral runtime behavior remains unchanged; no provider-specific conditional was added to shared validation or workflow logic.
+- Known limitation: repair remains bounded and non-semantic; rejected raw payloads stay confined to local diagnostics.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-07-31] SKILL-152 producer evidence survives a review generation restart (subtask 2)
 Areas: runtime-kotlin/runtime-{infra-sqlite,ports,application,domain,contracts,infra-fs,core}, orchestration/contracts
 - Two mechanisms disagreed about what an attempt number meant: `resetInvalidatedReviewGeneration` rewinds the review and implement-fix attempt watermarks so a restarted generation is not blocked as fix-loop exhausted before launch, while `producer_output_evidence` was keyed `(workflow_id, phase_id, attempt)` and only ever swept by retention. The counter rewound, the evidence did not, and the next accepted review output failed its read-back equality check with `Conflict` at an uncaught seam that killed the run. The fix is the key, not the guard.

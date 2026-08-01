@@ -18,9 +18,9 @@ import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 
 @Inject
 class GoalPlanningPreparationCheckpoint(
@@ -209,7 +209,7 @@ internal class GoalPlanningPreparationProjectionGate(
     return checkpoint.copy(
       preplanPayload = canonical,
       payloadSha256 = sha256HexUtf8(canonical),
-      repairEvidence = repairEvidenceFor(
+      repairEvidence = planningRepairEvidenceFor(
         phaseId = "preplan",
         sourcePayload = checkpoint.preplanPayload,
         acceptedEvidence = accepted.repairEvidence,
@@ -226,7 +226,7 @@ internal class GoalPlanningPreparationProjectionGate(
     return checkpoint.copy(
       planPayload = canonical,
       payloadSha256 = sha256HexUtf8(canonical),
-      repairEvidence = repairEvidenceFor(
+      repairEvidence = planningRepairEvidenceFor(
         phaseId = "plan",
         sourcePayload = checkpoint.planPayload,
         acceptedEvidence = accepted.repairEvidence,
@@ -234,25 +234,6 @@ internal class GoalPlanningPreparationProjectionGate(
         sourceLabel = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
       ),
     )
-  }
-
-  private fun repairEvidenceFor(
-    phaseId: String,
-    sourcePayload: String,
-    acceptedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
-    storedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
-    sourceLabel: String,
-  ): FeatureTaskRuntimePhaseOutputRepairEvidence? {
-    acceptedEvidence?.let { evidence ->
-      if (evidence.originalDigest != sha256HexUtf8(sourcePayload)) {
-        throw InvalidGoalPlanningPreparationSchemaError(
-          sourceLabel,
-          "$phaseId.repair_evidence.original_digest",
-          "repair evidence does not describe the checkpoint input bytes",
-        )
-      }
-    }
-    return acceptedEvidence ?: storedEvidence
   }
 
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
@@ -275,23 +256,15 @@ internal class GoalPlanningPreparationProjectionGate(
    * consumer — and the in-band recovery for all of them is the same regeneration. Throwing instead would
    * block every existing goal on the first contract bump with no path that can repair the record.
    */
-  fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? = rejectionOf {
+  fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? = planningRecordRejection {
     val (_, envelope) = sharedPreplanEnvelope(checkpoint)
     producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
   }
 
   /** Null when the stored subtask plan satisfies the projection gate; the bounded reason otherwise. */
-  fun subtaskPlanRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? = rejectionOf {
+  fun subtaskPlanRejection(checkpoint: GoalSubtaskPlanCheckpoint): String? = planningRecordRejection {
     val (_, envelope) = subtaskPlanEnvelope(checkpoint)
     producerProjectionGateReason("plan", envelope, planningProjectionValidator)
-  }
-
-  private fun rejectionOf(compute: () -> String?): String? = try {
-    compute()
-  } catch (error: InvalidGoalPlanningPreparationSchemaError) {
-    "stored record failed its durable contract: ${error.message.orEmpty()}"
-  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    "stored record failed its durable contract: ${error.message.orEmpty()}"
   }
 
   private fun sharedPreplanEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Pair<String, Map<String, Any?>> {
@@ -300,7 +273,7 @@ internal class GoalPlanningPreparationProjectionGate(
     val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
       .requireAcceptedOutput("preplan")
       .normalizedOutput
-    requireHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
+    requirePlanningPayloadHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
     return label to normalized.envelope
   }
 
@@ -310,18 +283,8 @@ internal class GoalPlanningPreparationProjectionGate(
     val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
       .requireAcceptedOutput("plan")
       .normalizedOutput
-    requireHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
+    requirePlanningPayloadHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
     return label to normalized.envelope
-  }
-
-  private fun requireHash(expected: String, payload: String, label: String) {
-    if (sha256HexUtf8(payload) != expected) {
-      throw InvalidGoalPlanningPreparationSchemaError(
-        label,
-        "payload_sha256",
-        "payload_sha256 does not match the exact UTF-8 payload bytes",
-      )
-    }
   }
 
   // A stored record the gate rejects — or one whose bounded envelope no longer parses at all — is
@@ -330,6 +293,43 @@ internal class GoalPlanningPreparationProjectionGate(
   fun sharedPreplanIsRegenerable(stored: SharedGoalPreplanCheckpoint): Boolean = sharedPreplanRejection(stored) != null
 
   fun subtaskPlanIsRegenerable(stored: GoalSubtaskPlanCheckpoint): Boolean = subtaskPlanRejection(stored) != null
+}
+
+private fun requirePlanningPayloadHash(expected: String, payload: String, label: String) {
+  if (sha256HexUtf8(payload) != expected) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      label,
+      "payload_sha256",
+      "payload_sha256 does not match the exact UTF-8 payload bytes",
+    )
+  }
+}
+
+private fun planningRepairEvidenceFor(
+  phaseId: String,
+  sourcePayload: String,
+  acceptedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  storedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  sourceLabel: String,
+): FeatureTaskRuntimePhaseOutputRepairEvidence? {
+  acceptedEvidence?.let { evidence ->
+    if (evidence.originalDigest != sha256HexUtf8(sourcePayload)) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        sourceLabel,
+        "$phaseId.repair_evidence.original_digest",
+        "repair evidence does not describe the checkpoint input bytes",
+      )
+    }
+  }
+  return acceptedEvidence ?: storedEvidence
+}
+
+private fun planningRecordRejection(compute: () -> String?): String? = try {
+  compute()
+} catch (error: InvalidGoalPlanningPreparationSchemaError) {
+  "stored record failed its durable contract: ${error.message.orEmpty()}"
+} catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+  "stored record failed its durable contract: ${error.message.orEmpty()}"
 }
 
 private fun Map<String, Any?>.requirePrepared(label: String) {

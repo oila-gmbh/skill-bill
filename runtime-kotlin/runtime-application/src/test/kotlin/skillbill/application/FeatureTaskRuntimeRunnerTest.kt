@@ -116,8 +116,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -5079,6 +5079,8 @@ internal object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
 }
 
 private object RepairingImplementOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
+
   override fun validatePhaseOutput(
     phaseOutputText: String,
     sourceLabel: String,
@@ -5088,7 +5090,7 @@ private object RepairingImplementOutputValidator : FeatureTaskRuntimePhaseOutput
     return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
       normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(
         canonicalJson = canonical,
-        envelope = normalizedOutput(canonical),
+        envelope = normalizePhaseOutput(canonical, sourceLabel).envelope,
       ),
       evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
         format = FeatureTaskRuntimePhaseOutputFormat.JSON,

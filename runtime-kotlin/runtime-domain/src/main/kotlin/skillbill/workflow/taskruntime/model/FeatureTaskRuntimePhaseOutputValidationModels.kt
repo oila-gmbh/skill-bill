@@ -17,9 +17,8 @@ enum class FeatureTaskRuntimePhaseOutputFormat(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFormat =
-      entries.firstOrNull { it.wireValue == value }
-        ?: throw IllegalArgumentException("Unsupported phase-output repair format '$value'.")
+    fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFormat = entries.firstOrNull { it.wireValue == value }
+      ?: throw IllegalArgumentException("Unsupported phase-output repair format '$value'.")
   }
 }
 
@@ -101,27 +100,9 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
     }
   }
 
-  private companion object {
-    val SHA256_HEX = Regex("[0-9a-f]{64}")
-  }
-
-  @OpenBoundaryMap("Typed phase-output repair evidence at the private workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "contract_version" to contractVersion,
-    "validator_version" to validatorVersion,
-    "format" to format.wireValue,
-    "original_digest" to originalDigest,
-    "repaired_digest" to repairedDigest,
-    "operation" to operation.wireValue,
-    "source_location" to linkedMapOf(
-      "source_label" to sourceLocation.sourceLabel,
-      "offset" to sourceLocation.offset,
-      "line" to sourceLocation.line,
-      "column" to sourceLocation.column,
-    ),
-  )
-
   companion object {
+    private val SHA256_HEX = Regex("[0-9a-f]{64}")
+
     @OpenBoundaryMap("Typed phase-output repair evidence decoded from a private workflow artifact")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseOutputRepairEvidence {
       val expectedFields = setOf(
@@ -133,13 +114,14 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
         "operation",
         "source_location",
       )
-      if (raw.keys != expectedFields) {
-        throw IllegalArgumentException("Phase-output repair evidence contains unsupported or missing fields.")
+      require(raw.keys == expectedFields) {
+        "Phase-output repair evidence contains unsupported or missing fields."
       }
-      val location = raw["source_location"] as? Map<*, *>
-        ?: throw IllegalArgumentException("Phase-output repair evidence source_location must be an object.")
-      if (location.keys != setOf("source_label", "offset", "line", "column")) {
-        throw IllegalArgumentException("Phase-output repair evidence source_location contains unsupported fields.")
+      val location = requireNotNull(raw["source_location"] as? Map<*, *>) {
+        "Phase-output repair evidence source_location must be an object."
+      }
+      require(location.keys == setOf("source_label", "offset", "line", "column")) {
+        "Phase-output repair evidence source_location contains unsupported fields."
       }
       return FeatureTaskRuntimePhaseOutputRepairEvidence(
         contractVersion = raw.requireString("contract_version"),
@@ -157,11 +139,26 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
       )
     }
   }
+
+  @OpenBoundaryMap("Typed phase-output repair evidence at the private workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to contractVersion,
+    "validator_version" to validatorVersion,
+    "format" to format.wireValue,
+    "original_digest" to originalDigest,
+    "repaired_digest" to repairedDigest,
+    "operation" to operation.wireValue,
+    "source_location" to linkedMapOf(
+      "source_label" to sourceLocation.sourceLabel,
+      "offset" to sourceLocation.offset,
+      "line" to sourceLocation.line,
+      "column" to sourceLocation.column,
+    ),
+  )
 }
 
-private fun Map<*, *>.requireString(field: String): String =
-  this[field] as? String
-    ?: throw IllegalArgumentException("Phase-output repair evidence field '$field' must be a string.")
+private fun Map<*, *>.requireString(field: String): String = this[field] as? String
+  ?: throw IllegalArgumentException("Phase-output repair evidence field '$field' must be a string.")
 
 private fun Map<*, *>.requireInt(field: String): Int = when (val value = this[field]) {
   is Int -> value
@@ -191,6 +188,8 @@ sealed interface FeatureTaskRuntimePhaseOutputValidationResult {
   data class Rejected(
     val code: FeatureTaskRuntimePhaseOutputFailureCode,
     val reason: String,
+    val diagnosticReason: String = reason,
+    val payloadFreeReason: String? = reason,
     val sourceLocation: FeatureTaskRuntimePhaseOutputSourceLocation? = null,
   ) : FeatureTaskRuntimePhaseOutputValidationResult {
     override val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null
@@ -226,8 +225,8 @@ fun FeatureTaskRuntimePhaseOutputValidationResult.requireAccepted(
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair -> normalizedOutput
   is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
     sourceLabel = sourceLabel,
-    reason = reason,
-    payloadFreeReason = reason,
+    reason = diagnosticReason,
+    payloadFreeReason = payloadFreeReason,
     failureKind = when (code) {
       FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED,
       FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,

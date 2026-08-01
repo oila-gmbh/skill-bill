@@ -44,6 +44,8 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
         FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
           code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
           reason = error.payloadFreeReason ?: "Phase output failed the phase-specific schema contract.",
+          diagnosticReason = error.reason,
+          payloadFreeReason = error.payloadFreeReason,
         )
       }
     }

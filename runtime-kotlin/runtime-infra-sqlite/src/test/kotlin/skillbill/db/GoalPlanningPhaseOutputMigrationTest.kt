@@ -16,6 +16,10 @@ class GoalPlanningPhaseOutputMigrationTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       seedPlanningRow(connection, phaseOutputContractVersion = "0.2")
+      connection.createStatement().use { statement ->
+        statement.execute("UPDATE goal_shared_preplans SET repair_evidence_json = 'repair-evidence'")
+        statement.execute("UPDATE goal_subtask_plans SET repair_evidence_json = 'repair-evidence'")
+      }
       connection.createStatement().use { it.execute("DELETE FROM schema_migrations WHERE version = 11") }
 
       DatabaseMigrations.apply(connection)
@@ -23,6 +27,8 @@ class GoalPlanningPhaseOutputMigrationTest {
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11"))
+      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_shared_preplans"))
+      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_subtask_plans"))
       assertFailsWith<java.sql.SQLException> {
         seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = "wfl-incompatible")
       }
@@ -94,6 +100,13 @@ class GoalPlanningPhaseOutputMigrationTest {
     statement.executeQuery(sql).use { rows ->
       rows.next()
       rows.getInt(1)
+    }
+  }
+
+  private fun textScalar(connection: Connection, sql: String): String = connection.createStatement().use { statement ->
+    statement.executeQuery(sql).use { rows ->
+      rows.next()
+      rows.getString(1)
     }
   }
 

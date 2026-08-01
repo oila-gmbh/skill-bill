@@ -349,7 +349,9 @@ class DefaultGoalPlanningSweep(
         return GoalPlanningPhaseProduction.Captured(
           canonicalPayload,
           accepted.normalizedOutput,
-          accepted.repairEvidence ?: captured.repairEvidence.takeIf { payload == captured.payload },
+          // Enrichment revalidates the final payload, but it must not discard evidence captured
+          // while structurally repairing the child output before enrichment.
+          accepted.repairEvidence ?: captured.repairEvidence,
         )
       }
       recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)

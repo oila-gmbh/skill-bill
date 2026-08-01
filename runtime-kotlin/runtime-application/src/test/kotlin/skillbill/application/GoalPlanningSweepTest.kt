@@ -45,7 +45,13 @@ import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -871,6 +877,27 @@ class GoalPlanningSweepTest {
       "the preplan fix loop reuses the one runtime cap",
     )
   }
+
+  @Test
+  fun `preplan repair evidence survives enrichment and checkpoint persistence`() {
+    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+      originalDigest = sha256HexUtf8(RAW_REPAIRED_PREPLAN),
+      repairedDigest = sha256HexUtf8(REPAIRED_PREPLAN_PAYLOAD),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("preplan", 0, 1, 1),
+    )
+    val harness = sweepHarness(outputValidator = RepairingPreplanOutputValidator(evidence)) { phase, _, _ ->
+      if (phase == "preplan") launchFacts(stdout = RAW_REPAIRED_PREPLAN) else validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val shared = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertEquals(evidence, shared.repairEvidence)
+    assertNotNull(harness.recordFor(1), "the repaired shared preplan must reach the plan checkpoint")
+  }
 }
 
 private fun emptyTestObligationsPlanPayload(): String =
@@ -879,6 +906,49 @@ private fun emptyTestObligationsPlanPayload(): String =
     """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{""" +
     """"task_id":"task-1","description":"Fixture task.","criterion_refs":["AC-001"],""" +
     """"test_obligations":[]}],"validation_strategy":["Focused runtime tests."]}}"""
+
+private const val RAW_REPAIRED_PREPLAN = "raw preplan repaired before enrichment"
+
+private const val REPAIRED_PREPLAN_PAYLOAD =
+  """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan",""" +
+    """"status":"completed","summary":"s","produced_outputs":{"projection_kind":"preplanning_digest",""" +
+    """"contract_version":"0.1","affected_boundaries":["runtime-application/workflow"],""" +
+    """"risks":["fixture risk"],"rollout":{"flag_required":false,"notes":"fixture"},""" +
+    """"validation_strategy":["Focused runtime tests"]}}"""
+
+private class RepairingPreplanOutputValidator(
+  private val evidence: FeatureTaskRuntimePhaseOutputRepairEvidence,
+) : FeatureTaskRuntimePhaseOutputValidator {
+  override fun validatePhaseOutput(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): FeatureTaskRuntimePhaseOutputValidationResult {
+    if (sourceLabel == "preplan" && phaseOutputText == RAW_REPAIRED_PREPLAN) {
+      return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
+        normalizedOutput = normalizedPlanningOutput(REPAIRED_PREPLAN_PAYLOAD),
+        evidence = evidence,
+      )
+    }
+    return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(
+      normalizedPlanningOutput(phaseOutputText),
+    )
+  }
+
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+    validatePhaseOutput(phaseOutputText, sourceLabel)
+  }
+}
+
+private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
+  val envelope = JsonSupport.parseObjectOrNull(payload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: error("fixture phase output is not an object")
+  return NormalizedFeatureTaskRuntimePhaseOutput(
+    canonicalJson = JsonSupport.mapToJsonString(envelope),
+    envelope = envelope,
+  )
+}
 
 private fun GoalPlanningPreparationRecord.withSharedPacket(
   transform: (Map<String, Any?>) -> Map<String, Any?>,
