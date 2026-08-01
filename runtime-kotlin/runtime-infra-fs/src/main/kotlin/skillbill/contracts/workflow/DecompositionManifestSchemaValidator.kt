@@ -2,10 +2,11 @@
 
 package skillbill.contracts.workflow
 
-import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.core.JsonParser
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
@@ -31,7 +32,9 @@ private val decompositionManifestLog: Logger =
 object DecompositionManifestSchemaValidator {
   private val schema: JsonSchema by lazy { loadDecompositionManifestSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
-  private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
+  private val yamlMapper: YAMLMapper by lazy {
+    YAMLMapper(YAMLFactory().apply { enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION) })
+  }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
 
   fun validate(manifest: Map<String, Any?>, sourceLabel: String) {
@@ -45,6 +48,7 @@ object DecompositionManifestSchemaValidator {
     throw InvalidDecompositionManifestSchemaError(
       sourceLabel = sourceLabel,
       reason = formatValidationReason(errors.sortedWith(violationOrdering), instance),
+      failureCode = "schema_invalid",
     )
   }
 
@@ -58,11 +62,23 @@ object DecompositionManifestSchemaValidator {
   private fun readYamlObjectNode(yamlText: String, sourceLabel: String): JsonNode {
     val node =
       try {
-        yamlMapper.readTree(yamlText)
-      } catch (error: JsonProcessingException) {
+        yamlMapper.factory.createParser(yamlText).use { parser ->
+          val parsed = yamlMapper.readTree<JsonNode>(parser)
+          if (parser.nextToken() != null) {
+            throw IllegalArgumentException("YAML contains trailing content or multiple documents.")
+          }
+          parsed
+        }
+      } catch (error: Exception) {
+        val duplicate = error.message.orEmpty().contains("duplicate", ignoreCase = true)
         throw InvalidDecompositionManifestSchemaError(
           sourceLabel = sourceLabel,
-          reason = "YAML is malformed: ${error.originalMessage.orEmpty()}",
+          reason = if (duplicate) {
+            "YAML contains a duplicate key; duplicate keys are never repaired."
+          } else {
+            "YAML is malformed: ${error.message.orEmpty()}"
+          },
+          failureCode = if (duplicate) "duplicate_key" else "malformed",
           cause = error,
         )
       }
@@ -70,6 +86,7 @@ object DecompositionManifestSchemaValidator {
       throw InvalidDecompositionManifestSchemaError(
         sourceLabel = sourceLabel,
         reason = "<root> must be an object.",
+        failureCode = "root_not_object",
       )
     }
     return node
@@ -81,6 +98,7 @@ object DecompositionManifestSchemaValidator {
     throw InvalidDecompositionManifestSchemaError(
       sourceLabel = sourceLabel,
       reason = "YAML root object cannot be converted to a string-keyed map: ${error.message.orEmpty()}",
+      failureCode = "invalid_shape",
       cause = error,
     )
   }

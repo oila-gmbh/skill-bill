@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.defaultFeatureBranch
+import skillbill.application.decomposition.loadValidatedDecompositionManifest
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
@@ -89,6 +90,7 @@ class FeatureSpecPreparationWriter(
     fileStore.writeTextAtomically(parentSpecPath, parentSpecText)
     subtaskRecords.forEach { fileStore.writeTextAtomically(it.path, it.text) }
     fileStore.writeTextAtomically(preparedManifest.manifestPath, preparedManifest.yaml)
+    loadValidatedDecompositionManifest(preparedManifest.manifestPath, fileStore, decompositionManifestValidator)
     return FeatureSpecWriteResult(
       mode = request.decision.mode,
       parentSpecPath = parentSpecRelativePath,

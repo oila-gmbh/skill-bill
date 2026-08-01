@@ -4,12 +4,15 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.DecompositionManifestValidator
+import skillbill.ports.workflow.DecompositionManifestFileStore
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -198,6 +201,34 @@ class FeatureSpecPreparationWriterTest {
   }
 
   @Test
+  fun `manifest validation failure occurs before the first bundle write`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-manifest-prevalidate")
+    val store = CountingManifestFileStore()
+    val rejectingValidator = object : DecompositionManifestValidator {
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit =
+        throw InvalidDecompositionManifestSchemaError(sourceLabel, "typed manifest rejection", "schema_invalid")
+
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+        throw InvalidDecompositionManifestSchemaError(sourceLabel, "typed YAML rejection", "schema_invalid")
+    }
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      FeatureSpecPreparationWriter(rejectingValidator, store).write(
+        repoRoot,
+        FeatureSpecWriteRequest(
+          decision = decomposedDecision(),
+          featureName = "manifest-prevalidated",
+          parentSpecOverview = "Manifest validation must precede artifact writes.",
+          validationStrategy = "bill-code-check",
+          subtasks = listOf(singleSubtask()),
+        ),
+      )
+    }
+
+    assertEquals(0, store.writeCount)
+  }
+
+  @Test
   fun `rewriting prepared artifacts keeps runtime status only in the manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-status")
     val request = FeatureSpecWriteRequest(
@@ -260,4 +291,13 @@ class FeatureSpecPreparationWriterTest {
     nonGoals = listOf("No skill wiring in this subtask."),
     mode = FeatureSpecPreparationMode.DECOMPOSED,
   )
+}
+
+private class CountingManifestFileStore : DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+  var writeCount: Int = 0
+
+  override fun writeTextAtomically(target: java.nio.file.Path, content: String) {
+    writeCount += 1
+    TestDecompositionManifestFileStore.writeTextAtomically(target, content)
+  }
 }

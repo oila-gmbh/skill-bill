@@ -112,6 +112,7 @@ class InvalidProducerOutputEvidenceSchemaError(message: String) :
 class InvalidDecompositionManifestSchemaError(
   val sourceLabel: String,
   val reason: String,
+  val failureCode: String? = null,
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Decomposition manifest '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",

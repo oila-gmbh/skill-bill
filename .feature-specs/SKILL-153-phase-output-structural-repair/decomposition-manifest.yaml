@@ -9,18 +9,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-153-phase-output-structural-repair"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "resume"
 subtasks:
 - id: 1
   name: "structural-repair-contract-and-engine"
   spec_path: ".feature-specs/SKILL-153-phase-output-structural-repair/spec_subtask_1_structural_repair_contract.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260801-070424-elrj"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -31,7 +31,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260801-083914-s46b"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

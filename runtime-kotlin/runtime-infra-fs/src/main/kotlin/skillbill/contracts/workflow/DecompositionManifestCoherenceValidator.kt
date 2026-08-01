@@ -8,24 +8,43 @@ internal object DecompositionManifestCoherenceValidator {
   fun validate(manifest: Map<String, Any?>, sourceLabel: String) {
     val stackBranches = (manifest["stack_branches"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
     val subtasks = (manifest["subtasks"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
-    val subtaskIds = validateSubtasks(subtasks, sourceLabel)
+    val specSource = manifest["spec_source"]?.toString() ?: "local"
+    val subtaskIds = validateSubtasks(subtasks, sourceLabel, specSource)
     validateExecutionModel(manifest, subtasks, subtaskIds, stackBranches, sourceLabel)
     validateCurrentIntent(manifest, subtaskIds, sourceLabel)
   }
 
-  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String): Set<Int> {
+  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String, specSource: String): Set<Int> {
     val subtaskIds = mutableSetOf<Int>()
     val specPaths = mutableSetOf<String>()
+    var previousId = 0
     subtasks.forEachIndexed { index, subtask ->
       val id = subtask["id"].asExactInt(sourceLabel, "subtasks[$index].id")
       if (!subtaskIds.add(id)) {
         coherenceFailure(sourceLabel, "subtasks[$index].id", "Duplicate subtask id '$id'.")
       }
+      if (id <= previousId) {
+        coherenceFailure(
+          sourceLabel,
+          "subtasks[$index].id",
+          "Subtask ids must be unique and strictly ascending in execution order.",
+        )
+      }
+      previousId = id
       val specPath = subtask["spec_path"]?.toString().orEmpty()
       if (!specPaths.add(specPath)) {
         coherenceFailure(sourceLabel, "subtasks[$index].spec_path", "Duplicate subtask spec_path '$specPath'.")
       }
       validateDependencies(subtask, subtaskIds, id, index, sourceLabel)
+      if (specSource == "linear" &&
+        subtask["linear_issue_id"]?.toString().orEmpty().isBlank()
+      ) {
+        coherenceFailure(
+          sourceLabel,
+          "subtasks[$index].linear_issue_id",
+          "linear spec_source subtasks must declare linear_issue_id.",
+        )
+      }
     }
     return subtaskIds
   }
@@ -132,7 +151,11 @@ internal object DecompositionManifestCoherenceValidator {
     fieldPath: String,
     reason: String,
   ): InvalidDecompositionManifestSchemaError =
-    InvalidDecompositionManifestSchemaError(sourceLabel = sourceLabel, reason = "$fieldPath: $reason")
+    InvalidDecompositionManifestSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "$fieldPath: $reason",
+      failureCode = "coherence_invalid",
+    )
 
   private fun coherenceFailure(sourceLabel: String, fieldPath: String, reason: String): Nothing =
     throw coherenceError(sourceLabel, fieldPath, reason)
