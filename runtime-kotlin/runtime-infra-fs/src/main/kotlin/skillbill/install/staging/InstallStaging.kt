@@ -7,8 +7,7 @@ import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.SkillContentIdentity
-import skillbill.install.identity.installedSkillContentIdentity
-import skillbill.install.identity.requireMatchingSkillContentIdentity
+import skillbill.install.identity.routeInstalledSkillBody
 import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
@@ -219,7 +218,9 @@ internal fun stageInstalledSkill(
   if (Files.isDirectory(finalStagingDir)) {
     val marker = finalStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
     if (Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
-      requireMatchingSkillContentIdentity(contentIdentity, installedSkillContentIdentity(finalStagingDir))
+      routeInstalledSkillBody(contentIdentity.compact(), finalStagingDir) {
+        Files.readString(finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME), StandardCharsets.UTF_8)
+      }
     }
   }
 

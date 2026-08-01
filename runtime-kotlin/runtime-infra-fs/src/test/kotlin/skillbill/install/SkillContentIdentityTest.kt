@@ -58,4 +58,27 @@ class SkillContentIdentityTest {
     assertFalse(error.message.orEmpty().contains("One.\n"))
     assertFalse(error.message.orEmpty().contains("Two.\n"))
   }
+
+  @Test
+  fun `routing boundary accepts matching marker without loading installed body`() {
+    val root = Files.createTempDirectory("skill-content-identity-routing")
+    val source = root.resolve("bill-example").also(Files::createDirectories)
+    Files.writeString(source.resolve("content.md"), "---\nname: bill-example\ndescription: Example\n---\n\nBody.\n")
+    val staging = root.resolve("staged").also(Files::createDirectories)
+    val supplied = SkillContentIdentity.fromSource(source)
+    Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), supplied.compact())
+    Files.writeString(staging.resolve("SKILL.md"), "installed body must not be read")
+    var bodyLoads = 0
+
+    val routed = skillbill.install.identity.routeInstalledSkillBody(
+      suppliedCompactIdentity = supplied.compact(),
+      installedStagingDir = staging,
+    ) {
+      bodyLoads += 1
+      Files.readString(staging.resolve("SKILL.md"))
+    }
+
+    assertEquals(null, routed)
+    assertEquals(0, bodyLoads)
+  }
 }

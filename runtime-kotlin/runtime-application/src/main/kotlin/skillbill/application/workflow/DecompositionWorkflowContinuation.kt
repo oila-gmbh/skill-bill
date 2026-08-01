@@ -113,25 +113,15 @@ internal class DecompositionWorkflowContinuation(
             mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
           )
         },
-        artifactsPatch = if (existing != null) {
-          mapOf(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              validator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          )
-        } else {
-          mapOf(
-            "plan" to mapOf("mode" to "decompose"),
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-              manifest,
-              validator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            ),
-          )
-        },
+        artifactsPatch = mapOf(
+          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
+            manifest,
+            validator,
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+          ),
+        ),
         sessionId = base.sessionId.orEmpty(),
+        replaceArtifacts = true,
       ),
     )
     WorkflowFamily.IMPLEMENT.saveRecord(

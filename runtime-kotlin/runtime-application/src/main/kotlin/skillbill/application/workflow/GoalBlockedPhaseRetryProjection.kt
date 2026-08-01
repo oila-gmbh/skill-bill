@@ -58,6 +58,7 @@ internal fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
       ),
     ),
     sessionId = parent.sessionId.orEmpty(),
+    replaceArtifacts = true,
   )
   val updatedParent = updateRecord(WorkflowFamily.IMPLEMENT.definition, parent, parentInput)
   WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updatedParent)

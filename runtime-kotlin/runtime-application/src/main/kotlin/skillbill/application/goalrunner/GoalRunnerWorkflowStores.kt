@@ -390,6 +390,7 @@ class WorkflowGoalRunnerManifestStore(
         decompositionManifestValidator,
       )?.toSnapshot()
       ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    migrateLegacyControls(unitOfWork, existingParent)
     val parentUpdated = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       existingParent,
@@ -400,10 +401,7 @@ class WorkflowGoalRunnerManifestStore(
         // Child planning, implementation, audit, review, diagnostics, and raw output stay on
         // the child workflow. The parent projection carries only its manifest metadata and the
         // terminal subtask fields represented by {status, commit_sha, workflow_id}.
-        artifactsPatch = thinParentProjectionArtifacts(
-          manifest = state.manifest,
-          existingArtifacts = decodeArtifacts(existingParent.artifactsJson),
-        ),
+        artifactsPatch = thinParentProjectionArtifacts(state.manifest),
         sessionId = existingParent.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
@@ -475,8 +473,9 @@ class WorkflowGoalRunnerManifestStore(
     parentWorkflowId: String,
     dbPathOverride: String?,
   ): skillbill.workflow.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
-    reviewModeFromArtifacts(decodeArtifacts(record.artifactsJson))
+    unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
+      ?: WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
   }
 
   override fun persistReviewMode(
@@ -486,30 +485,26 @@ class WorkflowGoalRunnerManifestStore(
   ): skillbill.workflow.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-    val existing = reviewModeFromArtifacts(decodeArtifacts(record.artifactsJson))
+    migrateLegacyControls(unitOfWork, record)
+    val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
     if (existing != null) {
+      rewriteParentProjectionInTransaction(unitOfWork, record)
       existing
     } else {
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        record,
-        WorkflowUpdateInput(
-          workflowStatus = record.workflowStatus,
-          currentStepId = record.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(GOAL_REVIEW_POLICY_ARTIFACT_KEY to mapOf("code_review_mode" to mode.wireValue)),
-          sessionId = record.sessionId.orEmpty(),
-        ),
+      unitOfWork.goalRunnerControls.persistReviewPolicy(
+        parentWorkflowId,
+        GoalRunnerReviewPolicy(codeReviewMode = mode),
       )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+      rewriteParentProjectionInTransaction(unitOfWork, record)
       mode
     }
   }
 
   override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
     database.read(dbPathOverride) { unitOfWork ->
-      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read null
-      reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
+      unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
+        ?: WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+          ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
     }
 
   override fun persistReviewPolicy(
@@ -519,39 +514,14 @@ class WorkflowGoalRunnerManifestStore(
   ): GoalRunnerReviewPolicy = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-    val existing = reviewPolicyFromArtifacts(decodeArtifacts(record.artifactsJson))
+    migrateLegacyControls(unitOfWork, record)
+    val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
     if (existing == policy) {
+      rewriteParentProjectionInTransaction(unitOfWork, record)
       existing
     } else {
-      val updated = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        record,
-        WorkflowUpdateInput(
-          workflowStatus = record.workflowStatus,
-          currentStepId = record.currentStepId,
-          stepUpdates = null,
-          artifactsPatch = mapOf(
-            GOAL_REVIEW_POLICY_ARTIFACT_KEY to buildMap {
-              put("code_review_mode", policy.codeReviewMode.wireValue)
-              policy.parallelReviewAgent?.let { put("parallel_review_agent", it) }
-              if (policy.agentAddonSelection.entries.isNotEmpty()) {
-                put(
-                  "agent_addon_selection",
-                  policy.agentAddonSelection.entries.map { entry ->
-                    linkedMapOf(
-                      "slug" to entry.slug,
-                      "source_identity" to entry.sourceIdentity,
-                      "content_sha256" to entry.contentSha256,
-                    )
-                  },
-                )
-              }
-            },
-          ),
-          sessionId = record.sessionId.orEmpty(),
-        ),
-      )
-      WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+      unitOfWork.goalRunnerControls.persistReviewPolicy(parentWorkflowId, policy)
+      rewriteParentProjectionInTransaction(unitOfWork, record)
       policy
     }
   }
@@ -559,14 +529,27 @@ class WorkflowGoalRunnerManifestStore(
   override fun outOfBandAcceptances(
     parentWorkflowId: String,
     dbPathOverride: String?,
-  ): Map<Int, GoalRunnerOutOfBandAcceptance> = readOutOfBandAcceptances(database, parentWorkflowId, dbPathOverride)
+  ): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
+    unitOfWork.goalRunnerControls.outOfBandAcceptances(parentWorkflowId).ifEmpty {
+      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?.let { record -> outOfBandAcceptancesFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
+        .orEmpty()
+    }
+  }
 
   override fun persistOutOfBandAcceptance(
     parentWorkflowId: String,
     acceptance: GoalRunnerOutOfBandAcceptance,
     dbPathOverride: String?,
   ): GoalRunnerOutOfBandAcceptance =
-    writeOutOfBandAcceptance(database, engine, parentWorkflowId, acceptance, dbPathOverride)
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
+      migrateLegacyControls(unitOfWork, record)
+      unitOfWork.goalRunnerControls.persistOutOfBandAcceptance(parentWorkflowId, acceptance)
+      rewriteParentProjectionInTransaction(unitOfWork, record)
+      acceptance
+    }
 
   private fun saveWorkflowProjection(state: GoalRunnerManifestState, dbPathOverride: String?): SavedManifestProjection {
     return database.transaction(dbPathOverride) { unitOfWork -> saveWorkflowProjectionInTransaction(unitOfWork, state) }
@@ -584,6 +567,10 @@ class WorkflowGoalRunnerManifestStore(
       )?.toSnapshot()
       ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
     val existingSnapshot = existing
+    migrateLegacyControls(unitOfWork, existingSnapshot)
+    if (clearOutOfBandAcceptances) {
+      unitOfWork.goalRunnerControls.clearOutOfBandAcceptances(existingSnapshot.workflowId)
+    }
     val updated = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       existingSnapshot,
@@ -591,15 +578,7 @@ class WorkflowGoalRunnerManifestStore(
         workflowStatus = existingSnapshot.workflowStatus,
         currentStepId = existingSnapshot.currentStepId,
         stepUpdates = null,
-        artifactsPatch = buildMap {
-          putAll(
-            thinParentProjectionArtifacts(
-              manifest = state.manifest,
-              existingArtifacts = decodeArtifacts(existingSnapshot.artifactsJson),
-              clearOutOfBandAcceptances = clearOutOfBandAcceptances,
-            ),
-          )
-        },
+        artifactsPatch = thinParentProjectionArtifacts(state.manifest),
         sessionId = existingSnapshot.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
@@ -618,8 +597,6 @@ class WorkflowGoalRunnerManifestStore(
 
   private fun thinParentProjectionArtifacts(
     manifest: DecompositionManifest,
-    existingArtifacts: Map<String, Any?>,
-    clearOutOfBandAcceptances: Boolean = false,
   ): Map<String, Any?> = buildMap {
     put(
       DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
@@ -629,16 +606,43 @@ class WorkflowGoalRunnerManifestStore(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
       ),
     )
-    // These are parent-owned controls, not child planning or execution payloads. Preserve them
-    // across a thin projection rewrite so the next child receives the settled goal policy.
-    existingArtifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY]?.let { put(GOAL_REVIEW_POLICY_ARTIFACT_KEY, it) }
-    if (!clearOutOfBandAcceptances) {
-      existingArtifacts[GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY]?.let {
-        put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, it)
+  }
+
+  private fun rewriteParentProjectionInTransaction(
+    unitOfWork: UnitOfWork,
+    existing: WorkflowStateSnapshot,
+  ) {
+    val manifest = existing.decompositionRuntime(decompositionManifestValidator)
+      ?: error("Goal parent workflow '${existing.workflowId}' has no decomposition manifest.")
+    val updated = engine.updateRecord(
+      WorkflowFamily.IMPLEMENT.definition,
+      existing,
+      WorkflowUpdateInput(
+        workflowStatus = existing.workflowStatus,
+        currentStepId = existing.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = thinParentProjectionArtifacts(manifest),
+        sessionId = existing.sessionId,
+        replaceArtifacts = true,
+      ),
+    )
+    WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
+  }
+
+  private fun migrateLegacyControls(unitOfWork: UnitOfWork, existing: WorkflowStateSnapshot) {
+    val artifacts = decodeArtifacts(existing.artifactsJson)
+    if (unitOfWork.goalRunnerControls.reviewPolicy(existing.workflowId) == null) {
+      reviewPolicyFromLegacyArtifacts(artifacts)?.let {
+        unitOfWork.goalRunnerControls.persistReviewPolicy(existing.workflowId, it)
       }
-    } else {
-      put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, emptyList<Any>())
     }
+    val durableAcceptances = unitOfWork.goalRunnerControls.outOfBandAcceptances(existing.workflowId)
+    outOfBandAcceptancesFromLegacyArtifacts(artifacts)
+      .filterKeys { it !in durableAcceptances }
+      .values
+      .forEach { acceptance ->
+        unitOfWork.goalRunnerControls.persistOutOfBandAcceptance(existing.workflowId, acceptance)
+      }
   }
 
   private fun loadFromWorkflowStore(
@@ -675,6 +679,7 @@ class WorkflowGoalRunnerManifestStore(
         decompositionManifestValidator,
         manifest,
       )?.toSnapshot()
+      existing?.let { migrateLegacyControls(unitOfWork, it) }
       val base = existing ?: engine.openRecord(
         WorkflowFamily.IMPLEMENT.definition,
         generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
@@ -697,8 +702,9 @@ class WorkflowGoalRunnerManifestStore(
               mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
             )
           },
-          artifactsPatch = decompositionImportArtifactsPatch(manifest, reuse = existing != null),
+          artifactsPatch = decompositionImportArtifactsPatch(manifest),
           sessionId = base.sessionId.orEmpty(),
+          replaceArtifacts = true,
         ),
       )
       WorkflowFamily.IMPLEMENT.saveRecord(
@@ -714,13 +720,13 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
-  private fun decompositionImportArtifactsPatch(manifest: DecompositionManifest, reuse: Boolean): Map<String, Any?> {
+  private fun decompositionImportArtifactsPatch(manifest: DecompositionManifest): Map<String, Any?> {
     val runtimeEntry = DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
       manifest,
       decompositionManifestValidator,
       DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
     )
-    return if (reuse) mapOf(runtimeEntry) else mapOf("plan" to mapOf("mode" to "decompose"), runtimeEntry)
+    return mapOf(runtimeEntry)
   }
 
   // The scan walks every manifest in the repo, including archived ones written against superseded
@@ -781,62 +787,12 @@ private fun DecompositionManifest.afterIncompatibleChildDeletion(subtaskId: Int)
   },
 ).withParentStatus()
 
-private fun readOutOfBandAcceptances(
-  database: DatabaseSessionFactory,
-  parentWorkflowId: String,
-  dbPathOverride: String?,
-): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
-  val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId) ?: return@read emptyMap()
-  outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
-}
-
-private fun writeOutOfBandAcceptance(
-  database: DatabaseSessionFactory,
-  engine: WorkflowEngine,
-  parentWorkflowId: String,
-  acceptance: GoalRunnerOutOfBandAcceptance,
-  dbPathOverride: String?,
-): GoalRunnerOutOfBandAcceptance = database.transaction(dbPathOverride) { unitOfWork ->
-  val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
-    ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
-  val existing = outOfBandAcceptancesFromArtifacts(decodeArtifacts(record.artifactsJson))
-  val merged = existing + (acceptance.subtaskId to acceptance)
-  val updated = engine.updateRecord(
-    WorkflowFamily.IMPLEMENT.definition,
-    record,
-    WorkflowUpdateInput(
-      workflowStatus = record.workflowStatus,
-      currentStepId = record.currentStepId,
-      stepUpdates = null,
-      artifactsPatch = mapOf(
-        GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY to merged.values
-          .sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
-          .map(GoalRunnerOutOfBandAcceptance::toArtifactMap),
-      ),
-      sessionId = record.sessionId.orEmpty(),
-    ),
-  )
-  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-  acceptance
-}
-
-private fun GoalRunnerOutOfBandAcceptance.toArtifactMap(): Map<String, Any?> = linkedMapOf(
-  "subtask_id" to subtaskId,
-  "commit_sha" to commitSha,
-  "reason" to reason,
-  "accepted_at" to acceptedAt,
-)
-
 private data class ProjectedManifestCandidate(
   val path: Path,
   val manifest: DecompositionManifest,
 )
 
-private fun reviewModeFromArtifacts(artifacts: Map<String, Any?>): skillbill.workflow.model.CodeReviewExecutionMode? {
-  return reviewPolicyFromArtifacts(artifacts)?.codeReviewMode
-}
-
-private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerReviewPolicy? {
+private fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalRunnerReviewPolicy? {
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
   val policy = JsonSupport.anyToStringAnyMap(raw)
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' must be a map.")
@@ -863,7 +819,7 @@ private fun reviewPolicyFromArtifacts(artifacts: Map<String, Any?>): GoalRunnerR
   return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent, agentAddonSelection)
 }
 
-private fun outOfBandAcceptancesFromArtifacts(artifacts: Map<String, Any?>): Map<Int, GoalRunnerOutOfBandAcceptance> {
+private fun outOfBandAcceptancesFromLegacyArtifacts(artifacts: Map<String, Any?>): Map<Int, GoalRunnerOutOfBandAcceptance> {
   val raw = artifacts[GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY] ?: return emptyMap()
   val entries = raw as? List<*>
     ?: error("Goal acceptance artifact '$GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY' must be a list.")

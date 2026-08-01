@@ -582,6 +582,24 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 19,
+        name = "add-goal-runner-controls",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            statement.execute(
+              """
+              CREATE TABLE IF NOT EXISTS goal_runner_controls (
+                parent_workflow_id TEXT PRIMARY KEY,
+                review_policy_json TEXT,
+                out_of_band_acceptances_json TEXT NOT NULL DEFAULT '[]',
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+              )
+              """.trimIndent(),
+            )
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

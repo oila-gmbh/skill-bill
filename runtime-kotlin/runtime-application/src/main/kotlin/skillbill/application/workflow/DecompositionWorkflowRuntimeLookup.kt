@@ -18,7 +18,10 @@ internal fun WorkflowStateSnapshot.decompositionRuntime(
   ?.let { decodeDecompositionManifestMap(it, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
 internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
-  decodeArtifacts(artifactsJson)["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose"
+  decodeArtifacts(artifactsJson).let { artifacts ->
+    artifacts["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose" ||
+      artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull() != null
+  }
 
 // Terminal statuses for feature-implement workflows — a reclaimed row carrying one of these
 // must not be treated as a live resumable parent.

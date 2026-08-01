@@ -127,6 +127,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
         ),
       ),
       sessionId = parentRecord.sessionId.orEmpty(),
+      replaceArtifacts = true,
     ),
   )
   WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updatedParent)

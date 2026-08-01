@@ -101,6 +101,40 @@ internal data class SkillContentIdentity(
         }
     }
 
+    fun fromCompact(compact: String, sourceLabel: String): SkillContentIdentity {
+      val parsed = JsonSupport.parseObjectOrNull(compact)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?: throw InvalidSkillContentIdentityError(sourceLabel, "compact identity is not an object")
+      val expectedFields = setOf(
+        "contract_version",
+        "canonical_source_identity",
+        "exact_content_sha256",
+        "normalized_metadata",
+      )
+      if (parsed.keys != expectedFields) {
+        throw InvalidSkillContentIdentityError(sourceLabel, "compact identity fields are invalid")
+      }
+      if (parsed["contract_version"] != SKILL_CONTENT_IDENTITY_CONTRACT_VERSION) {
+        throw InvalidSkillContentIdentityError(sourceLabel, "compact identity contract version is invalid")
+      }
+      val source = parsed["canonical_source_identity"] as? String
+        ?: throw InvalidSkillContentIdentityError(sourceLabel, "canonical source identity is missing")
+      val digest = parsed["exact_content_sha256"] as? String
+        ?: throw InvalidSkillContentIdentityError(sourceLabel, "exact content digest is missing")
+      val metadata = (parsed["normalized_metadata"] as? Map<*, *>)
+        ?.entries
+        ?.associate { (key, value) ->
+          (key as? String ?: throw InvalidSkillContentIdentityError(sourceLabel, "metadata key is invalid")) to
+            (value as? String ?: throw InvalidSkillContentIdentityError(sourceLabel, "metadata value is invalid"))
+        }
+        ?: throw InvalidSkillContentIdentityError(sourceLabel, "normalized metadata is missing")
+      return runCatching { SkillContentIdentity(source, digest, metadata.toSortedMap()) }
+        .getOrElse { error ->
+          throw InvalidSkillContentIdentityError(sourceLabel, error.message ?: "identity values are invalid", error)
+        }
+    }
+
     fun requireMatch(supplied: SkillContentIdentity, installed: SkillContentIdentity) {
       if (supplied != installed) {
         throw SkillContentIdentityMismatchError(supplied.compact(), installed.compact())
@@ -125,3 +159,20 @@ internal fun requireMatchingSkillContentIdentity(
   supplied: SkillContentIdentity,
   installed: SkillContentIdentity,
 ) = SkillContentIdentity.requireMatch(supplied, installed)
+
+/**
+ * Routing seam for callers that already have a compact supplied identity. A matching marker is
+ * sufficient to route without replaying the installed SKILL.md body; the loader is only used by
+ * callers that have no supplied identity to compare.
+ */
+internal fun <T> routeInstalledSkillBody(
+  suppliedCompactIdentity: String?,
+  installedStagingDir: Path,
+  loadInstalledBody: () -> T,
+): T? {
+  if (suppliedCompactIdentity == null) return loadInstalledBody()
+  val suppliedIdentity = SkillContentIdentity.fromCompact(suppliedCompactIdentity, "supplied")
+  val installedIdentity = SkillContentIdentity.fromInstalled(installedStagingDir)
+  SkillContentIdentity.requireMatch(suppliedIdentity, installedIdentity)
+  return null
+}

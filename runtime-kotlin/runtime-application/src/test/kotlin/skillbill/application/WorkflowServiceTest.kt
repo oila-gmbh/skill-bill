@@ -969,6 +969,10 @@ class WorkflowServiceTest {
       GoalPlanningIdentity(imported.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
       GoalPlanningIdentity(resumed.parentWorkflowId, "SKILL-52.1", "repo-root-realpath-v1:/test/repository"),
     )
+    val importedArtifacts = JsonSupport.parseObjectOrNull(parentRow.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+    assertEquals(setOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY), importedArtifacts?.keys)
   }
 
   @Test
