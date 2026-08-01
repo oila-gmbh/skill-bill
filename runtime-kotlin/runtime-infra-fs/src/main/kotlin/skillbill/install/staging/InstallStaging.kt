@@ -156,6 +156,7 @@ internal fun stageInstalledSkill(
   skillsRoot: Path? = null,
   selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
   selectedPlatformSlugs: Set<String> = emptySet(),
+  suppliedCompactIdentity: String? = null,
 ): RenderedSkill {
   val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
   val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
@@ -212,15 +213,21 @@ internal fun stageInstalledSkill(
       agentAddonPointers = agentAddonPointers,
     ),
   )
-  val contentIdentity = suppliedSkillContentIdentity(resolvedSource)
+  val suppliedIdentity = suppliedCompactIdentity?.let { compact ->
+    val supplied = SkillContentIdentity.fromCompact(compact, "supplied session skill")
+    SkillContentIdentity.requireMatch(
+      suppliedSkillContentIdentity(resolvedSource),
+      supplied,
+    )
+    supplied
+  }
+  val contentIdentity = suppliedIdentity ?: suppliedSkillContentIdentity(resolvedSource)
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
 
   if (Files.isDirectory(finalStagingDir)) {
     val marker = finalStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
     if (Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
-      routeInstalledSkillBody(contentIdentity.compact(), finalStagingDir) {
-        Files.readString(finalStagingDir.resolve(INSTALL_STAGING_SKILL_FILENAME), StandardCharsets.UTF_8)
-      }
+      routeInstalledSkillBody(suppliedCompactIdentity ?: contentIdentity.compact(), finalStagingDir)
     }
   }
 
@@ -346,6 +353,7 @@ internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {
     input.manifests,
     selectedPackSkills = input.selectedPackSkills,
     selectedPlatformSlugs = input.selectedPlatformSlugs,
+    suppliedCompactIdentity = suppliedSkillContentIdentity(input.resolvedSkill).compact(),
   ).stagingDir.toAbsolutePath().normalize()
 }
 

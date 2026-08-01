@@ -67,18 +67,41 @@ class SkillContentIdentityTest {
     val staging = root.resolve("staged").also(Files::createDirectories)
     val supplied = SkillContentIdentity.fromSource(source)
     Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), supplied.compact())
-    Files.writeString(staging.resolve("SKILL.md"), "installed body must not be read")
-    var bodyLoads = 0
+    assertFalse(Files.exists(staging.resolve("SKILL.md")))
 
-    val routed = skillbill.install.identity.routeInstalledSkillBody(
+    skillbill.install.identity.routeInstalledSkillBody(
       suppliedCompactIdentity = supplied.compact(),
       installedStagingDir = staging,
-    ) {
-      bodyLoads += 1
-      Files.readString(staging.resolve("SKILL.md"))
+    )
+
+    assertFalse(Files.exists(staging.resolve("SKILL.md")))
+  }
+
+  @Test
+  fun `routing boundary rejects mismatched marker before loading installed body`() {
+    val root = Files.createTempDirectory("skill-content-identity-routing-mismatch")
+    val suppliedDir = root.resolve("supplied").also(Files::createDirectories)
+    val installedDir = root.resolve("installed").also(Files::createDirectories)
+    Files.writeString(
+      suppliedDir.resolve("content.md"),
+      "---\nname: supplied\ndescription: Supplied\n---\n\nSupplied body.\n",
+    )
+    Files.writeString(
+      installedDir.resolve("content.md"),
+      "---\nname: installed\ndescription: Installed\n---\n\nInstalled body.\n",
+    )
+    val supplied = SkillContentIdentity.fromSource(suppliedDir)
+    val installed = SkillContentIdentity.fromSource(installedDir)
+    val staging = root.resolve("staged").also(Files::createDirectories)
+    Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), installed.compact())
+    val error = assertFailsWith<SkillContentIdentityMismatchError> {
+      skillbill.install.identity.routeInstalledSkillBody(
+        suppliedCompactIdentity = supplied.compact(),
+        installedStagingDir = staging,
+      )
     }
 
-    assertEquals(null, routed)
-    assertEquals(0, bodyLoads)
+    assertContains(error.message.orEmpty(), supplied.canonicalSourceIdentity)
+    assertContains(error.message.orEmpty(), installed.canonicalSourceIdentity)
   }
 }

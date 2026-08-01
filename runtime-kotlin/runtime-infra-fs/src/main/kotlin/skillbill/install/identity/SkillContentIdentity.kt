@@ -161,18 +161,15 @@ internal fun requireMatchingSkillContentIdentity(
 ) = SkillContentIdentity.requireMatch(supplied, installed)
 
 /**
- * Routing seam for callers that already have a compact supplied identity. A matching marker is
- * sufficient to route without replaying the installed SKILL.md body; the loader is only used by
- * callers that have no supplied identity to compare.
+ * Session routing seam for callers that already have a compact supplied identity. A matching
+ * marker is sufficient to route without replaying the installed SKILL.md body. The supplied
+ * identity is mandatory so a session cannot bypass the comparison.
  */
-internal fun <T> routeInstalledSkillBody(
-  suppliedCompactIdentity: String?,
+internal fun routeInstalledSkillBody(
+  suppliedCompactIdentity: String,
   installedStagingDir: Path,
-  loadInstalledBody: () -> T,
-): T? {
-  if (suppliedCompactIdentity == null) return loadInstalledBody()
+): Unit {
   val suppliedIdentity = SkillContentIdentity.fromCompact(suppliedCompactIdentity, "supplied")
   val installedIdentity = SkillContentIdentity.fromInstalled(installedStagingDir)
   SkillContentIdentity.requireMatch(suppliedIdentity, installedIdentity)
-  return null
 }
