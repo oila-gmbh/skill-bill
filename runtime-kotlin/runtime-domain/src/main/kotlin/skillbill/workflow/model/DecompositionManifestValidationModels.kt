@@ -84,15 +84,14 @@ data class DecompositionManifestRepairEvidence(
 sealed interface DecompositionManifestValidationResult {
   val contractVersion: String
     get() = DECOMPOSITION_MANIFEST_VALIDATION_VERSION
-  val manifest: Map<String, Any?>
 
   data class AcceptedUnchanged(
-    override val manifest: Map<String, Any?>,
+    val manifest: DecompositionManifest,
     val yamlText: String,
   ) : DecompositionManifestValidationResult
 
   data class AcceptedAfterRepair(
-    override val manifest: Map<String, Any?>,
+    val manifest: DecompositionManifest,
     val yamlText: String,
     val evidence: DecompositionManifestRepairEvidence,
   ) : DecompositionManifestValidationResult
@@ -101,15 +100,10 @@ sealed interface DecompositionManifestValidationResult {
     val code: DecompositionManifestValidationFailureCode,
     val reason: String,
     val sourceLocation: DecompositionManifestValidationSourceLocation? = null,
-  ) : DecompositionManifestValidationResult {
-    override val manifest: Map<String, Any?>
-      get() = emptyMap()
-  }
+  ) : DecompositionManifestValidationResult
 }
 
-fun DecompositionManifestValidationResult.requireAccepted(
-  sourceLabel: String,
-): Map<String, Any?> = when (this) {
+fun DecompositionManifestValidationResult.requireAccepted(sourceLabel: String): DecompositionManifest = when (this) {
   is DecompositionManifestValidationResult.AcceptedUnchanged -> manifest
   is DecompositionManifestValidationResult.AcceptedAfterRepair -> manifest
   is DecompositionManifestValidationResult.Rejected -> throw InvalidDecompositionManifestSchemaError(

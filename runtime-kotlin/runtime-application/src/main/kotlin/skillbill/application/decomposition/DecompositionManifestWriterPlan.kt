@@ -129,15 +129,3 @@ internal fun parseStackBranches(plan: Map<String, Any?>): List<DecompositionStac
 private fun Map<String, Any?>.stringValue(key: String, sourceLabel: String, fieldPath: String): String =
   (this[key] as? String)?.takeIf(String::isNotBlank)
     ?: invalidManifest(sourceLabel, "$fieldPath must be a nonblank string.")
-
-internal fun defaultFeatureBranch(parentSpecPath: Path): String {
-  val (issueKey, featureName) = issueAndFeature(parentSpecPath.parent.fileName.toString())
-  return "feat/$issueKey-$featureName"
-}
-
-internal fun branchName(branchArtifact: Any?): String = when (branchArtifact) {
-  is Map<*, *> -> branchArtifact["branch_name"]?.toString().orEmpty()
-    .ifBlank { branchArtifact["branch"]?.toString().orEmpty() }
-  is String -> branchArtifact
-  else -> ""
-}

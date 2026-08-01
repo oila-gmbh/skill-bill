@@ -32,4 +32,3 @@ Run focused orchestration contract tests, governed skill validation, documentati
 ## Next Path
 
 Commit this subtask, then execute Subtask 2: deterministic goal pause and completion control.
-

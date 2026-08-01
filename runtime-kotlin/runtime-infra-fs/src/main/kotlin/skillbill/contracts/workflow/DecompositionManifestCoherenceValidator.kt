@@ -141,12 +141,11 @@ internal object DecompositionManifestCoherenceValidator {
     sourceLabel: String,
     fieldPath: String,
     reason: String,
-  ): InvalidDecompositionManifestSchemaError =
-    InvalidDecompositionManifestSchemaError(
-      sourceLabel = sourceLabel,
-      reason = "$fieldPath: $reason",
-      failureCode = "coherence_invalid",
-    )
+  ): InvalidDecompositionManifestSchemaError = InvalidDecompositionManifestSchemaError(
+    sourceLabel = sourceLabel,
+    reason = "$fieldPath: $reason",
+    failureCode = "coherence_invalid",
+  )
 
   private fun coherenceFailure(sourceLabel: String, fieldPath: String, reason: String): Nothing =
     throw coherenceError(sourceLabel, fieldPath, reason)

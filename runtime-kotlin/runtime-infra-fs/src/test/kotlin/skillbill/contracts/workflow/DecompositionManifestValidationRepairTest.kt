@@ -70,26 +70,31 @@ class DecompositionManifestValidationRepairTest {
       "shape.yaml",
     )
     val coherence = validator.validateYamlTextResult(
-      validManifestJson().replace("\"subtask_id\":1,\"action\":\"start\"", "\"subtask_id\":2,\"action\":\"start\""),
+      validManifestJson().replace(
+        "\"subtask_id\":1,\"action\":\"start\"",
+        "\"subtask_id\":2,\"action\":\"start\"",
+      ),
       "coherence.yaml",
     )
 
-    assertEquals(DecompositionManifestValidationFailureCode.SCHEMA_INVALID, assertIs<DecompositionManifestValidationResult.Rejected>(shape).code)
-    assertEquals(DecompositionManifestValidationFailureCode.COHERENCE_INVALID, assertIs<DecompositionManifestValidationResult.Rejected>(coherence).code)
-    assertNull((coherence as DecompositionManifestValidationResult.Rejected).sourceLocation)
+    val shapeRejection = assertIs<DecompositionManifestValidationResult.Rejected>(shape)
+    assertEquals(DecompositionManifestValidationFailureCode.SCHEMA_INVALID, shapeRejection.code)
+    val coherenceRejection = assertIs<DecompositionManifestValidationResult.Rejected>(coherence)
+    assertEquals(DecompositionManifestValidationFailureCode.COHERENCE_INVALID, coherenceRejection.code)
+    assertNull(coherenceRejection.sourceLocation)
   }
 
-  private fun validManifestJson(): String =
-    "{" +
-      "\"contract_version\":\"0.5\",\"issue_key\":\"SKILL-153\",\"feature_name\":\"manifest\"," +
-      "\"parent_spec_path\":\".feature-specs/SKILL-153-manifest/spec.md\"," +
-      "\"execution_model\":\"same_branch_commit_per_subtask\",\"base_branch\":\"main\"," +
-      "\"feature_branch\":\"feat/SKILL-153-manifest\",\"stack_branches\":[]," +
-      "\"current_subtask_intent\":{\"subtask_id\":1,\"action\":\"start\"}," +
-      "\"subtasks\":[{\"id\":1,\"name\":\"Manifest\",\"spec_path\":\".feature-specs/SKILL-153-manifest/spec_subtask_1.md\"," +
-      "\"status\":\"pending\",\"branch\":null,\"commit_sha\":null,\"workflow_id\":null," +
-      "\"blocked_reason\":null,\"last_resumable_step\":null,\"dependencies\":[]}]" +
-      "}"
+  private fun validManifestJson(): String = "{" +
+    "\"contract_version\":\"0.5\",\"issue_key\":\"SKILL-153\",\"feature_name\":\"manifest\"," +
+    "\"parent_spec_path\":\".feature-specs/SKILL-153-manifest/spec.md\"," +
+    "\"execution_model\":\"same_branch_commit_per_subtask\",\"base_branch\":\"main\"," +
+    "\"feature_branch\":\"feat/SKILL-153-manifest\",\"stack_branches\":[]," +
+    "\"current_subtask_intent\":{\"subtask_id\":1,\"action\":\"start\"}," +
+    "\"subtasks\":[{\"id\":1,\"name\":\"Manifest\"," +
+    "\"spec_path\":\".feature-specs/SKILL-153-manifest/spec_subtask_1.md\"," +
+    "\"status\":\"pending\",\"branch\":null,\"commit_sha\":null,\"workflow_id\":null," +
+    "\"blocked_reason\":null,\"last_resumable_step\":null,\"dependencies\":[]}]" +
+    "}"
 
   private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(Charsets.UTF_8))

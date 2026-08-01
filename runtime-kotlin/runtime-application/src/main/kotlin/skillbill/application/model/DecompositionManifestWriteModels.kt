@@ -3,8 +3,8 @@ package skillbill.application.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionStackBranch
 import skillbill.workflow.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.model.DecompositionStackBranch
 import skillbill.workflow.model.SpecSource
 import java.nio.file.Path
 

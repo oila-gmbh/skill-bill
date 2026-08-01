@@ -29,6 +29,10 @@ class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore 
 
   override fun encodeManifestYaml(wireMap: Map<String, Any?>): String = yamlMapper.writeValueAsString(wireMap)
 
+  override fun deleteIfExists(target: Path) {
+    Files.deleteIfExists(target)
+  }
+
   override fun writeTextAtomically(target: Path, content: String) {
     Files.createDirectories(target.parent)
     val temp = Files.createTempFile(target.parent, "${target.fileName}.", ".tmp")

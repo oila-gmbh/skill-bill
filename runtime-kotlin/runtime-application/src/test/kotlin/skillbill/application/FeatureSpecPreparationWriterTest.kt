@@ -3,12 +3,15 @@ package skillbill.application
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
-import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
+import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.workflow.DecompositionManifestCodec
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifestRepairEvidence
 import skillbill.workflow.model.DecompositionManifestRepairOperation
@@ -16,8 +19,6 @@ import skillbill.workflow.model.DecompositionManifestValidationFormat
 import skillbill.workflow.model.DecompositionManifestValidationResult
 import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
 import skillbill.workflow.model.SpecSource
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.ports.workflow.DecompositionManifestFileStore
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -208,7 +209,7 @@ class FeatureSpecPreparationWriterTest {
   @Test
   fun `manifest validation failure occurs before the first bundle write`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-manifest-prevalidate")
-    val store = CountingManifestFileStore()
+    val store = PreparationCountingManifestFileStore()
     val rejectingValidator = object : DecompositionManifestValidator {
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit =
         throw InvalidDecompositionManifestSchemaError(sourceLabel, "typed manifest rejection", "schema_invalid")
@@ -340,10 +341,11 @@ class FeatureSpecPreparationWriterTest {
       ): DecompositionManifestValidationResult {
         yamlValidationCount += 1
         val parsed = validateYamlText(yamlText, sourceLabel)
+        val manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel)
         return if (yamlValidationCount == 1) {
-          DecompositionManifestValidationResult.AcceptedAfterRepair(parsed, yamlText, evidence)
+          DecompositionManifestValidationResult.AcceptedAfterRepair(manifest, yamlText, evidence)
         } else {
-          DecompositionManifestValidationResult.AcceptedUnchanged(parsed, yamlText)
+          DecompositionManifestValidationResult.AcceptedUnchanged(manifest, yamlText)
         }
       }
     }
@@ -379,6 +381,7 @@ class FeatureSpecPreparationWriterTest {
     )
     val repairingValidator = object : DecompositionManifestValidator {
       private var yamlValidationCount = 0
+      var repairedYaml: String? = null
 
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
 
@@ -393,10 +396,13 @@ class FeatureSpecPreparationWriterTest {
       ): DecompositionManifestValidationResult {
         yamlValidationCount += 1
         val parsed = validateYamlText(yamlText, sourceLabel)
+        val manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel)
         return if (yamlValidationCount == 2) {
-          DecompositionManifestValidationResult.AcceptedAfterRepair(parsed, yamlText, evidence)
+          val repaired = "$yamlText# repaired read-back\n"
+          repairedYaml = repaired
+          DecompositionManifestValidationResult.AcceptedAfterRepair(manifest, repaired, evidence)
         } else {
-          DecompositionManifestValidationResult.AcceptedUnchanged(parsed, yamlText)
+          DecompositionManifestValidationResult.AcceptedUnchanged(manifest, yamlText)
         }
       }
     }
@@ -414,6 +420,9 @@ class FeatureSpecPreparationWriterTest {
     )
 
     assertEquals(listOf(evidence), result.repairEvidence)
+    val manifestPath = repoRoot.resolve(result.decompositionManifestPath)
+    assertEquals(repairingValidator.repairedYaml, Files.readString(manifestPath))
+    assertEquals("SKILL-59", loadDecompositionManifest(manifestPath).issueKey)
   }
 
   @Test
@@ -481,7 +490,8 @@ class FeatureSpecPreparationWriterTest {
   )
 }
 
-private class CountingManifestFileStore : DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+private class PreparationCountingManifestFileStore :
+  DecompositionManifestFileStore by TestDecompositionManifestFileStore {
   var writeCount: Int = 0
 
   override fun writeTextAtomically(target: java.nio.file.Path, content: String) {

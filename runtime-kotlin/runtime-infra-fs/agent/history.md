@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-01] SKILL-153 phase-output structural repair (subtask 2)
+Areas: runtime-kotlin/{runtime-application,runtime-contracts,runtime-domain,runtime-infra-fs,runtime-ports}, .feature-specs/SKILL-153-phase-output-structural-repair
+- Decomposition manifests now use typed construction, canonical schema/coherence validation, YAML read-back, and atomic persistence; reusable.
+- Syntax-only read failures enter a bounded deterministic repair seam: exactly one candidate is reparsed and revalidated, while ambiguity and semantic/type/coherence failures remain typed rejection.
+- File-store and preparation-writer seams preserve no-partial-write behavior and redacted repair evidence with digests, format, operation, location, and contract version.
+- Tests cover generation/read-back, syntax repair and ambiguity, schema/coherence failures, and atomicity.
+- Known limitation: repair is syntactic only; semantic guessing and changes to manifest values, types, dependencies, statuses, or intent remain unsupported.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-01] SKILL-153 phase-output structural repair (subtask 1)
 Areas: runtime-kotlin/{runtime-infra-fs,runtime-domain,runtime-contracts}, .feature-specs/SKILL-153-phase-output-structural-repair
 - Added typed unchanged/repaired/rejected phase-output results and redacted repair evidence with format, contract version, digests, operation, and source location. reusable

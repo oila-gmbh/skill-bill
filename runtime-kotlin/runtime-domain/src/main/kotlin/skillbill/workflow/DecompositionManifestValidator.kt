@@ -42,10 +42,10 @@ interface DecompositionManifestValidator {
    * test doubles source-compatible; infrastructure adapters override it to add bounded syntax
    * repair and repair evidence.
    */
-  @OpenBoundaryMap("Typed decomposition manifest validation result at the YAML seam")
   fun validateYamlTextResult(yamlText: String, sourceLabel: String): DecompositionManifestValidationResult = try {
+    val parsed = validateYamlText(yamlText, sourceLabel)
     DecompositionManifestValidationResult.AcceptedUnchanged(
-      manifest = validateYamlText(yamlText, sourceLabel),
+      manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel),
       yamlText = yamlText,
     )
   } catch (error: InvalidDecompositionManifestSchemaError) {

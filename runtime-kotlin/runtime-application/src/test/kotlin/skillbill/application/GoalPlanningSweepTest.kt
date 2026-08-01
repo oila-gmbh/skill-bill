@@ -972,6 +972,9 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = emptyList()
 
+  override fun deleteIfExists(target: Path): Unit =
+    error("CountingManifestFileStore is read-only in goal planning sweep tests.")
+
   override fun writeTextAtomically(target: Path, content: String): Unit =
     error("CountingManifestFileStore is read-only in goal planning sweep tests.")
 
@@ -999,6 +1002,9 @@ private class ThrowingManifestFileStore : DecompositionManifestFileStore {
   override fun isRegularFile(path: Path): Boolean = true
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = emptyList()
+
+  override fun deleteIfExists(target: Path): Unit =
+    error("ThrowingManifestFileStore is read-only in goal planning sweep tests.")
 
   override fun writeTextAtomically(target: Path, content: String): Unit =
     error("ThrowingManifestFileStore is read-only in goal planning sweep tests.")

@@ -34,4 +34,3 @@ Run focused monitor skill and CLI tests, `skill-bill validate`, install/render v
 ## Next Path
 
 After validation passes, prepare the feature's review and delivery artifacts.
-

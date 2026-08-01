@@ -60,28 +60,7 @@ object DecompositionManifestSchemaValidator {
   }
 
   private fun readYamlObjectNode(yamlText: String, sourceLabel: String): JsonNode {
-    val node =
-      try {
-        yamlMapper.factory.createParser(yamlText).use { parser ->
-          val parsed = yamlMapper.readTree<JsonNode>(parser)
-          if (parser.nextToken() != null) {
-            throw IllegalArgumentException("YAML contains trailing content or multiple documents.")
-          }
-          parsed
-        }
-      } catch (error: Exception) {
-        val duplicate = error.message.orEmpty().contains("duplicate", ignoreCase = true)
-        throw InvalidDecompositionManifestSchemaError(
-          sourceLabel = sourceLabel,
-          reason = if (duplicate) {
-            "YAML contains a duplicate key; duplicate keys are never repaired."
-          } else {
-            "YAML is malformed: ${error.message.orEmpty()}"
-          },
-          failureCode = if (duplicate) "duplicate_key" else "malformed",
-          cause = error,
-        )
-      }
+    val node = parseYamlNode(yamlText, sourceLabel)
     if (node == null || !node.isObject) {
       throw InvalidDecompositionManifestSchemaError(
         sourceLabel = sourceLabel,
@@ -90,6 +69,26 @@ object DecompositionManifestSchemaValidator {
       )
     }
     return node
+  }
+
+  private fun parseYamlNode(yamlText: String, sourceLabel: String): JsonNode? = try {
+    yamlMapper.factory.createParser(yamlText).use { parser ->
+      val parsed = yamlMapper.readTree<JsonNode>(parser)
+      require(parser.nextToken() == null) { "YAML contains trailing content or multiple documents." }
+      parsed
+    }
+  } catch (error: Exception) {
+    val duplicate = error.message.orEmpty().contains("duplicate", ignoreCase = true)
+    throw InvalidDecompositionManifestSchemaError(
+      sourceLabel = sourceLabel,
+      reason = if (duplicate) {
+        "YAML contains a duplicate key; duplicate keys are never repaired."
+      } else {
+        "YAML is malformed: ${error.message.orEmpty()}"
+      },
+      failureCode = if (duplicate) "duplicate_key" else "malformed",
+      cause = error,
+    )
   }
 
   private fun yamlObjectNodeToMap(node: JsonNode, sourceLabel: String): Map<String, Any?> = try {

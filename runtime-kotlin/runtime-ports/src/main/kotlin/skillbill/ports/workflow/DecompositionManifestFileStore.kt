@@ -8,22 +8,21 @@ interface DecompositionManifestFileStore {
   fun isRegularFile(path: Path): Boolean
   fun findDecompositionManifestFiles(repoRoot: Path): List<Path>
   fun writeTextAtomically(target: Path, content: String)
+  fun deleteIfExists(target: Path)
 
   /**
    * Publishes a prepared text bundle and verifies it before returning. If verification or any
    * write fails, restore the exact pre-write contents so callers never observe a partial bundle.
    */
   fun <T> writeBundleAtomically(writes: List<Pair<Path, String>>, verify: () -> T): T {
-    data class Snapshot(val path: Path, val existed: Boolean, val content: String?)
-
     val snapshots = writes.distinctBy { (path, _) -> path }.map { (path, _) ->
       val existed = isRegularFile(path)
-      Snapshot(path, existed, if (existed) readText(path) else null)
+      DecompositionManifestFileSnapshot(path, existed, if (existed) readText(path) else null)
     }
-    try {
+    return runCatching {
       writes.forEach { (path, content) -> writeTextAtomically(path, content) }
-      return verify()
-    } catch (failure: Throwable) {
+      verify()
+    }.getOrElse { failure ->
       snapshots.asReversed().forEach { snapshot ->
         runCatching {
           if (snapshot.existed) {
@@ -35,10 +34,6 @@ interface DecompositionManifestFileStore {
       }
       throw failure
     }
-  }
-
-  fun deleteIfExists(target: Path) {
-    java.nio.file.Files.deleteIfExists(target)
   }
 
   /**
@@ -61,9 +56,17 @@ object UnavailableDecompositionManifestFileStore : DecompositionManifestFileStor
 
   override fun writeTextAtomically(target: Path, content: String): Unit = unavailable()
 
+  override fun deleteIfExists(target: Path): Unit = unavailable()
+
   override fun encodeManifestYaml(wireMap: Map<String, Any?>): String = unavailable()
 
   private fun unavailable(): Nothing {
     error("Decomposition manifest file store is not configured for this runtime.")
   }
 }
+
+private data class DecompositionManifestFileSnapshot(
+  val path: Path,
+  val existed: Boolean,
+  val content: String?,
+)

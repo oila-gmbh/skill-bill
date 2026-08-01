@@ -49,4 +49,3 @@ This feature addresses the context pollution and control failures observed durin
 ## Validation Strategy
 
 Run focused runtime application/domain/infrastructure tests for pause requests, boundary ordering, leases, continuation, and compact handoffs; run skill and monitor contract tests; validate generated catalog/install output; then run `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs`.
-

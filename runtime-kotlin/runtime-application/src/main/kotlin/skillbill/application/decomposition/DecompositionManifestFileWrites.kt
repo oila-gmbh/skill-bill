@@ -1,10 +1,12 @@
 package skillbill.application.decomposition
 
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.model.DecompositionManifestValidationFailureCode
 import skillbill.workflow.model.DecompositionManifestValidationResult
 import skillbill.workflow.model.requireAccepted
 import skillbill.workflow.toWireMap
@@ -26,6 +28,7 @@ fun loadDecompositionManifest(
 
 internal data class LoadedDecompositionManifest(
   val manifest: DecompositionManifest,
+  val yamlText: String,
   val repairEvidence: DecompositionManifestRepairEvidence?,
 )
 
@@ -36,9 +39,34 @@ internal fun loadValidatedDecompositionManifest(
 ): LoadedDecompositionManifest {
   val validated = validateDecompositionManifestYaml(path, fileStore, validator)
   return LoadedDecompositionManifest(
-    manifest = DecompositionManifestCodec.decodeMap(validated.manifest, path.toString()),
+    manifest = validated.manifest,
+    yamlText = validated.yamlText,
     repairEvidence = validated.repairEvidence,
   )
+}
+
+/**
+ * Keeps a repaired read-back inside the caller's atomic write transaction. A second repair means
+ * the first repair did not produce a stable validated document, so the caller must roll back.
+ */
+internal fun loadValidatedDecompositionManifestPersistingRepair(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+): LoadedDecompositionManifest {
+  val loaded = loadValidatedDecompositionManifest(path, fileStore, validator)
+  val repairEvidence = loaded.repairEvidence ?: return loaded
+
+  fileStore.writeTextAtomically(path, loaded.yamlText)
+  val persisted = loadValidatedDecompositionManifest(path, fileStore, validator)
+  if (persisted.repairEvidence != null) {
+    throw InvalidDecompositionManifestSchemaError(
+      sourceLabel = path.toString(),
+      reason = "repaired YAML did not validate unchanged after persistence.",
+      failureCode = DecompositionManifestValidationFailureCode.REPAIR_LIMIT_EXCEEDED.wireValue,
+    )
+  }
+  return persisted.copy(repairEvidence = repairEvidence)
 }
 
 internal fun loadValidatedDecompositionManifestOrNull(
@@ -52,7 +80,7 @@ internal fun loadValidatedDecompositionManifestOrNull(
 }
 
 internal data class ValidatedDecompositionManifestYaml(
-  val manifest: Map<String, Any?>,
+  val manifest: DecompositionManifest,
   val yamlText: String,
   val repairEvidence: DecompositionManifestRepairEvidence?,
 )
