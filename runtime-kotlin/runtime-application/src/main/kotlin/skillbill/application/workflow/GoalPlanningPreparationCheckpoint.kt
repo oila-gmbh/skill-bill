@@ -18,6 +18,7 @@ import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 
@@ -48,13 +49,15 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
-    gate.validateSharedPreplan(checkpoint)
-    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+    val canonical = gate.canonicalizeSharedPreplan(checkpoint)
+    gate.validateSharedPreplan(canonical)
+    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
   }
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
-    gate.validateSubtaskPlan(checkpoint)
-    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
+    val canonical = gate.canonicalizeSubtaskPlan(checkpoint)
+    gate.validateSubtaskPlan(canonical)
+    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
   }
 
   /**
@@ -62,14 +65,15 @@ class GoalPlanningPreparationCheckpoint(
    * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
    */
   fun recheckpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
-    gate.validateSharedPreplan(checkpoint)
-    val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(checkpoint.identity) }
+    val canonical = gate.canonicalizeSharedPreplan(checkpoint)
+    gate.validateSharedPreplan(canonical)
+    val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(canonical.identity) }
     if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
       database.read(dbOverride) {
-        it.goalPlanningPreparations.replaceSharedPreplan(checkpoint, stored.payloadSha256)
+        it.goalPlanningPreparations.replaceSharedPreplan(canonical, stored.payloadSha256)
       }
     } else {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
     }
   }
 
@@ -78,17 +82,18 @@ class GoalPlanningPreparationCheckpoint(
    * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
    */
   fun recheckpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
-    gate.validateSubtaskPlan(checkpoint)
+    val canonical = gate.canonicalizeSubtaskPlan(checkpoint)
+    gate.validateSubtaskPlan(canonical)
     val stored = findStoredSubtaskPlan(
-      checkpoint.identity,
-      checkpoint.subtaskId,
-      checkpoint.governedSubSpecPath,
+      canonical.identity,
+      canonical.subtaskId,
+      canonical.governedSubSpecPath,
       dbOverride,
     )
     if (stored != null && gate.subtaskPlanIsRegenerable(stored)) {
-      database.read(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(checkpoint) }
+      database.read(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(canonical) }
     } else {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(checkpoint) }
+      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
     }
   }
 
@@ -197,6 +202,59 @@ internal class GoalPlanningPreparationProjectionGate(
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
+  fun canonicalizeSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): SharedGoalPreplanCheckpoint {
+    val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
+      .requireAcceptedOutput("preplan")
+    val canonical = accepted.normalizedOutput.canonicalJson
+    return checkpoint.copy(
+      preplanPayload = canonical,
+      payloadSha256 = sha256HexUtf8(canonical),
+      repairEvidence = repairEvidenceFor(
+        phaseId = "preplan",
+        sourcePayload = checkpoint.preplanPayload,
+        acceptedEvidence = accepted.repairEvidence,
+        storedEvidence = checkpoint.repairEvidence,
+        sourceLabel = checkpoint.identity.parentGoalWorkflowId,
+      ),
+    )
+  }
+
+  fun canonicalizeSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): GoalSubtaskPlanCheckpoint {
+    val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
+      .requireAcceptedOutput("plan")
+    val canonical = accepted.normalizedOutput.canonicalJson
+    return checkpoint.copy(
+      planPayload = canonical,
+      payloadSha256 = sha256HexUtf8(canonical),
+      repairEvidence = repairEvidenceFor(
+        phaseId = "plan",
+        sourcePayload = checkpoint.planPayload,
+        acceptedEvidence = accepted.repairEvidence,
+        storedEvidence = checkpoint.repairEvidence,
+        sourceLabel = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
+      ),
+    )
+  }
+
+  private fun repairEvidenceFor(
+    phaseId: String,
+    sourcePayload: String,
+    acceptedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    storedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    sourceLabel: String,
+  ): FeatureTaskRuntimePhaseOutputRepairEvidence? {
+    acceptedEvidence?.let { evidence ->
+      if (evidence.originalDigest != sha256HexUtf8(sourcePayload)) {
+        throw InvalidGoalPlanningPreparationSchemaError(
+          sourceLabel,
+          "$phaseId.repair_evidence.original_digest",
+          "repair evidence does not describe the checkpoint input bytes",
+        )
+      }
+    }
+    return acceptedEvidence ?: storedEvidence
+  }
+
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     val (label, envelope) = sharedPreplanEnvelope(checkpoint)
     envelope.requirePrepared(label)
@@ -292,14 +350,16 @@ private fun SharedGoalPreplanCheckpoint.toEnvelopeMap(): Map<String, Any?> = lin
   "provenance" to provenance.asMap(),
   "payload_sha256" to payloadSha256,
   "preplan_payload" to preplanPayload,
-)
+  "repair_evidence" to repairEvidence?.toArtifactMap(),
+).filterValues { it != null }
 
 private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to contractVersion, "record_type" to "subtask_plan", "identity" to identity.asMap(),
   "subtask_id" to subtaskId, "manifest_order" to manifestOrder, "governed_sub_spec_path" to governedSubSpecPath,
   "sub_spec_hash" to subSpecHash, "preparation_status" to preparationStatus.wireValue,
   "provenance" to provenance.asMap(), "payload_sha256" to payloadSha256, "plan_payload" to planPayload,
-)
+  "repair_evidence" to repairEvidence?.toArtifactMap(),
+).filterValues { it != null }
 
 private fun skillbill.ports.persistence.model.GoalPlanningIdentity.asMap() = linkedMapOf(
   "parent_goal_workflow_id" to parentGoalWorkflowId,

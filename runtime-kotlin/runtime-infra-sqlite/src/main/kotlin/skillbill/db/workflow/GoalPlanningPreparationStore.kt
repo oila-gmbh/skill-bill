@@ -2,6 +2,7 @@
 
 package skillbill.db.workflow
 
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
@@ -21,6 +22,7 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.SQLException
@@ -190,7 +192,7 @@ class GoalPlanningPreparationStore(
           """UPDATE goal_shared_preplans SET normalized_issue_key = ?, repository_identity = ?,
           preparation_status = ?, contract_version = ?, parent_spec_hash = ?, decomposition_manifest_hash = ?,
           planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
-          phase_output_contract_version = ?, payload_sha256 = ?, preplan_payload_json = ?
+          phase_output_contract_version = ?, payload_sha256 = ?, preplan_payload_json = ?, repair_evidence_json = ?
           WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?""",
         ).use { s ->
           val values = listOf(
@@ -199,7 +201,8 @@ class GoalPlanningPreparationStore(
             checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
             checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
             checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-            checkpoint.payloadSha256, checkpoint.preplanPayload, checkpoint.identity.parentGoalWorkflowId,
+            checkpoint.payloadSha256, checkpoint.preplanPayload, checkpoint.repairEvidenceJson(),
+            checkpoint.identity.parentGoalWorkflowId,
             expectedPayloadSha256,
           )
           values.forEachIndexed { i, value -> s.setString(i + 1, value) }
@@ -481,7 +484,7 @@ private fun Connection.insertSharedPreplanRow(checkpoint: SharedGoalPreplanCheck
   """INSERT INTO goal_shared_preplans (parent_goal_workflow_id, normalized_issue_key, repository_identity,
   preparation_status, contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
   planning_contract_version, phase_output_contract_id, phase_output_contract_version, payload_sha256,
-  preplan_payload_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  preplan_payload_json, repair_evidence_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(parent_goal_workflow_id) DO NOTHING""",
 ).use { s ->
   val values = listOf(
@@ -490,10 +493,18 @@ private fun Connection.insertSharedPreplanRow(checkpoint: SharedGoalPreplanCheck
     checkpoint.provenance.parentSpecHash, checkpoint.provenance.decompositionManifestHash,
     checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
     checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-    checkpoint.payloadSha256, checkpoint.preplanPayload,
+    checkpoint.payloadSha256, checkpoint.preplanPayload, checkpoint.repairEvidenceJson(),
   )
   values.forEachIndexed { i, value -> s.setString(i + 1, value) }
   s.executeUpdate() > 0
+}
+
+private fun SharedGoalPreplanCheckpoint.repairEvidenceJson(): String? = repairEvidence?.let {
+  JsonSupport.mapToJsonString(it.toArtifactMap())
+}
+
+private fun GoalSubtaskPlanCheckpoint.repairEvidenceJson(): String? = repairEvidence?.let {
+  JsonSupport.mapToJsonString(it.toArtifactMap())
 }
 
 private fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoint): Boolean = prepareStatement(
@@ -501,8 +512,8 @@ private fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoin
   (parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
   manifest_order, governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
   decomposition_manifest_hash, planning_contract_id, planning_contract_version, phase_output_contract_id,
-  phase_output_contract_version, payload_sha256, plan_payload_json)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  phase_output_contract_version, payload_sha256, plan_payload_json, repair_evidence_json)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(parent_goal_workflow_id, subtask_id) DO NOTHING""",
 ).use { s ->
   val values = listOf(
@@ -514,10 +525,10 @@ private fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoin
     checkpoint.provenance.decompositionManifestHash,
     checkpoint.provenance.planningContractId, checkpoint.provenance.planningContractVersion,
     checkpoint.provenance.phaseOutputContractId, checkpoint.provenance.phaseOutputContractVersion,
-    checkpoint.payloadSha256, checkpoint.planPayload,
+    checkpoint.payloadSha256, checkpoint.planPayload, checkpoint.repairEvidenceJson(),
   )
   values.forEachIndexed { i, value ->
-    if (value is Int) s.setInt(i + 1, value) else s.setString(i + 1, value.toString())
+    s.setObject(i + 1, value)
   }
   s.executeUpdate() > 0
 }
@@ -537,9 +548,10 @@ private fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord):
       parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
       governed_sub_spec_path, preparation_status, contract_version, parent_spec_hash,
       sub_spec_hash, decomposition_manifest_hash, phase_output_contract_id,
-      phase_output_contract_version, preplan_payload_json, plan_payload_json
+      phase_output_contract_version, preplan_payload_json, plan_payload_json,
+      preplan_repair_evidence_json, plan_repair_evidence_json
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(parent_goal_workflow_id, subtask_id) DO NOTHING
   """.trimIndent(),
 ).use { statement ->
@@ -558,6 +570,8 @@ private fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord):
   statement.setString(index++, record.provenance.phaseOutputContractVersion)
   statement.setString(index++, record.preplanPayload)
   statement.setString(index++, record.planPayload)
+  statement.setString(index++, record.preplanRepairEvidence?.let { JsonSupport.mapToJsonString(it.toArtifactMap()) })
+  statement.setString(index++, record.planRepairEvidence?.let { JsonSupport.mapToJsonString(it.toArtifactMap()) })
   statement.executeUpdate() > 0
 }
 
@@ -723,6 +737,8 @@ private fun ResultSet.toRecord(): GoalPlanningPreparationRecord {
     ),
     preplanPayload = requireColumn(this, label, "preplan_payload_json"),
     planPayload = requireColumn(this, label, "plan_payload_json"),
+    preplanRepairEvidence = optionalRepairEvidence(this, label, "preplan_repair_evidence_json"),
+    planRepairEvidence = optionalRepairEvidence(this, label, "plan_repair_evidence_json"),
     createdAt = getString("created_at").orEmpty(),
     updatedAt = getString("updated_at").orEmpty(),
     contractVersion = contractVersion,
@@ -738,6 +754,27 @@ private fun requireColumn(rows: ResultSet, label: String, column: String): Strin
     fieldPath = column,
     reason = "$column is required but was null on hydrate.",
   )
+
+private fun optionalRepairEvidence(
+  rows: ResultSet,
+  label: String,
+  column: String,
+): FeatureTaskRuntimePhaseOutputRepairEvidence? {
+  val raw = rows.getString(column) ?: return null
+  return try {
+    val decoded = JsonSupport.parseObjectOrNull(raw)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: throw IllegalArgumentException("repair evidence must be a JSON object")
+    FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(decoded)
+  } catch (_: Exception) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      sourceLabel = label,
+      fieldPath = column,
+      reason = "repair evidence is malformed",
+    )
+  }
+}
 
 private fun decodeState(label: String, value: String?): GoalPlanningPreparationState =
   GoalPlanningPreparationState.entries.singleOrNull { it.wireValue == value }
@@ -758,6 +795,7 @@ private fun selectRecordColumns(): String = """
          governed_sub_spec_path, preparation_status, contract_version, parent_spec_hash,
          sub_spec_hash, decomposition_manifest_hash, phase_output_contract_id,
          phase_output_contract_version, preplan_payload_json, plan_payload_json,
+         preplan_repair_evidence_json, plan_repair_evidence_json,
          created_at, updated_at
 """.trimIndent()
 
@@ -796,6 +834,7 @@ private fun ResultSet.toShared(expected: GoalPlanningIdentity): SharedGoalPrepla
     ),
     payloadSha256 = requireColumn(this, label, "payload_sha256"),
     preplanPayload = requireColumn(this, label, "preplan_payload_json"),
+    repairEvidence = optionalRepairEvidence(this, label, "repair_evidence_json"),
     createdAt = requireColumn(this, label, "created_at"),
     contractVersion = requireNormalizedVersion(this, label),
   ).also(::requireNormalizedSharedPreplan)
@@ -839,6 +878,7 @@ private fun ResultSet.toPlan(expected: GoalPlanningIdentity, expectedPath: Strin
     ),
     payloadSha256 = requireColumn(this, label, "payload_sha256"),
     planPayload = requireColumn(this, label, "plan_payload_json"),
+    repairEvidence = optionalRepairEvidence(this, label, "repair_evidence_json"),
     createdAt = requireColumn(this, label, "created_at"), contractVersion = requireNormalizedVersion(this, label),
   ).also(::requireNormalizedSubtaskPlan)
 }

@@ -61,7 +61,12 @@ class GoalPlanningPhaseOutputMigrationTest {
     connection.createStatement().use { statement ->
       statement.execute(
         """
-        INSERT INTO goal_shared_preplans VALUES (
+        INSERT INTO goal_shared_preplans (
+          parent_goal_workflow_id, normalized_issue_key, repository_identity, preparation_status,
+          contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
+          planning_contract_version, phase_output_contract_id, phase_output_contract_version,
+          payload_sha256, preplan_payload_json, created_at
+        ) VALUES (
           '$workflowId', 'SKILL-000-$workflowId', 'repo', 'prepared', '0.2', 'spec-hash', 'manifest-hash',
           'goal-planning-preparation', '0.2', 'feature-task-runtime-phase-output', '$phaseOutputContractVersion',
           'payload-sha', '{}', CURRENT_TIMESTAMP
@@ -70,7 +75,12 @@ class GoalPlanningPhaseOutputMigrationTest {
       )
       statement.execute(
         """
-        INSERT INTO goal_subtask_plans VALUES (
+        INSERT INTO goal_subtask_plans (
+          parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id, manifest_order,
+          governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
+          decomposition_manifest_hash, planning_contract_id, planning_contract_version,
+          phase_output_contract_id, phase_output_contract_version, payload_sha256, plan_payload_json, created_at
+        ) VALUES (
           '$workflowId', 'SKILL-000-$workflowId', 'repo', 1, 0, '.feature-specs/x/spec_subtask_1.md', 'sub-hash',
           'prepared', '0.2', 'spec-hash', 'manifest-hash', 'goal-planning-preparation', '0.2',
           'feature-task-runtime-phase-output', '$phaseOutputContractVersion', 'payload-sha', '{}', CURRENT_TIMESTAMP

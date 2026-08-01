@@ -534,6 +534,38 @@ internal object DatabaseMigrations {
           }
         },
       ),
+      DatabaseMigration(
+        version = 17,
+        name = "persist-goal-planning-repair-evidence",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            listOf("goal_shared_preplans", "goal_subtask_plans").forEach { table ->
+              val hasEvidenceColumn = statement.executeQuery(
+                "SELECT 1 FROM pragma_table_info('$table') WHERE name = 'repair_evidence_json'",
+              ).use { rows -> rows.next() }
+              if (!hasEvidenceColumn) {
+                statement.execute("ALTER TABLE $table ADD COLUMN repair_evidence_json TEXT")
+              }
+            }
+          }
+        },
+      ),
+      DatabaseMigration(
+        version = 18,
+        name = "persist-legacy-goal-planning-repair-evidence",
+        operation = { connection ->
+          connection.createStatement().use { statement ->
+            listOf("preplan_repair_evidence_json", "plan_repair_evidence_json").forEach { column ->
+              val hasEvidenceColumn = statement.executeQuery(
+                "SELECT 1 FROM pragma_table_info('goal_planning_preparations') WHERE name = '$column'",
+              ).use { rows -> rows.next() }
+              if (!hasEvidenceColumn) {
+                statement.execute("ALTER TABLE goal_planning_preparations ADD COLUMN $column TEXT")
+              }
+            }
+          }
+        },
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

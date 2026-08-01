@@ -20,14 +20,12 @@ class GoalPlanningPreparationValidator(
 
   fun canonicalize(record: GoalPlanningPreparationRecord): GoalPlanningPreparationRecord {
     val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
-    val preplan = outputValidator.validatePhaseOutput(record.preplanPayload, PREPLAN_PHASE_ID)
+    val acceptedPreplan = outputValidator.validatePhaseOutput(record.preplanPayload, PREPLAN_PHASE_ID)
       .requireAcceptedOutput(PREPLAN_PHASE_ID)
-      .normalizedOutput
-      .envelope
-    val plan = outputValidator.validatePhaseOutput(record.planPayload, PLAN_PHASE_ID)
+    val preplan = acceptedPreplan.normalizedOutput.envelope
+    val acceptedPlan = outputValidator.validatePhaseOutput(record.planPayload, PLAN_PHASE_ID)
       .requireAcceptedOutput(PLAN_PHASE_ID)
-      .normalizedOutput
-      .envelope
+    val plan = acceptedPlan.normalizedOutput.envelope
     val failure = envelopeFailure(record) ?: provenanceFailure(record)
     failure?.let { throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it) }
     requireCompleted(preplan, PREPLAN_PHASE_ID, label)
@@ -37,6 +35,8 @@ class GoalPlanningPreparationValidator(
     return record.copy(
       preplanPayload = skillbill.contracts.JsonSupport.mapToJsonString(preplan),
       planPayload = skillbill.contracts.JsonSupport.mapToJsonString(plan),
+      preplanRepairEvidence = acceptedPreplan.repairEvidence ?: record.preplanRepairEvidence,
+      planRepairEvidence = acceptedPlan.repairEvidence ?: record.planRepairEvidence,
     )
   }
 

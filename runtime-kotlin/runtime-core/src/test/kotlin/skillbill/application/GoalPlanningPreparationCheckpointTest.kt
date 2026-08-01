@@ -23,6 +23,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -39,6 +40,25 @@ class GoalPlanningPreparationCheckpointTest {
     assertEquals(shared.preplanPayload, harness.readShared()?.preplanPayload)
     assertEquals(plan.planPayload, harness.readPlan()?.planPayload)
     assertEquals(GoalPlanningPreparationState.PREPARED, harness.readPlan()?.preparationStatus)
+  }
+
+  @Test
+  fun `repaired planning payloads persist canonical bytes and typed evidence`() {
+    val harness = checkpointHarness()
+    val malformedShared = validShared(payload = validShared().preplanPayload + "}")
+    val malformedPlan = validPlan(payload = validPlan().planPayload + "}")
+
+    harness.checkpoint.checkpointSharedPreplan(malformedShared, harness.dbOverride)
+    harness.checkpoint.checkpointSubtaskPlan(malformedPlan, harness.dbOverride)
+
+    val storedShared = requireNotNull(harness.readShared())
+    val storedPlan = requireNotNull(harness.readPlan())
+    assertNotNull(storedShared.repairEvidence)
+    assertNotNull(storedPlan.repairEvidence)
+    assertEquals(sha256HexUtf8(storedShared.preplanPayload), storedShared.payloadSha256)
+    assertEquals(sha256HexUtf8(storedPlan.planPayload), storedPlan.payloadSha256)
+    assertEquals(sha256HexUtf8(malformedShared.preplanPayload), storedShared.repairEvidence?.originalDigest)
+    assertEquals(sha256HexUtf8(malformedPlan.planPayload), storedPlan.repairEvidence?.originalDigest)
   }
 
   @Test

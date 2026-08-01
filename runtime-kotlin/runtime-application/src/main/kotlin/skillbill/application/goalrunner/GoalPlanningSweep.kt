@@ -200,12 +200,14 @@ class DefaultGoalPlanningSweep(
       enrichPreplan(raw, shared.planningPacket)
     }
     if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
-    val preplanPayload = (preplanProduction as GoalPlanningPhaseProduction.Captured).payload
+    val captured = preplanProduction as GoalPlanningPhaseProduction.Captured
+    val preplanPayload = captured.payload
     SharedGoalPreplanCheckpoint(
       identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
       provenance = provenance,
       payloadSha256 = sha256HexUtf8(preplanPayload),
       preplanPayload = preplanPayload,
+      repairEvidence = captured.repairEvidence,
     ).also { checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
   }
 
@@ -231,7 +233,8 @@ class DefaultGoalPlanningSweep(
       listOf(FeatureTaskRuntimePhaseOutput(PHASE_PREPLAN, 1, preplanPayload)),
     )
     if (planProduction is GoalPlanningPhaseProduction.Stopped) return planProduction.outcome
-    val planPayload = (planProduction as GoalPlanningPhaseProduction.Captured).payload
+    val captured = planProduction as GoalPlanningPhaseProduction.Captured
+    val planPayload = captured.payload
     val record = GoalSubtaskPlanCheckpoint(
       identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
       subtaskId = subtask.id,
@@ -241,6 +244,7 @@ class DefaultGoalPlanningSweep(
       provenance = provenance,
       payloadSha256 = sha256HexUtf8(planPayload),
       planPayload = planPayload,
+      repairEvidence = captured.repairEvidence,
     )
     return runCatching { checkpoint.recheckpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
       onSuccess = { null },

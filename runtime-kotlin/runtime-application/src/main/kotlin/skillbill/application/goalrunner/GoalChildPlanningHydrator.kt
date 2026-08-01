@@ -127,7 +127,11 @@ internal class GoalChildPlanningHydrator(
     plan: AcceptedFeatureTaskRuntimePhaseOutput,
   ): GoalChildPlanningHydration {
     val importedAt = Instant.now().toString()
-    val records = createImportedRecords(preplan, plan, importedAt)
+    val records = createImportedRecords(
+      preplan.copy(repairEvidence = preplan.repairEvidence ?: prepared.shared.repairEvidence),
+      plan.copy(repairEvidence = plan.repairEvidence ?: prepared.plan.repairEvidence),
+      importedAt,
+    )
     return GoalChildPlanningHydration(
       currentStepId = "implement",
       stepUpdates = records.keys.map(::completedStep),
@@ -204,7 +208,8 @@ private class PreparedPlanningPayloadValidator(
   ): AcceptedFeatureTaskRuntimePhaseOutput {
     // The digest check stays ahead of the projection gate so a corrupted payload still reports as a
     // digest failure rather than as whatever the corruption made the projection look like.
-    if (sha256HexUtf8(payload) != expectedDigest) {
+    val originalDigest = sha256HexUtf8(payload)
+    if (originalDigest != expectedDigest) {
       throw InvalidGoalPlanningPreparationSchemaError(
         workflowId,
         "$phaseId.payload_sha256",
@@ -212,7 +217,15 @@ private class PreparedPlanningPayloadValidator(
       )
     }
     val accepted = phaseOutputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
-    if (sha256HexUtf8(accepted.normalizedOutput.canonicalJson) != expectedDigest) {
+    val repairEvidence = accepted.repairEvidence
+    if (repairEvidence != null && repairEvidence.originalDigest != originalDigest) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        workflowId,
+        "$phaseId.repair_evidence.original_digest",
+        "repair evidence does not describe the stored payload bytes",
+      )
+    }
+    if (repairEvidence == null && sha256HexUtf8(accepted.normalizedOutput.canonicalJson) != expectedDigest) {
       throw InvalidGoalPlanningPreparationSchemaError(
         workflowId,
         "$phaseId.payload_sha256",

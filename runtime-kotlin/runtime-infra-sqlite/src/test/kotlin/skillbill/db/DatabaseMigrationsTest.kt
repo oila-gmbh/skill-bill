@@ -72,6 +72,8 @@ class DatabaseMigrationsTest {
         14 to "add-rejected-output-diagnostics",
         15 to "add-private-producer-output-evidence",
         16 to "rekey-producer-output-evidence-by-generation",
+        17 to "persist-goal-planning-repair-evidence",
+        18 to "persist-legacy-goal-planning-repair-evidence",
       ),
       migrationDefinitions,
     )
