@@ -5,6 +5,11 @@ package skillbill.install.staging
 import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
+import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
+import skillbill.install.identity.SkillContentIdentity
+import skillbill.install.identity.installedSkillContentIdentity
+import skillbill.install.identity.requireMatchingSkillContentIdentity
+import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.resolveTarget
@@ -31,6 +36,7 @@ private data class FreshInstallInputs(
   val supportPointers: List<GeneratedSupportPointer>,
   val authored: List<Path>,
   val contentHash: String,
+  val contentIdentity: SkillContentIdentity,
   val finalStagingDir: Path,
   val internalChildren: List<InternalSidecarTarget>,
   val agentAddonPointers: List<AgentAddonPointer>,
@@ -97,6 +103,7 @@ internal fun authoredFilesFor(
 ): List<Path> {
   val excluded = mutableSetOf<Path>()
   excluded.add(sourceSkillDir.resolve(INSTALL_STAGING_SKILL_FILENAME).toAbsolutePath().normalize())
+  excluded.add(sourceSkillDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME).toAbsolutePath().normalize())
   applicablePointers.forEach { (manifest, spec) ->
     val packRoot = manifest.packRoot.toAbsolutePath().normalize()
     val pointerPath = packRoot.resolve(spec.skillRelativeDir).resolve(spec.name).toAbsolutePath().normalize()
@@ -192,7 +199,8 @@ internal fun stageInstalledSkill(
   validateAgentAddonPointerNamespace(
     skillName,
     authoredStagingNames(resolvedSource, authored).toSet() + internal.sidecarNames +
-      pointers.map { it.second.name } + internal.supportPointers.map { it.name } + setOf("SKILL.md", ".content-hash"),
+      pointers.map { it.second.name } + internal.supportPointers.map { it.name } +
+      setOf("SKILL.md", ".content-hash", SKILL_CONTENT_IDENTITY_FILENAME),
     agentAddonPointers,
   )
   val contentHash = computeInstallContentHash(
@@ -205,11 +213,20 @@ internal fun stageInstalledSkill(
       agentAddonPointers = agentAddonPointers,
     ),
   )
+  val contentIdentity = suppliedSkillContentIdentity(resolvedSource)
   val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
+
+  if (Files.isDirectory(finalStagingDir)) {
+    val marker = finalStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
+    if (Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
+      requireMatchingSkillContentIdentity(contentIdentity, installedSkillContentIdentity(finalStagingDir))
+    }
+  }
 
   // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
   val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
-    internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name }
+    internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name } +
+    SKILL_CONTENT_IDENTITY_FILENAME
   if (isReusableInstallStaging(finalStagingDir, contentHash, expectedStagedNames)) {
     log.fine(
       "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
@@ -238,6 +255,7 @@ internal fun stageInstalledSkill(
       supportPointers = internal.supportPointers,
       authored = authored,
       contentHash = contentHash,
+      contentIdentity = contentIdentity,
       finalStagingDir = finalStagingDir,
       internalChildren = internal.children,
       agentAddonPointers = agentAddonPointers,
@@ -274,6 +292,11 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
     Files.write(
       tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
       inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
+    )
+    Files.writeString(
+      tempDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME),
+      inputs.contentIdentity.compact(),
+      StandardCharsets.UTF_8,
     )
     promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true

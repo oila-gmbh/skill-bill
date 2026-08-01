@@ -239,6 +239,7 @@ sealed interface GoalRunnerRunReport {
     val subtasksBlocked: Int,
     val unaddressedFindingCount: Int? = 0,
     val unaddressedSeverityBreakdown: Map<String, Int> = emptyMap(),
+    val featureName: String? = null,
   ) : GoalRunnerRunReport
 
   data class Stopped(

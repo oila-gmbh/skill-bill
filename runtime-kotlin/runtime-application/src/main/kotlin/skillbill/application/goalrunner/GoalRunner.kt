@@ -1274,6 +1274,7 @@ class GoalRunner(
     return GoalRunnerRunReport.Completed(
       issueKey = manifest.issueKey,
       attemptedSubtasks = attempted,
+      featureName = manifest.featureName,
       pullRequestUrl = pullRequestUrl,
       pullRequestStatus = pullRequestStatus,
       subtasksCompleted = manifest.subtasks.count { it.status == "complete" },

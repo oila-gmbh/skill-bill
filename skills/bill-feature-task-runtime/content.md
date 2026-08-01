@@ -45,6 +45,21 @@ normalized selection, stop rather than inventing a value. The runtime sources
 the run-invariants (spec reference, acceptance criteria, mandates and overrides)
 directly from the spec at launch — this skill does not parse or restate them.
 
+## Fresh-conversation follow-up
+
+When continuing from a fresh conversation, pass only the canonical repository
+realpath and issue key to the runtime continuation lookup. Those values are
+sufficient durable-state handoff data:
+
+```text
+repository: repo-root-realpath-v1:/absolute/path/to/repository
+issue_key: SKILL-154
+```
+
+Inspect or resume the existing workflow state for that repository and issue key.
+Do not copy transcripts or transfer preplan, plan, implementation, audit, review,
+validation, diagnostic, or raw child payloads into the new session.
+
 **opencode and zcode are prose-only; refuse before launch.** Even when a caller
 supplies the already-confirmed input directly, this sidecar must refuse on its
 own when the agent currently executing it is opencode or zcode: stop before the

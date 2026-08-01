@@ -97,6 +97,21 @@ For every authoritative manifest, regardless of preparation mode or subtask card
 
 If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surface the failure instead of guessing a route.
 
+## Fresh-conversation follow-up
+
+For a fresh conversation, the durable handoff is the canonical repository
+realpath and issue key. The next session should inspect or resume the existing
+runtime state from those values:
+
+```text
+repository: repo-root-realpath-v1:/absolute/path/to/repository
+issue_key: SKILL-154
+```
+
+Do not copy the transcript or transfer planning, implementation, audit, review,
+validation, diagnostic, or raw child payloads. Durable workflow state and the
+governed child context are authoritative.
+
 ## Status Requests
 
 If the user asks for status on a prepared feature, read the `bill-feature-goal.md` sidecar in this skill's own installed directory and follow its status behavior. Do not use the Skill tool — `bill-feature-goal` is an internal skill.

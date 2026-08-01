@@ -55,6 +55,7 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -465,7 +466,28 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `malformed phase output stops before mutation with no checkpointed pair`() {
+  fun `malformed phase output retries with the schema correction before checkpointing`() {
+    var attempts = 0
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan" && attempts++ == 0) {
+        launchFacts(stdout = "not a json object")
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf("preplan", "preplan", "plan"), harness.launcher.phases)
+    val retryPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
+    assertContains(retryPrompt, "Previous attempt was REJECTED by the schema gate")
+    assertContains(retryPrompt, "single JSON object")
+    assertEquals(1, harness.preparedCount())
+  }
+
+  @Test
+  fun `malformed phase output stops at the bounded schema retry cap without checkpointing`() {
     val harness = sweepHarness { _, _, _ -> launchFacts(stdout = "not a json object") }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
@@ -474,6 +496,8 @@ class GoalPlanningSweepTest {
     assertEquals(0, stopped.currentSubtaskId)
     assertEquals("preplan", stopped.lastResumableStep)
     assertEquals(0, harness.preparedCount())
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertTrue(stopped.blockedReason.contains("schema-invalid output"), stopped.blockedReason)
   }
 
   @Test

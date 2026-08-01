@@ -114,7 +114,11 @@ class WorkflowEngine(
     input: WorkflowUpdateInput,
   ): WorkflowStateSnapshot {
     val existingArtifacts = decodeObject(existing.artifactsJson)
-    val mergedArtifacts = LinkedHashMap(existingArtifacts)
+    val mergedArtifacts = if (input.replaceArtifacts) {
+      LinkedHashMap()
+    } else {
+      LinkedHashMap(existingArtifacts)
+    }
     input.artifactsPatch?.let { patch -> mergedArtifacts.putAll(patch) }
     val terminal = input.workflowStatus in definition.terminalStatuses
     val updated = existing.copy(

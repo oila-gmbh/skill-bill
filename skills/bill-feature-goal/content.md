@@ -176,7 +176,7 @@ that reserved pass rather than allocating another. Carry completed or capped
 state forward on every repair and audit re-entry. A cap with unresolved Blocker
 evidence is blocking; Major-only evidence is not.
 
-Goal-facing review output and `goal_event` lines contain only subtask id, pass,
+Goal-facing review output and terminal summaries contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
 label, and concise text. They must never contain a path, line number, diff
 hunk, or raw child-review output; full location-bearing evidence remains in
@@ -318,36 +318,12 @@ process-completion primitive. Detach only when the harness provides an explicit
 background-exit notification that re-invokes the session. Hand the user the
 block above, and emit the terminal notification when the run ends.
 
-The `goal_event:` transition stream below is the stable contract those read-only
-commands and any user-owned tooling consume. Heartbeats are high-frequency
-liveness ticks and are not progress reporting.
-
-### `goal_event:` transition schema
-
-The runtime emits a machine-consumable transition line on each meaningful change
-only — subtask change, phase/step transition, blocked, failed, completion, and
-terminal reconciliation — distinct from the per-tick `heartbeat` and
-`goal_observability:` lines. The line uses the stable prefix `goal_event:` and
-stable `key=value` keys:
-
-```text
-goal_event: issue_key=SKILL-901 subtask_id=1 prev_step=preplan current_step=implement prev_status=in_progress current_status=in_progress event_kind=subtask_resume sequence_number=20001
-```
-
-Required keys: `issue_key`, `subtask_id`, `prev_step`, `current_step`,
-`prev_status`, `current_status`, `event_kind`, and a monotonic `sequence_number`.
-The `goal_event:` sequence space is distinct from the `goal_observability:`
-sequence space, so consumers must not assume the two share numbering. A
-`goal_event:` line is emitted only on a meaningful change, never once per
-heartbeat. Phase/step values are sourced from the authoritative durable workflow
-store, never a stale local default.
-
 ### Default output verbosity
 
-Default terminal output reports subtask start, phase transition, blocked/failed,
-completion, and sparse liveness events. Debug/raw child stdout and stderr remain
-explicit opt-in via `--debug-child-output`; default output keeps raw child streams
-hidden and surfaces only compact progress, observability, and transition lines.
+Default goal execution emits one launch notice, one copyable read-only monitoring
+block, and one bounded terminal notification. Repeated progress, heartbeat, wait,
+transition, and raw-child relays are prohibited. Debug/raw child stdout and
+stderr remain explicit opt-in via `--debug-child-output` for diagnostics only.
 
 During the run, treat workflow state as authoritative. Child stdout and stderr are diagnostic. If the driver stops and reports a blocked or failed subtask, surface it loudly and immediately, do not continue the loop manually, and emit only the single structured completion line defined above. On a clean finish, emit only that same structured completion line.
 
@@ -374,14 +350,16 @@ skill-bill goal watch <issue_key> --interval-seconds 5
 
 `goal watch` follows until the goal finishes and prints every refresh at the
 selected interval, including unchanged status. Use `--suppress-unchanged` only
-when repeated heartbeat output is undesirable.
+when repeated unchanged refresh output is undesirable.
 
-Default goal execution emits compact progress and observability lines while raw
-child streams stay hidden:
+The foreground run itself emits no progress or heartbeat relay. The separate
+read-only commands are the monitoring surface:
 
 ```text
-goal SKILL-901: heartbeat subtask=1 step=implement liveness=durable_progress
-goal_observability: issue_key=SKILL-901 subtask_id=1 workflow_phase=implement worker_role=foreground liveness_class=durable_progress sequence_number=1
+goal SKILL-901: launched runtime executable=... version=... build_id=...
+monitor (read-only; mutates nothing; no model tokens):
+skill-bill goal watch SKILL-901 --interval-seconds 5
+skill-bill goal status SKILL-901 --diff-stat
 ```
 
 Status and watch can include current git activity on demand:
@@ -416,6 +394,35 @@ selected_diff_hunks: count=1 truncated=false
 selected_diff_hunk: hunk_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false header=@@_-10,+10_@@ line_count=4 truncated=false
 selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/GoalCliCommands.kt staged=false text=-old
 ```
+
+### Bounded planning context and thin retention
+
+Planning repository discovery is allowlisted to `AGENTS.md`, each selected
+pack's `platform.yaml`, and each selected pack's `agent/history.md` and
+`agent/decisions.md`. Discovery returns targeted excerpts only: at most 32 files,
+4,096 bytes per excerpt, and 32 KiB total. It must not emit unrestricted
+recursive search output.
+
+Child planning payloads, implementation summaries, audits, reviews, diagnostics,
+and raw child output remain in child context or durable workflow storage. The
+parent retains manifest metadata, the current subtask index, and terminal
+outcomes with only `{status, commit_sha, workflow_id}`.
+
+## Fresh-conversation follow-up
+
+When a new conversation must continue this goal, the durable handoff is only the
+canonical repository realpath and issue key:
+
+```text
+repository: repo-root-realpath-v1:/absolute/path/to/repository
+issue_key: SKILL-154
+```
+
+The next session must inspect or resume the existing runtime state for that
+repository and issue key. Do not copy the transcript, planning payloads,
+implementation summaries, audit or review reports, diagnostics, or raw child
+output into the new conversation. Durable workflow state and the child context
+remain authoritative.
 
 ## Mode: Prose Goal Orchestration (in-session loop)
 

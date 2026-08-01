@@ -24,6 +24,43 @@ class WorkflowInputProjectionSelectorTest {
   }
 
   @Test
+  fun `artifact replacement drops child payloads from the parent projection`() {
+    val definition = FeatureImplementWorkflowDefinition.definition
+    val opened = engine.openRecord(definition, "wfl-thin", "fis-thin", "plan")
+    val updated = engine.updateRecord(
+      definition,
+      opened,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = null,
+        artifactsPatch = mapOf(
+          "decomposition_runtime" to mapOf("status" to "in_progress"),
+          "implementation_summary" to mapOf("summary" to "child payload"),
+          "audit" to mapOf("summary" to "child audit"),
+          "raw_child_output" to "child stdout",
+        ),
+        sessionId = "",
+      ),
+    )
+
+    val thin = engine.updateRecord(
+      definition,
+      updated,
+      skillbill.workflow.model.WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = null,
+        artifactsPatch = mapOf("decomposition_runtime" to mapOf("status" to "complete")),
+        sessionId = "",
+        replaceArtifacts = true,
+      ),
+    )
+
+    assertEquals(setOf("decomposition_runtime"), engine.snapshotView(definition, thin).artifacts.keys)
+  }
+
+  @Test
   fun `fresh and resumed review projections use review scope as repository checkpoint`() {
     val definition = FeatureImplementWorkflowDefinition.definition
     val artifacts = mapOf(

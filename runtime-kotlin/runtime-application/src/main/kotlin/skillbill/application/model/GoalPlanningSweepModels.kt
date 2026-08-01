@@ -39,5 +39,10 @@ internal sealed interface GoalPlanningPhaseProduction {
     val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   ) : GoalPlanningPhaseProduction
+
+  data class SchemaRejected(
+    val reason: String,
+  ) : GoalPlanningPhaseProduction
+
   data class Stopped(val outcome: GoalPlanningSweepOutcome.Stopped) : GoalPlanningPhaseProduction
 }

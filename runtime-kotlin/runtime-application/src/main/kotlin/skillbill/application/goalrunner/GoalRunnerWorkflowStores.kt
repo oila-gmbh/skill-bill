@@ -397,14 +397,15 @@ class WorkflowGoalRunnerManifestStore(
         workflowStatus = existingParent.workflowStatus,
         currentStepId = existingParent.currentStepId,
         stepUpdates = null,
-        artifactsPatch = mapOf(
-          DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-            state.manifest,
-            decompositionManifestValidator,
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-          ),
+        // Child planning, implementation, audit, review, diagnostics, and raw output stay on
+        // the child workflow. The parent projection carries only its manifest metadata and the
+        // terminal subtask fields represented by {status, commit_sha, workflow_id}.
+        artifactsPatch = thinParentProjectionArtifacts(
+          manifest = state.manifest,
+          existingArtifacts = decodeArtifacts(existingParent.artifactsJson),
         ),
         sessionId = existingParent.sessionId.orEmpty(),
+        replaceArtifacts = true,
       ),
     )
     WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, parentUpdated)
@@ -591,17 +592,16 @@ class WorkflowGoalRunnerManifestStore(
         currentStepId = existingSnapshot.currentStepId,
         stepUpdates = null,
         artifactsPatch = buildMap {
-          put(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            encodeDecompositionManifestMap(
-              state.manifest,
-              decompositionManifestValidator,
-              DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+          putAll(
+            thinParentProjectionArtifacts(
+              manifest = state.manifest,
+              existingArtifacts = decodeArtifacts(existingSnapshot.artifactsJson),
+              clearOutOfBandAcceptances = clearOutOfBandAcceptances,
             ),
           )
-          if (clearOutOfBandAcceptances) put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, emptyList<Any>())
         },
         sessionId = existingSnapshot.sessionId.orEmpty(),
+        replaceArtifacts = true,
       ),
     )
     WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
@@ -614,6 +614,31 @@ class WorkflowGoalRunnerManifestStore(
       ),
       projectionArtifactsJson = refreshed.artifactsJson,
     )
+  }
+
+  private fun thinParentProjectionArtifacts(
+    manifest: DecompositionManifest,
+    existingArtifacts: Map<String, Any?>,
+    clearOutOfBandAcceptances: Boolean = false,
+  ): Map<String, Any?> = buildMap {
+    put(
+      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+      encodeDecompositionManifestMap(
+        manifest,
+        decompositionManifestValidator,
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+      ),
+    )
+    // These are parent-owned controls, not child planning or execution payloads. Preserve them
+    // across a thin projection rewrite so the next child receives the settled goal policy.
+    existingArtifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY]?.let { put(GOAL_REVIEW_POLICY_ARTIFACT_KEY, it) }
+    if (!clearOutOfBandAcceptances) {
+      existingArtifacts[GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY]?.let {
+        put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, it)
+      }
+    } else {
+      put(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY, emptyList<Any>())
+    }
   }
 
   private fun loadFromWorkflowStore(

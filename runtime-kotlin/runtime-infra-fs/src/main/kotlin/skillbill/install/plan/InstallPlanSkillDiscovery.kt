@@ -2,6 +2,7 @@ package skillbill.install.plan
 
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.scaffold.authoring.InternalSkillDeclaration
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.authoring.requireValidInternalSkillClassification
@@ -41,6 +42,9 @@ internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
   }
   val baseSkills = candidateSkillDirs
     .map { skillDir ->
+      // Validate the compact identity while the install plan is still read-only. This keeps an
+      // invalid source from reaching workflow or staging side effects.
+      suppliedSkillContentIdentity(skillDir)
       InstallPlanSkill(
         name = skillDir.fileName.toString(),
         sourceDir = skillDir.toAbsolutePath().normalize(),
@@ -88,6 +92,9 @@ internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> 
   return skillDirs
     .sortedBy { skillDir -> skillDir.fileName.toString() }
     .map { skillDir ->
+      // Validate the compact identity while the install plan is still read-only. This keeps an
+      // invalid source from reaching workflow or staging side effects.
+      suppliedSkillContentIdentity(skillDir)
       InstallPlanSkill(
         name = skillDir.fileName.toString(),
         sourceDir = skillDir,

@@ -17,6 +17,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -328,11 +329,21 @@ class DefaultGoalPlanningSweep(
         recordedOutputs,
         priorSchemaFailure,
       )
-      if (production is GoalPlanningPhaseProduction.Stopped) {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-        return production
+      when (production) {
+        is GoalPlanningPhaseProduction.Stopped -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          return production
+        }
+
+        is GoalPlanningPhaseProduction.SchemaRejected -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          priorSchemaFailure = production.reason
+          return@repeat
+        }
+
+        is GoalPlanningPhaseProduction.Captured -> Unit
       }
-      val captured = production as GoalPlanningPhaseProduction.Captured
+      val captured = production
       val payload = finalizePayload(captured.payload)
       val accepted = if (payload == captured.payload) {
         skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
@@ -392,9 +403,9 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun fixLoopExhaustedReason(phaseId: String, lastFailure: String): String =
-    "Goal planning '$phaseId' produced a projection-invalid output on every attempt " +
+    "Goal planning '$phaseId' produced schema-invalid output on every attempt " +
       "(cap=${FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS}); nothing was checkpointed. " +
-      "Last projection failure: $lastFailure"
+      "Last schema failure: $lastFailure"
 
   private fun produceAttempt(
     shared: GoalPlanningSharedContext,
@@ -465,7 +476,15 @@ class DefaultGoalPlanningSweep(
         }
       },
       onFailure = { error ->
-        GoalPlanningPhaseProduction.Stopped(stopped(shared, currentSubtaskId, malformedReason(phaseId, error), phaseId))
+        if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+          GoalPlanningPhaseProduction.SchemaRejected(
+            error.payloadFreeReason ?: error.message.orEmpty(),
+          )
+        } else {
+          GoalPlanningPhaseProduction.Stopped(
+            stopped(shared, currentSubtaskId, malformedReason(phaseId, error), phaseId),
+          )
+        }
       },
     )
   }

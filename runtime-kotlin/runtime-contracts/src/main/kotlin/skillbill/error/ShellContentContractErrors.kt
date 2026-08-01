@@ -58,6 +58,23 @@ class AgentAddonSelectionDriftError(
   "Selected agent add-on '$slug' changed at '$sourceIdentity'; start a new run to accept the new content.",
 )
 
+class InvalidSkillContentIdentityError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Skill content identity '${sourceLabel.ifBlank { "<unknown>" }}' is invalid: $reason",
+  cause,
+)
+
+class SkillContentIdentityMismatchError(
+  val suppliedIdentity: String,
+  val installedIdentity: String,
+) : ShellContentContractException(
+  "Skill content identity mismatch: supplied source '$suppliedIdentity'; " +
+    "installed source '$installedIdentity'.",
+)
+
 class InvalidReviewContextSchemaError(
   val sourceLabel: String,
   val reason: String,
