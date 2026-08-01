@@ -77,6 +77,7 @@ import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -377,8 +378,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun reconcileReservedGoalReviewOutput(phaseId: String): String? = state.outputFor(phaseId)?.payload
     ?.let { output ->
-      runCatching { outputValidator.validateAndReadPhaseOutput(output, sourceLabel = phaseId) }.fold(
-        onSuccess = { outputMap -> completeReservedGoalReviewPass(output, outputMap) },
+      runCatching {
+        outputValidator.validatePhaseOutput(output, sourceLabel = phaseId).requireAcceptedOutput(phaseId)
+      }.fold(
+        onSuccess = { accepted -> completeReservedGoalReviewPass(output, accepted.normalizedOutput.envelope) },
         onFailure = { error ->
           "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
         },
@@ -464,11 +467,14 @@ internal class FeatureTaskRuntimeRunLoop(
     reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
     reentry: PendingReentry?,
   ): PhaseSettlement = runCatching {
-    val normalizedOutput = outputValidator.normalizePhaseOutput(
-      rawResult,
-      sourceLabel = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    val acceptedOutput = outputValidator
+      .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+    recordCarriedForwardGoalReview(
+      acceptedOutput.normalizedOutput,
+      acceptedOutput.repairEvidence,
+      reentry,
     )
-    recordCarriedForwardGoalReview(rawResult, normalizedOutput, reentry)
   }.fold(
     onSuccess = {
       PhaseSettlement.completed(
@@ -480,8 +486,8 @@ internal class FeatureTaskRuntimeRunLoop(
   )
 
   private fun recordCarriedForwardGoalReview(
-    rawResult: String,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     reentry: PendingReentry?,
   ) {
     val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
@@ -490,7 +496,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val iteration = state.nextIteration(phaseId)
     val priorRecord = state.recordFor(phaseId)
-    recorder.recordCompletedPhase(
+    val persisted = recorder.recordCompletedPhase(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -498,14 +504,27 @@ internal class FeatureTaskRuntimeRunLoop(
         attemptCount = iteration,
         resolvedAgentId = priorRecord?.resolvedAgentId ?: "user-directed",
         finished = true,
-        outputArtifact = rawResult,
+        outputArtifact = normalizedOutput.canonicalJson,
+        normalizedOutput = normalizedOutput,
+        repairEvidence = repairEvidence,
         loopId = reentry?.loopId,
         edgeIteration = reentry?.edgeIteration,
       ),
       request.dbPathOverride,
     )
+    if (!persisted) {
+      error("Carried-forward goal review could not atomically persist its canonical result.")
+    }
     if (reentry != null) pendingReentry = null
-    state.recordCompleted(FeatureTaskRuntimePhaseOutput(phaseId, iteration, rawResult, normalizedOutput))
+    state.recordCompleted(
+      FeatureTaskRuntimePhaseOutput(
+        phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        repairEvidence,
+      ),
+    )
   }
 
   private fun blockCarriedForwardReview(detail: String): PhaseSettlement {
@@ -1487,9 +1506,29 @@ internal class FeatureTaskRuntimeRunLoop(
       STATUS_COMPLETED,
       finished = true,
       outputArtifact = output.payload,
+      normalizedOutput = output.normalizedOutput,
+      repairEvidence = output.repairEvidence,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    val persisted = runCatching {
+      recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    }.getOrElse { error ->
+      return blockAndPersist(
+        run,
+        iteration,
+        "Completed goal review budget could not atomically persist its canonical result: " +
+          error.message.orEmpty(),
+        observability,
+      )
+    }
+    if (!persisted) {
+      return blockAndPersist(
+        run,
+        iteration,
+        "Completed goal review budget could not atomically persist its canonical result.",
+        observability,
+      )
+    }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(output.copy(phaseId = run.phaseId, iteration = iteration))
   }
@@ -1526,8 +1565,8 @@ internal class FeatureTaskRuntimeRunLoop(
     val closedCriterionRefs = fullyClosedAuditCriterionRefs(run) ?: return null
     val iteration = state.nextIteration(run.phaseId)
     val outputText = fullyClosedAuditOutput(closedCriterionRefs)
-    val normalizedOutput = runCatching {
-      outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
+    val acceptedOutput = runCatching {
+      outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
     }.getOrElse { error ->
       return blockAndPersistInPhase(
         run,
@@ -1536,6 +1575,7 @@ internal class FeatureTaskRuntimeRunLoop(
         observability,
       )
     }
+    val normalizedOutput = acceptedOutput.normalizedOutput
     val persisted = recorder.recordCompletedPhase(
       phaseStateRequest(
         run,
@@ -1544,6 +1584,7 @@ internal class FeatureTaskRuntimeRunLoop(
         finished = true,
         outputArtifact = outputText,
         normalizedOutput = normalizedOutput,
+        repairEvidence = acceptedOutput.repairEvidence,
       ),
       run.request.dbPathOverride,
     )
@@ -1558,7 +1599,13 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(
-      FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput),
+      FeatureTaskRuntimePhaseOutput(
+        run.phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        acceptedOutput.repairEvidence,
+      ),
     )
   }
 
@@ -1706,46 +1753,72 @@ internal class FeatureTaskRuntimeRunLoop(
     return GoalReviewRunPreparation.Blocked
   }
 
+  private class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
+
   private fun settleCarriedForwardGoalReview(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome {
-    val output = runCatching {
-      goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+    val acceptedOutput = runCatching {
+      val output = goalContinuationRecorder.lastGoalReviewResult(run.request.workflowId, run.request.dbPathOverride)
+        ?: throw MissingCarriedForwardGoalReviewResultException()
+      outputValidator.validatePhaseOutput(output, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
     }.getOrElse { error ->
+      val detail = if (error is MissingCarriedForwardGoalReviewResultException) {
+        "missing."
+      } else {
+        "malformed: ${error.message.orEmpty()}"
+      }
       return blockAndPersist(
         run,
         state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
-          error.message.orEmpty(),
+        "Goal-subtask review pass budget is exhausted but its durable raw review result is $detail",
         observability,
       )
     }
-      ?: return blockAndPersist(
-        run,
-        state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is missing.",
-        observability,
-      )
-    val normalizedOutput = runCatching {
-      outputValidator.normalizePhaseOutput(output, sourceLabel = run.phaseId)
-    }.getOrElse { error ->
-      return blockAndPersist(
-        run,
-        state.nextIteration(run.phaseId),
-        "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: " +
-          error.message.orEmpty(),
-        observability,
-      )
-    }
+    val normalizedOutput = acceptedOutput.normalizedOutput
     val iteration = state.nextIteration(run.phaseId)
-    val phaseState = phaseStateRequest(run, iteration, STATUS_COMPLETED, finished = true, outputArtifact = output)
+    val phaseState = phaseStateRequest(
+      run,
+      iteration,
+      STATUS_COMPLETED,
+      finished = true,
+      outputArtifact = normalizedOutput.canonicalJson,
+      normalizedOutput = normalizedOutput,
+      repairEvidence = acceptedOutput.repairEvidence,
+    )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    carriedForwardReviewPersistenceFailure(phaseState, run)?.let { failure ->
+      return blockAndPersist(
+        run,
+        iteration,
+        failure,
+        observability,
+      )
+    }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(
-      FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, output, normalizedOutput),
+      FeatureTaskRuntimePhaseOutput(
+        run.phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        acceptedOutput.repairEvidence,
+      ),
+    )
+  }
+
+  private fun carriedForwardReviewPersistenceFailure(
+    phaseState: FeatureTaskRuntimePhaseStateRequest,
+    run: PhaseRun,
+  ): String? {
+    val prefix = "Carried-forward goal review could not atomically persist its canonical result."
+    return runCatching {
+      recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
+    }.fold(
+      onSuccess = { persisted -> if (persisted) null else prefix },
+      onFailure = { error -> "$prefix ${error.message.orEmpty()}" },
     )
   }
 
@@ -1977,6 +2050,8 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
@@ -1986,8 +2061,10 @@ internal class FeatureTaskRuntimeRunLoop(
       attemptCount = attemptCount.coerceAtLeast(1),
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = false,
-      outputArtifact = outputArtifact,
+      outputArtifact = normalizedOutput?.canonicalJson ?: outputArtifact,
       rejectedOutput = rejectedOutput,
+      normalizedOutput = normalizedOutput,
+      repairEvidence = repairEvidence,
       blockedReason = reason,
       failureDisposition = failureDisposition,
       fileManifestBefore = fileManifest?.before.orEmpty(),
@@ -2014,6 +2091,8 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
   ): PhaseOutcome = blockAndPersist(
     run,
@@ -2025,6 +2104,8 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition = failureDisposition,
     fileManifest = fileManifest,
     outputArtifact = outputArtifact,
+    normalizedOutput = normalizedOutput,
+    repairEvidence = repairEvidence,
     rejectedOutput = rejectedOutput,
   )
 
@@ -2261,9 +2342,11 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult = try {
-    val normalized = outputValidator.normalizePhaseOutput(outputText, sourceLabel = run.phaseId)
+    val acceptedOutput = outputValidator
+      .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
+      .requireAcceptedOutput(run.phaseId)
     settleValidatedOutput(
-      run, iteration, normalized, observability, fileManifest,
+      run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
       outputBytes, outputTruncated, outputByteSize, outputSha256,
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
@@ -2333,6 +2416,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     outputBytes: ByteArray,
@@ -2381,12 +2465,22 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           fileManifest = fileManifest,
-          outputArtifact = outputText,
+          normalizedOutput = normalizedOutput,
+          repairEvidence = repairEvidence,
         ),
       )
     }
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
-      return terminalOutputAttempt(run, iteration, reason, outputText, outputMap, observability, fileManifest)
+      return terminalOutputAttempt(
+        run,
+        iteration,
+        reason,
+        outputMap,
+        normalizedOutput,
+        repairEvidence,
+        observability,
+        fileManifest,
+      )
     }
     // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
     // claiming 'completed' owes the projection its consumer will parse.
@@ -2402,6 +2496,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       iteration,
       normalizedOutput,
+      repairEvidence,
       repositoryFingerprint,
     )?.let { reason ->
       return reject("consumer-projection", reason)
@@ -2428,6 +2523,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       iteration,
       normalizedOutput,
+      repairEvidence,
       observability,
       fileManifest,
       repositoryFingerprint,
@@ -2461,6 +2557,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     repositoryFingerprint: String?,
   ): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return null
@@ -2473,6 +2570,7 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration = iteration,
       payload = normalizedOutput.canonicalJson,
       normalizedOutput = normalizedOutput,
+      repairEvidence = repairEvidence,
     )
     val outputs = state.outputs().filterNot { it.phaseId == run.phaseId } + currentOutput
     val resolvedFingerprint = repositoryFingerprint?.takeIf(String::isNotBlank)
@@ -2711,8 +2809,9 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     reason: String,
-    outputText: String,
     outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
@@ -2731,7 +2830,8 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = disposition,
           fileManifest = fileManifest,
-          outputArtifact = outputText,
+          normalizedOutput = normalizedOutput,
+          repairEvidence = repairEvidence,
         ),
       )
     }
@@ -3055,6 +3155,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     repositoryFingerprint: String?,
@@ -3062,7 +3163,14 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
     if (isGoalReviewRun(run)) {
-      persistGoalReviewCompletion(run, iteration, normalizedOutput, observability, fileManifest)?.let { outcome ->
+      persistGoalReviewCompletion(
+        run,
+        iteration,
+        normalizedOutput,
+        repairEvidence,
+        observability,
+        fileManifest,
+      )?.let { outcome ->
         return AttemptResult.settled(outcome)
       }
     } else {
@@ -3075,6 +3183,7 @@ internal class FeatureTaskRuntimeRunLoop(
           outputArtifact = outputText,
           fileManifest = fileManifest,
           normalizedOutput = normalizedOutput,
+          repairEvidence = repairEvidence,
           repositoryFingerprint = repositoryFingerprint,
         ),
         run.request.dbPathOverride,
@@ -3094,7 +3203,15 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
-      PhaseOutcome.completed(FeatureTaskRuntimePhaseOutput(run.phaseId, iteration, outputText, normalizedOutput)),
+      PhaseOutcome.completed(
+        FeatureTaskRuntimePhaseOutput(
+          run.phaseId,
+          iteration,
+          outputText,
+          normalizedOutput,
+          repairEvidence,
+        ),
+      ),
     )
   }
 
@@ -3102,6 +3219,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): PhaseOutcome? {
@@ -3120,6 +3238,7 @@ internal class FeatureTaskRuntimeRunLoop(
             outputArtifact = outputText,
             fileManifest = fileManifest,
             normalizedOutput = normalizedOutput,
+            repairEvidence = repairEvidence,
           ),
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
@@ -3198,6 +3317,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
   ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
     workflowId = run.request.workflowId,
@@ -3208,6 +3328,7 @@ internal class FeatureTaskRuntimeRunLoop(
     finished = finished,
     outputArtifact = outputArtifact,
     normalizedOutput = normalizedOutput,
+    repairEvidence = repairEvidence,
     repositoryFingerprint = repositoryFingerprint,
     fileManifestBefore = fileManifest?.before.orEmpty(),
     fileManifestAfter = fileManifest?.after.orEmpty(),

@@ -9,6 +9,12 @@ package skillbill.contracts.workflow
 const val DECOMPOSITION_MANIFEST_CONTRACT_VERSION: String = "0.5"
 
 /**
+ * Version of the typed manifest-YAML validation result and repair-evidence contract.
+ * This is independent from the serialized decomposition-manifest schema version.
+ */
+const val DECOMPOSITION_MANIFEST_VALIDATION_CONTRACT_VERSION: String = "0.1"
+
+/**
  * Single source of truth for where the canonical decomposition
  * manifest schema lives. The Gradle copy task in
  * `runtime-contracts/build.gradle.kts` must mirror these values because

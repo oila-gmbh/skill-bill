@@ -108,10 +108,16 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1725,6 +1731,25 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertTrue(requireNotNull(record.durationMillis) >= 0, "durationMillis for $phaseId")
       assertEquals(phaseAgent(phaseId), record.resolvedAgentId, "resolved agent id for $phaseId")
     }
+  }
+
+  @Test
+  fun `accepted repaired output persists canonical payload and typed evidence`() {
+    val harness = runnerHarness(
+      validator = RepairingImplementOutputValidator,
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val implement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals(validJsonOutput("implement"), implement.outputArtifact)
+    assertEquals("implement", implement.repairEvidence?.sourceLocation?.sourceLabel)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      implement.repairEvidence?.operation,
+    )
+    assertFalse(implement.toArtifactMap().toString().contains("original_payload"))
   }
 
   @Test
@@ -5051,6 +5076,31 @@ private class ThrowingValidator(private val failPhases: Set<String>) : FeatureTa
 
 internal object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
+}
+
+private object RepairingImplementOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
+
+  override fun validatePhaseOutput(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): FeatureTaskRuntimePhaseOutputValidationResult {
+    if (sourceLabel != "implement") return AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+    val canonical = validJsonOutput(sourceLabel)
+    return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
+      normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(
+        canonicalJson = canonical,
+        envelope = normalizePhaseOutput(canonical, sourceLabel).envelope,
+      ),
+      evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+        format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+        originalDigest = "a".repeat(64),
+        repairedDigest = "b".repeat(64),
+        operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+        sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation(sourceLabel, 0, 1, 1),
+      ),
+    )
+  }
 }
 
 internal object CanonicalWrapperTestValidator : FeatureTaskRuntimePhaseOutputValidator {

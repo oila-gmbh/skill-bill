@@ -2,6 +2,8 @@ package skillbill.workflow
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.workflow.model.DecompositionManifestValidationFailureCode
+import skillbill.workflow.model.DecompositionManifestValidationResult
 
 /**
  * SKILL-52.3 Subtask 1: domain-owned validator port for decomposition
@@ -34,4 +36,22 @@ interface DecompositionManifestValidator {
    */
   @OpenBoundaryMap("Parsed decomposition manifest wire map at the schema-validation seam")
   fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?>
+
+  /**
+   * Returns the versioned result at the YAML parse/repair boundary. The default keeps existing
+   * test doubles source-compatible; infrastructure adapters override it to add bounded syntax
+   * repair and repair evidence.
+   */
+  fun validateYamlTextResult(yamlText: String, sourceLabel: String): DecompositionManifestValidationResult = try {
+    val parsed = validateYamlText(yamlText, sourceLabel)
+    DecompositionManifestValidationResult.AcceptedUnchanged(
+      manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel),
+      yamlText = yamlText,
+    )
+  } catch (error: InvalidDecompositionManifestSchemaError) {
+    DecompositionManifestValidationResult.Rejected(
+      code = DecompositionManifestValidationFailureCode.fromWire(error.failureCode),
+      reason = error.reason,
+    )
+  }
 }

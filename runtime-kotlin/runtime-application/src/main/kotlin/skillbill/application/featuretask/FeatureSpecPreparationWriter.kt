@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.defaultFeatureBranch
+import skillbill.application.decomposition.loadValidatedDecompositionManifestPersistingRepair
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.model.DecompositionManifestWriteRequest
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
@@ -59,7 +60,43 @@ class FeatureSpecPreparationWriter(
       ),
     )
     val subtaskRecords = prepareSubtasks(repoRoot, request, parentSpecPath, parentSpecRelativePath)
-    val planningResult = linkedMapOf(
+    val planningResult = planningResult(parentSpecPath, subtaskRecords)
+    val preparedManifest = DecompositionManifestWriter.prepare(
+      request = DecompositionManifestWriteRequest(
+        repoRoot = repoRoot,
+        parentSpecPath = parentSpecPath,
+        planningResult = planningResult,
+        baseBranch = request.baseBranch.ifBlank { "main" },
+        featureBranch = request.featureBranch.takeIf(String::isNotBlank) ?: defaultFeatureBranch(parentSpecPath),
+        specSource = request.specSource,
+      ),
+      validator = decompositionManifestValidator,
+      fileStore = fileStore,
+    )
+    val loaded = fileStore.writeBundleAtomically(
+      writes = buildList {
+        add(parentSpecPath to parentSpecText)
+        subtaskRecords.forEach { add(it.path to it.text) }
+        add(preparedManifest.manifestPath to preparedManifest.yaml)
+      },
+    ) {
+      loadPreparedManifest(preparedManifest.manifestPath)
+    }
+    return FeatureSpecWriteResult(
+      mode = request.decision.mode,
+      parentSpecPath = parentSpecRelativePath,
+      featureImplementPath = parentSpecRelativePath,
+      decompositionManifestPath = repoRelativePath(repoRoot, preparedManifest.manifestPath),
+      subtaskSpecPaths = subtaskRecords.map(PreparedSubtask::relativePath),
+      repairEvidence = preparedManifest.repairEvidence + listOfNotNull(loaded.repairEvidence),
+    )
+  }
+
+  private fun loadPreparedManifest(manifestPath: Path) =
+    loadValidatedDecompositionManifestPersistingRepair(manifestPath, fileStore, decompositionManifestValidator)
+
+  private fun planningResult(parentSpecPath: Path, subtaskRecords: List<PreparedSubtask>): Map<String, Any?> =
+    linkedMapOf(
       "mode" to "decompose",
       "parent_spec_path" to parentSpecPath.toString(),
       "recommended_first_subtask_id" to subtaskRecords.first().definition.id,
@@ -74,29 +111,6 @@ class FeatureSpecPreparationWriter(
         )
       },
     )
-    val preparedManifest = DecompositionManifestWriter.prepare(
-      request = DecompositionManifestWriteRequest(
-        repoRoot = repoRoot,
-        parentSpecPath = parentSpecPath,
-        planningResult = planningResult,
-        baseBranch = request.baseBranch.ifBlank { "main" },
-        featureBranch = request.featureBranch.takeIf(String::isNotBlank) ?: defaultFeatureBranch(parentSpecPath),
-        specSource = request.specSource,
-      ),
-      validator = decompositionManifestValidator,
-      fileStore = fileStore,
-    )
-    fileStore.writeTextAtomically(parentSpecPath, parentSpecText)
-    subtaskRecords.forEach { fileStore.writeTextAtomically(it.path, it.text) }
-    fileStore.writeTextAtomically(preparedManifest.manifestPath, preparedManifest.yaml)
-    return FeatureSpecWriteResult(
-      mode = request.decision.mode,
-      parentSpecPath = parentSpecRelativePath,
-      featureImplementPath = parentSpecRelativePath,
-      decompositionManifestPath = repoRelativePath(repoRoot, preparedManifest.manifestPath),
-      subtaskSpecPaths = subtaskRecords.map(PreparedSubtask::relativePath),
-    )
-  }
 
   private fun prepareSubtasks(
     repoRoot: Path,

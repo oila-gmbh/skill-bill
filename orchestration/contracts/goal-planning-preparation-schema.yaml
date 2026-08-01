@@ -35,6 +35,35 @@ $defs:
       planning_contract_version: { type: string, const: "0.2" }
       phase_output_contract_id: { type: string, const: "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml" }
       phase_output_contract_version: { type: string, const: "0.3" }
+  phaseOutputRepairEvidence:
+    type: object
+    additionalProperties: false
+    required:
+      - contract_version
+      - validator_version
+      - format
+      - original_digest
+      - repaired_digest
+      - operation
+      - source_location
+    properties:
+      contract_version: { type: string, const: "0.1" }
+      validator_version: { type: string, const: "0.1" }
+      format: { type: string, enum: [json, yaml] }
+      original_digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+      repaired_digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+      operation:
+        type: string
+        enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter]
+      source_location:
+        type: object
+        additionalProperties: false
+        required: [source_label, offset, line, column]
+        properties:
+          source_label: { type: string, minLength: 1 }
+          offset: { type: integer, minimum: 0 }
+          line: { type: integer, minimum: 1 }
+          column: { type: integer, minimum: 1 }
   sharedPreplan:
     type: object
     additionalProperties: false
@@ -47,6 +76,7 @@ $defs:
       provenance: { $ref: "#/$defs/provenance" }
       payload_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
       preplan_payload: { type: string, minLength: 1 }
+      repair_evidence: { $ref: "#/$defs/phaseOutputRepairEvidence" }
   subtaskPlan:
     type: object
     additionalProperties: false
@@ -63,6 +93,7 @@ $defs:
       provenance: { $ref: "#/$defs/provenance" }
       payload_sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
       plan_payload: { type: string, minLength: 1 }
+      repair_evidence: { $ref: "#/$defs/phaseOutputRepairEvidence" }
 x-coherence-checks:
   - preparation_status is prepared once a valid checkpoint is stored and cannot regress.
   - provenance hashes are SHA-256 of raw UTF-8 bytes and are stable across re-reads.

@@ -97,6 +97,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -1714,10 +1715,11 @@ private fun validatedGoalReviewPasses(
 ): List<GoalSubtaskReviewPassResult> {
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
-    val output = phaseOutputValidator.validateAndReadPhaseOutput(
-      rawResult,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-    )
+    val output = phaseOutputValidator
+      .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      .normalizedOutput
+      .envelope
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
     val expectedVerdict = if (pass.passNumber == 2 && outcome.unresolvedFindingCount > 0) {

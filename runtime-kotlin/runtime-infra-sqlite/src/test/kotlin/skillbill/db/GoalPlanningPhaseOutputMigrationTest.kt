@@ -16,6 +16,10 @@ class GoalPlanningPhaseOutputMigrationTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       seedPlanningRow(connection, phaseOutputContractVersion = "0.2")
+      connection.createStatement().use { statement ->
+        statement.execute("UPDATE goal_shared_preplans SET repair_evidence_json = 'repair-evidence'")
+        statement.execute("UPDATE goal_subtask_plans SET repair_evidence_json = 'repair-evidence'")
+      }
       connection.createStatement().use { it.execute("DELETE FROM schema_migrations WHERE version = 11") }
 
       DatabaseMigrations.apply(connection)
@@ -23,6 +27,8 @@ class GoalPlanningPhaseOutputMigrationTest {
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11"))
+      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_shared_preplans"))
+      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_subtask_plans"))
       assertFailsWith<java.sql.SQLException> {
         seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = "wfl-incompatible")
       }
@@ -61,7 +67,12 @@ class GoalPlanningPhaseOutputMigrationTest {
     connection.createStatement().use { statement ->
       statement.execute(
         """
-        INSERT INTO goal_shared_preplans VALUES (
+        INSERT INTO goal_shared_preplans (
+          parent_goal_workflow_id, normalized_issue_key, repository_identity, preparation_status,
+          contract_version, parent_spec_hash, decomposition_manifest_hash, planning_contract_id,
+          planning_contract_version, phase_output_contract_id, phase_output_contract_version,
+          payload_sha256, preplan_payload_json, created_at
+        ) VALUES (
           '$workflowId', 'SKILL-000-$workflowId', 'repo', 'prepared', '0.2', 'spec-hash', 'manifest-hash',
           'goal-planning-preparation', '0.2', 'feature-task-runtime-phase-output', '$phaseOutputContractVersion',
           'payload-sha', '{}', CURRENT_TIMESTAMP
@@ -70,7 +81,12 @@ class GoalPlanningPhaseOutputMigrationTest {
       )
       statement.execute(
         """
-        INSERT INTO goal_subtask_plans VALUES (
+        INSERT INTO goal_subtask_plans (
+          parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id, manifest_order,
+          governed_sub_spec_path, sub_spec_hash, preparation_status, contract_version, parent_spec_hash,
+          decomposition_manifest_hash, planning_contract_id, planning_contract_version,
+          phase_output_contract_id, phase_output_contract_version, payload_sha256, plan_payload_json, created_at
+        ) VALUES (
           '$workflowId', 'SKILL-000-$workflowId', 'repo', 1, 0, '.feature-specs/x/spec_subtask_1.md', 'sub-hash',
           'prepared', '0.2', 'spec-hash', 'manifest-hash', 'goal-planning-preparation', '0.2',
           'feature-task-runtime-phase-output', '$phaseOutputContractVersion', 'payload-sha', '{}', CURRENT_TIMESTAMP
@@ -84,6 +100,13 @@ class GoalPlanningPhaseOutputMigrationTest {
     statement.executeQuery(sql).use { rows ->
       rows.next()
       rows.getInt(1)
+    }
+  }
+
+  private fun textScalar(connection: Connection, sql: String): String = connection.createStatement().use { statement ->
+    statement.executeQuery(sql).use { rows ->
+      rows.next()
+      rows.getString(1)
     }
   }
 

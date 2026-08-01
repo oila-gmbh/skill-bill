@@ -13,6 +13,7 @@ import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionManifestPlan
 import java.io.IOException
 import java.nio.file.Path
 
@@ -124,8 +125,12 @@ object DecompositionManifestWriter {
   ): DecompositionManifestWriteResult {
     val prepared = prepare(request, validator, runtimeUpdate, fileStore)
     writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
-    val loaded = loadDecompositionManifest(prepared.manifestPath, fileStore, validator)
-    return DecompositionManifestWriteResult(manifestPath = prepared.manifestPath, manifest = loaded)
+    val loaded = loadValidatedDecompositionManifest(prepared.manifestPath, fileStore, validator)
+    return DecompositionManifestWriteResult(
+      manifestPath = prepared.manifestPath,
+      manifest = loaded.manifest,
+      repairEvidence = prepared.repairEvidence + listOfNotNull(loaded.repairEvidence),
+    )
   }
 
   internal fun prepare(
@@ -136,7 +141,8 @@ object DecompositionManifestWriter {
   ): PreparedDecompositionManifestWrite {
     assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()
-    val existing = loadManifestOrNull(manifestPath, validator, fileStore)
+    val existingLoad = loadValidatedDecompositionManifestOrNull(manifestPath, fileStore, validator)
+    val existing = existingLoad?.manifest
     val manifest = request.toManifest()
       .assertExecutionModelCanReplace(existing, manifestPath)
       .withPreservedRuntimeState(existing)
@@ -144,8 +150,13 @@ object DecompositionManifestWriter {
         runtimeUpdate?.let { candidate.withRuntimeUpdate(request.repoRoot, it) } ?: candidate
       }
     val projectedManifest = manifest.gitTrackedProjection()
-    val yaml = encodeDecompositionManifestYaml(projectedManifest, validator, fileStore)
-    return PreparedDecompositionManifestWrite(manifestPath, projectedManifest, yaml)
+    val encoded = encodeValidatedDecompositionManifestYaml(projectedManifest, validator, fileStore)
+    return PreparedDecompositionManifestWrite(
+      manifestPath = manifestPath,
+      manifest = projectedManifest,
+      yaml = encoded.yamlText,
+      repairEvidence = listOfNotNull(existingLoad?.repairEvidence, encoded.repairEvidence),
+    )
   }
 
   private fun manifestFromDecompositionPlan(
@@ -164,7 +175,7 @@ object DecompositionManifestWriter {
       repoRoot = repoRoot,
       parentSpecPath = parentSpecPath,
       planningResult = plan,
-      baseBranch = plan["base_branch"]?.toString()?.takeIf(String::isNotBlank) ?: "main",
+      baseBranch = baseBranch(plan, parentSpecPath.toString()),
       featureBranch = when (executionModel) {
         DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
           branchName.ifBlank { defaultFeatureBranch(parentSpecPath) }
@@ -220,17 +231,27 @@ object DecompositionManifestWriter {
     } else {
       parsedFeatureName
     }
+    val typedPlan = DecompositionManifestPlan(
+      parentSpecPath = repoRelativePath(repoRoot, parentSpecPath),
+      baseBranch = baseBranch,
+      featureBranch = featureBranch,
+      specSource = specSource,
+      executionModel = executionModel,
+      stackBranches = stackBranches,
+      currentSubtaskId = currentSubtask.id,
+      subtasks = subtasks,
+    )
     return DecompositionManifest(
       issueKey = issueKey,
       featureName = featureName,
-      parentSpecPath = repoRelativePath(repoRoot, parentSpecPath),
-      specSource = specSource,
-      executionModel = executionModel,
-      baseBranch = baseBranch,
-      featureBranch = featureBranch,
-      stackBranches = stackBranches,
-      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = currentSubtask.id, action = "start"),
-      subtasks = subtasks,
+      parentSpecPath = typedPlan.parentSpecPath,
+      specSource = typedPlan.specSource,
+      executionModel = typedPlan.executionModel,
+      baseBranch = typedPlan.baseBranch,
+      featureBranch = typedPlan.featureBranch,
+      stackBranches = typedPlan.stackBranches,
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = typedPlan.currentSubtaskId, action = "start"),
+      subtasks = typedPlan.subtasks,
     )
   }
 }
@@ -239,6 +260,7 @@ internal data class PreparedDecompositionManifestWrite(
   val manifestPath: Path,
   val manifest: DecompositionManifest,
   val yaml: String,
+  val repairEvidence: List<skillbill.workflow.model.DecompositionManifestRepairEvidence> = emptyList(),
 )
 
 private fun assertParentSpecIsNotDecomposedSubtask(
@@ -313,10 +335,14 @@ private fun writeProjection(
   manifestPath: Path = manifest.manifestPath(repoRoot),
   fileStore: DecompositionManifestFileStore,
 ): DecompositionManifestWriteResult? = try {
-  val yaml = encodeDecompositionManifestYaml(manifest.gitTrackedProjection(), validator, fileStore)
-  writeDecompositionManifestText(manifestPath, yaml, fileStore)
-  val loaded = loadDecompositionManifest(manifestPath, fileStore, validator)
-  DecompositionManifestWriteResult(manifestPath = manifestPath, manifest = loaded)
+  val encoded = encodeValidatedDecompositionManifestYaml(manifest.gitTrackedProjection(), validator, fileStore)
+  writeDecompositionManifestText(manifestPath, encoded.yamlText, fileStore)
+  val loaded = loadValidatedDecompositionManifest(manifestPath, fileStore, validator)
+  DecompositionManifestWriteResult(
+    manifestPath = manifestPath,
+    manifest = loaded.manifest,
+    repairEvidence = listOfNotNull(encoded.repairEvidence, loaded.repairEvidence),
+  )
 } catch (_: IOException) {
   null
 }

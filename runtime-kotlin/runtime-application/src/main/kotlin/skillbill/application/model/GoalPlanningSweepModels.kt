@@ -4,6 +4,8 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 sealed interface GoalPlanningSweepOutcome {
   data class PreparedAll(
@@ -32,6 +34,10 @@ sealed interface GoalPlanningSweepOutcome {
 }
 
 internal sealed interface GoalPlanningPhaseProduction {
-  data class Captured(val payload: String) : GoalPlanningPhaseProduction
+  data class Captured(
+    val payload: String,
+    val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+  ) : GoalPlanningPhaseProduction
   data class Stopped(val outcome: GoalPlanningSweepOutcome.Stopped) : GoalPlanningPhaseProduction
 }

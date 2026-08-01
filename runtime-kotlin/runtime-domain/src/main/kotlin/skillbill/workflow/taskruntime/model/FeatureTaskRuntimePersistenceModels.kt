@@ -407,6 +407,7 @@ data class FeatureTaskRuntimePhaseRecord(
   val loopId: String? = null,
   val edgeIteration: Int? = null,
   val reviewPassNumber: Int? = null,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -455,6 +456,7 @@ data class FeatureTaskRuntimePhaseRecord(
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
     reviewPassNumber?.let { put("review_pass_number", it) }
+    repairEvidence?.let { put("repair_evidence", it.toArtifactMap()) }
   }
 
   companion object {
@@ -469,6 +471,7 @@ data class FeatureTaskRuntimePhaseRecord(
         "finished_at", "duration_millis", "output_artifact", "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
         "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
+        "repair_evidence",
       )
       val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
       val hasCompatibleIdentity =
@@ -502,6 +505,14 @@ data class FeatureTaskRuntimePhaseRecord(
           loopId = raw.optionalStringField("loop_id"),
           edgeIteration = raw.optionalIntField("edge_iteration"),
           reviewPassNumber = raw.optionalIntField("review_pass_number"),
+          repairEvidence = raw["repair_evidence"]?.let { value ->
+            val evidence = value as? Map<*, *>
+              ?: incompatiblePhaseRecord()
+            @Suppress("UNCHECKED_CAST")
+            FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(
+              evidence.entries.associate { (key, item) -> key.toString() to item },
+            )
+          },
         )
       } catch (_: InvalidWorkflowStateSchemaError) {
         incompatiblePhaseRecord()

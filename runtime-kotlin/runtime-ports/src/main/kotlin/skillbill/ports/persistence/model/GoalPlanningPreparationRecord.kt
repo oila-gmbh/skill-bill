@@ -3,6 +3,7 @@ package skillbill.ports.persistence.model
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 
 data class GoalPlanningIdentity(
   val parentGoalWorkflowId: String,
@@ -25,6 +26,7 @@ data class SharedGoalPreplanCheckpoint(
   val provenance: GoalPlanningContractProvenance,
   val payloadSha256: String,
   val preplanPayload: String,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val createdAt: String = "",
   val contractVersion: String = GOAL_PLANNING_PREPARATION_CONTRACT_VERSION,
 )
@@ -39,6 +41,7 @@ data class GoalSubtaskPlanCheckpoint(
   val provenance: GoalPlanningContractProvenance,
   val payloadSha256: String,
   val planPayload: String,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val createdAt: String = "",
   val contractVersion: String = GOAL_PLANNING_PREPARATION_CONTRACT_VERSION,
 )
@@ -67,6 +70,8 @@ data class GoalPlanningPreparationRecord(
   val provenance: GoalPlanningPreparationProvenance,
   val preplanPayload: String,
   val planPayload: String,
+  val preplanRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+  val planRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val createdAt: String = "",
   val updatedAt: String = "",
   val contractVersion: String = LEGACY_GOAL_PLANNING_PREPARATION_CONTRACT_VERSION,

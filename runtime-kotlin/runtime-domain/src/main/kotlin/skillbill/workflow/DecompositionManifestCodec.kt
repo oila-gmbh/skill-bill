@@ -147,4 +147,8 @@ private fun Any?.asInt(sourceLabel: String, fieldPath: String): Int = when (this
 } ?: invalidDecompositionManifest(sourceLabel, "$fieldPath must be an exact Kotlin Int.")
 
 private fun invalidDecompositionManifest(sourceLabel: String, reason: String): Nothing =
-  throw InvalidDecompositionManifestSchemaError(sourceLabel = sourceLabel, reason = reason)
+  throw InvalidDecompositionManifestSchemaError(
+    sourceLabel = sourceLabel,
+    reason = reason,
+    failureCode = "invalid_shape",
+  )

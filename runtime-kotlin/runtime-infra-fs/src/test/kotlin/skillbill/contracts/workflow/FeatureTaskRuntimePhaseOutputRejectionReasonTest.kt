@@ -35,6 +35,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     // Same rule and field-path content in both variants: only the values differ.
     assertContains(payloadFree, "status")
     assertContains(payloadFree, "enumeration")
+    assertEquals("schema_invalid", error.failureCode)
   }
 
   @Test
@@ -71,6 +72,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     val payloadFree = assertNotNull(error.payloadFreeReason)
     assertContains(payloadFree, "phase_id must match the executing phase 'plan'")
     assertFalse(payloadFree.contains("implement-but-lying"), "payload-free reason echoed the agent's phase_id")
+    assertEquals("phase_id_mismatch", error.failureCode)
   }
 
   @Test
@@ -83,6 +85,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     // The prompt composer's unparseable-root correction keys on this prefix, so it must survive.
     assertContains(payloadFree, "Phase output is malformed")
     assertEquals(FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED, error.failureKind)
+    assertEquals("malformed", error.failureCode)
   }
 
   @Test

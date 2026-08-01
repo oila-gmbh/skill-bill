@@ -12,6 +12,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -150,6 +154,35 @@ class FeatureTaskRuntimePersistenceModelsTest {
     )
     val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap())
     assertEquals(record, decoded)
+  }
+
+  @Test
+  fun `per-phase record persists typed structural repair evidence without payload text`() {
+    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+      originalDigest = "a".repeat(64),
+      repairedDigest = "b".repeat(64),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation(
+        sourceLabel = "plan",
+        offset = 17,
+        line = 2,
+        column = 4,
+      ),
+    )
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "plan",
+      status = "completed",
+      attemptCount = 1,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "planner",
+      outputArtifact = "{\"phase_id\":\"plan\"}",
+      repairEvidence = evidence,
+    )
+
+    val artifact = record.toArtifactMap()
+    assertEquals(evidence, FeatureTaskRuntimePhaseRecord.fromArtifactMap(artifact).repairEvidence)
+    assertTrue("original_payload" !in artifact.toString())
   }
 
   @Test

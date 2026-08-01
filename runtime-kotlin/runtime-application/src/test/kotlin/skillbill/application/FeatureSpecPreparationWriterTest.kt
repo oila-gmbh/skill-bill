@@ -3,12 +3,21 @@ package skillbill.application
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
+import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.workflow.DecompositionManifestCodec
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.model.DecompositionManifestRepairOperation
+import skillbill.workflow.model.DecompositionManifestValidationFormat
+import skillbill.workflow.model.DecompositionManifestValidationResult
+import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
 import skillbill.workflow.model.SpecSource
 import java.nio.file.Files
 import kotlin.test.Test
@@ -198,6 +207,225 @@ class FeatureSpecPreparationWriterTest {
   }
 
   @Test
+  fun `manifest validation failure occurs before the first bundle write`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-manifest-prevalidate")
+    val store = PreparationCountingManifestFileStore()
+    val rejectingValidator = object : DecompositionManifestValidator {
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit =
+        throw InvalidDecompositionManifestSchemaError(sourceLabel, "typed manifest rejection", "schema_invalid")
+
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+        throw InvalidDecompositionManifestSchemaError(sourceLabel, "typed YAML rejection", "schema_invalid")
+    }
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      FeatureSpecPreparationWriter(rejectingValidator, store).write(
+        repoRoot,
+        FeatureSpecWriteRequest(
+          decision = decomposedDecision(),
+          featureName = "manifest-prevalidated",
+          parentSpecOverview = "Manifest validation must precede artifact writes.",
+          validationStrategy = "bill-code-check",
+          subtasks = listOf(singleSubtask()),
+        ),
+      )
+    }
+
+    assertEquals(0, store.writeCount)
+  }
+
+  @Test
+  fun `read back validation restores the complete bundle after a manifest failure`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-readback-rollback")
+    val readbackRejectingValidator = object : DecompositionManifestValidator {
+      private var yamlValidationCount = 0
+
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
+
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> {
+        yamlValidationCount += 1
+        if (yamlValidationCount == 2) {
+          throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
+        }
+        @Suppress("UNCHECKED_CAST")
+        return com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+      }
+    }
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      FeatureSpecPreparationWriter(readbackRejectingValidator, TestDecompositionManifestFileStore).write(
+        repoRoot,
+        FeatureSpecWriteRequest(
+          decision = decomposedDecision(),
+          featureName = "readback-rollback",
+          parentSpecOverview = "Restore all artifacts when manifest read-back fails.",
+          validationStrategy = "bill-code-check",
+          subtasks = listOf(singleSubtask()),
+        ),
+      )
+    }
+
+    val directory = repoRoot.resolve(".feature-specs/SKILL-59-readback-rollback")
+    assertTrue(!Files.exists(directory) || Files.list(directory).use { it.findAny().isEmpty })
+  }
+
+  @Test
+  fun `read back validation restores an overwritten bundle byte for byte`() {
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-readback-overwrite")
+    val request = FeatureSpecWriteRequest(
+      decision = decomposedDecision(),
+      featureName = "readback-overwrite",
+      parentSpecOverview = "Restore the prior prepared bundle after read-back failure.",
+      validationStrategy = "bill-code-check",
+      subtasks = listOf(singleSubtask()),
+    )
+    val initial = writer.write(repoRoot, request)
+    val originalFiles = (listOf(initial.parentSpecPath, initial.decompositionManifestPath) + initial.subtaskSpecPaths)
+      .associateWith { relativePath -> Files.readString(repoRoot.resolve(relativePath)) }
+    val readbackRejectingValidator = object : DecompositionManifestValidator {
+      private var yamlValidationCount = 0
+
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
+
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> {
+        yamlValidationCount += 1
+        if (yamlValidationCount == 4) {
+          throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
+        }
+        @Suppress("UNCHECKED_CAST")
+        return com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+      }
+    }
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      FeatureSpecPreparationWriter(readbackRejectingValidator, TestDecompositionManifestFileStore).write(
+        repoRoot,
+        request,
+      )
+    }
+
+    originalFiles.forEach { (relativePath, content) ->
+      assertEquals(content, Files.readString(repoRoot.resolve(relativePath)))
+    }
+  }
+
+  @Test
+  fun `preparation result retains manifest repair evidence`() {
+    val evidence = DecompositionManifestRepairEvidence(
+      format = DecompositionManifestValidationFormat.YAML,
+      originalDigest = "a".repeat(64),
+      repairedDigest = "b".repeat(64),
+      operation = DecompositionManifestRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      sourceLocation = DecompositionManifestValidationSourceLocation(
+        sourceLabel = "manifest.yaml",
+        offset = 10,
+        line = 1,
+        column = 11,
+      ),
+    )
+    val repairingValidator = object : DecompositionManifestValidator {
+      private var yamlValidationCount = 0
+
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
+
+      @Suppress("UNCHECKED_CAST")
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+        com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+
+      override fun validateYamlTextResult(
+        yamlText: String,
+        sourceLabel: String,
+      ): DecompositionManifestValidationResult {
+        yamlValidationCount += 1
+        val parsed = validateYamlText(yamlText, sourceLabel)
+        val manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel)
+        return if (yamlValidationCount == 1) {
+          DecompositionManifestValidationResult.AcceptedAfterRepair(manifest, yamlText, evidence)
+        } else {
+          DecompositionManifestValidationResult.AcceptedUnchanged(manifest, yamlText)
+        }
+      }
+    }
+
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-evidence")
+    val result = FeatureSpecPreparationWriter(repairingValidator, TestDecompositionManifestFileStore).write(
+      repoRoot,
+      FeatureSpecWriteRequest(
+        decision = decomposedDecision(),
+        featureName = "repair-evidence",
+        parentSpecOverview = "Retain structured manifest repair evidence.",
+        validationStrategy = "bill-code-check",
+        subtasks = listOf(singleSubtask()),
+      ),
+    )
+
+    assertEquals(listOf(evidence), result.repairEvidence)
+  }
+
+  @Test
+  fun `preparation result retains read back repair evidence`() {
+    val evidence = DecompositionManifestRepairEvidence(
+      format = DecompositionManifestValidationFormat.YAML,
+      originalDigest = "c".repeat(64),
+      repairedDigest = "d".repeat(64),
+      operation = DecompositionManifestRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      sourceLocation = DecompositionManifestValidationSourceLocation(
+        sourceLabel = "manifest.yaml",
+        offset = 12,
+        line = 1,
+        column = 13,
+      ),
+    )
+    val repairingValidator = object : DecompositionManifestValidator {
+      private var yamlValidationCount = 0
+      var repairedYaml: String? = null
+
+      override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
+
+      @Suppress("UNCHECKED_CAST")
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+        com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+
+      override fun validateYamlTextResult(
+        yamlText: String,
+        sourceLabel: String,
+      ): DecompositionManifestValidationResult {
+        yamlValidationCount += 1
+        val parsed = validateYamlText(yamlText, sourceLabel)
+        val manifest = DecompositionManifestCodec.decodeMap(parsed, sourceLabel)
+        return if (yamlValidationCount == 2) {
+          val repaired = "$yamlText# repaired read-back\n"
+          repairedYaml = repaired
+          DecompositionManifestValidationResult.AcceptedAfterRepair(manifest, repaired, evidence)
+        } else {
+          DecompositionManifestValidationResult.AcceptedUnchanged(manifest, yamlText)
+        }
+      }
+    }
+
+    val repoRoot = Files.createTempDirectory("skillbill-feature-spec-readback-evidence")
+    val result = FeatureSpecPreparationWriter(repairingValidator, TestDecompositionManifestFileStore).write(
+      repoRoot,
+      FeatureSpecWriteRequest(
+        decision = decomposedDecision(),
+        featureName = "readback-evidence",
+        parentSpecOverview = "Retain read-back repair evidence.",
+        validationStrategy = "bill-code-check",
+        subtasks = listOf(singleSubtask()),
+      ),
+    )
+
+    assertEquals(listOf(evidence), result.repairEvidence)
+    val manifestPath = repoRoot.resolve(result.decompositionManifestPath)
+    assertEquals(repairingValidator.repairedYaml, Files.readString(manifestPath))
+    assertEquals("SKILL-59", loadDecompositionManifest(manifestPath).issueKey)
+  }
+
+  @Test
   fun `rewriting prepared artifacts keeps runtime status only in the manifest`() {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-status")
     val request = FeatureSpecWriteRequest(
@@ -260,4 +488,14 @@ class FeatureSpecPreparationWriterTest {
     nonGoals = listOf("No skill wiring in this subtask."),
     mode = FeatureSpecPreparationMode.DECOMPOSED,
   )
+}
+
+private class PreparationCountingManifestFileStore :
+  DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+  var writeCount: Int = 0
+
+  override fun writeTextAtomically(target: java.nio.file.Path, content: String) {
+    writeCount += 1
+    TestDecompositionManifestFileStore.writeTextAtomically(target, content)
+  }
 }

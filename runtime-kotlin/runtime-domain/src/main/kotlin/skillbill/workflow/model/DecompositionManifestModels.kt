@@ -62,6 +62,18 @@ data class CurrentSubtaskIntent(
   val action: String,
 )
 
+/** Typed application input used before a manifest wire map is emitted. */
+data class DecompositionManifestPlan(
+  val parentSpecPath: String,
+  val baseBranch: String,
+  val featureBranch: String?,
+  val specSource: SpecSource,
+  val executionModel: DecompositionExecutionModel,
+  val stackBranches: List<DecompositionStackBranch>,
+  val currentSubtaskId: Int,
+  val subtasks: List<DecompositionSubtask>,
+)
+
 data class DecompositionManifest(
   val contractVersion: String = DECOMPOSITION_MANIFEST_CONTRACT_VERSION,
   val issueKey: String,

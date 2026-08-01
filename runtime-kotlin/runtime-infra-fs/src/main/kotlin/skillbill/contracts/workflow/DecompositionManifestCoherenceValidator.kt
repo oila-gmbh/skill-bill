@@ -8,12 +8,13 @@ internal object DecompositionManifestCoherenceValidator {
   fun validate(manifest: Map<String, Any?>, sourceLabel: String) {
     val stackBranches = (manifest["stack_branches"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
     val subtasks = (manifest["subtasks"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
-    val subtaskIds = validateSubtasks(subtasks, sourceLabel)
+    val specSource = manifest["spec_source"]?.toString() ?: "local"
+    val subtaskIds = validateSubtasks(subtasks, sourceLabel, specSource)
     validateExecutionModel(manifest, subtasks, subtaskIds, stackBranches, sourceLabel)
     validateCurrentIntent(manifest, subtaskIds, sourceLabel)
   }
 
-  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String): Set<Int> {
+  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String, specSource: String): Set<Int> {
     val subtaskIds = mutableSetOf<Int>()
     val specPaths = mutableSetOf<String>()
     subtasks.forEachIndexed { index, subtask ->
@@ -26,6 +27,15 @@ internal object DecompositionManifestCoherenceValidator {
         coherenceFailure(sourceLabel, "subtasks[$index].spec_path", "Duplicate subtask spec_path '$specPath'.")
       }
       validateDependencies(subtask, subtaskIds, id, index, sourceLabel)
+      if (specSource == "linear" &&
+        subtask["linear_issue_id"]?.toString().orEmpty().isBlank()
+      ) {
+        coherenceFailure(
+          sourceLabel,
+          "subtasks[$index].linear_issue_id",
+          "linear spec_source subtasks must declare linear_issue_id.",
+        )
+      }
     }
     return subtaskIds
   }
@@ -131,8 +141,11 @@ internal object DecompositionManifestCoherenceValidator {
     sourceLabel: String,
     fieldPath: String,
     reason: String,
-  ): InvalidDecompositionManifestSchemaError =
-    InvalidDecompositionManifestSchemaError(sourceLabel = sourceLabel, reason = "$fieldPath: $reason")
+  ): InvalidDecompositionManifestSchemaError = InvalidDecompositionManifestSchemaError(
+    sourceLabel = sourceLabel,
+    reason = "$fieldPath: $reason",
+    failureCode = "coherence_invalid",
+  )
 
   private fun coherenceFailure(sourceLabel: String, fieldPath: String, reason: String): Nothing =
     throw coherenceError(sourceLabel, fieldPath, reason)

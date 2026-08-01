@@ -112,6 +112,7 @@ class InvalidProducerOutputEvidenceSchemaError(message: String) :
 class InvalidDecompositionManifestSchemaError(
   val sourceLabel: String,
   val reason: String,
+  val failureCode: String? = null,
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Decomposition manifest '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
@@ -140,6 +141,8 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val payloadFreeReason: String? = null,
   val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
     FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
+  /** Stable wire code used by the typed adapter result; old callers may omit it. */
+  val failureCode: String = "schema_invalid",
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

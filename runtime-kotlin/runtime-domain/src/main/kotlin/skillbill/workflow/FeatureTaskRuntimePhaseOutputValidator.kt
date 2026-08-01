@@ -2,6 +2,8 @@ package skillbill.workflow
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 /**
@@ -10,6 +12,31 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
  * `runtime-domain` free of Jackson and avoids a raw-map boundary surface.
  */
 interface FeatureTaskRuntimePhaseOutputValidator {
+  /**
+   * Returns the versioned validation outcome. Infrastructure adapters override this
+   * to add structural repair; the default keeps existing test doubles and callers
+   * source-compatible while preserving the old normalization seam.
+   */
+  fun validatePhaseOutput(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): FeatureTaskRuntimePhaseOutputValidationResult = try {
+    FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(
+      normalizePhaseOutput(phaseOutputText, sourceLabel),
+    )
+  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+      code = if (error.failureKind == skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED) {
+        FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED
+      } else {
+        FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode)
+      },
+      reason = error.payloadFreeReason ?: "Phase output was rejected by the phase-output contract.",
+      diagnosticReason = error.reason,
+      payloadFreeReason = error.payloadFreeReason,
+    )
+  }
+
   /**
    * Parses [phaseOutputText] (JSON or YAML) and validates it against the canonical
    * per-phase output schema. Throws [InvalidFeatureTaskRuntimePhaseOutputSchemaError]

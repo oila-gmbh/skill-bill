@@ -113,6 +113,8 @@ data class FeatureTaskRuntimePhaseOutput(
   val payload: String,
   /** Canonical output produced by the single validation seam. */
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+  /** Private typed evidence when the validator repaired the producer payload. */
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseOutput.phaseId must be non-blank." }

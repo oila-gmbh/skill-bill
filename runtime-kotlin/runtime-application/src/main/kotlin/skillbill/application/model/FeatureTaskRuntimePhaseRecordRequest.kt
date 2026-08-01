@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 /**
@@ -18,6 +19,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val outputArtifact: String? = null,
   val rejectedOutput: String? = null,
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val repositoryFingerprint: String? = null,
   /** Present only on a terminal blocked record so blocked-ness survives ledger pruning. */
   val blockedReason: String? = null,

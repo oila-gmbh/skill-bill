@@ -64,6 +64,33 @@ $defs:
       resolved_agent_id: { type: string, minLength: 1 }
       execution_origin: { enum: [agent-executed, goal-planning-hydrated] }
       output_artifact: { type: string }
+      repair_evidence:
+        type: object
+        additionalProperties: false
+        required:
+          - contract_version
+          - validator_version
+          - format
+          - original_digest
+          - repaired_digest
+          - operation
+          - source_location
+        properties:
+          contract_version: { const: "0.1" }
+          validator_version: { const: "0.1" }
+          format: { enum: [json, yaml] }
+          original_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+          repaired_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+          operation: { enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter] }
+          source_location:
+            type: object
+            additionalProperties: false
+            required: [source_label, offset, line, column]
+            properties:
+              source_label: { type: string, minLength: 1 }
+              offset: { type: integer, minimum: 0 }
+              line: { type: integer, minimum: 1 }
+              column: { type: integer, minimum: 1 }
       rejected_output: { type: string }
       blocked_reason: { type: string }
       failure_disposition:
