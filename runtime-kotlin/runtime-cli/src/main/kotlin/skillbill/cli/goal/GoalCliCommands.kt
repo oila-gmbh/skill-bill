@@ -15,6 +15,7 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
@@ -45,6 +46,7 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -262,6 +264,10 @@ class GoalStatusCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("status", "Show read-only decomposed goal status.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val monitorOnly by option(
+    "--monitor",
+    help = "Render one bounded read-only snapshot for bill-monitor; never launches or polls a goal.",
+  ).flag(default = false)
   private val agent by option(
     "--agent",
     help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
@@ -294,15 +300,30 @@ class GoalStatusCommand(
   ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
 
   override fun run() {
+    val options = statusCliRequestOptions()
+    if (options.monitorOnly && !FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(options.issueKey)) {
+      throw UsageError(
+        "Monitor requires one supported issue key matching ${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
+      )
+    }
+    if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {
+      throw UsageError("Monitor accepts only one bounded status snapshot; omit diff options.")
+    }
     val projection = goalRunnerStatusService.status(
-      state.goalStatusRequest(statusCliRequestOptions()),
+      state.goalStatusRequest(options),
     )
-    val payload = projection.toGoalStatusCliMap(issueKey)
-    state.completeText(goalStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
+    val payload = if (options.monitorOnly) {
+      projection.toBoundedGoalStatusCliMap(issueKey)
+    } else {
+      projection.toGoalStatusCliMap(issueKey)
+    }
+    val text = if (options.monitorOnly) goalMonitorStatusText(payload) else goalStatusText(payload)
+    state.completeText(text, payload, exitCode = payload.goalStatusExitCode())
   }
 
   private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
     issueKey = issueKey,
+    monitorOnly = monitorOnly,
     agent = agent,
     agentOverride = agentOverride,
     repoRoot = repoRoot,
@@ -641,6 +662,7 @@ private fun goalPauseText(payload: Map<String, Any?>): String = buildString {
 
 private data class GoalStatusCliRequestOptions(
   val issueKey: String,
+  val monitorOnly: Boolean = false,
   val agent: String?,
   val agentOverride: String?,
   val repoRoot: String?,
@@ -661,7 +683,9 @@ private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions):
     invokedAgentId = resolveInvokedAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
     dbPathOverride = dbOverride,
-    repoRoot = options.repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    repoRoot = options.repoRoot?.let(Path::of)
+      ?.let { root -> if (options.monitorOnly) canonicalRepositoryRoot(root) else root.toAbsolutePath().normalize() }
+      ?: if (options.monitorOnly) canonicalRepositoryRoot(Path.of("")) else Path.of("").toAbsolutePath().normalize(),
     includeDiffStat = options.diff.includeDiffStat,
     selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
     selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,
@@ -767,6 +791,36 @@ private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Ma
   "stop_after_subtask" to null,
 )
 
+private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
+  linkedMapOf(
+    "status" to "ok",
+    "issue_key" to singleLineBounded(it.issueKey),
+    "complete_count" to it.completeCount,
+    "pending_count" to it.pendingCount,
+    "blocked_count" to it.blockedCount,
+    "current_subtask" to it.currentSubtaskId,
+    "current_step" to it.currentStep?.let(::singleLineBounded),
+    "execution_liveness" to it.executionLiveness.wireValue,
+    "resumable_state" to it.monitorResumableState(),
+  )
+} ?: linkedMapOf(
+  "status" to "not_found",
+  "issue_key" to singleLineBounded(issueKey),
+  "complete_count" to 0,
+  "pending_count" to 0,
+  "blocked_count" to 0,
+  "current_subtask" to null,
+  "current_step" to null,
+  "execution_liveness" to ExecutionLiveness.UNKNOWN.wireValue,
+  "resumable_state" to "not_found",
+)
+
+private fun GoalRunnerStatusProjection.monitorResumableState(): String = when {
+  currentSubtaskId == null && pendingCount == 0 && blockedCount == 0 -> "complete"
+  currentStep.isNullOrBlank() -> "resumable"
+  else -> "resumable_at:${singleLineBounded(currentStep)}"
+}
+
 private fun MutableMap<String, Any?>.putGoalLedgerCliEntries(projection: GoalRunnerStatusProjection) {
   if (projection.blockedAttemptCount > 0) put("blocked_attempt_count", projection.blockedAttemptCount)
   if (projection.supervisorKillCount > 0) put("supervisor_kill_count", projection.supervisorKillCount)
@@ -822,12 +876,33 @@ private fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   appendDiffStatusLines(payload)
 }
 
+private fun goalMonitorStatusText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  appendLine("complete: ${payload["complete_count"]}")
+  appendLine("pending: ${payload["pending_count"]}")
+  appendLine("blocked: ${payload["blocked_count"]}")
+  appendLine("current_subtask: ${payload["current_subtask"] ?: "none"}")
+  appendLine("current_step: ${payload["current_step"] ?: "none"}")
+  appendLine("execution_liveness: ${payload["execution_liveness"]}")
+  appendLine("resumable_state: ${payload["resumable_state"]}")
+}
+
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (this["status"] == "ok") 0 else 1
 
 private fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
+
+private fun canonicalRepositoryRoot(start: Path): Path {
+  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
+  var candidate = resolvedStart
+  while (!Files.exists(candidate.resolve(".git"))) {
+    candidate = candidate.parent ?: return resolvedStart
+  }
+  return candidate.toRealPath()
+}
 
 private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {

@@ -137,6 +137,7 @@ class CliGoalRuntimeTest {
     assertContains(status.stdout, "Runs git diff --numstat once")
     assertContains(status.stdout, "--diff-hunk")
     assertContains(status.stdout, "noisier")
+    assertContains(status.stdout, "--monitor")
     assertEquals(0, watch.exitCode, watch.stdout)
     assertContains(watch.stdout, "--interval-seconds")
     assertContains(watch.stdout, "repeated git cost")
