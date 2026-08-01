@@ -227,6 +227,7 @@ data class GoalRunnerControlState(
   val paused: Boolean = false,
   val pauseReason: String? = null,
   val stopAfterConsumed: Boolean = false,
+  val repositoryIdentity: String? = null,
 ) {
   init {
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
@@ -238,6 +239,9 @@ data class GoalRunnerControlState(
     }
     pauseReason?.let { require(it.isNotBlank()) { "pauseReason must not be blank when provided." } }
     require(!paused || pauseReason != null) { "paused control state requires pauseReason." }
+    repositoryIdentity?.let {
+      require(it.isNotBlank()) { "repositoryIdentity must not be blank when provided." }
+    }
   }
 
   fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (

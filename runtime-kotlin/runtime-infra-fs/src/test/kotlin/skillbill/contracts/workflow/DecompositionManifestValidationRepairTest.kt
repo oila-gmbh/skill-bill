@@ -3,6 +3,7 @@ package skillbill.contracts.workflow
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.workflow.model.DecompositionManifestValidationFailureCode
 import skillbill.workflow.model.DecompositionManifestValidationResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,7 +32,11 @@ class DecompositionManifestValidationRepairTest {
     assertEquals(sha256(malformed), repaired.evidence.originalDigest)
     assertEquals(sha256(validManifestJson()), repaired.evidence.repairedDigest)
     assertEquals("manifest.yaml", repaired.evidence.sourceLocation.sourceLabel)
-    assertTrue(repaired.evidence.operation.wireValue.contains("closing_delimiter"))
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER.wireValue,
+      repaired.evidence.operation.wireValue,
+    )
+    assertEquals(malformed.length, repaired.evidence.sourceLocation.offset)
   }
 
   @Test

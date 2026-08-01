@@ -1,6 +1,7 @@
 package skillbill.application.workflow
 
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
+import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
@@ -121,13 +122,14 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
       workflowStatus = parentRecord.workflowStatus,
       currentStepId = parentRecord.currentStepId,
       stepUpdates = null,
-      artifactsPatch = mapOf(
-        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-          manifest,
-          validator,
+      artifactsPatch = LinkedHashMap(decodeArtifacts(parentRecord.artifactsJson)).apply {
+        remove("goal_review_policy")
+        remove("goal_out_of_band_acceptances")
+        put(
           DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-        ),
-      ),
+          encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+        )
+      },
       sessionId = parentRecord.sessionId.orEmpty(),
       replaceArtifacts = true,
     ),

@@ -152,6 +152,7 @@ private fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
   "paused" to paused,
   "pause_reason" to pauseReason,
   "stop_after_consumed" to stopAfterConsumed,
+  "repository_identity" to repositoryIdentity,
 )
 
 private fun decodeControlState(raw: String): GoalRunnerControlState {
@@ -166,6 +167,7 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     "paused",
     "pause_reason",
     "stop_after_consumed",
+    "repository_identity",
   )
   state.keys.forEach { key ->
     require(key in allowedKeys) { "Goal runner control state has unsupported field '$key'." }
@@ -177,6 +179,7 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     paused = state.booleanOrDefault("paused", false),
     pauseReason = state.nullableString("pause_reason"),
     stopAfterConsumed = state.booleanOrDefault("stop_after_consumed", false),
+    repositoryIdentity = state.nullableString("repository_identity"),
   )
 }
 

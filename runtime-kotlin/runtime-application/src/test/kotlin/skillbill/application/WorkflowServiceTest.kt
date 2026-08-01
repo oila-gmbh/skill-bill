@@ -2556,7 +2556,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     val persistedArtifacts = decodeWorkflowArtifactsForTest(
       requireNotNull(workflows.getFeatureImplementWorkflow("wfl-legacy-parent")).artifactsJson,
     )
-    assertEquals(setOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY), persistedArtifacts.keys)
+    assertEquals(setOf("plan", DECOMPOSITION_RUNTIME_ARTIFACT_KEY), persistedArtifacts.keys)
   }
 }
 

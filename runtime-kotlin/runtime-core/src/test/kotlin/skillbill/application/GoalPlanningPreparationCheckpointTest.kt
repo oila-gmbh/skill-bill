@@ -17,6 +17,7 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -55,10 +56,22 @@ class GoalPlanningPreparationCheckpointTest {
     val storedPlan = requireNotNull(harness.readPlan())
     assertNotNull(storedShared.repairEvidence)
     assertNotNull(storedPlan.repairEvidence)
+    assertEquals(validShared().preplanPayload, storedShared.preplanPayload)
+    assertEquals(validPlan().planPayload, storedPlan.planPayload)
     assertEquals(sha256HexUtf8(storedShared.preplanPayload), storedShared.payloadSha256)
     assertEquals(sha256HexUtf8(storedPlan.planPayload), storedPlan.payloadSha256)
     assertEquals(sha256HexUtf8(malformedShared.preplanPayload), storedShared.repairEvidence?.originalDigest)
     assertEquals(sha256HexUtf8(malformedPlan.planPayload), storedPlan.repairEvidence?.originalDigest)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      storedShared.repairEvidence?.operation,
+    )
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      storedPlan.repairEvidence?.operation,
+    )
+    assertEquals(sha256HexUtf8(validShared().preplanPayload), storedShared.repairEvidence?.repairedDigest)
+    assertEquals(sha256HexUtf8(validPlan().planPayload), storedPlan.repairEvidence?.repairedDigest)
   }
 
   @Test

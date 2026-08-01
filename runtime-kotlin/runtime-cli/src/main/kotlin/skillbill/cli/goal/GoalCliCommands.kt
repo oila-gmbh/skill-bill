@@ -46,7 +46,6 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -170,10 +169,14 @@ class GoalRunCommand(
         receivingAgents,
       )
     }
+    val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
+      ?: Path.of("").toAbsolutePath().normalize()
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
       state = state,
       liveOutput = !noLiveOutput,
+      repoRoot = effectiveRepoRoot,
+      dbOverride = state.dbOverride,
       runtimeProvenance = runtimeProvenanceService.current(
         executablePathHint = state.environment[RUNTIME_EXECUTABLE_ENV],
         classPath = state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
@@ -182,7 +185,9 @@ class GoalRunCommand(
       ),
     )
     presenter.emitStartupProvenance()
-    val report = goalRunner.run(runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter))
+    val report = goalRunner.run(
+      runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter, effectiveRepoRoot),
+    )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
   }
@@ -192,9 +197,10 @@ class GoalRunCommand(
     invokedAgentId: String,
     hydratedSelection: HydratedAgentAddonSelection,
     presenter: GoalRunPresenter,
+    effectiveRepoRoot: Path,
   ): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = runIssueKey,
-    repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+    repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
     dbPathOverride = state.dbOverride,
@@ -344,9 +350,14 @@ class GoalPauseCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("pause", "Request a durable pause for an already-running goal.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
 
   override fun run() {
-    val result = goalRunnerStatusService.pause(issueKey, state.dbOverride)
+    val result = goalRunnerStatusService.pause(
+      issueKey,
+      state.dbOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+    )
     val payload = result.toGoalPauseCliMap()
     state.completeText(goalPauseText(payload), payload, exitCode = payload.goalPauseExitCode())
   }
@@ -593,15 +604,22 @@ private class GoalRunPresenter(
   private val issueKey: String,
   private val state: CliRunState,
   private val liveOutput: Boolean,
+  private val repoRoot: Path,
+  private val dbOverride: String?,
   private val runtimeProvenance: RuntimeProvenanceContract,
 ) {
   fun emitStartupProvenance() {
+    val commandPrefix = buildString {
+      append("skill-bill")
+      dbOverride?.let { append(" --db ").append(shellQuote(it)) }
+    }
+    val rootArgument = "--repo-root ${shellQuote(repoRoot.toString())}"
     state.liveStdout(
       "goal $issueKey: launched runtime executable=${runtimeProvenance.executablePath} " +
         "version=${runtimeProvenance.version} build_id=${runtimeProvenance.buildId}\n" +
         "monitor (read-only; mutates nothing; no model tokens):\n" +
-        "skill-bill goal watch $issueKey --interval-seconds 5\n" +
-        "skill-bill goal status $issueKey --diff-stat\n",
+        "$commandPrefix goal watch $issueKey $rootArgument --interval-seconds 5\n" +
+        "$commandPrefix goal status $issueKey $rootArgument --diff-stat\n",
     )
   }
 
@@ -736,6 +754,8 @@ private fun singleLineBounded(value: String, limit: Int = MAX_TERMINAL_FIELD_CHA
   value.replace(Regex("\\s+"), " ").trim().take(limit)
 
 private const val MAX_TERMINAL_FIELD_CHARS = 240
+
+private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
 
@@ -899,7 +919,7 @@ private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, A
 private fun canonicalRepositoryRoot(start: Path): Path {
   val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
   var candidate = resolvedStart
-  while (!Files.exists(candidate.resolve(".git"))) {
+  while (!candidate.resolve(".git").toFile().exists()) {
     candidate = candidate.parent ?: return resolvedStart
   }
   return candidate.toRealPath()
@@ -908,6 +928,7 @@ private fun canonicalRepositoryRoot(start: Path): Path {
 private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {
     this["status"] == "not_found" -> "not_found"
+    this["paused"] == true || this["pause_requested"] == true -> "goal_paused"
     (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
     idleStop -> "goal_idle"
     maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"

@@ -6,6 +6,7 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
@@ -64,6 +65,15 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState =
     GoalRunnerControlState()
 
+  fun bindRepositoryIdentity(
+    parentWorkflowId: String,
+    repositoryIdentity: String,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState {
+    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity is required." }
+    return controlState(parentWorkflowId, dbPathOverride)
+  }
+
   fun persistStopAfterSubtask(
     parentWorkflowId: String,
     subtaskId: Int,
@@ -72,7 +82,11 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
 
   fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
 
-  fun requestPauseByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerPausePersistenceResult? = null
+  fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerPausePersistenceResult? = null
 
   /**
    * Atomically authorize the next child launch against the durable parent controls. The decision
@@ -91,6 +105,10 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
       controlState = controls,
     )
   }
+
+  /** Atomically authorize a planning-agent launch against the durable parent pause boundary. */
+  fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String? = null): AgentRunSpawnAuthorization? =
+    null
 
   fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
 

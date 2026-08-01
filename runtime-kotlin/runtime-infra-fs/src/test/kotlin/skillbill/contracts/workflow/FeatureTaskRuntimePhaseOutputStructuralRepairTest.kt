@@ -163,7 +163,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `conservative YAML flow repair preserves quoted scalar content`() {
     val malformed =
-      "{contract_version: \"0.3\", phase_id: \"plan\", status: \"completed\", " +
+      "{\"contract_version\": \"0.3\", phase_id: \"plan\", status: \"completed\", " +
         "summary: \"brace } in a scalar\", produced_outputs: {tasks: [\"task-1\"]}"
     val repairedText = "$malformed}"
 
@@ -174,6 +174,16 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     assertEquals(sha256(malformed), repaired.evidence.originalDigest)
     assertEquals(sha256(repairedText), repaired.evidence.repairedDigest)
     assertEquals("brace } in a scalar", repaired.normalizedOutput.envelope["summary"])
+  }
+
+  @Test
+  fun `many unmatched closing delimiters stop candidate generation at the bounded limit`() {
+    val malformed = "{\"contract_version\":\"0.3\"" + "]".repeat(9)
+
+    val result = adapter.validatePhaseOutput(malformed, "plan")
+
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.REPAIR_LIMIT_EXCEEDED, rejected.code)
   }
 
   @Test
@@ -191,6 +201,25 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     val ambiguity = adapter.validatePhaseOutput("$first\n$second", "plan")
     val ambiguityRejection = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(ambiguity)
     assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.MULTIPLE_OUTPUT_CANDIDATES, ambiguityRejection.code)
+  }
+
+  @Test
+  fun `multiple strictly parseable delimiter candidates are rejected as ambiguous repair`() {
+    val first = validJson.replace("Plan output.", "first")
+    val second = validJson.replace("Plan output.", "second")
+    val decision = StructuralRepairCandidateEngine.evaluateCandidates(
+      candidates = listOf(
+        Candidate(first, FeatureTaskRuntimePhaseOutputFormat.JSON, 4),
+        Candidate(second, FeatureTaskRuntimePhaseOutputFormat.JSON, 8),
+      ),
+      originalText = "malformed",
+      sourceLabel = "plan",
+      sourceOffset = 0,
+      sourceText = "malformed",
+    )
+
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected>(decision)
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR, rejected.code)
   }
 
   private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")

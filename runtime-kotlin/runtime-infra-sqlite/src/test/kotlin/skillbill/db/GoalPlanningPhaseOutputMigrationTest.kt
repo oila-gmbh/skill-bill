@@ -8,6 +8,7 @@ import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class GoalPlanningPhaseOutputMigrationTest {
   @Test
@@ -15,20 +16,46 @@ class GoalPlanningPhaseOutputMigrationTest {
     val dbPath = Files.createTempDirectory("goal-planning-compatible-migration").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      revertRepairEvidenceMigrations(connection)
       seedPlanningRow(connection, phaseOutputContractVersion = "0.2")
-      connection.createStatement().use { statement ->
-        statement.execute("UPDATE goal_shared_preplans SET repair_evidence_json = 'repair-evidence'")
-        statement.execute("UPDATE goal_subtask_plans SET repair_evidence_json = 'repair-evidence'")
-      }
-      connection.createStatement().use { it.execute("DELETE FROM schema_migrations WHERE version = 11") }
+      seedLegacyPlanningRow(connection)
 
       DatabaseMigrations.apply(connection)
 
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"))
-      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11"))
-      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_shared_preplans"))
-      assertEquals("repair-evidence", textScalar(connection, "SELECT repair_evidence_json FROM goal_subtask_plans"))
+      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_planning_preparations"))
+      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 17"))
+      assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 18"))
+      assertTrue(tableHasColumn(connection, "goal_shared_preplans", "repair_evidence_json"))
+      assertTrue(tableHasColumn(connection, "goal_subtask_plans", "repair_evidence_json"))
+      assertTrue(tableHasColumn(connection, "goal_planning_preparations", "preplan_repair_evidence_json"))
+      assertTrue(tableHasColumn(connection, "goal_planning_preparations", "plan_repair_evidence_json"))
+      connection.createStatement().use { statement ->
+        statement.execute("UPDATE goal_shared_preplans SET repair_evidence_json = 'shared-repair-evidence'")
+        statement.execute("UPDATE goal_subtask_plans SET repair_evidence_json = 'subtask-repair-evidence'")
+        statement.execute(
+          "UPDATE goal_planning_preparations SET " +
+            "preplan_repair_evidence_json = 'legacy-preplan-repair-evidence', " +
+            "plan_repair_evidence_json = 'legacy-plan-repair-evidence'",
+        )
+      }
+      assertEquals(
+        "shared-repair-evidence",
+        textScalar(connection, "SELECT repair_evidence_json FROM goal_shared_preplans"),
+      )
+      assertEquals(
+        "subtask-repair-evidence",
+        textScalar(connection, "SELECT repair_evidence_json FROM goal_subtask_plans"),
+      )
+      assertEquals(
+        "legacy-preplan-repair-evidence",
+        textScalar(connection, "SELECT preplan_repair_evidence_json FROM goal_planning_preparations"),
+      )
+      assertEquals(
+        "legacy-plan-repair-evidence",
+        textScalar(connection, "SELECT plan_repair_evidence_json FROM goal_planning_preparations"),
+      )
       assertFailsWith<java.sql.SQLException> {
         seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = "wfl-incompatible")
       }
@@ -40,6 +67,7 @@ class GoalPlanningPhaseOutputMigrationTest {
     val dbPath = Files.createTempDirectory("goal-planning-incompatible-migration").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      revertRepairEvidenceMigrations(connection)
       connection.createStatement().use { it.execute("PRAGMA ignore_check_constraints = ON") }
       seedPlanningRow(connection, phaseOutputContractVersion = "0.1")
       connection.createStatement().use { it.execute("PRAGMA ignore_check_constraints = OFF") }
@@ -56,6 +84,37 @@ class GoalPlanningPhaseOutputMigrationTest {
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_shared_preplans"))
       assertEquals(1, scalar(connection, "SELECT COUNT(*) FROM goal_subtask_plans"))
       assertEquals(0, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11"))
+      assertEquals(0, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 17"))
+      assertEquals(0, scalar(connection, "SELECT COUNT(*) FROM schema_migrations WHERE version = 18"))
+    }
+  }
+
+  private fun revertRepairEvidenceMigrations(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute("ALTER TABLE goal_shared_preplans DROP COLUMN repair_evidence_json")
+      statement.execute("ALTER TABLE goal_subtask_plans DROP COLUMN repair_evidence_json")
+      statement.execute("ALTER TABLE goal_planning_preparations DROP COLUMN preplan_repair_evidence_json")
+      statement.execute("ALTER TABLE goal_planning_preparations DROP COLUMN plan_repair_evidence_json")
+      statement.execute("DELETE FROM schema_migrations WHERE version IN (17, 18)")
+    }
+  }
+
+  private fun seedLegacyPlanningRow(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        INSERT INTO goal_planning_preparations (
+          parent_goal_workflow_id, normalized_issue_key, repository_identity, subtask_id,
+          governed_sub_spec_path, preparation_status, contract_version, parent_spec_hash,
+          sub_spec_hash, decomposition_manifest_hash, phase_output_contract_id,
+          phase_output_contract_version, preplan_payload_json, plan_payload_json
+        ) VALUES (
+          'wfl-planning', 'SKILL-000-wfl-planning', 'repo', 1, '.feature-specs/x/spec_subtask_1.md',
+          'prepared', '0.1', 'spec-hash', 'sub-hash', 'manifest-hash',
+          'feature-task-runtime-phase-output', '0.2', '{}', '{}'
+        )
+        """.trimIndent(),
+      )
     }
   }
 
@@ -119,4 +178,11 @@ class GoalPlanningPhaseOutputMigrationTest {
       rows.getString(1)
     }
   }
+
+  private fun tableHasColumn(connection: Connection, table: String, column: String): Boolean =
+    connection.prepareStatement("SELECT 1 FROM pragma_table_info(?) WHERE name = ?").use { statement ->
+      statement.setString(1, table)
+      statement.setString(2, column)
+      statement.executeQuery().use { rows -> rows.next() }
+    }
 }

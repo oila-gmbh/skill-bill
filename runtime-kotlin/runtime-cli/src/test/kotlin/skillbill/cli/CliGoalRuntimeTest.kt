@@ -102,6 +102,14 @@ class CliGoalRuntimeTest {
     )
     assertEquals(1, zero.exitCode, zero.stdout)
     assertContains(zero.stdout, "--stop-after-subtask must be a positive integer")
+
+    val unknownFixture = goalFixture(subtaskCount = 1)
+    val unknown = CliRuntime.run(
+      unknownFixture.goalCommand(extra = listOf("--stop-after-subtask", "99")),
+      unknownFixture.context(launcher = GoalFixtureAgentRunLauncher(unknownFixture)),
+    )
+    assertEquals(1, unknown.exitCode, unknown.stdout)
+    assertContains(unknown.stdout, "has no subtask '99'")
   }
 
   @Test
@@ -114,6 +122,8 @@ class CliGoalRuntimeTest {
       "goal",
       "pause",
       "SKILL-901",
+      "--repo-root",
+      fixture.tempDir.toString(),
     )
 
     val first = CliRuntime.run(command, fixture.context(launcher = launcher))
@@ -121,10 +131,50 @@ class CliGoalRuntimeTest {
 
     assertEquals(0, first.exitCode, first.stdout)
     assertEquals(0, second.exitCode, second.stdout)
-    assertEquals(first.stdout, second.stdout)
     assertContains(first.stdout, "goal SKILL-901: requested")
     assertContains(first.stdout, "reason: operator_request")
+    assertEquals(true, first.payload?.get("pause_requested"))
+    assertEquals(false, first.payload?.get("paused"))
+    assertEquals(true, second.payload?.get("pause_requested"))
+    assertEquals(false, second.payload?.get("paused"))
     assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal watch stops after a durable pause without polling forever`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "pause",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = launcher),
+    ).also { result -> assertEquals(0, result.exitCode, result.stdout) }
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--interval-seconds",
+        "0",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, watch.exitCode, watch.stdout)
+    assertEquals(1, watch.payload?.get("refresh_count"))
+    assertEquals("goal_paused", watch.payload?.get("stop_reason"))
   }
 
   @Test
@@ -281,8 +331,8 @@ class CliGoalRuntimeTest {
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
-    assertContains(liveStdout.toString(), "skill-bill goal watch SKILL-901 --interval-seconds 5")
-    assertContains(liveStdout.toString(), "skill-bill goal status SKILL-901 --diff-stat")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
+    assertContains(liveStdout.toString(), "goal status SKILL-901 --repo-root")
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStderr.toString(), "child-1-stderr")
     assertEquals(listOf(null, null), launcher.childLaunches.map { it.skillRunRequest.timeout })
@@ -328,8 +378,8 @@ class CliGoalRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     val output = liveStdout.toString()
     assertEquals(1, output.lines().count { it.startsWith("goal SKILL-901: launched") })
-    assertContains(output, "skill-bill goal watch SKILL-901 --interval-seconds 5")
-    assertContains(output, "skill-bill goal status SKILL-901 --diff-stat")
+    assertContains(output, "goal watch SKILL-901 --repo-root")
+    assertContains(output, "goal status SKILL-901 --repo-root")
     assertFalse(output.contains("goal_event:"), output)
     assertFalse(output.contains("heartbeat"), output)
     assertFalse(output.contains("goal_observability:"), output)
@@ -404,8 +454,8 @@ class CliGoalRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    assertContains(liveStdout.toString(), "skill-bill goal watch SKILL-901 --interval-seconds 5")
-    assertContains(liveStdout.toString(), "skill-bill goal status SKILL-901 --diff-stat")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
+    assertContains(liveStdout.toString(), "goal status SKILL-901 --repo-root")
     assertFalse(liveStdout.toString().contains("heartbeat"), liveStdout.toString())
     assertFalse(liveStdout.toString().contains("goal_observability:"), liveStdout.toString())
     assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
@@ -922,7 +972,7 @@ class CliGoalExecutionOptionsTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(liveStdout.toString(), "goal SKILL-901: launched runtime executable=")
     assertContains(liveStdout.toString(), "version=${SkillBillVersion.VALUE} build_id=${SkillBillVersion.VALUE}")
-    assertContains(liveStdout.toString(), "skill-bill goal watch SKILL-901 --interval-seconds 5")
+    assertContains(liveStdout.toString(), "goal watch SKILL-901 --repo-root")
     assertFalse(liveStdout.toString().contains("heartbeat"), liveStdout.toString())
     assertEquals(false, liveStdout.toString().contains("child-1-stdout"), liveStdout.toString())
     assertEquals("", liveStderr.toString())
@@ -1121,8 +1171,8 @@ class CliGoalTransitionMonitoringTest {
     assertEquals(1, result.exitCode, result.stdout)
     val output = liveStdout.toString()
     assertEquals(1, output.lines().count { it.startsWith("goal SKILL-901: launched") })
-    assertContains(output, "skill-bill goal watch SKILL-901 --interval-seconds 5")
-    assertContains(output, "skill-bill goal status SKILL-901 --diff-stat")
+    assertContains(output, "goal watch SKILL-901 --repo-root")
+    assertContains(output, "goal status SKILL-901 --repo-root")
     assertFalse(output.contains("goal_event:"), output)
     assertFalse(output.contains("heartbeat"), output)
     assertFalse(output.contains("goal_observability:"), output)

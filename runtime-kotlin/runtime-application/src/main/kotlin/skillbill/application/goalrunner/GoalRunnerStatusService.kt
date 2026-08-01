@@ -112,13 +112,20 @@ class GoalRunnerStatusService(
   }
 
   /** Write the operator pause boundary directly; this does not inspect status, logs, files, or child state. */
-  fun pause(issueKey: String, dbPathOverride: String?): GoalRunnerPauseResult {
-    val persisted = manifestStore.requestPauseByIssueKey(issueKey, dbPathOverride)
+  fun pause(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerPauseResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
-    val control = persisted.controlState
+    val repositoryIdentity = goalRepositoryIdentity(repoRoot)
+    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity, dbPathOverride)
+    val control = manifestStore.requestPause(loaded.parentWorkflowId, dbPathOverride)
+      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
     return GoalRunnerPauseResult(
       issueKey = issueKey,
-      parentWorkflowId = persisted.parentWorkflowId,
+      parentWorkflowId = loaded.parentWorkflowId,
       status = if (control.paused) "paused" else "requested",
       paused = control.paused,
       pauseRequested = control.pauseRequested,

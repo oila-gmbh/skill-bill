@@ -8,13 +8,14 @@ internal object DecompositionManifestCoherenceValidator {
   fun validate(manifest: Map<String, Any?>, sourceLabel: String) {
     val stackBranches = (manifest["stack_branches"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
     val subtasks = (manifest["subtasks"] as? List<*>).orEmpty().mapNotNull { it as? Map<*, *> }
-    val specSource = manifest["spec_source"]?.toString() ?: "local"
-    val subtaskIds = validateSubtasks(subtasks, sourceLabel, specSource)
+    // The writer requires IDs for new linear manifests; reload must still accept contract 0.5
+    // records written before that requirement existed so recovery can inspect and migrate them.
+    val subtaskIds = validateSubtasks(subtasks, sourceLabel)
     validateExecutionModel(manifest, subtasks, subtaskIds, stackBranches, sourceLabel)
     validateCurrentIntent(manifest, subtaskIds, sourceLabel)
   }
 
-  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String, specSource: String): Set<Int> {
+  private fun validateSubtasks(subtasks: List<Map<*, *>>, sourceLabel: String): Set<Int> {
     val subtaskIds = mutableSetOf<Int>()
     val specPaths = mutableSetOf<String>()
     subtasks.forEachIndexed { index, subtask ->
@@ -27,15 +28,6 @@ internal object DecompositionManifestCoherenceValidator {
         coherenceFailure(sourceLabel, "subtasks[$index].spec_path", "Duplicate subtask spec_path '$specPath'.")
       }
       validateDependencies(subtask, subtaskIds, id, index, sourceLabel)
-      if (specSource == "linear" &&
-        subtask["linear_issue_id"]?.toString().orEmpty().isBlank()
-      ) {
-        coherenceFailure(
-          sourceLabel,
-          "subtasks[$index].linear_issue_id",
-          "linear spec_source subtasks must declare linear_issue_id.",
-        )
-      }
     }
     return subtaskIds
   }

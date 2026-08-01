@@ -1519,6 +1519,10 @@ internal class FeatureTaskRuntimeRunLoop(
         "Completed goal review budget could not atomically persist its canonical result: " +
           error.message.orEmpty(),
         observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        outputArtifact = output.payload,
+        normalizedOutput = output.normalizedOutput,
+        repairEvidence = output.repairEvidence,
       )
     }
     if (!persisted) {
@@ -1527,6 +1531,10 @@ internal class FeatureTaskRuntimeRunLoop(
         iteration,
         "Completed goal review budget could not atomically persist its canonical result.",
         observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        outputArtifact = output.payload,
+        normalizedOutput = output.normalizedOutput,
+        repairEvidence = output.repairEvidence,
       )
     }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
@@ -1795,6 +1803,10 @@ internal class FeatureTaskRuntimeRunLoop(
         iteration,
         failure,
         observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        outputArtifact = normalizedOutput.canonicalJson,
+        normalizedOutput = normalizedOutput,
+        repairEvidence = acceptedOutput.repairEvidence,
       )
     }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)

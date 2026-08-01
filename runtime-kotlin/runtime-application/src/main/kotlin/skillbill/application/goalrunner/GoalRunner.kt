@@ -73,6 +73,12 @@ import java.nio.file.Path
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
+internal fun goalRepositoryIdentity(repoRoot: Path): String {
+  val canonical = runCatching { repoRoot.toRealPath() }
+    .getOrElse { repoRoot.toAbsolutePath().normalize() }
+  return "repo-root-realpath-v1:$canonical"
+}
+
 private fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
   parentWorkflowId: String,
   request: GoalRunnerRunRequest,
@@ -114,7 +120,11 @@ class GoalRunner(
   }
 
   private fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
-    val persistedControl = manifestStore.controlState(state.parentWorkflowId, request.dbPathOverride)
+    val persistedControl = manifestStore.bindRepositoryIdentity(
+      state.parentWorkflowId,
+      goalRepositoryIdentity(request.repoRoot),
+      request.dbPathOverride,
+    )
     stopAfterPolicyMismatch(state, request, persistedControl)?.let { return it }
     val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
     persistedReviewPolicy?.let { policy ->

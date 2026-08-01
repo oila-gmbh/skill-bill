@@ -7,6 +7,9 @@ docs/cloudflare-telemetry-proxy/.wrangler/
 _migration_backup/
 /.skill-bill/
 
+# Interprocess lock files for atomic decomposition-manifest bundles.
+**/.decomposition-manifest-bundle.lock
+
 # SKILL-98 specs describe a private external app — keep local, not public
 .feature-specs/SKILL-98-ios-platform-pack/
 

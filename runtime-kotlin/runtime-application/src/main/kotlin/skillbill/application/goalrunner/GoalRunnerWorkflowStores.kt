@@ -125,6 +125,7 @@ private data class SavedGoalChildWorkflow(
 )
 
 @Inject
+@Suppress("LargeClass") // parent projection, controls, and child persistence share one transaction boundary
 class WorkflowGoalRunnerManifestStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -214,11 +215,20 @@ class WorkflowGoalRunnerManifestStore(
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
     controls.controlState(parentWorkflowId, dbPathOverride)
 
+  override fun bindRepositoryIdentity(
+    parentWorkflowId: String,
+    repositoryIdentity: String,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState = controls.bindRepositoryIdentity(parentWorkflowId, repositoryIdentity, dbPathOverride)
+
   override fun authorizeSubtaskLaunch(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
   ): GoalRunnerLaunchAuthorization = controls.authorizeSubtaskLaunch(state, subtaskId, dbPathOverride)
+
+  override fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String?): AgentRunSpawnAuthorization =
+    controls.planningSpawnAuthorization(parentWorkflowId, dbPathOverride)
 
   override fun persistStopAfterSubtask(
     parentWorkflowId: String,
@@ -229,8 +239,11 @@ class WorkflowGoalRunnerManifestStore(
   override fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
     controls.requestPause(parentWorkflowId, dbPathOverride)
 
-  override fun requestPauseByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerPausePersistenceResult? =
-    controls.requestPauseByIssueKey(issueKey, dbPathOverride)
+  override fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path?,
+  ): GoalRunnerPausePersistenceResult? = controls.requestPauseByIssueKey(issueKey, dbPathOverride, repoRoot)
 
   override fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState? =
     controls.resume(parentWorkflowId, dbPathOverride)
@@ -252,7 +265,24 @@ class WorkflowGoalRunnerManifestStore(
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       if (!preservePlanning) unitOfWork.goalPlanningPreparations.deleteByGoal(state.parentWorkflowId)
       unitOfWork.workflowStates.deleteGoalChildWorkflowsByParent(state.parentWorkflowId)
-      saveWorkflowProjectionInTransaction(unitOfWork, state, clearOutOfBandAcceptances = true)
+      val repositoryIdentity = unitOfWork.goalRunnerControls.controlState(state.parentWorkflowId).repositoryIdentity
+      val projection = saveWorkflowProjectionInTransaction(
+        unitOfWork,
+        state,
+        clearOutOfBandAcceptances = true,
+        mergeConcurrentProgress = false,
+      )
+      if (repositoryIdentity != null) {
+        unitOfWork.goalRunnerControls.persistControlState(
+          projection.state.parentWorkflowId,
+          projection.state.controlState.copy(repositoryIdentity = repositoryIdentity),
+        )
+      }
+      projection.copy(
+        state = projection.state.copy(
+          controlState = projection.state.controlState.copy(repositoryIdentity = repositoryIdentity),
+        ),
+      )
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       Path.of("").toAbsolutePath(),
@@ -444,7 +474,13 @@ class WorkflowGoalRunnerManifestStore(
         // Child planning, implementation, audit, review, diagnostics, and raw output stay on
         // the child workflow. The parent projection carries only its manifest metadata and the
         // terminal subtask fields represented by {status, commit_sha, workflow_id}.
-        artifactsPatch = parentProjection.artifacts(state.manifest),
+        artifactsPatch = parentProjection.artifacts(
+          mergeConcurrentGoalProgress(
+            existingParent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+            state.manifest,
+          ),
+          existingParent.artifactsJson,
+        ),
         sessionId = existingParent.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
@@ -604,6 +640,7 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
     clearOutOfBandAcceptances: Boolean = false,
+    mergeConcurrentProgress: Boolean = true,
   ): SavedManifestProjection {
     val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
@@ -617,6 +654,14 @@ class WorkflowGoalRunnerManifestStore(
       unitOfWork.goalRunnerControls.clearOutOfBandAcceptances(existingSnapshot.workflowId)
       unitOfWork.goalRunnerControls.clearControlState(existingSnapshot.workflowId)
     }
+    val manifest = if (mergeConcurrentProgress) {
+      mergeConcurrentGoalProgress(
+        existingSnapshot.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+        state.manifest,
+      )
+    } else {
+      state.manifest
+    }
     val updated = engine.updateRecord(
       WorkflowFamily.IMPLEMENT.definition,
       existingSnapshot,
@@ -624,21 +669,21 @@ class WorkflowGoalRunnerManifestStore(
         workflowStatus = existingSnapshot.workflowStatus,
         currentStepId = existingSnapshot.currentStepId,
         stepUpdates = null,
-        artifactsPatch = parentProjection.artifacts(state.manifest),
+        artifactsPatch = parentProjection.artifacts(manifest, existingSnapshot.artifactsJson),
         sessionId = existingSnapshot.sessionId.orEmpty(),
         replaceArtifacts = true,
       ),
     )
     WorkflowFamily.IMPLEMENT.saveRecord(
       unitOfWork.workflowStates,
-      updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
+      updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
     val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
     return SavedManifestProjection(
       state = GoalRunnerManifestState(
         parentWorkflowId = refreshed.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
-        manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: state.manifest,
+        manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: manifest,
         controlState = unitOfWork.goalRunnerControls.controlState(refreshed.workflowId),
       ),
       projectionArtifactsJson = refreshed.artifactsJson,
@@ -703,7 +748,7 @@ class WorkflowGoalRunnerManifestStore(
               mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
             )
           },
-          artifactsPatch = parentProjection.artifacts(manifest),
+          artifactsPatch = parentProjection.artifacts(manifest, base.artifactsJson),
           sessionId = base.sessionId.orEmpty(),
           replaceArtifacts = true,
         ),
@@ -778,8 +823,9 @@ private class GoalRunnerControlCoordinator(
     require(subtaskId > 0) { "subtaskId must be positive." }
     val existing = requireParent(unitOfWork, state.parentWorkflowId)
     val controls = unitOfWork.goalRunnerControls.controlState(existing.workflowId)
+    val manifest = existing.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
     GoalRunnerLaunchAuthorization(
-      authorized = !controls.requiresPauseBoundary(state.manifest),
+      authorized = !controls.requiresPauseBoundary(manifest),
       controlState = controls,
       spawnAuthorization = spawnAuthorization(state, dbPathOverride),
     )
@@ -791,6 +837,12 @@ private class GoalRunnerControlCoordinator(
     dbPathOverride: String?,
   ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
     require(subtaskId > 0) { "stop-after subtask id must be positive." }
+    val parent = requireParent(unitOfWork, parentWorkflowId)
+    val manifest = parent.decompositionRuntime(decompositionManifestValidator)
+      ?: error("Goal parent '$parentWorkflowId' has no decomposition manifest.")
+    require(manifest.subtasks.any { it.id == subtaskId }) {
+      "Goal parent '$parentWorkflowId' has no subtask '$subtaskId'."
+    }
     val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
     require(existing.stopAfterSubtaskId == null || existing.stopAfterSubtaskId == subtaskId) {
       "Goal parent '$parentWorkflowId' already has stop-after subtask ${existing.stopAfterSubtaskId}."
@@ -810,15 +862,52 @@ private class GoalRunnerControlCoordinator(
       }
     }
 
-  fun requestPauseByIssueKey(issueKey: String, dbPathOverride: String?): GoalRunnerPausePersistenceResult? =
-    database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
-        issueKey,
-        decompositionManifestValidator,
-      ) ?: return@transaction null
-      migrateLegacyGoalRunnerControls(unitOfWork, parent.toSnapshot())
-      GoalRunnerPausePersistenceResult(parent.workflowId, persistPauseRequest(unitOfWork, parent.workflowId))
+  fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path?,
+  ): GoalRunnerPausePersistenceResult? = database.transaction(dbPathOverride) { unitOfWork ->
+    val parent = unitOfWork.workflowStates.findDecomposedParentWorkflow(
+      issueKey,
+      decompositionManifestValidator,
+    ) ?: return@transaction null
+    migrateLegacyGoalRunnerControls(unitOfWork, parent.toSnapshot())
+    val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+    if (repoRoot != null) {
+      val identity = goalRepositoryIdentity(repoRoot)
+      require(existing.repositoryIdentity == null || existing.repositoryIdentity == identity) {
+        "Goal parent '${parent.workflowId}' belongs to another repository."
+      }
+      if (existing.repositoryIdentity == null) {
+        unitOfWork.goalRunnerControls.persistControlState(
+          parent.workflowId,
+          existing.copy(repositoryIdentity = identity),
+        )
+      }
     }
+    GoalRunnerPausePersistenceResult(parent.workflowId, persistPauseRequest(unitOfWork, parent.workflowId))
+  }
+
+  fun bindRepositoryIdentity(
+    parentWorkflowId: String,
+    repositoryIdentity: String,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
+    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity is required." }
+    val parent = requireParent(unitOfWork, parentWorkflowId)
+    val existing = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+    require(existing.repositoryIdentity == null || existing.repositoryIdentity == repositoryIdentity) {
+      "Goal parent '$parentWorkflowId' belongs to another repository."
+    }
+    if (existing.repositoryIdentity == repositoryIdentity) {
+      existing
+    } else {
+      unitOfWork.goalRunnerControls.persistControlState(
+        parent.workflowId,
+        existing.copy(repositoryIdentity = repositoryIdentity),
+      )
+    }
+  }
 
   fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState? =
     database.transaction(dbPathOverride) { unitOfWork ->
@@ -853,13 +942,15 @@ private class GoalRunnerControlCoordinator(
     database.transaction(dbPathOverride) { unitOfWork ->
       val parent = requireParent(unitOfWork, state.parentWorkflowId)
       val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
-      val targetReached = controls.targetReached(state)
-      val pausedControls = if (controls.requiresPauseBoundary(state.manifest)) {
+      val authoritativeManifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
+      val authoritativeState = state.copy(manifest = authoritativeManifest)
+      val targetReached = controls.targetReached(authoritativeState)
+      val pausedControls = if (controls.requiresPauseBoundary(authoritativeManifest)) {
         controls.pauseAtOperatorBoundary(targetReached)
       } else {
         controls
       }
-      val saved = saveProjection(unitOfWork, state)
+      val saved = saveProjection(unitOfWork, authoritativeState)
       if (pausedControls != controls) {
         unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, pausedControls)
       }
@@ -873,11 +964,13 @@ private class GoalRunnerControlCoordinator(
   ): GoalRunnerCompletionPersistenceResult = database.transaction(dbPathOverride) { unitOfWork ->
     val parent = requireParent(unitOfWork, state.parentWorkflowId)
     val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+    val authoritativeManifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
+    val authoritativeState = state.copy(manifest = authoritativeManifest)
     val targetReached = controls.stopAfterSubtaskId == subtaskId && !controls.stopAfterConsumed
     val operatorRequested = controls.pauseRequested && !controls.pauseConsumed
-    val shouldPause = controls.requiresPauseBoundary(state.manifest) || targetReached || operatorRequested
+    val shouldPause = controls.requiresPauseBoundary(authoritativeManifest) || targetReached || operatorRequested
     val nextControls = if (shouldPause) controls.pauseAtOperatorBoundary(targetReached) else controls
-    val saved = saveProjection(unitOfWork, state)
+    val saved = saveProjection(unitOfWork, authoritativeState)
     if (nextControls != controls) {
       unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, nextControls)
     }
@@ -899,7 +992,22 @@ private class GoalRunnerControlCoordinator(
       override fun <T> withAuthorization(spawn: () -> T): T = database.transaction(dbPathOverride) { unitOfWork ->
         val parent = requireParent(unitOfWork, state.parentWorkflowId)
         val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
-        if (controls.requiresPauseBoundary(state.manifest)) {
+        val manifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
+        if (controls.requiresPauseBoundary(manifest)) {
+          throw skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+        }
+        spawn()
+      }
+    }
+
+  fun planningSpawnAuthorization(parentWorkflowId: String, dbPathOverride: String?): AgentRunSpawnAuthorization =
+    object : AgentRunSpawnAuthorization {
+      override fun <T> withAuthorization(spawn: () -> T): T = database.transaction(dbPathOverride) { unitOfWork ->
+        val parent = requireParent(unitOfWork, parentWorkflowId)
+        val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
+        val manifest = parent.decompositionRuntime(decompositionManifestValidator)
+          ?: error("Goal parent '$parentWorkflowId' has no decomposition manifest.")
+        if (controls.requiresPauseBoundary(manifest)) {
           throw skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
         }
         spawn()
@@ -932,13 +1040,20 @@ private class GoalParentProjectionWriter(
   private val engine: WorkflowEngine,
   private val validator: DecompositionManifestValidator,
 ) {
-  fun artifacts(manifest: DecompositionManifest): Map<String, Any?> = mapOf(
-    DECOMPOSITION_RUNTIME_ARTIFACT_KEY to encodeDecompositionManifestMap(
-      manifest,
-      validator,
-      DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-    ),
-  )
+  fun artifacts(manifest: DecompositionManifest, existingArtifactsJson: String? = null): Map<String, Any?> =
+    LinkedHashMap(
+      existingArtifactsJson
+        ?.takeIf(String::isNotBlank)
+        ?.let(::decodeArtifacts)
+        .orEmpty(),
+    ).apply {
+      remove(GOAL_REVIEW_POLICY_ARTIFACT_KEY)
+      remove(GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY)
+      put(
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+        encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+      )
+    }
 
   fun rewrite(unitOfWork: UnitOfWork, existing: WorkflowStateSnapshot) {
     val manifest = existing.decompositionRuntime(validator)
@@ -950,7 +1065,7 @@ private class GoalParentProjectionWriter(
         workflowStatus = existing.workflowStatus,
         currentStepId = existing.currentStepId,
         stepUpdates = null,
-        artifactsPatch = artifacts(manifest),
+        artifactsPatch = artifacts(manifest, existing.artifactsJson),
         sessionId = existing.sessionId,
         replaceArtifacts = true,
       ),
@@ -959,6 +1074,27 @@ private class GoalParentProjectionWriter(
       unitOfWork.workflowStates,
       updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
+  }
+}
+
+private fun mergeConcurrentGoalProgress(
+  persisted: DecompositionManifest,
+  incoming: DecompositionManifest,
+): DecompositionManifest {
+  val persistedById = persisted.subtasks.associateBy { it.id }
+  val mergedSubtasks = incoming.subtasks.map { candidate ->
+    val current = persistedById[candidate.id]
+    if (current?.status == "complete" && candidate.status != "complete") current else candidate
+  }
+  val merged = incoming.copy(subtasks = mergedSubtasks)
+  return if (
+    persisted.currentSubtaskIntent.subtaskId > 0 &&
+    merged.subtasks.firstOrNull { it.id == persisted.currentSubtaskIntent.subtaskId }?.status == "complete" &&
+    merged.currentSubtaskIntent.subtaskId == persisted.currentSubtaskIntent.subtaskId
+  ) {
+    merged.copy(currentSubtaskIntent = persisted.currentSubtaskIntent).withParentStatus()
+  } else {
+    merged.withParentStatus()
   }
 }
 
