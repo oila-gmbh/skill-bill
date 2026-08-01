@@ -3,6 +3,7 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
@@ -120,6 +121,27 @@ class GoalRunner(
         ),
       )
     }
+    val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
+    persistedReviewPolicy?.let { policy ->
+      reviewPolicyMismatch(state, request, policy)?.let { return it }
+    }
+    val requestedAgentAddonSelection = request.agentAddonSelection.persisted
+    val effectiveAgentAddonSelection = requestedAgentAddonSelection
+      .takeUnless { it.entries.isEmpty() }
+      ?: persistedReviewPolicy?.agentAddonSelection
+      ?: AgentAddonSelection()
+    val requestedReviewPolicy = GoalRunnerReviewPolicy(
+      codeReviewMode = request.codeReviewMode
+        ?: persistedReviewPolicy?.codeReviewMode
+        ?: CodeReviewExecutionMode.DEFAULT,
+      parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
+      agentAddonSelection = effectiveAgentAddonSelection,
+    )
+    val effectiveReviewPolicy = manifestStore.persistReviewPolicy(
+      parentWorkflowId = state.parentWorkflowId,
+      policy = requestedReviewPolicy,
+      dbPathOverride = request.dbPathOverride,
+    )
     val effectiveStopAfter = request.stopAfterSubtaskId ?: persistedControl.stopAfterSubtaskId
     val effectiveControl = if (request.stopAfterSubtaskId != null && persistedControl.stopAfterSubtaskId == null) {
       manifestStore.persistStopAfterSubtask(
@@ -142,22 +164,6 @@ class GoalRunner(
         effectiveControl
       },
     )
-    val persistedReviewPolicy = manifestStore.reviewPolicy(state.parentWorkflowId, request.dbPathOverride)
-    persistedReviewPolicy?.let { policy ->
-      reviewPolicyMismatch(state, request, policy)?.let { return it }
-    }
-    val requestedReviewPolicy = GoalRunnerReviewPolicy(
-      codeReviewMode = request.codeReviewMode
-        ?: persistedReviewPolicy?.codeReviewMode
-        ?: CodeReviewExecutionMode.DEFAULT,
-      parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
-      agentAddonSelection = request.agentAddonSelection.persisted,
-    )
-    val effectiveReviewPolicy = manifestStore.persistReviewPolicy(
-      parentWorkflowId = state.parentWorkflowId,
-      policy = requestedReviewPolicy,
-      dbPathOverride = request.dbPathOverride,
-    )
     return GoalRunPreparation.Prepared(
       preparedState,
       request.copy(
@@ -173,6 +179,7 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
     policy: GoalRunnerReviewPolicy,
   ): GoalRunPreparation.PreparationBlocked? {
+    val requestedAgentAddonSelection = request.agentAddonSelection.persisted
     val reason = when {
       request.codeReviewMode != null && policy.codeReviewMode != request.codeReviewMode ->
         "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' " +
@@ -180,6 +187,10 @@ class GoalRunner(
       request.parallelReviewAgent != null && policy.parallelReviewAgent != request.parallelReviewAgent ->
         "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' " +
           "is pinned to '${policy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'."
+      requestedAgentAddonSelection.entries.isNotEmpty() &&
+        policy.agentAddonSelection != requestedAgentAddonSelection ->
+        "Cannot change agent add-on selection on goal resume: parent workflow '${state.parentWorkflowId}' " +
+          "has a different durable selection."
       else -> return null
     }
     return GoalRunPreparation.PreparationBlocked(
