@@ -4,6 +4,7 @@ import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.review.model.ParallelReviewRawFinding
@@ -16,6 +17,66 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReviewLifecycleRecoveryTest {
+  @Test fun `interruption boundary and lifecycle projection share one transaction`() {
+    val operations = mutableListOf<String>()
+    var transactionCount = 0
+    val reviews = Proxy.newProxyInstance(
+      skillbill.ports.persistence.ReviewRepository::class.java.classLoader,
+      arrayOf(skillbill.ports.persistence.ReviewRepository::class.java),
+    ) { _, method, _ ->
+      when (method.name) {
+        "loadReviewLifecycleEvents" -> emptyList<ReviewLifecycleEvent>()
+        "appendReviewLifecycleEvent" -> operations.add("event").let { true }
+        else -> null
+      }
+    } as skillbill.ports.persistence.ReviewRepository
+    val unitOfWork = Proxy.newProxyInstance(
+      skillbill.ports.persistence.UnitOfWork::class.java.classLoader,
+      arrayOf(skillbill.ports.persistence.UnitOfWork::class.java),
+    ) { _, method, _ ->
+      when (method.name) {
+        "getReviews" -> reviews
+        "getDbPath" -> Path.of("/tmp/review.db")
+        else -> error("Unexpected unit-of-work call: ${method.name}")
+      }
+    } as skillbill.ports.persistence.UnitOfWork
+    val database = object : skillbill.ports.persistence.DatabaseSessionFactory {
+      override fun resolveDbPath(dbOverride: String?) = Path.of("/tmp/review.db")
+      override fun databaseExists(dbOverride: String?) = true
+      override fun <T> read(
+        dbOverride: String?,
+        block: (skillbill.ports.persistence.UnitOfWork) -> T,
+      ): T = block(unitOfWork)
+
+      override fun <T> transaction(
+        dbOverride: String?,
+        block: (skillbill.ports.persistence.UnitOfWork) -> T,
+      ): T {
+        transactionCount += 1
+        return block(unitOfWork)
+      }
+    }
+    val boundary = ReviewLifecycleRecord(
+      reviewId = "review",
+      packetDigest = "a".repeat(64),
+      component = ReviewLifecycleComponent.TERMINAL,
+      eventKind = ReviewLifecycleEventKind.TERMINAL_CANCELLED,
+      processOutcome = ReviewProcessOutcome.INTERRUPTED,
+      terminalCompletion = ReviewTerminalCompletion(
+        "2026-08-02T00:00:00Z",
+        ReviewProcessOutcome.INTERRUPTED,
+      ),
+    )
+
+    ReviewLifecycleRecorder(database).recordAllAndPersist(listOf(boundary)) { _, events ->
+      assertEquals(1, events.size)
+      operations += "projection"
+    }
+
+    assertEquals(1, transactionCount)
+    assertEquals(listOf("event", "projection"), operations)
+  }
+
   @Test fun `restart retains durable completion and does not relaunch it`() {
     val result = ReviewWorkerResultEnvelope(
       listOf(

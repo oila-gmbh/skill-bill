@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
 import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.ports.review.model.ReviewDurableWorkerProgress
@@ -146,6 +147,47 @@ class ReviewLifecycleRecorder(
       }
       events += pending
     }
+    pending
+  }
+
+  /**
+   * Appends a lifecycle boundary and persists its derived projection in the same repository
+   * transaction. Recovery must never observe the boundary without the classification it explains.
+   */
+  internal fun recordAllAndPersist(
+    records: List<ReviewLifecycleRecord>,
+    persist: (UnitOfWork, List<ReviewLifecycleEvent>) -> Unit,
+  ): List<ReviewLifecycleEvent> = synchronized(lock) {
+    require(records.isNotEmpty()) { "A persisted lifecycle boundary cannot be empty." }
+    val events = ledgers.getOrPut(records.first().reviewId) {
+      database.read { unitOfWork ->
+        unitOfWork.reviews.loadReviewLifecycleEvents(records.first().reviewId).toMutableList()
+      }
+    }
+    require(records.all { it.reviewId == records.first().reviewId }) {
+      "A lifecycle boundary batch must belong to one review."
+    }
+    val known = events.associateBy(ReviewLifecycleEvent::eventId).toMutableMap()
+    val pending = mutableListOf<ReviewLifecycleEvent>()
+    records.forEach { record ->
+      known[record.eventId()]?.let { existing ->
+        require(record.matches(existing)) {
+          "Lifecycle event '${existing.eventId}' was replayed with different evidence."
+        }
+        return@forEach
+      }
+      val event = record.toEvent(
+        sequence = (known.values.maxOfOrNull(ReviewLifecycleEvent::sequence) ?: 0) + 1,
+        occurredAt = now(),
+      )
+      known[event.eventId] = event
+      pending += event
+    }
+    database.transaction { unitOfWork ->
+      pending.forEach { event -> unitOfWork.reviews.appendReviewLifecycleEvent(event) }
+      persist(unitOfWork, known.values.sortedBy(ReviewLifecycleEvent::sequence))
+    }
+    events += pending
     pending
   }
 

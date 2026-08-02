@@ -10,6 +10,9 @@ import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.plan.DelegatedReviewDeadlinePolicy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -223,6 +226,32 @@ class ParallelCodeReviewRegressionTest {
         .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
         .mapNotNull { it.waveNumber }
         .distinct(),
+    )
+  }
+
+  @Test fun `workers in one wave cross the launch boundary concurrently`() {
+    val recorder = ReviewRecorder()
+    val entered = CountDownLatch(2)
+    val inFlight = AtomicInteger(0)
+    val maximumInFlight = AtomicInteger(0)
+    val runner = reviewHarness(
+      config {
+        val active = inFlight.incrementAndGet()
+        maximumInFlight.updateAndGet { current -> maxOf(current, active) }
+        entered.countDown()
+        entered.await(1, TimeUnit.SECONDS)
+        inFlight.decrementAndGet()
+        RecordedWorkerResponse()
+      },
+      recorder,
+    )
+
+    runner.run(harnessRequest())
+
+    assertTrue(maximumInFlight.get() > 1)
+    assertEquals(
+      recorder.nativeLaunches.size,
+      recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED },
     )
   }
 

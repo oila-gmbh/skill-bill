@@ -65,6 +65,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Collections
 import kotlin.time.Duration
 
 /**
@@ -73,17 +74,26 @@ import kotlin.time.Duration
  * routing, budget, or accounting policy of its own.
  */
 class ReviewRecorder {
-  val preflightRequests: MutableList<ReviewNativeAgentPreflightRequest> = mutableListOf()
-  val nativeLaunches: MutableList<NativeReviewWorkerRequest> = mutableListOf()
-  val parentLaunches: MutableList<GoalRunnerSubtaskLaunchRequest> = mutableListOf()
-  val evidenceBatches: MutableList<ReviewEvidenceBatchRequest> = mutableListOf()
-  val brokerBindings: MutableList<ReviewEvidenceBrokerBinding> = mutableListOf()
-  val rubricResolutions: MutableList<String> = mutableListOf()
-  val diffCommands: MutableList<List<String>> = mutableListOf()
-  val savedAccounting: MutableList<ReviewAccountingRecord> = mutableListOf()
-  val refusedOperations: MutableList<ForbiddenReviewOperation> = mutableListOf()
-  val lifecycleEvents: MutableList<ReviewLifecycleEvent> = mutableListOf()
-  val lifecycleProjections: MutableList<DelegatedReviewLifecycleSnapshot> = mutableListOf()
+  val preflightRequests: MutableList<ReviewNativeAgentPreflightRequest> =
+    Collections.synchronizedList(mutableListOf())
+  val nativeLaunches: MutableList<NativeReviewWorkerRequest> =
+    Collections.synchronizedList(mutableListOf())
+  val parentLaunches: MutableList<GoalRunnerSubtaskLaunchRequest> =
+    Collections.synchronizedList(mutableListOf())
+  val evidenceBatches: MutableList<ReviewEvidenceBatchRequest> =
+    Collections.synchronizedList(mutableListOf())
+  val brokerBindings: MutableList<ReviewEvidenceBrokerBinding> =
+    Collections.synchronizedList(mutableListOf())
+  val rubricResolutions: MutableList<String> = Collections.synchronizedList(mutableListOf())
+  val diffCommands: MutableList<List<String>> = Collections.synchronizedList(mutableListOf())
+  val savedAccounting: MutableList<ReviewAccountingRecord> =
+    Collections.synchronizedList(mutableListOf())
+  val refusedOperations: MutableList<ForbiddenReviewOperation> =
+    Collections.synchronizedList(mutableListOf())
+  val lifecycleEvents: MutableList<ReviewLifecycleEvent> =
+    Collections.synchronizedList(mutableListOf())
+  val lifecycleProjections: MutableList<DelegatedReviewLifecycleSnapshot> =
+    Collections.synchronizedList(mutableListOf())
 
   val launchedSpecialists: List<String>
     get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
