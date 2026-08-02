@@ -1,5 +1,6 @@
 package skillbill.ports.review.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
@@ -14,6 +15,9 @@ private const val REVIEW_LIFECYCLE_MAX_IDENTIFIER_CHARS: Int = 200
 private const val REVIEW_LIFECYCLE_MAX_TIMESTAMP_CHARS: Int = 64
 private val REVIEW_LIFECYCLE_TIMESTAMP = Regex("^[0-9T:.+Z-]+$")
 private const val REVIEW_RESULT_MAX_FINDINGS: Int = 7
+private const val REVIEW_RESULT_MAX_ORIGIN_CHAINS: Int = 8
+private const val REVIEW_RESULT_MAX_ORIGIN_CHAIN_DEPTH: Int = 8
+private const val REVIEW_LIFECYCLE_MAX_LIVENESS_OBSERVATIONS: Int = 8
 
 private fun requireLifecycleTimestamp(value: String) {
   require(value.isNotBlank() && value.length <= REVIEW_LIFECYCLE_MAX_TIMESTAMP_CHARS)
@@ -90,14 +94,15 @@ data class ReviewWorkerResultEnvelope(
         require(it.isNotBlank() && it.length <= REVIEW_LIFECYCLE_MAX_IDENTIFIER_CHARS)
       }
       finding.line?.let { require(it >= 1) }
-      require(finding.originLayerChains.size <= 8)
+      require(finding.originLayerChains.size <= REVIEW_RESULT_MAX_ORIGIN_CHAINS)
       finding.originLayerChains.forEach { chain ->
-        require(chain.isNotEmpty() && chain.size <= 8)
+        require(chain.isNotEmpty() && chain.size <= REVIEW_RESULT_MAX_ORIGIN_CHAIN_DEPTH)
         chain.forEach(::requireLifecycleIdentifier)
       }
     }
   }
 
+  @OpenBoundaryMap("Bounded worker result envelope at the review lifecycle schema seam")
   fun toPayload(): Map<String, Any?> = mapOf(
     "findings" to findings.map { finding ->
       linkedMapOf<String, Any?>(
@@ -115,28 +120,31 @@ data class ReviewWorkerResultEnvelope(
   )
 
   companion object {
+    @OpenBoundaryMap("Bounded worker result envelope decoded from the review lifecycle schema seam")
     fun fromPayload(payload: Map<String, Any?>): ReviewWorkerResultEnvelope {
       val rawFindings = payload["findings"] as? List<*>
         ?: error("Worker result envelope findings must be an array.")
-      return ReviewWorkerResultEnvelope(rawFindings.map { raw ->
-        val finding = raw as? Map<*, *> ?: error("Worker result finding must be an object.")
-        fun requiredString(key: String) = finding[key] as? String
-          ?: error("Worker result finding field '$key' is missing.")
-        val originLayerChains = (finding["origin_layer_chains"] as? List<*>)?.map { rawChain ->
-          (rawChain as? List<*>)?.map { it as? String ?: error("Worker result origin layer must be a string.") }
-            ?: error("Worker result origin layer chain must be an array.")
-        } ?: emptyList()
-        ParallelReviewRawFinding(
-          severity = ParallelReviewSeverity.valueOf(requiredString("severity").uppercase()),
-          confidence = requiredString("confidence"),
-          location = requiredString("location"),
-          description = requiredString("description"),
-          specialistSkillName = finding["specialist_skill_name"] as? String,
-          originLayerChains = originLayerChains,
-          repositoryPath = finding["repository_path"] as? String,
-          line = (finding["line"] as? Number)?.toInt(),
-        )
-      })
+      return ReviewWorkerResultEnvelope(
+        rawFindings.map { raw ->
+          val finding = raw as? Map<*, *> ?: error("Worker result finding must be an object.")
+          fun requiredString(key: String) = finding[key] as? String
+            ?: error("Worker result finding field '$key' is missing.")
+          val originLayerChains = (finding["origin_layer_chains"] as? List<*>)?.map { rawChain ->
+            (rawChain as? List<*>)?.map { it as? String ?: error("Worker result origin layer must be a string.") }
+              ?: error("Worker result origin layer chain must be an array.")
+          } ?: emptyList()
+          ParallelReviewRawFinding(
+            severity = ParallelReviewSeverity.valueOf(requiredString("severity").uppercase()),
+            confidence = requiredString("confidence"),
+            location = requiredString("location"),
+            description = requiredString("description"),
+            specialistSkillName = finding["specialist_skill_name"] as? String,
+            originLayerChains = originLayerChains,
+            repositoryPath = finding["repository_path"] as? String,
+            line = (finding["line"] as? Number)?.toInt(),
+          )
+        },
+      )
     }
   }
 }
@@ -201,7 +209,9 @@ data class ReviewTerminalCompletion(
   val completedAt: String,
   val status: ReviewProcessOutcome,
 ) {
-  init { requireLifecycleTimestamp(completedAt) }
+  init {
+    requireLifecycleTimestamp(completedAt)
+  }
 }
 
 data class ReviewDiagnosticReference(
@@ -255,7 +265,7 @@ data class ReviewLifecycleEvent(
     workerId?.let(::requireLifecycleIdentifier)
     providerId?.let(::requireLifecycleIdentifier)
     routedArea?.let(::requireLifecycleIdentifier)
-    require(livenessObservations.size <= 8)
+    require(livenessObservations.size <= REVIEW_LIFECYCLE_MAX_LIVENESS_OBSERVATIONS)
     if (component == ReviewLifecycleComponent.WORKER) {
       require(!workerId.isNullOrBlank() && !providerId.isNullOrBlank())
       require(attempt != null && assignmentDigest != null && !routedArea.isNullOrBlank())
@@ -279,6 +289,7 @@ data class ReviewLifecycleEvent(
 
   val idempotencyKey: String get() = eventId
 
+  @OpenBoundaryMap("Bounded review lifecycle event at the persistence and schema seam")
   fun toBoundedPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION,
     "kind" to "lifecycle_event",
@@ -289,7 +300,9 @@ data class ReviewLifecycleEvent(
     "component" to component.name.lowercase(),
     "event_kind" to eventKind.name.lowercase(),
     "packet_digest" to packetDigest,
-  ).also { payload ->
+  ).also(::appendIdentityFields).also(::appendEvidenceFields)
+
+  private fun appendIdentityFields(payload: MutableMap<String, Any?>) {
     workerId?.let { payload["worker_id"] = it }
     providerId?.let { payload["provider_id"] = it }
     attempt?.let { payload["attempt"] = it }
@@ -297,7 +310,12 @@ data class ReviewLifecycleEvent(
     routedArea?.let { payload["routed_area"] = it }
     state?.let { payload["state"] = it.name.lowercase() }
     processOutcome?.let { payload["process_outcome"] = it.name.lowercase() }
-    if (livenessObservations.isNotEmpty()) payload["liveness_observations"] = livenessObservations.map { it.toPayload() }
+  }
+
+  private fun appendEvidenceFields(payload: MutableMap<String, Any?>) {
+    if (livenessObservations.isNotEmpty()) {
+      payload["liveness_observations"] = livenessObservations.map { it.toPayload() }
+    }
     providerOutput?.let { payload["provider_output"] = it.toPayload() }
     declaredProgress?.let { payload["declared_progress"] = it.toPayload() }
     durableProgress?.let { payload["durable_progress"] = it.toPayload() }
@@ -307,19 +325,29 @@ data class ReviewLifecycleEvent(
   }
 
   private fun ReviewLivenessObservation.toPayload() = mapOf(
-    "kind" to kind.name.lowercase(), "observed_at" to observedAt, "status" to status,
+    "kind" to kind.name.lowercase(),
+    "observed_at" to observedAt,
+    "status" to status,
   )
   private fun ReviewProviderOutputObservation.toPayload() = mapOf(
-    "observed_at" to observedAt, "outcome" to outcome, "byte_size" to byteSize, "sha256" to sha256,
+    "observed_at" to observedAt,
+    "outcome" to outcome,
+    "byte_size" to byteSize,
+    "sha256" to sha256,
   )
   private fun ReviewDeclaredSpecialistProgress.toPayload() = mapOf(
-    "observed_at" to observedAt, "progress_id" to progressId, "label" to label,
+    "observed_at" to observedAt,
+    "progress_id" to progressId,
+    "label" to label,
   )
   private fun ReviewDurableWorkerProgress.toPayload() = mapOf(
-    "observed_at" to observedAt, "progress_id" to progressId, "label" to label,
+    "observed_at" to observedAt,
+    "progress_id" to progressId,
+    "label" to label,
   )
   private fun ReviewTerminalCompletion.toPayload() = mapOf(
-    "completed_at" to completedAt, "status" to status.name.lowercase(),
+    "completed_at" to completedAt,
+    "status" to status.name.lowercase(),
   )
   private fun ReviewDiagnosticReference.toPayload() = mapOf("reference" to reference, "summary" to summary)
 }
@@ -337,6 +365,7 @@ data class ReviewLifecycleEvidencePackage(
     require(events.map { it.sequence }.distinct().size == events.size)
   }
 
+  @OpenBoundaryMap("Bounded review lifecycle evidence package at the schema seam")
   fun toEvidencePayload(): Map<String, Any?> = mapOf(
     "contract_version" to REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION,
     "kind" to "review_lifecycle_evidence",
@@ -351,7 +380,9 @@ class ReviewLifecycleLedger(initialEvents: List<ReviewLifecycleEvent> = emptyLis
   private val recorded = linkedMapOf<String, ReviewLifecycleEvent>()
   private var nextSequence = 1L
 
-  init { initialEvents.sortedBy { it.sequence }.forEach(::append) }
+  init {
+    initialEvents.sortedBy { it.sequence }.forEach(::append)
+  }
 
   val events: List<ReviewLifecycleEvent> get() = recorded.values.sortedBy { it.sequence }
 

@@ -33,10 +33,12 @@ class ReviewLifecycleEvidenceTest {
 
     assertFalse(fixture.aggregation.isComplete(setOf("a".repeat(64))))
     assertEquals(ReviewLifecycleEventKind.COORDINATOR_CRASHED, fixture.persistence.events.last().eventKind)
-    assertTrue(fixture.persistence.events.none {
-      it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED ||
-        it.eventKind == ReviewLifecycleEventKind.TERMINAL_FAILED
-    })
+    assertTrue(
+      fixture.persistence.events.none {
+        it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED ||
+          it.eventKind == ReviewLifecycleEventKind.TERMINAL_FAILED
+      },
+    )
   }
 
   @Test fun `aggregation failure cannot be promoted or repaired into successful output`() {
@@ -48,9 +50,11 @@ class ReviewLifecycleEvidenceTest {
 
     assertEquals(ReviewProcessOutcome.AGGREGATION_FAILURE, fixture.persistence.events.last().processOutcome)
     assertFalse(fixture.aggregation.canPromote(setOf("a".repeat(64))))
-    assertTrue(fixture.persistence.events.none {
-      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
-    })
+    assertTrue(
+      fixture.persistence.events.none {
+        it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+      },
+    )
   }
 
   @Test fun `retry attempt is durable and distinct from the prior worker outcome`() {

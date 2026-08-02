@@ -3377,6 +3377,7 @@ internal class FeatureTaskRuntimeRunLoop(
     durablyClosedCriterionRefs: List<String>,
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ): PreparedLaunch {
+    val resolvedBranchRecord = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = run.declaration,
       runInvariants = run.request.runInvariants,
@@ -3401,9 +3402,7 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
       branchIdentity = resolvedBranch,
-      baseBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-        ?.baseBranch
-        ?: "main",
+      baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
@@ -3427,6 +3426,7 @@ internal class FeatureTaskRuntimeRunLoop(
       codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
       reviewPassNumber = passNumber,
       goalSubtaskReviewInput = run.goalReviewInput,
+      baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
       resolvedReviewTier = depthResolution?.resolvedTier,
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(passNumber),

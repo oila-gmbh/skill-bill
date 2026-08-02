@@ -1,12 +1,12 @@
 package skillbill.application.review
 
 import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.review.context.model.ProviderTokenThresholds
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.ports.review.model.ReviewLifecycleEventKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -105,6 +105,23 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(recorder.lifecycleEvents.zipWithNext().all { (first, second) -> first.sequence < second.sequence })
   }
 
+  @Test fun `interrupted coordinator closes the durable worker lifecycle before rethrowing`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(
+      config { throw InterruptedException("coordinator interrupted") },
+      recorder,
+    )
+
+    val result = runner.run(harnessRequest())
+    Thread.interrupted()
+
+    assertTrue(result.lane1.success.not())
+    assertTrue(
+      recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED },
+      "An interrupted blocking execution must not leave only a durable WORKER_RUNNING event.",
+    )
+  }
+
   @Test fun `replaying a terminal lifecycle does not append conflicting evidence`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(config(), recorder)
@@ -115,9 +132,12 @@ class ParallelCodeReviewRegressionTest {
     runner.run(request)
 
     assertEquals(firstEvents, recorder.lifecycleEvents)
-    assertEquals(1, recorder.lifecycleEvents.count {
-      it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
-    })
+    assertEquals(
+      1,
+      recorder.lifecycleEvents.count {
+        it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
+      },
+    )
   }
 
   @Test fun `recovery reuses durable aggregation completion when terminal persistence was interrupted`() {

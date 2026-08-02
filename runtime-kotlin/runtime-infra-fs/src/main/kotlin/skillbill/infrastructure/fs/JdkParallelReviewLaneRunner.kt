@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit
 
 @Inject
 class JdkParallelReviewLaneRunner : ParallelReviewLaneRunner {
+  override fun restoreInterruption() = Thread.currentThread().interrupt()
+
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult {
     val executor = Executors.newFixedThreadPool(2)
     var outcome1 = ParallelReviewLaneOutcome(false, "", "interrupted while waiting for lanes")

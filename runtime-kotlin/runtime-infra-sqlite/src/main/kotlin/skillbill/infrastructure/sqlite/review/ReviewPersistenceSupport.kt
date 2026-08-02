@@ -2,61 +2,65 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
-import skillbill.contracts.review.ReviewLifecycleEvidenceSchemaValidator
 import skillbill.error.InvalidReviewLifecycleEvidenceSchemaError
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
+import skillbill.ports.review.model.ReviewDiagnosticReference
+import skillbill.ports.review.model.ReviewDurableWorkerProgress
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewLivenessObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
-import skillbill.ports.review.model.ReviewWorkerResultEnvelope
+import skillbill.ports.review.model.ReviewProviderOutputObservation
+import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
-fun appendReviewLifecycleEvent(connection: Connection, event: ReviewLifecycleEvent): Boolean {
-  val bounded = event.toBoundedPayload()
-  ReviewLifecycleEvidenceSchemaValidator.validate(bounded, "sqlite review lifecycle event '${event.eventId}'")
-  validateLifecyclePayload(bounded, "sqlite review lifecycle event '${event.eventId}'")
-  val payload = JsonSupport.mapToJsonString(bounded)
-  connection.prepareStatement(
-    """
+object ReviewPersistenceSupport {
+  fun append(connection: Connection, event: ReviewLifecycleEvent): Boolean {
+    val bounded = event.toBoundedPayload()
+    validateLifecyclePayload(bounded, "sqlite review lifecycle event '${event.eventId}'")
+    val payload = JsonSupport.mapToJsonString(bounded)
+    connection.prepareStatement(
+      """
     INSERT OR IGNORE INTO review_lifecycle_events
       (event_id, review_id, sequence, packet_digest, occurred_at, payload_json)
     VALUES (?, ?, ?, ?, ?, ?)
-    """.trimIndent(),
-  ).use { statement ->
-    statement.setString(1, event.eventId)
-    statement.setString(2, event.reviewId)
-    statement.setLong(3, event.sequence)
-    statement.setString(4, event.packetDigest)
-    statement.setString(5, event.occurredAt)
-    statement.setString(6, payload)
-    val inserted = statement.executeUpdate() == 1
-    if (inserted) return true
-  }
-  connection.prepareStatement(
-    "SELECT payload_json FROM review_lifecycle_events WHERE event_id = ?",
-  ).use { statement ->
-    statement.setString(1, event.eventId)
-    statement.executeQuery().use { rows ->
-      require(rows.next()) { "Lifecycle event '${event.eventId}' disappeared during idempotent append." }
-      require(rows.getString("payload_json") == payload) {
-        "Lifecycle event '${event.eventId}' was replayed with different bounded evidence."
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(PARAM_ONE, event.eventId)
+      statement.setString(PARAM_TWO, event.reviewId)
+      statement.setLong(PARAM_THREE, event.sequence)
+      statement.setString(PARAM_FOUR, event.packetDigest)
+      statement.setString(PARAM_FIVE, event.occurredAt)
+      statement.setString(PARAM_SIX, payload)
+      val inserted = statement.executeUpdate() == PARAM_ONE
+      if (inserted) return true
+    }
+    connection.prepareStatement(
+      "SELECT payload_json FROM review_lifecycle_events WHERE event_id = ?",
+    ).use { statement ->
+      statement.setString(PARAM_ONE, event.eventId)
+      statement.executeQuery().use { rows ->
+        require(rows.next()) { "Lifecycle event '${event.eventId}' disappeared during idempotent append." }
+        require(rows.getString("payload_json") == payload) {
+          "Lifecycle event '${event.eventId}' was replayed with different bounded evidence."
+        }
       }
     }
+    return false
   }
-  return false
-}
 
-fun loadReviewLifecycleEvents(connection: Connection, reviewId: String): List<ReviewLifecycleEvent> =
-  connection.prepareStatement(
+  fun load(connection: Connection, reviewId: String): List<ReviewLifecycleEvent> = connection.prepareStatement(
     "SELECT payload_json FROM review_lifecycle_events WHERE review_id = ? ORDER BY sequence",
   ).use { statement ->
-    statement.setString(1, reviewId)
+    statement.setString(PARAM_ONE, reviewId)
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
@@ -66,199 +70,213 @@ fun loadReviewLifecycleEvents(connection: Connection, reviewId: String): List<Re
     }
   }
 
-private fun decodeLifecycleEvent(rawJson: String, sourceLabel: String): ReviewLifecycleEvent {
-  val value = JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue)
-  val payload = JsonSupport.anyToStringAnyMap(value)
-    ?: throw InvalidReviewLifecycleEvidenceSchemaError(sourceLabel, "Stored payload is not a JSON object.")
-  ReviewLifecycleEvidenceSchemaValidator.validate(payload, sourceLabel)
-  validateLifecyclePayload(payload, sourceLabel)
-  return try {
-    decodeValidatedLifecycleEvent(payload)
-  } catch (error: Exception) {
-    throw InvalidReviewLifecycleEvidenceSchemaError(
-      sourceLabel,
-      error.message ?: "Stored lifecycle event violates its bounded model.",
-      error,
+  private fun decodeLifecycleEvent(rawJson: String, sourceLabel: String): ReviewLifecycleEvent {
+    val value = JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue)
+    val payload = JsonSupport.anyToStringAnyMap(value)
+      ?: throw InvalidReviewLifecycleEvidenceSchemaError(sourceLabel, "Stored payload is not a JSON object.")
+    validateLifecyclePayload(payload, sourceLabel)
+    return runCatching { decodeValidatedLifecycleEvent(payload) }
+      .getOrElse { error -> throw invalidLifecycleModel(sourceLabel, error) }
+  }
+
+  private fun invalidLifecycleModel(sourceLabel: String, error: Throwable) = InvalidReviewLifecycleEvidenceSchemaError(
+    sourceLabel,
+    error.message ?: "Stored lifecycle event violates its bounded model.",
+    error,
+  )
+
+  private fun decodeValidatedLifecycleEvent(payload: Map<String, Any?>): ReviewLifecycleEvent {
+    val reader = LifecyclePayloadReader(payload)
+    return ReviewLifecycleEvent(
+      eventId = reader.requiredString("event_id"),
+      reviewId = reader.requiredString("review_id"),
+      sequence = (payload["sequence"] as Number).toLong(),
+      occurredAt = reader.requiredString("occurred_at"),
+      component = ReviewLifecycleComponent.valueOf(reader.requiredString("component").uppercase()),
+      eventKind = ReviewLifecycleEventKind.valueOf(reader.requiredString("event_kind").uppercase()),
+      packetDigest = reader.requiredString("packet_digest"),
+      workerId = reader.optionalString("worker_id"),
+      providerId = reader.optionalString("provider_id"),
+      attempt = (payload["attempt"] as? Number)?.toInt(),
+      assignmentDigest = reader.optionalString("assignment_digest"),
+      routedArea = reader.optionalString("routed_area"),
+      state = reader.optionalString("state")?.uppercase()?.let(ReviewWorkerLifecycleState::valueOf),
+      processOutcome = reader.optionalString("process_outcome")?.uppercase()?.let(ReviewProcessOutcome::valueOf),
+      livenessObservations = reader.livenessObservations(),
+      providerOutput = reader.providerOutput(),
+      declaredProgress = reader.declaredProgress(),
+      durableProgress = reader.durableProgress(),
+      resultEnvelope = reader.objectMap("result_envelope")?.let(ReviewWorkerResultEnvelope::fromPayload),
+      terminalCompletion = reader.terminalCompletion(),
+      diagnostic = reader.diagnostic(),
     )
   }
-}
 
-private fun decodeValidatedLifecycleEvent(payload: Map<String, Any?>): ReviewLifecycleEvent {
-  fun requiredString(key: String) = payload[key] as? String ?: error("Lifecycle event field '$key' is missing.")
-  fun optionalString(key: String) = payload[key] as? String
-  fun enumName(key: String) = optionalString(key)?.uppercase()?.let { value -> value }
-  fun digest(key: String) = optionalString(key)
-  @Suppress("UNCHECKED_CAST")
-  fun objectMap(key: String) = payload[key] as? Map<String, Any?>
-  @Suppress("UNCHECKED_CAST")
-  fun objectList(key: String) = payload[key] as? List<Map<String, Any?>> ?: emptyList()
-  fun boundedMap(key: String): Map<String, Any?>? = objectMap(key)
-  return ReviewLifecycleEvent(
-    eventId = requiredString("event_id"),
-    reviewId = requiredString("review_id"),
-    sequence = (payload["sequence"] as Number).toLong(),
-    occurredAt = requiredString("occurred_at"),
-    component = ReviewLifecycleComponent.valueOf(requiredString("component").uppercase()),
-    eventKind = ReviewLifecycleEventKind.valueOf(requiredString("event_kind").uppercase()),
-    packetDigest = requiredString("packet_digest"),
-    workerId = optionalString("worker_id"),
-    providerId = optionalString("provider_id"),
-    attempt = (payload["attempt"] as? Number)?.toInt(),
-    assignmentDigest = digest("assignment_digest"),
-    routedArea = optionalString("routed_area"),
-    state = enumName("state")?.let(ReviewWorkerLifecycleState::valueOf),
-    processOutcome = enumName("process_outcome")?.let(ReviewProcessOutcome::valueOf),
-    livenessObservations = objectList("liveness_observations").map { observation ->
-      skillbill.ports.review.model.ReviewLivenessObservation(
-        skillbill.ports.review.model.ReviewLivenessObservation.Kind.valueOf(
-          (observation["kind"] as String).uppercase(),
-        ),
+  private class LifecyclePayloadReader(private val payload: Map<String, Any?>) {
+    fun requiredString(key: String) = payload[key] as? String
+      ?: error("Lifecycle event field '$key' is missing.")
+
+    fun optionalString(key: String) = payload[key] as? String
+
+    @Suppress("UNCHECKED_CAST")
+    fun objectMap(key: String) = payload[key] as? Map<String, Any?>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun objectList(key: String) = payload[key] as? List<Map<String, Any?>> ?: emptyList()
+
+    fun livenessObservations() = objectList("liveness_observations").map { observation ->
+      ReviewLivenessObservation(
+        ReviewLivenessObservation.Kind.valueOf((observation["kind"] as String).uppercase()),
         observation["observed_at"] as String,
         observation["status"] as String,
       )
-    },
-    providerOutput = boundedMap("provider_output")?.let { output ->
-      skillbill.ports.review.model.ReviewProviderOutputObservation(
+    }
+
+    fun providerOutput() = objectMap("provider_output")?.let { output ->
+      ReviewProviderOutputObservation(
         output["observed_at"] as String,
         output["outcome"] as String,
         (output["byte_size"] as Number).toLong(),
         output["sha256"] as String,
       )
-    },
-    declaredProgress = boundedMap("declared_progress")?.let { progress ->
-      skillbill.ports.review.model.ReviewDeclaredSpecialistProgress(
+    }
+
+    fun declaredProgress() = objectMap("declared_progress")?.let { progress ->
+      ReviewDeclaredSpecialistProgress(
         progress["observed_at"] as String,
         progress["progress_id"] as String,
         progress["label"] as String,
       )
-    },
-    durableProgress = boundedMap("durable_progress")?.let { progress ->
-      skillbill.ports.review.model.ReviewDurableWorkerProgress(
+    }
+
+    fun durableProgress() = objectMap("durable_progress")?.let { progress ->
+      ReviewDurableWorkerProgress(
         progress["observed_at"] as String,
         progress["progress_id"] as String,
         progress["label"] as String,
       )
-    },
-    resultEnvelope = boundedMap("result_envelope")?.let(ReviewWorkerResultEnvelope::fromPayload),
-    terminalCompletion = boundedMap("terminal_completion")?.let { terminal ->
-      skillbill.ports.review.model.ReviewTerminalCompletion(
+    }
+
+    fun terminalCompletion() = objectMap("terminal_completion")?.let { terminal ->
+      ReviewTerminalCompletion(
         terminal["completed_at"] as String,
         ReviewProcessOutcome.valueOf((terminal["status"] as String).uppercase()),
       )
-    },
-    diagnostic = boundedMap("diagnostic")?.let { diagnostic ->
-      skillbill.ports.review.model.ReviewDiagnosticReference(
+    }
+
+    fun diagnostic() = objectMap("diagnostic")?.let { diagnostic ->
+      ReviewDiagnosticReference(
         diagnostic["reference"] as String,
         diagnostic["summary"] as String,
       )
-    },
+    }
+  }
+
+  private val lifecyclePayloadKeys = setOf(
+    "contract_version",
+    "kind",
+    "event_id",
+    "review_id",
+    "sequence",
+    "occurred_at",
+    "component",
+    "event_kind",
+    "packet_digest",
+    "worker_id",
+    "provider_id",
+    "attempt",
+    "assignment_digest",
+    "routed_area",
+    "state",
+    "process_outcome",
+    "liveness_observations",
+    "provider_output",
+    "declared_progress",
+    "durable_progress",
+    "result_envelope",
+    "terminal_completion",
+    "diagnostic",
   )
-}
 
-private val lifecyclePayloadKeys = setOf(
-  "contract_version",
-  "kind",
-  "event_id",
-  "review_id",
-  "sequence",
-  "occurred_at",
-  "component",
-  "event_kind",
-  "packet_digest",
-  "worker_id",
-  "provider_id",
-  "attempt",
-  "assignment_digest",
-  "routed_area",
-  "state",
-  "process_outcome",
-  "liveness_observations",
-  "provider_output",
-  "declared_progress",
-  "durable_progress",
-  "result_envelope",
-  "terminal_completion",
-  "diagnostic",
-)
+  private val requiredLifecyclePayloadKeys = setOf(
+    "contract_version",
+    "kind",
+    "event_id",
+    "review_id",
+    "sequence",
+    "occurred_at",
+    "component",
+    "event_kind",
+    "packet_digest",
+  )
 
-private val requiredLifecyclePayloadKeys = setOf(
-  "contract_version",
-  "kind",
-  "event_id",
-  "review_id",
-  "sequence",
-  "occurred_at",
-  "component",
-  "event_kind",
-  "packet_digest",
-)
-
-private fun validateLifecyclePayload(payload: Map<String, Any?>, sourceLabel: String) {
-  try {
-    require(payload.keys.containsAll(requiredLifecyclePayloadKeys)) {
-      "Lifecycle event is missing required bounded fields: ${requiredLifecyclePayloadKeys - payload.keys}."
-    }
-    require(payload.keys.all { it in lifecyclePayloadKeys }) {
-      "Lifecycle event contains fields outside the bounded contract: ${payload.keys - lifecyclePayloadKeys}."
-    }
-    require(payload["contract_version"] == REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION) {
-      "Lifecycle event contract_version must be $REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION."
-    }
-    require(payload["kind"] == "lifecycle_event") { "Lifecycle event kind must be lifecycle_event." }
-    require(payload["event_id"] is String)
-    require(payload["review_id"] is String)
-    require(payload["sequence"] is Number)
-    require(payload["occurred_at"] is String)
-    require(payload["component"] is String)
-    require(payload["event_kind"] is String)
-    require(payload["packet_digest"] is String)
-    if (payload.containsKey("liveness_observations")) {
-      val observations = payload["liveness_observations"] as? List<*>
-        ?: error("Lifecycle liveness_observations must be an array.")
-      observations.forEach { value ->
-        validateNestedKeys(value, setOf("kind", "observed_at", "status"), sourceLabel)
+  private fun validateLifecyclePayload(payload: Map<String, Any?>, sourceLabel: String) {
+    try {
+      require(payload.keys.containsAll(requiredLifecyclePayloadKeys)) {
+        "Lifecycle event is missing required bounded fields: ${requiredLifecyclePayloadKeys - payload.keys}."
       }
+      require(payload.keys.all { it in lifecyclePayloadKeys }) {
+        "Lifecycle event contains fields outside the bounded contract: ${payload.keys - lifecyclePayloadKeys}."
+      }
+      require(payload["contract_version"] == REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION) {
+        "Lifecycle event contract_version must be $REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION."
+      }
+      require(payload["kind"] == "lifecycle_event") { "Lifecycle event kind must be lifecycle_event." }
+      require(payload["event_id"] is String)
+      require(payload["review_id"] is String)
+      require(payload["sequence"] is Number)
+      require(payload["occurred_at"] is String)
+      require(payload["component"] is String)
+      require(payload["event_kind"] is String)
+      require(payload["packet_digest"] is String)
+      if (payload.containsKey("liveness_observations")) {
+        val observations = payload["liveness_observations"] as? List<*>
+          ?: error("Lifecycle liveness_observations must be an array.")
+        observations.forEach { value ->
+          validateNestedKeys(value, setOf("kind", "observed_at", "status"), sourceLabel)
+        }
+      }
+      validatePresentNested(
+        payload,
+        "provider_output",
+        setOf("observed_at", "outcome", "byte_size", "sha256"),
+        sourceLabel,
+      )
+      validatePresentNested(payload, "declared_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
+      validatePresentNested(payload, "durable_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
+      validatePresentNested(payload, "result_envelope", setOf("findings"), sourceLabel)
+      validatePresentNested(payload, "terminal_completion", setOf("completed_at", "status"), sourceLabel)
+      validatePresentNested(payload, "diagnostic", setOf("reference", "summary"), sourceLabel)
+    } catch (error: IllegalArgumentException) {
+      throw InvalidReviewLifecycleEvidenceSchemaError(
+        sourceLabel,
+        error.message ?: "Stored lifecycle event violates the bounded schema.",
+        error,
+      )
     }
-    validatePresentNested(
-      payload,
-      "provider_output",
-      setOf("observed_at", "outcome", "byte_size", "sha256"),
-      sourceLabel,
-    )
-    validatePresentNested(payload, "declared_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
-    validatePresentNested(payload, "durable_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
-    validatePresentNested(payload, "result_envelope", setOf("findings"), sourceLabel)
-    validatePresentNested(payload, "terminal_completion", setOf("completed_at", "status"), sourceLabel)
-    validatePresentNested(payload, "diagnostic", setOf("reference", "summary"), sourceLabel)
-  } catch (error: IllegalArgumentException) {
-    throw InvalidReviewLifecycleEvidenceSchemaError(
-      sourceLabel,
-      error.message ?: "Stored lifecycle event violates the bounded schema.",
-      error,
-    )
   }
-}
 
-private fun validateNestedKeys(value: Any?, expected: Set<String>, sourceLabel: String) {
-  if (value == null) return
-  val map = value as? Map<*, *> ?: throw InvalidReviewLifecycleEvidenceSchemaError(
-    sourceLabel,
-    "Lifecycle nested evidence must be an object.",
-  )
-  require(map.keys.filterIsInstance<String>().toSet() == expected) {
-    "Lifecycle nested evidence fields must match the bounded contract."
+  private fun validateNestedKeys(value: Any?, expected: Set<String>, sourceLabel: String) {
+    if (value == null) return
+    val map = value as? Map<*, *> ?: throw InvalidReviewLifecycleEvidenceSchemaError(
+      sourceLabel,
+      "Lifecycle nested evidence must be an object.",
+    )
+    require(map.keys.filterIsInstance<String>().toSet() == expected) {
+      "Lifecycle nested evidence fields must match the bounded contract."
+    }
   }
-}
 
-private fun validatePresentNested(
-  payload: Map<String, Any?>,
-  key: String,
-  expected: Set<String>,
-  sourceLabel: String,
-) {
-  if (!payload.containsKey(key)) return
-  require(payload[key] != null) { "Lifecycle field '$key' must be an object when present." }
-  validateNestedKeys(payload[key], expected, sourceLabel)
+  private fun validatePresentNested(
+    payload: Map<String, Any?>,
+    key: String,
+    expected: Set<String>,
+    sourceLabel: String,
+  ) {
+    if (!payload.containsKey(key)) return
+    require(payload[key] != null) { "Lifecycle field '$key' must be an object when present." }
+    validateNestedKeys(payload[key], expected, sourceLabel)
+  }
 }
 
 fun upsertReviewAccounting(connection: Connection, record: ReviewAccountingRecord) {

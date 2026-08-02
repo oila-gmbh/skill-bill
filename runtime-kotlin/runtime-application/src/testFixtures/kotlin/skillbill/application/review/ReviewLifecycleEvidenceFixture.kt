@@ -4,8 +4,8 @@ import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewProcessOutcome
-import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 
 /** Deterministic lifecycle fixture used by failure reproduction tests; no provider is contacted. */
 class ReviewLifecycleEvidenceFixture(
@@ -105,7 +105,7 @@ class ReviewLifecycleEvidenceFixture(
       skillbill.ports.review.model.ReviewLifecycleComponent.WORKER,
   ): ReviewLifecycleEvent {
     val event = ReviewLifecycleEvent(
-      eventId = "${reviewId}:${persistence.events.size + 1}:$kind:$workerId",
+      eventId = "$reviewId:${persistence.events.size + 1}:$kind:$workerId",
       reviewId = reviewId,
       sequence = persistence.events.size + 1L,
       occurredAt = clock.next(),
@@ -142,7 +142,9 @@ class FakeReviewLauncher {
   var launchCount: Int = 0
     private set
 
-  fun launch(): Unit { launchCount += 1 }
+  fun launch() {
+    launchCount += 1
+  }
 }
 
 class FakeReviewProvider {
@@ -155,9 +157,8 @@ class FakeReviewAggregation(private val persistence: FakeReviewLifecyclePersiste
     persistence.events.filter { it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED }
       .mapNotNull(ReviewLifecycleEvent::assignmentDigest).toSet() == assignments
 
-  fun canPromote(assignments: Set<String>): Boolean =
-    isComplete(assignments) && persistence.events.none {
-      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED ||
-        it.eventKind == ReviewLifecycleEventKind.COORDINATOR_CRASHED
-    }
+  fun canPromote(assignments: Set<String>): Boolean = isComplete(assignments) && persistence.events.none {
+    it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED ||
+      it.eventKind == ReviewLifecycleEventKind.COORDINATOR_CRASHED
+  }
 }

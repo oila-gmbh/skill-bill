@@ -13,28 +13,31 @@ import skillbill.contracts.review.ReviewPreviewContract
 import skillbill.contracts.review.TriageDecisionContract
 import skillbill.contracts.review.TriageListContract
 import skillbill.contracts.review.TriageRecordedContract
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.reviewProcessOutcome
+import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.reviewProcessOutcome
-import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
 
-enum class ReviewOutputAdmission {
+internal enum class ReviewOutputAdmission {
   SUCCESS,
   SCHEMA_REPAIR_ELIGIBLE,
   REJECTED,
 }
 
-data class ReviewOutputClassification(
+internal data class ReviewOutputClassification(
   val processOutcome: ReviewProcessOutcome,
   val admission: ReviewOutputAdmission,
 )
 
 /** Schema repair is a narrow envelope repair path, never a recovery path for process failure. */
-fun classifyReviewOutput(facts: AgentRunLaunchFacts, resultEnvelopeValid: Boolean): ReviewOutputClassification {
+internal fun classifyReviewOutput(
+  facts: AgentRunLaunchFacts,
+  resultEnvelopeValid: Boolean,
+): ReviewOutputClassification {
   val processOutcome = facts.reviewProcessOutcome()
   return ReviewOutputClassification(
     processOutcome = processOutcome,

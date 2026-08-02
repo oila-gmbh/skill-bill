@@ -9,31 +9,31 @@ import kotlin.test.assertEquals
 class ReviewOutputClassificationTest {
   @Test fun `only a normal zero-exit envelope can be admitted or repaired`() {
     val valid = classifyReviewOutput(
-      facts(exitStatus = 0, stdout = "NO_FINDINGS"),
+      facts(FactsFixture(exitStatus = 0, stdout = "NO_FINDINGS")),
       resultEnvelopeValid = true,
     )
     assertEquals(ReviewProcessOutcome.ZERO_EXIT, valid.processOutcome)
     assertEquals(ReviewOutputAdmission.SUCCESS, valid.admission)
 
     val repairable = classifyReviewOutput(
-      facts(exitStatus = 0, stdout = "not-an-envelope"),
+      facts(FactsFixture(exitStatus = 0, stdout = "not-an-envelope")),
       resultEnvelopeValid = false,
     )
     assertEquals(ReviewOutputAdmission.SCHEMA_REPAIR_ELIGIBLE, repairable.admission)
   }
 
   @Test fun `empty zero-exit output is a missing result and is not repairable`() {
-    val classification = classifyReviewOutput(facts(exitStatus = 0), resultEnvelopeValid = false)
+    val classification = classifyReviewOutput(facts(FactsFixture(exitStatus = 0)), resultEnvelopeValid = false)
     assertEquals(ReviewOutputAdmission.REJECTED, classification.admission)
   }
 
   @Test fun `process and lifecycle failures are never admitted through schema repair`() {
     listOf(
-      facts(exitStatus = null, timedOut = true),
-      facts(exitStatus = null, interrupted = true),
-      facts(exitStatus = 7),
-      facts(exitStatus = null, spawnFailed = true),
-      facts(exitStatus = 0, stdoutTruncated = true),
+      facts(FactsFixture(timedOut = true)),
+      facts(FactsFixture(interrupted = true)),
+      facts(FactsFixture(exitStatus = 7)),
+      facts(FactsFixture(spawnFailed = true)),
+      facts(FactsFixture(exitStatus = 0, stdoutTruncated = true)),
     ).forEach { launchFacts ->
       val classification = classifyReviewOutput(launchFacts, resultEnvelopeValid = false)
       assertEquals(ReviewOutputAdmission.REJECTED, classification.admission)
@@ -41,21 +41,23 @@ class ReviewOutputClassificationTest {
     }
   }
 
-  private fun facts(
-    exitStatus: Int?,
-    stdout: String = "",
-    timedOut: Boolean = false,
-    interrupted: Boolean = false,
-    spawnFailed: Boolean = false,
-    stdoutTruncated: Boolean = false,
-  ) = AgentRunLaunchFacts(
+  private data class FactsFixture(
+    val exitStatus: Int? = null,
+    val stdout: String = "",
+    val timedOut: Boolean = false,
+    val interrupted: Boolean = false,
+    val spawnFailed: Boolean = false,
+    val stdoutTruncated: Boolean = false,
+  )
+
+  private fun facts(fixture: FactsFixture) = AgentRunLaunchFacts(
     agent = InstallAgent.CODEX,
-    exitStatus = exitStatus,
-    stdout = stdout,
+    exitStatus = fixture.exitStatus,
+    stdout = fixture.stdout,
     stderr = "",
-    timedOut = timedOut,
-    interrupted = interrupted,
-    spawnFailed = spawnFailed,
-    stdoutTruncated = stdoutTruncated,
+    timedOut = fixture.timedOut,
+    interrupted = fixture.interrupted,
+    spawnFailed = fixture.spawnFailed,
+    stdoutTruncated = fixture.stdoutTruncated,
   )
 }

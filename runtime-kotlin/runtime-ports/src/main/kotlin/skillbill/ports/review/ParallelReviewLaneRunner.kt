@@ -5,4 +5,6 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 
 fun interface ParallelReviewLaneRunner {
   fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult
+
+  fun restoreInterruption() = Unit
 }

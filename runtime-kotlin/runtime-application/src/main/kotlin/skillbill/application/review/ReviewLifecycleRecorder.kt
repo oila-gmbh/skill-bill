@@ -10,12 +10,67 @@ import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleEvidencePackage
 import skillbill.ports.review.model.ReviewLivenessObservation
-import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewTerminalCompletion
-import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import java.time.Instant
+
+internal data class ReviewLifecycleRecord(
+  val reviewId: String,
+  val packetDigest: String,
+  val component: ReviewLifecycleComponent,
+  val eventKind: ReviewLifecycleEventKind,
+  val workerId: String? = null,
+  val providerId: String? = null,
+  val attempt: Int? = null,
+  val assignmentDigest: String? = null,
+  val routedArea: String? = null,
+  val state: ReviewWorkerLifecycleState? = null,
+  val processOutcome: ReviewProcessOutcome? = null,
+  val durableProgress: ReviewDurableWorkerProgress? = null,
+  val terminalCompletion: ReviewTerminalCompletion? = null,
+  val diagnostic: ReviewDiagnosticReference? = null,
+  val livenessObservations: List<ReviewLivenessObservation> = emptyList(),
+  val providerOutput: ReviewProviderOutputObservation? = null,
+  val declaredProgress: ReviewDeclaredSpecialistProgress? = null,
+  val resultEnvelope: ReviewWorkerResultEnvelope? = null,
+) {
+  fun eventId(): String = listOf(
+    reviewId,
+    eventKind.name,
+    workerId.orEmpty(),
+    assignmentDigest.orEmpty(),
+    attempt?.toString().orEmpty(),
+  ).joinToString(":").let(::sha256HexUtf8).let { "review-lifecycle-$it" }
+
+  fun toEvent(sequence: Long, occurredAt: String) = ReviewLifecycleEvent(
+    eventId = eventId(),
+    reviewId = reviewId,
+    sequence = sequence,
+    occurredAt = occurredAt,
+    component = component,
+    eventKind = eventKind,
+    packetDigest = packetDigest,
+    workerId = workerId,
+    providerId = providerId,
+    attempt = attempt,
+    assignmentDigest = assignmentDigest,
+    routedArea = routedArea,
+    state = state,
+    processOutcome = processOutcome,
+    livenessObservations = livenessObservations,
+    providerOutput = providerOutput,
+    declaredProgress = declaredProgress,
+    durableProgress = durableProgress,
+    resultEnvelope = resultEnvelope,
+    terminalCompletion = terminalCompletion,
+    diagnostic = diagnostic,
+  )
+
+  fun matches(event: ReviewLifecycleEvent): Boolean = toEvent(event.sequence, event.occurredAt) == event
+}
 
 /**
  * Serializes lifecycle transitions before ownership moves to the next review boundary. The
@@ -31,81 +86,21 @@ class ReviewLifecycleRecorder(
 
   fun timestamp(): String = now()
 
-  fun record(
-    reviewId: String,
-    packetDigest: String,
-    component: ReviewLifecycleComponent,
-    eventKind: ReviewLifecycleEventKind,
-    workerId: String? = null,
-    providerId: String? = null,
-    attempt: Int? = null,
-    assignmentDigest: String? = null,
-    routedArea: String? = null,
-    state: ReviewWorkerLifecycleState? = null,
-    processOutcome: ReviewProcessOutcome? = null,
-    durableProgress: ReviewDurableWorkerProgress? = null,
-    terminalCompletion: ReviewTerminalCompletion? = null,
-    diagnostic: ReviewDiagnosticReference? = null,
-    livenessObservations: List<ReviewLivenessObservation> = emptyList(),
-    providerOutput: ReviewProviderOutputObservation? = null,
-    declaredProgress: ReviewDeclaredSpecialistProgress? = null,
-    resultEnvelope: ReviewWorkerResultEnvelope? = null,
-  ): ReviewLifecycleEvent = synchronized(lock) {
-    val events = ledgers.getOrPut(reviewId) {
-      database.read { unitOfWork -> unitOfWork.reviews.loadReviewLifecycleEvents(reviewId).toMutableList() }
+  internal fun record(record: ReviewLifecycleRecord): ReviewLifecycleEvent = synchronized(lock) {
+    val events = ledgers.getOrPut(record.reviewId) {
+      database.read { unitOfWork ->
+        unitOfWork.reviews.loadReviewLifecycleEvents(record.reviewId).toMutableList()
+      }
     }
-    val eventIdentity = listOf(
-      reviewId,
-      eventKind.name,
-      workerId.orEmpty(),
-      assignmentDigest.orEmpty(),
-      attempt?.toString().orEmpty(),
-    ).joinToString(":")
-    val eventId = "review-lifecycle-${sha256HexUtf8(eventIdentity)}"
-    events.firstOrNull { it.eventId == eventId }?.let { existing ->
-      require(
-        existing.component == component &&
-          existing.eventKind == eventKind &&
-          existing.packetDigest == packetDigest &&
-          existing.workerId == workerId &&
-          existing.providerId == providerId &&
-          existing.attempt == attempt &&
-          existing.assignmentDigest == assignmentDigest &&
-          existing.routedArea == routedArea &&
-          existing.state == state &&
-          existing.processOutcome == processOutcome &&
-          existing.livenessObservations == livenessObservations &&
-          existing.providerOutput == providerOutput &&
-          existing.declaredProgress == declaredProgress &&
-          existing.durableProgress == durableProgress &&
-          existing.resultEnvelope == resultEnvelope &&
-          existing.terminalCompletion == terminalCompletion &&
-          existing.diagnostic == diagnostic,
-      ) { "Lifecycle event '$eventId' was replayed with different evidence." }
+    events.firstOrNull { it.eventId == record.eventId() }?.let { existing ->
+      require(record.matches(existing)) {
+        "Lifecycle event '${existing.eventId}' was replayed with different evidence."
+      }
       return@synchronized existing
     }
-    val event = ReviewLifecycleEvent(
-      eventId = eventId,
-      reviewId = reviewId,
+    val event = record.toEvent(
       sequence = (events.maxOfOrNull(ReviewLifecycleEvent::sequence) ?: 0) + 1,
       occurredAt = now(),
-      component = component,
-      eventKind = eventKind,
-      packetDigest = packetDigest,
-      workerId = workerId,
-      providerId = providerId,
-      attempt = attempt,
-      assignmentDigest = assignmentDigest,
-      routedArea = routedArea,
-      state = state,
-      processOutcome = processOutcome,
-      livenessObservations = livenessObservations,
-      providerOutput = providerOutput,
-      declaredProgress = declaredProgress,
-      durableProgress = durableProgress,
-      resultEnvelope = resultEnvelope,
-      terminalCompletion = terminalCompletion,
-      diagnostic = diagnostic,
     )
     database.transaction { unitOfWork -> unitOfWork.reviews.appendReviewLifecycleEvent(event) }
     events += event

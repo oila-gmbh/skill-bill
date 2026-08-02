@@ -1,9 +1,9 @@
 package skillbill.application.review.model
 
 import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
-import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewRevision
 
 data class ReviewPreparationRequest(

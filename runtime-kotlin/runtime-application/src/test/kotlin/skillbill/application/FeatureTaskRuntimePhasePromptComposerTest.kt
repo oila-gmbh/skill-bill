@@ -156,6 +156,23 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `review prompt maps the durable baseline-untracked inventory to parallel CLI excludes`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      parallelReviewAgent = "claude",
+      reviewPassNumber = 1,
+      baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
+    )
+
+    assertContains(prompt, "Baseline-untracked review policy")
+    assertContains(prompt, "--baseline-untracked-exclude")
+    assertContains(prompt, "- `a-before.tmp`")
+    assertContains(prompt, "- `z-before.tmp`")
+  }
+
+  @Test
   fun `second standalone review pass stays inline and receives the materialized immutable-base delta`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

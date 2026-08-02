@@ -8,7 +8,7 @@ import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 
-data class ReviewLifecycleRecoveredWorkerResult(
+internal data class ReviewLifecycleRecoveredWorkerResult(
   val assignmentDigest: String,
   val workerId: String,
   val providerId: String,
@@ -16,12 +16,12 @@ data class ReviewLifecycleRecoveredWorkerResult(
   val resultEnvelope: ReviewWorkerResultEnvelope,
 )
 
-data class ReviewLifecycleWorkerIdentity(
+internal data class ReviewLifecycleWorkerIdentity(
   val workerId: String,
   val providerId: String,
 )
 
-data class ReviewLifecycleRecoverySnapshot(
+internal data class ReviewLifecycleRecoverySnapshot(
   val reviewId: String,
   val completedResults: Map<String, ReviewLifecycleRecoveredWorkerResult>,
   val pendingAssignmentDigests: Set<String>,
@@ -41,64 +41,16 @@ data class ReviewLifecycleRecoverySnapshot(
 
 /** Reconciles a restarted coordinator from durable events; it never infers completion from lanes. */
 class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
-  fun read(
+  internal fun read(
     reviewId: String,
     selectedAssignments: Map<String, ReviewLifecycleWorkerIdentity>,
   ): ReviewLifecycleRecoverySnapshot {
     val events = database.read { unitOfWork -> unitOfWork.reviews.loadReviewLifecycleEvents(reviewId) }
     val ledger = ReviewLifecycleLedger(events)
-    val terminalRecord = ledger.events.lastOrNull {
-      it.component == ReviewLifecycleComponent.TERMINAL
-    }
-    val aggregationEvent = ledger.events.lastOrNull {
-      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED ||
-        it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED
-    }
-    val latestWorkerTerminalEvents = ledger.events
-      .filter { it.component == ReviewLifecycleComponent.WORKER && it.isTerminalWorkerEvent() }
-      .groupBy { requireNotNull(it.assignmentDigest) }
-      .values
-      .map { assignmentEvents ->
-        assignmentEvents.maxWithOrNull(compareBy<ReviewLifecycleEvent>({ it.attempt ?: 0 }, { it.sequence }))
-          ?: error("Worker lifecycle event group cannot be empty.")
-      }
-    val completed = latestWorkerTerminalEvents
-      .filter {
-        it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED &&
-          it.processOutcome == ReviewProcessOutcome.ZERO_EXIT
-      }
-      .mapNotNull { event ->
-        val assignmentDigest = event.assignmentDigest ?: return@mapNotNull null
-        val resultEnvelope = event.resultEnvelope ?: return@mapNotNull null
-        val workerId = event.workerId ?: return@mapNotNull null
-        val providerId = event.providerId ?: return@mapNotNull null
-        val expected = selectedAssignments[assignmentDigest] ?: return@mapNotNull null
-        if (expected.workerId != workerId || expected.providerId != providerId) return@mapNotNull null
-        assignmentDigest to ReviewLifecycleRecoveredWorkerResult(
-          assignmentDigest = assignmentDigest,
-          workerId = workerId,
-          providerId = providerId,
-          attempt = event.attempt ?: return@mapNotNull null,
-          resultEnvelope = resultEnvelope,
-        )
-      }
-      .toMap()
-    val pending = if (terminalRecord == null && aggregationEvent?.eventKind != ReviewLifecycleEventKind.AGGREGATION_FAILED) {
-      selectedAssignments.keys - completed.keys
-    } else {
-      emptySet()
-    }
-    val attemptByAssignment = selectedAssignments.keys.associateWith { assignmentDigest ->
-      val latestAttempt = ledger.events
-        .filter {
-          it.component == ReviewLifecycleComponent.WORKER &&
-            it.assignmentDigest == assignmentDigest
-        }
-        .mapNotNull { it.attempt }
-        .maxOrNull()
-        ?: 0
-      if (assignmentDigest in pending) latestAttempt + 1 else latestAttempt.coerceAtLeast(1)
-    }
+    val terminalRecord = ledger.events.lastOrNull { it.component == ReviewLifecycleComponent.TERMINAL }
+    val aggregationEvent = latestAggregationEvent(ledger.events)
+    val completed = completedResults(ledger.events, selectedAssignments)
+    val pending = pendingAssignments(selectedAssignments.keys, completed.keys, terminalRecord, aggregationEvent)
     return ReviewLifecycleRecoverySnapshot(
       reviewId = reviewId,
       completedResults = completed,
@@ -106,8 +58,73 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
       terminalEvent = terminalRecord?.eventKind,
       aggregationEvent = aggregationEvent,
       terminalRecord = terminalRecord,
-      attemptByAssignment = attemptByAssignment,
+      attemptByAssignment = attemptsByAssignment(ledger.events, selectedAssignments.keys, pending),
     )
+  }
+
+  private fun latestAggregationEvent(events: List<ReviewLifecycleEvent>) = events.lastOrNull {
+    it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED ||
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED
+  }
+
+  private fun completedResults(
+    events: List<ReviewLifecycleEvent>,
+    selectedAssignments: Map<String, ReviewLifecycleWorkerIdentity>,
+  ): Map<String, ReviewLifecycleRecoveredWorkerResult> = events
+    .filter { it.component == ReviewLifecycleComponent.WORKER && it.isTerminalWorkerEvent() }
+    .groupBy { requireNotNull(it.assignmentDigest) }
+    .values
+    .map { assignmentEvents ->
+      assignmentEvents.maxWithOrNull(compareBy<ReviewLifecycleEvent>({ it.attempt ?: 0 }, { it.sequence }))
+        ?: error("Worker lifecycle event group cannot be empty.")
+    }
+    .filter {
+      it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED &&
+        it.processOutcome == ReviewProcessOutcome.ZERO_EXIT
+    }
+    .mapNotNull { event ->
+      val assignmentDigest = event.assignmentDigest ?: return@mapNotNull null
+      val resultEnvelope = event.resultEnvelope ?: return@mapNotNull null
+      val workerId = event.workerId ?: return@mapNotNull null
+      val providerId = event.providerId ?: return@mapNotNull null
+      val expected = selectedAssignments[assignmentDigest] ?: return@mapNotNull null
+      if (expected.workerId != workerId || expected.providerId != providerId) return@mapNotNull null
+      assignmentDigest to ReviewLifecycleRecoveredWorkerResult(
+        assignmentDigest = assignmentDigest,
+        workerId = workerId,
+        providerId = providerId,
+        attempt = event.attempt ?: return@mapNotNull null,
+        resultEnvelope = resultEnvelope,
+      )
+    }
+    .toMap()
+
+  private fun pendingAssignments(
+    selectedAssignments: Set<String>,
+    completedAssignments: Set<String>,
+    terminalRecord: ReviewLifecycleEvent?,
+    aggregationEvent: ReviewLifecycleEvent?,
+  ): Set<String> =
+    if (terminalRecord == null && aggregationEvent?.eventKind != ReviewLifecycleEventKind.AGGREGATION_FAILED) {
+      selectedAssignments - completedAssignments
+    } else {
+      emptySet()
+    }
+
+  private fun attemptsByAssignment(
+    events: List<ReviewLifecycleEvent>,
+    selectedAssignments: Set<String>,
+    pendingAssignments: Set<String>,
+  ): Map<String, Int> = selectedAssignments.associateWith { assignmentDigest ->
+    val latestAttempt = events
+      .filter {
+        it.component == ReviewLifecycleComponent.WORKER &&
+          it.assignmentDigest == assignmentDigest
+      }
+      .mapNotNull { it.attempt }
+      .maxOrNull()
+      ?: 0
+    if (assignmentDigest in pendingAssignments) latestAttempt + 1 else latestAttempt.coerceAtLeast(1)
   }
 
   private fun ReviewLifecycleEvent.isTerminalWorkerEvent(): Boolean = eventKind in setOf(

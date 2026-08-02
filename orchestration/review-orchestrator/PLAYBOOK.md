@@ -123,6 +123,7 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Confidence must be one of: `High`, `Medium`, `Low`
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
+- A worker with no findings must return exactly `NO_FINDINGS`; an empty response is an incomplete result.
 
 ## Governed Add-Ons
 

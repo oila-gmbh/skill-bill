@@ -66,6 +66,11 @@ data class ParallelCodeReviewRequest(
    * starts because the pinned request is built before the lanes are launched.
    */
   fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
+
+  companion object {
+    fun baselineUntrackedPolicy(includedPaths: List<String>, excludedPaths: List<String>) =
+      ReviewBaselineUntrackedPolicy(includedPaths, excludedPaths)
+  }
 }
 
 data class ReviewPrelaunchExpansion(

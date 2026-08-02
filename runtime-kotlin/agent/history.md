@@ -1,3 +1,13 @@
+## [2026-08-02] SKILL-145 delegated code-review lifecycle evidence (subtask 1)
+Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts}, orchestration/{contracts,review-delegation,review-orchestrator,telemetry-contract}, docs, .feature-specs/SKILL-145-delegated-code-review-reliability
+- Durable delegated-review lifecycle records now cover coordinator and worker preparation, launch, progress, completion, aggregation, terminal outcomes, recovery, and bounded evidence; process/MCP observations remain non-authoritative. reusable
+- Packet and assignment digests, base/head identity, routed area, bounded timestamps, and diagnostic references are carried through domain, application, persistence, filesystem, schemas, and tests. reusable
+- Failure classifications distinguish interruption, worker failure, missing results, aggregation failure, invalid output, and recovery outcomes; only normal zero-exit output may enter schema repair.
+- Digest-bound scope and explicit delegated opt-in remain intact, while prompts, diffs, transcripts, and raw provider/tool output stay outside durable evidence.
+- Known limitation: provider capacity/deadline evaluation and provider support classification remain in SKILL-145 subtasks 2–3.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-01] SKILL-153 phase-output structural repair (subtask 3)
 Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-ports,runtime-core}, orchestration/contracts, scripts, .feature-specs/SKILL-153-phase-output-structural-repair
 - Planning and feature-task handoffs now validate repaired phase output through one producer-side projection gate, persisting accepted repair evidence atomically with the accepted result and transition while keeping malformed raw payloads out of normal outputs.
@@ -2305,3 +2315,5 @@ Areas: runtime-kotlin architecture, RuntimeModule, architecture tests, SKILL-28 
 - Known limitation: MCP still bypasses application services until the planned Phase 1 refactor.
 Feature flag: N/A
 Acceptance criteria: 3/3 implemented
+
+## [2026-08-01] SKILL-153 phase-output structural repair (subtask 3)

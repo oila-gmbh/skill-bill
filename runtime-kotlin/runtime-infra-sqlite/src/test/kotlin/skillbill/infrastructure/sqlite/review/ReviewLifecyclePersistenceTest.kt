@@ -1,21 +1,21 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.db.core.DatabaseSchema
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
+import skillbill.db.core.DatabaseSchema
 import skillbill.error.InvalidReviewLifecycleEvidenceSchemaError
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewProcessOutcome
-import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReviewLifecyclePersistenceTest {
@@ -35,8 +35,10 @@ class ReviewLifecyclePersistenceTest {
       DatabaseSchema.createBaseSchema(connection)
       val repository = skillbill.infrastructure.sqlite.SQLiteReviewRepository(connection)
       repository.appendReviewLifecycleEvent(event())
+      val replacement =
+        "replace(payload_json, '$REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION', '0.99')"
       connection.prepareStatement(
-        "UPDATE review_lifecycle_events SET payload_json = replace(payload_json, '$REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION', '0.99')",
+        "UPDATE review_lifecycle_events SET payload_json = $replacement",
       ).use { statement -> statement.executeUpdate() }
 
       assertFailsWith<InvalidReviewLifecycleEvidenceSchemaError> {

@@ -62,6 +62,7 @@ class ReviewContextModelsTest {
   ) = ReviewAssignment(
     "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
     reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
+    baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
   )
 
   @Test fun `default budget is governed`() {

@@ -5,9 +5,9 @@ import skillbill.application.review.model.DelegatedReviewExecutionOutcome
 import skillbill.application.review.model.DelegatedReviewExecutionRequest
 import skillbill.application.review.model.DelegatedReviewLaunchOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
+import skillbill.ports.agentrun.model.reviewProcessOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewProcessOutcome
-import skillbill.ports.agentrun.model.reviewProcessOutcome
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 

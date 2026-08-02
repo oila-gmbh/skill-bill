@@ -113,7 +113,9 @@ data class ReviewBaselineUntrackedPolicy(
     canonicalFields(*excludedPaths.sorted().toTypedArray()),
   )
 
-  companion object { val EMPTY = ReviewBaselineUntrackedPolicy() }
+  companion object {
+    val EMPTY = ReviewBaselineUntrackedPolicy()
+  }
 }
 
 data class ReviewEvidenceTarget(val targetId: String, val path: String, val hunkIds: List<String>) {
