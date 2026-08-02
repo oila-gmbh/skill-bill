@@ -974,15 +974,20 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
   )
 
 private object NoopReviewDatabase : DatabaseSessionFactory {
+  private val lifecycleEvents = mutableListOf<skillbill.ports.review.model.ReviewLifecycleEvent>()
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
     arrayOf(ReviewRepository::class.java),
-  ) { _, method, _ ->
+  ) { _, method, args ->
     when (method.name) {
       "saveAccounting" -> Unit
       "loadAccounting" -> null
-      "appendReviewLifecycleEvent" -> true
-      "loadReviewLifecycleEvents" -> emptyList<skillbill.ports.review.model.ReviewLifecycleEvent>()
+      "appendReviewLifecycleEvent" -> lifecycleEvents
+        .add(args?.get(0) as skillbill.ports.review.model.ReviewLifecycleEvent)
+        .let { true }
+      "loadReviewLifecycleEvents" -> lifecycleEvents.filter { it.reviewId == args?.get(0) }
+      "saveDelegatedReviewLifecycle" -> Unit
+      "loadDelegatedReviewLifecycle" -> null
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

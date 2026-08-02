@@ -9,6 +9,11 @@ import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
+import skillbill.ports.review.model.DelegatedReviewLifecycleMetrics
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.DelegatedReviewWaveRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 import java.sql.DriverManager
@@ -75,6 +80,44 @@ class ReviewLifecyclePersistenceTest {
 
       assertTrue(repository.appendReviewLifecycleEvent(completed))
       assertEquals(result, repository.loadReviewLifecycleEvents("review").single().resultEnvelope)
+    }
+  }
+
+  @Test fun `delegated lifecycle projection survives restart and preserves wave accounting`() {
+    DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+      val repository = skillbill.infrastructure.sqlite.SQLiteReviewRepository(connection)
+      val snapshot = DelegatedReviewLifecycleSnapshot(
+        reviewId = "review",
+        packetDigest = "a".repeat(64),
+        selectedAreaCount = 1,
+        predictedWaveCount = 1,
+        actualWaveCount = 1,
+        coordinatorSlots = 1,
+        workers = listOf(
+          DelegatedReviewWorkerRecord(
+            workerId = "codex:security",
+            providerId = "codex",
+            assignmentDigest = "b".repeat(64),
+            attempt = 1,
+            area = "security",
+            state = DelegatedReviewWorkerState.COMPLETED,
+          ),
+        ),
+        waves = listOf(DelegatedReviewWaveRecord(1, listOf("codex:security"))),
+        deadlines = emptyList(),
+        metrics = DelegatedReviewLifecycleMetrics(
+          elapsedMs = 10,
+          totalTokens = 20,
+          processCount = 1,
+          mcpStartupCount = 1,
+          selectedAreaCount = 1,
+          completedAreaCount = 1,
+          lostWorkerCount = 0,
+        ),
+      )
+      repository.saveDelegatedReviewLifecycle(snapshot)
+      assertEquals(snapshot, repository.loadDelegatedReviewLifecycle("review"))
     }
   }
 

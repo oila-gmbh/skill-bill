@@ -8,6 +8,7 @@ import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.ports.review.model.DelegatedReviewProviderCapability
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import java.nio.file.Path
@@ -36,6 +37,8 @@ data class AgentRunCommand(
 
 interface AgentRunCommandBuilder {
   val agent: InstallAgent
+  val delegatedReviewCapability: DelegatedReviewProviderCapability
+    get() = DelegatedReviewProviderCapabilityRegistry.forProvider(agent)
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
   val nativeReviewCapabilities: NativeReviewProviderCapabilities

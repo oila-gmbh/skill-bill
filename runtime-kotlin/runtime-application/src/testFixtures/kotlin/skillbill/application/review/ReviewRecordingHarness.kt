@@ -42,6 +42,7 @@ import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -81,6 +82,7 @@ class ReviewRecorder {
   val savedAccounting: MutableList<ReviewAccountingRecord> = mutableListOf()
   val refusedOperations: MutableList<ForbiddenReviewOperation> = mutableListOf()
   val lifecycleEvents: MutableList<ReviewLifecycleEvent> = mutableListOf()
+  val lifecycleProjections: MutableList<DelegatedReviewLifecycleSnapshot> = mutableListOf()
 
   val launchedSpecialists: List<String>
     get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
@@ -289,6 +291,8 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
       "loadAccounting" -> null
       "appendReviewLifecycleEvent" -> recorder.lifecycleEvents.add(args[0] as ReviewLifecycleEvent).let { true }
       "loadReviewLifecycleEvents" -> recorder.lifecycleEvents.toList()
+      "saveDelegatedReviewLifecycle" -> recorder.lifecycleProjections.add(args[0] as DelegatedReviewLifecycleSnapshot).let { }
+      "loadDelegatedReviewLifecycle" -> recorder.lifecycleProjections.lastOrNull { it.reviewId == args?.firstOrNull() }
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

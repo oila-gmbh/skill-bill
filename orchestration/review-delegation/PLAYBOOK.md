@@ -12,6 +12,14 @@ digest, worker/provider identity, routed area, attempt, and a bounded diagnostic
 is not complete because its process or MCP heartbeat is alive; successful aggregation requires one
 normal zero-exit result for every selected assignment.
 
+The separate lifecycle projection is versioned at
+review-lifecycle-schema.yaml. It records selected/queued/launched/running and
+terminal worker states, predicted and actual waves with a coordinator slot,
+startup/progress-idle/per-worker/aggregation/whole-review deadlines, bounded
+diagnostics, and measurements. Provider support is evaluated independently in
+the eight-dimension capability matrix; unsupported providers terminate
+explicitly and never fall back to inline review.
+
 This is the canonical review-delegation contract. Installed skills consume it through generated sibling support pointers (e.g. `review-delegation.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

@@ -8,6 +8,7 @@ internal object DatabaseSchema {
       "schema_migrations",
       "review_runs",
       "review_lifecycle_events",
+      "review_delegated_lifecycle",
       "findings",
       "feedback_events",
       "learnings",
@@ -38,6 +39,7 @@ internal object DatabaseSchema {
     setOf(
       "idx_feedback_events_run",
       "idx_review_lifecycle_events_review",
+      "idx_review_delegated_lifecycle_review",
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
       "idx_feature_task_workflows_updated",
@@ -139,6 +141,19 @@ internal object DatabaseSchema {
       """
       CREATE INDEX IF NOT EXISTS idx_review_lifecycle_events_review
         ON review_lifecycle_events(review_id, sequence)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_delegated_lifecycle (
+        review_id TEXT PRIMARY KEY,
+        packet_digest TEXT NOT NULL,
+        contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+        bounded_payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_delegated_lifecycle_review
+        ON review_delegated_lifecycle(review_id, updated_at)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS review_accounting (

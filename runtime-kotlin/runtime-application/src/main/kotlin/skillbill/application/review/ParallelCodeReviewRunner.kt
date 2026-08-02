@@ -41,6 +41,7 @@ import skillbill.ports.review.model.ReviewDurableWorkerProgress
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewLivenessObservation
 import skillbill.ports.review.model.ReviewNativeAgentAssignment
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
@@ -50,6 +51,14 @@ import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
+import skillbill.ports.review.model.DelegatedReviewDeadline
+import skillbill.ports.review.model.DelegatedReviewDeadlineScope
+import skillbill.ports.review.model.DelegatedReviewLifecycleMetrics
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.DelegatedReviewTerminalClassification
+import skillbill.ports.review.model.DelegatedReviewWaveRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -66,6 +75,8 @@ import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.plan.DelegatedReviewCapacityPlanner
+import skillbill.review.plan.DelegatedReviewCapacityRequest
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -73,6 +84,7 @@ import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
@@ -279,16 +291,161 @@ class ParallelCodeReviewRunner(
         )
       }
     }
-    prepared.lifecycleReview?.let { recordReviewCompletion(it, prepared.recovery, outcomes) }
+    prepared.lifecycleReview?.let {
+      recordReviewCompletion(
+        it,
+        prepared.recovery,
+        outcomes,
+        prepared.launchRequests.map { launch -> launch.assignment.digest }.toSet(),
+      )
+    }
+    persistLifecycleProjection(prepared, outcomes)
     return result
+  }
+
+  private fun persistLifecycleProjection(
+    prepared: PreparedRun,
+    outcomes: ParallelReviewLaneRunResult,
+  ) {
+    val lifecycleReview = prepared.lifecycleReview ?: return
+    val selected = prepared.launchRequests
+    if (selected.isEmpty()) return
+    val plan = DelegatedReviewCapacityPlanner.plan(
+      DelegatedReviewCapacityRequest(
+        selectedWorkerIds = selected.map { it.assignment.digest },
+        totalProcessSlots = DELEGATED_REVIEW_PROCESS_SLOTS,
+      ),
+    )
+    val lifecycleEvents = database.read { unitOfWork ->
+      unitOfWork.reviews.loadReviewLifecycleEvents(lifecycleReview.assignment.reviewId)
+    }
+    val aggregationCompleted = lifecycleEvents.any {
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+    }
+    val latestByAssignment = lifecycleEvents
+      .filter { it.assignmentDigest != null }
+      .groupBy { it.assignmentDigest }
+      .mapValues { (_, events) -> events.maxWithOrNull(compareBy({ it.attempt ?: 0 }, { it.sequence })) }
+    val allWorkers = selected.map { request ->
+      val outcome = if (request.agentId == prepared.initial.agent1Id) outcomes.lane1 else outcomes.lane2
+      val state = when (latestByAssignment[request.assignment.digest]?.state) {
+        ReviewWorkerLifecycleState.SELECTED -> DelegatedReviewWorkerState.SELECTED
+        ReviewWorkerLifecycleState.QUEUED -> DelegatedReviewWorkerState.QUEUED
+        ReviewWorkerLifecycleState.LAUNCHED -> DelegatedReviewWorkerState.LAUNCHED
+        ReviewWorkerLifecycleState.RUNNING -> DelegatedReviewWorkerState.RUNNING
+        ReviewWorkerLifecycleState.COMPLETED -> DelegatedReviewWorkerState.COMPLETED
+        ReviewWorkerLifecycleState.TIMED_OUT -> DelegatedReviewWorkerState.TIMED_OUT
+        ReviewWorkerLifecycleState.CANCELLED -> DelegatedReviewWorkerState.CANCELLED
+        ReviewWorkerLifecycleState.FAILED,
+        ReviewWorkerLifecycleState.UNAVAILABLE,
+        ReviewWorkerLifecycleState.INVALID_OUTPUT,
+        null -> if (outcome.success) DelegatedReviewWorkerState.COMPLETED else DelegatedReviewWorkerState.FAILED
+      }
+      val projectedState = if (aggregationCompleted && state == DelegatedReviewWorkerState.COMPLETED) {
+        DelegatedReviewWorkerState.AGGREGATED
+      } else {
+        state
+      }
+      val diagnostic = latestByAssignment[request.assignment.digest]?.diagnostic?.summary ?: when (projectedState) {
+        DelegatedReviewWorkerState.FAILED -> "Worker failed; durable lifecycle evidence is authoritative."
+        DelegatedReviewWorkerState.TIMED_OUT -> "Worker deadline expired; durable lifecycle evidence is authoritative."
+        DelegatedReviewWorkerState.CANCELLED -> "Worker was cancelled; durable lifecycle evidence is authoritative."
+        else -> null
+      }
+      DelegatedReviewWorkerRecord(
+        workerId = "${request.agentId}:${request.assignment.lane}",
+        providerId = request.agentId,
+        assignmentDigest = request.assignment.digest,
+        attempt = request.attempt,
+        area = request.assignment.laneDecision.specialistSkillName ?: request.assignment.lane,
+        state = projectedState,
+        diagnostic = diagnostic?.take(REVIEW_LIFECYCLE_MAX_TEXT_CHARS),
+      )
+    }
+    val predictedWaves = plan.predictedWaves.map { wave ->
+      DelegatedReviewWaveRecord(
+        waveNumber = wave.number,
+        workerIds = wave.workerIds.map { digest ->
+          selected.first { it.assignment.digest == digest }.let { request ->
+            "${request.agentId}:${request.assignment.lane}"
+          }
+        },
+      )
+    }
+    val activeWorkerIds = allWorkers.filter { it.state !in setOf(
+      DelegatedReviewWorkerState.SELECTED,
+      DelegatedReviewWorkerState.QUEUED,
+    ) }.map { it.workerId }.toSet()
+    val waves = predictedWaves.filter { wave -> wave.workerIds.any(activeWorkerIds::contains) }
+    val lifecycleTimes = lifecycleEvents.mapNotNull { event ->
+      runCatching { Instant.parse(event.occurredAt).toEpochMilli() }.getOrNull()
+    }
+    val elapsedMs = lifecycleTimes.minOrNull()?.let { start ->
+      lifecycleTimes.maxOrNull()?.minus(start)
+    } ?: 0L
+    val terminalClassification = when {
+      allWorkers.all {
+        it.state == DelegatedReviewWorkerState.COMPLETED ||
+          it.state == DelegatedReviewWorkerState.AGGREGATED
+      } ->
+        DelegatedReviewTerminalClassification.COMPLETED
+      allWorkers.any { it.state == DelegatedReviewWorkerState.TIMED_OUT } ->
+        DelegatedReviewTerminalClassification.TIMED_OUT
+      allWorkers.any { it.state == DelegatedReviewWorkerState.CANCELLED } ->
+        DelegatedReviewTerminalClassification.CANCELLED
+      outcomes.lane1.interrupted || outcomes.lane2.interrupted ->
+        DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
+      else -> DelegatedReviewTerminalClassification.FAILED
+    }
+    val deadline = prepared.initial.request.timeout?.inWholeMilliseconds?.let {
+      DelegatedReviewDeadline(DelegatedReviewDeadlineScope.WHOLE_REVIEW, it)
+    }
+    val snapshot = DelegatedReviewLifecycleSnapshot(
+      reviewId = lifecycleReview.assignment.reviewId,
+      packetDigest = lifecycleReview.assignment.packetDigest,
+      selectedAreaCount = selected.size,
+      predictedWaveCount = plan.predictedWaveCount,
+      actualWaveCount = waves.size,
+      coordinatorSlots = 1,
+      workers = allWorkers,
+      waves = waves,
+      deadlines = listOfNotNull(deadline),
+      metrics = DelegatedReviewLifecycleMetrics(
+        elapsedMs = elapsedMs,
+        totalTokens = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+          .sumOf { it.providerUsage?.totalTokens ?: 0L },
+        processCount = activeWorkerIds.size,
+        mcpStartupCount = lifecycleEvents
+          .flatMap { it.livenessObservations }
+          .count { it.kind == ReviewLivenessObservation.Kind.MCP_HEARTBEAT },
+        selectedAreaCount = selected.size,
+        completedAreaCount = allWorkers.count {
+          it.state == DelegatedReviewWorkerState.COMPLETED ||
+            it.state == DelegatedReviewWorkerState.AGGREGATED
+        },
+        lostWorkerCount = allWorkers.count {
+          it.state != DelegatedReviewWorkerState.COMPLETED &&
+            it.state != DelegatedReviewWorkerState.AGGREGATED
+        },
+      ),
+      terminalClassification = terminalClassification,
+    )
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.saveDelegatedReviewLifecycle(snapshot)
+    }
   }
 
   private fun recordReviewCompletion(
     launch: DelegatedReviewLaunchRequest,
     recovery: ReviewLifecycleRecoverySnapshot?,
     outcomes: ParallelReviewLaneRunResult,
+    selectedAssignmentDigests: Set<String>,
   ) {
-    val successful = outcomes.lane1.success && outcomes.lane2.success
+    val durableAggregationReady = database.read { unitOfWork ->
+      ReviewLifecycleLedger(unitOfWork.reviews.loadReviewLifecycleEvents(launch.assignment.reviewId))
+        .canAggregate(selectedAssignmentDigests)
+    }
+    val successful = outcomes.lane1.success && outcomes.lane2.success && durableAggregationReady
     if (recovery?.aggregationEvent == null) recordAggregationCompletion(launch, successful)
     if (recovery?.terminalRecord == null) recordTerminalCompletion(launch, recovery, successful)
   }
@@ -795,18 +952,33 @@ class ParallelCodeReviewRunner(
     val timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes
     val started = TimeSource.Monotonic.markNow()
     val outcomes = mutableListOf<ParallelReviewLaneOutcome>()
-    for (launchRequest in launchRequests) {
-      val remaining = timeout - started.elapsedNow()
-      if (remaining <= 0.seconds) {
-        outcomes += deadlineExpiredOutcome(launchRequest)
-        continue
+    val plan = DelegatedReviewCapacityPlanner.plan(
+      DelegatedReviewCapacityRequest(
+        selectedWorkerIds = launchRequests.map { it.assignment.digest },
+        totalProcessSlots = DELEGATED_REVIEW_PROCESS_SLOTS,
+      ),
+    )
+    val requestByDigest = launchRequests.associateBy { it.assignment.digest }
+    var interrupted = false
+    for (wave in plan.predictedWaves) {
+      if (interrupted) break
+      for (workerId in wave.workerIds) {
+        val launchRequest = requireNotNull(requestByDigest[workerId])
+        val remaining = timeout - started.elapsedNow()
+        if (remaining <= 0.seconds) {
+          outcomes += deadlineExpiredOutcome(launchRequest)
+          continue
+        }
+        val outcome = launchSpecialist(launchRequest, request, modelOverride, remaining)
+        outcomes += outcome
+        // An interrupted launch signals a parent shutdown/cancellation; continuing to launch the
+        // remaining specialists at that point only starts workers that will themselves be
+        // immediately torn down.
+        if (outcome.interrupted) {
+          interrupted = true
+          break
+        }
       }
-      val outcome = launchSpecialist(launchRequest, request, modelOverride, remaining)
-      outcomes += outcome
-      // An interrupted launch signals a parent shutdown/cancellation; continuing to launch the
-      // remaining specialists at that point only starts workers that will themselves be
-      // immediately torn down.
-      if (outcome.interrupted) break
     }
     val failed = outcomes.firstOrNull { !it.success }
     return ParallelReviewLaneOutcome(
@@ -1358,6 +1530,7 @@ class ParallelCodeReviewRunner(
 
   private companion object {
     const val DEFAULT_TIMEOUT_MINUTES = 30L
+    const val DELEGATED_REVIEW_PROCESS_SLOTS = 7
     const val TIMEOUT_BUFFER_SECONDS = 30L
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120

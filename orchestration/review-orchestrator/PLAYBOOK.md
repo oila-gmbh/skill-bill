@@ -14,6 +14,12 @@ heartbeats, provider output, and declared progress are observations; only a type
 progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
 complete diffs, raw transcripts, or tool logs.
 
+Capacity planning reserves the coordinator slot before workers are assigned to
+deterministic waves. Aggregation admits only the durable selected assignment
+set with matching worker/provider/attempt identities, valid finding envelopes,
+and complete declared-area coverage. A missing or duplicate result is a
+bounded aggregation failure, not an invitation to repair or rediscover scope.
+
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

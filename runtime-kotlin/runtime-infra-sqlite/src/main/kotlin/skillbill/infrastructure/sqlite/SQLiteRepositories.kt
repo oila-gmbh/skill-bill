@@ -40,6 +40,7 @@ import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.ports.review.model.ReviewLifecycleEvent
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -217,6 +218,12 @@ private class SQLiteReviewLifecycleRepository(
 
   override fun loadReviewLifecycleEvents(reviewId: String): List<ReviewLifecycleEvent> =
     skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.load(connection, reviewId)
+
+  override fun saveDelegatedReviewLifecycle(snapshot: DelegatedReviewLifecycleSnapshot) =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.saveLifecycleSnapshot(connection, snapshot)
+
+  override fun loadDelegatedReviewLifecycle(reviewId: String): DelegatedReviewLifecycleSnapshot? =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.loadLifecycleSnapshot(connection, reviewId)
 }
 
 class SQLiteLearningRepository(

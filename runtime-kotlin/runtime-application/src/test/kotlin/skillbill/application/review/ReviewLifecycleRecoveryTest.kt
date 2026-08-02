@@ -96,6 +96,8 @@ class ReviewLifecycleRecoveryTest {
     ) { _, method, _ ->
       when (method.name) {
         "loadReviewLifecycleEvents" -> listOf(event)
+        "saveDelegatedReviewLifecycle" -> Unit
+        "loadDelegatedReviewLifecycle" -> null
         else -> null
       }
     } as skillbill.ports.persistence.ReviewRepository

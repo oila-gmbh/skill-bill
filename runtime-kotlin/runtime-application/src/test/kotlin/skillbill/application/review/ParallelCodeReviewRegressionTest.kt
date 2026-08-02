@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.review.context.model.ProviderTokenThresholds
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
@@ -103,6 +104,19 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(ReviewLifecycleEventKind.AGGREGATION_COMPLETED in kinds)
     assertTrue(ReviewLifecycleEventKind.TERMINAL_COMPLETED in kinds)
     assertTrue(recorder.lifecycleEvents.zipWithNext().all { (first, second) -> first.sequence < second.sequence })
+  }
+
+  @Test fun `durable delegated projection preserves selected workers and wave metrics`() {
+    val recorder = ReviewRecorder()
+
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertEquals(1, projection.coordinatorSlots)
+    assertEquals(projection.selectedAreaCount, projection.workers.size)
+    assertEquals(projection.predictedWaveCount, projection.actualWaveCount)
+    assertEquals(projection.selectedAreaCount, projection.metrics.completedAreaCount)
+    assertTrue(projection.workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
   }
 
   @Test fun `interrupted coordinator closes the durable worker lifecycle before rethrowing`() {

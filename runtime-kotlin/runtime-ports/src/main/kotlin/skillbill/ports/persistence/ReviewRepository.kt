@@ -4,6 +4,7 @@ import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.review.model.ReviewLifecycleEvent
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
@@ -19,6 +20,11 @@ interface ReviewLifecycleRepository {
 
   /** Durable lifecycle events are the recovery authority after coordinator interruption. */
   fun loadReviewLifecycleEvents(reviewId: String): List<ReviewLifecycleEvent> = emptyList()
+
+  /** Stores the bounded worker/wave projection used for deterministic restart reconciliation. */
+  fun saveDelegatedReviewLifecycle(snapshot: DelegatedReviewLifecycleSnapshot) = Unit
+
+  fun loadDelegatedReviewLifecycle(reviewId: String): DelegatedReviewLifecycleSnapshot? = null
 }
 
 interface ReviewRepository : WorkflowStatsRepository, ReviewLifecycleRepository {

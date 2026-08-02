@@ -7,10 +7,13 @@ import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.model.DelegatedReviewProviderCapability
 import java.nio.file.Path
 
 interface AgentRunAdapter {
   val agent: InstallAgent
+  val delegatedReviewCapability: DelegatedReviewProviderCapability
+    get() = DelegatedReviewProviderCapabilityRegistry.forProvider(agent)
   val nativeReviewCapabilities: NativeReviewProviderCapabilities
     get() = NativeReviewProviderCapabilities.UNMEDIATED
   fun launch(request: SkillRunRequest): AgentRunLaunchFacts
@@ -21,6 +24,8 @@ class ProcessAgentRunAdapter(
   private val commandBuilder: AgentRunCommandBuilder,
   private val processRunner: AgentRunProcessRunner,
 ) : AgentRunAdapter {
+  override val delegatedReviewCapability: DelegatedReviewProviderCapability
+    get() = commandBuilder.delegatedReviewCapability
   override val nativeReviewCapabilities: NativeReviewProviderCapabilities
     get() = commandBuilder.nativeReviewCapabilities
 
