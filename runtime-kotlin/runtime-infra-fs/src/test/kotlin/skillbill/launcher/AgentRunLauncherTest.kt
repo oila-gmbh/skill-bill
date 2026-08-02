@@ -92,6 +92,18 @@ class AgentRunLauncherTest {
       assertEquals(1, runner.requests.size)
       assertNotNull(runner.requests.single().nativeReviewOperations)
       assertFalse(runner.requests.single().command.any { it.startsWith("agent=") || it == "--agent" })
+      val captured = runner.requests.single()
+      assertFalse(captured.idlePolicy === AgentRunIdlePolicy.DB_PROGRESS_ONLY)
+      captured.progressEmitter.emit(
+        AgentRunProgressEmission(
+          eventKind = GoalProgressEventKind.OPERATION_STARTED,
+          processAlive = true,
+          operationName = "delegated-review",
+          operationKind = "review",
+        ),
+      )
+      assertNotNull(captured.progressProbe.progressToken())
+      assertNotNull(captured.declaredProgressProbe.latestDeclaredProgress())
     }
   }
 

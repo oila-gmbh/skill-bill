@@ -1,6 +1,7 @@
 package skillbill.application.review.model
 
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
@@ -69,6 +70,7 @@ data class DelegatedReviewWorkerRequest(
   val progressIdleTimeout: Duration? = null,
   val logicalWorkerName: String? = null,
   val modelOverride: String? = null,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
 )
 
 data class DelegatedReviewWorkerOutcome(
@@ -99,6 +101,7 @@ data class DelegatedReviewExecutionRequest(
   val timeout: Duration,
   val progressIdleTimeout: Duration? = null,
   val modelOverride: String? = null,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
 )
 
 sealed interface DelegatedReviewExecutionOutcome {

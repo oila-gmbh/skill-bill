@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.review.model.DelegatedReviewTerminalClassification
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
@@ -29,6 +30,7 @@ internal data class ReviewLifecycleRecoverySnapshot(
   val terminalEvent: ReviewLifecycleEventKind?,
   val aggregationEvent: ReviewLifecycleEvent? = null,
   val terminalRecord: ReviewLifecycleEvent? = null,
+  val terminalClassification: DelegatedReviewTerminalClassification? = null,
   val attemptByAssignment: Map<String, Int> = emptyMap(),
   val actualWaves: List<DelegatedReviewWave> = emptyList(),
 ) {
@@ -47,7 +49,10 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
     reviewId: String,
     selectedAssignments: Map<String, ReviewLifecycleWorkerIdentity>,
   ): ReviewLifecycleRecoverySnapshot {
-    val events = database.read { unitOfWork -> unitOfWork.reviews.loadReviewLifecycleEvents(reviewId) }
+    val (events, persistedProjection) = database.read { unitOfWork ->
+      unitOfWork.reviews.loadReviewLifecycleEvents(reviewId) to
+        unitOfWork.reviews.loadDelegatedReviewLifecycle(reviewId)
+    }
     val ledger = ReviewLifecycleLedger(events)
     val terminalRecord = ledger.events.lastOrNull { it.component == ReviewLifecycleComponent.TERMINAL }
     val aggregationEvent = latestAggregationEvent(ledger.events)
@@ -61,6 +66,7 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
       terminalEvent = terminalRecord?.eventKind,
       aggregationEvent = aggregationEvent,
       terminalRecord = terminalRecord,
+      terminalClassification = persistedProjection?.terminalClassification,
       attemptByAssignment = attempts,
       actualWaves = actualWaves(ledger.events, selectedAssignments, attempts),
     )

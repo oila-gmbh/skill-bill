@@ -65,6 +65,7 @@ class DelegatedReviewExecutionBroker(
             progressIdleTimeout = request.progressIdleTimeout,
             logicalWorkerName = request.launchRequest.logicalWorkerName,
             modelOverride = request.modelOverride,
+            mcpStartupProbe = request.mcpStartupProbe,
           ),
         ),
       )

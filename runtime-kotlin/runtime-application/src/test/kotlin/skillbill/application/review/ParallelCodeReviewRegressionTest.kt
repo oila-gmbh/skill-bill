@@ -122,7 +122,7 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(projection.predictedWaveCount, projection.actualWaveCount)
     assertEquals(projection.selectedAreaCount, projection.metrics.completedAreaCount)
     assertEquals(recorder.nativeLaunches.size, projection.metrics.processCount)
-    assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
+    assertEquals(0, projection.metrics.mcpStartupCount)
     assertTrue(recorder.nativeLaunches.all { it.progressIdleTimeout != null })
     assertTrue(projection.workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
   }
@@ -139,13 +139,13 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
   }
 
-  @Test fun `delegated application launch carries the provider MCP startup observation`() {
+  @Test fun `delegated application launch does not infer MCP startup from model turns`() {
     val recorder = ReviewRecorder()
     reviewHarness(config(), recorder).run(harnessRequest())
 
     val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
-    assertTrue(recorder.nativeLaunches.all { it.mcpStartupProbe.startupObserved() })
-    assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
+    assertTrue(recorder.nativeLaunches.all { !it.mcpStartupProbe.startupObserved() })
+    assertEquals(0, projection.metrics.mcpStartupCount)
   }
 
   @Test fun `lifecycle metrics exclude workers whose launcher never crossed process start`() {
@@ -159,6 +159,7 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(0, projection.metrics.processCount)
     assertEquals(0, projection.metrics.mcpStartupCount)
     assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE })
+    assertEquals(DelegatedReviewTerminalClassification.BLOCKED_UNSUPPORTED, projection.terminalClassification)
   }
 
   @Test fun `startup deadline blocks before provider launch and keeps its scope in durable evidence`() {
@@ -374,6 +375,44 @@ class ParallelCodeReviewRegressionTest {
       recorder.lifecycleEvents.count {
         it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
       },
+    )
+  }
+
+  @Test fun `replaying cancellation reuses its durable boundary classification and repairs the projection`() {
+    val recorder = ReviewRecorder()
+    val request = harnessRequest(reviewRunId = "review-replay-cancellation")
+
+    reviewHarness(config(interruptionProbe = { true }), recorder).run(request)
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    recorder.lifecycleProjections.clear()
+
+    val replay = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(replay.lane1.failureReason?.contains("interrupted_before_launch") == true)
+    assertTrue(replay.lane2.failureReason?.contains("interrupted_before_launch") == true)
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+  }
+
+  @Test fun `replaying a terminal record repairs a missing lifecycle projection`() {
+    val recorder = ReviewRecorder()
+    val request = harnessRequest(reviewRunId = "review-replay-projection")
+    reviewHarness(config(), recorder).run(request)
+    val eventsBeforeReplay = recorder.lifecycleEvents.toList()
+    recorder.lifecycleProjections.clear()
+
+    val replay = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(replay.lane1.success && replay.lane2.success)
+    assertEquals(eventsBeforeReplay, recorder.lifecycleEvents)
+    assertEquals(
+      DelegatedReviewTerminalClassification.COMPLETED,
+      recorder.lifecycleProjections.last().terminalClassification,
     )
   }
 

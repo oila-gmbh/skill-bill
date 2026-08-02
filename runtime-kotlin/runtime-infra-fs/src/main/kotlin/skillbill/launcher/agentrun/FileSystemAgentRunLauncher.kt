@@ -9,12 +9,21 @@ import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
+import skillbill.ports.agentrun.model.AgentRunProgressEmission
+import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.model.NativeReviewWorkerRequest
+import skillbill.workflow.model.GoalProgressEvent
 import java.nio.file.Files
+import java.time.Instant
 import java.util.Comparator
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 class FileSystemAgentRunLauncher internal constructor(
   processRunner: AgentRunProcessRunner,
@@ -77,13 +86,19 @@ class FileSystemAgentRunLauncher internal constructor(
     }
     val isolatedRoot = Files.createTempDirectory("skill-bill-native-review-")
     return try {
+      val livenessSignals = DelegatedReviewLivenessSignals(request.issueKey, request.logicalWorkerName ?: agent.id)
       adapter.launch(
         SkillRunRequest(
           issueKey = request.issueKey,
           repoRoot = isolatedRoot,
           timeout = request.timeout,
           progressIdleTimeout = request.progressIdleTimeout,
+          progressProbe = livenessSignals.progressProbe,
+          declaredProgressProbe = livenessSignals.declaredProgressProbe,
           mcpStartupProbe = request.mcpStartupProbe,
+          progressEmitter = livenessSignals.progressEmitter,
+          streamOutputForLiveness = true,
+          readOnlyPhase = true,
           promptOverride = request.prompt,
           modelOverride = request.modelOverride,
           conversationIsolation = ConversationIsolation.NONE,
@@ -96,6 +111,35 @@ class FileSystemAgentRunLauncher internal constructor(
       Files.walk(isolatedRoot).use { paths ->
         paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
       }
+    }
+  }
+
+  /** Bridges the process runner's declared lifecycle heartbeats into the delegated review watchdog. */
+  private class DelegatedReviewLivenessSignals(
+    private val issueKey: String,
+    private val operationName: String,
+  ) {
+    private val sequence = AtomicInteger(-1)
+    private val latest = AtomicReference<AgentRunDeclaredProgressSnapshot?>()
+
+    val progressProbe = AgentRunProgressProbe { sequence.get().toString() }
+    val declaredProgressProbe = AgentRunDeclaredProgressProbe { latest.get() }
+    val progressEmitter = AgentRunProgressEmitter(::observe)
+
+    private fun observe(emission: AgentRunProgressEmission) {
+      val event = GoalProgressEvent(
+        eventKind = emission.eventKind,
+        workflowId = "review:$issueKey",
+        workflowPhase = "delegated-review",
+        processAlive = emission.processAlive,
+        sequenceNumber = sequence.incrementAndGet(),
+        timestamp = Instant.now().toString(),
+        operationName = emission.operationName.ifBlank { operationName },
+        operationKind = emission.operationKind,
+        expectedLong = emission.expectedLong,
+        outcome = emission.outcome,
+      )
+      latest.set(AgentRunDeclaredProgressSnapshot(event, emission.processAlive))
     }
   }
 

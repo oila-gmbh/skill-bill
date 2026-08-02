@@ -5,7 +5,6 @@ import skillbill.application.review.model.DelegatedReviewWorkerOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.NativeReviewWorkerLauncher
@@ -79,12 +78,9 @@ class DelegatedReviewWorkerLauncher(
         repoRoot = request.repoRoot,
         timeout = request.timeout,
         progressIdleTimeout = request.progressIdleTimeout,
-        // The provider adapter records its first model turn through the broker before the launcher
-        // returns. That lifecycle callback is the application-visible startup observation; process
-        // creation alone is deliberately insufficient.
-        mcpStartupProbe = AgentRunMcpStartupProbe {
-          prepared.evidenceBroker.accounting().modelTurns > 0
-        },
+        // MCP startup is counted only when the provider launcher supplies an explicit observation;
+        // a broker model-turn callback is not evidence that MCP startup occurred.
+        mcpStartupProbe = request.mcpStartupProbe,
         prompt = boundedPrompt,
         modelOverride = request.modelOverride,
         isolation = prepared.isolation,

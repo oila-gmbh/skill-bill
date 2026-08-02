@@ -147,6 +147,11 @@ class ParallelCodeReviewRunner(
       DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
   )
 
+  private data class ReviewCompletionResult(
+    val accepted: Boolean,
+    val terminalRecord: ReviewLifecycleRecord? = null,
+  )
+
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val prepared = prepareRun(originalRequest)
     prepared.recovery?.terminalRecord?.let { terminalRecord ->
@@ -221,18 +226,20 @@ class ParallelCodeReviewRunner(
       prepared.initial.agent1Id,
       prepared.initial.agent2Id,
     )
+    val terminalClassification = when (terminalRecord.eventKind) {
+      ReviewLifecycleEventKind.TERMINAL_COMPLETED -> DelegatedReviewTerminalClassification.COMPLETED
+      ReviewLifecycleEventKind.TERMINAL_TIMED_OUT -> DelegatedReviewTerminalClassification.TIMED_OUT
+      ReviewLifecycleEventKind.TERMINAL_CANCELLED -> persistedInterruptionClassification(prepared, terminalRecord)
+      else -> null
+    }
     val terminalOutcomes = when (terminalRecord.eventKind) {
       ReviewLifecycleEventKind.TERMINAL_COMPLETED -> recovered.copy(
         lane1 = recovered.lane1.copy(success = true, failureReason = null),
         lane2 = recovered.lane2.copy(success = true, failureReason = null),
       )
       ReviewLifecycleEventKind.TERMINAL_CANCELLED -> recovered.copy(
-        lane1 = recovered.lane1.interruptedFor(
-          DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER,
-        ),
-        lane2 = recovered.lane2.interruptedFor(
-          DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER,
-        ),
+        lane1 = recovered.lane1.interruptedFor(requireNotNull(terminalClassification)),
+        lane2 = recovered.lane2.interruptedFor(requireNotNull(terminalClassification)),
       )
       ReviewLifecycleEventKind.TERMINAL_TIMED_OUT -> recovered.copy(
         lane1 = recovered.lane1.copy(
@@ -259,7 +266,25 @@ class ParallelCodeReviewRunner(
         ),
       )
     }
+    persistLifecycleProjection(
+      prepared,
+      terminalOutcomes,
+      terminalClassificationOverride = terminalClassification,
+    )
     return parallelResult(prepared.initial.agent1Id, prepared.initial.agent2Id, terminalOutcomes)
+  }
+
+  private fun persistedInterruptionClassification(
+    prepared: PreparedRun,
+    terminalRecord: ReviewLifecycleEvent,
+  ): DelegatedReviewTerminalClassification {
+    prepared.recovery?.terminalClassification?.let { return it }
+    val diagnosticClassification = terminalRecord.diagnostic?.summary
+      ?.substringAfter(" at ", missingDelimiterValue = "")
+      ?.removeSuffix(".")
+      ?.takeIf(String::isNotBlank)
+      ?.let { raw -> runCatching { DelegatedReviewTerminalClassification.valueOf(raw.uppercase()) }.getOrNull() }
+    return diagnosticClassification ?: interruptionBoundary(prepared)
   }
 
   private fun interruptionBoundary(prepared: PreparedRun): DelegatedReviewTerminalClassification {
@@ -581,7 +606,7 @@ class ParallelCodeReviewRunner(
     prepared: PreparedRun,
     outcomes: ParallelReviewLaneRunResult,
   ): ParallelCodeReviewResult {
-    val aggregationAccepted = prepared.lifecycleReview?.let {
+    val completion = prepared.lifecycleReview?.let {
       recordReviewCompletion(
         it,
         prepared.recovery,
@@ -591,7 +616,8 @@ class ParallelCodeReviewRunner(
         effectiveDeadlinePolicy(prepared.initial.request),
         prepared.startedNanos,
       )
-    } ?: true
+    } ?: ReviewCompletionResult(accepted = true)
+    val aggregationAccepted = completion.accepted
     val effectiveOutcomes = outcomes.takeUnless { aggregationAccepted == false }
       ?: outcomes.blockedByAggregation()
     val result = parallelResult(prepared.initial.agent1Id, prepared.initial.agent2Id, effectiveOutcomes)
@@ -607,7 +633,12 @@ class ParallelCodeReviewRunner(
     } else {
       null
     }
-    persistLifecycleProjection(prepared, effectiveOutcomes, interruptionClassification)
+    persistLifecycleProjection(
+      prepared,
+      effectiveOutcomes,
+      interruptionClassification,
+      completion.terminalRecord?.let(::listOf).orEmpty(),
+    )
     return result
   }
 
@@ -736,6 +767,8 @@ class ParallelCodeReviewRunner(
         DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_TERMINAL_PERSISTENCE
       terminalStatus == ReviewProcessOutcome.INTERRUPTED ->
         DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
+      events.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE } ->
+        DelegatedReviewTerminalClassification.BLOCKED_UNSUPPORTED
       events.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED } ->
         DelegatedReviewTerminalClassification.BLOCKED_AGGREGATION
       allWorkers.all {
@@ -837,9 +870,9 @@ class ParallelCodeReviewRunner(
     aggregationStartedNanos: Long,
     policy: DelegatedReviewDeadlinePolicy,
     runStartedNanos: Long,
-  ): Boolean {
+  ): ReviewCompletionResult {
     recovery?.terminalRecord?.let { terminal ->
-      return terminal.terminalCompletion?.status == ReviewProcessOutcome.ZERO_EXIT
+      return ReviewCompletionResult(terminal.terminalCompletion?.status == ReviewProcessOutcome.ZERO_EXIT)
     }
     val lifecycleEvents = database.read { unitOfWork ->
       unitOfWork.reviews.loadReviewLifecycleEvents(launch.assignment.reviewId)
@@ -849,8 +882,10 @@ class ParallelCodeReviewRunner(
         it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED
     }
     if (existingAggregation?.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED) {
-      if (recovery?.terminalRecord == null) recordTerminalCompletion(launch, recovery, false)
-      return false
+      return ReviewCompletionResult(
+        accepted = false,
+        terminalRecord = terminalCompletionRecord(launch, recovery, false),
+      )
     }
     val aggregationElapsedMs =
       ((monotonicNowNanos() - aggregationStartedNanos) / 1_000_000L).coerceAtLeast(0)
@@ -898,6 +933,8 @@ class ParallelCodeReviewRunner(
       lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED } ->
         lifecycleEvents.first { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED }
           .processOutcome ?: ReviewProcessOutcome.INTERRUPTED
+      lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE } ->
+        ReviewProcessOutcome.UNAVAILABLE
       else -> null
     }
     if (interruptionProbe()) {
@@ -910,9 +947,12 @@ class ParallelCodeReviewRunner(
         )
       }
       if (recovery?.terminalRecord == null) {
-        recordTerminalCompletion(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED)
+        return ReviewCompletionResult(
+          accepted = false,
+          terminalRecord = terminalCompletionRecord(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED),
+        )
       }
-      return false
+      return ReviewCompletionResult(accepted = false)
     }
     if (existingAggregation?.eventKind != ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
       recordAggregationCompletion(
@@ -929,14 +969,17 @@ class ParallelCodeReviewRunner(
     }
     if (interruptionProbe()) {
       if (recovery?.terminalRecord == null) {
-        recordTerminalCompletion(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED)
+        return ReviewCompletionResult(
+          accepted = false,
+          terminalRecord = terminalCompletionRecord(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED),
+        )
       }
-      return false
+      return ReviewCompletionResult(accepted = false)
     }
-    if (recovery?.terminalRecord == null) {
-      recordTerminalCompletion(launch, recovery, successful, failureStatus)
-    }
-    return successful
+    return ReviewCompletionResult(
+      accepted = successful,
+      terminalRecord = terminalCompletionRecord(launch, recovery, successful, failureStatus),
+    )
   }
 
   private fun buildAggregationRequest(
@@ -1046,12 +1089,12 @@ class ParallelCodeReviewRunner(
     )
   }
 
-  private fun recordTerminalCompletion(
+  private fun terminalCompletionRecord(
     launch: DelegatedReviewLaunchRequest,
     recovery: ReviewLifecycleRecoverySnapshot?,
     successful: Boolean,
     failureStatus: ReviewProcessOutcome? = null,
-  ) {
+  ): ReviewLifecycleRecord {
     val terminalCompletion = terminalCompletionFor(recovery, successful, failureStatus)
     val terminalEventKind = when (terminalCompletion.status) {
       ReviewProcessOutcome.ZERO_EXIT -> ReviewLifecycleEventKind.TERMINAL_COMPLETED
@@ -1059,15 +1102,13 @@ class ParallelCodeReviewRunner(
       ReviewProcessOutcome.INTERRUPTED -> ReviewLifecycleEventKind.TERMINAL_CANCELLED
       else -> ReviewLifecycleEventKind.TERMINAL_FAILED
     }
-    lifecycleRecorder.record(
-      ReviewLifecycleRecord(
-        reviewId = launch.assignment.reviewId,
-        packetDigest = launch.assignment.packetDigest,
-        component = ReviewLifecycleComponent.TERMINAL,
-        eventKind = terminalEventKind,
-        processOutcome = terminalCompletion.status,
-        terminalCompletion = terminalCompletion,
-      ),
+    return ReviewLifecycleRecord(
+      reviewId = launch.assignment.reviewId,
+      packetDigest = launch.assignment.packetDigest,
+      component = ReviewLifecycleComponent.TERMINAL,
+      eventKind = terminalEventKind,
+      processOutcome = terminalCompletion.status,
+      terminalCompletion = terminalCompletion,
     )
   }
 
@@ -1834,6 +1875,7 @@ class ParallelCodeReviewRunner(
           timeout = timeout,
           progressIdleTimeout = progressIdleTimeout,
           modelOverride = modelOverride,
+          mcpStartupProbe = skillbill.ports.agentrun.model.AgentRunMcpStartupProbe.NONE,
         ),
       )
     } catch (interrupted: InterruptedException) {
