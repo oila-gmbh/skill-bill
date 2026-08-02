@@ -6,11 +6,14 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewOperationKind
+import skillbill.review.model.ParallelReviewRawFinding
+import skillbill.review.model.ParallelReviewSeverity
 private const val REVIEW_LIFECYCLE_MAX_TEXT_CHARS: Int = 500
 private const val REVIEW_LIFECYCLE_MAX_DIAGNOSTIC_CHARS: Int = 200
 private const val REVIEW_LIFECYCLE_MAX_IDENTIFIER_CHARS: Int = 200
 private const val REVIEW_LIFECYCLE_MAX_TIMESTAMP_CHARS: Int = 64
 private val REVIEW_LIFECYCLE_TIMESTAMP = Regex("^[0-9T:.+Z-]+$")
+private const val REVIEW_RESULT_MAX_FINDINGS: Int = 7
 
 private fun requireLifecycleTimestamp(value: String) {
   require(value.isNotBlank() && value.length <= REVIEW_LIFECYCLE_MAX_TIMESTAMP_CHARS)
@@ -70,6 +73,72 @@ enum class ReviewProcessOutcome {
   AGGREGATION_FAILURE,
   MISSING_RESULT,
   COORDINATOR_CRASH,
+}
+
+/** Bounded, replayable worker output used to rebuild a lane after coordinator restart. */
+data class ReviewWorkerResultEnvelope(
+  val findings: List<ParallelReviewRawFinding>,
+) {
+  init {
+    require(findings.size <= REVIEW_RESULT_MAX_FINDINGS)
+    findings.forEach { finding ->
+      require(finding.confidence in setOf("High", "Medium", "Low"))
+      require(finding.location.isNotBlank() && finding.location.length <= REVIEW_LIFECYCLE_MAX_TEXT_CHARS)
+      require(finding.description.isNotBlank() && finding.description.length <= REVIEW_LIFECYCLE_MAX_TEXT_CHARS)
+      finding.specialistSkillName?.let(::requireLifecycleIdentifier)
+      finding.repositoryPath?.let {
+        require(it.isNotBlank() && it.length <= REVIEW_LIFECYCLE_MAX_IDENTIFIER_CHARS)
+      }
+      finding.line?.let { require(it >= 1) }
+      require(finding.originLayerChains.size <= 8)
+      finding.originLayerChains.forEach { chain ->
+        require(chain.isNotEmpty() && chain.size <= 8)
+        chain.forEach(::requireLifecycleIdentifier)
+      }
+    }
+  }
+
+  fun toPayload(): Map<String, Any?> = mapOf(
+    "findings" to findings.map { finding ->
+      linkedMapOf<String, Any?>(
+        "severity" to finding.severity.name.lowercase(),
+        "confidence" to finding.confidence,
+        "location" to finding.location,
+        "description" to finding.description,
+      ).also { payload ->
+        finding.specialistSkillName?.let { payload["specialist_skill_name"] = it }
+        if (finding.originLayerChains.isNotEmpty()) payload["origin_layer_chains"] = finding.originLayerChains
+        finding.repositoryPath?.let { payload["repository_path"] = it }
+        finding.line?.let { payload["line"] = it }
+      }
+    },
+  )
+
+  companion object {
+    fun fromPayload(payload: Map<String, Any?>): ReviewWorkerResultEnvelope {
+      val rawFindings = payload["findings"] as? List<*>
+        ?: error("Worker result envelope findings must be an array.")
+      return ReviewWorkerResultEnvelope(rawFindings.map { raw ->
+        val finding = raw as? Map<*, *> ?: error("Worker result finding must be an object.")
+        fun requiredString(key: String) = finding[key] as? String
+          ?: error("Worker result finding field '$key' is missing.")
+        val originLayerChains = (finding["origin_layer_chains"] as? List<*>)?.map { rawChain ->
+          (rawChain as? List<*>)?.map { it as? String ?: error("Worker result origin layer must be a string.") }
+            ?: error("Worker result origin layer chain must be an array.")
+        } ?: emptyList()
+        ParallelReviewRawFinding(
+          severity = ParallelReviewSeverity.valueOf(requiredString("severity").uppercase()),
+          confidence = requiredString("confidence"),
+          location = requiredString("location"),
+          description = requiredString("description"),
+          specialistSkillName = finding["specialist_skill_name"] as? String,
+          originLayerChains = originLayerChains,
+          repositoryPath = finding["repository_path"] as? String,
+          line = (finding["line"] as? Number)?.toInt(),
+        )
+      })
+    }
+  }
 }
 
 data class ReviewLivenessObservation(
@@ -171,6 +240,7 @@ data class ReviewLifecycleEvent(
   val providerOutput: ReviewProviderOutputObservation? = null,
   val declaredProgress: ReviewDeclaredSpecialistProgress? = null,
   val durableProgress: ReviewDurableWorkerProgress? = null,
+  val resultEnvelope: ReviewWorkerResultEnvelope? = null,
   val terminalCompletion: ReviewTerminalCompletion? = null,
   val diagnostic: ReviewDiagnosticReference? = null,
 ) {
@@ -194,6 +264,10 @@ data class ReviewLifecycleEvent(
       require(durableProgress != null) {
         "A worker progress transition requires durable specialist progress evidence."
       }
+    }
+    if (resultEnvelope != null) {
+      require(component == ReviewLifecycleComponent.WORKER)
+      require(eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED)
     }
     if (eventKind.name.startsWith("TERMINAL_") || eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
       require(terminalCompletion != null) { "Terminal and completed aggregation events require completion evidence." }
@@ -227,6 +301,7 @@ data class ReviewLifecycleEvent(
     providerOutput?.let { payload["provider_output"] = it.toPayload() }
     declaredProgress?.let { payload["declared_progress"] = it.toPayload() }
     durableProgress?.let { payload["durable_progress"] = it.toPayload() }
+    resultEnvelope?.let { payload["result_envelope"] = it.toPayload() }
     terminalCompletion?.let { payload["terminal_completion"] = it.toPayload() }
     diagnostic?.let { payload["diagnostic"] = it.toPayload() }
   }
@@ -306,7 +381,9 @@ class ReviewLifecycleLedger(initialEvents: List<ReviewLifecycleEvent> = emptyLis
   }
 
   fun canAggregate(selectedAssignmentDigests: Set<String>): Boolean {
-    val completed = events.filter { it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED }
+    val completed = events.filter {
+      it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED && it.resultEnvelope != null
+    }
       .mapNotNull { it.assignmentDigest }
       .toSet()
     val failed = events.any {

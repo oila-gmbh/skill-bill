@@ -1,8 +1,26 @@
 package skillbill.application.review
 
+import skillbill.application.model.ImportedReviewResult
+import skillbill.application.model.ReviewFeedbackResult
+import skillbill.application.model.ReviewPreviewResult
+import skillbill.application.model.TriageResult
+import skillbill.application.model.TriageResultKind
+import skillbill.contracts.JsonPayloadContract
+import skillbill.contracts.review.ImportedReviewContract
+import skillbill.contracts.review.NumberedFindingContract
+import skillbill.contracts.review.ReviewFeedbackContract
+import skillbill.contracts.review.ReviewPreviewContract
+import skillbill.contracts.review.TriageDecisionContract
+import skillbill.contracts.review.TriageListContract
+import skillbill.contracts.review.TriageRecordedContract
+import skillbill.review.model.ImportedReview
+import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.TriageDecision
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.reviewProcessOutcome
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
 
 enum class ReviewOutputAdmission {
   SUCCESS,
@@ -28,25 +46,6 @@ fun classifyReviewOutput(facts: AgentRunLaunchFacts, resultEnvelopeValid: Boolea
     },
   )
 }
-
-import skillbill.application.model.ImportedReviewResult
-import skillbill.application.model.ReviewFeedbackResult
-import skillbill.application.model.ReviewPreviewResult
-import skillbill.application.model.TriageResult
-import skillbill.application.model.TriageResultKind
-import skillbill.contracts.JsonPayloadContract
-import skillbill.contracts.review.ImportedReviewContract
-import skillbill.contracts.review.NumberedFindingContract
-import skillbill.contracts.review.ReviewFeedbackContract
-import skillbill.contracts.review.ReviewPreviewContract
-import skillbill.contracts.review.TriageDecisionContract
-import skillbill.contracts.review.TriageListContract
-import skillbill.contracts.review.TriageRecordedContract
-import skillbill.review.model.ImportedReview
-import skillbill.review.model.NumberedFinding
-import skillbill.review.model.ReviewFinishedTelemetry
-import skillbill.review.model.TriageDecision
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
 
 fun ImportedReview.toReviewPreviewResult(): ReviewPreviewResult = ReviewPreviewResult(
   reviewRunId = reviewRunId,

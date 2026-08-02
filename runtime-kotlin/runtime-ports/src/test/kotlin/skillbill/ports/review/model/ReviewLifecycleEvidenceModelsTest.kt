@@ -99,6 +99,9 @@ class ReviewLifecycleEvidenceModelsTest {
     routedArea = if (kind.name.startsWith("AGGREGATION")) null else "architecture",
     state = state,
     processOutcome = outcome,
+    resultEnvelope = ReviewWorkerResultEnvelope(emptyList()).takeIf {
+      kind == ReviewLifecycleEventKind.WORKER_COMPLETED
+    },
     terminalCompletion = terminal,
   )
 }

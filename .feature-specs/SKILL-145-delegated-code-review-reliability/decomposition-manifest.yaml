@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Lifecycle evidence and failure reproduction"
   spec_path: ".feature-specs/SKILL-145-delegated-code-review-reliability/spec_subtask_1_lifecycle_evidence_and_failure_reproduction.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260802-110845-t7aw"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

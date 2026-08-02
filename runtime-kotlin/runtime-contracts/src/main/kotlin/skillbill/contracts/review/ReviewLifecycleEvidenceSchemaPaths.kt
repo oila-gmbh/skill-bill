@@ -1,6 +1,6 @@
 package skillbill.contracts.review
 
-const val REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION: String = "0.1"
+const val REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION: String = "0.2"
 const val REVIEW_LIFECYCLE_EVIDENCE_SCHEMA_RESOURCE: String =
   "skillbill/contracts/review-lifecycle-evidence-schema.yaml"
 

@@ -4,6 +4,7 @@ import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 
 /** Deterministic lifecycle fixture used by failure reproduction tests; no provider is contacted. */
@@ -98,6 +99,9 @@ class ReviewLifecycleEvidenceFixture(
       routedArea = assignmentDigest?.let { "architecture" },
       state = state,
       processOutcome = outcome,
+      resultEnvelope = ReviewWorkerResultEnvelope(emptyList()).takeIf {
+        kind == ReviewLifecycleEventKind.WORKER_COMPLETED
+      },
     )
     persistence.append(event)
     return event

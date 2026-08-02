@@ -9,6 +9,7 @@ import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
@@ -138,6 +139,7 @@ private fun decodeValidatedLifecycleEvent(payload: Map<String, Any?>): ReviewLif
         progress["label"] as String,
       )
     },
+    resultEnvelope = boundedMap("result_envelope")?.let(ReviewWorkerResultEnvelope::fromPayload),
     terminalCompletion = boundedMap("terminal_completion")?.let { terminal ->
       skillbill.ports.review.model.ReviewTerminalCompletion(
         terminal["completed_at"] as String,
@@ -174,6 +176,7 @@ private val lifecyclePayloadKeys = setOf(
   "provider_output",
   "declared_progress",
   "durable_progress",
+  "result_envelope",
   "terminal_completion",
   "diagnostic",
 )
@@ -224,6 +227,7 @@ private fun validateLifecyclePayload(payload: Map<String, Any?>, sourceLabel: St
     )
     validatePresentNested(payload, "declared_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
     validatePresentNested(payload, "durable_progress", setOf("observed_at", "progress_id", "label"), sourceLabel)
+    validatePresentNested(payload, "result_envelope", setOf("findings"), sourceLabel)
     validatePresentNested(payload, "terminal_completion", setOf("completed_at", "status"), sourceLabel)
     validatePresentNested(payload, "diagnostic", setOf("reference", "summary"), sourceLabel)
   } catch (error: IllegalArgumentException) {

@@ -46,6 +46,7 @@ import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
@@ -141,7 +142,12 @@ class ParallelCodeReviewRunner(
     val recovery = lifecycleReview?.let { launch ->
       lifecycleRecovery.read(
         launch.assignment.reviewId,
-        launchRequests.map { it.assignment.digest }.toSet(),
+        launchRequests.associate { selected ->
+          selected.assignment.digest to ReviewLifecycleWorkerIdentity(
+            workerId = selected.assignment.lane,
+            providerId = selected.agentId,
+          )
+        },
       )
     }
     val relaunchableRequests = launchRequests.filter { launch ->
@@ -154,7 +160,7 @@ class ParallelCodeReviewRunner(
       throw error
     }
     val prepared = relaunchableRequests.groupBy { it.agentId }
-    val outcomes = try {
+    val launchedOutcomes = try {
       runLanes(
         request,
         detection.routed,
@@ -167,6 +173,16 @@ class ParallelCodeReviewRunner(
       lifecycleReview?.let { launch -> recordCoordinatorCrash(launch) }
       throw error
     }
+    val outcomes = recovery?.let {
+      rebuildRecoveredOutcomes(
+        launchRequests,
+        relaunchableRequests,
+        it,
+        launchedOutcomes,
+        agent1.id,
+        agent2.id,
+      )
+    } ?: launchedOutcomes
     lifecycleReview?.let { launch ->
       lifecycleRecorder.record(
         reviewId = launch.assignment.reviewId,
@@ -353,6 +369,45 @@ class ParallelCodeReviewRunner(
         },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
       ),
+    )
+  }
+
+  private fun rebuildRecoveredOutcomes(
+    launchRequests: List<DelegatedReviewLaunchRequest>,
+    relaunchableRequests: List<DelegatedReviewLaunchRequest>,
+    recovery: ReviewLifecycleRecoverySnapshot,
+    launchedOutcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+    agent1Id: String,
+    agent2Id: String,
+  ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
+    val relaunchableDigests = relaunchableRequests.map { it.assignment.digest }.toSet()
+
+    fun rebuild(
+      agentId: String,
+      launched: skillbill.ports.review.model.ParallelReviewLaneOutcome,
+    ): skillbill.ports.review.model.ParallelReviewLaneOutcome {
+      val selected = launchRequests.filter { it.agentId == agentId }
+      val recovered = selected
+        .filterNot { it.assignment.digest in relaunchableDigests }
+        .mapNotNull { launch ->
+          recovery.completedResults[launch.assignment.digest]
+            ?.takeIf { result ->
+              result.workerId == launch.assignment.lane && result.providerId == launch.agentId
+            }
+        }
+      if (recovered.isEmpty()) return launched
+      val allSelectedRecovered = selected.size == recovered.size &&
+        selected.all { it.assignment.digest !in relaunchableDigests }
+      return launched.copy(
+        success = if (allSelectedRecovered) true else launched.success,
+        failureReason = if (allSelectedRecovered) null else launched.failureReason,
+        findings = recovered.flatMap { it.resultEnvelope.findings } + launched.findings,
+      )
+    }
+
+    return skillbill.ports.review.model.ParallelReviewLaneRunResult(
+      lane1 = rebuild(agent1Id, launchedOutcomes.lane1),
+      lane2 = rebuild(agent2Id, launchedOutcomes.lane2),
     )
   }
 
@@ -700,18 +755,21 @@ class ParallelCodeReviewRunner(
       ?.worker
       ?.facts
       ?.let { facts -> reviewOutputEnvelopeValid(facts.stdout) }
-    recordWorkerOutcome(launchRequest, execution, outputEnvelopeValid)
     return when (execution) {
-      is DelegatedReviewExecutionOutcome.Terminated -> ParallelReviewLaneOutcome(
-        success = false,
-        rawOutput = "",
-        failureReason = describeBudgetOutcome(execution.budgetOutcome),
-        budgetOutcome = execution.budgetOutcome,
-        accounting = execution.accounting,
-      )
+      is DelegatedReviewExecutionOutcome.Terminated -> {
+        recordWorkerOutcome(launchRequest, execution, outputEnvelopeValid)
+        ParallelReviewLaneOutcome(
+          success = false,
+          rawOutput = "",
+          failureReason = describeBudgetOutcome(execution.budgetOutcome),
+          budgetOutcome = execution.budgetOutcome,
+          accounting = execution.accounting,
+        )
+      }
       is DelegatedReviewExecutionOutcome.Completed -> {
         val worker = execution.worker
         worker.budgetOutcome?.takeIf { worker.facts == null }?.let { budgetOutcome ->
+          recordWorkerOutcome(launchRequest, execution, outputEnvelopeValid)
           return ParallelReviewLaneOutcome(
             success = false,
             rawOutput = "",
@@ -720,6 +778,30 @@ class ParallelCodeReviewRunner(
             accounting = worker.accounting,
           )
         }
+        val outcome = worker.facts
+        if (outcome == null) {
+          recordWorkerOutcome(launchRequest, execution, outputEnvelopeValid)
+          return ParallelReviewLaneOutcome(
+            success = false,
+            rawOutput = "",
+            failureReason = "unsupported agent: ${worker.unsupportedReason}",
+            accounting = worker.accounting,
+          )
+        }
+        val admittedFindings = if (outputEnvelopeValid == true) {
+          runCatching { parseAdmittedFindings(launchRequest, outcome.stdout) }.getOrNull()
+        } else {
+          null
+        }
+        val resultEnvelope = admittedFindings?.let { runCatching { ReviewWorkerResultEnvelope(it) }.getOrNull() }
+        val effectiveEnvelopeValid = outputEnvelopeValid == true && resultEnvelope != null &&
+          worker.forbiddenOperation == null
+        recordWorkerOutcome(
+          launchRequest,
+          execution,
+          effectiveEnvelopeValid,
+          resultEnvelope.takeIf { effectiveEnvelopeValid },
+        )
         worker.forbiddenOperation?.let { forbidden ->
           return ParallelReviewLaneOutcome(
             success = false,
@@ -728,28 +810,16 @@ class ParallelCodeReviewRunner(
             accounting = worker.accounting,
           )
         }
-        val outcome = worker.facts
-        if (outcome == null) {
-          return ParallelReviewLaneOutcome(
-            success = false,
-            rawOutput = "",
-            failureReason = "unsupported agent: ${worker.unsupportedReason}",
-            accounting = worker.accounting,
-          )
-        }
         val usage = providerTokenUsage(outcome)
         val processFailure = laneFailureReason(outcome)
         val budgetOutcome = worker.budgetOutcome
         val outputClassification = classifyReviewOutput(
           outcome,
-          resultEnvelopeValid = outputEnvelopeValid == true,
+          resultEnvelopeValid = effectiveEnvelopeValid,
         )
         val reason = budgetOutcome?.takeIf { it.enforceable }?.let(::describeBudgetOutcome)
-          ?: if (outputClassification.admission != ReviewOutputAdmission.SUCCESS) {
-            "invalid review output"
-          } else {
-            processFailure
-          }
+          ?: processFailure
+          ?: if (outputClassification.admission != ReviewOutputAdmission.SUCCESS) "invalid review output" else null
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
@@ -758,26 +828,27 @@ class ParallelCodeReviewRunner(
           budgetOutcome = budgetOutcome,
           accounting = worker.accounting,
           interrupted = outcome.interrupted,
-          findings = if (reason == null) {
-            ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
-              require(finding.repositoryPath in launchRequest.assignment.assignedPaths) {
-                "Delegated finding location '${finding.location}' is outside the authoritative assignment ownership."
-              }
-              val assignedSpecialist = launchRequest.assignment.laneDecision.specialistSkillName
-              require(finding.specialistSkillName == null || finding.specialistSkillName == assignedSpecialist) {
-                "Delegated finding specialist '${finding.specialistSkillName}' does not match '$assignedSpecialist'."
-              }
-              finding.copy(
-                specialistSkillName = assignedSpecialist,
-                originLayerChains = launchRequest.assignment.laneDecision.originLayerChains,
-              )
-            }
-          } else {
-            emptyList()
-          },
+          findings = if (reason == null) admittedFindings.orEmpty() else emptyList(),
         )
       }
     }
+  }
+
+  private fun parseAdmittedFindings(
+    launchRequest: DelegatedReviewLaunchRequest,
+    stdout: String,
+  ) = ParallelReviewFindingParser.parse(stdout).map { finding ->
+    require(finding.repositoryPath in launchRequest.assignment.assignedPaths) {
+      "Delegated finding location '${finding.location}' is outside the authoritative assignment ownership."
+    }
+    val assignedSpecialist = launchRequest.assignment.laneDecision.specialistSkillName
+    require(finding.specialistSkillName == null || finding.specialistSkillName == assignedSpecialist) {
+      "Delegated finding specialist '${finding.specialistSkillName}' does not match '$assignedSpecialist'."
+    }
+    finding.copy(
+      specialistSkillName = assignedSpecialist,
+      originLayerChains = launchRequest.assignment.laneDecision.originLayerChains,
+    )
   }
 
   private fun recordWorkerLifecycle(
@@ -790,6 +861,7 @@ class ParallelCodeReviewRunner(
     livenessObservations: List<ReviewLivenessObservation> = emptyList(),
     providerOutput: ReviewProviderOutputObservation? = null,
     declaredProgress: ReviewDeclaredSpecialistProgress? = null,
+    resultEnvelope: ReviewWorkerResultEnvelope? = null,
   ) {
     lifecycleRecorder.record(
       reviewId = launchRequest.assignment.reviewId,
@@ -807,6 +879,7 @@ class ParallelCodeReviewRunner(
       providerOutput = providerOutput,
       declaredProgress = declaredProgress,
       durableProgress = durableProgress,
+      resultEnvelope = resultEnvelope,
       diagnostic = diagnostic,
     )
   }
@@ -815,6 +888,7 @@ class ParallelCodeReviewRunner(
     launchRequest: DelegatedReviewLaunchRequest,
     execution: DelegatedReviewExecutionOutcome,
     resultEnvelopeValid: Boolean? = null,
+    resultEnvelope: ReviewWorkerResultEnvelope? = null,
   ) {
     val classifiedOutcome = delegatedReviewExecutionBroker.classifyLifecycleOutcome(execution)
     val facts = (execution as? DelegatedReviewExecutionOutcome.Completed)?.worker?.facts
@@ -831,6 +905,9 @@ class ParallelCodeReviewRunner(
     val observations = facts?.let(::livenessObservations).orEmpty()
     val providerOutput = facts?.let { outputObservation(it, outcome) }
     val declaredProgress = facts?.let(::declaredProgress)
+    val admittedResultEnvelope = resultEnvelope.takeIf {
+      outcome == ReviewProcessOutcome.ZERO_EXIT && resultEnvelopeValid == true
+    }
     if (outcome == ReviewProcessOutcome.ZERO_EXIT && resultEnvelopeValid == true) {
       recordWorkerLifecycle(
         launchRequest,
@@ -881,6 +958,7 @@ class ParallelCodeReviewRunner(
       livenessObservations = observations,
       providerOutput = providerOutput,
       declaredProgress = declaredProgress,
+      resultEnvelope = admittedResultEnvelope,
     )
   }
 
@@ -892,18 +970,19 @@ class ParallelCodeReviewRunner(
   }
 
   private fun livenessObservations(facts: AgentRunLaunchFacts): List<ReviewLivenessObservation> = buildList {
-    facts.liveness?.lastOutputAt?.let { observedAt ->
+    val liveness = facts.liveness ?: return@buildList
+    liveness.lastOutputAt?.let { observedAt ->
       addLifecycleObservation(
         ReviewLivenessObservation.Kind.PROCESS_HEARTBEAT,
         observedAt,
-        facts.liveness.processState.ifBlank { facts.liveness.reason },
+        liveness.processState.ifBlank { liveness.reason },
       )
     }
-    facts.liveness?.lastWorkflowSnapshotAt?.let { observedAt ->
+    liveness.lastWorkflowSnapshotAt?.let { observedAt ->
       addLifecycleObservation(
         ReviewLivenessObservation.Kind.MCP_HEARTBEAT,
         observedAt,
-        facts.liveness.activeOperationName ?: facts.liveness.reason,
+        liveness.activeOperationName ?: liveness.reason,
       )
     }
   }

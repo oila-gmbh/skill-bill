@@ -351,7 +351,7 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "\"contract_version\":\"0.7\"")
+      assertContains(prompt, "\"contract_version\":\"0.8\"")
       assertContains(prompt, "\"kind\":\"launch\"")
       assertContains(prompt, "\"base_revision\":\"base-revision\"")
       assertContains(prompt, "\"head_revision\":\"head-revision\"")

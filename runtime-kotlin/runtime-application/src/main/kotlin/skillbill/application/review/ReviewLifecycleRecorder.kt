@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
 import skillbill.ports.review.model.ReviewDiagnosticReference
@@ -12,6 +13,7 @@ import skillbill.ports.review.model.ReviewLivenessObservation
 import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewTerminalCompletion
+import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import java.time.Instant
 
@@ -47,17 +49,19 @@ class ReviewLifecycleRecorder(
     livenessObservations: List<ReviewLivenessObservation> = emptyList(),
     providerOutput: ReviewProviderOutputObservation? = null,
     declaredProgress: ReviewDeclaredSpecialistProgress? = null,
+    resultEnvelope: ReviewWorkerResultEnvelope? = null,
   ): ReviewLifecycleEvent = synchronized(lock) {
     val events = ledgers.getOrPut(reviewId) {
       database.read { unitOfWork -> unitOfWork.reviews.loadReviewLifecycleEvents(reviewId).toMutableList() }
     }
-    val eventId = listOf(
+    val eventIdentity = listOf(
       reviewId,
       eventKind.name,
       workerId.orEmpty(),
       assignmentDigest.orEmpty(),
       attempt?.toString().orEmpty(),
     ).joinToString(":")
+    val eventId = "review-lifecycle-${sha256HexUtf8(eventIdentity)}"
     events.firstOrNull { it.eventId == eventId }?.let { existing ->
       require(
         existing.component == component &&
@@ -74,6 +78,7 @@ class ReviewLifecycleRecorder(
           existing.providerOutput == providerOutput &&
           existing.declaredProgress == declaredProgress &&
           existing.durableProgress == durableProgress &&
+          existing.resultEnvelope == resultEnvelope &&
           existing.terminalCompletion == terminalCompletion &&
           existing.diagnostic == diagnostic,
       ) { "Lifecycle event '$eventId' was replayed with different evidence." }
@@ -98,6 +103,7 @@ class ReviewLifecycleRecorder(
       providerOutput = providerOutput,
       declaredProgress = declaredProgress,
       durableProgress = durableProgress,
+      resultEnvelope = resultEnvelope,
       terminalCompletion = terminalCompletion,
       diagnostic = diagnostic,
     )

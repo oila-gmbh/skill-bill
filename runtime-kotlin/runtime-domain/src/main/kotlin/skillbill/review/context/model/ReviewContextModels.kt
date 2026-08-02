@@ -2,6 +2,7 @@
 
 package skillbill.review.context.model
 
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -578,7 +579,7 @@ data class GovernedReviewLaunch(
   }
 
   val canonicalPayload: String get() = buildString {
-    appendLine("contract_version: \"0.7\"")
+    appendLine("contract_version: \"$REVIEW_CONTEXT_CONTRACT_VERSION\"")
     appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
     appendLine("review_revision: ${assignment.reviewRevision.sessionId}@${assignment.reviewRevision.runRevision}")
