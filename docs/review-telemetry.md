@@ -1,5 +1,17 @@
 # Review telemetry
 
+## Delegated lifecycle evidence
+
+Delegated review records a bounded lifecycle package alongside accounting. The package binds every
+worker event to immutable packet and assignment digests, worker/provider identities, attempt, routed
+area, timestamp, process outcome, and a diagnostic reference. Coordinator preparation, worker
+terminal state, aggregation, and terminal completion remain separate durable transitions.
+
+Process and MCP heartbeats, provider output, and declared specialist progress are observations only;
+they cannot satisfy durable specialist progress. Terminal success requires normal zero-exit worker
+results for every selected assignment and a distinct successful aggregation event. The package has
+no prompt, complete diff, raw transcript, or tool-log fields.
+
 ## Bounded delegated-review accounting
 
 Delegated reviews enforce byte, evidence-read, result-size, and assignment-expansion limits before or during a lane. The named `ReviewContextBudgetPolicy.DEFAULT` policy uses 524288 parent-packet bytes, 65536 lane-launch bytes, 262144 cumulative lane-evidence bytes, 65536 bytes per evidence result and lane result, and three assignment expansions. Repositories may override individual values through the strict `review_context_budget` object in `.skill-bill/config.yaml`; malformed, negative, unknown, or inconsistent nested values fail before launch.

@@ -15,6 +15,8 @@ import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.replaceFindings
 import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
+import skillbill.infrastructure.sqlite.review.appendReviewLifecycleEvent
+import skillbill.infrastructure.sqlite.review.loadReviewLifecycleEvents
 import skillbill.infrastructure.sqlite.review.upsertReviewRun
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
@@ -37,6 +39,7 @@ import skillbill.ports.persistence.WorkflowStatsRepository
 import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
@@ -120,6 +123,12 @@ class SQLiteReviewRepository(
   override fun saveAccounting(record: ReviewAccountingRecord) = upsertReviewAccounting(connection, record)
 
   override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = loadReviewAccounting(connection, reviewId)
+
+  override fun appendReviewLifecycleEvent(event: ReviewLifecycleEvent): Boolean =
+    appendReviewLifecycleEvent(connection, event)
+
+  override fun loadReviewLifecycleEvents(reviewId: String): List<ReviewLifecycleEvent> =
+    loadReviewLifecycleEvents(connection, reviewId)
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)

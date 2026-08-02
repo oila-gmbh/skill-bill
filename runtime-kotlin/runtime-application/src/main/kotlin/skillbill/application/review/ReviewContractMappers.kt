@@ -1,5 +1,33 @@
 package skillbill.application.review
 
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.reviewProcessOutcome
+import skillbill.ports.review.model.ReviewProcessOutcome
+
+enum class ReviewOutputAdmission {
+  SUCCESS,
+  SCHEMA_REPAIR_ELIGIBLE,
+  REJECTED,
+}
+
+data class ReviewOutputClassification(
+  val processOutcome: ReviewProcessOutcome,
+  val admission: ReviewOutputAdmission,
+)
+
+/** Schema repair is a narrow envelope repair path, never a recovery path for process failure. */
+fun classifyReviewOutput(facts: AgentRunLaunchFacts, resultEnvelopeValid: Boolean): ReviewOutputClassification {
+  val processOutcome = facts.reviewProcessOutcome()
+  return ReviewOutputClassification(
+    processOutcome = processOutcome,
+    admission = when {
+      processOutcome != ReviewProcessOutcome.ZERO_EXIT -> ReviewOutputAdmission.REJECTED
+      resultEnvelopeValid -> ReviewOutputAdmission.SUCCESS
+      else -> ReviewOutputAdmission.SCHEMA_REPAIR_ELIGIBLE
+    },
+  )
+}
+
 import skillbill.application.model.ImportedReviewResult
 import skillbill.application.model.ReviewFeedbackResult
 import skillbill.application.model.ReviewPreviewResult

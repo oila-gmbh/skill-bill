@@ -2,11 +2,133 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewLifecycleComponent
+import skillbill.ports.review.model.ReviewLifecycleEvent
+import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
+
+fun appendReviewLifecycleEvent(connection: Connection, event: ReviewLifecycleEvent): Boolean {
+  val payload = JsonSupport.mapToJsonString(event.toBoundedPayload())
+  connection.prepareStatement(
+    """
+    INSERT OR IGNORE INTO review_lifecycle_events
+      (event_id, review_id, sequence, packet_digest, occurred_at, payload_json)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, event.eventId)
+    statement.setString(2, event.reviewId)
+    statement.setLong(3, event.sequence)
+    statement.setString(4, event.packetDigest)
+    statement.setString(5, event.occurredAt)
+    statement.setString(6, payload)
+    val inserted = statement.executeUpdate() == 1
+    if (inserted) return true
+  }
+  connection.prepareStatement(
+    "SELECT payload_json FROM review_lifecycle_events WHERE event_id = ?",
+  ).use { statement ->
+    statement.setString(1, event.eventId)
+    statement.executeQuery().use { rows ->
+      require(rows.next()) { "Lifecycle event '${event.eventId}' disappeared during idempotent append." }
+      require(rows.getString("payload_json") == payload) {
+        "Lifecycle event '${event.eventId}' was replayed with different bounded evidence."
+      }
+    }
+  }
+  return false
+}
+
+fun loadReviewLifecycleEvents(connection: Connection, reviewId: String): List<ReviewLifecycleEvent> =
+  connection.prepareStatement(
+    "SELECT payload_json FROM review_lifecycle_events WHERE review_id = ? ORDER BY sequence",
+  ).use { statement ->
+    statement.setString(1, reviewId)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) add(decodeLifecycleEvent(rows.getString("payload_json")))
+      }
+    }
+  }
+
+private fun decodeLifecycleEvent(rawJson: String): ReviewLifecycleEvent {
+  val value = JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue)
+  val payload = JsonSupport.anyToStringAnyMap(value ?: error("Malformed lifecycle event JSON."))
+  fun requiredString(key: String) = payload[key] as? String ?: error("Lifecycle event field '$key' is missing.")
+  fun optionalString(key: String) = payload[key] as? String
+  fun enumName(key: String) = optionalString(key)?.uppercase()?.let { value -> value }
+  fun digest(key: String) = optionalString(key)
+  @Suppress("UNCHECKED_CAST")
+  fun objectMap(key: String) = payload[key] as? Map<String, Any?>
+  @Suppress("UNCHECKED_CAST")
+  fun objectList(key: String) = payload[key] as? List<Map<String, Any?>> ?: emptyList()
+  fun boundedMap(key: String): Map<String, Any?>? = objectMap(key)
+  return ReviewLifecycleEvent(
+    eventId = requiredString("event_id"),
+    reviewId = requiredString("review_id"),
+    sequence = (payload["sequence"] as Number).toLong(),
+    occurredAt = requiredString("occurred_at"),
+    component = ReviewLifecycleComponent.valueOf(requiredString("component").uppercase()),
+    eventKind = ReviewLifecycleEventKind.valueOf(requiredString("event_kind").uppercase()),
+    packetDigest = requiredString("packet_digest"),
+    workerId = optionalString("worker_id"),
+    providerId = optionalString("provider_id"),
+    attempt = (payload["attempt"] as? Number)?.toInt(),
+    assignmentDigest = digest("assignment_digest"),
+    routedArea = optionalString("routed_area"),
+    state = enumName("state")?.let(ReviewWorkerLifecycleState::valueOf),
+    processOutcome = enumName("process_outcome")?.let(ReviewProcessOutcome::valueOf),
+    livenessObservations = objectList("liveness_observations").map { observation ->
+      skillbill.ports.review.model.ReviewLivenessObservation(
+        skillbill.ports.review.model.ReviewLivenessObservation.Kind.valueOf(
+          (observation["kind"] as String).uppercase(),
+        ),
+        observation["observed_at"] as String,
+        observation["status"] as String,
+      )
+    },
+    providerOutput = boundedMap("provider_output")?.let { output ->
+      skillbill.ports.review.model.ReviewProviderOutputObservation(
+        output["observed_at"] as String,
+        output["outcome"] as String,
+        (output["byte_size"] as Number).toLong(),
+        output["sha256"] as String,
+      )
+    },
+    declaredProgress = boundedMap("declared_progress")?.let { progress ->
+      skillbill.ports.review.model.ReviewDeclaredSpecialistProgress(
+        progress["observed_at"] as String,
+        progress["progress_id"] as String,
+        progress["label"] as String,
+      )
+    },
+    durableProgress = boundedMap("durable_progress")?.let { progress ->
+      skillbill.ports.review.model.ReviewDurableWorkerProgress(
+        progress["observed_at"] as String,
+        progress["progress_id"] as String,
+        progress["label"] as String,
+      )
+    },
+    terminalCompletion = boundedMap("terminal_completion")?.let { terminal ->
+      skillbill.ports.review.model.ReviewTerminalCompletion(
+        terminal["completed_at"] as String,
+        ReviewProcessOutcome.valueOf((terminal["status"] as String).uppercase()),
+      )
+    },
+    diagnostic = boundedMap("diagnostic")?.let { diagnostic ->
+      skillbill.ports.review.model.ReviewDiagnosticReference(
+        diagnostic["reference"] as String,
+        diagnostic["summary"] as String,
+      )
+    },
+  )
+}
 
 fun upsertReviewAccounting(connection: Connection, record: ReviewAccountingRecord) {
   connection.prepareStatement(

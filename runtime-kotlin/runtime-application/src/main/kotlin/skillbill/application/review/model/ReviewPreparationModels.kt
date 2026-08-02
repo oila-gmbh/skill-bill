@@ -3,6 +3,7 @@ package skillbill.application.review.model
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewRevision
 
 data class ReviewPreparationRequest(
@@ -10,6 +11,7 @@ data class ReviewPreparationRequest(
   val reviewRevision: ReviewRevision,
   val criteriaReferences: Map<String, List<String>> = emptyMap(),
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
+  val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
 )
 
 data class ReviewPreparationResult(

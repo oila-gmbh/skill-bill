@@ -5,6 +5,15 @@ description: Single source of truth for shared stack-specific code-review orches
 
 # Shared Code Review Orchestrator Contract
 
+## Lifecycle evidence
+
+Delegated lifecycle evidence is durable and bounded. The coordinator records preparation and queue
+admission, workers record identity-bound launch and terminal outcomes, aggregation records readiness
+separately from terminal completion, and recovery reads `review_lifecycle_events`. Process/MCP
+heartbeats, provider output, and declared progress are observations; only a typed durable worker
+progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
+complete diffs, raw transcripts, or tool logs.
+
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

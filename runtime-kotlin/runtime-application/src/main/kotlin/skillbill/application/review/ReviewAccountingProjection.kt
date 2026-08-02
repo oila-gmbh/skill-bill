@@ -6,6 +6,7 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingNode
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.ports.review.model.ReviewLifecycleEvidencePackage
 
 /** The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally absent. */
 @OpenBoundaryMap("Schema-bounded review-accounting wire projection")
@@ -21,6 +22,11 @@ fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "aggregate_inclusive_usage" to aggregateInclusiveUsage.toPayload(),
   "budget_regression" to budgetRegression,
 )
+
+/** Separate lifecycle projection; accounting remains on its existing wire contract. */
+@OpenBoundaryMap("Schema-bounded delegated-review lifecycle evidence projection")
+fun ReviewLifecycleEvidencePackage.toBoundedPayload(): Map<String, Any?> =
+  toEvidencePayload()
 
 private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "lane" to lane,

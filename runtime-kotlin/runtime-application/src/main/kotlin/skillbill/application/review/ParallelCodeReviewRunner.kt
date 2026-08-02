@@ -38,6 +38,11 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentAssignment
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.ports.review.model.ReviewLifecycleComponent
+import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerLifecycleState
+import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -81,6 +86,8 @@ class ParallelCodeReviewRunner(
   private val database: DatabaseSessionFactory,
   private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 ) {
+  private val lifecycleRecorder = ReviewLifecycleRecorder(database)
+
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     var request = originalRequest
     val agent1 = resolveAgent(request.agent1Id, "--agent1")
@@ -111,17 +118,47 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
+    val lifecycleReview = launchRequests.firstOrNull()?.takeIf {
+      resolvedMode == ResolvedReviewExecutionMode.DELEGATED
+    }?.also { launch ->
+        lifecycleRecorder.record(
+          reviewId = launch.assignment.reviewId,
+          packetDigest = launch.assignment.packetDigest,
+          component = ReviewLifecycleComponent.COORDINATOR,
+          eventKind = ReviewLifecycleEventKind.COORDINATOR_PREPARED,
+          processOutcome = ReviewProcessOutcome.NOT_STARTED,
+        )
+        launchRequests.forEach { selected ->
+          recordWorkerLifecycle(selected, ReviewLifecycleEventKind.WORKER_SELECTED, ReviewWorkerLifecycleState.SELECTED)
+          recordWorkerLifecycle(selected, ReviewLifecycleEventKind.WORKER_QUEUED, ReviewWorkerLifecycleState.QUEUED)
+        }
+    }
     preflightDelegatedWorkers(request, resolvedMode, launchRequests)
     val prepared = launchRequests.groupBy { it.agentId }
-    val outcomes = runLanes(
-      request,
-      detection.routed,
-      resolvedMode,
-      prepared,
-      agent1.id,
-      agent2.id,
-    )
-    return parallelResult(agent1.id, agent2.id, outcomes).also { result ->
+    val outcomes = try {
+      runLanes(
+        request,
+        detection.routed,
+        resolvedMode,
+        prepared,
+        agent1.id,
+        agent2.id,
+      )
+    } catch (error: Throwable) {
+      lifecycleReview?.let { launch -> recordCoordinatorCrash(launch) }
+      throw error
+    }
+    lifecycleReview?.let { launch ->
+      lifecycleRecorder.record(
+        reviewId = launch.assignment.reviewId,
+        packetDigest = launch.assignment.packetDigest,
+        component = ReviewLifecycleComponent.AGGREGATION,
+        eventKind = ReviewLifecycleEventKind.AGGREGATION_STARTED,
+        processOutcome = ReviewProcessOutcome.NOT_STARTED,
+      )
+    }
+    return try {
+      val result = parallelResult(agent1.id, agent2.id, outcomes)
       result.accountingSummary?.let { summary ->
         database.transaction { unitOfWork ->
           unitOfWork.reviews.saveAccounting(
@@ -129,7 +166,62 @@ class ParallelCodeReviewRunner(
           )
         }
       }
+      lifecycleReview?.let { launch ->
+        val successful = outcomes.lane1.success && outcomes.lane2.success
+        lifecycleRecorder.record(
+          reviewId = launch.assignment.reviewId,
+          packetDigest = launch.assignment.packetDigest,
+          component = ReviewLifecycleComponent.AGGREGATION,
+          eventKind = if (successful) {
+            ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+          } else {
+            ReviewLifecycleEventKind.AGGREGATION_FAILED
+          },
+          processOutcome = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
+          terminalCompletion = if (successful) {
+            skillbill.ports.review.model.ReviewTerminalCompletion(
+              lifecycleRecorder.timestamp(),
+              ReviewProcessOutcome.ZERO_EXIT,
+            )
+          } else {
+            null
+          },
+        )
+        lifecycleRecorder.record(
+          reviewId = launch.assignment.reviewId,
+          packetDigest = launch.assignment.packetDigest,
+          component = ReviewLifecycleComponent.TERMINAL,
+          eventKind = if (successful) {
+            ReviewLifecycleEventKind.TERMINAL_COMPLETED
+          } else {
+            ReviewLifecycleEventKind.TERMINAL_FAILED
+          },
+          processOutcome = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
+          terminalCompletion = skillbill.ports.review.model.ReviewTerminalCompletion(
+            lifecycleRecorder.timestamp(),
+            if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
+          ),
+        )
+      }
+      result
+    } catch (error: Throwable) {
+      lifecycleReview?.let { launch -> recordCoordinatorCrash(launch) }
+      throw error
     }
+  }
+
+  private fun recordCoordinatorCrash(launch: DelegatedReviewLaunchRequest) {
+    lifecycleRecorder.record(
+      reviewId = launch.assignment.reviewId,
+      packetDigest = launch.assignment.packetDigest,
+      component = ReviewLifecycleComponent.COORDINATOR,
+      eventKind = ReviewLifecycleEventKind.COORDINATOR_CRASHED,
+      processOutcome = ReviewProcessOutcome.COORDINATOR_CRASH,
+      diagnostic = ReviewDiagnosticReference(
+        "review-lifecycle/${launch.assignment.reviewId}",
+        "Coordinator failed before terminal persistence.",
+      ),
+    )
   }
 
   /**
@@ -458,6 +550,16 @@ class ParallelCodeReviewRunner(
     for (launchRequest in launchRequests) {
       val remaining = timeout - started.elapsedNow()
       if (remaining <= 0.seconds) {
+        recordWorkerLifecycle(
+          launchRequest,
+          ReviewLifecycleEventKind.WORKER_TIMED_OUT,
+          ReviewWorkerLifecycleState.TIMED_OUT,
+          ReviewProcessOutcome.TIMED_OUT,
+          ReviewDiagnosticReference(
+            "review-lifecycle/${launchRequest.assignment.reviewId}/${launchRequest.assignment.digest.take(12)}",
+            "Worker deadline expired before launch; no provider result was admitted.",
+          ),
+        )
         outcomes += ParallelReviewLaneOutcome(
           success = false,
           rawOutput = "",
@@ -504,6 +606,18 @@ class ParallelCodeReviewRunner(
     modelOverride: String? = null,
     timeout: kotlin.time.Duration = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
   ): ParallelReviewLaneOutcome {
+    recordWorkerLifecycle(
+      launchRequest,
+      ReviewLifecycleEventKind.WORKER_LAUNCHED,
+      ReviewWorkerLifecycleState.LAUNCHED,
+      ReviewProcessOutcome.NOT_STARTED,
+    )
+    recordWorkerLifecycle(
+      launchRequest,
+      ReviewLifecycleEventKind.WORKER_RUNNING,
+      ReviewWorkerLifecycleState.RUNNING,
+      ReviewProcessOutcome.NOT_STARTED,
+    )
     val execution = delegatedReviewExecutionBroker.execute(
       DelegatedReviewExecutionRequest(
         launchRequest = launchRequest,
@@ -512,6 +626,11 @@ class ParallelCodeReviewRunner(
         modelOverride = modelOverride,
       ),
     )
+    val outputEnvelopeValid = (execution as? DelegatedReviewExecutionOutcome.Completed)
+      ?.worker
+      ?.facts
+      ?.let { facts -> reviewOutputEnvelopeValid(facts.stdout) }
+    recordWorkerOutcome(launchRequest, execution, outputEnvelopeValid)
     return when (execution) {
       is DelegatedReviewExecutionOutcome.Terminated -> ParallelReviewLaneOutcome(
         success = false,
@@ -551,7 +670,16 @@ class ParallelCodeReviewRunner(
         val usage = providerTokenUsage(outcome)
         val processFailure = laneFailureReason(outcome)
         val budgetOutcome = worker.budgetOutcome
-        val reason = budgetOutcome?.takeIf { it.enforceable }?.let(::describeBudgetOutcome) ?: processFailure
+        val outputClassification = classifyReviewOutput(
+          outcome,
+          resultEnvelopeValid = outputEnvelopeValid == true,
+        )
+        val reason = budgetOutcome?.takeIf { it.enforceable }?.let(::describeBudgetOutcome)
+          ?: if (outputClassification.admission != ReviewOutputAdmission.SUCCESS) {
+            "invalid review output"
+          } else {
+            processFailure
+          }
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
@@ -581,6 +709,82 @@ class ParallelCodeReviewRunner(
       }
     }
   }
+
+  private fun recordWorkerLifecycle(
+    launchRequest: DelegatedReviewLaunchRequest,
+    eventKind: ReviewLifecycleEventKind,
+    state: ReviewWorkerLifecycleState,
+    processOutcome: ReviewProcessOutcome? = null,
+    diagnostic: ReviewDiagnosticReference? = null,
+  ) {
+    lifecycleRecorder.record(
+      reviewId = launchRequest.assignment.reviewId,
+      packetDigest = launchRequest.assignment.packetDigest,
+      component = ReviewLifecycleComponent.WORKER,
+      eventKind = eventKind,
+      workerId = launchRequest.assignment.lane,
+      providerId = launchRequest.agentId,
+      attempt = 1,
+      assignmentDigest = launchRequest.assignment.digest,
+      routedArea = launchRequest.assignment.laneDecision.specialistSkillName ?: launchRequest.assignment.lane,
+      state = state,
+      processOutcome = processOutcome,
+      diagnostic = diagnostic,
+    )
+  }
+
+  private fun recordWorkerOutcome(
+    launchRequest: DelegatedReviewLaunchRequest,
+    execution: DelegatedReviewExecutionOutcome,
+    resultEnvelopeValid: Boolean? = null,
+  ) {
+    val classifiedOutcome = delegatedReviewExecutionBroker.classifyLifecycleOutcome(execution)
+    val outcome = if (
+      classifiedOutcome == ReviewProcessOutcome.ZERO_EXIT && resultEnvelopeValid == false
+    ) {
+      ReviewProcessOutcome.INVALID_OUTPUT
+    } else {
+      classifiedOutcome
+    }
+    val state = when (outcome) {
+      ReviewProcessOutcome.ZERO_EXIT -> ReviewWorkerLifecycleState.COMPLETED
+      ReviewProcessOutcome.TIMED_OUT -> ReviewWorkerLifecycleState.TIMED_OUT
+      ReviewProcessOutcome.INTERRUPTED -> ReviewWorkerLifecycleState.CANCELLED
+      ReviewProcessOutcome.UNAVAILABLE -> ReviewWorkerLifecycleState.UNAVAILABLE
+      ReviewProcessOutcome.INVALID_OUTPUT -> ReviewWorkerLifecycleState.INVALID_OUTPUT
+      else -> ReviewWorkerLifecycleState.FAILED
+    }
+    val eventKind = when (state) {
+      ReviewWorkerLifecycleState.COMPLETED -> ReviewLifecycleEventKind.WORKER_COMPLETED
+      ReviewWorkerLifecycleState.TIMED_OUT -> ReviewLifecycleEventKind.WORKER_TIMED_OUT
+      ReviewWorkerLifecycleState.CANCELLED -> ReviewLifecycleEventKind.WORKER_CANCELLED
+      ReviewWorkerLifecycleState.UNAVAILABLE -> ReviewLifecycleEventKind.WORKER_UNAVAILABLE
+      ReviewWorkerLifecycleState.INVALID_OUTPUT -> ReviewLifecycleEventKind.WORKER_INVALID_OUTPUT
+      else -> ReviewLifecycleEventKind.WORKER_FAILED
+    }
+    recordWorkerLifecycle(
+      launchRequest,
+      eventKind,
+      state,
+      outcome,
+      ReviewDiagnosticReference(
+        "review-lifecycle/${launchRequest.assignment.reviewId}/${launchRequest.assignment.digest.take(12)}",
+        when (outcome) {
+          ReviewProcessOutcome.ZERO_EXIT -> "Worker returned a normal zero-exit result."
+          ReviewProcessOutcome.TIMED_OUT -> "Worker deadline expired before a terminal result."
+          ReviewProcessOutcome.INTERRUPTED -> "Worker was interrupted before a terminal result."
+          ReviewProcessOutcome.UNAVAILABLE -> "Provider launch was unavailable for this worker."
+          ReviewProcessOutcome.INVALID_OUTPUT -> "Worker output was not admitted as a completed result."
+          ReviewProcessOutcome.NON_ZERO_EXIT -> "Worker exited without a successful process outcome."
+          else -> "Worker did not produce a successful lifecycle result."
+        },
+      ),
+    )
+  }
+
+  private fun reviewOutputEnvelopeValid(stdout: String): Boolean = stdout.lineSequence()
+    .filter(String::isNotBlank)
+    .all { line -> ParallelReviewFindingParser.parallelFindingPattern.matches(line) }
 
   @Suppress("LongMethod")
   private fun launchInlineParentLane(

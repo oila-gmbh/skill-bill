@@ -6,6 +6,7 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.ports.review.model.ReviewLifecycleEventKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -89,6 +90,19 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(recorder.preflightRequests.isNotEmpty())
     assertTrue(recorder.nativeLaunches.isNotEmpty())
     assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName != null })
+  }
+
+  @Test fun `durable lifecycle separates worker completion aggregation and terminal persistence`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val kinds = recorder.lifecycleEvents.map { it.eventKind }
+    assertTrue(ReviewLifecycleEventKind.COORDINATOR_PREPARED in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_COMPLETED in kinds)
+    assertTrue(ReviewLifecycleEventKind.AGGREGATION_STARTED in kinds)
+    assertTrue(ReviewLifecycleEventKind.AGGREGATION_COMPLETED in kinds)
+    assertTrue(ReviewLifecycleEventKind.TERMINAL_COMPLETED in kinds)
+    assertTrue(recorder.lifecycleEvents.zipWithNext().all { (first, second) -> first.sequence < second.sequence })
   }
 
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {

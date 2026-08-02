@@ -8,6 +8,7 @@ import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -241,6 +242,17 @@ data class AgentRunLaunchFacts(
       "Provider token values cannot be negative."
     }
   }
+}
+
+/** Maps process facts to a lifecycle class without using provider identity. */
+fun AgentRunLaunchFacts.reviewProcessOutcome(): ReviewProcessOutcome = when {
+  timedOut -> ReviewProcessOutcome.TIMED_OUT
+  interrupted -> ReviewProcessOutcome.INTERRUPTED
+  spawnFailed -> ReviewProcessOutcome.UNAVAILABLE
+  stdoutTruncated -> ReviewProcessOutcome.INVALID_OUTPUT
+  exitStatus == null -> ReviewProcessOutcome.NON_ZERO_EXIT
+  exitStatus != 0 -> ReviewProcessOutcome.NON_ZERO_EXIT
+  else -> ReviewProcessOutcome.ZERO_EXIT
 }
 
 enum class AgentRunTokenOwnership {

@@ -956,6 +956,8 @@ private object NoopReviewDatabase : DatabaseSessionFactory {
     when (method.name) {
       "saveAccounting" -> Unit
       "loadAccounting" -> null
+      "appendReviewLifecycleEvent" -> true
+      "loadReviewLifecycleEvents" -> emptyList<skillbill.ports.review.model.ReviewLifecycleEvent>()
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

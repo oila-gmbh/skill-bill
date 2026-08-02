@@ -5,6 +5,13 @@ description: Single source of truth for shared telemetry event semantics, orches
 
 # Shared Telemetry Contract
 
+## Delegated lifecycle evidence
+
+Delegated review telemetry consumes a bounded lifecycle evidence package. It keeps process/MCP
+heartbeat observations, provider output metadata, declared specialist progress, durable worker
+progress, aggregation state, and terminal state as separate fields. It never persists prompts,
+complete diffs, raw transcripts, or tool logs.
+
 This is the canonical telemetry contract for skill-bill skills. Installed skills consume it through a generated sibling `telemetry-contract.md` support pointer inside each staged skill directory, so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

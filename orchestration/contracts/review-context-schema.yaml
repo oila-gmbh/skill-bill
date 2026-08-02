@@ -60,6 +60,19 @@ $defs:
     type: array
     uniqueItems: true
     items: { $ref: "#/$defs/path" }
+  baseline_untracked_policy:
+    type: object
+    additionalProperties: false
+    required: [included_paths, excluded_paths]
+    properties:
+      included_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/path" }
+      excluded_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/path" }
   evidence_target:
     type: object
     additionalProperties: false
@@ -134,7 +147,7 @@ $defs:
   parent_packet:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger]
+    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
     properties:
       contract_version: { const: "0.7" }
       kind: { const: parent_packet }
@@ -163,12 +176,13 @@ $defs:
         type: array
         items: { $ref: "#/$defs/build_test_fact" }
       dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      baseline_untracked_policy: { $ref: "#/$defs/baseline_untracked_policy" }
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
       expansion_ledger: { $ref: "#/$defs/expansion_records" }
   assignment:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions, baseline_untracked_policy]
     properties:
       contract_version: { const: "0.7" }
       kind: { const: assignment }
@@ -187,10 +201,11 @@ $defs:
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
       dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
       expansions: { $ref: "#/$defs/expansion_records" }
+      baseline_untracked_policy: { $ref: "#/$defs/baseline_untracked_policy" }
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
       contract_version: { const: "0.7" }
       kind: { const: launch }
@@ -222,6 +237,7 @@ $defs:
       matched_rules: { $ref: "#/$defs/rule_references" }
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
       dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      baseline_untracked_policy: { $ref: "#/$defs/baseline_untracked_policy" }
       forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
       evidence_surface_rules: { type: string, minLength: 1, pattern: '.*\S.*' }
       report_structure: { type: string, minLength: 1, pattern: '.*\S.*' }

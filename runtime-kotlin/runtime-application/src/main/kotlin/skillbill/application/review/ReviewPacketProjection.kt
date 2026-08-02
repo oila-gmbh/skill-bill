@@ -35,6 +35,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "learnings_references" to learningsReferences.sortedBy { it.learningId }.map { it.toEnvelope() },
     "build_test_facts" to buildTestFacts.sortedWith(compareBy({ it.kind }, { it.command })).map { it.toEnvelope() },
     "dependency_allowlist" to dependencyAllowlist.normalized.sorted(),
+    "baseline_untracked_policy" to baselineUntrackedPolicy.toEnvelope(),
     "evidence_targets" to evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
     "expansion_ledger" to expansionLedger.sortedWith(compareBy({ it.sequence }, { it.expansionId }))
       .map { it.toEnvelope() },
@@ -58,6 +59,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
     "dependency_allowlist" to dependencyAllowlist.normalized.sorted(),
+    "baseline_untracked_policy" to baselineUntrackedPolicy.toEnvelope(),
     "expansions" to expansions.sortedWith(compareBy({ it.sequence }, { it.expansionId })).map { it.toEnvelope() },
   ),
 )
@@ -90,6 +92,7 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "matched_rules" to assignment.matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to assignment.evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
     "dependency_allowlist" to assignment.dependencyAllowlist.normalized.sorted(),
+    "baseline_untracked_policy" to assignment.baselineUntrackedPolicy.toEnvelope(),
     "forbidden_rediscovery" to ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
     "evidence_surface_rules" to ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES,
     "report_structure" to ReviewPacketConsumerContract.REPORT_STRUCTURE,
@@ -99,3 +102,8 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
   ),
 )
 internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")
+
+private fun skillbill.review.context.model.ReviewBaselineUntrackedPolicy.toEnvelope() = linkedMapOf(
+  "included_paths" to includedPaths.sorted(),
+  "excluded_paths" to excludedPaths.sorted(),
+)

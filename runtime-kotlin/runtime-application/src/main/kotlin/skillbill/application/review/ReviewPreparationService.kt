@@ -126,6 +126,7 @@ class ReviewPreparationService(
       learningsReferences = resolved.learningsReferences,
       buildTestFacts = resolved.buildTestFacts,
       dependencyAllowlist = request.dependencyAllowlist,
+      baselineUntrackedPolicy = request.baselineUntrackedPolicy,
       evidenceTargets = evidenceTargetsFor(resolved.scope.changedHunks),
     )
 
@@ -181,6 +182,7 @@ class ReviewPreparationService(
         reviewRevision = packet.reviewRevision,
         laneDecision = decision,
         dependencyAllowlist = packet.dependencyAllowlist,
+        baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
       )
     }
   }
@@ -206,6 +208,9 @@ class ReviewPreparationService(
     }
     if (assignment.baseRevision != packet.baseRevision || assignment.headRevision != packet.headRevision) {
       reject(label, "Assignment revisions do not match the packet base/head revisions.")
+    }
+    if (assignment.baselineUntrackedPolicy != packet.baselineUntrackedPolicy) {
+      reject(label, "Assignment baseline-untracked policy differs from the packet policy.")
     }
     if (assignment.lane !in packet.selectedLanes) {
       reject(label, "Assignment lane '${assignment.lane}' is not a selected lane of the packet.")

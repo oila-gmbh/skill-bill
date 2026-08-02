@@ -38,6 +38,7 @@ import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
@@ -79,6 +80,7 @@ class ReviewRecorder {
   val diffCommands: MutableList<List<String>> = mutableListOf()
   val savedAccounting: MutableList<ReviewAccountingRecord> = mutableListOf()
   val refusedOperations: MutableList<ForbiddenReviewOperation> = mutableListOf()
+  val lifecycleEvents: MutableList<ReviewLifecycleEvent> = mutableListOf()
 
   val launchedSpecialists: List<String>
     get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
@@ -285,6 +287,8 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
+      "appendReviewLifecycleEvent" -> recorder.lifecycleEvents.add(args[0] as ReviewLifecycleEvent).let { true }
+      "loadReviewLifecycleEvents" -> recorder.lifecycleEvents.toList()
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

@@ -5,6 +5,13 @@ description: Single source of truth for agent-specific delegated code-review exe
 
 # Shared Review Delegation Contract
 
+## Lifecycle evidence
+
+Lifecycle events are written at each ownership boundary and are keyed by packet digest, assignment
+digest, worker/provider identity, routed area, attempt, and a bounded diagnostic reference. A worker
+is not complete because its process or MCP heartbeat is alive; successful aggregation requires one
+normal zero-exit result for every selected assignment.
+
 This is the canonical review-delegation contract. Installed skills consume it through generated sibling support pointers (e.g. `review-delegation.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

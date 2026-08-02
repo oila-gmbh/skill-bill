@@ -8,12 +8,22 @@ import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.ports.review.model.ReviewLifecycleEvent
 
 interface ReviewRepository : WorkflowStatsRepository {
   /** Stores only the schema-bounded accounting projection; content-bearing review objects cannot cross this seam. */
   fun saveAccounting(record: ReviewAccountingRecord) = Unit
 
   fun loadAccounting(reviewId: String): ReviewAccountingRecord? = null
+
+  /**
+   * Appends one bounded lifecycle transition. Implementations must treat event_id as an
+   * idempotency key and reject a replay whose payload differs from the stored event.
+   */
+  fun appendReviewLifecycleEvent(event: ReviewLifecycleEvent): Boolean = false
+
+  /** Durable lifecycle events are the recovery authority after coordinator interruption. */
+  fun loadReviewLifecycleEvents(reviewId: String): List<ReviewLifecycleEvent> = emptyList()
 
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 
