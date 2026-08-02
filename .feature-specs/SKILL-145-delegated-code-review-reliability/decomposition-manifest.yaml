@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Provider liveness, capacity, and aggregation"
   spec_path: ".feature-specs/SKILL-145-delegated-code-review-reliability/spec_subtask_2_provider_liveness_capacity_and_aggregation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260802-153549-0z5j"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

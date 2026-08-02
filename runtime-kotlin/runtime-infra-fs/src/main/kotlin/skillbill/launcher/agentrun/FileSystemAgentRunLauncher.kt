@@ -82,6 +82,8 @@ class FileSystemAgentRunLauncher internal constructor(
           issueKey = request.issueKey,
           repoRoot = isolatedRoot,
           timeout = request.timeout,
+          progressIdleTimeout = request.progressIdleTimeout,
+          mcpStartupProbe = request.mcpStartupProbe,
           promptOverride = request.prompt,
           modelOverride = request.modelOverride,
           conversationIsolation = ConversationIsolation.NONE,

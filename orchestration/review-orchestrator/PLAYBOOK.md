@@ -20,6 +20,11 @@ set with matching worker/provider/attempt identities, valid finding envelopes,
 and complete declared-area coverage. A missing or duplicate result is a
 bounded aggregation failure, not an invitation to repair or rediscover scope.
 
+The provider failure matrix records independent dispositions for capacity,
+bootstrap measurement, each deadline scope, bounded diagnostic repair, actual
+wave telemetry, and promotion thresholds. Shared lifecycle enforcement does not
+promote an experimental provider or alter another provider's launch strategy.
+
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

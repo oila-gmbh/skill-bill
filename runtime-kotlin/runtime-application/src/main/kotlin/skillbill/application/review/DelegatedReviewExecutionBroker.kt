@@ -62,6 +62,7 @@ class DelegatedReviewExecutionBroker(
             agentId = request.launchRequest.agentId,
             repoRoot = request.repoRoot,
             timeout = request.timeout,
+            progressIdleTimeout = request.progressIdleTimeout,
             logicalWorkerName = request.launchRequest.logicalWorkerName,
             modelOverride = request.modelOverride,
           ),

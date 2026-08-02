@@ -50,6 +50,7 @@ import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.plan.DelegatedReviewDeadlinePolicy
 import skillbill.review.context.model.ReviewRequestedOperation
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
@@ -147,6 +148,10 @@ data class RecordedWorkerResponse(
   val usageEnforceable: Boolean = false,
   val childOperations: List<ReviewRequestedOperation> = emptyList(),
   val modelTurns: Int = 1,
+  val processStarted: Boolean = true,
+  val mcpStartupObserved: Boolean = false,
+  val spawnFailed: Boolean = false,
+  val interrupted: Boolean = false,
 )
 
 data class ReviewHarnessConfig(
@@ -157,6 +162,9 @@ data class ReviewHarnessConfig(
   val preflight: (ReviewNativeAgentPreflightRequest) -> Unit = {},
   val evidenceBody: (String) -> String = { "// brokered body for $it" },
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
+  val delegatedReviewDeadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
+  val monotonicNowNanos: () -> Long = System::nanoTime,
+  val interruptionProbe: () -> Boolean = { false },
 )
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
@@ -206,6 +214,9 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       config.preflight(request)
     },
     database = recordingDatabase(recorder),
+    delegatedReviewDeadlinePolicy = config.delegatedReviewDeadlinePolicy,
+    monotonicNowNanos = config.monotonicNowNanos,
+    interruptionProbe = config.interruptionProbe,
   )
 
 /** Replays a scripted specialist run through the governed operation protocol before reporting facts. */
@@ -229,11 +240,14 @@ private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: Revie
     repeat(response.modelTurns) { request.operations.modelTurn() }
     AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId),
-      exitStatus = if (response.timedOut) null else response.exitStatus,
+      exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) null else response.exitStatus,
       stdout = response.stdout,
       stderr = "",
       timedOut = response.timedOut,
-      spawnFailed = false,
+      interrupted = response.interrupted,
+      spawnFailed = response.spawnFailed,
+      processStarted = response.processStarted && !response.spawnFailed,
+      mcpStartupObserved = response.mcpStartupObserved,
       inputTokens = response.usage?.inputTokens,
       cachedInputTokens = response.usage?.cachedInputTokens,
       outputTokens = response.usage?.outputTokens,

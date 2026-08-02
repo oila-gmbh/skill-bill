@@ -77,6 +77,7 @@ class DelegatedReviewWorkerLauncher(
         issueKey = prepared.launch.assignment.reviewId,
         repoRoot = request.repoRoot,
         timeout = request.timeout,
+        progressIdleTimeout = request.progressIdleTimeout,
         prompt = boundedPrompt,
         modelOverride = request.modelOverride,
         isolation = prepared.isolation,

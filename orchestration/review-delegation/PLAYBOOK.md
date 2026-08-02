@@ -32,6 +32,12 @@ Workers do not reload those rules from disk, and this playbook does not restate
 them. Maintainer parity tests pin the runtime constants to the authoritative
 marked blocks and list in that source.
 
+Provider failure dispositions are keyed by provider in the SKILL-145 governed
+matrix. Capacity, startup measurement, scoped deadlines, bounded diagnostics,
+repair behavior, wave telemetry, and promotion thresholds are shared lifecycle
+contracts; a provider-specific mitigation must not change another provider's
+command builder or process strategy.
+
 ## Shared Delegation Rules
 
 - Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`; Codex CLI launches MUST use a fresh process receiving only the governed compact assignment. Other providers retain their existing launch behavior.

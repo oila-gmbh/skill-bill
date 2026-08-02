@@ -154,7 +154,7 @@ data class ReviewLivenessObservation(
   val observedAt: String,
   val status: String,
 ) {
-  enum class Kind { PROCESS_HEARTBEAT, MCP_HEARTBEAT }
+  enum class Kind { PROCESS_HEARTBEAT, MCP_HEARTBEAT, PROCESS_STARTED, MCP_STARTUP }
 
   init {
     requireLifecycleTimestamp(observedAt)
@@ -244,6 +244,7 @@ data class ReviewLifecycleEvent(
   val attempt: Int? = null,
   val assignmentDigest: String? = null,
   val routedArea: String? = null,
+  val waveNumber: Int? = null,
   val state: ReviewWorkerLifecycleState? = null,
   val processOutcome: ReviewProcessOutcome? = null,
   val livenessObservations: List<ReviewLivenessObservation> = emptyList(),
@@ -262,6 +263,7 @@ data class ReviewLifecycleEvent(
     require(packetDigest.matches(Regex("^[a-f0-9]{64}$")))
     require(attempt == null || attempt >= 1)
     require(assignmentDigest == null || assignmentDigest.matches(Regex("^[a-f0-9]{64}$")))
+    require(waveNumber == null || waveNumber >= 1)
     workerId?.let(::requireLifecycleIdentifier)
     providerId?.let(::requireLifecycleIdentifier)
     routedArea?.let(::requireLifecycleIdentifier)
@@ -308,6 +310,7 @@ data class ReviewLifecycleEvent(
     attempt?.let { payload["attempt"] = it }
     assignmentDigest?.let { payload["assignment_digest"] = it }
     routedArea?.let { payload["routed_area"] = it }
+    waveNumber?.let { payload["wave_number"] = it }
     state?.let { payload["state"] = it.name.lowercase() }
     processOutcome?.let { payload["process_outcome"] = it.name.lowercase() }
   }

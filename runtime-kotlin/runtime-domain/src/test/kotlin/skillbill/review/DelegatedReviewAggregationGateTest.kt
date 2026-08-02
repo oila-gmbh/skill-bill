@@ -72,4 +72,19 @@ class DelegatedReviewAggregationGateTest {
       )
     }
   }
+
+  @Test
+  fun `aggregation rejects incomplete declared-area coverage`() {
+    assertFailsWith<IllegalArgumentException> {
+      DelegatedReviewAggregationGate.validate(
+        DelegatedReviewAggregationRequest(
+          selectedAssignments = listOf(assignment),
+          declaredAreas = setOf("security", "testing"),
+          workerResults = listOf(
+            DelegatedReviewWorkerResult(assignment, DelegatedReviewAggregationState.COMPLETED, emptyList()),
+          ),
+        ),
+      )
+    }
+  }
 }

@@ -21,3 +21,10 @@ DelegatedReviewProviderCapabilityRegistry. The matrix is deliberately
 independent from routing and inline-review defaults. Completion-only token
 observations are retained for measurement and never extend an idle deadline or
 prove specialist progress.
+
+Reliability boundary by provider: Codex uses `fork_turns: none` and its own
+native lifecycle callbacks; Claude retains fresh-process and stream-decoder
+behavior; Cursor retains its independent stream decoder and process strategy;
+Junie, Copilot, Opencode, and Zcode remain explicit unsupported outcomes. All
+providers share only the coordinator-owned capacity plan, bounded lifecycle
+diagnostics, strict aggregation gate, and durable terminal classifications.

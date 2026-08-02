@@ -26,6 +26,7 @@ data class SkillRunRequest(
   val progressIdleTimeout: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val declaredProgressProbe: AgentRunDeclaredProgressProbe = AgentRunDeclaredProgressProbe.NONE,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
@@ -143,6 +144,14 @@ data class AgentRunDeclaredProgressSnapshot(
   val processAlive: Boolean,
 )
 
+fun interface AgentRunMcpStartupProbe {
+  fun startupObserved(): Boolean
+
+  companion object {
+    val NONE: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe { false }
+  }
+}
+
 fun interface AgentRunProgressEmitter {
   fun emit(emission: AgentRunProgressEmission)
 
@@ -215,6 +224,10 @@ data class AgentRunLaunchFacts(
   val spawnFailed: Boolean,
   val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val liveness: AgentRunLivenessSnapshot? = null,
+  /** True only when the launcher crossed the process-start boundary. */
+  val processStarted: Boolean = false,
+  /** True only when an MCP startup observation was explicitly emitted by the launcher. */
+  val mcpStartupObserved: Boolean = false,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
   val inputTokens: Long? = null,

@@ -66,6 +66,7 @@ data class DelegatedReviewWorkerRequest(
   val agentId: String,
   val repoRoot: Path,
   val timeout: Duration,
+  val progressIdleTimeout: Duration? = null,
   val logicalWorkerName: String? = null,
   val modelOverride: String? = null,
 )
@@ -96,6 +97,7 @@ data class DelegatedReviewExecutionRequest(
   val launchRequest: DelegatedReviewLaunchRequest,
   val repoRoot: Path,
   val timeout: Duration,
+  val progressIdleTimeout: Duration? = null,
   val modelOverride: String? = null,
 )
 

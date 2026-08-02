@@ -29,4 +29,11 @@ class DelegatedReviewProviderCapabilityRegistryTest {
       assertTrue(capability.dimensions.terminalResult)
     }
   }
+
+  @Test
+  fun `every provider rationale carries an item keyed failure disposition`() {
+    DelegatedReviewProviderCapabilityRegistry.matrix().forEach { capability ->
+      assertTrue(capability.rationale.contains("items=13,14,15,16,17,18,24,25,28,33,40,42,47"))
+    }
+  }
 }

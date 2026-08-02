@@ -3,6 +3,7 @@ package skillbill.launcher.process
 import skillbill.launcher.agentrun.NativeReviewLifecycleCallbacks
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
@@ -29,6 +30,7 @@ data class AgentRunProcessRequest(
   val operationDeadline: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val declaredProgressProbe: AgentRunDeclaredProgressProbe = AgentRunDeclaredProgressProbe.NONE,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val activityProbe: AgentRunActivityProbe = AgentRunActivityProbe.NONE,
   val environment: Map<String, String> = emptyMap(),
@@ -127,6 +129,8 @@ data class AgentRunProcessResult(
   val interrupted: Boolean,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
+  val processStarted: Boolean = false,
+  val mcpStartupObserved: Boolean = false,
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),

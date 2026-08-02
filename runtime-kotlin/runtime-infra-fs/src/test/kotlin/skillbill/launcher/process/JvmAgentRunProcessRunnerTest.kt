@@ -2,8 +2,10 @@ package skillbill.launcher.process
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 
@@ -22,6 +24,20 @@ class JvmAgentRunProcessRunnerTest {
     assertEquals(false, result.timedOut)
     assertEquals(false, result.interrupted)
     assertEquals(false, result.spawnFailed)
+    assertEquals(true, result.processStarted)
+  }
+
+  @Test
+  fun `MCP startup is counted only when an explicit launcher probe observes it`() {
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "printf terminal-result"),
+        workingDirectory = Path.of("."),
+        mcpStartupProbe = AgentRunMcpStartupProbe { true },
+      ),
+    )
+
+    assertTrue(result.mcpStartupObserved)
   }
 
   @Test

@@ -101,6 +101,16 @@ data class DelegatedReviewDeadlinePolicy(
     require(elapsedMs >= 0)
     return elapsedMs >= limitMs(scope)
   }
+
+  companion object {
+    val DEFAULT = DelegatedReviewDeadlinePolicy(
+      startupMs = 30_000L,
+      progressIdleMs = 120_000L,
+      perWorkerMs = 30 * 60 * 1_000L,
+      aggregationMs = 30_000L,
+      wholeReviewMs = 30 * 60 * 1_000L,
+    )
+  }
 }
 
 enum class DelegatedReviewLifecycleState {

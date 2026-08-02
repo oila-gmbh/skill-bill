@@ -27,6 +27,7 @@ internal data class ReviewLifecycleRecord(
   val attempt: Int? = null,
   val assignmentDigest: String? = null,
   val routedArea: String? = null,
+  val waveNumber: Int? = null,
   val state: ReviewWorkerLifecycleState? = null,
   val processOutcome: ReviewProcessOutcome? = null,
   val durableProgress: ReviewDurableWorkerProgress? = null,
@@ -58,6 +59,7 @@ internal data class ReviewLifecycleRecord(
     attempt = attempt,
     assignmentDigest = assignmentDigest,
     routedArea = routedArea,
+    waveNumber = waveNumber,
     state = state,
     processOutcome = processOutcome,
     livenessObservations = livenessObservations,
@@ -69,7 +71,11 @@ internal data class ReviewLifecycleRecord(
     diagnostic = diagnostic,
   )
 
-  fun matches(event: ReviewLifecycleEvent): Boolean = toEvent(event.sequence, event.occurredAt) == event
+  fun matches(event: ReviewLifecycleEvent): Boolean {
+    val generated = toEvent(event.sequence, event.occurredAt)
+    return generated == event ||
+      (waveNumber != null && event.waveNumber == null && generated.copy(waveNumber = null) == event)
+  }
 }
 
 /**
@@ -105,6 +111,42 @@ class ReviewLifecycleRecorder(
     database.transaction { unitOfWork -> unitOfWork.reviews.appendReviewLifecycleEvent(event) }
     events += event
     event
+  }
+
+  /** Appends a boundary's evidence in one repository transaction so cancellation cannot expose a partial terminal set. */
+  internal fun recordAll(records: List<ReviewLifecycleRecord>): List<ReviewLifecycleEvent> = synchronized(lock) {
+    if (records.isEmpty()) return@synchronized emptyList()
+    val events = ledgers.getOrPut(records.first().reviewId) {
+      database.read { unitOfWork ->
+        unitOfWork.reviews.loadReviewLifecycleEvents(records.first().reviewId).toMutableList()
+      }
+    }
+    require(records.all { it.reviewId == records.first().reviewId }) {
+      "A lifecycle boundary batch must belong to one review."
+    }
+    val known = events.associateBy(ReviewLifecycleEvent::eventId).toMutableMap()
+    val pending = mutableListOf<ReviewLifecycleEvent>()
+    records.forEach { record ->
+      known[record.eventId()]?.let { existing ->
+        require(record.matches(existing)) {
+          "Lifecycle event '${existing.eventId}' was replayed with different evidence."
+        }
+        return@forEach
+      }
+      val event = record.toEvent(
+        sequence = (known.values.maxOfOrNull(ReviewLifecycleEvent::sequence) ?: 0) + 1,
+        occurredAt = now(),
+      )
+      known[event.eventId] = event
+      pending += event
+    }
+    if (pending.isNotEmpty()) {
+      database.transaction { unitOfWork ->
+        pending.forEach { event -> unitOfWork.reviews.appendReviewLifecycleEvent(event) }
+      }
+      events += pending
+    }
+    pending
   }
 
   fun evidence(reviewId: String): ReviewLifecycleEvidencePackage = synchronized(lock) {

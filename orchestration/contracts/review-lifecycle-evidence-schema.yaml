@@ -27,7 +27,7 @@ $defs:
     additionalProperties: false
     required: [kind, observed_at, status]
     properties:
-      kind: { enum: [process_heartbeat, mcp_heartbeat] }
+      kind: { enum: [process_heartbeat, mcp_heartbeat, process_started, mcp_startup] }
       observed_at: { $ref: "#/$defs/timestamp" }
       status: { $ref: "#/$defs/bounded_text" }
   provider_output:
@@ -118,6 +118,7 @@ $defs:
       assignment_digest: { $ref: "#/$defs/digest" }
       packet_digest: { $ref: "#/$defs/digest" }
       routed_area: { $ref: "#/$defs/identifier" }
+      wave_number: { type: integer, minimum: 1 }
       process_outcome: { $ref: "#/$defs/process_outcome" }
       liveness_observations:
         type: array
