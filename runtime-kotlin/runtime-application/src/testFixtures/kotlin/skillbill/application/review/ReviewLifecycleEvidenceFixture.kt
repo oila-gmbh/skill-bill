@@ -19,10 +19,9 @@ class ReviewLifecycleEvidenceFixture(
   val aggregation = FakeReviewAggregation(persistence)
 
   fun coordinatorPrepared() = append(
-    ReviewLifecycleEventKind.COORDINATOR_PREPARED,
-    "coordinator",
-    ReviewWorkerLifecycleState.SELECTED,
-    ReviewProcessOutcome.NOT_STARTED,
+    kind = ReviewLifecycleEventKind.COORDINATOR_PREPARED,
+    component = skillbill.ports.review.model.ReviewLifecycleComponent.COORDINATOR,
+    outcome = ReviewProcessOutcome.NOT_STARTED,
   )
 
   fun workerSelected(workerId: String, assignmentDigest: String = "b".repeat(64)) = append(
@@ -30,29 +29,32 @@ class ReviewLifecycleEvidenceFixture(
     workerId,
     ReviewWorkerLifecycleState.SELECTED,
     ReviewProcessOutcome.NOT_STARTED,
-    assignmentDigest,
+    assignmentDigest = assignmentDigest,
   )
 
-  fun workerLaunched(workerId: String, assignmentDigest: String = "b".repeat(64)) = append(
+  fun workerLaunched(workerId: String, assignmentDigest: String = "b".repeat(64), attempt: Int = 1) = append(
     ReviewLifecycleEventKind.WORKER_LAUNCHED,
     workerId,
     ReviewWorkerLifecycleState.LAUNCHED,
     ReviewProcessOutcome.NOT_STARTED,
-    assignmentDigest,
+    assignmentDigest = assignmentDigest,
+    attempt = attempt,
   )
 
-  fun workerCompleted(workerId: String, assignmentDigest: String = "b".repeat(64)) = append(
+  fun workerCompleted(workerId: String, assignmentDigest: String = "b".repeat(64), attempt: Int = 1) = append(
     ReviewLifecycleEventKind.WORKER_COMPLETED,
     workerId,
     ReviewWorkerLifecycleState.COMPLETED,
     ReviewProcessOutcome.ZERO_EXIT,
-    assignmentDigest,
+    assignmentDigest = assignmentDigest,
+    attempt = attempt,
   )
 
   fun workerFailed(
     workerId: String,
     outcome: ReviewProcessOutcome,
     assignmentDigest: String = "b".repeat(64),
+    attempt: Int = 1,
   ) = append(
     when (outcome) {
       ReviewProcessOutcome.TIMED_OUT -> ReviewLifecycleEventKind.WORKER_TIMED_OUT
@@ -70,31 +72,49 @@ class ReviewLifecycleEvidenceFixture(
       else -> ReviewWorkerLifecycleState.FAILED
     },
     outcome,
-    assignmentDigest,
+    assignmentDigest = assignmentDigest,
+    attempt = attempt,
+  )
+
+  fun coordinatorCrashed() = append(
+    kind = ReviewLifecycleEventKind.COORDINATOR_CRASHED,
+    component = skillbill.ports.review.model.ReviewLifecycleComponent.COORDINATOR,
+    outcome = ReviewProcessOutcome.COORDINATOR_CRASH,
+  )
+
+  fun aggregationStarted() = append(
+    kind = ReviewLifecycleEventKind.AGGREGATION_STARTED,
+    component = skillbill.ports.review.model.ReviewLifecycleComponent.AGGREGATION,
+    outcome = ReviewProcessOutcome.NOT_STARTED,
+  )
+
+  fun aggregationFailed() = append(
+    kind = ReviewLifecycleEventKind.AGGREGATION_FAILED,
+    component = skillbill.ports.review.model.ReviewLifecycleComponent.AGGREGATION,
+    outcome = ReviewProcessOutcome.AGGREGATION_FAILURE,
   )
 
   private fun append(
     kind: ReviewLifecycleEventKind,
-    workerId: String,
-    state: ReviewWorkerLifecycleState,
+    workerId: String? = null,
+    state: ReviewWorkerLifecycleState? = null,
     outcome: ReviewProcessOutcome,
     assignmentDigest: String? = null,
+    attempt: Int = 1,
+    component: skillbill.ports.review.model.ReviewLifecycleComponent =
+      skillbill.ports.review.model.ReviewLifecycleComponent.WORKER,
   ): ReviewLifecycleEvent {
     val event = ReviewLifecycleEvent(
       eventId = "${reviewId}:${persistence.events.size + 1}:$kind:$workerId",
       reviewId = reviewId,
       sequence = persistence.events.size + 1L,
       occurredAt = clock.next(),
-      component = if (kind.name.startsWith("COORDINATOR")) {
-        skillbill.ports.review.model.ReviewLifecycleComponent.COORDINATOR
-      } else {
-        skillbill.ports.review.model.ReviewLifecycleComponent.WORKER
-      },
+      component = component,
       eventKind = kind,
       packetDigest = packetDigest,
-      workerId = workerId.takeUnless { it == "coordinator" },
-      providerId = workerId.takeUnless { it == "coordinator" },
-      attempt = assignmentDigest?.let { 1 },
+      workerId = workerId,
+      providerId = workerId,
+      attempt = assignmentDigest?.let { attempt },
       assignmentDigest = assignmentDigest,
       routedArea = assignmentDigest?.let { "architecture" },
       state = state,
@@ -134,4 +154,10 @@ class FakeReviewAggregation(private val persistence: FakeReviewLifecyclePersiste
   fun isComplete(assignments: Set<String>): Boolean =
     persistence.events.filter { it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED }
       .mapNotNull(ReviewLifecycleEvent::assignmentDigest).toSet() == assignments
+
+  fun canPromote(assignments: Set<String>): Boolean =
+    isComplete(assignments) && persistence.events.none {
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED ||
+        it.eventKind == ReviewLifecycleEventKind.COORDINATOR_CRASHED
+    }
 }

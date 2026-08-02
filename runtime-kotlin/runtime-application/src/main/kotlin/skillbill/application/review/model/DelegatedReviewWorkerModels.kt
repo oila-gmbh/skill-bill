@@ -40,7 +40,12 @@ data class DelegatedReviewLaunchRequest(
   val repoRoot: Path,
   val namedDependencies: Set<String> = emptySet(),
   val prelaunchExpansions: List<ReviewExpansionAuthorizationRequest> = emptyList(),
-)
+  val attempt: Int = 1,
+) {
+  init {
+    require(attempt >= 1) { "Delegated review launch attempt must be positive." }
+  }
+}
 
 data class DelegatedReviewLaunch(
   val launch: GovernedReviewLaunch,

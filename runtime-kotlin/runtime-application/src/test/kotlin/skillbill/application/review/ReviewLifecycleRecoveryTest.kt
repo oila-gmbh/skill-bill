@@ -82,6 +82,9 @@ class ReviewLifecycleRecoveryTest {
     )
     assertFalse(recovery.shouldLaunch("b".repeat(64)))
     assertTrue(recovery.shouldLaunch("c".repeat(64)))
+    assertEquals(1, recovery.attemptFor("b".repeat(64)))
+    assertEquals(1, recovery.attemptFor("c".repeat(64)))
+    assertEquals(1, recovery.completedResults["b".repeat(64)]?.attempt)
     assertEquals(result, recovery.completedResults["b".repeat(64)]?.resultEnvelope)
   }
 
@@ -137,6 +140,7 @@ class ReviewLifecycleRecoveryTest {
     )
 
     assertTrue(recovery.shouldLaunch("b".repeat(64)))
+    assertEquals(2, recovery.attemptFor("b".repeat(64)))
     assertTrue(recovery.completedResults.isEmpty())
   }
 }

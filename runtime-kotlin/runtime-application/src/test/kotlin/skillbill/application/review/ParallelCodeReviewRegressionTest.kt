@@ -105,6 +105,43 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(recorder.lifecycleEvents.zipWithNext().all { (first, second) -> first.sequence < second.sequence })
   }
 
+  @Test fun `replaying a terminal lifecycle does not append conflicting evidence`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(config(), recorder)
+    val request = harnessRequest()
+
+    runner.run(request)
+    val firstEvents = recorder.lifecycleEvents.toList()
+    runner.run(request)
+
+    assertEquals(firstEvents, recorder.lifecycleEvents)
+    assertEquals(1, recorder.lifecycleEvents.count {
+      it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
+    })
+  }
+
+  @Test fun `recovery reuses durable aggregation completion when terminal persistence was interrupted`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(config(), recorder)
+    val request = harnessRequest(reviewRunId = "review-recovery-terminal")
+
+    runner.run(request)
+    val persistedAggregation = recorder.lifecycleEvents.single {
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+    }
+    recorder.lifecycleEvents.removeAll { it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED }
+
+    val result = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(result.lane1.success && result.lane2.success)
+    assertEquals(
+      1,
+      recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED },
+    )
+    val terminal = recorder.lifecycleEvents.single { it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED }
+    assertEquals(persistedAggregation.terminalCompletion, terminal.terminalCompletion)
+  }
+
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(

@@ -24,6 +24,48 @@ class ReviewLifecycleEvidenceTest {
     )
   }
 
+  @Test fun `fixture reproduces coordinator crash after worker launch before terminal persistence`() {
+    val fixture = ReviewLifecycleEvidenceFixture()
+    fixture.coordinatorPrepared()
+    fixture.workerSelected("worker-a", "a".repeat(64))
+    fixture.workerLaunched("worker-a", "a".repeat(64))
+    fixture.coordinatorCrashed()
+
+    assertFalse(fixture.aggregation.isComplete(setOf("a".repeat(64))))
+    assertEquals(ReviewLifecycleEventKind.COORDINATOR_CRASHED, fixture.persistence.events.last().eventKind)
+    assertTrue(fixture.persistence.events.none {
+      it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED ||
+        it.eventKind == ReviewLifecycleEventKind.TERMINAL_FAILED
+    })
+  }
+
+  @Test fun `aggregation failure cannot be promoted or repaired into successful output`() {
+    val fixture = ReviewLifecycleEvidenceFixture()
+    fixture.workerSelected("worker-a", "a".repeat(64))
+    fixture.workerCompleted("worker-a", "a".repeat(64))
+    fixture.aggregationStarted()
+    fixture.aggregationFailed()
+
+    assertEquals(ReviewProcessOutcome.AGGREGATION_FAILURE, fixture.persistence.events.last().processOutcome)
+    assertFalse(fixture.aggregation.canPromote(setOf("a".repeat(64))))
+    assertTrue(fixture.persistence.events.none {
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+    })
+  }
+
+  @Test fun `retry attempt is durable and distinct from the prior worker outcome`() {
+    val fixture = ReviewLifecycleEvidenceFixture()
+    fixture.workerSelected("worker-a", "a".repeat(64))
+    fixture.workerFailed("worker-a", ReviewProcessOutcome.NON_ZERO_EXIT, "a".repeat(64), attempt = 1)
+    fixture.workerLaunched("worker-a", "a".repeat(64), attempt = 2)
+    fixture.workerCompleted("worker-a", "a".repeat(64), attempt = 2)
+
+    assertEquals(
+      listOf(1, 2),
+      fixture.persistence.events.filter { it.assignmentDigest == "a".repeat(64) }.mapNotNull { it.attempt }.distinct(),
+    )
+  }
+
   @Test fun `interruption non-zero timeout unavailable and invalid output stay non-success`() {
     listOf(
       ReviewProcessOutcome.INTERRUPTED,

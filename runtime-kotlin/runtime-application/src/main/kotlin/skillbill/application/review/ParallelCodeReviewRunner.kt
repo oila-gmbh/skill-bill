@@ -114,7 +114,7 @@ class ParallelCodeReviewRunner(
     // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
     request = request.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
     val resolvedMode = ReviewExecutionModePolicy.resolve(request.lane2Tier)
-    val launchRequests = prepare(
+    val preparedLaunchRequests = prepare(
       request,
       diffText,
       evidence,
@@ -124,31 +124,43 @@ class ParallelCodeReviewRunner(
       listOf(agent1.id, agent2.id),
       budget,
     )
-    val lifecycleReview = launchRequests.firstOrNull()?.takeIf {
+    val lifecycleReview = preparedLaunchRequests.firstOrNull()?.takeIf {
       resolvedMode == ResolvedReviewExecutionMode.DELEGATED
-    }?.also { launch ->
-        lifecycleRecorder.record(
-          reviewId = launch.assignment.reviewId,
-          packetDigest = launch.assignment.packetDigest,
-          component = ReviewLifecycleComponent.COORDINATOR,
-          eventKind = ReviewLifecycleEventKind.COORDINATOR_PREPARED,
-          processOutcome = ReviewProcessOutcome.NOT_STARTED,
-        )
-        launchRequests.forEach { selected ->
-          recordWorkerLifecycle(selected, ReviewLifecycleEventKind.WORKER_SELECTED, ReviewWorkerLifecycleState.SELECTED)
-          recordWorkerLifecycle(selected, ReviewLifecycleEventKind.WORKER_QUEUED, ReviewWorkerLifecycleState.QUEUED)
-        }
     }
     val recovery = lifecycleReview?.let { launch ->
       lifecycleRecovery.read(
         launch.assignment.reviewId,
-        launchRequests.associate { selected ->
+        preparedLaunchRequests.associate { selected ->
           selected.assignment.digest to ReviewLifecycleWorkerIdentity(
             workerId = selected.assignment.lane,
             providerId = selected.agentId,
           )
         },
       )
+    }
+    val launchRequests = preparedLaunchRequests.map { launch ->
+      launch.copy(attempt = recovery?.attemptFor(launch.assignment.digest) ?: 1)
+    }
+    lifecycleReview?.let { launch ->
+      lifecycleRecorder.record(
+        reviewId = launch.assignment.reviewId,
+        packetDigest = launch.assignment.packetDigest,
+        component = ReviewLifecycleComponent.COORDINATOR,
+        eventKind = ReviewLifecycleEventKind.COORDINATOR_PREPARED,
+        processOutcome = ReviewProcessOutcome.NOT_STARTED,
+      )
+      launchRequests.forEach { selected ->
+        recordWorkerLifecycle(
+          selected,
+          ReviewLifecycleEventKind.WORKER_SELECTED,
+          ReviewWorkerLifecycleState.SELECTED,
+        )
+        recordWorkerLifecycle(
+          selected,
+          ReviewLifecycleEventKind.WORKER_QUEUED,
+          ReviewWorkerLifecycleState.QUEUED,
+        )
+      }
     }
     val relaunchableRequests = launchRequests.filter { launch ->
       recovery?.shouldLaunch(launch.assignment.digest) ?: true
@@ -183,7 +195,7 @@ class ParallelCodeReviewRunner(
         agent2.id,
       )
     } ?: launchedOutcomes
-    lifecycleReview?.let { launch ->
+    lifecycleReview?.takeUnless { recovery?.aggregationEvent != null }?.let { launch ->
       lifecycleRecorder.record(
         reviewId = launch.assignment.reviewId,
         packetDigest = launch.assignment.packetDigest,
@@ -203,40 +215,42 @@ class ParallelCodeReviewRunner(
       }
       lifecycleReview?.let { launch ->
         val successful = outcomes.lane1.success && outcomes.lane2.success
-        lifecycleRecorder.record(
-          reviewId = launch.assignment.reviewId,
-          packetDigest = launch.assignment.packetDigest,
-          component = ReviewLifecycleComponent.AGGREGATION,
-          eventKind = if (successful) {
-            ReviewLifecycleEventKind.AGGREGATION_COMPLETED
-          } else {
-            ReviewLifecycleEventKind.AGGREGATION_FAILED
-          },
-          processOutcome = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
-          terminalCompletion = if (successful) {
-            skillbill.ports.review.model.ReviewTerminalCompletion(
-              lifecycleRecorder.timestamp(),
-              ReviewProcessOutcome.ZERO_EXIT,
-            )
-          } else {
-            null
-          },
-        )
-        lifecycleRecorder.record(
-          reviewId = launch.assignment.reviewId,
-          packetDigest = launch.assignment.packetDigest,
-          component = ReviewLifecycleComponent.TERMINAL,
-          eventKind = if (successful) {
-            ReviewLifecycleEventKind.TERMINAL_COMPLETED
-          } else {
-            ReviewLifecycleEventKind.TERMINAL_FAILED
-          },
-          processOutcome = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
-          terminalCompletion = skillbill.ports.review.model.ReviewTerminalCompletion(
-            lifecycleRecorder.timestamp(),
-            if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
-          ),
-        )
+        if (recovery?.aggregationEvent == null) {
+          lifecycleRecorder.record(
+            reviewId = launch.assignment.reviewId,
+            packetDigest = launch.assignment.packetDigest,
+            component = ReviewLifecycleComponent.AGGREGATION,
+            eventKind = if (successful) {
+              ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+            } else {
+              ReviewLifecycleEventKind.AGGREGATION_FAILED
+            },
+            processOutcome = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE,
+            terminalCompletion = if (successful) {
+              skillbill.ports.review.model.ReviewTerminalCompletion(
+                lifecycleRecorder.timestamp(),
+                ReviewProcessOutcome.ZERO_EXIT,
+              )
+            } else {
+              null
+            },
+          )
+        }
+        if (recovery?.terminalRecord == null) {
+          val terminalCompletion = terminalCompletionFor(recovery, successful)
+          lifecycleRecorder.record(
+            reviewId = launch.assignment.reviewId,
+            packetDigest = launch.assignment.packetDigest,
+            component = ReviewLifecycleComponent.TERMINAL,
+            eventKind = if (terminalCompletion.status == ReviewProcessOutcome.ZERO_EXIT) {
+              ReviewLifecycleEventKind.TERMINAL_COMPLETED
+            } else {
+              ReviewLifecycleEventKind.TERMINAL_FAILED
+            },
+            processOutcome = terminalCompletion.status,
+            terminalCompletion = terminalCompletion,
+          )
+        }
       }
       result
     } catch (error: Throwable) {
@@ -372,6 +386,20 @@ class ParallelCodeReviewRunner(
     )
   }
 
+  private fun terminalCompletionFor(
+    recovery: ReviewLifecycleRecoverySnapshot?,
+    successful: Boolean,
+  ): skillbill.ports.review.model.ReviewTerminalCompletion {
+    val persistedAggregation = recovery?.aggregationEvent
+    if (persistedAggregation?.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
+      return requireNotNull(persistedAggregation.terminalCompletion) {
+        "A durable aggregation completion must carry its terminal completion evidence."
+      }
+    }
+    val status = if (successful) ReviewProcessOutcome.ZERO_EXIT else ReviewProcessOutcome.AGGREGATION_FAILURE
+    return skillbill.ports.review.model.ReviewTerminalCompletion(lifecycleRecorder.timestamp(), status)
+  }
+
   private fun rebuildRecoveredOutcomes(
     launchRequests: List<DelegatedReviewLaunchRequest>,
     relaunchableRequests: List<DelegatedReviewLaunchRequest>,
@@ -386,6 +414,12 @@ class ParallelCodeReviewRunner(
       agentId: String,
       launched: skillbill.ports.review.model.ParallelReviewLaneOutcome,
     ): skillbill.ports.review.model.ParallelReviewLaneOutcome {
+      if (
+        recovery.aggregationEvent?.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED ||
+        recovery.terminalRecord?.eventKind == ReviewLifecycleEventKind.TERMINAL_FAILED
+      ) {
+        return launched
+      }
       val selected = launchRequests.filter { it.agentId == agentId }
       val recovered = selected
         .filterNot { it.assignment.digest in relaunchableDigests }
@@ -870,7 +904,7 @@ class ParallelCodeReviewRunner(
       eventKind = eventKind,
       workerId = launchRequest.assignment.lane,
       providerId = launchRequest.agentId,
-      attempt = 1,
+      attempt = launchRequest.attempt,
       assignmentDigest = launchRequest.assignment.digest,
       routedArea = launchRequest.assignment.laneDecision.specialistSkillName ?: launchRequest.assignment.lane,
       state = state,

@@ -365,15 +365,9 @@ class ReviewLifecycleLedger(initialEvents: List<ReviewLifecycleEvent> = emptyLis
     }
     if (event.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
       require(events.none { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED })
-      require(events.filter { it.component == ReviewLifecycleComponent.WORKER }.all { worker ->
-        worker.eventKind !in setOf(
-          ReviewLifecycleEventKind.WORKER_FAILED,
-          ReviewLifecycleEventKind.WORKER_TIMED_OUT,
-          ReviewLifecycleEventKind.WORKER_CANCELLED,
-          ReviewLifecycleEventKind.WORKER_UNAVAILABLE,
-          ReviewLifecycleEventKind.WORKER_INVALID_OUTPUT,
-        )
-      }) { "Failed worker evidence cannot be promoted to successful aggregation." }
+      require(latestWorkerTerminalEvents().all { worker -> !worker.isFailure() }) {
+        "Failed worker evidence cannot be promoted to successful aggregation."
+      }
     }
     recorded[event.idempotencyKey] = event
     nextSequence += 1
@@ -381,22 +375,42 @@ class ReviewLifecycleLedger(initialEvents: List<ReviewLifecycleEvent> = emptyLis
   }
 
   fun canAggregate(selectedAssignmentDigests: Set<String>): Boolean {
-    val completed = events.filter {
+    if (events.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED }) return false
+    val latestWorkerEvents = latestWorkerTerminalEvents()
+    val completed = latestWorkerEvents.filter {
       it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED && it.resultEnvelope != null
     }
       .mapNotNull { it.assignmentDigest }
       .toSet()
-    val failed = events.any {
-      it.eventKind in setOf(
-        ReviewLifecycleEventKind.WORKER_FAILED,
-        ReviewLifecycleEventKind.WORKER_TIMED_OUT,
-        ReviewLifecycleEventKind.WORKER_CANCELLED,
-        ReviewLifecycleEventKind.WORKER_UNAVAILABLE,
-        ReviewLifecycleEventKind.WORKER_INVALID_OUTPUT,
-      )
-    }
+    val failed = latestWorkerEvents.any { it.isFailure() }
     return selectedAssignmentDigests.isNotEmpty() && !failed && completed == selectedAssignmentDigests
   }
+
+  private fun latestWorkerTerminalEvents(): List<ReviewLifecycleEvent> = events
+    .filter { it.component == ReviewLifecycleComponent.WORKER && it.isTerminalWorkerEvent() }
+    .groupBy(ReviewLifecycleEvent::assignmentDigest)
+    .values
+    .map { assignmentEvents ->
+      assignmentEvents.maxWithOrNull(compareBy<ReviewLifecycleEvent>({ it.attempt ?: 0 }, { it.sequence }))
+        ?: error("Worker lifecycle event group cannot be empty.")
+    }
+
+  private fun ReviewLifecycleEvent.isTerminalWorkerEvent(): Boolean = eventKind in setOf(
+    ReviewLifecycleEventKind.WORKER_COMPLETED,
+    ReviewLifecycleEventKind.WORKER_FAILED,
+    ReviewLifecycleEventKind.WORKER_TIMED_OUT,
+    ReviewLifecycleEventKind.WORKER_CANCELLED,
+    ReviewLifecycleEventKind.WORKER_UNAVAILABLE,
+    ReviewLifecycleEventKind.WORKER_INVALID_OUTPUT,
+  )
+
+  private fun ReviewLifecycleEvent.isFailure(): Boolean = eventKind in setOf(
+    ReviewLifecycleEventKind.WORKER_FAILED,
+    ReviewLifecycleEventKind.WORKER_TIMED_OUT,
+    ReviewLifecycleEventKind.WORKER_CANCELLED,
+    ReviewLifecycleEventKind.WORKER_UNAVAILABLE,
+    ReviewLifecycleEventKind.WORKER_INVALID_OUTPUT,
+  )
 }
 
 data class ReviewEvidenceRequest(
