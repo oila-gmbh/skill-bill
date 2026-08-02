@@ -122,7 +122,7 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(projection.predictedWaveCount, projection.actualWaveCount)
     assertEquals(projection.selectedAreaCount, projection.metrics.completedAreaCount)
     assertEquals(recorder.nativeLaunches.size, projection.metrics.processCount)
-    assertEquals(0, projection.metrics.mcpStartupCount)
+    assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
     assertTrue(recorder.nativeLaunches.all { it.progressIdleTimeout != null })
     assertTrue(projection.workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
   }
@@ -136,6 +136,15 @@ class ParallelCodeReviewRegressionTest {
 
     val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
     assertEquals(0, projection.metrics.processCount)
+    assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
+  }
+
+  @Test fun `delegated application launch carries the provider MCP startup observation`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertTrue(recorder.nativeLaunches.all { it.mcpStartupProbe.startupObserved() })
     assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
   }
 
@@ -300,6 +309,38 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED })
   }
 
+  @Test fun `resume after interruption between waves preserves durable wave numbering`() {
+    val recorder = ReviewRecorder()
+    val manyAreas = (1..8).map { "area-$it" }
+    var interruptionCalls = 0
+    val interruptedConfig = config(
+      interruptionProbe = { ++interruptionCalls >= 3 },
+    ).copy(
+      manifests = listOf(
+        reviewPack("kotlin", manyAreas, routingSignals = listOf("*.kt", "*.md")),
+      ),
+    )
+    val request = harnessRequest()
+
+    reviewHarness(interruptedConfig, recorder).run(request)
+    assertEquals(listOf(1), recorder.lifecycleProjections.last().waves.map { it.waveNumber })
+    recorder.lifecycleEvents.removeAll { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED }
+
+    val resumedConfig = interruptedConfig.copy(interruptionProbe = { false })
+    reviewHarness(resumedConfig, recorder).run(request)
+
+    val projection = recorder.lifecycleProjections.last()
+    val expectedWaveNumbers = (1..projection.predictedWaveCount).toList()
+    assertEquals(expectedWaveNumbers, projection.waves.map { it.waveNumber })
+    assertEquals(
+      expectedWaveNumbers,
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
+        .mapNotNull { it.waveNumber }
+        .distinct(),
+    )
+  }
+
   @Test fun `interrupted coordinator closes the durable worker lifecycle before rethrowing`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
@@ -334,6 +375,26 @@ class ParallelCodeReviewRegressionTest {
         it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
       },
     )
+  }
+
+  @Test fun `persisted cancellation and timeout remain authoritative on replay`() {
+    listOf(
+      "cancelled" to config(interruptionProbe = { true }),
+      "timed-out" to config(response = { RecordedWorkerResponse(timedOut = true) }),
+    ).forEach { (label, firstConfig) ->
+      val recorder = ReviewRecorder()
+      val request = harnessRequest(reviewRunId = "review-terminal-$label")
+      reviewHarness(firstConfig, recorder).run(request)
+      val eventsBeforeReplay = recorder.lifecycleEvents.toList()
+      val launchesBeforeReplay = recorder.nativeLaunches.size
+
+      val replay = reviewHarness(config(), recorder).run(request)
+
+      assertFalse(replay.lane1.success, "A persisted $label result must remain unsuccessful.")
+      assertFalse(replay.lane2.success, "A persisted $label result must remain unsuccessful.")
+      assertEquals(eventsBeforeReplay, recorder.lifecycleEvents)
+      assertEquals(launchesBeforeReplay, recorder.nativeLaunches.size)
+    }
   }
 
   @Test fun `recovery reuses durable aggregation completion when terminal persistence was interrupted`() {
@@ -518,12 +579,12 @@ class ParallelCodeReviewRegressionTest {
     diff: String = diffForPaths("src/Repo.kt"),
     budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
     preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
-    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
-      RecordedWorkerResponse()
-    },
     deadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
     monotonicNowNanos: () -> Long = System::nanoTime,
     interruptionProbe: () -> Boolean = { false },
+    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
+      RecordedWorkerResponse()
+    },
   ) = ReviewHarnessConfig(
     manifests = listOf(reviewPack("kotlin", areas, routingSignals = listOf("*.kt", "*.md"))),
     diff = diff,

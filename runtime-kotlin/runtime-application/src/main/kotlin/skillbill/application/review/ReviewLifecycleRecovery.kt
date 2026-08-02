@@ -7,6 +7,7 @@ import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
+import skillbill.review.plan.DelegatedReviewWave
 
 internal data class ReviewLifecycleRecoveredWorkerResult(
   val assignmentDigest: String,
@@ -29,6 +30,7 @@ internal data class ReviewLifecycleRecoverySnapshot(
   val aggregationEvent: ReviewLifecycleEvent? = null,
   val terminalRecord: ReviewLifecycleEvent? = null,
   val attemptByAssignment: Map<String, Int> = emptyMap(),
+  val actualWaves: List<DelegatedReviewWave> = emptyList(),
 ) {
   val completedAssignmentDigests: Set<String> get() = completedResults.keys
 
@@ -51,6 +53,7 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
     val aggregationEvent = latestAggregationEvent(ledger.events)
     val completed = completedResults(ledger.events, selectedAssignments)
     val pending = pendingAssignments(selectedAssignments.keys, completed.keys, terminalRecord, aggregationEvent)
+    val attempts = attemptsByAssignment(ledger.events, selectedAssignments.keys, pending)
     return ReviewLifecycleRecoverySnapshot(
       reviewId = reviewId,
       completedResults = completed,
@@ -58,7 +61,8 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
       terminalEvent = terminalRecord?.eventKind,
       aggregationEvent = aggregationEvent,
       terminalRecord = terminalRecord,
-      attemptByAssignment = attemptsByAssignment(ledger.events, selectedAssignments.keys, pending),
+      attemptByAssignment = attempts,
+      actualWaves = actualWaves(ledger.events, selectedAssignments, attempts),
     )
   }
 
@@ -126,6 +130,25 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
       ?: 0
     if (assignmentDigest in pendingAssignments) latestAttempt + 1 else latestAttempt.coerceAtLeast(1)
   }
+
+  private fun actualWaves(
+    events: List<ReviewLifecycleEvent>,
+    selectedAssignments: Map<String, ReviewLifecycleWorkerIdentity>,
+    attempts: Map<String, Int>,
+  ): List<DelegatedReviewWave> = events
+    .asSequence()
+    .filter { it.component == ReviewLifecycleComponent.WORKER }
+    .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
+    .filter { it.waveNumber != null }
+    .filter { event ->
+      val digest = event.assignmentDigest
+      digest != null && digest in selectedAssignments && attempts[digest] == event.attempt
+    }
+    .groupBy { requireNotNull(it.waveNumber) }
+    .toSortedMap()
+    .map { (number, waveEvents) ->
+      DelegatedReviewWave(number, waveEvents.mapNotNull { it.assignmentDigest }.distinct())
+    }
 
   private fun ReviewLifecycleEvent.isTerminalWorkerEvent(): Boolean = eventKind in setOf(
     ReviewLifecycleEventKind.WORKER_COMPLETED,

@@ -40,6 +40,7 @@ import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.ports.review.model.ReviewDurableWorkerProgress
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLifecycleComponent
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLivenessObservation
 import skillbill.ports.review.model.ReviewNativeAgentAssignment
@@ -148,6 +149,9 @@ class ParallelCodeReviewRunner(
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val prepared = prepareRun(originalRequest)
+    prepared.recovery?.terminalRecord?.let { terminalRecord ->
+      return replayPersistedTerminal(prepared, terminalRecord)
+    }
     return try {
       val outcomes = executePreparedRun(prepared)
       if (interruptionProbe()) {
@@ -203,6 +207,60 @@ class ParallelCodeReviewRunner(
     lane1 = emptyDelegatedLaneOutcome("Delegated review interrupted before a lane result was available."),
     lane2 = emptyDelegatedLaneOutcome("Delegated review interrupted before a lane result was available."),
   )
+
+  private fun replayPersistedTerminal(
+    prepared: PreparedRun,
+    terminalRecord: skillbill.ports.review.model.ReviewLifecycleEvent,
+  ): ParallelCodeReviewResult {
+    val recovery = requireNotNull(prepared.recovery)
+    val recovered = rebuildRecoveredOutcomes(
+      prepared.launchRequests,
+      emptyList(),
+      recovery,
+      interruptedOutcomes(),
+      prepared.initial.agent1Id,
+      prepared.initial.agent2Id,
+    )
+    val terminalOutcomes = when (terminalRecord.eventKind) {
+      ReviewLifecycleEventKind.TERMINAL_COMPLETED -> recovered.copy(
+        lane1 = recovered.lane1.copy(success = true, failureReason = null),
+        lane2 = recovered.lane2.copy(success = true, failureReason = null),
+      )
+      ReviewLifecycleEventKind.TERMINAL_CANCELLED -> recovered.copy(
+        lane1 = recovered.lane1.interruptedFor(
+          DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER,
+        ),
+        lane2 = recovered.lane2.interruptedFor(
+          DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER,
+        ),
+      )
+      ReviewLifecycleEventKind.TERMINAL_TIMED_OUT -> recovered.copy(
+        lane1 = recovered.lane1.copy(
+          success = false,
+          rawOutput = "",
+          failureReason = "The durable delegated review terminal record is timed out.",
+        ),
+        lane2 = recovered.lane2.copy(
+          success = false,
+          rawOutput = "",
+          failureReason = "The durable delegated review terminal record is timed out.",
+        ),
+      )
+      else -> recovered.copy(
+        lane1 = recovered.lane1.copy(
+          success = false,
+          rawOutput = "",
+          failureReason = "The durable delegated review terminal record is authoritative.",
+        ),
+        lane2 = recovered.lane2.copy(
+          success = false,
+          rawOutput = "",
+          failureReason = "The durable delegated review terminal record is authoritative.",
+        ),
+      )
+    }
+    return parallelResult(prepared.initial.agent1Id, prepared.initial.agent2Id, terminalOutcomes)
+  }
 
   private fun interruptionBoundary(prepared: PreparedRun): DelegatedReviewTerminalClassification {
     val launch = prepared.lifecycleReview ?: return DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
@@ -316,7 +374,9 @@ class ParallelCodeReviewRunner(
         totalProcessSlots = DELEGATED_REVIEW_PROCESS_SLOTS,
       ),
     )
-    lifecycleReview?.let { recordPreparedLifecycle(it, launchRequests) }
+    if (recovery?.terminalRecord == null) {
+      lifecycleReview?.let { recordPreparedLifecycle(it, launchRequests) }
+    }
     return PreparedRun(
       initial = initial,
       launchRequests = launchRequests,
@@ -325,6 +385,7 @@ class ParallelCodeReviewRunner(
       recovery = recovery,
       startedNanos = startedNanos,
       capacityPlan = capacityPlan,
+      actualWaves = recovery?.actualWaves.orEmpty(),
     )
   }
 
@@ -446,6 +507,7 @@ class ParallelCodeReviewRunner(
           prepared.initial.agent1Id,
           prepared.initial.agent2Id,
           prepared.capacityPlan,
+          initialActualWaves = prepared.actualWaves,
           actualWaves = { prepared.actualWaves = it },
           workerLaunchBoundary = {
             prepared.interruptionClassification =
@@ -499,6 +561,7 @@ class ParallelCodeReviewRunner(
   }
 
   private fun recordAggregationStarted(prepared: PreparedRun) {
+    if (prepared.recovery?.terminalRecord != null) return
     prepared.aggregationStartedNanos = monotonicNowNanos()
     prepared.interruptionClassification = DelegatedReviewTerminalClassification.INTERRUPTED_DURING_AGGREGATION
     prepared.lifecycleReview?.takeUnless { prepared.recovery?.aggregationEvent != null }?.let { launch ->
@@ -775,6 +838,9 @@ class ParallelCodeReviewRunner(
     policy: DelegatedReviewDeadlinePolicy,
     runStartedNanos: Long,
   ): Boolean {
+    recovery?.terminalRecord?.let { terminal ->
+      return terminal.terminalCompletion?.status == ReviewProcessOutcome.ZERO_EXIT
+    }
     val lifecycleEvents = database.read { unitOfWork ->
       unitOfWork.reviews.loadReviewLifecycleEvents(launch.assignment.reviewId)
     }
@@ -1119,6 +1185,7 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
     capacityPlan: DelegatedReviewCapacityPlan,
+    initialActualWaves: List<skillbill.review.plan.DelegatedReviewWave>,
     actualWaves: (List<skillbill.review.plan.DelegatedReviewWave>) -> Unit,
     workerLaunchBoundary: () -> Unit,
     waveBoundary: () -> Unit,
@@ -1135,6 +1202,7 @@ class ParallelCodeReviewRunner(
         agent1Id = agent1Id,
         agent2Id = agent2Id,
         capacityPlan = capacityPlan,
+        initialActualWaves = initialActualWaves,
         actualWaves = actualWaves,
         workerLaunchBoundary = workerLaunchBoundary,
         waveBoundary = waveBoundary,
@@ -1173,6 +1241,7 @@ class ParallelCodeReviewRunner(
     successful: Boolean,
     failureStatus: ReviewProcessOutcome? = null,
   ): ReviewTerminalCompletion {
+    recovery?.terminalRecord?.terminalCompletion?.let { return it }
     if (!successful && failureStatus != null) {
       return skillbill.ports.review.model.ReviewTerminalCompletion(
         lifecycleRecorder.timestamp(),
@@ -1489,6 +1558,7 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
     capacityPlan: DelegatedReviewCapacityPlan,
+    initialActualWaves: List<skillbill.review.plan.DelegatedReviewWave>,
     actualWaves: (List<skillbill.review.plan.DelegatedReviewWave>) -> Unit,
     workerLaunchBoundary: () -> Unit,
     waveBoundary: () -> Unit,
@@ -1504,7 +1574,7 @@ class ParallelCodeReviewRunner(
     val requestByDigest = selectedLaunchRequests.associateBy { it.assignment.digest }
     val relaunchableIds = relaunchableLaunchRequests.map { it.assignment.digest }.toSet()
     val policy = effectiveDeadlinePolicy(request)
-    val recordedWaves = mutableListOf<skillbill.review.plan.DelegatedReviewWave>()
+    val recordedWaves = initialActualWaves.toMutableList()
     var interrupted = false
     val coordinatorPlan = capacityPlan
     for (wave in coordinatorPlan.predictedWaves) {
@@ -1537,7 +1607,7 @@ class ParallelCodeReviewRunner(
         break
       }
       val launchedInWave = ConcurrentHashMap.newKeySet<String>()
-      val actualWaveNumber = recordedWaves.size + 1
+      val actualWaveNumber = wave.number
       val executor = Executors.newFixedThreadPool(waveLaunchableIds.size)
       try {
         val futures = executor.invokeAll(
@@ -1597,10 +1667,19 @@ class ParallelCodeReviewRunner(
       }
       val actualWaveWorkers = waveLaunchableIds.filter(launchedInWave::contains)
       if (actualWaveWorkers.isNotEmpty()) {
-        recordedWaves += skillbill.review.plan.DelegatedReviewWave(
-          number = recordedWaves.size + 1,
-          workerIds = actualWaveWorkers,
+        val existingWaveIndex = recordedWaves.indexOfFirst { it.number == wave.number }
+        val priorWorkerIds = recordedWaves.getOrNull(existingWaveIndex)?.workerIds.orEmpty()
+        val workerIds = (priorWorkerIds + actualWaveWorkers).distinct()
+        val actualWave = skillbill.review.plan.DelegatedReviewWave(
+          number = wave.number,
+          workerIds = workerIds,
         )
+        if (existingWaveIndex >= 0) {
+          recordedWaves[existingWaveIndex] = actualWave
+        } else {
+          recordedWaves += actualWave
+          recordedWaves.sortBy(skillbill.review.plan.DelegatedReviewWave::number)
+        }
         actualWaves(recordedWaves.toList())
         waveBoundary()
       }

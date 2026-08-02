@@ -3,6 +3,7 @@ package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
 import skillbill.db.core.DatabaseSchema
 import skillbill.error.InvalidReviewLifecycleEvidenceSchemaError
+import skillbill.error.InvalidReviewLifecycleSchemaError
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
@@ -87,39 +88,72 @@ class ReviewLifecyclePersistenceTest {
     DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
       DatabaseSchema.createBaseSchema(connection)
       val repository = skillbill.infrastructure.sqlite.SQLiteReviewRepository(connection)
-      val snapshot = DelegatedReviewLifecycleSnapshot(
-        reviewId = "review",
-        packetDigest = "a".repeat(64),
-        selectedAreaCount = 1,
-        predictedWaveCount = 1,
-        actualWaveCount = 1,
-        coordinatorSlots = 1,
-        workers = listOf(
-          DelegatedReviewWorkerRecord(
-            workerId = "codex:security",
-            providerId = "codex",
-            assignmentDigest = "b".repeat(64),
-            attempt = 1,
-            area = "security",
-            state = DelegatedReviewWorkerState.COMPLETED,
-          ),
-        ),
-        waves = listOf(DelegatedReviewWaveRecord(1, listOf("codex:security"))),
-        deadlines = emptyList(),
-        metrics = DelegatedReviewLifecycleMetrics(
-          elapsedMs = 10,
-          totalTokens = 20,
-          processCount = 1,
-          mcpStartupCount = 1,
-          selectedAreaCount = 1,
-          completedAreaCount = 1,
-          lostWorkerCount = 0,
-        ),
-      )
+      val snapshot = snapshot()
       repository.saveDelegatedReviewLifecycle(snapshot)
       assertEquals(snapshot, repository.loadDelegatedReviewLifecycle("review"))
     }
   }
+
+  @Test fun `delegated lifecycle read rejects contract drift with the typed schema error`() {
+    DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+      val repository = skillbill.infrastructure.sqlite.SQLiteReviewRepository(connection)
+      repository.saveDelegatedReviewLifecycle(snapshot())
+      connection.prepareStatement(
+        "UPDATE review_delegated_lifecycle SET bounded_payload_json = " +
+          "replace(bounded_payload_json, '0.1', '0.99')",
+      ).use { statement -> statement.executeUpdate() }
+
+      assertFailsWith<InvalidReviewLifecycleSchemaError> {
+        repository.loadDelegatedReviewLifecycle("review")
+      }
+    }
+  }
+
+  @Test fun `delegated lifecycle read rejects corrupt payload with the typed schema error`() {
+    DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+      val repository = skillbill.infrastructure.sqlite.SQLiteReviewRepository(connection)
+      repository.saveDelegatedReviewLifecycle(snapshot())
+      connection.prepareStatement(
+        "UPDATE review_delegated_lifecycle SET bounded_payload_json = '{\"kind\":\"delegated_review_lifecycle\"}'",
+      ).use { statement -> statement.executeUpdate() }
+
+      assertFailsWith<InvalidReviewLifecycleSchemaError> {
+        repository.loadDelegatedReviewLifecycle("review")
+      }
+    }
+  }
+
+  private fun snapshot() = DelegatedReviewLifecycleSnapshot(
+    reviewId = "review",
+    packetDigest = "a".repeat(64),
+    selectedAreaCount = 1,
+    predictedWaveCount = 1,
+    actualWaveCount = 1,
+    coordinatorSlots = 1,
+    workers = listOf(
+      DelegatedReviewWorkerRecord(
+        workerId = "codex:security",
+        providerId = "codex",
+        assignmentDigest = "b".repeat(64),
+        attempt = 1,
+        area = "security",
+        state = DelegatedReviewWorkerState.COMPLETED,
+      ),
+    ),
+    waves = listOf(DelegatedReviewWaveRecord(1, listOf("codex:security"))),
+    deadlines = emptyList(),
+    metrics = DelegatedReviewLifecycleMetrics(
+      elapsedMs = 10,
+      totalTokens = 20,
+      processCount = 1,
+      mcpStartupCount = 1,
+      selectedAreaCount = 1,
+      completedAreaCount = 1,
+      lostWorkerCount = 0,
+    ),
+  )
 
   private fun event() = ReviewLifecycleEvent(
     eventId = "review:worker-selected",

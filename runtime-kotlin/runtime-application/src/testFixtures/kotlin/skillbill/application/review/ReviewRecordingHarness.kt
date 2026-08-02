@@ -257,7 +257,8 @@ private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: Revie
       interrupted = response.interrupted,
       spawnFailed = response.spawnFailed,
       processStarted = response.processStarted && !response.spawnFailed,
-      mcpStartupObserved = response.mcpStartupObserved,
+      mcpStartupObserved = response.mcpStartupObserved ||
+        (response.processStarted && !response.spawnFailed && request.mcpStartupProbe.startupObserved()),
       inputTokens = response.usage?.inputTokens,
       cachedInputTokens = response.usage?.cachedInputTokens,
       outputTokens = response.usage?.outputTokens,

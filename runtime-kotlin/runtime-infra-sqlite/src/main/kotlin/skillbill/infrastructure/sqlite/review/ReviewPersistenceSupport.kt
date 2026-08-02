@@ -3,7 +3,9 @@ package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_LIFECYCLE_CONTRACT_VERSION
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
+import skillbill.contracts.review.ReviewLifecycleSchemaValidator
 import skillbill.error.InvalidReviewLifecycleEvidenceSchemaError
+import skillbill.error.InvalidReviewLifecycleSchemaError
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
 import skillbill.ports.review.model.ReviewDiagnosticReference
@@ -184,6 +186,7 @@ object ReviewPersistenceSupport {
 
   fun saveLifecycleSnapshot(connection: Connection, snapshot: DelegatedReviewLifecycleSnapshot) {
     val payload = snapshot.toPayload()
+    validateLifecycleSnapshot(payload, "sqlite delegated review lifecycle '${snapshot.reviewId}'")
     connection.prepareStatement(
       """
       INSERT INTO review_delegated_lifecycle (
@@ -211,13 +214,46 @@ object ReviewPersistenceSupport {
       statement.setString(1, reviewId)
       statement.executeQuery().use { rows ->
         if (!rows.next()) return@use null
-        val raw = rows.getString("bounded_payload_json")
-        val value = JsonSupport.parseObjectOrNull(raw)?.let(JsonSupport::jsonElementToValue)
-        val payload = JsonSupport.anyToStringAnyMap(value)
-          ?: error("Delegated review lifecycle payload for '$reviewId' is not an object.")
-        decodeLifecycleSnapshot(payload)
+        val sourceLabel = "sqlite delegated review lifecycle '$reviewId'"
+        val payload = storedLifecyclePayload(rows.getString("bounded_payload_json"), sourceLabel)
+        validateLifecycleSnapshot(payload, sourceLabel)
+        runCatching { decodeLifecycleSnapshot(payload) }.getOrElse { error ->
+          throw InvalidReviewLifecycleSchemaError(
+            sourceLabel,
+            error.message ?: "Stored delegated review lifecycle violates its model.",
+            error,
+          )
+        }
       }
     }
+
+  private fun storedLifecyclePayload(raw: String, sourceLabel: String): Map<String, Any?> = try {
+    val value = JsonSupport.parseObjectOrNull(raw)?.let(JsonSupport::jsonElementToValue)
+    JsonSupport.anyToStringAnyMap(value)
+      ?: throw InvalidReviewLifecycleSchemaError(sourceLabel, "Stored payload is not a JSON object.")
+  } catch (error: InvalidReviewLifecycleSchemaError) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidReviewLifecycleSchemaError(
+      sourceLabel,
+      error.message ?: "Stored delegated review lifecycle is not valid JSON.",
+      error,
+    )
+  }
+
+  private fun validateLifecycleSnapshot(payload: Map<String, Any?>, sourceLabel: String) {
+    try {
+      ReviewLifecycleSchemaValidator.validate(payload, sourceLabel)
+    } catch (error: InvalidReviewLifecycleSchemaError) {
+      throw error
+    } catch (error: Exception) {
+      throw InvalidReviewLifecycleSchemaError(
+        sourceLabel,
+        error.message ?: "Delegated review lifecycle failed schema validation.",
+        error,
+      )
+    }
+  }
 
   private fun decodeLifecycleSnapshot(payload: Map<String, Any?>): DelegatedReviewLifecycleSnapshot {
     requireKeys(
