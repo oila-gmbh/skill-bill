@@ -8,12 +8,23 @@ import kotlin.test.assertEquals
 
 class ReviewOutputClassificationTest {
   @Test fun `only a normal zero-exit envelope can be admitted or repaired`() {
-    val valid = classifyReviewOutput(facts(exitStatus = 0), resultEnvelopeValid = true)
+    val valid = classifyReviewOutput(
+      facts(exitStatus = 0, stdout = "NO_FINDINGS"),
+      resultEnvelopeValid = true,
+    )
     assertEquals(ReviewProcessOutcome.ZERO_EXIT, valid.processOutcome)
     assertEquals(ReviewOutputAdmission.SUCCESS, valid.admission)
 
-    val repairable = classifyReviewOutput(facts(exitStatus = 0), resultEnvelopeValid = false)
+    val repairable = classifyReviewOutput(
+      facts(exitStatus = 0, stdout = "not-an-envelope"),
+      resultEnvelopeValid = false,
+    )
     assertEquals(ReviewOutputAdmission.SCHEMA_REPAIR_ELIGIBLE, repairable.admission)
+  }
+
+  @Test fun `empty zero-exit output is a missing result and is not repairable`() {
+    val classification = classifyReviewOutput(facts(exitStatus = 0), resultEnvelopeValid = false)
+    assertEquals(ReviewOutputAdmission.REJECTED, classification.admission)
   }
 
   @Test fun `process and lifecycle failures are never admitted through schema repair`() {
@@ -32,6 +43,7 @@ class ReviewOutputClassificationTest {
 
   private fun facts(
     exitStatus: Int?,
+    stdout: String = "",
     timedOut: Boolean = false,
     interrupted: Boolean = false,
     spawnFailed: Boolean = false,
@@ -39,7 +51,7 @@ class ReviewOutputClassificationTest {
   ) = AgentRunLaunchFacts(
     agent = InstallAgent.CODEX,
     exitStatus = exitStatus,
-    stdout = "",
+    stdout = stdout,
     stderr = "",
     timedOut = timedOut,
     interrupted = interrupted,

@@ -22,6 +22,7 @@ fun classifyReviewOutput(facts: AgentRunLaunchFacts, resultEnvelopeValid: Boolea
     processOutcome = processOutcome,
     admission = when {
       processOutcome != ReviewProcessOutcome.ZERO_EXIT -> ReviewOutputAdmission.REJECTED
+      facts.stdout.isBlank() -> ReviewOutputAdmission.REJECTED
       resultEnvelopeValid -> ReviewOutputAdmission.SUCCESS
       else -> ReviewOutputAdmission.SCHEMA_REPAIR_ELIGIBLE
     },

@@ -3,6 +3,7 @@ package skillbill.application.model
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -26,6 +27,7 @@ data class ParallelCodeReviewRequest(
   val baseRevision: String? = null,
   val headRevision: String? = null,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
+  val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
 ) {
   init {
     reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }

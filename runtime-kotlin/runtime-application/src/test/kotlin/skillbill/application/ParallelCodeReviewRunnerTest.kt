@@ -47,6 +47,7 @@ import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
@@ -101,6 +102,30 @@ class ParallelCodeReviewRunnerTest {
 
     assertEquals(2, admitted)
     assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `runner carries the authoritative baseline untracked policy into every assignment`() {
+    val repo = createGitRepo()
+    createStagedFile(repo)
+    val launcher = ParallelSubtaskLauncher()
+    val observed = mutableListOf<ReviewBaselineUntrackedPolicy>()
+    val runner = runnerWithEvidenceBroker(
+      launcher,
+      ReviewEvidenceBrokerFactory { binding ->
+        observed += binding.assignment.baselineUntrackedPolicy
+        TestReviewEvidenceBroker(binding)
+      },
+    )
+    val policy = ReviewBaselineUntrackedPolicy(
+      includedPaths = listOf("baseline/kept.kt"),
+      excludedPaths = listOf("baseline/ignored.kt"),
+    )
+
+    runner.run(baseRequest(repoRoot = repo).copy(baselineUntrackedPolicy = policy))
+
+    assertTrue(observed.isNotEmpty())
+    assertTrue(observed.all { it == policy })
   }
 
   @Test
@@ -1002,7 +1027,7 @@ private fun baseRequest(
   headRevision = "head-revision",
 )
 
-private fun alwaysSuccessLauncher(stdout: String = "") = GoalRunnerSubtaskLauncher { request ->
+private fun alwaysSuccessLauncher(stdout: String = "NO_FINDINGS") = GoalRunnerSubtaskLauncher { request ->
   AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
     exitStatus = 0,
@@ -1041,7 +1066,7 @@ private class ParallelSubtaskLauncher(
     return outcome ?: AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
       exitStatus = 0,
-      stdout = "",
+      stdout = "NO_FINDINGS",
       stderr = "",
       timedOut = false,
       spawnFailed = false,

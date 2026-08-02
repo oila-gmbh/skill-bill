@@ -138,7 +138,7 @@ private fun materializeLaneEvidence(binding: ReviewEvidenceBrokerBinding, body: 
 
 /** What a recorded specialist run reports back, keyed by logical worker name. */
 data class RecordedWorkerResponse(
-  val stdout: String = "",
+  val stdout: String = "NO_FINDINGS",
   val exitStatus: Int? = 0,
   val timedOut: Boolean = false,
   val usage: ProviderTokenUsage? = null,

@@ -1,12 +1,15 @@
 package skillbill.application.review
 
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
 import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.ports.review.model.ReviewDurableWorkerProgress
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleEvidencePackage
+import skillbill.ports.review.model.ReviewLivenessObservation
+import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
@@ -41,6 +44,9 @@ class ReviewLifecycleRecorder(
     durableProgress: ReviewDurableWorkerProgress? = null,
     terminalCompletion: ReviewTerminalCompletion? = null,
     diagnostic: ReviewDiagnosticReference? = null,
+    livenessObservations: List<ReviewLivenessObservation> = emptyList(),
+    providerOutput: ReviewProviderOutputObservation? = null,
+    declaredProgress: ReviewDeclaredSpecialistProgress? = null,
   ): ReviewLifecycleEvent = synchronized(lock) {
     val events = ledgers.getOrPut(reviewId) {
       database.read { unitOfWork -> unitOfWork.reviews.loadReviewLifecycleEvents(reviewId).toMutableList() }
@@ -64,6 +70,9 @@ class ReviewLifecycleRecorder(
           existing.routedArea == routedArea &&
           existing.state == state &&
           existing.processOutcome == processOutcome &&
+          existing.livenessObservations == livenessObservations &&
+          existing.providerOutput == providerOutput &&
+          existing.declaredProgress == declaredProgress &&
           existing.durableProgress == durableProgress &&
           existing.terminalCompletion == terminalCompletion &&
           existing.diagnostic == diagnostic,
@@ -85,6 +94,9 @@ class ReviewLifecycleRecorder(
       routedArea = routedArea,
       state = state,
       processOutcome = processOutcome,
+      livenessObservations = livenessObservations,
+      providerOutput = providerOutput,
+      declaredProgress = declaredProgress,
       durableProgress = durableProgress,
       terminalCompletion = terminalCompletion,
       diagnostic = diagnostic,

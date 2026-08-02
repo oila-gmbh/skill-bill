@@ -38,11 +38,15 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentAssignment
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
+import skillbill.ports.review.model.ReviewDiagnosticReference
+import skillbill.ports.review.model.ReviewDurableWorkerProgress
+import skillbill.ports.review.model.ReviewLivenessObservation
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
-import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -87,6 +91,7 @@ class ParallelCodeReviewRunner(
   private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 ) {
   private val lifecycleRecorder = ReviewLifecycleRecorder(database)
+  private val lifecycleRecovery = ReviewLifecycleRecovery(database)
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     var request = originalRequest
@@ -133,8 +138,22 @@ class ParallelCodeReviewRunner(
           recordWorkerLifecycle(selected, ReviewLifecycleEventKind.WORKER_QUEUED, ReviewWorkerLifecycleState.QUEUED)
         }
     }
-    preflightDelegatedWorkers(request, resolvedMode, launchRequests)
-    val prepared = launchRequests.groupBy { it.agentId }
+    val recovery = lifecycleReview?.let { launch ->
+      lifecycleRecovery.read(
+        launch.assignment.reviewId,
+        launchRequests.map { it.assignment.digest }.toSet(),
+      )
+    }
+    val relaunchableRequests = launchRequests.filter { launch ->
+      recovery?.shouldLaunch(launch.assignment.digest) ?: true
+    }
+    try {
+      preflightDelegatedWorkers(request, resolvedMode, relaunchableRequests)
+    } catch (error: Throwable) {
+      lifecycleReview?.let { launch -> recordPreflightFailure(launch, relaunchableRequests) }
+      throw error
+    }
+    val prepared = relaunchableRequests.groupBy { it.agentId }
     val outcomes = try {
       runLanes(
         request,
@@ -220,6 +239,50 @@ class ParallelCodeReviewRunner(
       diagnostic = ReviewDiagnosticReference(
         "review-lifecycle/${launch.assignment.reviewId}",
         "Coordinator failed before terminal persistence.",
+      ),
+    )
+  }
+
+  private fun recordPreflightFailure(
+    launch: DelegatedReviewLaunchRequest,
+    affectedAssignments: List<DelegatedReviewLaunchRequest>,
+  ) {
+    affectedAssignments.forEach { selected ->
+      recordWorkerLifecycle(
+        selected,
+        ReviewLifecycleEventKind.WORKER_UNAVAILABLE,
+        ReviewWorkerLifecycleState.UNAVAILABLE,
+        ReviewProcessOutcome.UNAVAILABLE,
+        ReviewDiagnosticReference(
+          "review-lifecycle/${selected.assignment.reviewId}/${selected.assignment.digest.take(12)}",
+          "Worker preflight failed before provider launch.",
+        ),
+      )
+    }
+    lifecycleRecorder.record(
+      reviewId = launch.assignment.reviewId,
+      packetDigest = launch.assignment.packetDigest,
+      component = ReviewLifecycleComponent.COORDINATOR,
+      eventKind = ReviewLifecycleEventKind.COORDINATOR_CRASHED,
+      processOutcome = ReviewProcessOutcome.COORDINATOR_CRASH,
+      diagnostic = ReviewDiagnosticReference(
+        "review-lifecycle/${launch.assignment.reviewId}",
+        "Coordinator failed during delegated-worker preflight.",
+      ),
+    )
+    lifecycleRecorder.record(
+      reviewId = launch.assignment.reviewId,
+      packetDigest = launch.assignment.packetDigest,
+      component = ReviewLifecycleComponent.TERMINAL,
+      eventKind = ReviewLifecycleEventKind.TERMINAL_FAILED,
+      processOutcome = ReviewProcessOutcome.COORDINATOR_CRASH,
+      terminalCompletion = skillbill.ports.review.model.ReviewTerminalCompletion(
+        lifecycleRecorder.timestamp(),
+        ReviewProcessOutcome.COORDINATOR_CRASH,
+      ),
+      diagnostic = ReviewDiagnosticReference(
+        "review-lifecycle/${launch.assignment.reviewId}",
+        "Delegated review stopped before terminal success.",
       ),
     )
   }
@@ -319,6 +382,7 @@ class ParallelCodeReviewRunner(
         baseRevision = baseRevision,
         headRevision = headRevision,
         prelaunchExpansions = request.prelaunchExpansions,
+        baselineUntrackedPolicy = request.baselineUntrackedPolicy,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
@@ -543,7 +607,13 @@ class ParallelCodeReviewRunner(
     request: ParallelCodeReviewRequest,
     modelOverride: String? = null,
   ): ParallelReviewLaneOutcome {
-    require(launchRequests.isNotEmpty()) { "Delegated review selected no specialist launches for '$agentId'." }
+    if (launchRequests.isEmpty()) {
+      return ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = "Durable lifecycle recovery withheld every specialist launch for '$agentId'.",
+      )
+    }
     val timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes
     val started = TimeSource.Monotonic.markNow()
     val outcomes = mutableListOf<ParallelReviewLaneOutcome>()
@@ -716,6 +786,10 @@ class ParallelCodeReviewRunner(
     state: ReviewWorkerLifecycleState,
     processOutcome: ReviewProcessOutcome? = null,
     diagnostic: ReviewDiagnosticReference? = null,
+    durableProgress: ReviewDurableWorkerProgress? = null,
+    livenessObservations: List<ReviewLivenessObservation> = emptyList(),
+    providerOutput: ReviewProviderOutputObservation? = null,
+    declaredProgress: ReviewDeclaredSpecialistProgress? = null,
   ) {
     lifecycleRecorder.record(
       reviewId = launchRequest.assignment.reviewId,
@@ -729,6 +803,10 @@ class ParallelCodeReviewRunner(
       routedArea = launchRequest.assignment.laneDecision.specialistSkillName ?: launchRequest.assignment.lane,
       state = state,
       processOutcome = processOutcome,
+      livenessObservations = livenessObservations,
+      providerOutput = providerOutput,
+      declaredProgress = declaredProgress,
+      durableProgress = durableProgress,
       diagnostic = diagnostic,
     )
   }
@@ -739,12 +817,32 @@ class ParallelCodeReviewRunner(
     resultEnvelopeValid: Boolean? = null,
   ) {
     val classifiedOutcome = delegatedReviewExecutionBroker.classifyLifecycleOutcome(execution)
-    val outcome = if (
+    val facts = (execution as? DelegatedReviewExecutionOutcome.Completed)?.worker?.facts
+    val missingResult = classifiedOutcome == ReviewProcessOutcome.ZERO_EXIT && facts?.stdout?.isBlank() == true
+    val outcome = if (missingResult) {
+      ReviewProcessOutcome.MISSING_RESULT
+    } else if (
       classifiedOutcome == ReviewProcessOutcome.ZERO_EXIT && resultEnvelopeValid == false
     ) {
       ReviewProcessOutcome.INVALID_OUTPUT
     } else {
       classifiedOutcome
+    }
+    val observations = facts?.let(::livenessObservations).orEmpty()
+    val providerOutput = facts?.let { outputObservation(it, outcome) }
+    val declaredProgress = facts?.let(::declaredProgress)
+    if (outcome == ReviewProcessOutcome.ZERO_EXIT && resultEnvelopeValid == true) {
+      recordWorkerLifecycle(
+        launchRequest,
+        ReviewLifecycleEventKind.WORKER_PROGRESS,
+        ReviewWorkerLifecycleState.RUNNING,
+        ReviewProcessOutcome.ZERO_EXIT,
+        durableProgress = ReviewDurableWorkerProgress(
+          lifecycleRecorder.timestamp(),
+          "result-${launchRequest.assignment.digest.take(12)}",
+          "Specialist result admitted as durable worker progress.",
+        ),
+      )
     }
     val state = when (outcome) {
       ReviewProcessOutcome.ZERO_EXIT -> ReviewWorkerLifecycleState.COMPLETED
@@ -775,16 +873,73 @@ class ParallelCodeReviewRunner(
           ReviewProcessOutcome.INTERRUPTED -> "Worker was interrupted before a terminal result."
           ReviewProcessOutcome.UNAVAILABLE -> "Provider launch was unavailable for this worker."
           ReviewProcessOutcome.INVALID_OUTPUT -> "Worker output was not admitted as a completed result."
+          ReviewProcessOutcome.MISSING_RESULT -> "Worker exited normally without an explicit result envelope."
           ReviewProcessOutcome.NON_ZERO_EXIT -> "Worker exited without a successful process outcome."
           else -> "Worker did not produce a successful lifecycle result."
         },
       ),
+      livenessObservations = observations,
+      providerOutput = providerOutput,
+      declaredProgress = declaredProgress,
     )
   }
 
-  private fun reviewOutputEnvelopeValid(stdout: String): Boolean = stdout.lineSequence()
-    .filter(String::isNotBlank)
-    .all { line -> ParallelReviewFindingParser.parallelFindingPattern.matches(line) }
+  private fun reviewOutputEnvelopeValid(stdout: String): Boolean {
+    val lines = stdout.lineSequence().map(String::trim).filter(String::isNotBlank).toList()
+    if (lines.isEmpty()) return false
+    if (lines.size == 1 && lines.single() == REVIEW_NO_FINDINGS_ENVELOPE) return true
+    return lines.all { line -> ParallelReviewFindingParser.parallelFindingPattern.matches(line) }
+  }
+
+  private fun livenessObservations(facts: AgentRunLaunchFacts): List<ReviewLivenessObservation> = buildList {
+    facts.liveness?.lastOutputAt?.let { observedAt ->
+      addLifecycleObservation(
+        ReviewLivenessObservation.Kind.PROCESS_HEARTBEAT,
+        observedAt,
+        facts.liveness.processState.ifBlank { facts.liveness.reason },
+      )
+    }
+    facts.liveness?.lastWorkflowSnapshotAt?.let { observedAt ->
+      addLifecycleObservation(
+        ReviewLivenessObservation.Kind.MCP_HEARTBEAT,
+        observedAt,
+        facts.liveness.activeOperationName ?: facts.liveness.reason,
+      )
+    }
+  }
+
+  private fun outputObservation(
+    facts: AgentRunLaunchFacts,
+    outcome: ReviewProcessOutcome,
+  ): ReviewProviderOutputObservation = ReviewProviderOutputObservation(
+    observedAt = facts.liveness?.lastOutputAt ?: lifecycleRecorder.timestamp(),
+    outcome = outcome.name.lowercase(),
+    byteSize = facts.stdoutByteSize,
+    sha256 = facts.stdoutSha256,
+  )
+
+  private fun declaredProgress(facts: AgentRunLaunchFacts): ReviewDeclaredSpecialistProgress? {
+    val liveness = facts.liveness ?: return null
+    val observedAt = liveness.lastDurableProgressAt ?: return null
+    val label = liveness.lastDurableProgressLabel ?: return null
+    return runCatching {
+      ReviewDeclaredSpecialistProgress(
+        observedAt,
+        liveness.workflowStep ?: "declared-progress",
+        label,
+      )
+    }.getOrNull()
+  }
+
+  private fun MutableList<ReviewLivenessObservation>.addLifecycleObservation(
+    kind: ReviewLivenessObservation.Kind,
+    observedAt: String,
+    status: String,
+  ) {
+    runCatching {
+      ReviewLivenessObservation(kind, observedAt, status.take(REVIEW_LIFECYCLE_MAX_TEXT_CHARS))
+    }.getOrNull()?.let(::add)
+  }
 
   @Suppress("LongMethod")
   private fun launchInlineParentLane(
@@ -951,6 +1106,8 @@ class ParallelCodeReviewRunner(
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
+    const val REVIEW_LIFECYCLE_MAX_TEXT_CHARS = 500
+    const val REVIEW_NO_FINDINGS_ENVELOPE = "NO_FINDINGS"
   }
 
   private data class StackDetection(

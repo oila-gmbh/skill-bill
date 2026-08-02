@@ -6,6 +6,7 @@ plugins {
 dependencies {
   api(project(":runtime-domain"))
   api(project(":runtime-ports"))
+  implementation(project(":runtime-infra-fs"))
   implementation(project(":runtime-contracts"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.sqlite.jdbc)

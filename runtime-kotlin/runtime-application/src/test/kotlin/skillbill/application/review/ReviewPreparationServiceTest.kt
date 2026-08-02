@@ -117,6 +117,25 @@ class ReviewPreparationServiceTest {
       dependencyAllowlist = allowlist,
     )
 
+  @Test fun `baseline untracked policy is packet and assignment authority`() {
+    val policy = ReviewBaselineUntrackedPolicy(
+      includedPaths = listOf("baseline/kept.kt"),
+      excludedPaths = listOf("baseline/ignored.kt"),
+    )
+    val result = service(ports()).prepare(request()).let { baseline ->
+      service(ports()).prepare(
+        request().copy(baselineUntrackedPolicy = policy),
+      ) to baseline
+    }
+
+    val withPolicy = result.first
+    val withoutPolicy = result.second
+    assertEquals(policy, withPolicy.packet.baselineUntrackedPolicy)
+    assertTrue(withPolicy.assignments.all { it.baselineUntrackedPolicy == policy })
+    assertTrue(withPolicy.packet.digest != withoutPolicy.packet.digest)
+    assertTrue(withPolicy.assignments.map { it.digest } != withoutPolicy.assignments.map { it.digest })
+  }
+
   @Test fun `every fact port is resolved exactly once across a multi lane prepare`() {
     val counting = ports()
     val result = service(counting).prepare(request())
