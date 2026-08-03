@@ -10,7 +10,6 @@ const val GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY: String = "goal_subtask_review_
 const val GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY: String = "goal_subtask_review_input"
 const val GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX: String = "goal_subtask_review_results"
-const val GOAL_SUBTASK_REVIEW_MAX_PASSES: Int = 2
 const val GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY: String = "blocker"
 
 enum class GoalSubtaskOperatorDecision(val wireValue: String) {
@@ -156,7 +155,7 @@ data class GoalSubtaskReviewPassResult(
   val executedMode: CodeReviewExecutionMode? = null,
 ) {
   init {
-    require(passNumber in 1..GOAL_SUBTASK_REVIEW_MAX_PASSES) { "Goal review pass number must be 1 or 2." }
+    require(passNumber >= 1) { "Goal review pass number must be a positive integer." }
     require(
       verdict in setOf(
         FeatureTaskRuntimeVerdict.APPROVED,
@@ -345,8 +344,8 @@ data class GoalSubtaskReviewState(
   init {
     require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) {
       "Unsupported goal review state contract '$contractVersion'. " +
-        "Records written before $GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION carry pre-SKILL-159 " +
-        "review-mode semantics, are rejected, and must be regenerated."
+        "Records written before $GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION carry a two-pass " +
+        "remediation ceiling, are rejected, and must be regenerated."
     }
     resolvedTier?.let { tier ->
       require(tier != CodeReviewExecutionMode.AUTO) {
@@ -365,7 +364,7 @@ data class GoalSubtaskReviewState(
     require(baselineUntrackedPaths == baselineUntrackedPaths.distinct().sorted()) {
       "Baseline untracked paths must be sorted and unique."
     }
-    require(completedPassCount in 0..GOAL_SUBTASK_REVIEW_MAX_PASSES) { "Completed review passes must be 0..2." }
+    require(completedPassCount >= 0) { "Completed review passes must be non-negative." }
     require(passResults.size == completedPassCount) { "Pass result count must equal completed pass count." }
     require(passResults.map(GoalSubtaskReviewPassResult::passNumber) == (1..completedPassCount).toList()) {
       "Pass results must be ordered and contiguous."
@@ -378,7 +377,7 @@ data class GoalSubtaskReviewState(
       }
     }
     reservedPassNumber?.let { reserved ->
-      require(reserved == completedPassCount + 1 && reserved <= GOAL_SUBTASK_REVIEW_MAX_PASSES) {
+      require(reserved == completedPassCount + 1) {
         "Reserved pass must be the next permitted review pass."
       }
     }
@@ -386,10 +385,10 @@ data class GoalSubtaskReviewState(
     require(
       disposition != GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED ||
         (
-          completedPassCount == GOAL_SUBTASK_REVIEW_MAX_PASSES &&
+          completedPassCount >= 1 &&
             passResults.lastOrNull()?.blocksAdvance == true
           ),
-    ) { "review_cap_reached requires unresolved Blocker findings on pass two." }
+    ) { "review_cap_reached requires unresolved Blocker findings on a completed pass." }
     require(
       blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size,
     ) {
@@ -413,10 +412,11 @@ data class GoalSubtaskReviewState(
     passResults.lastOrNull()?.verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
 
   /**
-   * An operator-granted retry round re-opens the already-consumed final pass rather than reserving a
-   * new one: the pass number is unchanged, so `GOAL_SUBTASK_REVIEW_MAX_PASSES` still holds and no
-   * consumed pass is re-reserved. Only the stale result and its pause are dropped, so the granted fix
-   * is genuinely re-reviewed instead of having the overridden verdict replayed at it.
+   * Remediation is bounded by the Blocker disposition, not by a pass count: an unresolved Blocker
+   * always reserves the next pass. An operator-granted retry round instead re-opens the
+   * already-consumed pass rather than reserving a new one, dropping only the stale result and its
+   * pause so the granted fix is genuinely re-reviewed instead of having the overridden verdict
+   * replayed at it.
    */
   fun reserveNextPass(): GoalSubtaskReviewState = when {
     retryReviewPending && reservedPassNumber == null && passResults.isNotEmpty() -> copy(
@@ -430,7 +430,6 @@ data class GoalSubtaskReviewState(
     reviewCapReached -> this
     reviewSkippedByUser -> this
     reservedPassNumber != null -> this
-    completedPassCount >= GOAL_SUBTASK_REVIEW_MAX_PASSES -> this
     else -> copy(reservedPassNumber = completedPassCount + 1)
   }
 
@@ -448,39 +447,24 @@ data class GoalSubtaskReviewState(
       "Each prior Blocker may carry exactly one disposition."
     }
     val disposedPass = blockerDispositions.isNotEmpty()
-    // A disposed pass is gated by BOTH its dispositions and its own findings: the remediation pass
-    // reviews diff(pre-fix -> post-fix) precisely so a defect the remediation itself introduced is
-    // caught, and short-circuiting on the dispositions alone would let that new Blocker through.
-    val unresolvedBlocker = if (disposedPass) {
-      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
-        blocksAdvance(unresolvedFindingCount, findings)
-    } else {
-      blocksAdvance(unresolvedFindingCount, findings)
-    }
-    // The Blocker disposition, not cap exhaustion, terminates the remediation loop: a disposed pass
-    // with every Blocker resolved or superseded advances, and one with a survivor pauses resumably.
-    // Only an undisposed pass still falls back to the cap-reached block.
-    val capReached = passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES && unresolvedBlocker && !disposedPass
-    val paused = passNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES && unresolvedBlocker && disposedPass
     val result = GoalSubtaskReviewPassResult(
       passNumber = passNumber,
-      verdict = if (capReached) FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED else verdict,
+      verdict = verdict,
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
       executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber),
     )
+    // A settled pass never carries a count-derived disposition: an unresolved Blocker reserves the
+    // next remediation pass instead. The pause survives only as an operator-driven control, and a
+    // freshly settled pass is by definition not waiting on one.
     return copy(
       reservedPassNumber = null,
       completedPassCount = passNumber,
-      disposition = when {
-        capReached -> GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
-        paused -> GoalSubtaskReviewDisposition.PAUSED
-        else -> disposition
-      },
+      disposition = GoalSubtaskReviewDisposition.PENDING,
       passResults = passResults + result,
       blockerDispositions = if (disposedPass) blockerDispositions else this.blockerDispositions,
-      operatorDecision = if (paused) null else operatorDecision,
+      operatorDecision = null,
       // The granted round has now been re-reviewed, so the carried-forward result is fresh again.
       operatorRetryRounds = 0,
     )

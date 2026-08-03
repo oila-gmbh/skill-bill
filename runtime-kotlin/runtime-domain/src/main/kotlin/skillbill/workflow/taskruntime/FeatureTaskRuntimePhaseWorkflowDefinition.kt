@@ -6,7 +6,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -522,12 +521,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * span structurally excludes `review`, which now sits after `audit`. Audit-gap reconciliation is
    * unbounded because each new audit verdict is the authority on whether implementation is complete.
    *
-   * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span, bounded at one
-   * review->fix iteration under `PER_SUBTASK` cap scope. Cap exhaustion is not the terminating
-   * signal; the Blocker disposition is. With every prior Blocker `resolved` or `superseded` the child
-   * advances to `validate`; with any Blocker still `unresolved` it pauses resumably for a bounded
-   * operator decision instead of advancing. That span structurally excludes `audit`, so no review
-   * outcome can reopen an audit repair plan.
+   * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span. The edge
+   * declares no finite cap: an unresolved Blocker is the sole re-entry signal, so remediation runs as
+   * many rounds as the Blockers survive and the first Blocker-free review advances to `validate`
+   * regardless of how many rounds preceded it. Major, Minor, and Nit findings never produce
+   * `changes_requested`; they stay advisory ledger entries and cannot reopen the span. That span
+   * structurally excludes `audit`, so no review outcome can reopen an audit repair plan.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
    * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
@@ -549,8 +548,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
-          perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
+          perEdgeCap = null,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
         FeatureTaskRuntimeBackwardEdge(

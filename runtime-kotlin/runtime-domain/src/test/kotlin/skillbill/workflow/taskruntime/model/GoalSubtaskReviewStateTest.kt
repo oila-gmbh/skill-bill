@@ -85,31 +85,102 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `two unresolved passes preserve the cap disposition without permitting a third pass`() {
-    val firstPass = GoalSubtaskReviewState.initial(
+  fun `unresolved blockers keep reserving the next pass with contiguous watermarks`() {
+    var state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("preexisting.tmp"),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-    ).reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
     )
 
-    val capped = firstPass.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
-    )
-
-    assertTrue(capped.reviewCapReached)
-    assertEquals(2, capped.completedPassCount)
-    assertEquals(FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED, capped.passResults.last().verdict)
-    assertEquals(capped, capped.reserveNextPass())
+    (1..10).forEach { passNumber ->
+      val reserved = state.reserveNextPass()
+      assertEquals(passNumber, reserved.reservedPassNumber, "Pass $passNumber must be reservable.")
+      assertEquals(passNumber - 1, reserved.completedPassCount)
+      state = reserved.completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository$passNumber", "Unsafe mutation")),
+      )
+      assertEquals(passNumber, state.completedPassCount)
+      assertFalse(state.reviewCapReached, "No pass count may mint a cap disposition.")
+      assertFalse(state.pausedForOperatorDecision, "No pass count may mint a pause.")
+      assertEquals(
+        (1..passNumber).toList(),
+        state.passResults.map(GoalSubtaskReviewPassResult::passNumber),
+        "Pass results must stay ordered and contiguous.",
+      )
+    }
   }
 
   @Test
-  fun `a second pass with only major findings never reaches the cap disposition`() {
+  fun `the first blocker-free pass settles regardless of how many passes preceded it`() {
+    var state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "9".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    )
+    repeat(6) {
+      state = state.reserveNextPass().completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = emptyList(),
+      )
+    }
+
+    val settled = state.reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+
+    assertEquals(7, settled.completedPassCount)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, settled.passResults.last().verdict)
+    assertFalse(settled.reviewCapReached)
+    assertFalse(settled.pausedForOperatorDecision)
+  }
+
+  @Test
+  fun `arbitrary positive pass numbers survive serialization and resume`() {
+    var state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "7".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    )
+    repeat(12) {
+      state = state.reserveNextPass().completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = emptyList(),
+      )
+    }
+    val reservedThirteenth = state.acknowledgeSummariesThrough(12).reserveNextPass()
+
+    val decoded = GoalSubtaskReviewState.fromArtifactMap(reservedThirteenth.toArtifactMap())
+
+    assertEquals(reservedThirteenth, decoded)
+    assertEquals(13, decoded.reservedPassNumber)
+    assertEquals(12, decoded.completedPassCount)
+    assertEquals(12, decoded.emittedPassCount)
+    assertEquals((1..12).toList(), decoded.passResults.map(GoalSubtaskReviewPassResult::passNumber))
+  }
+
+  @Test
+  fun `a non-positive pass number is rejected`() {
+    listOf(0, -1).forEach { passNumber ->
+      assertFailsWith<IllegalArgumentException> {
+        GoalSubtaskReviewPassResult(
+          passNumber = passNumber,
+          verdict = FeatureTaskRuntimeVerdict.APPROVED,
+          reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
+          unresolvedFindingCount = 0,
+          findings = emptyList(),
+        )
+      }
+    }
+  }
+
+  @Test
+  fun `a later pass with only major findings never reaches the cap disposition`() {
     val firstPass = GoalSubtaskReviewState.initial(
       reviewBaseSha = "e".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -134,7 +205,7 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `review_cap_reached is rejected when pass two carries no blocker finding`() {
+  fun `review_cap_reached is rejected when the last completed pass carries no blocker finding`() {
     val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "f".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -143,9 +214,9 @@ class GoalSubtaskReviewStateTest {
 
     assertFailsWith<IllegalArgumentException> {
       state.copy(
-        completedPassCount = GOAL_SUBTASK_REVIEW_MAX_PASSES,
+        completedPassCount = 2,
         disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED,
-        passResults = (1..GOAL_SUBTASK_REVIEW_MAX_PASSES).map { passNumber ->
+        passResults = (1..2).map { passNumber ->
           GoalSubtaskReviewPassResult(
             passNumber = passNumber,
             verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,

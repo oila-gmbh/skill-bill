@@ -42,11 +42,6 @@ class FeatureTaskRuntimeOperatorDecisionEntryPointTest {
       ),
       "The granted implement_fix iteration must be entered instead of re-pausing on the carried disposition.",
     )
-    assertEquals(
-      0,
-      FeatureTaskRuntimeOperatorRetryGrant.discountedIterationCount(consumedIterations = 1, grantActive = true),
-      "The grant is unbudgeted: it discounts the one consumed review_fix iteration.",
-    )
   }
 
   @Test
