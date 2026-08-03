@@ -583,9 +583,10 @@ internal object DatabaseMigrations {
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
-    // Optimistic reads-only pre-check: every read open would otherwise take the write lock just to
-    // learn there is nothing to do. The in-lock re-derivation below stays the sole authority.
-    if (!hasPendingWork(MigrationLedger.readState(connection))) return
+    // Optimistic reads-only pre-check: every open would otherwise take the write lock just to learn
+    // there is nothing to do. The in-lock re-derivation below stays the sole authority.
+    val ledger = MigrationLedger.readState(connection)
+    if (!ledger.hasPendingWork(migrations.map { migration -> migration.name })) return
 
     connection.inImmediateTransaction {
       MigrationLedger.ensureNameKeyed(this)
@@ -597,13 +598,6 @@ internal object DatabaseMigrations {
           MigrationLedger.record(this, migration)
         }
     }
-  }
-
-  private fun hasPendingWork(state: MigrationLedger.State): Boolean = when {
-    !state.tableExists -> true
-    // ensureNameKeyed rebuilds the table, so a version-keyed ledger is pending work by itself.
-    state.versionKeyed -> true
-    else -> migrations.any { migration -> migration.name !in state.appliedNames }
   }
 
   private fun requireDeterministicMigrations(migrations: List<DatabaseMigration>) {

@@ -335,11 +335,13 @@ class DatabaseMigrationsTest {
       assertFalse(versionIsPrimaryKey(connection), "The ledger must already be name-keyed for this to gate.")
       assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
       connection.createStatement().use {
+        // state_entered_at is NOT NULL in the base schema, so an unset value is the empty string the
+        // heal's COALESCE treats as missing; it must fall back to started_at.
         it.executeUpdate(
           """
           INSERT INTO feature_task_workflows (
             workflow_id, mode, contract_version, workflow_status, started_at, updated_at, state_entered_at
-          ) VALUES ('wfl-gate-heal', 'prose', '0.1', 'running', '2026-05-01T10:00:00Z', '', NULL)
+          ) VALUES ('wfl-gate-heal', 'prose', '0.1', 'running', '2026-05-01T10:00:00Z', '', '')
           """.trimIndent(),
         )
       }

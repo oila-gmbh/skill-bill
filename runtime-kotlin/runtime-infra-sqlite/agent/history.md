@@ -1,3 +1,14 @@
+## [2026-08-03] SKILL-155 read-path write-lock removal
+Areas: runtime-kotlin/runtime-infra-sqlite db/core + sqlite factory, runtime-kotlin/runtime-ports persistence, runtime-kotlin/runtime-application featuretask + workflow, runtime-kotlin/runtime-cli featuretask
+- `DatabaseMigrations.apply` takes an optimistic read-only pre-check (`MigrationLedger.readState`) and returns early when nothing is pending, so a read open no longer grabs the write lock just to learn there is no work. The in-lock re-derivation stays the sole authority, so concurrent applies still run each migration exactly once. reusable
+- Pending-work rules: missing ledger table and a version-keyed ledger both count as pending (`ensureNameKeyed` rebuilds the table under the lock); otherwise pending is any migration name absent from `applied_names`. reusable
+- `DatabaseRuntime.openReadDb` opens existing databases with `SQLiteConfig.setReadOnly(true)`; an absent database is still bootstrapped write-capable because callers rely on first-use creation. This makes read-path writes fail loudly instead of silently contending.
+- New `DatabaseSessionFactory.selfManagedWrite` (defaults to `read`) is the write-capable, no-outer-transaction seam for repository methods that own their own transaction boundary and cannot nest in `transaction`. Callers previously misusing `read` for writes (worker coordinator, planning checkpoint, rejected-output CLI) moved onto it. reusable
+- Contended read and no-op apply both return under 1000 ms, well inside the 5000 ms busy_timeout; revert-proofed by tests that fail with SQLITE_BUSY / a completed write when either change is reverted.
+- `MigrationLedger.State` owns `hasPendingWork` (detekt LargeClass on DatabaseMigrations); no schema or contract-version change, purely a locking/capability change.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-10] SKILL-109 Follow-up 1 telemetry reliability remediation
 Areas: runtime-kotlin/runtime-infra-sqlite reconciliation/telemetry, runtime-kotlin/runtime-application telemetry sync, runtime-kotlin/runtime-ports persistence, runtime-kotlin/runtime-domain review labels, orchestration/contracts telemetry schema
 - Goal-issue abandonment is gated to last-segment-blocked candidates (last_blocked_at NOT NULL AND latest_segment_workflow_id = last_blocked_segment_workflow_id); never-blocked or newer-active issues are never abandoned. reusable

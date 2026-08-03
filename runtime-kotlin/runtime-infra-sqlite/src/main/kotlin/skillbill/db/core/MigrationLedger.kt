@@ -7,7 +7,14 @@ internal object MigrationLedger {
     val tableExists: Boolean,
     val versionKeyed: Boolean,
     val appliedNames: Set<String>,
-  )
+  ) {
+    fun hasPendingWork(migrationNames: List<String>): Boolean = when {
+      !tableExists -> true
+      // ensureNameKeyed rebuilds the table, so a version-keyed ledger is pending work by itself.
+      versionKeyed -> true
+      else -> migrationNames.any { name -> name !in appliedNames }
+    }
+  }
 
   // Read-only snapshot of the ledger, safe to take outside the write transaction. A version-keyed
   // ledger still needs ensureNameKeyed under the lock, so callers must treat versionKeyed as work.
