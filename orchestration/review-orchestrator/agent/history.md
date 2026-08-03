@@ -1,3 +1,14 @@
+## [2026-08-03] SKILL-159 subtask 3 governed content, docs, and packs for the restructured review modes
+Areas: orchestration/review-orchestrator, orchestration/review-delegation, orchestration/skill-classes, orchestration/telemetry-contract, skills/bill-code-review, platform-packs (generic, go, ios, kotlin, php, python, rust, typescript), docs, runtime-kotlin/runtime-infra-fs
+- Every installable governed surface now describes exactly three review modes: `delegated` as the default specialist fan-out, `inline` as a single-prompt review over the child-owned delta, and `auto` as first-pass-delegated with follow-up-inline.
+- Removed external-process delegated-review vocabulary (provider CLIs as review workers, capability matrices, canaries, promotion gates, worker processes, waves) from skills, packs, skill-class YAMLs, orchestration playbooks, and docs; the specialist contract now backs `delegated`.
+- Reusable: a banned-vocabulary sweep over installable governed content is the cheap gate that keeps mode vocabulary from regressing after a subsystem removal; pair it with the existing governed-content pinning tests rather than replacing them.
+- Reusable: when a subsystem is removed but its design record is kept, a short removal preface on the historical decision doc (`docs/delegated-review/decision.md`) stops old vocabulary being read as current, so the bodies need no rewrite.
+- `ReviewSkillStructureValidator` and scaffold content starters emit the new mode set, so newly scaffolded packs cannot reintroduce the retired wording; the nine dead SKILL-145 `spec_followup_*.md` planning artifacts are deleted with no live-path references.
+- Known limit: `./install.sh` was not run in this phase, so the installed-catalog check for the new staging hash (AC-007) is still outstanding; run it before relying on local agent installs.
+Feature flag: N/A
+Acceptance criteria: 6/7 implemented
+
 ## [2026-07-12] SKILL-114 cross-pack conformance and release gate
 Areas: orchestration/review-orchestrator, orchestration/stack-routing, runtime-kotlin/runtime-infra-fs, platform-packs
 - Removed the temporary substance baseline and suppression paths; visible malformed pack roots now fail loudly, and all eight maintained packs pass the normal substance audit with ten effective specialist areas and directly routed quality checks.
