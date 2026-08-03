@@ -35,7 +35,7 @@ convention:
 Resolve the mode to `runtime` when no `mode:` argument is supplied.
 
 Accept at most one `code-review:auto`, `code-review:inline`, or
-`code-review:delegated` token. Omission resolves to `inline`; malformed, unknown,
+`code-review:delegated` token. Omission resolves to `delegated`; malformed, unknown,
 duplicate, or conflicting values fail before confirmation or goal launch. The
 selected mode is immutable for the parent and every child: a resume reuses it,
 and an attempted explicit change must fail loudly before launching a subtask.

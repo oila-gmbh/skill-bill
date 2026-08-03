@@ -47,8 +47,10 @@ experimental explicit-opt-in providers. Junie, Copilot, Opencode, and Zcode
 are unsupported. No provider is supportable for promotion from the current
 evidence.
 
-Inline remains the default and `auto` resolves to inline. Only an explicit
-delegated selection launches workers. An explicit delegated request for an
+Delegated remains the default and `auto` resolves by pass number: pass one and
+any scope with no pass number resolve to delegated, follow-up and remediation
+passes resolve to inline. A delegated selection launches workers, whether it is
+explicit, defaulted, or auto-resolved. A delegated request for an
 unsupported or unavailable provider terminates with a bounded unsupported
 outcome; it does not silently fall back to inline.
 

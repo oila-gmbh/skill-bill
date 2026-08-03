@@ -16,7 +16,7 @@ It does not replace `bill-feature-spec`, `bill-feature-task`, or `bill-feature-g
 ## Code-review selection
 
 Accept zero or one `code-review:auto`, `code-review:inline`, or
-`code-review:delegated` argument. Omission resolves to inline review.
+`code-review:delegated` argument. Omission resolves to delegated review.
 Reject a malformed, unknown, repeated, or conflicting `code-review:` argument
 before preparing a spec, presenting confirmation, opening a workflow, or
 launching a child. Carry an explicit argument unchanged into the selected task
