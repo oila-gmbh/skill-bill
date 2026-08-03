@@ -759,8 +759,6 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun resumeInFlightReviewFix(edge: FeatureTaskRuntimeBackwardEdge): String? {
     if (edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return null
-    val reviewRecord = state.recordFor(edge.fromPhaseId)
-    if (reviewRecord?.reviewPassNumber == 2 || state.outputCountFor(edge.fromPhaseId) >= 2) return null
     val destinationRecord = state.recordFor(edge.destinationPhaseId)
       ?.takeIf { it.loopId == edge.loopId && it.edgeIteration == state.edgeIterationCount(edge.loopId) }
       ?: return null
@@ -1371,7 +1369,6 @@ internal class FeatureTaskRuntimeRunLoop(
     reentry: PendingReentry?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): PhaseOutcome {
-    val completedReviewBudgetOutput = completedReviewBudgetOutput(phaseId, state)
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = phaseId,
       assignment = request.agentAssignment,
@@ -1410,9 +1407,6 @@ internal class FeatureTaskRuntimeRunLoop(
       reentry = reentry,
     )
     settledFullyClosedAudit(run, state, observability)?.let { return it }
-    completedReviewBudgetOutput
-      ?.let { output -> settleCompletedReviewBudget(run, state, observability, output) }
-      ?.let { return it }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
@@ -1425,55 +1419,6 @@ internal class FeatureTaskRuntimeRunLoop(
         "Goal-subtask review preparation could not establish the exact durable review scope.",
       )
     }
-  }
-
-  private fun settleCompletedReviewBudget(
-    run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
-    observability: FeatureTaskRuntimeRunObservability,
-    output: FeatureTaskRuntimePhaseOutput,
-  ): PhaseOutcome {
-    if (!isGoalContinuationRun(run.request) || run.reentry == null) return PhaseOutcome.completed(output)
-    val iteration = state.nextIteration(run.phaseId)
-    val phaseState = phaseStateRequest(
-      run,
-      iteration,
-      STATUS_COMPLETED,
-      finished = true,
-      outputArtifact = output.payload,
-      normalizedOutput = output.normalizedOutput,
-      repairEvidence = output.repairEvidence,
-    )
-    state.reserveReviewPass(phaseState.reviewPassNumber)
-    val persisted = runCatching {
-      recorder.recordCompletedPhase(phaseState, run.request.dbPathOverride)
-    }.getOrElse { error ->
-      return blockAndPersist(
-        run,
-        iteration,
-        "Completed goal review budget could not atomically persist its canonical result: " +
-          error.message.orEmpty(),
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        outputArtifact = output.payload,
-        normalizedOutput = output.normalizedOutput,
-        repairEvidence = output.repairEvidence,
-      )
-    }
-    if (!persisted) {
-      return blockAndPersist(
-        run,
-        iteration,
-        "Completed goal review budget could not atomically persist its canonical result.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        outputArtifact = output.payload,
-        normalizedOutput = output.normalizedOutput,
-        repairEvidence = output.repairEvidence,
-      )
-    }
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    return PhaseOutcome.completed(output.copy(phaseId = run.phaseId, iteration = iteration))
   }
 
   private fun declaredCriterionRefs(): List<String> =
@@ -3292,17 +3237,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    val currentPass = state.currentReviewPassNumber()
-    return if (currentPass == 2 || state.outputCountFor(run.phaseId) > 0) 2 else currentPass ?: 1
-  }
-
-  private fun completedReviewBudgetOutput(
-    phaseId: String,
-    state: FeatureTaskRuntimeRunState,
-  ): FeatureTaskRuntimePhaseOutput? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    val budgetCompleted = state.completedReviewPassNumber() == 2 || state.outputCountFor(phaseId) >= 2
-    return state.outputFor(phaseId)?.takeIf { budgetCompleted }
+    return state.currentReviewPassNumber() ?: (state.outputCountFor(run.phaseId) + 1)
   }
 
   private fun prepareLaunch(

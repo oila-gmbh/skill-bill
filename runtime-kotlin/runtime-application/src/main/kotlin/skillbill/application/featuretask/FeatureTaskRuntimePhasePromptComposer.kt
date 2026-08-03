@@ -301,7 +301,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-      reviewPassNumber == 2
+      (reviewPassNumber ?: 1) >= 2
     val reviewScope = scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
@@ -378,7 +378,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
   ): String {
-    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || reviewPassNumber != 2) {
+    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
+      (reviewPassNumber ?: 1) < 2
+    ) {
       return ""
     }
     if (priorBlockerFindingIds.isEmpty()) {
