@@ -211,7 +211,7 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `prose review lanes share the two-pass cap while decomposed children retain cap continuation`() {
+  fun `prose review lanes count as one pass while decomposed children retain durable pass continuation`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runner = Files.readString(
@@ -226,14 +226,14 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(runner, "The coordinated lanes are exactly one pass")
     assertContains(nativeAgents, "Invoke both lanes directly and do not pass a parallel argument into either lane")
     assertContains(runner, "resume that accounted pass instead of reserving another")
-    assertContains(prose, "never start pass three")
+    assertContains(prose, "no pass number ends\nthe loop")
     assertContains(
       prose,
       "Continue past Major, Minor, and Nit findings while preserving them as review evidence",
     )
     assertContains(
       runner,
-      "preserve complete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
+      "preserve\ncomplete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
     )
     assertContains(runner, "class/symbol-or-sanitized label, and concise text")
     assertContains(
@@ -242,12 +242,11 @@ class FeatureSpecSkillWiringContractTest {
     )
     assertContains(
       prose,
-      "The two-pass cap applies to every feature task",
+      "This applies to every feature task",
     )
     assertContains(
       prose,
-      "and standalone prose feature tasks stop only when their inline re-review still\n" +
-        "has unresolved Blocker findings",
+      "standalone prose feature tasks advance only after every Blocker finding clears",
     )
   }
 

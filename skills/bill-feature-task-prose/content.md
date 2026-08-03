@@ -298,7 +298,8 @@ Review loop:
 - Before respawning, capture the exact diff pointer the review was run against — the branch name, commit range (for example `main..HEAD`), or explicit file list — and pass it as `{branch_or_commit_range}` in the fix briefing so the subagent knows which diff the findings refer to.
 - Re-run review.
 - Continue past Major, Minor, and Nit findings while preserving them as review evidence.
-- Reserve at most one inline re-review, for two total review passes. Never start pass three.
+- Reserve each inline re-review before launching it, and keep repairing and re-reviewing while any Blocker finding remains. No iteration count stops the loop.
+- When crossing from iteration 3 to iteration 4, print a warning that the advisory threshold of 3 was exceeded and remediation continues. The threshold is a warning signal, not a cap.
 - Do not pause to ask the user which finding to fix.
 
 For a decomposed prose-goal child, the parent supplies an immutable
@@ -316,18 +317,23 @@ with the same per-pass mode and exact prepared delta. Do not
 pass `parallel:` to either lane: the lanes must not recursively request
 parallel review, and together they count as one pass. Reserve a pass before
 launching it. When durable state has an unfinished reserved pass, resume that
-same pass rather than reserving another; carry completed and capped state
-through repair and audit re-entry, and never start pass three. After a second
-pass with unresolved Blocker findings, persist complete location-bearing
-evidence only in the goal-wide unaddressed-findings ledger, record the blocking disposition, and emit only the compact path-free
-goal review status: subtask id, pass number, verdict, severity,
-class/symbol-or-sanitized label, and concise text. It contains no path, line
-number, hunk, or raw review output. Stop before validate. Major findings never
-produce this blocking disposition.
+same pass rather than reserving another; carry the durable pass accounting
+through repair and audit re-entry. A pass with unresolved Blocker findings sends
+the child back into repair and another accounted re-review; no pass number ends
+the loop. Crossing from iteration 3 to iteration 4 prints a warning that the
+advisory threshold of 3 was exceeded and remediation continues.
 
-The two-pass cap applies to every feature task. Decomposed prose-goal children
-and standalone prose feature tasks stop only when their inline re-review still
-has unresolved Blocker findings.
+On any remaining non-count-based stop path — an existing failure or a
+non-convergence path such as an unchanged recurring finding set with no
+repository change — persist complete location-bearing evidence only in the
+goal-wide unaddressed-findings ledger, record the blocking disposition, and emit
+only the compact path-free goal review status: subtask id, pass number, verdict,
+severity, class/symbol-or-sanitized label, and concise text. It contains no path,
+line number, hunk, or raw review output. Stop before validate. Major findings
+never produce this blocking disposition.
+
+This applies to every feature task. Decomposed prose-goal children and
+standalone prose feature tasks advance only after every Blocker finding clears.
 
 Orchestrated child telemetry:
 
@@ -1206,7 +1212,7 @@ For the parsing posture of subagent `RESULT:` blocks (best-effort recovery, sing
 - **Planning subagent returns an invalid plan** (missing fields, no dedicated test task when testable logic exists, etc.) — respawn it once with a corrective briefing that lists the violations. If it still fails, abandon at planning.
 - **Planning subagent returns `mode: "decompose"`** — treat this as a valid terminal planning result. Persist the `plan` artifact, validate and write the parent `decomposition-manifest.yaml`, present the subtask order and acceptance criteria, mark later workflow steps skipped, close workflow state as `abandoned` at `plan`, and call `feature_task_prose_finished` with `completion_status: "abandoned_at_planning"`.
 - **Implementation subagent stops early with `stopped_early: true`** — the orchestrator decides: if `plan_deviation_notes` imply a re-plan, respawn the planning subagent with the deviation notes and then a fresh implementation subagent; otherwise, hand to the user.
-- **The inline re-review exhausts the two-pass review budget with unresolved Blocker findings** — stop, report the remaining Blocker findings, and hand to the user. Major, Minor, and Nit findings continue through the workflow. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
+- **Blocker remediation stops making progress** — when a re-review returns the same unresolved Blocker findings with no repository change since the preceding repair, stop, report the remaining Blocker findings, and hand to the user. Never stop on iteration count alone. Major, Minor, and Nit findings continue through the workflow. Call `feature_task_prose_finished` with `completion_status: "abandoned_at_review"`.
 - **Completeness audit repair stops making progress** — when an audit returns the same unresolved gap set with no repository change and no newly resolved repair item, stop, report the unresolved gap and repair-item identifiers, and let the user decide. Never advance past an unmet criterion on iteration count alone. Call `feature_task_prose_finished` accordingly.
 - **Quality-check subagent cannot run any validation command** — persist `validation_result: "skipped"` with the reason and continue finalization. Do not block the workflow for validation failures that can be fixed in the repository; keep fixing and rerunning validation until it passes.
 - **PR-description subagent fails to create the PR** — report the error, offer to retry. If abandoned, call `feature_task_prose_finished` with `completion_status: "error"`.

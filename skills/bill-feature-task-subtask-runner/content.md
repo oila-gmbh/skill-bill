@@ -35,7 +35,7 @@ baseline, and pass state; the runner must not default, recompute, or replace
 them. On resume, omission reuses them. An explicit incompatible mode or lane
 is rejected before child work starts and leaves the durable policy unchanged.
 
-For the initial review pass, call `bill-code-review mode:<code_review_mode>`. For the single possible later pass, call `bill-code-review mode:inline context:feature-remediation`
+For the initial review pass, call `bill-code-review mode:<code_review_mode>`. For every later pass, call `bill-code-review mode:inline context:feature-remediation`
 against only the durable child-owned base-to-current delta. Reconstruct that
 scope from the immutable `review_base_sha` through the current committed,
 staged, and unstaged changes, plus current untracked paths after subtracting
@@ -51,16 +51,21 @@ launches parallel review. The coordinated lanes are exactly one pass. Preserve
 the exact scope through repair and audit re-entry; the selected mode is initial-pass policy only. Reserve
 before launch; when `reserved_review_pass_number` has no completed durable
 output, resume that accounted pass instead of reserving another. Carry forward
-`completed_review_pass_count` and `review_cap_disposition`, and never run pass
-three. Major findings remain durable evidence and do not prevent advancement.
-At a two-pass unresolved Blocker cap, preserve complete location-bearing evidence
+`completed_review_pass_count` and `review_cap_disposition`. While any pass has
+unresolved Blocker findings, repair them and run another accounted pass; no finite
+count pauses or advances the run. Crossing from iteration 3 to iteration 4 prints a
+warning that the advisory threshold of 3 was exceeded and remediation continues.
+Major findings remain durable evidence and do not prevent advancement.
+On a remaining non-count-based stop path — an existing failure, or non-convergence
+where a re-review returns the same Blocker set with no repository change — preserve
+complete location-bearing evidence
 only in the goal-wide unaddressed-findings ledger, return a blocked result with the compact
 path-free status to the parent (subtask id, pass number, verdict, severity,
 class/symbol-or-sanitized label, and concise text), and do not advance to validate.
 Goal, status, watch, telemetry, and PR surfaces may carry compact counts or
 sanitized summaries only; retrieve locations only with
 `skill-bill goal findings --issue-key <KEY>`. Audit must already be satisfied
-before either review pass starts, so a Blocker prevents advancement to validate.
+before any review pass starts, so a Blocker prevents advancement to validate.
 
 ## Return contract
 

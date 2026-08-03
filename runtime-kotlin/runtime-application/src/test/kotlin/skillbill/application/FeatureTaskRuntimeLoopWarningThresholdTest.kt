@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -261,6 +262,15 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val auditHarness = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 5))
     assertIs<FeatureTaskRuntimeRunReport.Completed>(auditHarness.runner.run(auditHarness.request))
     assertEquals(crossingIteration, auditHarness.lifecycle.finishedRecords.single().auditGapIterationCount)
+  }
+
+  @Test
+  fun `the bounded schema-retry fix loop stays capped independently of the semantic loops`() {
+    assertEquals(
+      3,
+      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      "unbounded remediation applies to the semantic loops only; the schema-retry budget stays bounded.",
+    )
   }
 
   private data class RunOutcome(

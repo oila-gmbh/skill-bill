@@ -165,16 +165,21 @@ replace this scope with a branch-wide diff, merge base, `origin/main`, or
 sibling-subtask substitute.
 
 Audit completes before review starts. Each child then reserves pass one in the
-selected delegated mode and permits one inline remediation pass across resume.
-Major, Minor, and Nit findings remain durable
-evidence and never prevent advancement. If pass two still has Blocker findings,
-persist full evidence, emit a compact path-free summary, and block before validate
-without launching a third pass.
+selected delegated mode and every later remediation pass inline. Major, Minor,
+and Nit findings remain durable evidence and never prevent advancement. While any
+pass still has Blocker findings, the child repairs them and reserves another
+accounted pass; no finite count pauses or advances the run. Crossing from
+iteration 3 to iteration 4 prints a warning that the advisory threshold of 3 was
+exceeded and remediation continues.
+
+On a remaining non-count-based stop path — an existing failure, or non-convergence
+where a re-review returns the same Blocker set with no repository change — persist
+full evidence, emit a compact path-free summary, and block before validate.
 
 If a crash leaves a reserved pass without its completed durable output, resume
-that reserved pass rather than allocating another. Carry completed or capped
-state forward on every repair and audit re-entry. A cap with unresolved Blocker
-evidence is blocking; Major-only evidence is not.
+that reserved pass rather than allocating another. Carry the durable pass
+accounting forward on every repair and audit re-entry. A blocking disposition with
+unresolved Blocker evidence is blocking; Major-only evidence is not.
 
 Goal-facing review output and terminal summaries contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
