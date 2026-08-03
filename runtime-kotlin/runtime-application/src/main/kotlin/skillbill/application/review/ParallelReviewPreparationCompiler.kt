@@ -1,8 +1,8 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort

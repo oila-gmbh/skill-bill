@@ -63,7 +63,7 @@ class GoalSubtaskReviewStateTest {
               "review_result_artifact" to "goal_subtask_review_results.1",
               "unresolved_finding_count" to 0,
               "findings" to emptyList<Any>(),
-              "executed_mode" to "inline",
+              "executed_mode" to "delegated",
             ),
           ),
         ),

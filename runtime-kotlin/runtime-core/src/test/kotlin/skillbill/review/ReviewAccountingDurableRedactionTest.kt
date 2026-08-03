@@ -31,18 +31,16 @@ import kotlin.test.assertTrue
 
 /**
  * Content-bearing review inputs are measured, never retained. The summary under test comes from a
- * real run of the production review runner whose diff, rubric, brokered evidence, and lane results
- * all carry sentinel bodies, so every absence assertion below has something it could have failed on.
+ * real run of the production review runner whose diff, rubric, and lane results all carry sentinel
+ * bodies, so every absence assertion below has something it could have failed on.
  */
 class ReviewAccountingDurableRedactionTest {
   private val diffBody = "DIFF_SENTINEL ".repeat(64)
-  private val sourceBody = "SOURCE_SENTINEL ".repeat(64)
   private val guidanceBody = "GUIDANCE_SENTINEL ".repeat(64)
   private val rubricBody = "RUBRIC_SENTINEL ".repeat(64)
   private val toolOutputBody = "TOOL_OUTPUT_SENTINEL ".repeat(64)
   private val sentinels = listOf(
     "DIFF_SENTINEL",
-    "SOURCE_SENTINEL",
     "GUIDANCE_SENTINEL",
     "RUBRIC_SENTINEL",
     "TOOL_OUTPUT_SENTINEL",
@@ -55,7 +53,7 @@ class ReviewAccountingDurableRedactionTest {
     assertTrue(prompts.isNotEmpty(), "The redaction proof is only meaningful if a lane was launched.")
     assertTrue(prompts.all { it.contains("DIFF_SENTINEL") }, "The diff body must reach the lane prompt.")
     assertTrue(prompts.all { it.contains("RUBRIC_SENTINEL") }, "The rubric body must reach the lane prompt.")
-        assertTrue(prompts.all { it.contains("GUIDANCE_SENTINEL") }, "The changed guidance body must reach the prompt.")
+    assertTrue(prompts.all { it.contains("GUIDANCE_SENTINEL") }, "The changed guidance body must reach the prompt.")
     assertTrue(summary.aggregateCounters.launchBytes > 0)
     assertTrue(summary.aggregateCounters.resultBytes > 0)
   }
@@ -135,7 +133,7 @@ class ReviewAccountingDurableRedactionTest {
 
   /**
    * One production review whose every content-bearing input carries a sentinel: the diff and the
-   * changed guidance file, the resolved rubric, the brokered source, and the lane result.
+   * changed guidance file, the resolved rubric, and the lane result.
    */
   private fun recordedReview(): Pair<ReviewRecorder, ReviewAccountingSummary> {
     val recorder = ReviewRecorder()
@@ -154,7 +152,6 @@ class ReviewAccountingDurableRedactionTest {
             usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
-        evidenceBody = { sourceBody },
         rubricBody = { rubricBody },
       ),
       recorder,

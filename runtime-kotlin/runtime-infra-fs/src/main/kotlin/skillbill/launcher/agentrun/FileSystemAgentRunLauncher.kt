@@ -35,5 +35,4 @@ class FileSystemAgentRunLauncher internal constructor(
       )
     return adapter.launch(request.skillRunRequest)
   }
-
 }

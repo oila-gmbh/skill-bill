@@ -1,9 +1,9 @@
 package skillbill.application.review.model
 
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
-import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import java.nio.file.Path
 
 enum class ReviewWorkerKind {

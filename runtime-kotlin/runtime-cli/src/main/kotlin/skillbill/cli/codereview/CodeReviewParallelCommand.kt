@@ -15,6 +15,7 @@ import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -23,7 +24,6 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
-import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -172,11 +172,7 @@ class CodeReviewParallelCommand(
     ?: InvokingAgentContextResolver.detect(state.environment)?.id
     ?: DEFAULT_AGENT
 
-  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = try {
-    CodeReviewExecutionMode.fromWire(value).also(ReviewExecutionModePolicy::resolve)
-  } catch (error: IllegalArgumentException) {
-    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
-  }
+  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = RequestedReviewMode.parse(value)
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()

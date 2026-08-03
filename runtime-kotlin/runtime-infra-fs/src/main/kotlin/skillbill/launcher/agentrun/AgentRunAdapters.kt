@@ -70,10 +70,7 @@ class ProcessAgentRunAdapter(
     )
   }
 
-  private fun processRequest(
-    command: AgentRunCommand,
-    request: SkillRunRequest,
-  ) = AgentRunProcessRequest(
+  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
     command = command.command,
     workingDirectory = command.workingDirectory,
     timeout = command.timeout,

@@ -2911,7 +2911,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val launchCount = harness.launcher.requests.size
 
     val report = harness.runner.run(
-      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.AUTO),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)

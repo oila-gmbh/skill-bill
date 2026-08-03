@@ -393,8 +393,6 @@ runtime-ports
     - `skillbill.application.review.toBoundedPayload`
     - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`
     - `skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting`
-    - `skillbill.ports.review.model.ReviewWorkerResultEnvelope.toPayload`
-    - `skillbill.ports.review.model.ReviewWorkerResultEnvelope.fromPayload`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -1098,8 +1096,6 @@ Categories:
 - `skillbill.application.review.toBoundedPayload`
 - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`
 - `skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting`
-- `skillbill.ports.review.model.ReviewWorkerResultEnvelope.toPayload`
-- `skillbill.ports.review.model.ReviewWorkerResultEnvelope.fromPayload`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`

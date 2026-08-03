@@ -11,7 +11,6 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
@@ -63,7 +62,6 @@ class ParallelCodeReviewRunnerTest {
     }
     assertTrue(launcher.requests.isEmpty())
   }
-
 
   @Test
   fun `unsupported agent id throws UsageValidationException`() {
@@ -175,8 +173,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertFalse(result.lane1.success)
     assertEquals("agent timed out", result.lane1.failureReason)
-    assertFalse(result.lane2.success)
-    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
+    assertTrue(result.lane2.success, "An independent sibling lane survives lane 1's timeout.")
   }
 
   @Test
@@ -258,33 +255,12 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "\"contract_version\":\"0.8\"")
-      assertContains(prompt, "\"kind\":\"launch\"")
-      assertContains(prompt, "\"base_revision\":\"base-revision\"")
-      assertContains(prompt, "\"head_revision\":\"head-revision\"")
-      assertContains(prompt, "\"assigned_paths\":[\"Child.kt\"]")
-      assertContains(prompt, "\"specialist_contract\":")
-      assertContains(prompt, "Shared Contract For Every Specialist")
-      assertContains(prompt, "Evidence is mandatory")
-      assertContains(prompt, "Keep each specialist review pass to at most 7 findings")
-      assertContains(prompt, "Shared Report Structure")
-      assertContains(prompt, "\"consumer_contract\":\"Consume only the immutable lane projection")
-      assertContains(prompt, "\"rubric\":")
-      assertContains(prompt, "\"evidence_surface_rules\":")
-      assertContains(prompt, "\"assigned_hunk_bodies\":")
-      assertContains(prompt, "\"brokered_evidence\":[]")
+      assertContains(prompt, "Resolved execution mode: inline")
+      assertContains(prompt, "Owned paths: \"Child.kt\"")
+      assertContains(prompt, "## Changed file: \"Child.kt\"")
       assertContains(prompt, "+owned change")
-      assertTrue(prompt.startsWith("{") && prompt.endsWith("}"), "provider input must be one JSON envelope")
-      assertFalse(prompt.contains("brokered_evidence:"), "brokered evidence must not be appended after JSON")
-      assertFalse(prompt.contains("complete_diff"))
-      assertFalse(prompt.contains("\"scratch_path\":"))
+      assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
-      assertEquals(ConversationIsolation.NONE, request.skillRunRequest.conversationIsolation)
-      assertTrue(request.skillRunRequest.reviewEvidenceBroker != null)
-      assertContains(prompt, "\"assignment_digest\":")
-      assertFalse(prompt.contains("fork_turns:"))
-      assertFalse(prompt.contains("## Specialist:"), "flattened specialist rubric bodies must stay out of lane prompts")
-      assertFalse(prompt.contains("Apply all of the following specialist review rubrics"))
     }
   }
 
@@ -520,8 +496,7 @@ class ParallelCodeReviewRunnerFailureTest {
 
     assertFalse(result.lane1.success)
     assertEquals("agent was interrupted", result.lane1.failureReason)
-    assertFalse(result.lane2.success)
-    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
+    assertTrue(result.lane2.success, "An independent sibling lane survives lane 1's interruption.")
   }
 
   @Test
@@ -553,9 +528,11 @@ class ParallelCodeReviewRunnerFailureTest {
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
-    assertFalse(result.lane2.success)
-    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
-    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
+    assertTrue(result.lane2.success)
+    assertTrue(
+      result.mergeResult.findings.none { it.description.contains("Should not appear in merge") },
+      "A failed lane's own output must not reach the merge.",
+    )
   }
 
   @Test
@@ -579,9 +556,7 @@ class ParallelCodeReviewRunnerFailureTest {
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "IllegalStateException")
-    assertFalse(result.lane2.success)
-    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
-    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
+    assertTrue(result.lane2.success, "A launcher exception in lane 1 must not kill the sibling lane.")
   }
 
   @Test

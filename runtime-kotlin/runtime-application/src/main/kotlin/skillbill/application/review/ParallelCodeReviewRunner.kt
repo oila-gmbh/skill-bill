@@ -9,8 +9,8 @@ import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
-import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
@@ -45,10 +45,15 @@ import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewContextBudgetExceededException
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -80,6 +85,7 @@ class ParallelCodeReviewRunner(
     val agent1Id: String,
     val agent2Id: String,
     val preparedLaunchRequests: List<ReviewSpecialistLaunchRequest>,
+    val budget: ReviewContextBudgetPolicy,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
@@ -130,6 +136,7 @@ class ParallelCodeReviewRunner(
         listOf(agent1.id, agent2.id),
         budget,
       ),
+      budget = budget,
     )
   }
 
@@ -150,6 +157,7 @@ class ParallelCodeReviewRunner(
             initial.agent1Id,
             byAgent[initial.agent1Id].orEmpty(),
             initial.detection.routed,
+            initial.budget,
             request,
             null,
           )
@@ -159,6 +167,7 @@ class ParallelCodeReviewRunner(
             initial.agent2Id,
             byAgent[initial.agent2Id].orEmpty(),
             initial.detection.routed,
+            initial.budget,
             request,
             request.agent2Model,
           )
@@ -402,12 +411,67 @@ class ParallelCodeReviewRunner(
     agentId: String,
     launchRequests: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,
+    budget: ReviewContextBudgetPolicy,
     request: ParallelCodeReviewRequest,
     modelOverride: String?,
   ): ParallelReviewLaneOutcome {
     require(launchRequests.isNotEmpty()) { "Inline review selected no resolved assignments for '$agentId'." }
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
-    val prompt = buildString {
+    val prompt = inlineParentPrompt(selected, launchRequests, routedManifests)
+    val outcome = parentReviewLauncher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = agentId,
+        configuredAgentOverrideId = null,
+        skillRunRequest = SkillRunRequest(
+          issueKey = "code-review-parallel",
+          repoRoot = request.repoRoot,
+          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+          promptOverride = prompt,
+          modelOverride = modelOverride,
+        ),
+      ),
+    )
+    val inlineAssignment = selected.first().assignment
+    return when (outcome) {
+      is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
+        success = false,
+        rawOutput = "",
+        failureReason = "unsupported agent: ${outcome.reason}",
+        accounting = inlineParentAccounting(agentId, inlineAssignment, prompt, "unsupported_provider", null),
+      )
+      is AgentRunLaunchFacts -> {
+        val budgetOutcome = ReviewBudgetEvaluator.laneResultOutcome(
+          ReviewLaneIdentity.of(inlineAssignment),
+          budget,
+          outcome.stdout.toByteArray().size.toLong(),
+        )
+        val reason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
+          ?: laneFailureReason(outcome)
+        ParallelReviewLaneOutcome(
+          success = reason == null,
+          rawOutput = outcome.stdout,
+          failureReason = reason,
+          budgetOutcome = budgetOutcome,
+          tokenUsage = providerTokenUsage(outcome),
+          accounting = inlineParentAccounting(
+            agentId,
+            inlineAssignment,
+            prompt,
+            inlineTerminalStatus(outcome),
+            outcome,
+          ),
+          findings = if (reason == null) attributeInlineFindings(outcome.stdout, selected) else emptyList(),
+        )
+      }
+    }
+  }
+
+  private fun inlineParentPrompt(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    launchRequests: List<ReviewSpecialistLaunchRequest>,
+    routedManifests: List<PlatformManifest>,
+  ): String {
+    return buildString {
       appendLine("Run one bill-code-review mode:inline parent review at the light depth tier.")
       appendLine("Resolved execution mode: inline")
       appendLine(
@@ -455,76 +519,37 @@ class ParallelCodeReviewRunner(
           hunks.forEach { hunk -> appendLine(hunk.content) }
         }
     }
-    val outcome = parentReviewLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = agentId,
-        configuredAgentOverrideId = null,
-        skillRunRequest = SkillRunRequest(
-          issueKey = "code-review-parallel",
-          repoRoot = request.repoRoot,
-          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = prompt,
-          modelOverride = modelOverride,
-        ),
-      ),
-    )
-    val inlineAssignment = selected.first().assignment
-    return when (outcome) {
-      is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
-        success = false,
-        rawOutput = "",
-        failureReason = "unsupported agent: ${outcome.reason}",
-        accounting = inlineParentAccounting(agentId, inlineAssignment, prompt, "unsupported_provider", null),
-      )
-      is AgentRunLaunchFacts -> {
-        val reason = laneFailureReason(outcome)
-        val findings = if (reason == null) {
-          ParallelReviewFindingParser.parse(outcome.stdout).map { finding ->
-            val findingPath = requireNotNull(finding.repositoryPath)
-            val owners = selected.filter { launch ->
-              launch.assignment.assignedPaths.any { path -> path == findingPath }
-            }
-            require(owners.isNotEmpty()) {
-              "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
-            }
-            val distinctOwners = owners.distinctBy { it.assignment.laneDecision.specialistSkillName }
-            val declaredSpecialist = finding.specialistSkillName
-            require(declaredSpecialist != null || distinctOwners.size == 1) {
-              "Inline finding location '${finding.location}' has overlapping ownership and must name its specialist."
-            }
-            val owner = if (declaredSpecialist == null) {
-              distinctOwners.single()
-            } else {
-              distinctOwners.singleOrNull {
-                it.assignment.laneDecision.specialistSkillName == declaredSpecialist
-              } ?: error(
-                "Inline finding specialist '$declaredSpecialist' does not own '${finding.location}'.",
-              )
-            }
-            finding.copy(
-              specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
-              originLayerChains = owner.assignment.laneDecision.originLayerChains,
-            )
-          }
-        } else {
-          emptyList()
-        }
-        ParallelReviewLaneOutcome(
-          success = reason == null,
-          rawOutput = outcome.stdout,
-          failureReason = reason,
-          tokenUsage = providerTokenUsage(outcome),
-          accounting = inlineParentAccounting(
-            agentId,
-            inlineAssignment,
-            prompt,
-            inlineTerminalStatus(outcome),
-            outcome,
-          ),
-          findings = findings,
-        )
-      }
+  }
+
+  private fun attributeInlineFindings(
+    stdout: String,
+    selected: List<ReviewSpecialistLaunchRequest>,
+  ): List<ParallelReviewRawFinding> = ParallelReviewFindingParser.parse(stdout).map { finding ->
+    val findingPath = requireNotNull(finding.repositoryPath)
+    val owners = selected.filter { launch ->
+      launch.assignment.assignedPaths.any { path -> path == findingPath }
     }
+    require(owners.isNotEmpty()) {
+      "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
+    }
+    val distinctOwners = owners.distinctBy { it.assignment.laneDecision.specialistSkillName }
+    val declaredSpecialist = finding.specialistSkillName
+    require(declaredSpecialist != null || distinctOwners.size == 1) {
+      "Inline finding location '${finding.location}' has overlapping ownership and must name its specialist."
+    }
+    val owner = if (declaredSpecialist == null) {
+      distinctOwners.single()
+    } else {
+      distinctOwners.singleOrNull {
+        it.assignment.laneDecision.specialistSkillName == declaredSpecialist
+      } ?: error(
+        "Inline finding specialist '$declaredSpecialist' does not own '${finding.location}'.",
+      )
+    }
+    finding.copy(
+      specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
+      originLayerChains = owner.assignment.laneDecision.originLayerChains,
+    )
   }
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {
@@ -599,7 +624,6 @@ private fun parallelResult(
     accountingSummary = parallelAccountingSummary(outcomes),
   )
 }
-
 
 private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReviewLaneStatus(
   agentId,

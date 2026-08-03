@@ -297,10 +297,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(
-    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    reviewPassNumber: Int?,
-  ): String {
+  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
     val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&

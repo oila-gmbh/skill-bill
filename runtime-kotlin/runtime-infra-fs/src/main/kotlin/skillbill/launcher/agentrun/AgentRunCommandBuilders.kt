@@ -38,8 +38,6 @@ interface AgentRunCommandBuilder {
   fun build(request: SkillRunRequest): AgentRunCommand
 }
 
-
-
 internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
   "SKILL_BILL_GOAL_CONTINUATION" to "1",
 )

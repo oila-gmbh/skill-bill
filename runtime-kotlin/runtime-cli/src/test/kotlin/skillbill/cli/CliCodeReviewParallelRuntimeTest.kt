@@ -7,8 +7,6 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger

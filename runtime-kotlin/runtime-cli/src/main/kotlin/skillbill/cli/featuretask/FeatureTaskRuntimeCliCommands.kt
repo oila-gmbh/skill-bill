@@ -41,6 +41,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.review.RequestedReviewMode
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -60,7 +61,6 @@ import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
@@ -393,14 +393,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
-    (
-      CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
-        ?: throw UsageError(
-          "Unknown code-review execution mode '$raw'. Allowed: " +
-            "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
-        )
-      ).also(ReviewExecutionModePolicy::resolve)
+  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = (
+    CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
+      ?: throw UsageError(
+        "Unknown code-review execution mode '$raw'. Allowed: " +
+          "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
+      )
+    ).let(RequestedReviewMode::validate)
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

@@ -18,7 +18,6 @@ import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
@@ -28,12 +27,9 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
-import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
-import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
@@ -46,7 +42,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds

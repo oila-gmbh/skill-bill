@@ -626,20 +626,9 @@ data class GoalSubtaskReviewState(
           disposition = GoalSubtaskReviewDisposition.fromWire(raw.requireReviewStateString("disposition", sourceLabel)),
           reviewInputArtifact = raw.optionalReviewStateString("review_input_artifact", sourceLabel),
           reviewedDeltaDigest = raw.optionalReviewStateString("reviewed_delta_digest", sourceLabel),
-          passResults = raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
-            GoalSubtaskReviewPassResult.fromArtifactMap(
-              value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
-              "$sourceLabel.pass_results[$index]",
-            )
-          },
+          passResults = decodePassResults(raw, sourceLabel),
           emittedPassCount = raw.requireReviewStateInt("emitted_pass_count", sourceLabel),
-          blockerDispositions = raw.optionalReviewStateList("blocker_dispositions", sourceLabel)
-            ?.mapIndexed { index, value ->
-              GoalSubtaskBlockerDisposition.fromArtifactMap(
-                value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
-                "$sourceLabel.blocker_dispositions[$index]",
-              )
-            }.orEmpty(),
+          blockerDispositions = decodeBlockerDispositions(raw, sourceLabel),
           operatorDecision = raw.optionalReviewStateString("operator_decision", sourceLabel)
             ?.let(GoalSubtaskOperatorDecision::fromWire),
           operatorRetryRounds = raw.optionalReviewStateInt("operator_retry_rounds", sourceLabel) ?: 0,
@@ -656,6 +645,25 @@ data class GoalSubtaskReviewState(
         reviewStateError(sourceLabel, error.message.orEmpty(), error)
       }
     }
+
+    private fun decodePassResults(raw: Map<String, Any?>, sourceLabel: String): List<GoalSubtaskReviewPassResult> =
+      raw.requireReviewStateList("pass_results", sourceLabel).mapIndexed { index, value ->
+        GoalSubtaskReviewPassResult.fromArtifactMap(
+          value.asReviewStateMap("$sourceLabel.pass_results[$index]"),
+          "$sourceLabel.pass_results[$index]",
+        )
+      }
+
+    private fun decodeBlockerDispositions(
+      raw: Map<String, Any?>,
+      sourceLabel: String,
+    ): List<GoalSubtaskBlockerDisposition> = raw.optionalReviewStateList("blocker_dispositions", sourceLabel)
+      ?.mapIndexed { index, value ->
+        GoalSubtaskBlockerDisposition.fromArtifactMap(
+          value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
+          "$sourceLabel.blocker_dispositions[$index]",
+        )
+      }.orEmpty()
   }
 }
 

@@ -1,3 +1,14 @@
+## [2026-08-03] SKILL-159 remove external delegated review subsystem (subtask 1)
+Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts,runtime-core,runtime-cli}, orchestration/contracts, .feature-specs/SKILL-159-review-mode-restructure
+- The whole external delegated review subsystem is deleted: provider capability registry, capacity planner, aggregation gate, lifecycle recorder/recovery, worker launcher/brokers, and their dedicated tests; no main source launches or supervises a provider CLI as a review worker.
+- `ParallelCodeReviewRunner` keeps only the inline fan-out path; delegated lane dispatch, wave execution, and lifecycle recording are gone.
+- Explicit `code-review:delegated` / `--code-review-mode delegated` fails loudly with `DelegatedReviewModeRemovedException` and a non-zero CLI exit; there is no silent inline fallback. reusable removal-signal pattern for retired modes.
+- `review-lifecycle-schema.yaml` removed with its validator, version constant, parity test, and Gradle copy task; the evidence contract was re-scoped with constant and parity test kept consistent.
+- Durable cleanup follows the append-a-new-migration rule: existing migration bodies untouched, a new migration drops `review_lifecycle_events` and `review_delegated_lifecycle`; fresh and seeded databases converge.
+- `parallel-review:<agent>` second-lane review and accounting redaction behavior are unchanged on the surviving path.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-03] SKILL-145 delegated code-review provider liveness, capacity, and aggregation (subtask 2)
 Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts}, orchestration/{contracts,review-delegation,review-orchestrator}, .feature-specs/SKILL-145-delegated-code-review-reliability
 - Provider capability records cover the eight delegated dimensions with explicit supported/unsupported dispositions for Codex, Claude, Cursor, Junie, and unregistered providers; provider command/process strategies remain isolated. reusable
