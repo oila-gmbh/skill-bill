@@ -26,8 +26,6 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
-import skillbill.application.review.DelegatedReviewExecutionBroker
-import skillbill.application.review.GoalRunnerNativeReviewWorkerAdapter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.scaffold.InstallAgentService
@@ -157,7 +155,6 @@ import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.InstalledReviewCatalogPort
-import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -660,11 +657,6 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun nativeReviewWorkerLauncher(adapter: GoalRunnerNativeReviewWorkerAdapter): NativeReviewWorkerLauncher =
-    adapter
-
-  @Provides
-  @JvmSynthetic
   internal fun reviewLaunchIsolationResolver(adapter: AgentRunReviewIsolationResolver): ReviewLaunchIsolationResolver =
     adapter
 
@@ -689,7 +681,6 @@ abstract class RuntimeComponent(
     adapter
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
-  abstract val delegatedReviewExecutionBroker: DelegatedReviewExecutionBroker
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
   // RepoLocalConfigPort adapter type, which is not on the CLI module's compile classpath.

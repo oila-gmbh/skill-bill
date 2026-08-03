@@ -7,23 +7,9 @@ import skillbill.install.model.isRuntimeRefusedAgent
 import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.AgentRunLauncher
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.AgentRunProgressEmission
-import skillbill.ports.agentrun.model.AgentRunProgressEmitter
-import skillbill.ports.agentrun.model.AgentRunProgressProbe
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.review.model.NativeReviewWorkerRequest
-import skillbill.workflow.model.GoalProgressEvent
-import java.nio.file.Files
-import java.time.Instant
-import java.util.Comparator
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 
 class FileSystemAgentRunLauncher internal constructor(
   processRunner: AgentRunProcessRunner,
@@ -50,105 +36,4 @@ class FileSystemAgentRunLauncher internal constructor(
     return adapter.launch(request.skillRunRequest)
   }
 
-  @Suppress("LongMethod", "ReturnCount")
-  override fun launchNativeReview(request: NativeReviewWorkerRequest): AgentRunLaunchOutcome {
-    val agent = InstallAgent.fromNormalizedId(request.agentId)
-    val adapter = adapters[agent] ?: return UnsupportedAgentRunLaunch(
-      agent,
-      "Agent '${agent.id}' does not expose a provider-native governed review start.",
-    )
-    require(request.isolation == adapterReviewIsolation(agent)) {
-      "Native review isolation does not match the provider strategy."
-    }
-    val capabilities = adapter.nativeReviewCapabilities
-    val lifecycleCapability = adapter.delegatedReviewCapability
-    if (lifecycleCapability.status == skillbill.ports.review.model.DelegatedReviewProviderStatus.UNSUPPORTED) {
-      return UnsupportedAgentRunLaunch(
-        agent,
-        "Agent '${agent.id}' is explicitly unsupported for delegated review: ${lifecycleCapability.rationale}",
-      )
-    }
-    if (agent == InstallAgent.JUNIE) {
-      return UnsupportedAgentRunLaunch(
-        agent,
-        "Agent '${agent.id}' cannot start a prompt-only governed native review worker.",
-      )
-    }
-    if (!capabilities.supportsGovernedLaunch) {
-      return UnsupportedAgentRunLaunch(
-        agent,
-        "Agent '${agent.id}' cannot start a governed native review because its provider adapter " +
-          "neither disables nor mediates every requested operation, or does not observe every " +
-          "model turn through the review " +
-          "budget broker before execution (provider usage exposure: " +
-          "${capabilities.providerUsageExposure.name.lowercase()}).",
-      )
-    }
-    val isolatedRoot = Files.createTempDirectory("skill-bill-native-review-")
-    return try {
-      val livenessSignals = DelegatedReviewLivenessSignals(request.issueKey, request.logicalWorkerName ?: agent.id)
-      adapter.launch(
-        SkillRunRequest(
-          issueKey = request.issueKey,
-          repoRoot = isolatedRoot,
-          timeout = request.timeout,
-          progressIdleTimeout = request.progressIdleTimeout,
-          progressProbe = livenessSignals.progressProbe,
-          declaredProgressProbe = livenessSignals.declaredProgressProbe,
-          mcpStartupProbe = request.mcpStartupProbe,
-          progressEmitter = livenessSignals.progressEmitter,
-          streamProviderOutput = true,
-          streamOutputForLiveness = false,
-          readOnlyPhase = false,
-          promptOverride = request.prompt,
-          modelOverride = request.modelOverride,
-          conversationIsolation = ConversationIsolation.NONE,
-          reviewEvidenceBroker = request.broker,
-          nativeReviewOperations = request.operations,
-          nativeReviewWorkerName = request.logicalWorkerName,
-        ),
-      )
-    } finally {
-      Files.walk(isolatedRoot).use { paths ->
-        paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
-      }
-    }
-  }
-
-  /** Bridges the process runner's declared lifecycle heartbeats into the delegated review watchdog. */
-  private class DelegatedReviewLivenessSignals(
-    private val issueKey: String,
-    private val operationName: String,
-  ) {
-    private val sequence = AtomicInteger(-1)
-    private val latest = AtomicReference<AgentRunDeclaredProgressSnapshot?>()
-
-    val progressProbe = AgentRunProgressProbe { sequence.get().takeIf { it >= 0 }?.toString() }
-    val declaredProgressProbe = AgentRunDeclaredProgressProbe { latest.get() }
-    val progressEmitter = AgentRunProgressEmitter(::observe)
-
-    private fun observe(emission: AgentRunProgressEmission) {
-      if (!emission.authoritative) return
-      val event = GoalProgressEvent(
-        eventKind = emission.eventKind,
-        workflowId = "review:$issueKey",
-        workflowPhase = "delegated-review",
-        processAlive = emission.processAlive,
-        sequenceNumber = sequence.incrementAndGet(),
-        timestamp = Instant.now().toString(),
-        operationName = emission.operationName.ifBlank { operationName },
-        operationKind = emission.operationKind,
-        expectedLong = emission.expectedLong,
-        outcome = emission.outcome,
-      )
-      latest.set(AgentRunDeclaredProgressSnapshot(event, emission.processAlive))
-    }
-  }
-
-  private fun adapterReviewIsolation(agent: InstallAgent) = when (agent) {
-    InstallAgent.CODEX -> skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE
-    InstallAgent.CLAUDE, InstallAgent.JUNIE, InstallAgent.CURSOR ->
-      skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.FRESH_PROCESS
-    else -> skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.UNSUPPORTED
-  }
 }

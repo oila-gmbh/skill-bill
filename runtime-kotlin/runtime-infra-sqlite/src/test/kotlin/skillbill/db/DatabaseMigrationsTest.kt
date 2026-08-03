@@ -77,12 +77,59 @@ class DatabaseMigrationsTest {
         19 to "add-goal-runner-controls",
         20 to "add-goal-runner-control-state",
         21 to "add-delegated-review-lifecycle-projection",
+        22 to "drop-delegated-review-lifecycle-tables",
       ),
       migrationDefinitions,
     )
     assertEquals(migrationDefinitions.sortedBy { (version, _) -> version }, migrationDefinitions)
     assertEquals(migrationDefinitions.map { (version, _) -> version }.toSet().size, migrationDefinitions.size)
     assertEquals(migrationDefinitions.map { (_, name) -> name }.toSet().size, migrationDefinitions.size)
+  }
+
+  @Test
+  fun `a fresh database carries no delegated review lifecycle tables`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v22-fresh").resolve("fresh.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertFalse(tableExists(connection, "review_lifecycle_events"))
+      assertFalse(tableExists(connection, "review_delegated_lifecycle"))
+      assertNotNull(
+        migrationRows(connection).singleOrNull { row ->
+          row.version == 22 && row.name == "drop-delegated-review-lifecycle-tables"
+        },
+        "Migration version 22 drop-delegated-review-lifecycle-tables should be recorded.",
+      )
+    }
+  }
+
+  @Test
+  fun `migration v22 drops the lifecycle tables an existing database still carries`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v22-existing").resolve("legacy.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 22")
+        statement.executeUpdate(
+          "CREATE TABLE IF NOT EXISTS review_lifecycle_events (review_id TEXT NOT NULL, payload TEXT NOT NULL)",
+        )
+        statement.executeUpdate(
+          "CREATE TABLE IF NOT EXISTS review_delegated_lifecycle (review_id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
+        )
+        statement.executeUpdate(
+          "CREATE INDEX IF NOT EXISTS idx_review_lifecycle_events_review ON review_lifecycle_events(review_id)",
+        )
+        statement.executeUpdate(
+          "CREATE INDEX IF NOT EXISTS idx_review_delegated_lifecycle_review " +
+            "ON review_delegated_lifecycle(review_id)",
+        )
+        statement.executeUpdate("INSERT INTO review_lifecycle_events VALUES ('rvw-1', '{}')")
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertFalse(tableExists(connection, "review_lifecycle_events"))
+      assertFalse(tableExists(connection, "review_delegated_lifecycle"))
+    }
   }
 
   @Test
@@ -1672,3 +1719,9 @@ class DatabaseMigrationsTest {
       """
   }
 }
+
+private fun tableExists(connection: java.sql.Connection, table: String): Boolean =
+  connection.prepareStatement("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").use { statement ->
+    statement.setString(1, table)
+    statement.executeQuery().use { resultSet -> resultSet.next() }
+  }

@@ -22,13 +22,13 @@ class ReviewAccountingProjectionRedactionTest {
     val serialized = recorded.toBoundedPayload().toString()
 
     assertTrue(
-      recorder.nativeLaunches.isNotEmpty() &&
-        recorder.nativeLaunches.all { launch -> forbidden.dropLast(1).all { launch.prompt.contains(it) } },
+      recorder.parentPrompts.isNotEmpty() &&
+        recorder.parentPrompts.all { prompt -> forbidden.dropLast(1).all { prompt.contains(it) } },
       "The projection proof needs a run whose prompts actually carried the content bodies.",
     )
     forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
     assertEquals(
-      recorder.nativeLaunches.size * 1_000L,
+      recorder.parentPrompts.size * 1_000L,
       recorded.aggregateDirectUsage.inputTokens,
       "The measured provider dimensions survive the projection the bodies do not.",
     )

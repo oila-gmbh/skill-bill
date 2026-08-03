@@ -6,14 +6,12 @@ import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
-import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
@@ -24,36 +22,17 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
-import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
-import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
-import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewEvidenceBatchResult
-import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
-import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.ports.review.model.ReviewLifecycleEvent
-import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
-import skillbill.ports.review.model.ReviewToolCall
-import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
-import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewRequestedOperation
-import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -72,90 +51,20 @@ import kotlin.time.Duration
 
 /**
  * A recording harness around the production [ParallelCodeReviewRunner]. It records what the
- * production composition, broker, preflight, and accounting seams actually did; it never restates a
- * routing, budget, or accounting policy of its own.
+ * production composition, inline lane launch, and accounting seams actually did; it never restates
+ * a routing, budget, or accounting policy of its own.
  */
 class ReviewRecorder {
-  val preflightRequests: MutableList<ReviewNativeAgentPreflightRequest> =
-    Collections.synchronizedList(mutableListOf())
-  val nativeLaunches: MutableList<NativeReviewWorkerRequest> =
-    Collections.synchronizedList(mutableListOf())
   val parentLaunches: MutableList<GoalRunnerSubtaskLaunchRequest> =
-    Collections.synchronizedList(mutableListOf())
-  val evidenceBatches: MutableList<ReviewEvidenceBatchRequest> =
-    Collections.synchronizedList(mutableListOf())
-  val brokerBindings: MutableList<ReviewEvidenceBrokerBinding> =
     Collections.synchronizedList(mutableListOf())
   val rubricResolutions: MutableList<String> = Collections.synchronizedList(mutableListOf())
   val diffCommands: MutableList<List<String>> = Collections.synchronizedList(mutableListOf())
   val savedAccounting: MutableList<ReviewAccountingRecord> =
     Collections.synchronizedList(mutableListOf())
-  val refusedOperations: MutableList<ForbiddenReviewOperation> =
-    Collections.synchronizedList(mutableListOf())
-  val lifecycleEvents: MutableList<ReviewLifecycleEvent> =
-    Collections.synchronizedList(mutableListOf())
-  val lifecycleProjections: MutableList<DelegatedReviewLifecycleSnapshot> =
-    Collections.synchronizedList(mutableListOf())
 
-  val launchedSpecialists: List<String>
-    get() = brokerBindings.mapNotNull { it.assignment.laneDecision.specialistSkillName }
-}
-
-/**
- * A pure observer over the production [FileSystemReviewEvidenceBroker]. It records what the
- * delegated worker asked for and what the production broker refused; every policy decision, byte
- * count, and budget termination is the production broker's, never this class's.
- */
-class ObservingReviewEvidenceBroker(
-  private val recorder: ReviewRecorder,
-  private val delegate: ReviewEvidenceBroker,
-) : ReviewEvidenceBroker {
-  override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest) = delegate.authorizeExpansion(request)
-
-  override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
-    recorder.evidenceBatches += request
-    return delegate.readBatch(request).also { result ->
-      recorder.refusedOperations += result.results.mapNotNull { it.forbidden }
-    }
-  }
-
-  override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult =
-    delegate.recordToolCall(call).also { result -> result.forbidden?.let { recorder.refusedOperations += it } }
-
-  override fun recordModelTurn(): ReviewBudgetOutcome? = delegate.recordModelTurn()
-
-  override fun validateLaneResult(result: String): ReviewBudgetOutcome? = delegate.validateLaneResult(result)
-
-  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? = delegate.observeLaneResultChunk(chunk)
-
-  override fun hasObservedLaneResult(): Boolean = delegate.hasObservedLaneResult()
-
-  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
-    delegate.evaluateProviderUsage(usage, enforceable)
-
-  override fun accounting(): ReviewLaneAccounting = delegate.accounting()
-
-  override fun terminalOutcome(): ReviewBudgetOutcome? = delegate.terminalOutcome()
-}
-
-/**
- * Writes the files a lane is allowed to read into the review repository so the production broker
- * measures real file bytes. Repeated bindings over one repository root rewrite identical content.
- */
-private val evidenceMaterializationLock = Any()
-
-private fun materializeLaneEvidence(binding: ReviewEvidenceBrokerBinding, body: (String) -> String) {
-  synchronized(evidenceMaterializationLock) {
-    val paths = binding.assignment.assignedPaths + binding.assignment.expansions.map { it.requestedPath }
-    paths.distinct().forEach { path ->
-      val target = binding.repoRoot.resolve(path)
-      target.parent?.let(Files::createDirectories)
-      val expected = body(path)
-      if (!Files.exists(target) || Files.readString(target) != expected) {
-        Files.writeString(target, expected)
-      }
-    }
-  }
+  /** The prompts the inline parent lanes were actually launched with. */
+  val parentPrompts: List<String>
+    get() = parentLaunches.mapNotNull { it.skillRunRequest.promptOverride }
 }
 
 /** What a recorded specialist run reports back, keyed by logical worker name. */
@@ -165,8 +74,6 @@ data class RecordedWorkerResponse(
   val timedOut: Boolean = false,
   val usage: ProviderTokenUsage? = null,
   val usageEnforceable: Boolean = false,
-  val childOperations: List<ReviewRequestedOperation> = emptyList(),
-  val modelTurns: Int = 1,
   val processStarted: Boolean = true,
   val mcpStartupObserved: Boolean = false,
   val spawnFailed: Boolean = false,
@@ -177,39 +84,38 @@ data class RecordedWorkerResponse(
 data class ReviewHarnessConfig(
   val manifests: List<PlatformManifest>,
   val diff: String,
-  val response: (NativeReviewWorkerRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
-  val preflight: (ReviewNativeAgentPreflightRequest) -> Unit = {},
-  val evidenceBody: (String) -> String = { "// brokered body for $it" },
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
-  val delegatedReviewDeadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
-  val monotonicNowNanos: () -> Long = System::nanoTime,
-  val interruptionProbe: () -> Boolean = { false },
+  val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse(stdout = "") },
 )
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
-    delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
-      DelegatedReviewLaunchBroker(
-        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
-          recorder.brokerBindings += binding
-          materializeLaneEvidence(binding, config.evidenceBody)
-          ObservingReviewEvidenceBroker(recorder, FileSystemReviewEvidenceBroker(binding))
-        },
-        isolationResolver = { ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE },
-        envelopeValidator = { _, _ -> },
-      ),
-      DelegatedReviewWorkerLauncher(recordingWorkerLauncher(config, recorder)) { _, _ -> },
-    ),
     parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
       recorder.parentLaunches += request
+      val response = config.response(request)
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
-        stdout = "",
+        exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) {
+          null
+        } else {
+          response.exitStatus
+        },
+        stdout = response.stdout,
         stderr = "",
-        timedOut = false,
-        spawnFailed = false,
+        timedOut = response.timedOut,
+        interrupted = response.interrupted,
+        spawnFailed = response.spawnFailed,
+        liveness = response.liveness,
+        processStarted = response.processStarted && !response.spawnFailed,
+        mcpStartupObserved = response.mcpStartupObserved,
+        inputTokens = response.usage?.inputTokens,
+        cachedInputTokens = response.usage?.cachedInputTokens,
+        outputTokens = response.usage?.outputTokens,
+        reasoningTokens = response.usage?.reasoningTokens,
+        totalTokens = response.usage?.totalTokens,
+        tokenOwnership = AgentRunTokenOwnership.DIRECT,
+        providerUsageEnforceable = response.usageEnforceable,
       ) as AgentRunLaunchOutcome
     },
     scaffoldCatalogService = ScaffoldCatalogService(recordingCatalogGateway(config.manifests)),
@@ -229,56 +135,8 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     },
     reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
     reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
-    nativeAgentPreflight = ReviewNativeAgentPreflightPort { request ->
-      recorder.preflightRequests += request
-      config.preflight(request)
-    },
     database = recordingDatabase(recorder),
-    delegatedReviewDeadlinePolicy = config.delegatedReviewDeadlinePolicy,
-    monotonicNowNanos = config.monotonicNowNanos,
-    interruptionProbe = config.interruptionProbe,
   )
-
-/** Replays a scripted specialist run through the governed operation protocol before reporting facts. */
-private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: ReviewRecorder) =
-  NativeReviewWorkerLauncher { request ->
-    recorder.nativeLaunches += request
-    val response = config.response(request)
-    // The production broker only admits calls addressed to the assignment it was bound to, so the
-    // lane identity comes from the broker rather than from the worker's logical name.
-    val lane = request.broker.accounting().lane
-    response.childOperations.forEach { operation ->
-      request.operations.tool(
-        ReviewToolCall(
-          lane = lane,
-          kind = operation.kind,
-          target = operation.target,
-          searchScopes = operation.searchScopes,
-        ),
-      )
-    }
-    repeat(response.modelTurns) { request.operations.modelTurn() }
-    AgentRunLaunchFacts(
-      agent = InstallAgent.fromNormalizedId(request.agentId),
-      exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) null else response.exitStatus,
-      stdout = response.stdout,
-      stderr = "",
-      timedOut = response.timedOut,
-      interrupted = response.interrupted,
-      spawnFailed = response.spawnFailed,
-      liveness = response.liveness,
-      processStarted = response.processStarted && !response.spawnFailed,
-      mcpStartupObserved = response.mcpStartupObserved ||
-        (response.processStarted && !response.spawnFailed && request.mcpStartupProbe.startupObserved()),
-      inputTokens = response.usage?.inputTokens,
-      cachedInputTokens = response.usage?.cachedInputTokens,
-      outputTokens = response.usage?.outputTokens,
-      reasoningTokens = response.usage?.reasoningTokens,
-      totalTokens = response.usage?.totalTokens,
-      tokenOwnership = AgentRunTokenOwnership.DIRECT,
-      providerUsageEnforceable = response.usageEnforceable,
-    )
-  }
 
 /** Runs both lanes to completion in a fixed order so recorded evidence stays deterministic. */
 private class SequentialLaneRunner : ParallelReviewLaneRunner {
@@ -327,12 +185,6 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
-      "appendReviewLifecycleEvent" -> recorder.lifecycleEvents.add(args[0] as ReviewLifecycleEvent).let { true }
-      "loadReviewLifecycleEvents" -> recorder.lifecycleEvents.toList()
-      "saveDelegatedReviewLifecycle" -> recorder.lifecycleProjections.add(
-        args[0] as DelegatedReviewLifecycleSnapshot,
-      ).let { }
-      "loadDelegatedReviewLifecycle" -> recorder.lifecycleProjections.lastOrNull { it.reviewId == args?.firstOrNull() }
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository
@@ -380,7 +232,7 @@ fun harnessRequest(
   scope = ParallelReviewScope.BRANCH,
   repoRoot = repoRoot,
   timeout = timeout,
-  codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+  codeReviewMode = CodeReviewExecutionMode.INLINE,
   reviewRunId = reviewRunId,
   baseRevision = "base-revision",
   headRevision = "head-revision",

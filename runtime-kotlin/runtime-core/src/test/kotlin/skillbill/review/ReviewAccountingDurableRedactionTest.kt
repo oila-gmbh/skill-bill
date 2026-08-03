@@ -51,14 +51,12 @@ class ReviewAccountingDurableRedactionTest {
   @Test fun `the measured review really did carry every content sentinel`() {
     val (recorder, summary) = recordedReview()
 
-    val prompts = recorder.nativeLaunches.map { it.prompt }
-    assertTrue(prompts.isNotEmpty(), "The redaction proof is only meaningful if specialists were launched.")
-    assertTrue(prompts.all { it.contains("DIFF_SENTINEL") }, "The diff body must reach the specialist prompt.")
-    assertTrue(prompts.all { it.contains("RUBRIC_SENTINEL") }, "The rubric body must reach the specialist prompt.")
-    assertTrue(prompts.all { it.contains("SOURCE_SENTINEL") }, "Brokered source must reach the specialist prompt.")
-    assertTrue(prompts.all { it.contains("GUIDANCE_SENTINEL") }, "The changed guidance body must reach the prompt.")
+    val prompts = recorder.parentPrompts
+    assertTrue(prompts.isNotEmpty(), "The redaction proof is only meaningful if a lane was launched.")
+    assertTrue(prompts.all { it.contains("DIFF_SENTINEL") }, "The diff body must reach the lane prompt.")
+    assertTrue(prompts.all { it.contains("RUBRIC_SENTINEL") }, "The rubric body must reach the lane prompt.")
+        assertTrue(prompts.all { it.contains("GUIDANCE_SENTINEL") }, "The changed guidance body must reach the prompt.")
     assertTrue(summary.aggregateCounters.launchBytes > 0)
-    assertTrue(summary.aggregateCounters.evidenceBytes > 0)
     assertTrue(summary.aggregateCounters.resultBytes > 0)
   }
 
@@ -71,18 +69,13 @@ class ReviewAccountingDurableRedactionTest {
     val payload = summary.toBoundedPayload()
 
     assertEquals(
-      recorder.nativeLaunches.sumOf { it.prompt.toByteArray().size.toLong() },
+      recorder.parentPrompts.sumOf { it.toByteArray().size.toLong() },
       aggregate(payload)["launch_bytes"],
-      "Launch bytes measure exactly the prompts the specialists were given.",
+      "Launch bytes measure exactly the prompts the lanes were given.",
     )
     assertEquals(
-      recorder.nativeLaunches.size * toolOutputBody.toByteArray().size.toLong(),
+      recorder.parentPrompts.size * toolOutputBody.toByteArray().size.toLong(),
       aggregate(payload)["result_bytes"],
-    )
-    assertEquals(
-      recorder.evidenceBatches.sumOf { it.requests.size } * sourceBody.toByteArray().size.toLong(),
-      aggregate(payload)["evidence_bytes"],
-      "Evidence bytes measure exactly the brokered files the lanes were served.",
     )
     assertNoSentinels(payload.toString())
   }

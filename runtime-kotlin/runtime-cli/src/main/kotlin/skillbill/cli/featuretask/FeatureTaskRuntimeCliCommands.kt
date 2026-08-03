@@ -60,6 +60,7 @@ import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
@@ -148,7 +149,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   )
   protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: inline (default), auto, or delegated. " +
+    help = "Review execution mode: inline (default) or auto; delegated was removed. " +
       "Supply at most once; a resumed workflow remains pinned to its original mode.",
   ).multiple()
   protected val operatorDecisions by option(
@@ -393,11 +394,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   }
 
   private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
-    CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
-      ?: throw UsageError(
-        "Unknown code-review execution mode '$raw'. Allowed: " +
-          "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
-      )
+    (
+      CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
+        ?: throw UsageError(
+          "Unknown code-review execution mode '$raw'. Allowed: " +
+            "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
+        )
+      ).also(ReviewExecutionModePolicy::resolve)
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

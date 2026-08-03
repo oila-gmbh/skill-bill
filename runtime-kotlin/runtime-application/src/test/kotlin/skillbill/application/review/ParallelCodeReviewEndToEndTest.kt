@@ -1,7 +1,7 @@
 package skillbill.application.review
 
 import skillbill.application.model.ParallelCodeReviewResult
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
+import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.ProviderTokenUsage
 import java.nio.file.Files
 import kotlin.test.Test
@@ -11,135 +11,79 @@ import kotlin.test.assertTrue
 
 /**
  * Recording end-to-end proof over the production parallel-review composition: a small Kotlin diff
- * and a layered KMP diff, each driven through real preparation, flattening, preflight, broker, and
+ * and a layered KMP diff, each driven through real preparation, flattening, inline lane launch, and
  * accounting seams.
  */
 class ParallelCodeReviewEndToEndTest {
   private val kotlinAreas = listOf("architecture", "security", "testing")
   private val kmpAreas = listOf("platform-correctness", "ui")
 
-  @Test fun `kotlin diff discovers once and launches exactly the direct specialist lanes`() {
+  @Test fun `kotlin diff discovers once and launches exactly the two inline parent lanes`() {
     val recorder = ReviewRecorder()
-    val runner = reviewHarness(kotlinConfig { RecordedWorkerResponse(stdout = finding("src/Repo.kt")) }, recorder)
+    val runner = reviewHarness(
+      kotlinConfig { RecordedWorkerResponse(stdout = finding("src/Repo.kt", KOTLIN_ARCHITECTURE)) },
+      recorder,
+    )
 
     val result = runner.run(harnessRequest())
 
     assertEquals(
       1,
       recorder.diffCommands.count { it.contains("diff") },
-      "Scope discovery must happen once for the whole review, not once per lane or specialist.",
+      "Scope discovery must happen once for the whole review, not once per lane.",
     )
+    assertEquals(2, recorder.parentLaunches.size, "The surviving fan-out runs exactly two parent lanes.")
     assertEquals(
-      kotlinAreas.map { "bill-kotlin-code-review-$it" }.sorted(),
-      recorder.launchedSpecialists.distinct().sorted(),
+      listOf("claude", "codex"),
+      recorder.parentLaunches.map { it.invokedAgentId }.sorted(),
+      "parallel-review keeps a second lane on a distinct agent.",
     )
-    assertEquals(kotlinAreas.size * 2, recorder.nativeLaunches.size, "Each top-level lane runs every specialist once.")
-    assertTrue(
-      recorder.nativeLaunches.all { it.logicalWorkerName in recorder.launchedSpecialists },
-      "Every provider-native launch carries its resolved specialist identity.",
-    )
+    recorder.parentPrompts.forEach { prompt ->
+      kotlinAreas.forEach { area ->
+        assertTrue(
+          prompt.contains("bill-kotlin-code-review-$area"),
+          "Inline prompt dropped routed rubric identity '$area'.",
+        )
+      }
+    }
     assertTrue(result.lane1.success && result.lane2.success)
   }
 
-  @Test fun `every codex specialist launches with fork turns none in a fresh context`() {
+  @Test fun `inline prompts carry no rediscovery affordance`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
-    assertTrue(recorder.nativeLaunches.isNotEmpty())
-    recorder.nativeLaunches.forEach { launch ->
-      assertEquals(ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE, launch.isolation)
-      assertEquals("none", launch.isolation.forkTurns)
-    }
-  }
-
-  @Test fun `child prompts carry no rediscovery affordance and forbidden child operations are refused`() {
-    val recorder = ReviewRecorder()
-    val forbidden = listOf(
-      shellOperation("git diff main...HEAD"),
-      shellOperation("gh pr view"),
-      shellOperation("./gradlew check"),
-      searchOperation("rg TODO", scopes = listOf("src/Other.kt")),
-      mcpOperation("resolve_learnings"),
-      mcpOperation("stack_routing"),
-      fileOperation("AGENTS.md"),
-      fileOperation("platform-packs/kotlin/platform.yaml"),
-    )
-    val runner = reviewHarness(
-      kotlinConfig { RecordedWorkerResponse(childOperations = forbidden) },
-      recorder,
-    )
-
-    runner.run(harnessRequest())
-
-    assertEquals(
-      forbidden.size * recorder.nativeLaunches.size,
-      recorder.refusedOperations.size,
-      "Every forbidden child operation must be refused by the governed policy.",
-    )
-    assertTrue(
-      recorder.refusedOperations.map { it.category }.containsAll(
-        listOf(
-          "diff_recomputation",
-          "review_scope",
-          "build_test_fact_discovery",
-          "broad_repository_search",
-          "learnings_resolution",
-          "dominant_stack_routing",
-          "project_guidance_traversal",
-          "platform_pack_and_addon_resolution",
-        ),
-      ),
-    )
-    recorder.nativeLaunches.forEach { launch ->
+    assertTrue(recorder.parentPrompts.isNotEmpty())
+    recorder.parentPrompts.forEach { prompt ->
       listOf("git diff", "gh pr", "merge-base", "AGENTS.md", "platform-packs/").forEach { affordance ->
-        assertTrue(
-          !launch.prompt.contains(affordance),
-          "Specialist prompt leaked '$affordance'.",
-        )
+        assertTrue(!prompt.contains(affordance), "Inline prompt leaked '$affordance'.")
       }
     }
   }
 
-  @Test fun `ordinary assigned evidence is carried only in prompt hunk envelopes`() {
+  @Test fun `assigned evidence is carried only in prompt hunk envelopes`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
-    assertTrue(recorder.evidenceBatches.isEmpty(), "Ordinary assigned paths must not be reread through the broker.")
-    recorder.nativeLaunches.forEach { launch ->
-      assertTrue(launch.prompt.contains("assigned_hunk_bodies"))
-      assertTrue(launch.prompt.contains("src/Repo.kt"))
+    recorder.parentPrompts.forEach { prompt ->
+      assertTrue(prompt.contains("## Changed file: \"src/Repo.kt\""))
+      assertTrue(prompt.contains("Use the exact diff below as authoritative"))
     }
   }
 
-  @Test fun `layered kmp composition expands directly to kmp and required kotlin specialists`() {
+  @Test fun `layered kmp composition expands directly to kmp and required kotlin rubrics`() {
     val recorder = ReviewRecorder()
 
     reviewHarness(kmpConfig(), recorder).run(harnessRequest())
 
-    val expected = (
-      kmpAreas.map { "bill-kmp-code-review-$it" } +
-        kotlinAreas.map { "bill-kotlin-code-review-$it" }
-      ).sorted()
-    assertEquals(expected, recorder.launchedSpecialists.distinct().sorted())
-    assertTrue(
-      recorder.nativeLaunches.all { it.logicalWorkerName in expected },
-      "Composed lanes preserve each resolved specialist worker identity.",
-    )
-  }
-
-  @Test fun `provider-native assignments preflight resolved logical names before launch`() {
-    val recorder = ReviewRecorder()
-
-    reviewHarness(
-      kmpConfig(preflight = { assertTrue(recorder.nativeLaunches.isEmpty(), "Preflight must precede every launch.") }),
-      recorder,
-    ).run(harnessRequest())
-
-    assertTrue(recorder.preflightRequests.isNotEmpty())
-    assertTrue(recorder.nativeLaunches.isNotEmpty())
-    assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName != null })
+    val expected = kmpAreas.map { "bill-kmp-code-review-$it" } + kotlinAreas.map { "bill-kotlin-code-review-$it" }
+    recorder.parentPrompts.forEach { prompt ->
+      expected.forEach { specialist ->
+        assertTrue(prompt.contains(specialist), "Composed inline prompt dropped '$specialist'.")
+      }
+    }
   }
 
   @Test fun `repeated layered runs produce identical findings and accounting`() {
@@ -149,7 +93,7 @@ class ParallelCodeReviewEndToEndTest {
       return reviewHarness(
         kmpConfig {
           RecordedWorkerResponse(
-            stdout = finding("src/main/kotlin/App.kt"),
+            stdout = finding("src/main/kotlin/App.kt", KOTLIN_ARCHITECTURE),
             usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
@@ -172,7 +116,7 @@ class ParallelCodeReviewEndToEndTest {
     val runner = reviewHarness(
       kotlinConfig {
         RecordedWorkerResponse(
-          stdout = finding("src/Repo.kt"),
+          stdout = finding("src/Repo.kt", KOTLIN_ARCHITECTURE),
           usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
         )
       },
@@ -181,23 +125,21 @@ class ParallelCodeReviewEndToEndTest {
 
     val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
 
-    val specialists = summary.lanes.filter { it.children.isEmpty() }
-    assertEquals(kotlinAreas.size * 2, specialists.size)
-    specialists.forEach { lane ->
+    val lanes = summary.lanes.filter { it.children.isEmpty() }
+    assertEquals(2, lanes.size, "Each inline parent lane owns exactly one accounting node.")
+    lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
       assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
       assertTrue(lane.counters.resultBytes > 0)
-      assertTrue(lane.counters.modelTurns > 0)
       assertEquals(1_000, lane.directUsage.inputTokens)
       assertEquals(400, lane.directUsage.cachedInputTokens)
       assertEquals(800, lane.directUsage.freshTokenApproximation)
       assertEquals("completed", lane.terminalOutcome)
     }
-    assertEquals(specialists.size * 1_000L, summary.aggregateDirectUsage.inputTokens)
-    assertEquals(specialists.size * 800L, summary.aggregateDirectUsage.freshTokenApproximation)
+    assertEquals(lanes.size * 1_000L, summary.aggregateDirectUsage.inputTokens)
+    assertEquals(lanes.size * 800L, summary.aggregateDirectUsage.freshTokenApproximation)
     assertEquals(summary.aggregateDirectUsage.inputTokens, summary.aggregateInclusiveUsage.inputTokens)
-    assertEquals(specialists.sumOf { it.counters.launchBytes }, summary.aggregateCounters.launchBytes)
-    assertEquals(specialists.sumOf { it.counters.modelTurns }, summary.aggregateCounters.modelTurns)
+    assertEquals(lanes.sumOf { it.counters.launchBytes }, summary.aggregateCounters.launchBytes)
     assertEquals(summary.aggregateCounters, summary.parent.inclusiveCounters)
   }
 
@@ -234,22 +176,15 @@ class ParallelCodeReviewEndToEndTest {
   }
 
   private fun kotlinConfig(
-    preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
-    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
-      RecordedWorkerResponse()
-    },
+    response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   ) = ReviewHarnessConfig(
     manifests = listOf(reviewPack("kotlin", kotlinAreas, routingSignals = listOf("*.kt"))),
     diff = diffForPaths("src/Repo.kt"),
     response = response,
-    preflight = preflight,
   )
 
   private fun kmpConfig(
-    preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
-    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
-      RecordedWorkerResponse()
-    },
+    response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   ) = ReviewHarnessConfig(
     manifests = listOf(
       reviewPack(
@@ -266,33 +201,12 @@ class ParallelCodeReviewEndToEndTest {
       "src/main/kotlin/App.kt" to "actual fun platformName(): String = \"jvm\"",
     ),
     response = response,
-    preflight = preflight,
   )
 }
+
+private const val KOTLIN_ARCHITECTURE = "bill-kotlin-code-review-architecture"
 
 internal fun finding(path: String, specialist: String? = null): String {
   val attribution = specialist?.let { "specialist=$it | " }.orEmpty()
   return "- [F-001] Major | High | $attribution" + "path=\"$path\" | line=1 | Bounded specialist finding"
 }
-
-internal fun shellOperation(command: String) = skillbill.review.context.model.ReviewRequestedOperation(
-  skillbill.review.context.model.ReviewOperationKind.SHELL_COMMAND,
-  command,
-)
-
-internal fun searchOperation(command: String, scopes: List<String>) =
-  skillbill.review.context.model.ReviewRequestedOperation(
-    skillbill.review.context.model.ReviewOperationKind.SEARCH,
-    command,
-    searchScopes = scopes,
-  )
-
-internal fun mcpOperation(tool: String) = skillbill.review.context.model.ReviewRequestedOperation(
-  skillbill.review.context.model.ReviewOperationKind.MCP_TOOL,
-  tool,
-)
-
-internal fun fileOperation(path: String) = skillbill.review.context.model.ReviewRequestedOperation(
-  skillbill.review.context.model.ReviewOperationKind.FILE_READ,
-  path,
-)

@@ -23,6 +23,7 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
+import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -78,7 +79,7 @@ class CodeReviewParallelCommand(
   ).multiple()
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: inline (default), auto, or delegated.",
+    help = "Shared execution mode for both lanes: inline (default) or auto; delegated was removed.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
   private val baselineUntrackedIncludes by option(
     "--baseline-untracked-include",
@@ -172,7 +173,7 @@ class CodeReviewParallelCommand(
     ?: DEFAULT_AGENT
 
   private fun parseExecutionMode(value: String): CodeReviewExecutionMode = try {
-    CodeReviewExecutionMode.fromWire(value)
+    CodeReviewExecutionMode.fromWire(value).also(ReviewExecutionModePolicy::resolve)
   } catch (error: IllegalArgumentException) {
     throw UsageError(error.message.orEmpty()).apply { initCause(error) }
   }

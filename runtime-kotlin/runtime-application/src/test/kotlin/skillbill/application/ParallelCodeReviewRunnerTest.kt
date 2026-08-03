@@ -2,22 +2,16 @@ package skillbill.application
 
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
-import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
-import skillbill.application.review.DelegatedReviewExecutionBroker
-import skillbill.application.review.DelegatedReviewLaunchBroker
-import skillbill.application.review.DelegatedReviewWorkerLauncher
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
-import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
@@ -28,30 +22,15 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.InstalledReviewCatalogPort
-import skillbill.ports.review.NativeReviewWorkerLauncher
 import skillbill.ports.review.ParallelReviewLaneRunner
-import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
-import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewEvidenceBatchResult
-import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewEvidenceResult
-import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.ports.review.model.ReviewToolCall
-import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
-import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
-import skillbill.review.context.model.ReviewBudgetEvaluator
-import skillbill.review.context.model.ReviewBudgetOutcome
-import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -85,81 +64,6 @@ class ParallelCodeReviewRunnerTest {
     assertTrue(launcher.requests.isEmpty())
   }
 
-  @Test
-  fun `all assignments preflight before the first worker starts`() {
-    val repo = createGitRepo()
-    createStagedFile(repo)
-    val launcher = ParallelSubtaskLauncher()
-    var admitted = 0
-    val runner = runnerWithEvidenceBroker(
-      launcher,
-      ReviewEvidenceBrokerFactory { binding ->
-        admitted++
-        require(admitted != 2) { "invalid later assignment" }
-        TestReviewEvidenceBroker(binding)
-      },
-    )
-
-    assertFailsWith<IllegalArgumentException> { runner.run(baseRequest(repoRoot = repo)) }
-
-    assertEquals(2, admitted)
-    assertTrue(launcher.requests.isEmpty())
-  }
-
-  @Test
-  fun `runner carries the authoritative baseline untracked policy into every assignment`() {
-    val repo = createGitRepo()
-    createStagedFile(repo)
-    val launcher = ParallelSubtaskLauncher()
-    val observed = mutableListOf<ReviewBaselineUntrackedPolicy>()
-    val runner = runnerWithEvidenceBroker(
-      launcher,
-      ReviewEvidenceBrokerFactory { binding ->
-        observed += binding.assignment.baselineUntrackedPolicy
-        TestReviewEvidenceBroker(binding)
-      },
-    )
-    val policy = ReviewBaselineUntrackedPolicy(
-      includedPaths = listOf("baseline/kept.kt"),
-      excludedPaths = listOf("baseline/ignored.kt"),
-    )
-
-    runner.run(baseRequest(repoRoot = repo).copy(baselineUntrackedPolicy = policy))
-
-    assertTrue(observed.isNotEmpty())
-    assertTrue(observed.all { it == policy })
-  }
-
-  @Test
-  fun `invalid prelaunch expansion is translated to the typed review context error`() {
-    val repo = createGitRepo()
-    createStagedFile(repo)
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runnerWithEvidenceBroker(
-      launcher,
-      ReviewEvidenceBrokerFactory { binding ->
-        object : TestReviewEvidenceBroker(binding) {
-          override fun authorizeExpansion(
-            request: skillbill.ports.review.model.ReviewExpansionAuthorizationRequest,
-          ): skillbill.review.context.model.ReviewExpansionRecord =
-            throw IllegalArgumentException("expansion path escaped the measured evidence surface")
-        }
-      },
-    )
-
-    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
-      runner.run(
-        baseRequest(repoRoot = repo).copy(
-          prelaunchExpansions = listOf(
-            ReviewPrelaunchExpansion("parallel-code-review", "Other.kt", "reachable caller"),
-          ),
-        ),
-      )
-    }
-
-    assertContains(failure.reason, "expansion path escaped")
-    assertTrue(launcher.requests.isEmpty())
-  }
 
   @Test
   fun `unsupported agent id throws UsageValidationException`() {
@@ -873,9 +777,6 @@ private data class RunnerFixtureConfig(
   val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
-  val evidenceBrokerFactory: ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory(::TestReviewEvidenceBroker),
-  val nativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort =
-    skillbill.ports.review.ReviewNativeAgentPreflightPort { },
   val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
 )
 
@@ -895,14 +796,6 @@ private fun runner(
   ),
 )
 
-private fun runnerWithEvidenceBroker(
-  launcher: GoalRunnerSubtaskLauncher,
-  evidenceBrokerFactory: ReviewEvidenceBrokerFactory,
-): ParallelCodeReviewRunner = createRunner(
-  launcher,
-  RunnerFixtureConfig(evidenceBrokerFactory = evidenceBrokerFactory),
-)
-
 private fun runnerWithParallelLane(
   launcher: GoalRunnerSubtaskLauncher,
   diffResolver: DiffResolverPort,
@@ -914,46 +807,6 @@ private fun runnerWithParallelLane(
 
 private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
-    delegatedReviewExecutionBroker = DelegatedReviewExecutionBroker(
-      DelegatedReviewLaunchBroker(
-        evidenceBrokerFactory = config.evidenceBrokerFactory,
-        isolationResolver = { agentId ->
-          ReviewLaunchIsolationStrategy.FRESH_PROCESS
-        },
-        envelopeValidator = { _, _ -> },
-      ),
-      DelegatedReviewWorkerLauncher(
-        NativeReviewWorkerLauncher { request ->
-          request.operations.modelTurn()?.let {
-            return@NativeReviewWorkerLauncher AgentRunLaunchFacts(
-              agent = InstallAgent.fromNormalizedId(request.agentId),
-              exitStatus = null,
-              stdout = "",
-              stderr = "review budget terminated before provider execution",
-              timedOut = false,
-              spawnFailed = false,
-            )
-          }
-          launcher.launch(
-            GoalRunnerSubtaskLaunchRequest(
-              invokedAgentId = request.agentId,
-              configuredAgentOverrideId = null,
-              skillRunRequest = skillbill.ports.agentrun.model.SkillRunRequest(
-                issueKey = request.issueKey,
-                repoRoot = request.repoRoot,
-                timeout = request.timeout,
-                promptOverride = request.prompt,
-                modelOverride = request.modelOverride,
-                conversationIsolation = ConversationIsolation.NONE,
-                reviewEvidenceBroker = request.broker,
-                nativeReviewOperations = request.operations,
-              ),
-            ),
-          )
-        },
-        { _, _ -> },
-      ),
-    ),
     parentReviewLauncher = launcher,
     scaffoldCatalogService = ScaffoldCatalogService(config.catalogGateway),
     diffResolver = config.diffResolver,
@@ -967,27 +820,18 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     },
     reviewRubricResolver = config.rubricResolver,
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
-    nativeAgentPreflight = config.nativeAgentPreflight,
     database = NoopReviewDatabase,
     installedReviewCatalog = config.installedReviewCatalog,
   )
 
 private object NoopReviewDatabase : DatabaseSessionFactory {
-  private val lifecycleEvents = mutableListOf<skillbill.ports.review.model.ReviewLifecycleEvent>()
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
     arrayOf(ReviewRepository::class.java),
-  ) { _, method, args ->
+  ) { _, method, _ ->
     when (method.name) {
       "saveAccounting" -> Unit
       "loadAccounting" -> null
-      "appendReviewLifecycleEvent" ->
-        lifecycleEvents
-          .add(args?.get(0) as skillbill.ports.review.model.ReviewLifecycleEvent)
-          .let { true }
-      "loadReviewLifecycleEvents" -> lifecycleEvents.filter { it.reviewId == args?.get(0) }
-      "saveDelegatedReviewLifecycle" -> Unit
-      "loadDelegatedReviewLifecycle" -> null
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository
@@ -1029,7 +873,7 @@ private fun baseRequest(
   scope = scope,
   repoRoot = repoRoot,
   timeout = timeout,
-  codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+  codeReviewMode = CodeReviewExecutionMode.INLINE,
   reviewRunId = "runner-test-${runnerRequestSequence.incrementAndGet()}",
   baseRevision = "base-revision",
   headRevision = "head-revision",
@@ -1183,61 +1027,3 @@ private fun fallbackManifest(): PlatformManifest = platformManifest("generic", l
 )
 
 private fun diffFor(path: String): String = "+++ b/$path"
-
-private open class TestReviewEvidenceBroker(
-  private val binding: ReviewEvidenceBrokerBinding,
-) : ReviewEvidenceBroker {
-  private val identity = ReviewLaneIdentity.of(binding.assignment)
-  private var resultBytes = 0L
-  private var modelTurns = 0
-  private var terminal: ReviewBudgetOutcome? = null
-
-  override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
-    request.requests.map { ReviewEvidenceResult("brokered:${it.path}", 0, 0, 0) },
-    0,
-    emptyList(),
-    terminal,
-  )
-
-  override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult(budgetExceeded = terminal)
-
-  override fun recordModelTurn(): ReviewBudgetOutcome? {
-    modelTurns += 1
-    return terminal ?: ReviewBudgetEvaluator.exceededOrNull(
-      identity,
-      "model_turns",
-      binding.budget.maxSpecialistModelTurns.toLong(),
-      modelTurns.toLong(),
-    ).also { terminal = it }
-  }
-
-  override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
-    resultBytes = maxOf(resultBytes, result.toByteArray().size.toLong())
-    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
-  }
-
-  override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
-    resultBytes += chunk.toByteArray().size
-    return ReviewBudgetEvaluator.laneResultOutcome(identity, binding.budget, resultBytes).also { terminal = it }
-  }
-
-  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
-    terminal ?: ReviewBudgetEvaluator.providerUsageOutcome(
-      identity,
-      binding.budget.providerTokenThresholds,
-      usage,
-      enforceable,
-    ).also { terminal = it }
-
-  override fun accounting() = ReviewLaneAccounting(
-    lane = binding.assignment.lane,
-    evidenceBytes = 0,
-    expansions = emptyList(),
-    toolCalls = 0,
-    modelTurns = modelTurns,
-    resultBytes = resultBytes,
-    terminalOutcome = terminal,
-  )
-
-  override fun terminalOutcome(): ReviewBudgetOutcome? = terminal
-}

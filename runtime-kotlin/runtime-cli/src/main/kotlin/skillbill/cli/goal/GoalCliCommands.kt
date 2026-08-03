@@ -46,6 +46,7 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -87,7 +88,7 @@ class GoalRunCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
   private val codeReviewMode by option(
     "--code-review-mode",
-    help = "Review execution mode for every child: inline (default), auto, or delegated.",
+    help = "Review execution mode for every child: inline (default) or auto; delegated was removed.",
   )
   private val parallelReviewAgent by option(
     "--parallel-review-agent",
@@ -226,7 +227,7 @@ class GoalRunCommand(
 
 private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->
   try {
-    CodeReviewExecutionMode.fromWire(value)
+    CodeReviewExecutionMode.fromWire(value).also(ReviewExecutionModePolicy::resolve)
   } catch (error: IllegalArgumentException) {
     throw UsageError(error.message.orEmpty()).apply { initCause(error) }
   }

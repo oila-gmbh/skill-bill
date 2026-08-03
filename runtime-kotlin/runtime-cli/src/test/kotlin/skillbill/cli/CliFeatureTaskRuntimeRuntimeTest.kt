@@ -185,9 +185,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "codex"),
       "phase override" to listOf("--phase-agent", "plan=codex"),
-      "delegated parallel review" to listOf(
+      "parallel review agent" to listOf(
         "--code-review-mode",
-        "delegated",
+        "inline",
         "--parallel-review-agent",
         "codex",
       ),
@@ -222,9 +222,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "claude"),
       "phase override" to listOf("--phase-agent", "plan=claude"),
-      "delegated parallel review" to listOf(
+      "parallel review agent" to listOf(
         "--code-review-mode",
-        "delegated",
+        "inline",
         "--parallel-review-agent",
         "claude",
       ),
@@ -1469,7 +1469,6 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       "omitted" to emptyList(),
       "auto" to listOf("--code-review-mode", "auto"),
       "inline" to listOf("--code-review-mode", "inline"),
-      "delegated" to listOf("--code-review-mode", "delegated"),
     ).forEach { (expectedMode, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
@@ -1496,11 +1495,29 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
+  fun `feature-task runtime rejects the removed delegated review mode before workflow opening`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--code-review-mode", "delegated")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "External delegated code review was removed")
+    assertContains(result.stdout, "code-review:inline")
+    assertContains(result.stdout, "parallel-review:<agent>")
+    assertEquals(emptyList(), launcher.requests)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
+  }
+
+  @Test
   fun `feature-task runtime rejects missing duplicate and conflicting review modes before workflow opening`() {
     listOf(
       "missing" to listOf("--code-review-mode"),
       "duplicate" to listOf("--code-review-mode", "auto", "--code-review-mode", "auto"),
-      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "delegated"),
+      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "auto"),
     ).forEach { (caseName, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
@@ -2336,7 +2353,7 @@ class CursorAgentRuntimeCliTest {
           "--agent",
           "codex",
           "--code-review-mode",
-          "delegated",
+          "inline",
           "--parallel-review-agent",
           "cursor",
         ),

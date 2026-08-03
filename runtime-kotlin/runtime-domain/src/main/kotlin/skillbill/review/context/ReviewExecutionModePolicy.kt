@@ -21,10 +21,8 @@ object ReviewExecutionModePolicy {
         ResolvedReviewExecutionMode.INLINE,
         "explicit_inline_override",
       )
-      CodeReviewExecutionMode.DELEGATED -> ResolvedReviewDepth(
-        ResolvedReviewExecutionMode.DELEGATED,
-        "explicit_delegated_override",
-      )
+      CodeReviewExecutionMode.DELEGATED ->
+        throw DelegatedReviewModeRemovedException("code-review-mode=delegated")
       CodeReviewExecutionMode.AUTO -> reviewPassNumber?.let(::resolveAutoByPassNumber)
         ?: ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$DEFAULT_RULE:inline_default")
     }

@@ -9,7 +9,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.review.model.NativeReviewWorkerRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
@@ -55,66 +54,23 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
-  fun `diff file expansion is brokered into real claude and codex launches`() {
+  fun `code-review-parallel rejects the removed delegated execution mode`() {
     val tempDir = createGitRepo()
-    Files.writeString(tempDir.resolve("Test.kt"), "fun expandedEvidence() = true\n")
-    val diff = Files.createTempFile("parallel-review", ".diff")
-    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
-    val launcher = RecordingParallelLauncher()
 
     val result = CliRuntime.run(
       listOf(
         "code-review-parallel",
         "--agent1", "claude",
         "--agent2", "codex",
-        "--diff-file", diff.toString(),
-        "--base-revision", "immutable-base",
-        "--head-revision", "immutable-head",
-        "--expand-file", "parallel-code-review:Test.kt=called by assigned hunk",
         "--execution-mode", "delegated",
         "--repo-root", tempDir.toString(),
       ),
-      parallelReviewContext(agentRunLauncher = launcher),
+      parallelReviewContext(agentRunLauncher = RecordingParallelLauncher()),
     )
 
-    assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(setOf("claude", "codex"), launcher.promptsByAgent.keys)
-    launcher.promptsByAgent.values.forEach { prompt ->
-      assertContains(prompt, "fun expandedEvidence() = true")
-      assertContains(prompt, "\"base_revision\":\"immutable-base\"")
-      assertContains(prompt, "\"head_revision\":\"immutable-head\"")
-    }
-  }
-
-  @Test
-  fun `baseline untracked policy reaches both delegated packet launches`() {
-    val tempDir = createGitRepo()
-    Files.writeString(tempDir.resolve("Test.kt"), "fun review() = true\n")
-    val diff = Files.createTempFile("parallel-review", ".diff")
-    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
-    val launcher = RecordingParallelLauncher()
-
-    val result = CliRuntime.run(
-      listOf(
-        "code-review-parallel",
-        "--agent1", "claude",
-        "--agent2", "codex",
-        "--diff-file", diff.toString(),
-        "--base-revision", "immutable-base",
-        "--head-revision", "immutable-head",
-        "--baseline-untracked-exclude", "baseline/old.kt",
-        "--execution-mode", "delegated",
-        "--repo-root", tempDir.toString(),
-      ),
-      parallelReviewContext(agentRunLauncher = launcher),
-    )
-
-    assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(2, launcher.promptsByAgent.size)
-    launcher.promptsByAgent.values.forEach { prompt ->
-      assertContains(prompt, "baseline_untracked_policy")
-      assertContains(prompt, "baseline/old.kt")
-    }
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "External delegated code review was removed")
+    assertContains(result.stdout, "parallel-review:<agent>")
   }
 
   @Test
@@ -133,7 +89,7 @@ class CliCodeReviewParallelRuntimeTest {
         "--base-revision", "immutable-base",
         "--head-revision", "immutable-head",
         "--expand-file", "unknown-lane:Test.kt=called by assigned hunk",
-        "--execution-mode", "delegated",
+        "--execution-mode", "inline",
         "--repo-root", tempDir.toString(),
       ),
       parallelReviewContext(agentRunLauncher = RecordingParallelLauncher()),
@@ -462,23 +418,7 @@ private fun runGit(vararg args: String) {
   }
 }
 
-private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher {
-  override fun launchNativeReview(request: NativeReviewWorkerRequest): AgentRunLaunchOutcome = launch(
-    AgentRunLaunchRequest(
-      agentId = request.agentId,
-      skillRunRequest = SkillRunRequest(
-        issueKey = request.issueKey,
-        repoRoot = request.repoRoot,
-        timeout = request.timeout,
-        promptOverride = request.prompt,
-        modelOverride = request.modelOverride,
-        conversationIsolation = ConversationIsolation.NONE,
-        reviewEvidenceBroker = request.broker,
-        nativeReviewOperations = request.operations,
-      ),
-    ),
-  )
-}
+private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher
 
 private class NoOpAgentRunLauncher : ParallelTestAgentRunLauncher() {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
