@@ -44,10 +44,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     specReference: String? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
-    val resolvedReviewMode = resolvedReviewTier ?: codeReviewMode
     return listOf(
       header(issueKey, briefing.phaseId),
-      ceremonyDirective(briefing, reviewPassNumber, resolvedReviewMode),
+      ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(
@@ -301,7 +300,6 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun ceremonyDirective(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     reviewPassNumber: Int?,
-    resolvedTier: CodeReviewExecutionMode,
   ): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
@@ -313,9 +311,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        // The mode token is derived, never hardcoded: rendering mode:inline under a pinned delegated
-        // run would emit a mode/context pairing the governed skill rejects.
-        "Apply bill-code-review mode:${remediationModeToken(resolvedTier)} context:feature-remediation, " +
+        "Apply bill-code-review mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
           "bounded to the remediation delta: the prior pass's Blocker findings union " +
           "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
@@ -339,13 +335,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       schema, branch, history, commit, or PR gates.
     """.trimIndent()
   }
-
-  // context:feature-remediation is valid only with mode:inline, so a run pinned to delegated still
-  // renders inline for the reserved pass rather than emitting a pairing the governed skill rejects.
-  private fun remediationModeToken(resolvedTier: CodeReviewExecutionMode): String =
-    CodeReviewExecutionMode.INLINE.wireValue.takeIf {
-      resolvedTier != CodeReviewExecutionMode.INLINE
-    } ?: resolvedTier.wireValue
 
   private fun outputContract(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,

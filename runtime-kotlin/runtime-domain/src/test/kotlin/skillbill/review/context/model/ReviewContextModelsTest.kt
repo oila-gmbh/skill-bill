@@ -302,10 +302,6 @@ class ReviewContextModelsTest {
       ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.INLINE),
     )
     assertEquals(
-      ResolvedReviewExecutionMode.DELEGATED,
-      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.DELEGATED),
-    )
-    assertEquals(
       ResolvedReviewExecutionMode.INLINE,
       ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.AUTO),
     )

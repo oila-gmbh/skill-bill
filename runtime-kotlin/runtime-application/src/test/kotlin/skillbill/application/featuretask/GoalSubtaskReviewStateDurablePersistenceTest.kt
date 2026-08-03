@@ -120,7 +120,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/SKILL-142",
-            codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
           ).toArtifactMap(),
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to state.passResults.associate { result ->
@@ -141,7 +141,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val initial = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("scratch/untracked.txt"),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
     val passOne = initial.reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,

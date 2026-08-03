@@ -15,7 +15,7 @@ class GoalSubtaskReviewStateTest {
     val initial = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
     assertEquals(
       initial.toArtifactMap(),
@@ -27,9 +27,9 @@ class GoalSubtaskReviewStateTest {
       unresolvedFindingCount = 0,
       findings = emptyList(),
     )
-    assertEquals(CodeReviewExecutionMode.DELEGATED, completed.passResults.single().executedMode)
+    assertEquals(CodeReviewExecutionMode.INLINE, completed.passResults.single().executedMode)
     val recordedPass = (completed.toArtifactMap()["pass_results"] as List<*>).single() as Map<*, *>
-    assertEquals("delegated", recordedPass["executed_mode"])
+    assertEquals("inline", recordedPass["executed_mode"])
 
     val legacyCompletedArtifact = completed.toArtifactMap().toMutableMap().apply {
       put(
@@ -50,7 +50,7 @@ class GoalSubtaskReviewStateTest {
     val initial = GoalSubtaskReviewState.initial(
       reviewBaseSha = "b".repeat(40),
       baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
       GoalSubtaskReviewState.fromArtifactMap(
@@ -89,7 +89,7 @@ class GoalSubtaskReviewStateTest {
     val firstPass = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("preexisting.tmp"),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
@@ -113,7 +113,7 @@ class GoalSubtaskReviewStateTest {
     val firstPass = GoalSubtaskReviewState.initial(
       reviewBaseSha = "e".repeat(40),
       baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
@@ -138,7 +138,7 @@ class GoalSubtaskReviewStateTest {
     val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "f".repeat(40),
       baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
 
     assertFailsWith<IllegalArgumentException> {
@@ -246,12 +246,12 @@ class GoalSubtaskReviewStateTest {
       subtaskId = 3,
       suppressPr = true,
       goalBranch = "feat/SKILL-135",
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
     val completed = GoalSubtaskReviewState.initial(
       reviewBaseSha = "d".repeat(40),
       baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 0,

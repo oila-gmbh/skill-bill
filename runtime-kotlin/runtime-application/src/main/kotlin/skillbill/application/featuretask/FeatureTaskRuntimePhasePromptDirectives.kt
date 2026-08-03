@@ -55,7 +55,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   val remediationPass = inputs.reviewPassNumber == 2
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves to INLINE on every pass. Only an explicit DELEGATED selection launches workers.$parallel${resolvedTierInfo(
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. Every mode resolves to INLINE; external delegated review was removed by SKILL-159.$parallel${resolvedTierInfo(
     inputs,
   )}${baselineUntrackedPolicy(
     inputs,
@@ -115,7 +115,7 @@ private fun resolvedTierInfo(inputs: ReviewExecutionDirectiveInputs): String =
   if (inputs.resolvedReviewTier != null && inputs.reviewDecidingRule != null) {
     """
     ## Resolved review tier
-    AUTO resolved to tier ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE or DELEGATED always overrides AUTO.
+    AUTO resolved to tier ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE always overrides AUTO.
     """.trimIndent()
   } else {
     ""

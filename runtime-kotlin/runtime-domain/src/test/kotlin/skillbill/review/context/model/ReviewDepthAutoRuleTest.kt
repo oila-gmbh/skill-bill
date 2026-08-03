@@ -39,9 +39,5 @@ class ReviewDepthAutoRuleTest {
     val inline = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.INLINE, reviewPassNumber = 1)
     assertEquals(ResolvedReviewExecutionMode.INLINE, inline.resolvedMode)
     assertEquals("explicit_inline_override", inline.decidingRule)
-
-    val delegated = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.DELEGATED, reviewPassNumber = 2)
-    assertEquals(ResolvedReviewExecutionMode.DELEGATED, delegated.resolvedMode)
-    assertEquals("explicit_delegated_override", delegated.decidingRule)
   }
 }

@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,9 +11,10 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeReviewPassSequenceTest {
   @Test
   fun `an explicit mode runs at that depth on both passes and auto resolves by pass number`() {
-    listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.DELEGATED).forEach { pinnedMode ->
-      assertEquals(listOf(pinnedMode, pinnedMode), FeatureTaskRuntimeReviewPassSequence.passes(pinnedMode))
-    }
+    assertEquals(
+      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
+      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.INLINE),
+    )
     assertEquals(
       listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
       FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.AUTO),
@@ -44,14 +46,20 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
       "explicit_inline_override",
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.INLINE, 1).decidingRule,
     )
-    assertEquals(
-      "explicit_delegated_override",
-      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 2).decidingRule,
+  }
+
+  @Test
+  fun `a pinned delegated mode fails loudly instead of resolving a tier or degrading to inline`() {
+    val failure = assertFailsWith<DelegatedReviewModeRemovedException> {
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 1)
+    }
+    assertTrue(
+      failure.message.orEmpty().contains("External delegated code review was removed"),
+      "the typed removal error must state the subsystem is gone, got '${failure.message}'.",
     )
-    assertEquals(
-      CodeReviewExecutionMode.DELEGATED,
-      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 2).resolvedTier,
-    )
+    assertFailsWith<DelegatedReviewModeRemovedException> {
+      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.DELEGATED)
+    }
   }
 
   @Test
@@ -69,7 +77,7 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
   @Test
   fun `a pass beyond the durable cap fails loudly`() {
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
-      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.DELEGATED, 3)
+      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.INLINE, 3)
     }
   }
 }

@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -488,7 +489,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
 
   @Test
   fun `run-invariants persist the selected code-review mode strictly`() {
-    CodeReviewExecutionMode.entries.forEach { mode ->
+    CodeReviewExecutionMode.entries.filter { it != CodeReviewExecutionMode.DELEGATED }.forEach { mode ->
       val invariants = FeatureTaskRuntimeRunInvariants(
         specReference = ".feature-specs/SKILL-119/spec.md",
         acceptanceCriteria = listOf("AC-1"),
@@ -507,6 +508,9 @@ class FeatureTaskRuntimePersistenceModelsTest {
     ).toArtifactMap()
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(invalid + ("code_review_mode" to "DELEGATED"))
+    }
+    assertFailsWith<DelegatedReviewModeRemovedException> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(invalid + ("code_review_mode" to "delegated"))
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(invalid - "code_review_mode")

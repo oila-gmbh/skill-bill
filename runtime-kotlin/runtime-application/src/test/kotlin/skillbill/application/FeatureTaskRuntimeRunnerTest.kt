@@ -58,8 +58,6 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.review.DeclaredReviewSpecialistsPort
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -1147,142 +1145,7 @@ class FeatureTaskRuntimeRunnerTest {
       )
     }
   }
-
-  @Test
-  fun `review phase preflight throws before launch when native agent is missing`() {
-    val missingError = RuntimeException("native agent missing")
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        parallelReviewAgent = "claude",
-        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
-      ),
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort { throw missingError },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
-    )
-    assertFailsWith<RuntimeException> { harness.runner.run(harness.request()) }
-    val launchedPhases = harness.launcher.requests.mapNotNull { req ->
-      req.skillRunRequest.promptOverride?.let { phaseIdFromPrompt(it) }
-    }
-    assertTrue(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in launchedPhases,
-      "review phase must not have been launched when preflight throws",
-    )
-  }
-
-  @Test
-  fun `review phase runs normally when native-agent preflight succeeds`() {
-    val called = mutableListOf<String>()
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        parallelReviewAgent = "claude",
-        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
-      ),
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(called.isNotEmpty(), "preflight must have been called before the review phase ran")
-  }
-
-  @Test
-  fun `review phase preflight runs for invoked agent even when no parallelReviewAgent is set`() {
-    val called = mutableListOf<String>()
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
-      ),
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ -> listOf("bill-kotlin-code-review-architecture") },
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(called.isNotEmpty(), "preflight must verify the invoked agent even when parallelReviewAgent is absent")
-  }
-
-  @Test
-  fun `inline review never preflights native specialists for a routable delta`() {
-    val called = mutableListOf<String>()
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        codeReviewMode = CodeReviewExecutionMode.INLINE,
-        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
-      ),
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, _ ->
-        error("inline review must not resolve native specialists")
-      },
-    )
-
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(called.isEmpty())
-  }
-
-  @Test
-  fun `delegated preflight routes with authoritative diff content`() {
-    val routedContent = mutableListOf<String>()
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-        branchSetup = BranchSetupTestConfig(gitOperations = gitWithRoutableReviewDelta()),
-      ),
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, files ->
-        routedContent += files.map { it.changedContent }
-        emptyList()
-      },
-    )
-
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(routedContent.any { "+val routed = 1" in it })
-  }
-
-  @Test
-  fun `review phase preflight stands down when the review delta routes to no pack`() {
-    val called = mutableListOf<String>()
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort { called += "verify" },
-      declaredSpecialists = DeclaredReviewSpecialistsPort { _, files ->
-        if (files.any { it.path.endsWith(".kt") }) listOf("bill-kotlin-code-review-architecture") else emptyList()
-      },
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(
-      called.isEmpty(),
-      "an empty review delta routes to no pack and must not demand a native worker",
-    )
-  }
 }
-
-private fun gitWithRoutableReviewDelta(): RecordingWorkflowGitOperations {
-  val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-  repeat(REVIEW_DELTA_REUSE_COUNT) {
-    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = "0".repeat(40),
-        trackedDelta = buildString {
-          appendLine("diff --git a/Routed.kt b/Routed.kt")
-          appendLine("--- a/Routed.kt")
-          appendLine("+++ b/Routed.kt")
-          appendLine("@@ -1 +1 @@")
-          appendLine("+val routed = 1")
-        },
-        ownedUntrackedPatches = "",
-      ),
-    )
-  }
-  return git
-}
-
-private const val REVIEW_DELTA_REUSE_COUNT = 8
 
 // Runtime-owned lifecycle telemetry (started/finished/error) of the runner, split from
 // FeatureTaskRuntimeRunnerTest so each class stays within its size budget while sharing the same
@@ -1424,7 +1287,7 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
     // SKILL-142: a cap exhausted with an unresolved Blocker disposition pauses for the bounded
     // operator decision rather than blocking, and the pause is as authoritative on replay.
     val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
     assertEquals("review", paused.pausedPhase)
     val cappedLaunches = reviewLaunches
@@ -1435,7 +1298,7 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
     assertEquals(
       cappedLaunches,
@@ -1486,7 +1349,7 @@ class FeatureTaskRuntimeCappedReviewRecoveryTest {
       },
     )
     assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED)),
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
     val cappedLaunches = reviewLaunches
     harness.stripReviewedDeltaDigest()
@@ -1983,7 +1846,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
-  fun `goal review runs delegated then inline and resumes its reserved inline pass after a crash`() {
+  fun `goal review runs both inline passes and resumes its reserved pass after a crash`() {
     var reviewLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
@@ -2006,29 +1869,29 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val first = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
       harness.runner.run(
-        harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+        harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
       ),
     )
     assertEquals("review", first.lastIncompletePhase)
     val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(2, reserved.reservedPassNumber)
     assertEquals(1, reserved.completedPassCount)
-    assertEquals(CodeReviewExecutionMode.DELEGATED, reserved.passResults.single().executedMode)
+    assertEquals(CodeReviewExecutionMode.INLINE, reserved.passResults.single().executedMode)
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(2, resumed.completedPassCount)
     assertEquals(null, resumed.reservedPassNumber)
-    // SKILL-142: an explicit mode is an override on every pass, so a delegated run stays delegated on
-    // the remediation pass; only `auto` resolves the later pass to inline by pass number.
+    // SKILL-142: an explicit mode is an override on every pass, so an inline run stays inline on the
+    // remediation pass; only `auto` resolves the later pass by pass number.
     assertEquals(
-      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.DELEGATED),
+      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
       resumed.passResults.map { it.executedMode },
     )
     val reviewPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
-    reviewPrompts.forEach { prompt -> assertContains(prompt, "bill-code-review mode:delegated") }
+    reviewPrompts.forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
     assertContains(reviewPrompts.last(), "context:feature-remediation")
     assertTrue(
       harness.ledgerRows.isEmpty(),
@@ -2918,7 +2781,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     )
 
     val report = harness.runner.run(
-      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
@@ -2954,10 +2817,10 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
     assertEquals(2, reviewPrompts.size)
-    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[0], "bill-code-review mode:inline")
     assertContains(reviewPrompts[1], "bill-code-review mode:inline")
     assertEquals(
-      CodeReviewExecutionMode.DELEGATED,
+      CodeReviewExecutionMode.INLINE,
       requireNotNull(harness.runInvariantsStore.resolve(WORKFLOW_ID)).codeReviewMode,
     )
   }
@@ -3016,7 +2879,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     )
 
     val first = harness.runner.run(
-      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(first)
@@ -3032,7 +2895,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       reviewPrompts.size,
       "the failed launch retries the same reserved pass rather than reserving pass three",
     )
-    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[0], "bill-code-review mode:inline")
     reviewPrompts.drop(1).forEach { prompt -> assertContains(prompt, "bill-code-review mode:inline") }
     val completedReview = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", completedReview.status)
@@ -3048,7 +2911,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val launchCount = harness.launcher.requests.size
 
     val report = harness.runner.run(
-      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
@@ -4429,8 +4292,6 @@ private fun runtimePhaseGates(
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
-  nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort { },
-  declaredSpecialists: DeclaredReviewSpecialistsPort = DeclaredReviewSpecialistsPort.NONE,
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
@@ -4438,8 +4299,6 @@ private fun runtimePhaseGates(
   gitOperations,
   specGate,
   planningProjectionValidator,
-  nativeAgentPreflight,
-  declaredSpecialists,
 )
 
 private fun testSpecGate(
@@ -4505,8 +4364,6 @@ internal fun runnerHarness(
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
   crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
-  nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort { },
-  declaredSpecialists: DeclaredReviewSpecialistsPort = DeclaredReviewSpecialistsPort.NONE,
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -4538,8 +4395,6 @@ internal fun runnerHarness(
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
       runtimeConfig.planningProjectionValidator,
-      nativeAgentPreflight,
-      declaredSpecialists,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
   )
@@ -5903,7 +5758,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         }
       },
     )
-    harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE))
     val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(2, reserved.reservedPassNumber)
 

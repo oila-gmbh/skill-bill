@@ -48,14 +48,14 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass one keeps the immutable-base materialized scope block`() {
-    val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.DELEGATED, withReviewInput = true)
+    val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE, withReviewInput = true)
 
     assertContains(prompt, "## Immutable-base review scope")
   }
 
   @Test
-  fun `a pinned delegated run still renders mode inline for the remediation pass`() {
-    val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.DELEGATED)
+  fun `the remediation pass always renders mode inline`() {
+    val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.INLINE)
 
     assertContains(prompt, "bill-code-review mode:inline context:feature-remediation")
     assertFalse(
@@ -85,7 +85,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `pass one never orders blocker dispositions`() {
     val prompt = compose(
       passNumber = 1,
-      resolvedTier = CodeReviewExecutionMode.DELEGATED,
+      resolvedTier = CodeReviewExecutionMode.INLINE,
       priorBlockerFindingIds = listOf("pass1-blocker-1"),
     )
 

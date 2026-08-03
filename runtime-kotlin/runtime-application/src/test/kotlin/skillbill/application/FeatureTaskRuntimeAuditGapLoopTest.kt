@@ -149,7 +149,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
 
     val report = harness.runner.run(
-      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
@@ -159,7 +159,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     // Under the audit-first order an audit gap reopens only [implement, audit]. Review is never
     // re-entered, so it never burns a remediation pass and still runs in the run-selected mode.
     assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts[0], "bill-code-review mode:delegated")
+    assertContains(reviewPrompts[0], "bill-code-review mode:inline")
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.

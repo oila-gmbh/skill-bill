@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 object FeatureTaskRuntimeReviewPassSequence {
@@ -24,10 +25,8 @@ object FeatureTaskRuntimeReviewPassSequence {
         resolvedTier = CodeReviewExecutionMode.INLINE,
         decidingRule = "explicit_inline_override",
       )
-      CodeReviewExecutionMode.DELEGATED -> ReviewPassResolution(
-        resolvedTier = CodeReviewExecutionMode.DELEGATED,
-        decidingRule = "explicit_delegated_override",
-      )
+      CodeReviewExecutionMode.DELEGATED ->
+        throw DelegatedReviewModeRemovedException("persisted run invariant code_review_mode=delegated")
     }
   }
 }
