@@ -98,11 +98,11 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   }
 
   // The runtime expands the audit's compact gaps into the repair plan; an author-supplied
-  // `audit_repair_plan` is forbidden by the phase-output schema. A backtick in `issue` survives the
+  // `audit_repair_plan` is forbidden by the phase-output schema. A code fence in `issue` survives the
   // compact-gap pattern and then fails the expanded plan's `compactSummary` rule.
   @Test
   fun `an expanded audit repair plan schema violation reaches the payload-free reason under its field prefix`() {
-    val offendingIssue = "The `prepareLaunch` checkpoint is absent."
+    val offendingIssue = "The ```prepareLaunch``` checkpoint is absent."
     val envelope =
       """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"verdict":"gaps_found","produced_outputs":{"gaps":[{"criterion":"AC-001","severity":"blocker",""" +

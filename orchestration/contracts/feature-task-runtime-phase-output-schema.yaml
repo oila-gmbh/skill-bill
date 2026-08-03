@@ -67,11 +67,18 @@ $defs:
       severity:
         enum: [blocker, major]
       location:
-        description: "Compact ClassName or ClassName.memberName reference; never a fully-qualified name."
+        # An audit gap can sit in governed markdown as well as in code, and every governed skill name is
+        # kebab-case, so an identifier-only segment made the field unsatisfiable for a prose gap: no
+        # spelling of `bill-feature-goal` could match. A hyphen is ordinary content in a file stem, so
+        # each segment admits it and a markdown gap reads as `<skill-name>.<HeadingInCamelCase>`. The
+        # segment stays a single compact token; a heading is normalized, never carried as prose.
+        description: >-
+          Compact reference: ClassName, ClassName.memberName, or, for a governed markdown gap, a
+          kebab-case file stem with an optional CamelCase heading segment. Never a fully-qualified name.
         type: string
         minLength: 1
         maxLength: 256
-        pattern: "^[A-Za-z_][A-Za-z0-9_$]*(?:\\.[A-Za-z_][A-Za-z0-9_$]*)?$"
+        pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
       file:
         description: "Optional basename used only when the compact class/member reference is ambiguous."
         type: string
