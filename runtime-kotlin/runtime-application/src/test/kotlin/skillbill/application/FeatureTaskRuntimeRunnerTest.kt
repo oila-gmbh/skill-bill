@@ -43,6 +43,8 @@ import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -3941,8 +3943,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
 internal const val WORKFLOW_ID = "wftr-20260602-test-0001"
 internal const val SESSION_ID = "ftr-test-001"
-private const val ISSUE_KEY = "SKILL-65"
-private const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
+internal const val ISSUE_KEY = "SKILL-65"
+internal const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
 
 // A spec whose parent directory follows the `{ISSUE_KEY}-{feature-name}` convention so the
 // derived feature branch is `feat/{ISSUE_KEY}-{feature-name}` (GoalRunnerTest-style assertion).
@@ -4393,6 +4395,7 @@ internal fun runnerHarness(
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
   crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
+  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -4426,6 +4429,7 @@ internal fun runnerHarness(
       runtimeConfig.planningProjectionValidator,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
+    diagnostics,
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
@@ -4688,7 +4692,7 @@ internal fun reviewFindingsOutput(
 // The real M1 review_fix launcher: review returns changes_requested findings until [convergeOnReview]
 // (1-based review launch index at which it first approves); a value above the cap never converges.
 // implement_fix and every other phase return their schema-valid reconciled output.
-private fun reviewFixLauncher(
+internal fun reviewFixLauncher(
   convergeOnReview: Int,
   onReviewLaunch: (Int) -> Unit = {},
   onPhaseLaunch: (String) -> Unit = {},

@@ -27,6 +27,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
@@ -151,6 +153,7 @@ internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPa
 internal class FeatureTaskRuntimeRunLoop(
   private val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val request = context.request
   private val state = context.state
@@ -843,7 +846,30 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     activeReentry = pendingReentry
     observability.loopEdge(destinationPhaseId, loopId, edgeIteration, verdict)
+    warnOnThresholdCrossing(edge, edgeIteration)
   }
+
+  /**
+   * Advisory crossing warning for a semantic remediation loop that just passed its declared warning
+   * threshold. It is emitted strictly after the durable re-entry ledger row for this iteration, so a
+   * crash before the row reruns this fresh path with no prior warning and a crash after it resumes
+   * through the non-emitting reuse path — at most one warning per loop and iteration either way. The
+   * exact-equality check keeps later iterations silent, and the guard reads only the edge's own
+   * declaration, so `review_fix` and `audit_gap` acknowledge independently with no phase-name
+   * branching. Emission failures are swallowed: the transition already happened and an advisory
+   * message must not be able to change it.
+   */
+  private fun warnOnThresholdCrossing(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int) {
+    val threshold = edge.warnAfterIterations ?: return
+    if (edgeIteration != threshold + 1) return
+    runCatching { diagnostics.warning(thresholdCrossingWarning(edge.loopId, threshold, edgeIteration)) }
+  }
+
+  private fun thresholdCrossingWarning(loopId: String, threshold: Int, edgeIteration: Int): String =
+    "Remediation loop '$loopId' exceeded its warning threshold of $threshold: entering iteration " +
+      "$edgeIteration for issue ${request.issueKey}, workflow ${request.workflowId}, subtask " +
+      "${request.goalContinuation?.subtaskId ?: request.issueKey}, spec " +
+      "${request.runInvariants.specReference}. Remediation will continue."
 
   private fun capExhaustedOnResume(phaseId: String): String? {
     val record = state.recordFor(phaseId) ?: return null

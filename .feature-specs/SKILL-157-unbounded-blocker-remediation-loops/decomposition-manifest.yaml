@@ -9,18 +9,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-157-unbounded-blocker-remediation-loops"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "resume"
 subtasks:
 - id: 1
   name: "Unbounded Blocker remediation state and transitions"
   spec_path: ".feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec_subtask_1_unbounded-blocker-remediation-state.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260803-141248-5cof"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -31,7 +31,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260803-162149-totb"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

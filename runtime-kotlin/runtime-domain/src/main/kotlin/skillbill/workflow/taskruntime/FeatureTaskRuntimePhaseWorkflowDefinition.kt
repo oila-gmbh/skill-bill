@@ -58,6 +58,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
   const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
 
+  // The shared advisory threshold for the semantic remediation loops (`review_fix`, `audit_gap`). Both
+  // loops are unbounded by design — the verdict, never a count, settles them — so crossing this many
+  // iterations warns the operator once and remediation continues. Declared here once so no seam can
+  // drift to its own literal.
+  const val SEMANTIC_LOOP_WARNING_THRESHOLD: Int = 3
+
   // SKILL-140: per-producer regeneration loop ids. A launch seam that quarantines an upstream
   // producer's rejected durable record re-enters that producer under its own bounded loop, so each
   // producer's regeneration cap and telemetry count are tracked independently of the others.
@@ -550,6 +556,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = null,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
+          warnAfterIterations = SEMANTIC_LOOP_WARNING_THRESHOLD,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -558,6 +565,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           loopId = AUDIT_GAP_LOOP_ID,
           perEdgeCap = null,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
+          warnAfterIterations = SEMANTIC_LOOP_WARNING_THRESHOLD,
         ),
         // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
         // durable record at its launch seam re-enters that producer under a bounded cap; cap

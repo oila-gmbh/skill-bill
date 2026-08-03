@@ -79,6 +79,23 @@ class UnboundedRemediationLoopRegressionTest {
   }
 
   @Test
+  fun `every capped edge keeps its cap and gains no threshold warning`() {
+    transitions.backwardEdges
+      .filter { it.perEdgeCap != null }
+      .forEach { edge ->
+        assertEquals(
+          def.MAX_RECORD_REGENERATION_ATTEMPTS,
+          edge.perEdgeCap,
+          "'${edge.loopId}' must keep its finite cap.",
+        )
+        assertNull(
+          edge.warnAfterIterations,
+          "'${edge.loopId}' is capped, so a threshold warning would be misleading.",
+        )
+      }
+  }
+
+  @Test
   fun `an exhausted regeneration edge still blocks durably`() {
     val transition = transition(
       def.PHASE_PLAN,
