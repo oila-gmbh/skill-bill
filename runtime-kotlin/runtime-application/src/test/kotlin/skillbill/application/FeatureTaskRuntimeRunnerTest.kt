@@ -3943,8 +3943,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
 internal const val WORKFLOW_ID = "wftr-20260602-test-0001"
 internal const val SESSION_ID = "ftr-test-001"
-internal const val ISSUE_KEY = "SKILL-65"
-internal const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
+private const val ISSUE_KEY = "SKILL-65"
+private const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
 
 // A spec whose parent directory follows the `{ISSUE_KEY}-{feature-name}` convention so the
 // derived feature branch is `feat/{ISSUE_KEY}-{feature-name}` (GoalRunnerTest-style assertion).

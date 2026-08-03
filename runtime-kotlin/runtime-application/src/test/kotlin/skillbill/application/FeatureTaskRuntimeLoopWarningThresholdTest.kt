@@ -31,7 +31,8 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
       diagnostics = diagnostics,
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val request = harness.request()
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(request))
 
     assertEquals(
       (1..crossingIteration).toList(),
@@ -42,9 +43,9 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     assertContains(warning, "review_fix")
     assertContains(warning, "warning threshold of $threshold")
     assertContains(warning, "iteration $crossingIteration")
-    assertContains(warning, ISSUE_KEY)
+    assertContains(warning, request.issueKey)
     assertContains(warning, WORKFLOW_ID)
-    assertContains(warning, SPEC_REFERENCE)
+    assertContains(warning, request.runInvariants.specReference)
     assertContains(warning, "Remediation will continue")
   }
 
@@ -141,7 +142,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     var crashOnCrossingReview = true
     val harness = runnerHarness(
       launcher = crashingReviewFixLauncher(
-        convergeOnReview = crossingIteration + 1,
+        convergeOnReview = crossingIteration + 2,
         crashOnReviewLaunch = crossingIteration,
         shouldCrash = { crashOnCrossingReview },
       ),
@@ -288,8 +289,7 @@ internal class RecordingDiagnostics : RuntimeDiagnostics {
 // Models the diagnostics port itself faulting at the moment of the crossing warning: the run must
 // finish exactly as it would have with a silent port.
 private class ThrowingDiagnostics : RuntimeDiagnostics {
-  override fun warning(message: String, error: Throwable?): Nothing =
-    throw IllegalStateException("diagnostics sink unavailable")
+  override fun warning(message: String, error: Throwable?): Nothing = kotlin.error("diagnostics sink unavailable")
 
   override fun error(message: String, error: Throwable?) = Unit
 }

@@ -1,5 +1,17 @@
 # featuretask runtime boundary history
 
+## [2026-08-03] SKILL-157 — Semantic loop warning threshold
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-application tests, runtime-domain tests
+- Semantic remediation loops (`review_fix`, `audit_gap`) stay unbounded; crossing iteration 3 emits one user-visible advisory naming the loop, threshold, iteration, and current work
+- Backward-edge declarations carry `warnAfterIterations`; non-semantic bounded edges keep their caps and leave the field null
+- Warning acknowledgement is persisted per loop and per subtask, so crash or parent resume yields at-most-once emission and the two loops warn independently
+- Emission is a pure side channel: destination, edge iteration, verdict, phase status, unresolved items, and completion outcome are byte-equivalent under Noop, recording, and throwing diagnostics sinks
+- Pattern: express advisory-only loop policy as a declared edge field consumed by the run loop, not as control flow in the transition decision
+- Reusable: acknowledgement-keyed at-most-once diagnostics for any durable-state loop
+- Limitation: warns once at crossing only; no periodic reminder and no hidden hard ceiling
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-07-28] SKILL-134 — Structured audit deferral
 Areas: runtime-application/featuretask, orchestration/contracts, runtime-application tests
 - Replaced recursive free-text deferral detection with explicit `deferred_repairs` and exhaustive per-item `repair_results`
