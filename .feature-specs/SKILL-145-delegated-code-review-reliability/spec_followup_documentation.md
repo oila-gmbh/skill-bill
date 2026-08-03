@@ -16,9 +16,12 @@ telemetry guidance aligned with the executable contracts.
 Documentation must name Codex, Claude, Cursor, Junie, Copilot, Opencode, and
 Zcode with independent classifications; cite the historical ledger and
 provider evidence; state all falsifiable promotion criteria; explain deadline
-and evidence-retention rationale; preserve inline as default; and state that
-`auto` remains inline. Every unresolved historical item must point to an
-owner, evidence status, and rationale in the ledger.
+and evidence-retention rationale. The fixed promotion bounds are 120 seconds
+p95 for 1–2 areas, 300 seconds for 3–5 areas, and 600 seconds for 6 or more
+areas, with at most 256 evidence events, 1,048,576 aggregate UTF-8 bytes, and
+30 days of retention per review. Preserve inline as default and state that
+`auto` remains inline. Every unresolved historical item must point to an owner,
+evidence status, and rationale in the ledger.
 
 The playbooks must describe unsupported-provider termination, no implicit
 inline fallback for explicit delegated requests, provider strategy isolation,

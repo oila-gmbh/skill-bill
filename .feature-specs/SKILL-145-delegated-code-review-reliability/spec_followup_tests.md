@@ -28,7 +28,12 @@ The end-to-end fixtures cover small, medium, and multi-area reviews and
 interruption before launch, during a worker, between waves, during aggregation,
 and before terminal persistence. Provider canaries are conditional on an
 installed authenticated provider and are not required for deterministic unit
-coverage.
+coverage. Positive promotion fixtures assert p95 limits of 120 seconds for
+1–2 areas, 300 seconds for 3–5 areas, and 600 seconds for 6 or more areas;
+negative fixtures exceed each limit. Retention fixtures accept at most 256
+evidence events and 1,048,576 aggregate UTF-8 bytes within 30 days, and reject
+each count, byte, and age boundary independently. Missing provider canary
+measurements are rejected rather than promoted.
 
 ## Repository validation owned by validate phase
 

@@ -173,16 +173,38 @@ wave membership, terminal status, and diagnostic references. Diagnostic
 summaries and references are bounded to the schema limits. The contract never
 persists prompts, complete diffs, source bodies, raw transcripts, or tool logs.
 
+## Fixed promotion measurement bounds
+
+Promotion measurements use these fixed, inclusive size classes and p95 elapsed
+time limits:
+
+| Review size | Declared areas | Maximum p95 elapsed time |
+|---|---:|---:|
+| Small | 1–2 | 120 seconds |
+| Medium | 3–5 | 300 seconds |
+| Multi-area | 6 or more | 600 seconds |
+
+The evidence-retention gate is also fixed per review: at most 256 lifecycle
+evidence events and at most 1,048,576 aggregate UTF-8 bytes may be retained,
+and retained evidence expires no later than 30 days after terminal persistence.
+Individual diagnostic references remain limited to 200 characters and
+diagnostic summaries to 500 characters by the lifecycle evidence schema. A
+missing size-class sample, missing retention measurement, or value above any
+limit fails the promotion gate; it is never treated as a pass by omission.
+
 ## Promotion gate
 
 Promotion from experimental explicit opt-in to supportable requires independent
 authenticated evidence for the provider and all of these falsifiable checks:
 
-1. p95 elapsed time is within the approved small/medium/multi-area bounds;
+1. p95 elapsed time is at most 120, 300, or 600 seconds for small, medium, or
+   multi-area reviews respectively;
 2. 100% of declared areas are covered exactly once;
 3. zero selected workers disappear without a durable terminal status;
 4. every run reaches one deterministic terminal classification;
-5. every retained diagnostic remains within byte and reference bounds; and
+5. every review remains at or below 256 evidence events, 1,048,576 aggregate
+   evidence bytes, and 30 days of retention, with each diagnostic reference
+   and summary within its schema limit; and
 6. provider-isolation fixtures show no change to other providers' strategies.
 
 Until a separate governed change records those measurements and approves the

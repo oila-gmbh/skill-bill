@@ -30,6 +30,13 @@ Provider-isolation tests must prove a Codex change cannot alter Claude, Cursor,
 or unchanged adapters. The generic process runner receives injected strategy
 objects and contains no provider-identity branch.
 
+Each adapter fixture must emit its provider-keyed bounded measurement record,
+including capability count, launch or refusal outcome, and promotion result.
+Authenticated canary measurements classify small (1–2 areas), medium (3–5
+areas), and multi-area (6 or more areas) reviews against p95 limits of 120, 300,
+and 600 seconds, plus the 256-event, 1,048,576-byte, and 30-day evidence
+retention limits. Missing canary evidence remains a failed promotion gate.
+
 ## Exclusions
 
 Do not broaden installed provider support or change the inline default as part

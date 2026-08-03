@@ -45,9 +45,9 @@ Use the decision to prepare separate governed implementation specs for approved 
 | Criterion | Decision/report evidence | Follow-up or existing contract |
 |---|---|---|
 | AC-001 | `decision.md` classifies Codex, Claude, Cursor, Junie, Copilot, Opencode, and Zcode independently. | `provider-capability-matrix.md`; `spec_followup_provider-adapters.md` |
-| AC-002 | `failure-matrix.md` is the exact 1–47 ledger; provider rows cite it and the measured lifecycle/provider evidence package. | `lifecycle-evidence.md`; `provider-failure-dispositions.md` |
+| AC-002 | `failure-matrix.md` is the exact 1–47 ledger; every provider row cites its PM-001–PM-007 measured outcome, the ledger, and the reliability promotion result. | `lifecycle-evidence.md`; `provider-capability-matrix.md`; `provider-failure-dispositions.md` |
 | AC-003 | `reliability-contract.md` defines identity, progress, scope, capacity, waves, five deadlines, terminal classes, aggregation, retry, cancellation, isolation, and diagnostics. | Existing `review-lifecycle-schema.yaml` and runtime review models; `spec_followup_schema.md` through `spec_followup_persistence.md` |
-| AC-004 | `decision.md` records falsifiable latency, coverage, worker-loss, terminal-status, retention, and isolation gates. | `spec_followup_telemetry.md`; `spec_followup_provider-adapters.md`; `spec_followup_tests.md` |
+| AC-004 | `decision.md` and `reliability-contract.md` record falsifiable latency limits of 120/300/600 seconds by review size, 256-event/1,048,576-byte/30-day retention limits, coverage, worker-loss, terminal-status, and isolation gates. | `spec_followup_schema.md`; `spec_followup_telemetry.md`; `spec_followup_provider-adapters.md`; `spec_followup_tests.md` |
 | AC-005 | `decision.md` orders schema, domain, application, persistence, provider adapter, telemetry, installation, documentation, and test specifications. | `spec_followup_*.md`; SKILL-144/146 exclusions are explicit. |
 | AC-006 | `decision.md`, both review playbooks, and telemetry documentation preserve inline default and `auto`-inline behavior. | Existing review execution-mode contract. |
 | AC-007 | Every `remaining` ledger row has an owner, evidence status, bounded reference, and rationale; no unresolved row is ownerless. | `failure-matrix.md`; `spec_followup_documentation.md` |

@@ -14,22 +14,51 @@ the provider capability matrix in
 [`provider-capability-matrix.md`](provider-capability-matrix.md), and the
 provider-keyed dispositions in
 [`provider-failure-dispositions.md`](provider-failure-dispositions.md).
+The bounded provider measurements are records PM-001 through PM-007 in this
+decision; each record reports the provider's capability count, launch or
+refusal outcome, and current promotion-gate result using the capability matrix
+and runtime registry as its measurement sources.
 The historical ledger contains items 1–47 exactly once and gives every
 remaining item an owner, evidence status, bounded reference, and rationale.
 The current runtime evidence is deterministic and bounded; it is not a claim
 that one successful run proves promotion.
 
+## Bounded provider measurements
+
+These records are bounded repository measurements from the provider capability
+matrix, the provider registry, and the launch/refusal boundary. `8/8` means all
+eight capability dimensions are present; `0/8` means the provider has no
+delegated capability at that boundary. `0/6` promotion gates means no
+independent authenticated canary has satisfied the six gates in the reliability
+contract. These are provider-specific observations, not inferred parity with
+another provider and not a claim that a live canary has run.
+
+| Record | Provider | Measurement source | Measured outcome | Promotion/rejection result |
+| --- | --- | --- | --- | --- |
+| PM-001 | Codex | `DelegatedReviewProviderCapabilityRegistry` and Codex adapter surface | `8/8` capabilities present; delegated launch is available; terminal disposition is `experimental explicit opt-in` | `0/6` promotion gates satisfied; promotion remains rejected pending authenticated small, medium, and multi-area canaries |
+| PM-002 | Claude | `DelegatedReviewProviderCapabilityRegistry` and Claude adapter surface | `8/8` capabilities present; delegated launch is available; terminal disposition is `experimental explicit opt-in` | `0/6` promotion gates satisfied; promotion remains rejected pending Claude-specific authenticated canaries |
+| PM-003 | Cursor | `DelegatedReviewProviderCapabilityRegistry` and Cursor adapter surface | `8/8` capabilities present; delegated launch is available; terminal disposition is `experimental explicit opt-in` | `0/6` promotion gates satisfied; promotion remains rejected pending Cursor-specific authenticated canaries |
+| PM-004 | Junie | Capability registry and unsupported launch boundary | `0/8` capabilities present; delegated launch is unavailable; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; unsupported rejection is satisfied and no inline substitution is permitted |
+| PM-005 | Copilot | Capability registry lookup and adapter inventory | `0/8` capabilities present; no delegated adapter is registered; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; unsupported rejection is satisfied and no inline substitution is permitted |
+| PM-006 | Opencode | `RUNTIME_REFUSED_AGENTS` and refusal boundary | `0/8` capabilities present; launch is refused; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; runtime-refusal rejection is satisfied and no inline substitution is permitted |
+| PM-007 | Zcode | `RUNTIME_REFUSED_AGENTS` and refusal boundary | `0/8` capabilities present; launch is refused; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; runtime-refusal rejection is satisfied and no inline substitution is permitted |
+
+The records retain only provider, capability count, launch disposition, and
+promotion outcome. They do not retain prompts, diffs, transcripts, source
+bodies, or tool logs. The later validation phase may add authenticated canary
+measurements; until then, a missing canary sample is a failed promotion gate.
+
 ## Provider classification
 
-| Provider | Classification | Evidence | Promotion or rejection condition |
-|---|---|---|---|
-| Codex | experimental explicit opt-in | `DelegatedReviewProviderCapabilityRegistry`; Codex command builder and native lifecycle callbacks; lifecycle and capacity fixtures | Keep experimental until independent authenticated canaries satisfy every promotion gate in the reliability contract. A missing durable progress, deadline, aggregation, or isolation result rejects promotion. |
-| Claude | experimental explicit opt-in | Claude command builder, streamed decoder, callback strategy, and provider matrix | Keep experimental until Claude-specific canaries satisfy the same gates without importing Codex behavior. |
-| Cursor | experimental explicit opt-in | Cursor command builder, independent stream decoder, callback strategy, and provider matrix | Keep experimental until Cursor-specific canaries satisfy the same gates without importing another provider's strategy. |
-| Junie | unsupported | Capability registry marks lifecycle and terminal-result support absent; launch path returns explicit unsupported outcome | Reject until an independent adapter exposes fresh isolation, tracking, output, progress, cancellation, timeout, tokens, terminal result, and aggregation evidence. |
-| Copilot | unsupported | No registered delegated worker adapter in the capability registry | Reject until a governed adapter and provider-isolation test suite exist. Never substitute inline execution. |
-| Opencode | unsupported | Runtime-refused provider set and capability registry | Reject until runtime support is independently governed and its terminal outcome is harvestable. |
-| Zcode | unsupported | Runtime-refused provider set and capability registry | Reject until runtime support is independently governed and its terminal outcome is harvestable. |
+| Provider | Classification | Measured evidence | Historical ledger | Promotion or rejection condition |
+|---|---|---|---|---|
+| Codex | experimental explicit opt-in | [`PM-001`](decision.md#bounded-provider-measurements) measures `8/8` capabilities and an available delegated launch. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` satisfied because no authenticated canary set has been recorded; missing durable progress, deadline, aggregation, or isolation evidence rejects promotion. |
+| Claude | experimental explicit opt-in | [`PM-002`](decision.md#bounded-provider-measurements) measures `8/8` capabilities and an available delegated launch. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` satisfied because no Claude-specific authenticated canary set has been recorded; cross-provider evidence cannot promote Claude. |
+| Cursor | experimental explicit opt-in | [`PM-003`](decision.md#bounded-provider-measurements) measures `8/8` capabilities and an available delegated launch. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` satisfied because no Cursor-specific authenticated canary set has been recorded; cross-provider evidence cannot promote Cursor. |
+| Junie | unsupported | [`PM-004`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, unavailable launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; explicit unsupported rejection is satisfied and no inline substitution is permitted. |
+| Copilot | unsupported | [`PM-005`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, no registered adapter, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; explicit unsupported rejection is satisfied and no inline substitution is permitted. |
+| Opencode | unsupported | [`PM-006`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, refused launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; runtime-refusal rejection is satisfied and no inline substitution is permitted. |
+| Zcode | unsupported | [`PM-007`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, refused launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; runtime-refusal rejection is satisfied and no inline substitution is permitted. |
 
 The classifications are independent. Shared coordinator accounting,
 schema validation, or inline policy does not turn an unsupported provider into
@@ -41,19 +70,24 @@ Each experimental provider must provide a bounded, authenticated canary set
 covering small, medium, and multi-area reviews. Promotion is falsifiable only
 when all checks pass for that provider:
 
-- p95 elapsed time stays within the approved size-specific latency budget;
+- p95 elapsed time is at most 120 seconds for small reviews (1–2 declared
+  areas), 300 seconds for medium reviews (3–5 declared areas), and 600 seconds
+  for multi-area reviews (6 or more declared areas);
 - every declared area is completed exactly once, with no silent drop or
   duplicate ownership;
 - every selected worker has a durable terminal status, including loss,
   cancellation, interruption, and timeout;
 - every run has one deterministic terminal classification;
-- diagnostic references and retained evidence stay within contract bounds; and
+- each review retains at most 256 lifecycle evidence events and 1,048,576
+  aggregate UTF-8 evidence bytes, with a 30-day maximum age after terminal
+  persistence; individual references and summaries remain within schema bounds;
 - provider-isolation tests prove that changing this adapter cannot alter
   Claude, Cursor, Codex, or any unchanged adapter.
 
-The current evidence satisfies the shape and rejection guards but does not
-satisfy the independent measured promotion gate. Therefore no provider is
-classified as supportable.
+The current PM-001–PM-007 measurements satisfy the classification shape and
+unsupported-provider rejection guards, but no provider has a canary sample
+that satisfies the independent measured promotion gate. Therefore no
+provider is classified as supportable.
 
 ## Reliability contract
 

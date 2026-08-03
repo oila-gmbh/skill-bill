@@ -26,13 +26,20 @@ Accept a current contract version with digest-bound packet, assignment,
 provider, worker, and attempt identity; positive timestamps; unique event and
 assignment ids; complete wave accounting; positive deadline limits; valid
 terminal transitions; exact aggregation coverage; and diagnostics within the
-declared byte and character limits.
+declared byte and character limits. Promotion fixtures use small reviews of
+1–2 areas with a 120-second p95 limit, medium reviews of 3–5 areas with a
+300-second p95 limit, and multi-area reviews of 6 or more areas with a
+600-second p95 limit. Evidence retention is at most 256 lifecycle events and
+1,048,576 aggregate UTF-8 bytes per review, expiring within 30 days of
+terminal persistence.
 
 Reject stale or unknown versions, missing identity, malformed digests or
 timestamps, duplicate worker/area ownership, zero or negative capacity,
 invalid wave membership, unknown deadline scope, impossible transition,
 incomplete aggregation, stale retry attempt, mismatched provider, and
-oversized or raw-content diagnostics. Reject prompt, complete-diff,
+oversized or raw-content diagnostics, a missing size-class measurement, a p95
+latency above its fixed bound, an evidence count above 256, aggregate evidence
+above 1,048,576 bytes, or retention older than 30 days. Reject prompt, complete-diff,
 source-body, transcript, and tool-log fields through strict additional-property
 validation.
 
