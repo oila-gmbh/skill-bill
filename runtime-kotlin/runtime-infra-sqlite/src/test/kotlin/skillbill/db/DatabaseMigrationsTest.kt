@@ -76,6 +76,7 @@ class DatabaseMigrationsTest {
         18 to "persist-legacy-goal-planning-repair-evidence",
         19 to "add-goal-runner-controls",
         20 to "add-goal-runner-control-state",
+        21 to "add-delegated-review-lifecycle-projection",
       ),
       migrationDefinitions,
     )

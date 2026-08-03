@@ -114,7 +114,10 @@ class ReviewLifecycleRecorder(
     event
   }
 
-  /** Appends a boundary's evidence in one repository transaction so cancellation cannot expose a partial terminal set. */
+  /**
+   * Appends a boundary's evidence in one repository transaction so cancellation cannot expose a
+   * partial terminal set.
+   */
   internal fun recordAll(records: List<ReviewLifecycleRecord>): List<ReviewLifecycleEvent> = synchronized(lock) {
     if (records.isEmpty()) return@synchronized emptyList()
     val events = ledgers.getOrPut(records.first().reviewId) {

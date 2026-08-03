@@ -4,9 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -139,10 +138,11 @@ private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
   override fun observeProviderResult(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
     resultDecoder.observe(operations, chunk)
 
-  override fun isProviderMcpStartupEvent(event: JsonNode): Boolean =
-    explicitMcpStartupEvent(event) ||
-      (event.textValue("type") == "system" && event.textValue("subtype") == "init" &&
-        event.path("mcp_servers").isArray && event.path("mcp_servers").size() > 0)
+  override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event) ||
+    (
+      event.textValue("type") == "system" && event.textValue("subtype") == "init" &&
+        event.path("mcp_servers").isArray && event.path("mcp_servers").size() > 0
+      )
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
     syntheticProviderLifecycleSignal(event) ?: when (event.textValue("type")) {
@@ -229,105 +229,6 @@ private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
       else -> null
     }
 }
-
-/**
- * Consumes only explicit provider lifecycle envelopes. Ordinary model output, process heartbeats,
- * and completion usage never become declared specialist progress or MCP startup evidence.
- */
-private class ProviderLifecycleSignals(
-  private val mcpStartupEvent: (JsonNode) -> Boolean,
-  private val lifecycleEvent: (JsonNode) -> ProviderLifecycleSignal?,
-) {
-  private val pending = StringBuilder()
-  private val mapper: ObjectMapper by lazy(::ObjectMapper)
-  var mcpStartupObserved: Boolean = false
-    private set
-
-  fun observe(chunk: String, progressEmitter: AgentRunProgressEmitter) {
-    pending.append(chunk)
-    drainLines(progressEmitter, flushPartial = false)
-  }
-
-  fun flush() {
-    drainLines(AgentRunProgressEmitter.NONE, flushPartial = true)
-  }
-
-  private fun drainLines(progressEmitter: AgentRunProgressEmitter, flushPartial: Boolean) {
-    while (true) {
-      val newline = pending.indexOf("\n")
-      if (newline < 0) break
-      processLine(pending.substring(0, newline), progressEmitter)
-      pending.delete(0, newline + 1)
-    }
-    if (flushPartial && pending.isNotBlank()) {
-      processLine(pending.toString(), AgentRunProgressEmitter.NONE)
-      pending.clear()
-    }
-  }
-
-  private fun processLine(line: String, progressEmitter: AgentRunProgressEmitter) {
-    val event = runCatching { mapper.readTree(line.trim()) }.getOrNull() ?: return
-    if (mcpStartupEvent(event)) mcpStartupObserved = true
-
-    val lifecycleSignal = lifecycleEvent(event) ?: return
-    val operationName = event.path("operation_name")
-      .takeIf { it.isTextual }
-      ?.asText()
-      ?.takeIf(String::isNotBlank)
-      ?: "delegated-review"
-    val operationKind = event.path("operation_kind")
-      .takeIf { it.isTextual }
-      ?.asText()
-      ?.takeIf(String::isNotBlank)
-      ?: "specialist-review"
-    progressEmitter.emit(
-      AgentRunProgressEmission(
-        eventKind = lifecycleSignal.eventKind,
-        processAlive = lifecycleSignal.processAlive,
-        operationName = operationName,
-        operationKind = operationKind,
-        expectedLong = event.path("expected_long").takeIf { it.isBoolean }?.asBoolean() ?: true,
-        outcome = lifecycleSignal.outcome,
-        authoritative = true,
-      ),
-    )
-  }
-}
-
-private data class ProviderLifecycleSignal(
-  val eventKind: GoalProgressEventKind,
-  val outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
-) {
-  val processAlive: Boolean get() = eventKind != GoalProgressEventKind.OPERATION_COMPLETED
-}
-
-private fun syntheticProviderLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? {
-  val type = event.textValue("type")
-  val subtype = event.textValue("subtype")
-  return when {
-    type == "specialist_progress" || subtype == "specialist_progress" ||
-      type == "operation_started" || subtype == "operation_started" ->
-      ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
-    type == "operation_heartbeat" || subtype == "operation_heartbeat" ->
-      ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
-    type == "operation_completed" || subtype == "operation_completed" ->
-      ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_COMPLETED, GoalProgressOutcome.SUCCEEDED)
-    else -> null
-  }
-}
-
-private fun explicitMcpStartupEvent(event: JsonNode): Boolean {
-  val type = event.path("type").takeIf { it.isTextual }?.asText().orEmpty()
-  val subtype = event.path("subtype").takeIf { it.isTextual }?.asText().orEmpty()
-  return event.path("mcp_startup_observed").asBoolean(false) ||
-    type in setOf("mcp_startup", "mcp_ready") ||
-    subtype in setOf("mcp_startup", "mcp_ready")
-}
-
-private fun JsonNode.textValue(field: String): String = path(field)
-  .takeIf { it.isTextual }
-  ?.asText()
-  .orEmpty()
 
 /**
  * Streams one JSON string field without retaining its provider envelope. Only field names and

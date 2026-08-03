@@ -1,5 +1,10 @@
 package skillbill.review.plan
 
+import skillbill.review.plan.model.DelegatedReviewCapacityRequest
+import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
+import skillbill.review.plan.model.DelegatedReviewDeadlineScope
+import skillbill.review.plan.model.DelegatedReviewLifecycleState
+import skillbill.review.plan.model.DelegatedReviewWave
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

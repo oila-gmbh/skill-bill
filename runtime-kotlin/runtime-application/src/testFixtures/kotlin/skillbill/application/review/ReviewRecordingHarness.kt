@@ -7,6 +7,7 @@ import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
+import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -29,6 +30,7 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.ports.review.model.NativeReviewWorkerRequest
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
@@ -43,7 +45,6 @@ import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
-import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -51,8 +52,8 @@ import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.plan.DelegatedReviewDeadlinePolicy
 import skillbill.review.context.model.ReviewRequestedOperation
+import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -281,6 +282,8 @@ private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: Revie
 
 /** Runs both lanes to completion in a fixed order so recorded evidence stays deterministic. */
 private class SequentialLaneRunner : ParallelReviewLaneRunner {
+  override fun <T> runWave(tasks: List<() -> T>): List<Result<T>> = JdkParallelReviewLaneRunner().runWave(tasks)
+
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
     ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
 
@@ -326,7 +329,9 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
       "loadAccounting" -> null
       "appendReviewLifecycleEvent" -> recorder.lifecycleEvents.add(args[0] as ReviewLifecycleEvent).let { true }
       "loadReviewLifecycleEvents" -> recorder.lifecycleEvents.toList()
-      "saveDelegatedReviewLifecycle" -> recorder.lifecycleProjections.add(args[0] as DelegatedReviewLifecycleSnapshot).let { }
+      "saveDelegatedReviewLifecycle" -> recorder.lifecycleProjections.add(
+        args[0] as DelegatedReviewLifecycleSnapshot,
+      ).let { }
       "loadDelegatedReviewLifecycle" -> recorder.lifecycleProjections.lastOrNull { it.reviewId == args?.firstOrNull() }
       else -> error("Unexpected review repository call: ${method.name}")
     }

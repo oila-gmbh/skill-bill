@@ -14,6 +14,8 @@ import java.util.concurrent.TimeUnit
 
 @Inject
 class JdkParallelReviewLaneRunner : ParallelReviewLaneRunner {
+  override fun isInterrupted(): Boolean = Thread.currentThread().isInterrupted
+
   override fun restoreInterruption() = Thread.currentThread().interrupt()
 
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult {
@@ -42,6 +44,22 @@ class JdkParallelReviewLaneRunner : ParallelReviewLaneRunner {
       }
     }
     return ParallelReviewLaneRunResult(outcome1, outcome2)
+  }
+
+  override fun <T> runWave(tasks: List<() -> T>): List<Result<T>> {
+    if (tasks.isEmpty()) return emptyList()
+    val executor = Executors.newFixedThreadPool(tasks.size)
+    return try {
+      executor.invokeAll(tasks.map { task -> Callable(task) }).map { future ->
+        try {
+          Result.success(future.get())
+        } catch (error: ExecutionException) {
+          Result.failure(error.cause ?: error)
+        }
+      }
+    } finally {
+      executor.shutdownNow()
+    }
   }
 
   private fun resultFromFuture(future: Future<ParallelReviewLaneOutcome>): ParallelReviewLaneOutcome = try {

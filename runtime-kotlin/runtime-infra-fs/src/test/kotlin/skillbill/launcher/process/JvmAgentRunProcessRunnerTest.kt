@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 

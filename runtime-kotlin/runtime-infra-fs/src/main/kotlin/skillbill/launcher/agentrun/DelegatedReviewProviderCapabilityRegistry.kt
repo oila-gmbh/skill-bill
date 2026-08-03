@@ -28,7 +28,7 @@ object DelegatedReviewProviderCapabilityRegistry {
       rationale = "Codex keeps fork_turns none and its provider strategy; coordinator capacity, bootstrap " +
         "measurement, five deadline scopes, bounded diagnostics, repair, wave telemetry, and terminal behavior " +
         "are recorded, while promotion remains deferred pending independent canaries. " +
-          failureDisposition(agent),
+        failureDisposition(agent),
     )
     InstallAgent.CLAUDE -> DelegatedReviewProviderCapability(
       providerId = agent.id,
@@ -37,7 +37,7 @@ object DelegatedReviewProviderCapabilityRegistry {
       rationale = "Claude keeps fresh-process isolation, streamed output decoding, and its callback strategy; " +
         "shared capacity, bootstrap measurement, five deadline scopes, bounded repair, wave telemetry, and " +
         "terminal behavior are recorded, while promotion remains deferred pending independent canaries. " +
-          failureDisposition(agent),
+        failureDisposition(agent),
     )
     InstallAgent.CURSOR -> DelegatedReviewProviderCapability(
       providerId = agent.id,
@@ -58,11 +58,9 @@ object DelegatedReviewProviderCapabilityRegistry {
     )
   }
 
-  fun matrix(): List<DelegatedReviewProviderCapability> =
-    InstallAgent.entries.map(::forProvider)
+  fun matrix(): List<DelegatedReviewProviderCapability> = InstallAgent.entries.map(::forProvider)
 
-  fun matrixProjection(): DelegatedReviewProviderCapabilityMatrix =
-    DelegatedReviewProviderCapabilityMatrix(matrix())
+  fun matrixProjection(): DelegatedReviewProviderCapabilityMatrix = DelegatedReviewProviderCapabilityMatrix(matrix())
 
   private fun unsupported(agent: InstallAgent, rationale: String) = DelegatedReviewProviderCapability(
     providerId = agent.id,

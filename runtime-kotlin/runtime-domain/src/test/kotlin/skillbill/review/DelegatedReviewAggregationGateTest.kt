@@ -1,8 +1,12 @@
 package skillbill.review
 
+import skillbill.review.model.DelegatedReviewAggregationRequest
+import skillbill.review.model.DelegatedReviewAggregationState
+import skillbill.review.model.DelegatedReviewAssignmentOwnership
+import skillbill.review.model.DelegatedReviewWorkerResult
 import kotlin.test.Test
-import kotlin.test.assertFailsWith
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class DelegatedReviewAggregationGateTest {
   private val assignment = DelegatedReviewAssignmentOwnership(

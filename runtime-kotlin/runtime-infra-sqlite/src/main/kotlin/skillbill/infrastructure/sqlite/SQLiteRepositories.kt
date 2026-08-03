@@ -39,8 +39,8 @@ import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats

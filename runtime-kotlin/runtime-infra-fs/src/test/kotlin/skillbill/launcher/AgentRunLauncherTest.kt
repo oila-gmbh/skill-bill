@@ -18,6 +18,7 @@ import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
@@ -164,6 +165,54 @@ class AgentRunLauncherTest {
       )
       assertTrue(captured.mcpStartupProbe.startupObserved())
     }
+  }
+
+  @Test
+  fun `provider startup envelope does not suppress the progress idle watchdog`() {
+    val broker = Proxy.newProxyInstance(
+      ReviewEvidenceBroker::class.java.classLoader,
+      arrayOf(ReviewEvidenceBroker::class.java),
+    ) { _, method, _ ->
+      when (method.returnType) {
+        java.lang.Boolean.TYPE -> false
+        java.lang.Integer.TYPE -> 0
+        java.lang.Long.TYPE -> 0L
+        else -> null
+      }
+    } as ReviewEvidenceBroker
+    val runner = object : AgentRunProcessRunner {
+      override fun run(request: AgentRunProcessRequest): AgentRunProcessResult = JvmAgentRunProcessRunner().run(
+        request.copy(
+          command = listOf(
+            "sh",
+            "-c",
+            """printf '%s\n' '{"type":"thread.started"}'; while :; do :; done""",
+          ),
+        ),
+      )
+    }
+
+    val outcome = FileSystemAgentRunLauncher(runner).launchNativeReview(
+      NativeReviewWorkerRequest(
+        agentId = "codex",
+        logicalWorkerName = "bill-code-review-architecture",
+        issueKey = "SKILL-145",
+        repoRoot = Files.createTempDirectory("native-review-stall-source"),
+        timeout = 5.seconds,
+        progressIdleTimeout = 100.milliseconds,
+        prompt = """{"kind":"stall"}""",
+        modelOverride = null,
+        isolation = skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
+        broker = broker,
+        operations = BrokerBackedNativeReviewOperationProtocol(broker),
+      ),
+    )
+
+    val facts = assertIs<AgentRunLaunchFacts>(outcome)
+    assertTrue(facts.timedOut, "a provider that only emits startup must be idle-killed")
+    assertEquals("progress_idle_timeout", facts.liveness?.reason)
+    assertEquals(GoalRunnerLivenessState.IDLE, facts.liveness?.livenessState)
+    assertFalse(facts.liveness?.activeOperationExpectedLong ?: true)
   }
 
   // A phase-briefing prompt override still drives the per-agent CLI directly (not the
@@ -590,7 +639,10 @@ class AgentRunLauncherTest {
 
     assertTrue(result.timedOut)
     assertEquals("progress_idle_timeout", result.liveness?.reason)
-    assertTrue(providerProgress.recorded.isEmpty(), "Only provider-owned lifecycle envelopes may arm declared progress.")
+    assertTrue(
+      providerProgress.recorded.isEmpty(),
+      "Only provider-owned lifecycle envelopes may arm declared progress.",
+    )
   }
 
   @Test

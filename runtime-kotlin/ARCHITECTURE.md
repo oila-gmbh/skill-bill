@@ -397,6 +397,14 @@ runtime-ports
     - `skillbill.ports.review.model.ReviewWorkerResultEnvelope.fromPayload`
     - `skillbill.ports.review.model.ReviewLifecycleEvent.toBoundedPayload`
     - `skillbill.ports.review.model.ReviewLifecycleEvidencePackage.toEvidencePayload`
+    - `skillbill.ports.review.model.DelegatedReviewCapabilityDimensions.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewProviderCapability.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewProviderCapabilityMatrix.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewWorkerRecord.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewDeadline.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewWaveRecord.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewLifecycleMetrics.toPayload`
+    - `skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot.toPayload`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -1104,6 +1112,14 @@ Categories:
 - `skillbill.ports.review.model.ReviewWorkerResultEnvelope.fromPayload`
 - `skillbill.ports.review.model.ReviewLifecycleEvent.toBoundedPayload`
 - `skillbill.ports.review.model.ReviewLifecycleEvidencePackage.toEvidencePayload`
+- `skillbill.ports.review.model.DelegatedReviewCapabilityDimensions.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewProviderCapability.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewProviderCapabilityMatrix.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewWorkerRecord.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewDeadline.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewWaveRecord.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewLifecycleMetrics.toPayload`
+- `skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot.toPayload`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`

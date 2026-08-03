@@ -1,3 +1,14 @@
+## [2026-08-03] SKILL-145 delegated code-review provider liveness, capacity, and aggregation (subtask 2)
+Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts}, orchestration/{contracts,review-delegation,review-orchestrator}, .feature-specs/SKILL-145-delegated-code-review-reliability
+- Provider capability records cover the eight delegated dimensions with explicit supported/unsupported dispositions for Codex, Claude, Cursor, Junie, and unregistered providers; provider command/process strategies remain isolated. reusable
+- Capacity planning reserves coordinator slots, partitions selected workers into deterministic waves, and lifecycle transitions cover selected/queued/launched/running/completed/failed/timed-out/cancelled/aggregated without silent drops. reusable
+- Explicit provider lifecycle envelopes are the only authoritative progress and MCP-startup signals; ordinary model output, process heartbeats, and completion usage remain non-authoritative.
+- Startup, progress-idle, per-worker, aggregation, and whole-review deadlines plus interruption boundaries produce predictable durable terminal blocks with bounded diagnostics.
+- Aggregation requires exact assignment/provider/worker/attempt identity, unique ownership, complete declared-area coverage, and completed worker results before findings are flattened. reusable
+- Representative fixtures retain bounded elapsed/token/process/MCP-startup/completed-area measurements; remaining provider failure items are dispositioned and promotion remains deferred pending canaries.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-02] SKILL-145 delegated code-review lifecycle evidence (subtask 1)
 Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts}, orchestration/{contracts,review-delegation,review-orchestrator,telemetry-contract}, docs, .feature-specs/SKILL-145-delegated-code-review-reliability
 - Durable delegated-review lifecycle records now cover coordinator and worker preparation, launch, progress, completion, aggregation, terminal outcomes, recovery, and bounded evidence; process/MCP observations remain non-authoritative. reusable

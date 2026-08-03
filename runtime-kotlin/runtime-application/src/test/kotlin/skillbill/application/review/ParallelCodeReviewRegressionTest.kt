@@ -3,16 +3,18 @@ package skillbill.application.review
 import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
-import skillbill.ports.review.model.ReviewLifecycleEventKind
-import skillbill.ports.review.model.ReviewWorkerLifecycleState
-import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.ports.review.model.DelegatedReviewTerminalClassification
+import skillbill.ports.review.model.DelegatedReviewWorkerState
+import skillbill.ports.review.model.ReviewLifecycleComponent
+import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.review.context.model.ProviderTokenThresholds
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.plan.DelegatedReviewDeadlinePolicy
+import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -85,11 +87,7 @@ class ParallelCodeReviewRegressionTest {
     val recorder = ReviewRecorder()
     var preflightCalled = false
     val runner = reviewHarness(
-      config(
-        preflight = {
-          preflightCalled = true
-        },
-      ),
+      config().copy(preflight = { preflightCalled = true }),
       recorder,
     )
 
@@ -218,8 +216,7 @@ class ParallelCodeReviewRegressionTest {
           aggregationMs = 1_000,
           wholeReviewMs = 1_000,
         ),
-        monotonicNowNanos = { if (clockCalls++ == 0) 0L else 2_000_000L },
-      ),
+      ).copy(monotonicNowNanos = { if (clockCalls++ == 0) 0L else 2_000_000L }),
       recorder,
     ).run(harnessRequest())
 
@@ -289,9 +286,11 @@ class ParallelCodeReviewRegressionTest {
           aggregationMs = 1,
           wholeReviewMs = 100,
         ),
-        monotonicNowNanos = clock::now,
-        response = { clock.advanceAfterWorker(); RecordedWorkerResponse() },
-      ),
+        response = {
+          clock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = clock::now),
       recorder,
     ).run(harnessRequest())
 
@@ -316,9 +315,11 @@ class ParallelCodeReviewRegressionTest {
           aggregationMs = 100,
           wholeReviewMs = 1,
         ),
-        monotonicNowNanos = clock::now,
-        response = { clock.advanceAfterWorker(); RecordedWorkerResponse() },
-      ),
+        response = {
+          clock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = clock::now),
       recorder,
     ).run(harnessRequest())
 
@@ -399,6 +400,43 @@ class ParallelCodeReviewRegressionTest {
       recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED },
     )
   }
+
+  private fun config(
+    diff: String = diffForPaths("src/Repo.kt"),
+    budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+    deadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
+    interruptionProbe: () -> Boolean = { false },
+    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
+      RecordedWorkerResponse()
+    },
+  ) = ReviewHarnessConfig(
+    manifests = listOf(reviewPack("kotlin", areas, routingSignals = listOf("*.kt", "*.md"))),
+    diff = diff,
+    response = response,
+    budget = budget,
+    preflight = {},
+    delegatedReviewDeadlinePolicy = deadlinePolicy,
+    monotonicNowNanos = System::nanoTime,
+    interruptionProbe = interruptionProbe,
+  )
+
+  private class ReviewTestClock {
+    private var nowNanos = 0L
+    private var advance = false
+
+    fun now(): Long {
+      if (advance) nowNanos += 2_000_000L
+      return nowNanos
+    }
+
+    fun advanceAfterWorker() {
+      advance = true
+    }
+  }
+}
+
+class ParallelCodeReviewLifecycleRegressionTest {
+  private val areas = listOf("architecture", "security", "testing")
 
   @Test fun `interruption before launch records one durable before-launch classification`() {
     val recorder = ReviewRecorder()
@@ -654,6 +692,52 @@ class ParallelCodeReviewRegressionTest {
     assertEquals(persistedAggregation.terminalCompletion, terminal.terminalCompletion)
   }
 
+  @Test
+  fun `replaying a failed aggregation preserves its durable timeout and interruption outcome`() {
+    fun replayWithoutTerminal(label: String, firstConfig: ReviewHarnessConfig, expectedOutcome: ReviewProcessOutcome) {
+      val recorder = ReviewRecorder()
+      val request = harnessRequest(reviewRunId = "review-failed-aggregation-$label")
+      reviewHarness(firstConfig, recorder).run(request)
+      val persistedAggregation = recorder.lifecycleEvents.single {
+        it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED
+      }
+      assertEquals(expectedOutcome, persistedAggregation.processOutcome)
+      recorder.lifecycleEvents.removeAll { it.component == ReviewLifecycleComponent.TERMINAL }
+
+      reviewHarness(config(), recorder).run(request)
+
+      val terminal = recorder.lifecycleEvents.last { it.component == ReviewLifecycleComponent.TERMINAL }
+      assertEquals(expectedOutcome, terminal.processOutcome)
+      assertEquals(expectedOutcome, terminal.terminalCompletion?.status)
+    }
+
+    val timeoutClock = ReviewTestClock()
+    replayWithoutTerminal(
+      label = "timeout",
+      firstConfig = config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 100,
+          progressIdleMs = 100,
+          perWorkerMs = 100,
+          aggregationMs = 1,
+          wholeReviewMs = 100,
+        ),
+        response = {
+          timeoutClock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = timeoutClock::now),
+      expectedOutcome = ReviewProcessOutcome.TIMED_OUT,
+    )
+
+    var interruptionCalls = 0
+    replayWithoutTerminal(
+      label = "interrupted",
+      firstConfig = config(interruptionProbe = { ++interruptionCalls >= 4 }),
+      expectedOutcome = ReviewProcessOutcome.INTERRUPTED,
+    )
+  }
+
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
@@ -813,9 +897,7 @@ class ParallelCodeReviewRegressionTest {
   private fun config(
     diff: String = diffForPaths("src/Repo.kt"),
     budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
-    preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
     deadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
-    monotonicNowNanos: () -> Long = System::nanoTime,
     interruptionProbe: () -> Boolean = { false },
     response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
       RecordedWorkerResponse()
@@ -825,9 +907,9 @@ class ParallelCodeReviewRegressionTest {
     diff = diff,
     response = response,
     budget = budget,
-    preflight = preflight,
+    preflight = {},
     delegatedReviewDeadlinePolicy = deadlinePolicy,
-    monotonicNowNanos = monotonicNowNanos,
+    monotonicNowNanos = System::nanoTime,
     interruptionProbe = interruptionProbe,
   )
 

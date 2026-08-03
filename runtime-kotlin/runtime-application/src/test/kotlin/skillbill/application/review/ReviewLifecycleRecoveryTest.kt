@@ -9,7 +9,7 @@ import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
-import skillbill.review.plan.DelegatedReviewWave
+import skillbill.review.plan.model.DelegatedReviewWave
 import java.lang.reflect.Proxy
 import java.nio.file.Path
 import kotlin.test.Test
@@ -44,15 +44,10 @@ class ReviewLifecycleRecoveryTest {
     val database = object : skillbill.ports.persistence.DatabaseSessionFactory {
       override fun resolveDbPath(dbOverride: String?) = Path.of("/tmp/review.db")
       override fun databaseExists(dbOverride: String?) = true
-      override fun <T> read(
-        dbOverride: String?,
-        block: (skillbill.ports.persistence.UnitOfWork) -> T,
-      ): T = block(unitOfWork)
+      override fun <T> read(dbOverride: String?, block: (skillbill.ports.persistence.UnitOfWork) -> T): T =
+        block(unitOfWork)
 
-      override fun <T> transaction(
-        dbOverride: String?,
-        block: (skillbill.ports.persistence.UnitOfWork) -> T,
-      ): T {
+      override fun <T> transaction(dbOverride: String?, block: (skillbill.ports.persistence.UnitOfWork) -> T): T {
         transactionCount += 1
         return block(unitOfWork)
       }
@@ -159,44 +154,30 @@ class ReviewLifecycleRecoveryTest {
         eventId = "first-launched",
         sequence = 1,
         eventKind = ReviewLifecycleEventKind.WORKER_LAUNCHED,
-        workerId = "first-worker",
-        assignmentDigest = firstAssignment,
-        attempt = 1,
-        waveNumber = 1,
-        state = ReviewWorkerLifecycleState.LAUNCHED,
+        identity = workerIdentity("first-worker", firstAssignment, 1, ReviewWorkerLifecycleState.LAUNCHED),
       ),
       workerEvent(
         eventId = "first-failed",
         sequence = 2,
         eventKind = ReviewLifecycleEventKind.WORKER_FAILED,
-        workerId = "first-worker",
-        assignmentDigest = firstAssignment,
-        attempt = 1,
-        waveNumber = 1,
-        state = ReviewWorkerLifecycleState.FAILED,
-        processOutcome = ReviewProcessOutcome.NON_ZERO_EXIT,
+        identity = workerIdentity("first-worker", firstAssignment, 1, ReviewWorkerLifecycleState.FAILED),
+        terminal = WorkerEventTerminal(ReviewProcessOutcome.NON_ZERO_EXIT),
       ),
       workerEvent(
         eventId = "second-launched",
         sequence = 3,
         eventKind = ReviewLifecycleEventKind.WORKER_LAUNCHED,
-        workerId = "second-worker",
-        assignmentDigest = secondAssignment,
-        attempt = 1,
-        waveNumber = 2,
-        state = ReviewWorkerLifecycleState.LAUNCHED,
+        identity = workerIdentity("second-worker", secondAssignment, 2, ReviewWorkerLifecycleState.LAUNCHED),
       ),
       workerEvent(
         eventId = "second-completed",
         sequence = 4,
         eventKind = ReviewLifecycleEventKind.WORKER_COMPLETED,
-        workerId = "second-worker",
-        assignmentDigest = secondAssignment,
-        attempt = 1,
-        waveNumber = 2,
-        state = ReviewWorkerLifecycleState.COMPLETED,
-        processOutcome = ReviewProcessOutcome.ZERO_EXIT,
-        resultEnvelope = ReviewWorkerResultEnvelope(emptyList()),
+        identity = workerIdentity("second-worker", secondAssignment, 2, ReviewWorkerLifecycleState.COMPLETED),
+        terminal = WorkerEventTerminal(
+          ReviewProcessOutcome.ZERO_EXIT,
+          ReviewWorkerResultEnvelope(emptyList()),
+        ),
       ),
     )
 
@@ -219,13 +200,8 @@ class ReviewLifecycleRecoveryTest {
     eventId: String,
     sequence: Long,
     eventKind: ReviewLifecycleEventKind,
-    workerId: String,
-    assignmentDigest: String,
-    attempt: Int,
-    waveNumber: Int,
-    state: ReviewWorkerLifecycleState,
-    processOutcome: ReviewProcessOutcome? = null,
-    resultEnvelope: ReviewWorkerResultEnvelope? = null,
+    identity: WorkerEventIdentity,
+    terminal: WorkerEventTerminal = WorkerEventTerminal(),
   ) = ReviewLifecycleEvent(
     eventId = eventId,
     reviewId = "review",
@@ -234,15 +210,35 @@ class ReviewLifecycleRecoveryTest {
     component = ReviewLifecycleComponent.WORKER,
     eventKind = eventKind,
     packetDigest = "a".repeat(64),
-    workerId = workerId,
+    workerId = identity.workerId,
     providerId = "codex",
-    attempt = attempt,
-    assignmentDigest = assignmentDigest,
-    routedArea = workerId,
-    waveNumber = waveNumber,
-    state = state,
-    processOutcome = processOutcome,
-    resultEnvelope = resultEnvelope,
+    attempt = identity.attempt,
+    assignmentDigest = identity.assignmentDigest,
+    routedArea = identity.workerId,
+    waveNumber = identity.waveNumber,
+    state = identity.state,
+    processOutcome = terminal.processOutcome,
+    resultEnvelope = terminal.resultEnvelope,
+  )
+
+  private fun workerIdentity(
+    workerId: String,
+    assignmentDigest: String,
+    waveNumber: Int,
+    state: ReviewWorkerLifecycleState,
+  ) = WorkerEventIdentity(workerId, assignmentDigest, 1, waveNumber, state)
+
+  private data class WorkerEventIdentity(
+    val workerId: String,
+    val assignmentDigest: String,
+    val attempt: Int,
+    val waveNumber: Int,
+    val state: ReviewWorkerLifecycleState,
+  )
+
+  private data class WorkerEventTerminal(
+    val processOutcome: ReviewProcessOutcome? = null,
+    val resultEnvelope: ReviewWorkerResultEnvelope? = null,
   )
 
   private fun database(event: ReviewLifecycleEvent): skillbill.ports.persistence.DatabaseSessionFactory =

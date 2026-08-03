@@ -35,7 +35,7 @@ class ReviewLifecycleSchemaContractVersionTest {
   }
 
   @Test
-  fun `unsupported capability combination and contract drift fail loudly`() {
+  fun `unsupported capability combinations fail loudly`() {
     val unsupportedCombination = mapOf(
       "contract_version" to REVIEW_LIFECYCLE_CONTRACT_VERSION,
       "kind" to "provider_capability_matrix",
@@ -84,6 +84,10 @@ class ReviewLifecycleSchemaContractVersionTest {
     assertFailsWith<InvalidReviewLifecycleSchemaError> {
       ReviewLifecycleSchemaValidator.validate(unsupportedButComplete, "unsupported-complete")
     }
+  }
+
+  @Test
+  fun `capability matrix contract drift fails loudly`() {
     assertFailsWith<InvalidReviewLifecycleSchemaError> {
       ReviewLifecycleSchemaValidator.validate(
         mapOf(

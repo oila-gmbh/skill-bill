@@ -1,12 +1,10 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
-import skillbill.contracts.review.REVIEW_LIFECYCLE_CONTRACT_VERSION
 import skillbill.contracts.review.REVIEW_LIFECYCLE_EVIDENCE_CONTRACT_VERSION
-import skillbill.contracts.review.ReviewLifecycleSchemaValidator
 import skillbill.error.InvalidReviewLifecycleEvidenceSchemaError
-import skillbill.error.InvalidReviewLifecycleSchemaError
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.ports.review.model.ReviewDeclaredSpecialistProgress
 import skillbill.ports.review.model.ReviewDiagnosticReference
 import skillbill.ports.review.model.ReviewDurableWorkerProgress
@@ -19,14 +17,6 @@ import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
-import skillbill.ports.review.model.DelegatedReviewDeadline
-import skillbill.ports.review.model.DelegatedReviewDeadlineScope
-import skillbill.ports.review.model.DelegatedReviewLifecycleMetrics
-import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
-import skillbill.ports.review.model.DelegatedReviewTerminalClassification
-import skillbill.ports.review.model.DelegatedReviewWaveRecord
-import skillbill.ports.review.model.DelegatedReviewWorkerRecord
-import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
@@ -186,7 +176,10 @@ object ReviewPersistenceSupport {
 
   fun saveLifecycleSnapshot(connection: Connection, snapshot: DelegatedReviewLifecycleSnapshot) {
     val payload = snapshot.toPayload()
-    validateLifecycleSnapshot(payload, "sqlite delegated review lifecycle '${snapshot.reviewId}'")
+    ReviewLifecycleSnapshotCodec.validate(
+      payload,
+      "sqlite delegated review lifecycle '${snapshot.reviewId}'",
+    )
     connection.prepareStatement(
       """
       INSERT INTO review_delegated_lifecycle (
@@ -199,10 +192,10 @@ object ReviewPersistenceSupport {
         updated_at = CURRENT_TIMESTAMP
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, snapshot.reviewId)
-      statement.setString(2, snapshot.packetDigest)
-      statement.setString(3, payload["contract_version"] as String)
-      statement.setString(4, JsonSupport.mapToJsonString(payload))
+      statement.setString(PARAM_ONE, snapshot.reviewId)
+      statement.setString(PARAM_TWO, snapshot.packetDigest)
+      statement.setString(PARAM_THREE, payload["contract_version"] as String)
+      statement.setString(PARAM_FOUR, JsonSupport.mapToJsonString(payload))
       statement.executeUpdate()
     }
   }
@@ -211,159 +204,13 @@ object ReviewPersistenceSupport {
     connection.prepareStatement(
       "SELECT bounded_payload_json FROM review_delegated_lifecycle WHERE review_id = ?",
     ).use { statement ->
-      statement.setString(1, reviewId)
+      statement.setString(PARAM_ONE, reviewId)
       statement.executeQuery().use { rows ->
         if (!rows.next()) return@use null
         val sourceLabel = "sqlite delegated review lifecycle '$reviewId'"
-        val payload = storedLifecyclePayload(rows.getString("bounded_payload_json"), sourceLabel)
-        validateLifecycleSnapshot(payload, sourceLabel)
-        runCatching { decodeLifecycleSnapshot(payload) }.getOrElse { error ->
-          throw InvalidReviewLifecycleSchemaError(
-            sourceLabel,
-            error.message ?: "Stored delegated review lifecycle violates its model.",
-            error,
-          )
-        }
+        ReviewLifecycleSnapshotCodec.decode(rows.getString("bounded_payload_json"), sourceLabel)
       }
     }
-
-  private fun storedLifecyclePayload(raw: String, sourceLabel: String): Map<String, Any?> = try {
-    val value = JsonSupport.parseObjectOrNull(raw)?.let(JsonSupport::jsonElementToValue)
-    JsonSupport.anyToStringAnyMap(value)
-      ?: throw InvalidReviewLifecycleSchemaError(sourceLabel, "Stored payload is not a JSON object.")
-  } catch (error: InvalidReviewLifecycleSchemaError) {
-    throw error
-  } catch (error: Exception) {
-    throw InvalidReviewLifecycleSchemaError(
-      sourceLabel,
-      error.message ?: "Stored delegated review lifecycle is not valid JSON.",
-      error,
-    )
-  }
-
-  private fun validateLifecycleSnapshot(payload: Map<String, Any?>, sourceLabel: String) {
-    try {
-      ReviewLifecycleSchemaValidator.validate(payload, sourceLabel)
-    } catch (error: InvalidReviewLifecycleSchemaError) {
-      throw error
-    } catch (error: Exception) {
-      throw InvalidReviewLifecycleSchemaError(
-        sourceLabel,
-        error.message ?: "Delegated review lifecycle failed schema validation.",
-        error,
-      )
-    }
-  }
-
-  private fun decodeLifecycleSnapshot(payload: Map<String, Any?>): DelegatedReviewLifecycleSnapshot {
-    requireKeys(
-      payload,
-      setOf(
-        "contract_version",
-        "kind",
-        "review_id",
-        "packet_digest",
-        "selected_area_count",
-        "predicted_wave_count",
-        "actual_wave_count",
-        "coordinator_slots",
-        "workers",
-        "waves",
-        "deadlines",
-        "metrics",
-        "terminal_classification",
-      ),
-      "lifecycle",
-      optional = setOf("terminal_classification"),
-    )
-    require(payload["contract_version"] == REVIEW_LIFECYCLE_CONTRACT_VERSION)
-    require(payload["kind"] == "delegated_review_lifecycle")
-    fun string(key: String) = payload[key] as? String ?: error("Lifecycle field '$key' is missing.")
-    fun number(key: String) = (payload[key] as? Number)?.toLong() ?: error("Lifecycle field '$key' is not numeric.")
-    @Suppress("UNCHECKED_CAST")
-    fun objects(key: String) = payload[key] as? List<Map<String, Any?>> ?: error("Lifecycle field '$key' is not an array.")
-    val workers = objects("workers").map { worker ->
-      requireKeys(
-        worker,
-        setOf("worker_id", "provider_id", "assignment_digest", "attempt", "area", "state", "diagnostic"),
-        "worker",
-        optional = setOf("diagnostic"),
-      )
-      DelegatedReviewWorkerRecord(
-        workerId = worker["worker_id"] as String,
-        providerId = worker["provider_id"] as String,
-        assignmentDigest = worker["assignment_digest"] as String,
-        attempt = (worker["attempt"] as Number).toInt(),
-        area = worker["area"] as String,
-        state = DelegatedReviewWorkerState.valueOf((worker["state"] as String).uppercase()),
-        diagnostic = worker["diagnostic"] as? String,
-      )
-    }
-    val waves = objects("waves").map { wave ->
-      requireKeys(wave, setOf("wave_number", "worker_ids"), "wave")
-      @Suppress("UNCHECKED_CAST")
-      DelegatedReviewWaveRecord(
-        waveNumber = (wave["wave_number"] as Number).toInt(),
-        workerIds = wave["worker_ids"] as List<String>,
-      )
-    }
-    val deadlines = objects("deadlines").map { deadline ->
-      requireKeys(deadline, setOf("scope", "limit_ms"), "deadline")
-      DelegatedReviewDeadline(
-        scope = DelegatedReviewDeadlineScope.valueOf((deadline["scope"] as String).uppercase()),
-        limitMs = (deadline["limit_ms"] as Number).toLong(),
-      )
-    }
-    @Suppress("UNCHECKED_CAST")
-    val metrics = payload["metrics"] as? Map<String, Any?> ?: error("Lifecycle metrics are missing.")
-    requireKeys(
-      metrics,
-      setOf(
-        "elapsed_ms",
-        "total_tokens",
-        "process_count",
-        "mcp_startup_count",
-        "selected_area_count",
-        "completed_area_count",
-        "lost_worker_count",
-      ),
-      "metrics",
-    )
-    return DelegatedReviewLifecycleSnapshot(
-      reviewId = string("review_id"),
-      packetDigest = string("packet_digest"),
-      selectedAreaCount = number("selected_area_count").toInt(),
-      predictedWaveCount = number("predicted_wave_count").toInt(),
-      actualWaveCount = number("actual_wave_count").toInt(),
-      coordinatorSlots = number("coordinator_slots").toInt(),
-      workers = workers,
-      waves = waves,
-      deadlines = deadlines,
-      metrics = DelegatedReviewLifecycleMetrics(
-        elapsedMs = (metrics["elapsed_ms"] as Number).toLong(),
-        totalTokens = (metrics["total_tokens"] as Number).toLong(),
-        processCount = (metrics["process_count"] as Number).toInt(),
-        mcpStartupCount = (metrics["mcp_startup_count"] as Number).toInt(),
-        selectedAreaCount = (metrics["selected_area_count"] as Number).toInt(),
-        completedAreaCount = (metrics["completed_area_count"] as Number).toInt(),
-        lostWorkerCount = (metrics["lost_worker_count"] as Number).toInt(),
-      ),
-      terminalClassification = (payload["terminal_classification"] as? String)?.let {
-        DelegatedReviewTerminalClassification.valueOf(it.uppercase())
-      },
-    )
-  }
-
-  private fun requireKeys(
-    value: Map<String, Any?>,
-    allowed: Set<String>,
-    label: String,
-    optional: Set<String> = emptySet(),
-  ) {
-    val required = allowed - optional
-    require(value.keys.containsAll(required)) { "Delegated review $label is missing required fields." }
-    require(value.keys.all { it in allowed }) { "Delegated review $label contains unknown fields." }
-  }
 
   private val lifecyclePayloadKeys = setOf(
     "contract_version",

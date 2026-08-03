@@ -84,12 +84,12 @@ data class GoalRunnerLaunchFacts(
  * chatter, and token movement are non-authoritative hints and never determine
  * this state.
  *
- * - [WORKING]: a declared operation is active and its process is alive. Disarms
- *   the idle timeout (a declared long operation suspends it, AC22).
+ * - [WORKING]: an explicitly long declared operation is active and its process
+ *   is alive. Disarms the idle timeout (AC22).
  * - [PROGRESSING]: a durable workflow event advanced within the interval.
  *   Disarms the idle timeout for the current interval.
- * - [IDLE]: no active declared operation and no durable advance within the idle
- *   window. The ONLY state that arms the idle timeout.
+ * - [IDLE]: no active explicitly long operation and no durable advance within
+ *   the idle window. The ONLY state that arms the idle timeout.
  * - [UNRESPONSIVE]: the child/process is gone or a declared operation overran
  *   its deadline (or the wall-clock cap elapsed). A deterministic block, not an
  *   inference; does not arm the idle timeout because the decision is terminal.
@@ -130,8 +130,8 @@ data class GoalRunnerLivenessDecision(
 /**
  * Pure classifier mapping declared facts to a [GoalRunnerLivenessState] and an
  * arm/disarm idle-timeout decision. Ordering encodes the documented semantics:
- * terminal unresponsive signals win first, then a live declared long op
- * (working), then a durable advance (progressing), else idle.
+ * terminal unresponsive signals win first, then a live explicitly long
+ * operation (working), then a durable advance (progressing), else idle.
  */
 object GoalRunnerLivenessClassifier {
   fun classify(inputs: GoalRunnerLivenessInputs): GoalRunnerLivenessDecision {
@@ -139,7 +139,7 @@ object GoalRunnerLivenessClassifier {
       !inputs.processAlive -> GoalRunnerLivenessState.UNRESPONSIVE
       inputs.operationActive && inputs.operationDeadlineOverrun -> GoalRunnerLivenessState.UNRESPONSIVE
       inputs.wallClockCapExceeded -> GoalRunnerLivenessState.UNRESPONSIVE
-      inputs.operationActive -> GoalRunnerLivenessState.WORKING
+      inputs.operationActive && inputs.operationExpectedLong -> GoalRunnerLivenessState.WORKING
       inputs.durableAdvanceWithinInterval -> GoalRunnerLivenessState.PROGRESSING
       else -> GoalRunnerLivenessState.IDLE
     }

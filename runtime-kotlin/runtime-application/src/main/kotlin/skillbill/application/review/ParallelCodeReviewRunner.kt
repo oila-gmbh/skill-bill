@@ -32,6 +32,13 @@ import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
+import skillbill.ports.review.model.DelegatedReviewDeadline
+import skillbill.ports.review.model.DelegatedReviewLifecycleMetrics
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.DelegatedReviewTerminalClassification
+import skillbill.ports.review.model.DelegatedReviewWaveRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerRecord
+import skillbill.ports.review.model.DelegatedReviewWorkerState
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
@@ -51,22 +58,9 @@ import skillbill.ports.review.model.ReviewProviderOutputObservation
 import skillbill.ports.review.model.ReviewTerminalCompletion
 import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
-import skillbill.ports.review.model.DelegatedReviewDeadline
-import skillbill.ports.review.model.DelegatedReviewDeadlineScope as LifecycleDeadlineScope
-import skillbill.ports.review.model.DelegatedReviewLifecycleMetrics
-import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
-import skillbill.ports.review.model.DelegatedReviewTerminalClassification
-import skillbill.ports.review.model.DelegatedReviewWaveRecord
-import skillbill.ports.review.model.DelegatedReviewWorkerRecord
-import skillbill.ports.review.model.DelegatedReviewWorkerState
+import skillbill.review.DelegatedReviewAggregationGate
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
-import skillbill.review.DelegatedReviewAggregationGate
-import skillbill.review.DelegatedReviewAggregationRequest
-import skillbill.review.DelegatedReviewAggregationState
-import skillbill.review.DelegatedReviewAssignmentOwnership
-import skillbill.review.DelegatedReviewFindingEnvelope
-import skillbill.review.DelegatedReviewWorkerResult
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
@@ -80,27 +74,30 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
+import skillbill.review.model.DelegatedReviewAggregationRequest
+import skillbill.review.model.DelegatedReviewAggregationState
+import skillbill.review.model.DelegatedReviewAssignmentOwnership
+import skillbill.review.model.DelegatedReviewFindingEnvelope
+import skillbill.review.model.DelegatedReviewWorkerResult
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.plan.DelegatedReviewCapacityPlanner
-import skillbill.review.plan.DelegatedReviewCapacityPlan
-import skillbill.review.plan.DelegatedReviewCapacityRequest
-import skillbill.review.plan.DelegatedReviewDeadlinePolicy
-import skillbill.review.plan.DelegatedReviewDeadlineScope as PolicyDeadlineScope
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
+import skillbill.review.plan.model.DelegatedReviewCapacityPlan
+import skillbill.review.plan.model.DelegatedReviewCapacityRequest
+import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
+import skillbill.review.plan.model.DelegatedReviewWave
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.time.Instant
-import java.util.concurrent.Callable
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import skillbill.ports.review.model.DelegatedReviewDeadlineScope as LifecycleDeadlineScope
+import skillbill.review.plan.model.DelegatedReviewDeadlineScope as PolicyDeadlineScope
 
 @Inject
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -119,7 +116,7 @@ class ParallelCodeReviewRunner(
   private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
   private val delegatedReviewDeadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
   private val monotonicNowNanos: () -> Long = System::nanoTime,
-  private val interruptionProbe: () -> Boolean = { Thread.currentThread().isInterrupted },
+  private val interruptionProbe: () -> Boolean = parallelLaneRunner::isInterrupted,
 ) {
   private val lifecycleRecorder = ReviewLifecycleRecorder(database)
   private val lifecycleRecovery = ReviewLifecycleRecovery(database)
@@ -141,7 +138,7 @@ class ParallelCodeReviewRunner(
     val recovery: ReviewLifecycleRecoverySnapshot?,
     val startedNanos: Long,
     val capacityPlan: DelegatedReviewCapacityPlan,
-    var actualWaves: List<skillbill.review.plan.DelegatedReviewWave> = emptyList(),
+    var actualWaves: List<DelegatedReviewWave> = emptyList(),
     var aggregationStartedNanos: Long? = null,
     var interruptionClassification: DelegatedReviewTerminalClassification =
       DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
@@ -150,6 +147,24 @@ class ParallelCodeReviewRunner(
   private data class ReviewCompletionResult(
     val accepted: Boolean,
     val terminalRecord: ReviewLifecycleRecord? = null,
+  )
+
+  private data class AggregationEvaluation(
+    val successful: Boolean,
+    val failureStatus: ReviewProcessOutcome?,
+    val failureMessage: String?,
+  )
+
+  private data class WaveExecutionResult(
+    val outcomes: Map<String, ParallelReviewLaneOutcome>,
+    val launchedWorkerIds: Set<String>,
+    val interrupted: Boolean,
+  )
+
+  private data class WaveWorkerExecution(
+    val workerId: String,
+    val outcome: ParallelReviewLaneOutcome,
+    val launched: Boolean,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
@@ -296,8 +311,10 @@ class ParallelCodeReviewRunner(
       unitOfWork.reviews.loadReviewLifecycleEvents(launch.assignment.reviewId)
     }
     return when {
-      events.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED ||
-        it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED } ->
+      events.any {
+        it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED ||
+          it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+      } ->
         DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_TERMINAL_PERSISTENCE
       events.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_STARTED } ->
         DelegatedReviewTerminalClassification.INTERRUPTED_DURING_AGGREGATION
@@ -321,14 +338,8 @@ class ParallelCodeReviewRunner(
     val events = database.read { unitOfWork ->
       unitOfWork.reviews.loadReviewLifecycleEvents(launch.assignment.reviewId)
     }
-    val latestByAssignment = events
-      .filter { it.component == ReviewLifecycleComponent.WORKER && it.assignmentDigest != null }
-      .groupBy { it.assignmentDigest }
-      .mapValues { (_, values) -> values.maxWithOrNull(compareBy({ it.attempt ?: 0 }, { it.sequence })) }
-    val diagnostic = ReviewDiagnosticReference(
-      "review-lifecycle/${launch.assignment.reviewId}/interrupt",
-      "Delegated review interrupted at ${classification.name.lowercase()}.",
-    )
+    val latestByAssignment = latestWorkerEvents(events)
+    val diagnostic = interruptionDiagnostic(launch, classification)
     val boundaryRecords = mutableListOf<ReviewLifecycleRecord>()
     if (classification != DelegatedReviewTerminalClassification.INTERRUPTED_DURING_AGGREGATION &&
       classification != DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_TERMINAL_PERSISTENCE
@@ -336,20 +347,7 @@ class ParallelCodeReviewRunner(
       prepared.launchRequests.forEach { selected ->
         val latest = latestByAssignment[selected.assignment.digest]
         if (latest?.let { it.attempt == selected.attempt && it.eventKind in WORKER_TERMINAL_EVENT_KINDS } != true) {
-          boundaryRecords += ReviewLifecycleRecord(
-            reviewId = selected.assignment.reviewId,
-            packetDigest = selected.assignment.packetDigest,
-            component = ReviewLifecycleComponent.WORKER,
-            eventKind = ReviewLifecycleEventKind.WORKER_CANCELLED,
-            workerId = selected.assignment.lane,
-            providerId = selected.agentId,
-            attempt = selected.attempt,
-            assignmentDigest = selected.assignment.digest,
-            routedArea = selected.assignment.lane,
-            state = ReviewWorkerLifecycleState.CANCELLED,
-            processOutcome = ReviewProcessOutcome.INTERRUPTED,
-            diagnostic = diagnostic,
-          )
+          boundaryRecords += cancelledWorkerRecord(selected, diagnostic)
         }
       }
     }
@@ -358,30 +356,59 @@ class ParallelCodeReviewRunner(
       events.none { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED }
     ) {
       boundaryRecords += ReviewLifecycleRecord(
-          reviewId = launch.assignment.reviewId,
-          packetDigest = launch.assignment.packetDigest,
-          component = ReviewLifecycleComponent.AGGREGATION,
-          eventKind = ReviewLifecycleEventKind.AGGREGATION_FAILED,
-          processOutcome = ReviewProcessOutcome.INTERRUPTED,
-          diagnostic = diagnostic,
+        reviewId = launch.assignment.reviewId,
+        packetDigest = launch.assignment.packetDigest,
+        component = ReviewLifecycleComponent.AGGREGATION,
+        eventKind = ReviewLifecycleEventKind.AGGREGATION_FAILED,
+        processOutcome = ReviewProcessOutcome.INTERRUPTED,
+        diagnostic = diagnostic,
       )
     }
     if (events.none { it.component == ReviewLifecycleComponent.TERMINAL }) {
       boundaryRecords += ReviewLifecycleRecord(
-          reviewId = launch.assignment.reviewId,
-          packetDigest = launch.assignment.packetDigest,
-          component = ReviewLifecycleComponent.TERMINAL,
-          eventKind = ReviewLifecycleEventKind.TERMINAL_CANCELLED,
-          processOutcome = ReviewProcessOutcome.INTERRUPTED,
-          terminalCompletion = ReviewTerminalCompletion(
-            lifecycleRecorder.timestamp(),
-            ReviewProcessOutcome.INTERRUPTED,
-          ),
-          diagnostic = diagnostic,
+        reviewId = launch.assignment.reviewId,
+        packetDigest = launch.assignment.packetDigest,
+        component = ReviewLifecycleComponent.TERMINAL,
+        eventKind = ReviewLifecycleEventKind.TERMINAL_CANCELLED,
+        processOutcome = ReviewProcessOutcome.INTERRUPTED,
+        terminalCompletion = ReviewTerminalCompletion(
+          lifecycleRecorder.timestamp(),
+          ReviewProcessOutcome.INTERRUPTED,
+        ),
+        diagnostic = diagnostic,
       )
     }
     return boundaryRecords
   }
+
+  private fun cancelledWorkerRecord(selected: DelegatedReviewLaunchRequest, diagnostic: ReviewDiagnosticReference) =
+    ReviewLifecycleRecord(
+      reviewId = selected.assignment.reviewId,
+      packetDigest = selected.assignment.packetDigest,
+      component = ReviewLifecycleComponent.WORKER,
+      eventKind = ReviewLifecycleEventKind.WORKER_CANCELLED,
+      workerId = selected.assignment.lane,
+      providerId = selected.agentId,
+      attempt = selected.attempt,
+      assignmentDigest = selected.assignment.digest,
+      routedArea = selected.assignment.lane,
+      state = ReviewWorkerLifecycleState.CANCELLED,
+      processOutcome = ReviewProcessOutcome.INTERRUPTED,
+      diagnostic = diagnostic,
+    )
+
+  private fun latestWorkerEvents(events: List<ReviewLifecycleEvent>) = events
+    .filter { it.component == ReviewLifecycleComponent.WORKER && it.assignmentDigest != null }
+    .groupBy { it.assignmentDigest }
+    .mapValues { (_, values) -> values.maxWithOrNull(compareBy({ it.attempt ?: 0 }, { it.sequence })) }
+
+  private fun interruptionDiagnostic(
+    launch: DelegatedReviewLaunchRequest,
+    classification: DelegatedReviewTerminalClassification,
+  ) = ReviewDiagnosticReference(
+    "review-lifecycle/${launch.assignment.reviewId}/interrupt",
+    "Delegated review interrupted at ${classification.name.lowercase()}.",
+  )
 
   private fun prepareRun(originalRequest: ParallelCodeReviewRequest): PreparedRun {
     val startedNanos = monotonicNowNanos()
@@ -492,12 +519,39 @@ class ParallelCodeReviewRunner(
       throw InterruptedException("Delegated review interrupted before worker launch.")
     }
     val policy = effectiveDeadlinePolicy(prepared.initial.request)
-    if (prepared.lifecycleReview != null && deadlineExpired(policy, PolicyDeadlineScope.STARTUP, prepared.startedNanos)) {
+    if (
+      prepared.lifecycleReview != null &&
+      deadlineExpired(policy, PolicyDeadlineScope.STARTUP, prepared.startedNanos)
+    ) {
       return deadlineExpiredRunOutcomes(
         prepared,
         "deadline_scope=startup; delegated-worker preflight did not start before the startup deadline.",
       )
     }
+    preflightPreparedWorkers(prepared)
+    if (
+      prepared.lifecycleReview != null &&
+      deadlineExpired(policy, PolicyDeadlineScope.STARTUP, prepared.startedNanos)
+    ) {
+      return deadlineExpiredRunOutcomes(
+        prepared,
+        "deadline_scope=startup; delegated-worker preflight exceeded the startup deadline.",
+      )
+    }
+    val launchedOutcomes = launchPreparedWorkers(prepared)
+    return prepared.recovery?.let { recovery ->
+      rebuildRecoveredOutcomes(
+        prepared.launchRequests,
+        prepared.relaunchableRequests,
+        recovery,
+        launchedOutcomes,
+        prepared.initial.agent1Id,
+        prepared.initial.agent2Id,
+      )
+    } ?: launchedOutcomes
+  }
+
+  private fun preflightPreparedWorkers(prepared: PreparedRun) {
     withFailureRecording(
       onFailure = { error ->
         if (error !is InterruptedException) {
@@ -512,58 +566,40 @@ class ParallelCodeReviewRunner(
         )
       },
     )
-    if (prepared.lifecycleReview != null && deadlineExpired(policy, PolicyDeadlineScope.STARTUP, prepared.startedNanos)) {
-      return deadlineExpiredRunOutcomes(
-        prepared,
-        "deadline_scope=startup; delegated-worker preflight exceeded the startup deadline.",
-      )
-    }
-    val launchedOutcomes = withFailureRecording(
-      onFailure = { error ->
-        if (error !is InterruptedException) {
-          prepared.lifecycleReview?.let(::recordCoordinatorCrash)
-        }
-      },
-      block = {
-        runLanes(
-          prepared.initial.request,
-          prepared.initial.detection.routed,
-          prepared.initial.resolvedMode,
-          prepared.launchRequests.groupBy { it.agentId },
-          prepared.relaunchableRequests.groupBy { it.agentId },
-          prepared.initial.agent1Id,
-          prepared.initial.agent2Id,
-          prepared.capacityPlan,
-          initialActualWaves = prepared.actualWaves,
-          actualWaves = { prepared.actualWaves = it },
-          workerLaunchBoundary = {
-            prepared.interruptionClassification =
-              DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
-          },
-          waveBoundary = {
-            prepared.interruptionClassification =
-              DelegatedReviewTerminalClassification.INTERRUPTED_BETWEEN_WAVES
-          },
-          startedNanos = prepared.startedNanos,
-        )
-      },
-    )
-    return prepared.recovery?.let { recovery ->
-      rebuildRecoveredOutcomes(
-        prepared.launchRequests,
-        prepared.relaunchableRequests,
-        recovery,
-        launchedOutcomes,
-        prepared.initial.agent1Id,
-        prepared.initial.agent2Id,
-      )
-    } ?: launchedOutcomes
   }
 
-  private fun deadlineExpiredRunOutcomes(
-    prepared: PreparedRun,
-    message: String,
-  ): ParallelReviewLaneRunResult {
+  private fun launchPreparedWorkers(prepared: PreparedRun): ParallelReviewLaneRunResult = withFailureRecording(
+    onFailure = { error ->
+      if (error !is InterruptedException) {
+        prepared.lifecycleReview?.let(::recordCoordinatorCrash)
+      }
+    },
+    block = {
+      runLanes(
+        prepared.initial.request,
+        prepared.initial.detection.routed,
+        prepared.initial.resolvedMode,
+        prepared.launchRequests.groupBy { it.agentId },
+        prepared.relaunchableRequests.groupBy { it.agentId },
+        prepared.initial.agent1Id,
+        prepared.initial.agent2Id,
+        prepared.capacityPlan,
+        initialActualWaves = prepared.actualWaves,
+        actualWaves = { prepared.actualWaves = it },
+        workerLaunchBoundary = {
+          prepared.interruptionClassification =
+            DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
+        },
+        waveBoundary = {
+          prepared.interruptionClassification =
+            DelegatedReviewTerminalClassification.INTERRUPTED_BETWEEN_WAVES
+        },
+        startedNanos = prepared.startedNanos,
+      )
+    },
+  )
+
+  private fun deadlineExpiredRunOutcomes(prepared: PreparedRun, message: String): ParallelReviewLaneRunResult {
     val outcomes = prepared.relaunchableRequests.associate { launch ->
       launch.assignment.digest to deadlineExpiredOutcome(launch, message)
     }
@@ -651,119 +687,186 @@ class ParallelCodeReviewRunner(
     boundaryRecords: List<ReviewLifecycleRecord> = emptyList(),
   ) {
     val lifecycleReview = prepared.lifecycleReview ?: return
-    val selected = prepared.launchRequests
-    if (selected.isEmpty()) return
-    val plan = prepared.capacityPlan
+    if (prepared.launchRequests.isEmpty()) return
     val lifecycleEvents = database.read { unitOfWork ->
       unitOfWork.reviews.loadReviewLifecycleEvents(lifecycleReview.assignment.reviewId)
     }
-    fun buildSnapshot(events: List<ReviewLifecycleEvent>): DelegatedReviewLifecycleSnapshot {
+    if (boundaryRecords.isEmpty()) {
+      database.transaction { unitOfWork ->
+        unitOfWork.reviews.saveDelegatedReviewLifecycle(
+          lifecycleSnapshot(prepared, outcomes, lifecycleEvents, terminalClassificationOverride),
+        )
+      }
+    } else {
+      lifecycleRecorder.recordAllAndPersist(boundaryRecords) { unitOfWork, events ->
+        unitOfWork.reviews.saveDelegatedReviewLifecycle(
+          lifecycleSnapshot(prepared, outcomes, events, terminalClassificationOverride),
+        )
+      }
+    }
+  }
+
+  private fun lifecycleSnapshot(
+    prepared: PreparedRun,
+    outcomes: ParallelReviewLaneRunResult,
+    events: List<ReviewLifecycleEvent>,
+    terminalClassificationOverride: DelegatedReviewTerminalClassification?,
+  ): DelegatedReviewLifecycleSnapshot {
+    val launch = requireNotNull(prepared.lifecycleReview)
+    val selected = prepared.launchRequests
     val aggregationCompleted = events.any {
       it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
     }
+    val workers = projectedWorkers(prepared, outcomes, events, aggregationCompleted)
+    val waves = projectedActualWaves(selected, events, prepared.capacityPlan.workerSlots)
+    val terminalClassification = terminalClassificationOverride ?: terminalClassification(
+      events,
+      workers,
+      outcomes,
+      aggregationCompleted,
+    )
+    val policy = effectiveDeadlinePolicy(prepared.initial.request)
+    return DelegatedReviewLifecycleSnapshot(
+      reviewId = launch.assignment.reviewId,
+      packetDigest = launch.assignment.packetDigest,
+      selectedAreaCount = selected.size,
+      predictedWaveCount = prepared.capacityPlan.predictedWaveCount,
+      actualWaveCount = waves.size,
+      coordinatorSlots = prepared.capacityPlan.coordinatorSlots,
+      workers = workers,
+      waves = waves,
+      deadlines = PolicyDeadlineScope.entries.map { scope ->
+        DelegatedReviewDeadline(LifecycleDeadlineScope.valueOf(scope.name), policy.limitMs(scope))
+      },
+      metrics = lifecycleMetrics(selected, workers, outcomes, events),
+      terminalClassification = terminalClassification,
+    )
+  }
+
+  private fun projectedWorkers(
+    prepared: PreparedRun,
+    outcomes: ParallelReviewLaneRunResult,
+    events: List<ReviewLifecycleEvent>,
+    aggregationCompleted: Boolean,
+  ): List<DelegatedReviewWorkerRecord> {
     val latestByAssignment = events
       .filter { it.assignmentDigest != null }
       .groupBy { it.assignmentDigest }
-      .mapValues { (_, events) -> events.maxWithOrNull(compareBy({ it.attempt ?: 0 }, { it.sequence })) }
-    val allWorkers = selected.map { request ->
+      .mapValues { (_, values) -> values.maxWithOrNull(compareBy({ it.attempt ?: 0 }, { it.sequence })) }
+    return prepared.launchRequests.map { request ->
       val outcome = if (request.agentId == prepared.initial.agent1Id) outcomes.lane1 else outcomes.lane2
-      val state = when (latestByAssignment[request.assignment.digest]?.state) {
-        ReviewWorkerLifecycleState.SELECTED -> DelegatedReviewWorkerState.SELECTED
-        ReviewWorkerLifecycleState.QUEUED -> DelegatedReviewWorkerState.QUEUED
-        ReviewWorkerLifecycleState.LAUNCHED -> DelegatedReviewWorkerState.LAUNCHED
-        ReviewWorkerLifecycleState.RUNNING -> DelegatedReviewWorkerState.RUNNING
-        ReviewWorkerLifecycleState.COMPLETED -> DelegatedReviewWorkerState.COMPLETED
-        ReviewWorkerLifecycleState.TIMED_OUT -> DelegatedReviewWorkerState.TIMED_OUT
-        ReviewWorkerLifecycleState.CANCELLED -> DelegatedReviewWorkerState.CANCELLED
-        ReviewWorkerLifecycleState.FAILED,
-        ReviewWorkerLifecycleState.UNAVAILABLE,
-        ReviewWorkerLifecycleState.INVALID_OUTPUT,
-        null -> if (outcome.success) DelegatedReviewWorkerState.COMPLETED else DelegatedReviewWorkerState.FAILED
-      }
-      val projectedState = if (aggregationCompleted && state == DelegatedReviewWorkerState.COMPLETED) {
-        DelegatedReviewWorkerState.AGGREGATED
-      } else {
-        state
-      }
-      val diagnostic = latestByAssignment[request.assignment.digest]?.diagnostic?.summary ?: when (projectedState) {
-        DelegatedReviewWorkerState.FAILED -> "Worker failed; durable lifecycle evidence is authoritative."
-        DelegatedReviewWorkerState.TIMED_OUT -> "Worker deadline expired; durable lifecycle evidence is authoritative."
-        DelegatedReviewWorkerState.CANCELLED -> "Worker was cancelled; durable lifecycle evidence is authoritative."
-        else -> null
-      }
+      val latest = latestByAssignment[request.assignment.digest]
+      val state = projectedWorkerState(latest?.state, outcome.success, aggregationCompleted)
+      val diagnostic = latest?.diagnostic?.summary ?: defaultWorkerDiagnostic(state)
       DelegatedReviewWorkerRecord(
         workerId = "${request.agentId}:${request.assignment.lane}",
         providerId = request.agentId,
         assignmentDigest = request.assignment.digest,
         attempt = request.attempt,
         area = request.assignment.lane,
-        state = projectedState,
+        state = state,
         diagnostic = diagnostic?.take(REVIEW_LIFECYCLE_MAX_TEXT_CHARS),
       )
     }
-    val actualWavePlan = deriveActualWaves(
-      selected,
-      events,
-      plan.workerSlots,
-    )
-    require(actualWavePlan.map { it.number } == actualWavePlan.indices.map { it + 1 }) {
-      "Persisted actual waves must be contiguous and coordinator-owned."
+  }
+
+  private fun projectedWorkerState(
+    state: ReviewWorkerLifecycleState?,
+    successfulOutcome: Boolean,
+    aggregationCompleted: Boolean,
+  ): DelegatedReviewWorkerState {
+    val projected = when (state) {
+      ReviewWorkerLifecycleState.SELECTED -> DelegatedReviewWorkerState.SELECTED
+      ReviewWorkerLifecycleState.QUEUED -> DelegatedReviewWorkerState.QUEUED
+      ReviewWorkerLifecycleState.LAUNCHED -> DelegatedReviewWorkerState.LAUNCHED
+      ReviewWorkerLifecycleState.RUNNING -> DelegatedReviewWorkerState.RUNNING
+      ReviewWorkerLifecycleState.COMPLETED -> DelegatedReviewWorkerState.COMPLETED
+      ReviewWorkerLifecycleState.TIMED_OUT -> DelegatedReviewWorkerState.TIMED_OUT
+      ReviewWorkerLifecycleState.CANCELLED -> DelegatedReviewWorkerState.CANCELLED
+      ReviewWorkerLifecycleState.FAILED,
+      ReviewWorkerLifecycleState.UNAVAILABLE,
+      ReviewWorkerLifecycleState.INVALID_OUTPUT,
+      null,
+      -> if (successfulOutcome) DelegatedReviewWorkerState.COMPLETED else DelegatedReviewWorkerState.FAILED
     }
-    require(actualWavePlan.all { it.workerIds.size <= plan.workerSlots }) {
-      "Persisted actual wave membership exceeds worker capacity after reserving the coordinator slot."
+    return if (aggregationCompleted && projected == DelegatedReviewWorkerState.COMPLETED) {
+      DelegatedReviewWorkerState.AGGREGATED
+    } else {
+      projected
     }
-    require(actualWavePlan.flatMap { it.workerIds }.distinct().size == actualWavePlan.flatMap { it.workerIds }.size) {
-      "Persisted actual waves duplicate a selected worker."
-    }
-    require(actualWavePlan.flatMap { it.workerIds }.all { digest -> selected.any { it.assignment.digest == digest } }) {
-      "Persisted actual waves contain an unselected worker."
-    }
-    val actualWaves = actualWavePlan.map { wave ->
+  }
+
+  private fun defaultWorkerDiagnostic(state: DelegatedReviewWorkerState): String? = when (state) {
+    DelegatedReviewWorkerState.FAILED -> "Worker failed; durable lifecycle evidence is authoritative."
+    DelegatedReviewWorkerState.TIMED_OUT -> "Worker deadline expired; durable lifecycle evidence is authoritative."
+    DelegatedReviewWorkerState.CANCELLED -> "Worker was cancelled; durable lifecycle evidence is authoritative."
+    else -> null
+  }
+
+  private fun projectedActualWaves(
+    selected: List<DelegatedReviewLaunchRequest>,
+    events: List<ReviewLifecycleEvent>,
+    workerSlots: Int,
+  ): List<DelegatedReviewWaveRecord> {
+    val wavePlan = deriveActualWaves(selected, events, workerSlots)
+    val workerIds = wavePlan.flatMap { it.workerIds }
+    require(wavePlan.map { it.number } == wavePlan.indices.map { it + 1 })
+    require(wavePlan.all { it.workerIds.size <= workerSlots })
+    require(workerIds.distinct().size == workerIds.size)
+    require(workerIds.all { digest -> selected.any { it.assignment.digest == digest } })
+    return wavePlan.map { wave ->
       DelegatedReviewWaveRecord(
         waveNumber = wave.number,
         workerIds = wave.workerIds.map { digest ->
-          selected.first { it.assignment.digest == digest }.let { request ->
-            "${request.agentId}:${request.assignment.lane}"
-          }
+          selected.first { it.assignment.digest == digest }.let { "${it.agentId}:${it.assignment.lane}" }
         },
       )
     }
-    val processStartedAssignments = events
-      .filter { it.assignmentDigest != null }
-      .filter { event ->
-        selected.any {
-          it.assignment.digest == event.assignmentDigest && it.attempt == event.attempt
-        } &&
-        event.livenessObservations.any { observation ->
-          observation.kind == ReviewLivenessObservation.Kind.PROCESS_STARTED
-        }
-      }
-      .mapNotNull { it.assignmentDigest }
-      .toSet()
-    val mcpStartupAssignments = events
-      .filter { it.assignmentDigest != null }
-      .filter { event ->
-        selected.any {
-          it.assignment.digest == event.assignmentDigest && it.attempt == event.attempt
-        } &&
-        event.livenessObservations.any { observation ->
-          observation.kind == ReviewLivenessObservation.Kind.MCP_STARTUP
-        }
-      }
-      .mapNotNull { it.assignmentDigest }
-      .toSet()
-    val processCount = processStartedAssignments.size
-    val mcpStartupCount = mcpStartupAssignments.size
+  }
+
+  private fun lifecycleMetrics(
+    selected: List<DelegatedReviewLaunchRequest>,
+    workers: List<DelegatedReviewWorkerRecord>,
+    outcomes: ParallelReviewLaneRunResult,
+    events: List<ReviewLifecycleEvent>,
+  ): DelegatedReviewLifecycleMetrics {
+    val completed = workers.count { it.state in COMPLETED_WORKER_STATES }
     val lifecycleTimes = events.mapNotNull { event ->
       runCatching { Instant.parse(event.occurredAt).toEpochMilli() }.getOrNull()
     }
-    val elapsedMs = lifecycleTimes.minOrNull()?.let { start ->
-      lifecycleTimes.maxOrNull()?.minus(start)
-    } ?: 0L
+    val elapsedMs = lifecycleTimes.minOrNull()?.let { lifecycleTimes.maxOrNull()?.minus(it) } ?: 0L
+    return DelegatedReviewLifecycleMetrics(
+      elapsedMs = elapsedMs,
+      totalTokens = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+        .sumOf { it.providerUsage?.totalTokens ?: 0L },
+      processCount = assignmentObservationCount(events, selected, ReviewLivenessObservation.Kind.PROCESS_STARTED),
+      mcpStartupCount = assignmentObservationCount(events, selected, ReviewLivenessObservation.Kind.MCP_STARTUP),
+      selectedAreaCount = selected.size,
+      completedAreaCount = completed,
+      lostWorkerCount = workers.size - completed,
+    )
+  }
+
+  private fun assignmentObservationCount(
+    events: List<ReviewLifecycleEvent>,
+    selected: List<DelegatedReviewLaunchRequest>,
+    kind: ReviewLivenessObservation.Kind,
+  ): Int = events.filter { event ->
+    selected.any {
+      it.assignment.digest == event.assignmentDigest && it.attempt == event.attempt
+    } && event.livenessObservations.any { it.kind == kind }
+  }.mapNotNull { it.assignmentDigest }.toSet().size
+
+  private fun terminalClassification(
+    events: List<ReviewLifecycleEvent>,
+    workers: List<DelegatedReviewWorkerRecord>,
+    outcomes: ParallelReviewLaneRunResult,
+    aggregationCompleted: Boolean,
+  ): DelegatedReviewTerminalClassification {
     val terminalStatus = events.lastOrNull {
       it.component == ReviewLifecycleComponent.TERMINAL
     }?.terminalCompletion?.status
-    val terminalClassification = terminalClassificationOverride ?: when {
+    return when {
       terminalStatus == ReviewProcessOutcome.TIMED_OUT -> DelegatedReviewTerminalClassification.TIMED_OUT
       terminalStatus == ReviewProcessOutcome.INTERRUPTED && aggregationCompleted ->
         DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_TERMINAL_PERSISTENCE
@@ -773,61 +876,14 @@ class ParallelCodeReviewRunner(
         DelegatedReviewTerminalClassification.BLOCKED_UNSUPPORTED
       events.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED } ->
         DelegatedReviewTerminalClassification.BLOCKED_AGGREGATION
-      allWorkers.all {
-        it.state == DelegatedReviewWorkerState.COMPLETED ||
-          it.state == DelegatedReviewWorkerState.AGGREGATED
-      } ->
-        DelegatedReviewTerminalClassification.COMPLETED
-      allWorkers.any { it.state == DelegatedReviewWorkerState.TIMED_OUT } ->
+      workers.all { it.state in COMPLETED_WORKER_STATES } -> DelegatedReviewTerminalClassification.COMPLETED
+      workers.any { it.state == DelegatedReviewWorkerState.TIMED_OUT } ->
         DelegatedReviewTerminalClassification.TIMED_OUT
-      allWorkers.any { it.state == DelegatedReviewWorkerState.CANCELLED } ->
+      workers.any { it.state == DelegatedReviewWorkerState.CANCELLED } ->
         DelegatedReviewTerminalClassification.CANCELLED
       outcomes.lane1.interrupted || outcomes.lane2.interrupted ->
         DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER
       else -> DelegatedReviewTerminalClassification.FAILED
-    }
-    val deadlines = effectiveDeadlinePolicy(prepared.initial.request).let { policy ->
-      PolicyDeadlineScope.entries.map { scope ->
-        DelegatedReviewDeadline(LifecycleDeadlineScope.valueOf(scope.name), policy.limitMs(scope))
-      }
-    }
-    return DelegatedReviewLifecycleSnapshot(
-      reviewId = lifecycleReview.assignment.reviewId,
-      packetDigest = lifecycleReview.assignment.packetDigest,
-      selectedAreaCount = selected.size,
-      predictedWaveCount = plan.predictedWaveCount,
-      actualWaveCount = actualWaves.size,
-      coordinatorSlots = plan.coordinatorSlots,
-      workers = allWorkers,
-      waves = actualWaves,
-      deadlines = deadlines,
-      metrics = DelegatedReviewLifecycleMetrics(
-        elapsedMs = elapsedMs,
-        totalTokens = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
-          .sumOf { it.providerUsage?.totalTokens ?: 0L },
-        processCount = processCount,
-        mcpStartupCount = mcpStartupCount,
-        selectedAreaCount = selected.size,
-        completedAreaCount = allWorkers.count {
-          it.state == DelegatedReviewWorkerState.COMPLETED ||
-            it.state == DelegatedReviewWorkerState.AGGREGATED
-        },
-        lostWorkerCount = allWorkers.count {
-          it.state != DelegatedReviewWorkerState.COMPLETED &&
-            it.state != DelegatedReviewWorkerState.AGGREGATED
-        },
-      ),
-      terminalClassification = terminalClassification,
-    )
-    }
-    if (boundaryRecords.isEmpty()) {
-      database.transaction { unitOfWork ->
-        unitOfWork.reviews.saveDelegatedReviewLifecycle(buildSnapshot(lifecycleEvents))
-      }
-    } else {
-      lifecycleRecorder.recordAllAndPersist(boundaryRecords) { unitOfWork, events ->
-        unitOfWork.reviews.saveDelegatedReviewLifecycle(buildSnapshot(events))
-      }
     }
   }
 
@@ -835,7 +891,7 @@ class ParallelCodeReviewRunner(
     selected: List<DelegatedReviewLaunchRequest>,
     lifecycleEvents: List<ReviewLifecycleEvent>,
     workerSlots: Int,
-  ): List<skillbill.review.plan.DelegatedReviewWave> {
+  ): List<DelegatedReviewWave> {
     val selectedDigests = selected.map { it.assignment.digest }.toSet()
     val launchedEvents = lifecycleEvents
       .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
@@ -848,7 +904,7 @@ class ParallelCodeReviewRunner(
         .groupBy { requireNotNull(it.waveNumber) }
         .toSortedMap()
         .map { (number, events) ->
-          skillbill.review.plan.DelegatedReviewWave(
+          DelegatedReviewWave(
             number,
             events.mapNotNull { it.assignmentDigest },
           )
@@ -856,7 +912,7 @@ class ParallelCodeReviewRunner(
     }
     val launched = launchedEvents.mapNotNull { it.assignmentDigest }
     return launched.chunked(workerSlots).mapIndexed { index, workerIds ->
-      skillbill.review.plan.DelegatedReviewWave(index + 1, workerIds)
+      DelegatedReviewWave(index + 1, workerIds)
     }
   }
 
@@ -882,164 +938,124 @@ class ParallelCodeReviewRunner(
     if (existingAggregation?.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED) {
       return ReviewCompletionResult(
         accepted = false,
-        terminalRecord = terminalCompletionRecord(launch, recovery, false),
-      )
-    }
-    val aggregationElapsedMs =
-      ((monotonicNowNanos() - aggregationStartedNanos) / 1_000_000L).coerceAtLeast(0)
-    val aggregationDeadlineExceeded = policy.isExpired(PolicyDeadlineScope.AGGREGATION, aggregationElapsedMs)
-    val wholeReviewDeadlineExceeded = policy.isExpired(
-      PolicyDeadlineScope.WHOLE_REVIEW,
-      elapsedMillis(runStartedNanos),
-    )
-    val deadlineScope = when {
-      wholeReviewDeadlineExceeded -> LifecycleDeadlineScope.WHOLE_REVIEW
-      aggregationDeadlineExceeded -> LifecycleDeadlineScope.AGGREGATION
-      else -> null
-    }
-    val gateFailure = runCatching {
-      require(deadlineScope == null) {
-        "deadline_scope=${deadlineScope?.name?.lowercase()}; aggregation gate did not start before its deadline."
-      }
-      val receipt = DelegatedReviewAggregationGate.validate(
-        buildAggregationRequest(selectedAssignments, lifecycleEvents),
-      )
-      require(!policy.isExpired(PolicyDeadlineScope.AGGREGATION, elapsedMillis(aggregationStartedNanos))) {
-        "deadline_scope=aggregation; aggregation gate exceeded its deadline."
-      }
-      require(!policy.isExpired(PolicyDeadlineScope.WHOLE_REVIEW, elapsedMillis(runStartedNanos))) {
-        "deadline_scope=whole_review; aggregation gate exceeded the whole-review deadline."
-      }
-      receipt
-    }.exceptionOrNull()
-    val aggregationDeadlineExceededAfterGate = policy.isExpired(
-      PolicyDeadlineScope.AGGREGATION,
-      elapsedMillis(aggregationStartedNanos),
-    )
-    val wholeReviewDeadlineExceededAfterGate = policy.isExpired(
-      PolicyDeadlineScope.WHOLE_REVIEW,
-      elapsedMillis(runStartedNanos),
-    )
-    val successful = outcomes.lane1.success && outcomes.lane2.success && gateFailure == null &&
-      !aggregationDeadlineExceededAfterGate && !wholeReviewDeadlineExceededAfterGate
-    val failureStatus = when {
-      successful -> null
-      deadlineScope != null || aggregationDeadlineExceededAfterGate || wholeReviewDeadlineExceededAfterGate ->
-        ReviewProcessOutcome.TIMED_OUT
-      lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_TIMED_OUT } ->
-        ReviewProcessOutcome.TIMED_OUT
-      lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED } ->
-        lifecycleEvents.first { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED }
-          .processOutcome ?: ReviewProcessOutcome.INTERRUPTED
-      lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE } ->
-        ReviewProcessOutcome.UNAVAILABLE
-      else -> null
-    }
-    if (interruptionProbe()) {
-      if (existingAggregation?.eventKind != ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
-        recordAggregationCompletion(
+        terminalRecord = terminalCompletionRecord(
           launch,
+          recovery,
           successful = false,
-          failureMessage = "Aggregation interrupted before terminal persistence.",
-          failureStatus = ReviewProcessOutcome.INTERRUPTED,
-        )
-      }
-      if (recovery?.terminalRecord == null) {
-        return ReviewCompletionResult(
-          accepted = false,
-          terminalRecord = terminalCompletionRecord(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED),
-        )
-      }
-      return ReviewCompletionResult(accepted = false)
+          failureStatus = existingAggregation.processOutcome ?: ReviewProcessOutcome.AGGREGATION_FAILURE,
+        ),
+      )
     }
+    val evaluation = evaluateAggregation(
+      outcomes,
+      selectedAssignments,
+      lifecycleEvents,
+      aggregationStartedNanos,
+      policy,
+      runStartedNanos,
+    )
+    val interruptedBeforePersistence = interruptionProbe()
     if (existingAggregation?.eventKind != ReviewLifecycleEventKind.AGGREGATION_COMPLETED) {
       recordAggregationCompletion(
         launch,
-        successful,
-        if (successful) {
-          null
+        successful = evaluation.successful && !interruptedBeforePersistence,
+        failureMessage = if (interruptedBeforePersistence) {
+          "Aggregation interrupted before terminal persistence."
         } else {
-          gateFailure?.message ?: outcomes.lane1.failureReason ?: outcomes.lane2.failureReason ?:
-            "The durable worker outcomes did not satisfy aggregation readiness."
+          evaluation.failureMessage
         },
-        failureStatus = failureStatus,
+        failureStatus = if (interruptedBeforePersistence) {
+          ReviewProcessOutcome.INTERRUPTED
+        } else {
+          evaluation.failureStatus
+        },
       )
     }
-    if (interruptionProbe()) {
-      if (recovery?.terminalRecord == null) {
-        return ReviewCompletionResult(
-          accepted = false,
-          terminalRecord = terminalCompletionRecord(launch, recovery, false, ReviewProcessOutcome.INTERRUPTED),
-        )
-      }
-      return ReviewCompletionResult(accepted = false)
-    }
+    val interrupted = interruptedBeforePersistence || interruptionProbe()
+    val status = if (interrupted) ReviewProcessOutcome.INTERRUPTED else evaluation.failureStatus
     return ReviewCompletionResult(
-      accepted = successful,
-      terminalRecord = terminalCompletionRecord(launch, recovery, successful, failureStatus),
+      accepted = evaluation.successful && !interrupted,
+      terminalRecord = terminalCompletionRecord(launch, recovery, evaluation.successful && !interrupted, status),
     )
+  }
+
+  private fun evaluateAggregation(
+    outcomes: ParallelReviewLaneRunResult,
+    selectedAssignments: List<DelegatedReviewLaunchRequest>,
+    lifecycleEvents: List<ReviewLifecycleEvent>,
+    aggregationStartedNanos: Long,
+    policy: DelegatedReviewDeadlinePolicy,
+    runStartedNanos: Long,
+  ): AggregationEvaluation {
+    val initialDeadlineScope = aggregationDeadlineScope(policy, aggregationStartedNanos, runStartedNanos)
+    val gateFailure = runCatching {
+      require(initialDeadlineScope == null) {
+        "deadline_scope=${initialDeadlineScope?.name?.lowercase()}; aggregation gate missed its deadline."
+      }
+      DelegatedReviewAggregationGate.validate(buildAggregationRequest(selectedAssignments, lifecycleEvents))
+      require(aggregationDeadlineScope(policy, aggregationStartedNanos, runStartedNanos) == null) {
+        "Aggregation gate exceeded its aggregation or whole-review deadline."
+      }
+    }.exceptionOrNull()
+    val finalDeadlineScope = aggregationDeadlineScope(policy, aggregationStartedNanos, runStartedNanos)
+    val successful = outcomes.lane1.success && outcomes.lane2.success && gateFailure == null &&
+      finalDeadlineScope == null
+    val failureStatus = aggregationFailureStatus(
+      successful,
+      initialDeadlineScope ?: finalDeadlineScope,
+      lifecycleEvents,
+    )
+    return AggregationEvaluation(
+      successful = successful,
+      failureStatus = failureStatus,
+      failureMessage = gateFailure?.message ?: outcomes.lane1.failureReason ?: outcomes.lane2.failureReason
+        ?: "The durable worker outcomes did not satisfy aggregation readiness.".takeUnless { successful },
+    )
+  }
+
+  private fun aggregationDeadlineScope(
+    policy: DelegatedReviewDeadlinePolicy,
+    aggregationStartedNanos: Long,
+    runStartedNanos: Long,
+  ): LifecycleDeadlineScope? = when {
+    policy.isExpired(PolicyDeadlineScope.WHOLE_REVIEW, elapsedMillis(runStartedNanos)) ->
+      LifecycleDeadlineScope.WHOLE_REVIEW
+    policy.isExpired(PolicyDeadlineScope.AGGREGATION, elapsedMillis(aggregationStartedNanos)) ->
+      LifecycleDeadlineScope.AGGREGATION
+    else -> null
+  }
+
+  private fun aggregationFailureStatus(
+    successful: Boolean,
+    deadlineScope: LifecycleDeadlineScope?,
+    lifecycleEvents: List<ReviewLifecycleEvent>,
+  ): ReviewProcessOutcome? = when {
+    successful -> null
+    deadlineScope != null -> ReviewProcessOutcome.TIMED_OUT
+    lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_TIMED_OUT } ->
+      ReviewProcessOutcome.TIMED_OUT
+    lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED } ->
+      lifecycleEvents.first { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED }
+        .processOutcome ?: ReviewProcessOutcome.INTERRUPTED
+    lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE } ->
+      ReviewProcessOutcome.UNAVAILABLE
+    else -> null
   }
 
   private fun buildAggregationRequest(
     selectedAssignments: List<DelegatedReviewLaunchRequest>,
     lifecycleEvents: List<ReviewLifecycleEvent>,
   ): DelegatedReviewAggregationRequest {
-    val selectedOwnership = selectedAssignments.map { launch ->
-      DelegatedReviewAssignmentOwnership(
-        workerId = launch.assignment.lane,
-        providerId = launch.agentId,
-        attempt = launch.attempt,
-        assignmentDigest = launch.assignment.digest,
-        area = launch.assignment.lane,
-      )
-    }
+    val selectedOwnership = selectedAssignments.map(::assignmentOwnership)
     val selectedByDigest = selectedAssignments.associateBy { it.assignment.digest }
-    val completedResultEventsByDigest = lifecycleEvents
+    val currentResultEvents = lifecycleEvents
       .filter {
         it.component == ReviewLifecycleComponent.WORKER &&
           it.eventKind == ReviewLifecycleEventKind.WORKER_COMPLETED &&
           it.resultEnvelope != null
       }
       .groupBy { it.assignmentDigest }
-    val currentResultEvents = completedResultEventsByDigest.flatMap { (digest, events) ->
-        val launch = selectedByDigest[digest]
-        require(launch != null) {
-          "Aggregation rejects a completed result for an assignment outside the current selection."
-        }
-        require(events.all { it.attempt == launch.attempt }) {
-          "Aggregation rejects a stale completed result for assignment '$digest'."
-        }
-        val currentAttemptEvents = events.filter { it.attempt == launch.attempt }
-        require(currentAttemptEvents.size <= 1) {
-          "Aggregation rejects duplicate completed results for assignment '$digest'."
-        }
-        currentAttemptEvents
-      }
-    val workerResults = currentResultEvents.map { event ->
-      require(event.processOutcome == ReviewProcessOutcome.ZERO_EXIT) {
-        "Aggregation rejects a completed result without a normal zero-exit outcome."
-      }
-      val identity = DelegatedReviewAssignmentOwnership(
-        workerId = requireNotNull(event.workerId),
-        providerId = requireNotNull(event.providerId),
-        attempt = requireNotNull(event.attempt),
-        assignmentDigest = requireNotNull(event.assignmentDigest),
-        area = requireNotNull(event.routedArea),
-      )
-      DelegatedReviewWorkerResult(
-        identity = identity,
-        state = DelegatedReviewAggregationState.COMPLETED,
-        findings = event.resultEnvelope?.findings.orEmpty().map { finding ->
-          DelegatedReviewFindingEnvelope(
-            severity = finding.severity.name.lowercase(),
-            confidence = finding.confidence,
-            repositoryPath = finding.repositoryPath ?: finding.location.substringBefore(':'),
-            line = finding.line ?: 1,
-            description = finding.description,
-          )
-        },
-      )
-    }
+      .flatMap { (digest, events) -> currentAttemptResultEvents(digest, events, selectedByDigest) }
     val packet = selectedAssignments.first().packet
     require(selectedAssignments.all { it.packet.digest == packet.digest }) {
       "Aggregation selection mixes review packets."
@@ -1048,7 +1064,59 @@ class ParallelCodeReviewRunner(
     return DelegatedReviewAggregationRequest(
       selectedAssignments = selectedOwnership,
       declaredAreas = declaredAreas,
-      workerResults = workerResults,
+      workerResults = currentResultEvents.map(::aggregationWorkerResult),
+    )
+  }
+
+  private fun assignmentOwnership(launch: DelegatedReviewLaunchRequest) = DelegatedReviewAssignmentOwnership(
+    workerId = launch.assignment.lane,
+    providerId = launch.agentId,
+    attempt = launch.attempt,
+    assignmentDigest = launch.assignment.digest,
+    area = launch.assignment.lane,
+  )
+
+  private fun currentAttemptResultEvents(
+    digest: String?,
+    events: List<ReviewLifecycleEvent>,
+    selectedByDigest: Map<String, DelegatedReviewLaunchRequest>,
+  ): List<ReviewLifecycleEvent> {
+    val launch = selectedByDigest[digest]
+    require(launch != null) {
+      "Aggregation rejects a completed result for an assignment outside the current selection."
+    }
+    require(events.all { it.attempt == launch.attempt }) {
+      "Aggregation rejects a stale completed result for assignment '$digest'."
+    }
+    return events.filter { it.attempt == launch.attempt }.also { currentEvents ->
+      require(currentEvents.size <= 1) {
+        "Aggregation rejects duplicate completed results for assignment '$digest'."
+      }
+    }
+  }
+
+  private fun aggregationWorkerResult(event: ReviewLifecycleEvent): DelegatedReviewWorkerResult {
+    require(event.processOutcome == ReviewProcessOutcome.ZERO_EXIT) {
+      "Aggregation rejects a completed result without a normal zero-exit outcome."
+    }
+    return DelegatedReviewWorkerResult(
+      identity = DelegatedReviewAssignmentOwnership(
+        workerId = requireNotNull(event.workerId),
+        providerId = requireNotNull(event.providerId),
+        attempt = requireNotNull(event.attempt),
+        assignmentDigest = requireNotNull(event.assignmentDigest),
+        area = requireNotNull(event.routedArea),
+      ),
+      state = DelegatedReviewAggregationState.COMPLETED,
+      findings = event.resultEnvelope?.findings.orEmpty().map { finding ->
+        DelegatedReviewFindingEnvelope(
+          severity = finding.severity.name.lowercase(),
+          confidence = finding.confidence,
+          repositoryPath = finding.repositoryPath ?: finding.location.substringBefore(':'),
+          line = finding.line ?: FIRST_SOURCE_LINE,
+          description = finding.description,
+        )
+      },
     )
   }
 
@@ -1078,9 +1146,12 @@ class ParallelCodeReviewRunner(
           ReviewProcessOutcome.ZERO_EXIT,
         ).takeIf { successful },
         diagnostic = failureMessage?.let { message ->
+          val boundedMessage = message.take(
+            REVIEW_LIFECYCLE_MAX_TEXT_CHARS - AGGREGATION_DIAGNOSTIC_PREFIX_LENGTH,
+          )
           ReviewDiagnosticReference(
             "review-lifecycle/${launch.assignment.reviewId}/aggregation",
-            "Aggregation blocked: ${message.take(REVIEW_LIFECYCLE_MAX_TEXT_CHARS - 21)}",
+            "Aggregation blocked: $boundedMessage",
           )
         },
       ),
@@ -1224,8 +1295,8 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
     capacityPlan: DelegatedReviewCapacityPlan,
-    initialActualWaves: List<skillbill.review.plan.DelegatedReviewWave>,
-    actualWaves: (List<skillbill.review.plan.DelegatedReviewWave>) -> Unit,
+    initialActualWaves: List<DelegatedReviewWave>,
+    actualWaves: (List<DelegatedReviewWave>) -> Unit,
     workerLaunchBoundary: () -> Unit,
     waveBoundary: () -> Unit,
     startedNanos: Long,
@@ -1293,7 +1364,9 @@ class ParallelCodeReviewRunner(
         "A durable aggregation completion must carry its terminal completion evidence."
       }
     }
-    val status = if (successful) ReviewProcessOutcome.ZERO_EXIT else {
+    val status = if (successful) {
+      ReviewProcessOutcome.ZERO_EXIT
+    } else {
       failureStatus ?: ReviewProcessOutcome.AGGREGATION_FAILURE
     }
     return skillbill.ports.review.model.ReviewTerminalCompletion(lifecycleRecorder.timestamp(), status)
@@ -1588,7 +1661,6 @@ class ParallelCodeReviewRunner(
     ResolvedReviewExecutionMode.DELEGATED -> error("Delegated lanes are scheduled by the coordinator.")
   }
 
-  @Suppress("LoopWithTooManyJumpStatements")
   private fun launchDelegatedLane(
     selectedLaunchRequests: List<DelegatedReviewLaunchRequest>,
     relaunchableLaunchRequests: List<DelegatedReviewLaunchRequest>,
@@ -1597,17 +1669,14 @@ class ParallelCodeReviewRunner(
     agent1Id: String,
     agent2Id: String,
     capacityPlan: DelegatedReviewCapacityPlan,
-    initialActualWaves: List<skillbill.review.plan.DelegatedReviewWave>,
-    actualWaves: (List<skillbill.review.plan.DelegatedReviewWave>) -> Unit,
+    initialActualWaves: List<DelegatedReviewWave>,
+    actualWaves: (List<DelegatedReviewWave>) -> Unit,
     workerLaunchBoundary: () -> Unit,
     waveBoundary: () -> Unit,
     startedNanos: Long,
   ): skillbill.ports.review.model.ParallelReviewLaneRunResult {
     if (selectedLaunchRequests.isEmpty()) {
-      return skillbill.ports.review.model.ParallelReviewLaneRunResult(
-        lane1 = emptyDelegatedLaneOutcome("Durable lifecycle recovery withheld every specialist launch."),
-        lane2 = emptyDelegatedLaneOutcome("Durable lifecycle recovery withheld every specialist launch."),
-      )
+      return emptyRecoveredDelegatedRun()
     }
     val outcomesByDigest = linkedMapOf<String, ParallelReviewLaneOutcome>()
     val requestByDigest = selectedLaunchRequests.associateBy { it.assignment.digest }
@@ -1615,133 +1684,206 @@ class ParallelCodeReviewRunner(
     val policy = effectiveDeadlinePolicy(request)
     val recordedWaves = initialActualWaves.toMutableList()
     var interrupted = false
-    val coordinatorPlan = capacityPlan
-    for (wave in coordinatorPlan.predictedWaves) {
-      if (interrupted) break
-      require(wave.workerIds.size <= coordinatorPlan.workerSlots)
+    var halted = false
+    for (wave in capacityPlan.predictedWaves) {
+      if (interrupted || halted) break
+      require(wave.workerIds.size <= capacityPlan.workerSlots)
       if (interruptionProbe()) {
         interrupted = true
-        break
       }
       val waveLaunchableIds = wave.workerIds.filter(relaunchableIds::contains)
-      if (waveLaunchableIds.isEmpty()) continue
-      if (deadlineExpired(policy, PolicyDeadlineScope.STARTUP, startedNanos) &&
-        outcomesByDigest.isEmpty()
+      if (!interrupted && waveLaunchableIds.isNotEmpty() && recordExpiredWaveOutcomes(
+          wave.number,
+          relaunchableLaunchRequests,
+          outcomesByDigest,
+          policy,
+          startedNanos,
+        )
       ) {
-        relaunchableLaunchRequests.forEach { launch ->
-          outcomesByDigest[launch.assignment.digest] = deadlineExpiredOutcome(
-            launch,
-            "deadline_scope=startup; the first worker launch missed the startup deadline.",
-          )
-        }
-        break
-      }
-      if (deadlineExpired(policy, PolicyDeadlineScope.WHOLE_REVIEW, startedNanos)) {
-        relaunchableLaunchRequests.filter { it.assignment.digest !in outcomesByDigest }.forEach { launch ->
-          outcomesByDigest[launch.assignment.digest] = deadlineExpiredOutcome(
-            launch,
-            "deadline_scope=whole_review; wave ${wave.number} missed the whole-review deadline.",
-          )
-        }
-        break
-      }
-      val launchedInWave = ConcurrentHashMap.newKeySet<String>()
-      val actualWaveNumber = wave.number
-      val executor = Executors.newFixedThreadPool(waveLaunchableIds.size)
-      try {
-        val futures = executor.invokeAll(
-          waveLaunchableIds.map { workerId ->
-            Callable {
-              val launchRequest = requireNotNull(requestByDigest[workerId])
-              val remainingWholeMs = remainingMillis(policy, PolicyDeadlineScope.WHOLE_REVIEW, startedNanos)
-              if (remainingWholeMs <= 0) {
-                deadlineExpiredOutcome(
-                  launchRequest,
-                  "deadline_scope=whole_review; worker launch missed the whole-review deadline.",
-                )
-              } else {
-                val workerTimeout = minOf(
-                  remainingWholeMs,
-                  policy.limitMs(PolicyDeadlineScope.PER_WORKER),
-                ).milliseconds
-                val workerDeadlineScope = if (remainingWholeMs < policy.limitMs(PolicyDeadlineScope.PER_WORKER)) {
-                  LifecycleDeadlineScope.WHOLE_REVIEW
-                } else {
-                  LifecycleDeadlineScope.PER_WORKER
-                }
-                workerLaunchBoundary()
-                launchSpecialist(
-                  launchRequest,
-                  request,
-                  modelOverrides[launchRequest.agentId],
-                  workerTimeout,
-                  policy.limitMs(PolicyDeadlineScope.PROGRESS_IDLE).milliseconds,
-                  actualWaveNumber,
-                  workerDeadlineScope,
-                  onLaunchRecorded = { launchedInWave.add(workerId) },
-                )
-              }
-            }
-          },
+        halted = true
+      } else if (!interrupted && waveLaunchableIds.isNotEmpty()) {
+        val waveResult = executeDelegatedWave(
+          wave.number,
+          waveLaunchableIds,
+          requestByDigest,
+          request,
+          modelOverrides,
+          policy,
+          startedNanos,
+          workerLaunchBoundary,
         )
-        futures.forEachIndexed { index, future ->
-          val workerId = waveLaunchableIds[index]
-          val outcome = try {
-            future.get()
-          } catch (error: ExecutionException) {
-            if (error.cause is InterruptedException) {
-              interrupted = true
-              null
-            } else {
-              outcomesByDigest[workerId] = workerExecutionExceptionOutcome(
-                requireNotNull(requestByDigest[workerId]),
-                error.cause ?: error,
-              )
-              null
-            }
-          }
-          outcome?.let {
-            outcomesByDigest[workerId] = it
-            if (it.interrupted) interrupted = true
-          }
-        }
-      } finally {
-        executor.shutdownNow()
-      }
-      val actualWaveWorkers = waveLaunchableIds.filter(launchedInWave::contains)
-      if (actualWaveWorkers.isNotEmpty()) {
-        val existingWaveIndex = recordedWaves.indexOfFirst { it.number == wave.number }
-        val priorWorkerIds = recordedWaves.getOrNull(existingWaveIndex)?.workerIds.orEmpty()
-        val workerIds = (priorWorkerIds + actualWaveWorkers).distinct()
-        val actualWave = skillbill.review.plan.DelegatedReviewWave(
-          number = wave.number,
-          workerIds = workerIds,
+        outcomesByDigest.putAll(waveResult.outcomes)
+        interrupted = waveResult.interrupted
+        recordActualWave(
+          wave.number,
+          waveResult.launchedWorkerIds,
+          recordedWaves,
+          actualWaves,
+          waveBoundary,
         )
-        if (existingWaveIndex >= 0) {
-          recordedWaves[existingWaveIndex] = actualWave
-        } else {
-          recordedWaves += actualWave
-          recordedWaves.sortBy(skillbill.review.plan.DelegatedReviewWave::number)
-        }
-        actualWaves(recordedWaves.toList())
-        waveBoundary()
       }
     }
-    relaunchableLaunchRequests.filter { it.assignment.digest !in outcomesByDigest }.forEach { launch ->
-      outcomesByDigest[launch.assignment.digest] = interruptedOutcome(
+    recordUnlaunchedOutcomes(relaunchableLaunchRequests, outcomesByDigest)
+    return delegatedLaneRunResult(selectedLaunchRequests, outcomesByDigest, agent1Id, agent2Id)
+  }
+
+  private fun recordUnlaunchedOutcomes(
+    relaunchable: List<DelegatedReviewLaunchRequest>,
+    outcomes: MutableMap<String, ParallelReviewLaneOutcome>,
+  ) {
+    relaunchable.filter { it.assignment.digest !in outcomes }.forEach { launch ->
+      outcomes[launch.assignment.digest] = interruptedOutcome(
         launch,
         "Delegated review stopped before this worker reached its launch boundary.",
       )
     }
+  }
+
+  private fun delegatedLaneRunResult(
+    selected: List<DelegatedReviewLaunchRequest>,
+    outcomes: Map<String, ParallelReviewLaneOutcome>,
+    agent1Id: String,
+    agent2Id: String,
+  ): ParallelReviewLaneRunResult {
     fun laneOutcome(agentId: String) = aggregateDelegatedLaneOutcome(
       agentId,
-      selectedLaunchRequests.filter { it.agentId == agentId }
-        .mapNotNull { outcomesByDigest[it.assignment.digest] },
+      selected.filter { it.agentId == agentId }.mapNotNull { outcomes[it.assignment.digest] },
     )
-    return skillbill.ports.review.model.ParallelReviewLaneRunResult(
+    return ParallelReviewLaneRunResult(
       lane1 = laneOutcome(agent1Id),
       lane2 = laneOutcome(agent2Id),
     )
+  }
+
+  private fun emptyRecoveredDelegatedRun() = ParallelReviewLaneRunResult(
+    lane1 = emptyDelegatedLaneOutcome("Durable lifecycle recovery withheld every specialist launch."),
+    lane2 = emptyDelegatedLaneOutcome("Durable lifecycle recovery withheld every specialist launch."),
+  )
+
+  private fun recordExpiredWaveOutcomes(
+    waveNumber: Int,
+    relaunchable: List<DelegatedReviewLaunchRequest>,
+    outcomes: MutableMap<String, ParallelReviewLaneOutcome>,
+    policy: DelegatedReviewDeadlinePolicy,
+    startedNanos: Long,
+  ): Boolean {
+    val firstLaunchExpired = outcomes.isEmpty() &&
+      deadlineExpired(policy, PolicyDeadlineScope.STARTUP, startedNanos)
+    val wholeReviewExpired = deadlineExpired(policy, PolicyDeadlineScope.WHOLE_REVIEW, startedNanos)
+    if (!firstLaunchExpired && !wholeReviewExpired) return false
+    val message = if (firstLaunchExpired) {
+      "deadline_scope=startup; the first worker launch missed the startup deadline."
+    } else {
+      "deadline_scope=whole_review; wave $waveNumber missed the whole-review deadline."
+    }
+    relaunchable.filter { it.assignment.digest !in outcomes }.forEach { launch ->
+      outcomes[launch.assignment.digest] = deadlineExpiredOutcome(launch, message)
+    }
+    return true
+  }
+
+  private fun executeDelegatedWave(
+    waveNumber: Int,
+    workerIds: List<String>,
+    requestByDigest: Map<String, DelegatedReviewLaunchRequest>,
+    request: ParallelCodeReviewRequest,
+    modelOverrides: Map<String, String?>,
+    policy: DelegatedReviewDeadlinePolicy,
+    startedNanos: Long,
+    workerLaunchBoundary: () -> Unit,
+  ): WaveExecutionResult {
+    val launched = mutableSetOf<String>()
+    val outcomes = linkedMapOf<String, ParallelReviewLaneOutcome>()
+    var interrupted = false
+    val results = parallelLaneRunner.runWave(
+      workerIds.map { workerId ->
+        delegatedWorkerTask(
+          workerId,
+          waveNumber,
+          requireNotNull(requestByDigest[workerId]),
+          request,
+          modelOverrides,
+          policy,
+          startedNanos,
+          workerLaunchBoundary,
+        )
+      },
+    )
+    results.forEachIndexed { index, result ->
+      val workerId = workerIds[index]
+      val failure = result.exceptionOrNull()
+      when {
+        failure is InterruptedException -> interrupted = true
+        failure != null -> outcomes[workerId] = workerExecutionExceptionOutcome(
+          requireNotNull(requestByDigest[workerId]),
+          failure,
+        )
+        else -> requireNotNull(result.getOrNull()).let { execution ->
+          outcomes[execution.workerId] = execution.outcome
+          if (execution.launched) launched += execution.workerId
+          if (execution.outcome.interrupted) interrupted = true
+        }
+      }
+    }
+    return WaveExecutionResult(outcomes, launched, interrupted)
+  }
+
+  private fun delegatedWorkerTask(
+    workerId: String,
+    waveNumber: Int,
+    launchRequest: DelegatedReviewLaunchRequest,
+    request: ParallelCodeReviewRequest,
+    modelOverrides: Map<String, String?>,
+    policy: DelegatedReviewDeadlinePolicy,
+    startedNanos: Long,
+    workerLaunchBoundary: () -> Unit,
+  ): () -> WaveWorkerExecution = {
+    var launched = false
+    val remainingWholeMs = remainingMillis(policy, PolicyDeadlineScope.WHOLE_REVIEW, startedNanos)
+    val outcome = if (remainingWholeMs <= 0) {
+      deadlineExpiredOutcome(
+        launchRequest,
+        "deadline_scope=whole_review; worker launch missed the whole-review deadline.",
+      )
+    } else {
+      val perWorkerMs = policy.limitMs(PolicyDeadlineScope.PER_WORKER)
+      workerLaunchBoundary()
+      launchSpecialist(
+        launchRequest,
+        request,
+        modelOverrides[launchRequest.agentId],
+        minOf(remainingWholeMs, perWorkerMs).milliseconds,
+        policy.limitMs(PolicyDeadlineScope.PROGRESS_IDLE).milliseconds,
+        waveNumber,
+        if (remainingWholeMs < perWorkerMs) {
+          LifecycleDeadlineScope.WHOLE_REVIEW
+        } else {
+          LifecycleDeadlineScope.PER_WORKER
+        },
+        onLaunchRecorded = { launched = true },
+      )
+    }
+    WaveWorkerExecution(workerId, outcome, launched)
+  }
+
+  private fun recordActualWave(
+    waveNumber: Int,
+    launchedWorkerIds: Set<String>,
+    recordedWaves: MutableList<DelegatedReviewWave>,
+    actualWaves: (List<DelegatedReviewWave>) -> Unit,
+    waveBoundary: () -> Unit,
+  ) {
+    if (launchedWorkerIds.isEmpty()) return
+    val existingIndex = recordedWaves.indexOfFirst { it.number == waveNumber }
+    val priorWorkerIds = recordedWaves.getOrNull(existingIndex)?.workerIds.orEmpty()
+    val wave = DelegatedReviewWave(
+      number = waveNumber,
+      workerIds = (priorWorkerIds + launchedWorkerIds).distinct(),
+    )
+    if (existingIndex >= 0) recordedWaves[existingIndex] = wave else recordedWaves += wave
+    recordedWaves.sortBy(DelegatedReviewWave::number)
+    actualWaves(recordedWaves.toList())
+    waveBoundary()
   }
 
   private fun deadlineExpiredOutcome(
@@ -1820,26 +1962,24 @@ class ParallelCodeReviewRunner(
     failureReason = reason,
   )
 
-  private fun interruptedOutcome(
-    launchRequest: DelegatedReviewLaunchRequest,
-    reason: String,
-  ) = ParallelReviewLaneOutcome(
-    success = false,
-    rawOutput = "",
-    failureReason = reason,
-    accounting = ReviewLaneAccounting(
-      lane = launchRequest.assignment.lane,
-      reviewId = launchRequest.assignment.reviewId,
-      packetDigest = launchRequest.assignment.packetDigest,
-      assignmentDigest = launchRequest.assignment.digest,
-      evidenceBytes = 0,
-      expansions = emptyList(),
-      toolCalls = 0,
-      modelTurns = 0,
-      resultBytes = 0,
-      terminalStatus = "interrupted",
-    ),
-  )
+  private fun interruptedOutcome(launchRequest: DelegatedReviewLaunchRequest, reason: String) =
+    ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = reason,
+      accounting = ReviewLaneAccounting(
+        lane = launchRequest.assignment.lane,
+        reviewId = launchRequest.assignment.reviewId,
+        packetDigest = launchRequest.assignment.packetDigest,
+        assignmentDigest = launchRequest.assignment.digest,
+        evidenceBytes = 0,
+        expansions = emptyList(),
+        toolCalls = 0,
+        modelTurns = 0,
+        resultBytes = 0,
+        terminalStatus = "interrupted",
+      ),
+    )
 
   private fun aggregateDelegatedLaneOutcome(
     agentId: String,
@@ -1878,7 +2018,7 @@ class ParallelCodeReviewRunner(
   ): Long = (policy.limitMs(scope) - elapsedMillis(startedNanos)).coerceAtLeast(0)
 
   private fun elapsedMillis(startedNanos: Long): Long =
-    ((monotonicNowNanos() - startedNanos) / 1_000_000L).coerceAtLeast(0)
+    ((monotonicNowNanos() - startedNanos) / NANOS_PER_MILLISECOND).coerceAtLeast(0)
 
   @Suppress("LongMethod")
   private fun launchSpecialist(
@@ -2178,23 +2318,22 @@ class ParallelCodeReviewRunner(
     outcome: ReviewProcessOutcome,
     deadlineReason: String? = null,
     fallbackDeadlineScope: LifecycleDeadlineScope? = null,
-  ) =
-    ReviewDiagnosticReference(
-      "review-lifecycle/${launchRequest.assignment.reviewId}/" +
-        launchRequest.assignment.digest.take(DIAGNOSTIC_DIGEST_PREFIX_LENGTH),
-      when (outcome) {
-        ReviewProcessOutcome.ZERO_EXIT -> "Worker returned a normal zero-exit result."
-        ReviewProcessOutcome.TIMED_OUT ->
-          "Worker deadline expired at scope=${deadlineScope(deadlineReason, fallbackDeadlineScope)} " +
-            "before a terminal result."
-        ReviewProcessOutcome.INTERRUPTED -> "Worker was interrupted before a terminal result."
-        ReviewProcessOutcome.UNAVAILABLE -> "Provider launch was unavailable for this worker."
-        ReviewProcessOutcome.INVALID_OUTPUT -> "Worker output was not admitted as a completed result."
-        ReviewProcessOutcome.MISSING_RESULT -> "Worker exited normally without an explicit result envelope."
-        ReviewProcessOutcome.NON_ZERO_EXIT -> "Worker exited without a successful process outcome."
-        else -> "Worker did not produce a successful lifecycle result."
-      },
-    )
+  ) = ReviewDiagnosticReference(
+    "review-lifecycle/${launchRequest.assignment.reviewId}/" +
+      launchRequest.assignment.digest.take(DIAGNOSTIC_DIGEST_PREFIX_LENGTH),
+    when (outcome) {
+      ReviewProcessOutcome.ZERO_EXIT -> "Worker returned a normal zero-exit result."
+      ReviewProcessOutcome.TIMED_OUT ->
+        "Worker deadline expired at scope=${deadlineScope(deadlineReason, fallbackDeadlineScope)} " +
+          "before a terminal result."
+      ReviewProcessOutcome.INTERRUPTED -> "Worker was interrupted before a terminal result."
+      ReviewProcessOutcome.UNAVAILABLE -> "Provider launch was unavailable for this worker."
+      ReviewProcessOutcome.INVALID_OUTPUT -> "Worker output was not admitted as a completed result."
+      ReviewProcessOutcome.MISSING_RESULT -> "Worker exited normally without an explicit result envelope."
+      ReviewProcessOutcome.NON_ZERO_EXIT -> "Worker exited without a successful process outcome."
+      else -> "Worker did not produce a successful lifecycle result."
+    },
+  )
 
   private fun deadlineScope(reason: String?, fallback: LifecycleDeadlineScope? = null): String = when (reason) {
     "progress_idle_timeout", "operation_deadline_overrun" -> "progress_idle"
@@ -2443,6 +2582,13 @@ class ParallelCodeReviewRunner(
     const val REVIEW_LIFECYCLE_MAX_TEXT_CHARS = 500
     const val REVIEW_NO_FINDINGS_ENVELOPE = "NO_FINDINGS"
     const val DIAGNOSTIC_DIGEST_PREFIX_LENGTH = 12
+    const val NANOS_PER_MILLISECOND = 1_000_000L
+    const val AGGREGATION_DIAGNOSTIC_PREFIX_LENGTH = 21
+    const val FIRST_SOURCE_LINE = 1
+    val COMPLETED_WORKER_STATES = setOf(
+      DelegatedReviewWorkerState.COMPLETED,
+      DelegatedReviewWorkerState.AGGREGATED,
+    )
     val WORKER_TERMINAL_EVENT_KINDS = setOf(
       ReviewLifecycleEventKind.WORKER_COMPLETED,
       ReviewLifecycleEventKind.WORKER_FAILED,
@@ -2490,9 +2636,7 @@ private fun parallelResult(
   )
 }
 
-private fun ParallelReviewLaneOutcome.interruptedFor(
-  classification: DelegatedReviewTerminalClassification,
-) = copy(
+private fun ParallelReviewLaneOutcome.interruptedFor(classification: DelegatedReviewTerminalClassification) = copy(
   success = false,
   rawOutput = "",
   findings = emptyList(),

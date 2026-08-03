@@ -3,8 +3,8 @@ package skillbill.ports.persistence
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
-import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview

@@ -29,6 +29,15 @@ class GoalRunnerLivenessClassifierTest {
   }
 
   @Test
+  fun `active non-long operation becomes idle after its declared event goes stale`() {
+    val decision = GoalRunnerLivenessClassifier.classify(
+      base.copy(operationActive = true, operationExpectedLong = false),
+    )
+    assertEquals(GoalRunnerLivenessState.IDLE, decision.state)
+    assertTrue(decision.armIdleTimeout)
+  }
+
+  @Test
   fun `durable advance classifies progressing and disarms idle timeout`() {
     val decision = GoalRunnerLivenessClassifier.classify(
       base.copy(durableAdvanceWithinInterval = true),

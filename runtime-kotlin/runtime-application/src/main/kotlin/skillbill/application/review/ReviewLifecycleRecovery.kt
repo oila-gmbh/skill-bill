@@ -1,15 +1,15 @@
 package skillbill.application.review
 
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.review.model.DelegatedReviewTerminalClassification
 import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.DelegatedReviewTerminalClassification
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
 import skillbill.ports.review.model.ReviewLifecycleLedger
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
-import skillbill.review.plan.DelegatedReviewWave
+import skillbill.review.plan.model.DelegatedReviewWave
 
 internal data class ReviewLifecycleRecoveredWorkerResult(
   val assignmentDigest: String,

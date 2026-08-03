@@ -1,10 +1,14 @@
 package skillbill.ports.review.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.review.REVIEW_LIFECYCLE_CONTRACT_VERSION
 
 private const val MAX_REVIEW_LIFECYCLE_WORKERS = 128
 private const val MAX_REVIEW_LIFECYCLE_WAVES = 128
 private const val MAX_REVIEW_LIFECYCLE_DEADLINES = 8
+private const val MAX_PROVIDER_ID_CHARS = 200
+private const val MAX_PROVIDER_RATIONALE_CHARS = 500
+private const val MAX_WORKER_DIAGNOSTIC_CHARS = 500
 
 enum class DelegatedReviewProviderStatus { SUPPORTED, EXPERIMENTAL, UNSUPPORTED }
 
@@ -22,6 +26,7 @@ data class DelegatedReviewCapabilityDimensions(
     get() = freshContextIsolation && workerTracking && outputCapture && declaredProgress &&
       cancellation && timeout && tokenReporting && terminalResult
 
+  @OpenBoundaryMap("Versioned delegated-review capability schema projection")
   fun toPayload(): Map<String, Any?> = linkedMapOf(
     "fresh_context_isolation" to freshContextIsolation,
     "worker_tracking" to workerTracking,
@@ -41,8 +46,8 @@ data class DelegatedReviewProviderCapability(
   val rationale: String,
 ) {
   init {
-    require(providerId.isNotBlank() && providerId.length <= 200)
-    require(rationale.isNotBlank() && rationale.length <= 500)
+    require(providerId.isNotBlank() && providerId.length <= MAX_PROVIDER_ID_CHARS)
+    require(rationale.isNotBlank() && rationale.length <= MAX_PROVIDER_RATIONALE_CHARS)
     require(status != DelegatedReviewProviderStatus.SUPPORTED || dimensions.allSatisfied) {
       "A supported delegated provider must satisfy every capability dimension."
     }
@@ -51,6 +56,7 @@ data class DelegatedReviewProviderCapability(
     }
   }
 
+  @OpenBoundaryMap("Versioned delegated-review provider schema projection")
   fun toPayload(): Map<String, Any?> = linkedMapOf(
     "provider_id" to providerId,
     "status" to status.name.lowercase(),
@@ -67,6 +73,7 @@ data class DelegatedReviewProviderCapabilityMatrix(
     require(providers.map { it.providerId }.distinct().size == providers.size)
   }
 
+  @OpenBoundaryMap("Versioned delegated-review capability-matrix schema projection")
   fun toPayload(): Map<String, Any?> = mapOf(
     "contract_version" to REVIEW_LIFECYCLE_CONTRACT_VERSION,
     "kind" to "provider_capability_matrix",
@@ -115,9 +122,10 @@ data class DelegatedReviewWorkerRecord(
     require(workerId.isNotBlank() && providerId.isNotBlank() && area.isNotBlank())
     require(assignmentDigest.matches(Regex("^[a-f0-9]{64}$")))
     require(attempt >= 1)
-    diagnostic?.let { require(it.isNotBlank() && it.length <= 500) }
+    diagnostic?.let { require(it.isNotBlank() && it.length <= MAX_WORKER_DIAGNOSTIC_CHARS) }
   }
 
+  @OpenBoundaryMap("Versioned delegated-review worker-record schema projection")
   fun toPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "worker_id" to workerId,
     "provider_id" to providerId,
@@ -136,6 +144,7 @@ data class DelegatedReviewDeadline(
     require(limitMs > 0)
   }
 
+  @OpenBoundaryMap("Versioned delegated-review deadline schema projection")
   fun toPayload(): Map<String, Any?> = mapOf(
     "scope" to scope.name.lowercase(),
     "limit_ms" to limitMs,
@@ -152,6 +161,7 @@ data class DelegatedReviewWaveRecord(
     require(workerIds.all(String::isNotBlank))
   }
 
+  @OpenBoundaryMap("Versioned delegated-review wave schema projection")
   fun toPayload(): Map<String, Any?> = mapOf(
     "wave_number" to waveNumber,
     "worker_ids" to workerIds,
@@ -174,6 +184,7 @@ data class DelegatedReviewLifecycleMetrics(
     require(completedAreaCount <= selectedAreaCount)
   }
 
+  @OpenBoundaryMap("Versioned delegated-review metrics schema projection")
   fun toPayload(): Map<String, Any?> = mapOf(
     "elapsed_ms" to elapsedMs,
     "total_tokens" to totalTokens,
@@ -218,6 +229,7 @@ data class DelegatedReviewLifecycleSnapshot(
     require(actualWaveCount <= predictedWaveCount)
   }
 
+  @OpenBoundaryMap("Versioned delegated-review lifecycle schema projection")
   fun toPayload(): Map<String, Any?> = linkedMapOf(
     "contract_version" to REVIEW_LIFECYCLE_CONTRACT_VERSION,
     "kind" to "delegated_review_lifecycle",

@@ -1,5 +1,5 @@
-import java.io.File
 import org.gradle.language.jvm.tasks.ProcessResources
+import java.io.File
 
 plugins {
   id("skillbill.jvm-library")

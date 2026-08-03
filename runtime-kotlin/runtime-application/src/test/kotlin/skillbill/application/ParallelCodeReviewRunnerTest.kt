@@ -981,9 +981,10 @@ private object NoopReviewDatabase : DatabaseSessionFactory {
     when (method.name) {
       "saveAccounting" -> Unit
       "loadAccounting" -> null
-      "appendReviewLifecycleEvent" -> lifecycleEvents
-        .add(args?.get(0) as skillbill.ports.review.model.ReviewLifecycleEvent)
-        .let { true }
+      "appendReviewLifecycleEvent" ->
+        lifecycleEvents
+          .add(args?.get(0) as skillbill.ports.review.model.ReviewLifecycleEvent)
+          .let { true }
       "loadReviewLifecycleEvents" -> lifecycleEvents.filter { it.reviewId == args?.get(0) }
       "saveDelegatedReviewLifecycle" -> Unit
       "loadDelegatedReviewLifecycle" -> null
