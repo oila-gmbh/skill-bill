@@ -106,7 +106,10 @@ $defs:
         items: { type: string }
       loop_id: { type: string, minLength: 1 }
       edge_iteration: { type: integer, minimum: 1 }
-      review_pass_number: { type: integer, minimum: 1, maximum: 2 }
+      # Remediation reviews are unbounded on an unresolved Blocker, so the pass number has no ceiling.
+      # FeatureTaskRuntimePhaseRecord requires the same `pass >= 1`, pinned by
+      # FeatureTaskRuntimePersistenceReviewPassParityTest.
+      review_pass_number: { type: integer, minimum: 1 }
   delivered_projection:
     type: object
     additionalProperties: false
