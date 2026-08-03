@@ -215,7 +215,7 @@ Prepare discovery once at the parent, flatten layered composition into direct la
 Invoke `/bill-code-review` as a slash command — it handles all specialist routing automatically.
 
 **If you are `codex`:**
-Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Run selected subagents in deterministic waves. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
+Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Launch selected subagents in a deterministic order. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
 
 Prepare the compact shared review-context packet from `review-delegation.md` once. Use its ordered flattened lane assignments without rediscovery and spawn only selected non-empty specialists; never spawn a baseline orchestrator. Give each worker only its broker projection, lane assignment, and applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, guidance, learnings, or telemetry discovery.
 

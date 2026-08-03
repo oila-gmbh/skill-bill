@@ -88,7 +88,7 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertContains(content, "Keep the baseline specialists for the whole review")
     assertContains(content, "lightweight file-level classification")
     assertContains(content, "generated, vendored, and non-stack-owned files")
-    assertContains(content, "deterministic waves and retain every selected specialist result")
+    assertContains(content, "as subagents in this harness in a deterministic order and retain every selected specialist result")
     assertContains(content, "limited to platform-specific finding preconditions")
     assertTrue(!content.contains("Calibrate severity and verify each finding's preconditions"))
     assertTrue(!content.contains("attributed to their specialist lane through merge"))

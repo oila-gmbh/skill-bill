@@ -34,7 +34,7 @@ Review unsupported, ambiguous, and technology-neutral changes without claiming c
 - Keep the baseline specialists for the whole review and add only area-relevant specialist lanes.
 - Use lightweight file-level classification from paths and changed behavior to build each specialist scope.
 - Exclude generated, vendored, build-output, and non-stack files from specialist scope and ownership scoring.
-- Run selected specialists in deterministic waves when their count exceeds worker capacity, and retain every selected result.
+- Launch selected specialists as subagents in this harness in a deterministic order, and retain every selected result.
 - Merge every applicable lane in manifest area order and deduplicate only identical failures without losing evidence or specialist attribution.
 
 ## Finding Discipline

@@ -5,66 +5,52 @@ description: Single source of truth for agent-specific delegated code-review exe
 
 # Shared Review Delegation Contract
 
-## Lifecycle evidence
+## Mode vocabulary
 
-Lifecycle events are written at each ownership boundary and are keyed by packet digest, assignment
-digest, worker/provider identity, routed area, attempt, and a bounded diagnostic reference. A worker
-is not complete because its process or MCP heartbeat is alive; successful aggregation requires one
-normal zero-exit result for every selected assignment.
+`delegated` is the default review mode: the invoking agent fans the review out to
+specialist subagents inside its own harness and merges their findings. `inline`
+is the single-prompt review, where the invoking agent reviews the whole delta in
+one prompt with no fan-out. `auto` resolves by pass number — pass one, and any
+scope with no pass number, resolve to `delegated`; follow-up and remediation
+passes resolve to `inline`.
 
-The separate lifecycle projection is versioned at
-review-lifecycle-schema.yaml. It records selected/queued/launched/running and
-terminal worker states, durable `total_process_slots`, `coordinator_slots`,
-and `worker_slots` capacity, predicted and actual waves with a coordinator slot,
-startup/progress-idle/per-worker/aggregation/whole-review deadlines, bounded
-diagnostics, and measurements. Provider support is evaluated independently in
-the eight-dimension capability matrix; unsupported providers terminate
-explicitly and never fall back to inline review.
+Delegation never leaves the invoking agent's harness: every specialist lane is a
+subagent of the reviewing agent, and there is no separate lane lifecycle store.
+A lane is complete when it returns its structured findings; the parent aggregates
+only after every selected lane has returned.
+
+## Lane accounting
+
+The parent tracks each launched lane by the id its harness returns and records,
+per lane, the routed area, the assignment digest it was launched with, and its
+terminal outcome. A lane that cannot be launched, or that returns no findings
+report, is a failed lane: report it explicitly rather than treating the merged
+output as complete.
+
+If the current harness cannot launch subagents at all, stop and report that
+delegated review is required for this scope but unavailable here. Do not
+silently downgrade a delegated selection to inline.
 
 This is the canonical review-delegation contract. Installed skills consume it through generated sibling support pointers (e.g. `review-delegation.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 The delegated worker rules themselves have one authoritative authored source:
-`orchestration/review-orchestrator/specialist-contract.md`. Runtime, prose, CLI,
-and provider-native launches project its launch contract, forbidden-rediscovery
-list, evidence-surface rules, and report structure into the worker assignment.
+`orchestration/review-orchestrator/specialist-contract.md`. Runtime, prose, and
+harness-native launches project its launch contract, forbidden-rediscovery list,
+evidence-surface rules, and report structure into the subagent assignment.
 Workers do not reload those rules from disk, and this playbook does not restate
 them. Maintainer parity tests pin the runtime constants to the authoritative
 marked blocks and list in that source.
 
-Provider failure dispositions are keyed by provider in the SKILL-145 governed
-matrix. Capacity, startup measurement, scoped deadlines, bounded diagnostics,
-repair behavior, wave telemetry, and promotion thresholds are shared lifecycle
-contracts; a provider-specific mitigation must not change another provider's
-command builder or process strategy.
-
-## SKILL-145 provider decision boundary
-
-The current provider decision is recorded in the governed SKILL-145 decision
-and its versioned reliability contract. Codex, Claude, and Cursor are
-experimental explicit-opt-in providers. Junie, Copilot, Opencode, and Zcode
-are unsupported. No provider is supportable for promotion from the current
-evidence.
-
-Delegated remains the default and `auto` resolves by pass number: pass one and
-any scope with no pass number resolve to delegated, follow-up and remediation
-passes resolve to inline. A delegated selection launches workers, whether it is
-explicit, defaulted, or auto-resolved. A delegated request for an
-unsupported or unavailable provider terminates with a bounded unsupported
-outcome; it does not silently fall back to inline.
-
-Promotion requires provider-specific bounded latency, complete declared-area
-coverage, zero silent worker loss, deterministic terminal status, bounded
-evidence retention, and provider-isolation tests. The canary sample is at least
-20 launched runs per size class within one 30-consecutive-UTC-day window, uses
-nearest-rank p95, and keeps failed or timed-out runs in the denominator and
-promotion failure. A result from one provider cannot promote or alter another
-provider's adapter.
+A delegated selection fans out to subagent lanes whether it is explicit,
+defaulted, or auto-resolved. Harness-specific launch mechanics live in the
+per-harness sections below; a mitigation for one harness must not change another
+harness's launch behavior.
 
 ## Shared Delegation Rules
 
-- Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`; Codex CLI launches MUST use a fresh process receiving only the governed compact assignment. Other providers retain their existing launch behavior.
+- Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`. Other harnesses retain their existing launch behavior, and no harness may hand a specialist the parent conversation.
 - Project exactly one compact specialist contract, one applicable rubric, immutable review identifiers and revisions, assigned paths and hunks, relevant criteria references, matched rules, named evidence targets, broker identifiers, and a budget summary into each launch. The parent transcript, full phase briefing, unrelated criteria or rubrics, and unrelated diff are forbidden.
 - Specialists use the bounded evidence surface and do not execute status, scope, stack, routing, or broad-diff discovery. Out-of-assignment access requires a nonblank reachability reason and consumes a bounded expansion.
 - Payload, evidence, result, and expansion excess terminates the affected lane as `review_context_budget_exceeded`. Never truncate required evidence, skip a required lane, widen repository access, replace a reviewer, or substitute execution mode.
@@ -78,7 +64,7 @@ provider's adapter.
 - Launch one delegated worker per routed stack-specific review skill or selected specialist review pass unless the current agent-specific section explicitly says otherwise.
 - The parent review owns every worker in the flattened launch plan and preserves each lane's composition-chain attribution through merge and deduplication.
 - The parent review that owns the final merged review output also owns `import_review` and `triage_findings`. Delegated workers must not call those telemetry tools themselves.
-- When the runtime supports delegated-worker model inheritance, delegated workers should use the same model as the parent thread by default. Do not override the delegated-worker model unless the current runtime-specific section explicitly requires it.
+- When the harness supports delegated-specialist model inheritance, delegated specialists should use the same model as the parent thread by default. Do not override the delegated-specialist model unless the current harness-specific section explicitly requires it.
 - Every delegated worker receives only the broker projection from its validated assignment. Scope, raw diff, guidance bodies, learnings, add-ons, runtime ceremony, and telemetry ownership stay in the authoritative parent packet and are not projected.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
 - Track delegated workers by the ids returned when they are launched. Do not discover or poll delegated workers through broad global listing in the normal review path.

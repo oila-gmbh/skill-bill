@@ -70,7 +70,7 @@ When the diff is large, high-risk, or spans multiple review surfaces, build per-
 This is a lightweight file-level classification, not a full review.
 
 - Load and execute each selected specialist's governed rubric so every selected lane produces an attributed result.
-- When the selected lanes exceed the runtime's available delegated-worker capacity, run them in deterministic waves while retaining every selected result.
+- Launch every selected lane as a subagent in this harness in a deterministic order and retain every selected result.
 
 ## Finding Discipline
 

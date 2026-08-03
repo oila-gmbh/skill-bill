@@ -96,7 +96,7 @@ sections:
       - the changed files or diff source
       - the detected stack and key signals
       - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
-      - the parent thread's model when the runtime supports delegated-worker model inheritance
+      - the parent thread's model when the harness supports delegated-specialist model inheritance
       - the delegated skill name and rendered runtime instructions
       - the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
       - the delegated skill's `review-orchestrator.md` contract when the routed pack is a stack review orchestrator

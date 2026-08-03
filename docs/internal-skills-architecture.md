@@ -370,7 +370,7 @@ read sibling bill-kotlin-code-review.md            [internal sidecar]
 
 For a KMP diff, the routed entry is `bill-kmp-code-review.md`, which also reads
 `bill-kotlin-code-review.md` as its baseline layer sidecar before its own
-specialists. Delegated review workers (parallel lanes, sub-process reviewers)
+specialists. Delegated specialist subagents and parallel lanes
 receive rendered runtime instructions and rubric content/paths from the parent
 orchestrator — no worker ever resolves one of the platform-pack sidecars via the Skill tool or a
 standalone `skills_dir` path (PD5).

@@ -5,38 +5,30 @@ description: Single source of truth for shared stack-specific code-review orches
 
 # Shared Code Review Orchestrator Contract
 
-## Lifecycle evidence
+## Modes this contract backs
 
-Delegated lifecycle evidence is durable and bounded. The coordinator records preparation and queue
-admission, workers record identity-bound launch and terminal outcomes, aggregation records readiness
-separately from terminal completion, and recovery reads `review_lifecycle_events`. Process/MCP
-heartbeats, provider output, and declared progress are observations; only a typed durable worker
-progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
-complete diffs, raw transcripts, or tool logs.
+`delegated` is the default review: the reviewing agent fans the routed areas out
+to specialist subagents inside its own harness, and this specialist contract is
+what each of those subagents is held to. `inline` is the single-prompt review —
+one prompt in the current context over the child-owned delta, no fan-out — and it
+is held to the same finding bar, severity vocabulary, and report structure stated
+below. `auto` resolves by pass number: pass one, and any scope with no pass
+number, resolve to `delegated`; every follow-up or remediation pass resolves to
+`inline`.
 
-Capacity planning persists `total_process_slots`, `coordinator_slots`, and
-`worker_slots = total_process_slots - coordinator_slots` before workers are
-assigned to deterministic waves. Restart admission uses those persisted values
-and the predicted wave count rather than live configuration. Aggregation admits
-only the durable selected assignment set with matching worker/provider/attempt
-identities, valid finding envelopes, and complete declared-area coverage. A
-missing or duplicate result is a bounded aggregation failure, not an invitation
-to repair or rediscover scope.
+## Lane accounting
 
-The provider failure matrix records independent dispositions for capacity,
-bootstrap measurement, each deadline scope, bounded diagnostic repair, actual
-wave telemetry, and promotion thresholds. Shared lifecycle enforcement does not
-promote an experimental provider or alter another provider's launch strategy.
+Fan-out accounting is bounded and in-harness. The parent records, per launched
+lane, the routed area, the assignment it was launched with, and its terminal
+outcome; aggregation admits only the selected lane set with valid finding
+envelopes and complete declared-area coverage. A missing or duplicate lane result
+is a bounded aggregation failure, not an invitation to repair or rediscover scope.
+Lane accounting never carries prompts, complete diffs, raw transcripts, or tool
+logs.
 
-The policy is explicit: `delegated` is the default, `auto` resolves by pass
-number (pass one delegated, follow-up and remediation passes inline, no pass
-number delegated), and `inline` requires an explicit opt-in. Codex, Claude, and
-Cursor remain experimental; Junie, Copilot, Opencode, and Zcode are
-unsupported. Unsupported delegated requests terminate explicitly without an
-inline substitute. The complete classification, historical ledger, and
-promotion gate live in the governed SKILL-145 decision and reliability
-contract; this playbook consumes those boundaries and does not infer support
-from another provider.
+If the harness cannot launch the required subagent lanes, stop and report that
+delegated review is unavailable here. A delegated selection is never silently
+substituted with an inline pass.
 
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 

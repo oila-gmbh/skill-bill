@@ -245,7 +245,7 @@ itself an internal sidecar. The routed dispatch resolves the dominant pack's
 entry sidecar (e.g. `bill-kotlin-code-review.md`); a stack orchestrator sidecar
 resolves its specialist rubrics as sibling sidecars (e.g.
 `bill-kotlin-code-review-security.md`); and a KMP baseline layer resolves
-`bill-kotlin-code-review.md` as a sibling sidecar. Delegated review workers keep
+`bill-kotlin-code-review.md` as a sibling sidecar. Delegated specialist subagents keep
 receiving rendered runtime instructions and rubric content/paths from the parent
 orchestrator — no worker ever resolves a hidden skill via the Skill tool or a
 standalone `skills_dir` path. Lane-2 parallel reviews keep invoking

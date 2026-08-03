@@ -71,7 +71,7 @@ Skill Bill ships complete Go, iOS, Kotlin/KMP, PHP, Python, Rust, and TypeScript
 
 - `/bill-feature` prepares the feature spec, then routes to implementation or the goal loop
 - `/bill-feature-spec` prepares a parent spec, one or more executable subtask specs, and the authoritative manifest before implementation
-- `/bill-code-review` routes to the matching platform review stack; use `mode:inline` or `mode:delegated` to select review execution explicitly (the stack-specific review skills are internal sidecars, not separately invocable)
+- `/bill-code-review` routes to the matching platform review stack; use `mode:delegated` for the default specialist fan-out or `mode:inline` for the single-prompt review to select review execution explicitly (the stack-specific review skills are internal sidecars, not separately invocable)
 - `/bill-code-check` routes to the matching stack-specific checker (the stack-specific checker skills are internal sidecars, not separately invocable)
 - `/bill-pr-description` generates PR text and QA steps
 - `/bill-feature-verify` verifies a PR against a spec or design doc
@@ -107,7 +107,7 @@ Maintained packs share one exemption-free substance gate: every effective specia
 /bill-code-review mode:delegated
 ```
 
-Omit `mode:` to use delegated review, or pass `mode:auto` explicitly to resolve depth through the named auto rules. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:auto|inline|delegated`—and translate it to the standalone review mode internally. The `mode:runtime|prose` argument on `/bill-feature` selects the feature execution engine, not the review strategy.
+Omit `mode:` to use delegated review, the default specialist subagent fan-out; `mode:inline` is the single-prompt review. Pass `mode:auto` explicitly to resolve first-pass-delegated / follow-up-inline through the named auto rules. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:auto|inline|delegated`—and translate it to the standalone review mode internally. The `mode:runtime|prose` argument on `/bill-feature` selects the feature execution engine, not the review strategy.
 
 **Full skill catalog:**
 

@@ -45,7 +45,7 @@ Always keep the `architecture` and `platform-correctness` specialists as the bas
 - Exclude generated, vendored, build-output, generated serialization/protobuf, and non-stack (non-Kotlin) files from specialist scope and from dominance scoring.
 - Re-check the two-specialist minimum after scoping; if only architecture remains, give all Kotlin-owned files to platform-correctness as the default second lane.
 - Load and execute each selected specialist's governed rubric so every selected lane produces an attributed result.
-- When the selected lanes exceed the runtime's available delegated-worker capacity, run them in deterministic waves while retaining every selected result.
+- Launch every selected lane as a subagent in this harness and retain every selected result; when the harness limits how many run at once, order the launches deterministically rather than dropping a lane.
 - Merge every applicable lane deterministically in manifest area order, then deduplicate only identical failures while retaining the strongest evidence and all specialist attribution.
 - When Android or Compose Multiplatform signals are present, retain Kotlin as the required baseline and let KMP's more-specific `platform-correctness`, `ui`, and `ux-accessibility` lanes add target-specific findings without replacing standalone Kotlin findings.
 

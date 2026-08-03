@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-159-review-mode-restructure"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Mode restructure and single-prompt inline review"
   spec_path: ".feature-specs/SKILL-159-review-mode-restructure/spec_subtask_2_mode_rename_and_single_prompt_inline.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260803-101831-1h19"
   blocked_reason: null
-  last_resumable_step: "audit"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -47,7 +47,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260803-124509-537l"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
