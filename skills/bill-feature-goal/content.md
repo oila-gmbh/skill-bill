@@ -155,7 +155,7 @@ stored baseline exactly; a missing, rewritten, unrelated, or non-ancestor base
 blocks loudly. Never substitute `HEAD`, `origin/main`, a merge base, the full
 feature branch, or an earlier subtask's commits.
 
-Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. Every reserved later remediation pass is bounded to the remediation delta via `context:feature-remediation`. Pass the selected `mode:<auto|inline|delegated>` contract to both full parallel lanes. Lanes remain non-recursive and the coordinated lanes count as one review pass.
+Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Pass the selected `mode:<auto|inline|delegated>` contract to both full parallel lanes. Lanes remain non-recursive and the coordinated lanes count as one review pass.
 
 The complete child-owned delta is the immutable `review_base_sha` through the
 current worktree plus `current untracked paths - baseline untracked inventory`.
@@ -578,4 +578,4 @@ contract regardless of which agent runs it.
 
 ## Audit-first review and findings ledger
 
-Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs delegated first and inline second. Only an unresolved Blocker finding reopens `implement_fix`. Major, Minor, and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Remediation continues while any unresolved Blocker remains; a surviving Major moves on and is recorded in the ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Only an unresolved Blocker finding reopens `implement_fix`. Major, Minor, and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Remediation continues while any unresolved Blocker remains; a surviving Major moves on and is recorded in the ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

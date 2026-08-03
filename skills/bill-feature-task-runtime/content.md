@@ -395,4 +395,4 @@ only; the runtime gains no Linear dependency.
 
 ## Audit-first review and findings ledger
 
-The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review runs as a delegated pass followed by an inline pass. Blockers prevent advancement; non-blockers advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.
+The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blockers prevent advancement; non-blockers advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.

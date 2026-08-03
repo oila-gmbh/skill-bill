@@ -86,7 +86,11 @@ class InlineReviewDepthTierGovernedContentTest {
       "The goal contract must no longer override context:feature-remediation for every child review.",
     )
     assertTrue(featureGoal.contains("Pass one reviews the complete base-to-current delta"))
-    assertTrue(featureGoal.contains("bounded to the remediation delta via `context:feature-remediation`"))
+    assertTrue(
+      featureGoal.contains(
+        "every later pass runs inline against the remediation delta via `context:feature-remediation`",
+      ),
+    )
   }
 
   @Test

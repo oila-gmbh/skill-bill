@@ -82,4 +82,4 @@ The agent body is registered in
 
 ## Audit-first review and findings ledger
 
-Subtasks follow `implement -> audit -> review -> validate`, with review gated on a satisfied audit. Review is delegated first, then inline. A Blocker stops advancement; non-blockers advance and are written to the goal-wide unaddressed-findings ledger. Retrieve its location-bearing detail during or after goal execution with `skill-bill goal findings --issue-key <KEY>`.
+Subtasks follow `implement -> audit -> review -> validate`, with review gated on a satisfied audit. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. A Blocker stops advancement; non-blockers advance and are written to the goal-wide unaddressed-findings ledger. Retrieve its location-bearing detail during or after goal execution with `skill-bill goal findings --issue-key <KEY>`.

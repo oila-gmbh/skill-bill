@@ -1267,7 +1267,7 @@ When parsing escalates to the user:
 
 ## Audit-first review and findings ledger
 
-Run `implement -> audit -> review -> validate`; do not begin review until audit is satisfied. Execute review delegated first and inline second. Blockers stop advancement, while non-blockers advance and are recorded in the goal-wide unaddressed-findings ledger. Retrieve location-bearing detail during or after the goal with `skill-bill goal findings --issue-key <KEY>`.
+Run `implement -> audit -> review -> validate`; do not begin review until audit is satisfied. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blockers stop advancement, while non-blockers advance and are recorded in the goal-wide unaddressed-findings ledger. Retrieve location-bearing detail during or after the goal with `skill-bill goal findings --issue-key <KEY>`.
 
 ## Non-Goals
 

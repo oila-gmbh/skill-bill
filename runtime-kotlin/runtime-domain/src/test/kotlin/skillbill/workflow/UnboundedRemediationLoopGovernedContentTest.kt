@@ -45,6 +45,12 @@ class UnboundedRemediationLoopGovernedContentTest {
     "at most one inline re-review",
     "review_cap_reached",
     "permits one inline remediation pass",
+    "delegated first and inline second",
+    "delegated first, then inline",
+    "inline second",
+    "the sole review-fix pass",
+    "reserved later remediation pass",
+    "after the bounded remediation",
   )
 
   @Test
@@ -99,6 +105,36 @@ class UnboundedRemediationLoopGovernedContentTest {
 
     val nativeAgents = governedText("skills/bill-feature-task-prose/native-agents/agents.yaml")
     assertTrue(nativeAgents.contains("for every later review run `bill-code-review mode:inline`"))
+  }
+
+  @Test
+  fun `the goal and prose review-mode statements bind pass one to the selected mode`() {
+    val selectedModeThenInline =
+      "Review pass one uses the selected mode, and every later pass runs inline against the " +
+        "remediation delta via `context:feature-remediation`"
+
+    val goal = governedText("skills/bill-feature-goal/content.md")
+    assertEquals(
+      2,
+      Regex(Regex.escape(selectedModeThenInline)).findAll(goal).count(),
+      "the goal review-scope and child-order statements must both carry the selected-mode-then-inline formulation.",
+    )
+    assertTrue(
+      goal.contains("Remediation continues while any unresolved Blocker remains"),
+      "the goal surface must state that remediation continues while a Blocker remains.",
+    )
+
+    val prose = governedText("skills/bill-feature-task-prose/content.md")
+    assertTrue(prose.contains(selectedModeThenInline))
+    assertTrue(
+      prose.contains(
+        "every later review-fix pass invokes `bill-code-review mode:inline context:feature-remediation` " +
+          "against only the remediation delta",
+      ),
+      "the prose mode-authority statement must scope every later pass to the remediation delta.",
+    )
+
+    assertTrue(governedText("skills/bill-feature-task-subtask-runner/content.md").contains(selectedModeThenInline))
   }
 
   @Test
