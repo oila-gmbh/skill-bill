@@ -29,6 +29,11 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     "labelFor returns List<String> instead of the sanitized stem.",
     "The gate reads results[0].codeReviewMode == inline.",
     "Run ./gradlew :runtime-domain:test --tests=*AuditRepairModelsTest*",
+    // A gap in governed markdown has to quote the prose it is about, and governed prose carries inline
+    // code. Banning every backtick made a markdown gap unrecordable: this is the value the SKILL-157
+    // audit could not persist, so it exhausted its correction budget on an unsatisfiable field.
+    "Line 158 still says 'bounded to the remediation delta via `context:feature-remediation`'.",
+    "The rule lives in `compactSummary` and is pinned by the parity test.",
   )
 
   private val rejected = listOf(
@@ -36,8 +41,9 @@ class FeatureTaskRuntimeAuditRepairSchemaParityTest {
     "@@ -1,4 +1,6 @@ fun leaked()",
     "diff --git a/src/Foo.kt b/src/Foo.kt",
     "assistant: I inspected the reducer",
-    "Diagnosis with a `fenced` quote",
     "Diagnosis with a\nline break",
+    // The fence is what the backtick rule was guarding against, and it stays rejected.
+    "Diagnosis with a ```kotlin fenced block```",
   )
 
   @Test

@@ -42,7 +42,9 @@ internal fun requireCompactList(values: List<String>, field: String, maximumItem
 // Every durable text field either describes a code defect or names the work that repairs it, so all of
 // them must be able to carry symbols and commands: `=`, `[]`, and `<>` are ordinary content
 // (`--tests=`, `results[0]`, `List<String>`). Rejecting that punctuation made the fields unsatisfiable
-// for their own purpose. Pasted payloads are excluded structurally instead. The identical rule lives in
+// for their own purpose. A lone backtick is the same case: a gap in governed markdown has to quote the
+// prose it is about, and that prose carries inline code. Only the code fence it was guarding against is
+// rejected. Pasted payloads are excluded structurally instead. The identical rule lives in
 // `compactSummary` in feature-task-runtime-audit-repair-plan-schema.yaml, pinned by
 // FeatureTaskRuntimeAuditRepairSchemaParityTest.
 internal fun requireDurableText(value: String, field: String) {
@@ -59,10 +61,10 @@ internal fun requireDurableText(value: String, field: String) {
     "$field must be a single-line durable value; \"${value.preview()}\" contains a line break or control character."
   }
   requireRule(
-    value.none { it == '`' },
-    "$field must not contain code-fence or quoted-source syntax; remove the backticks.",
+    !value.contains(CODE_FENCE),
+    "$field must not contain a code fence; remove the fenced block.",
   ) {
-    "$field must not contain code-fence or quoted-source syntax; remove the backticks from \"${value.preview()}\"."
+    "$field must not contain a code fence; remove the fenced block from \"${value.preview()}\"."
   }
   requireRule(
     !SERIALIZED_PAYLOAD.containsMatchIn(value),
@@ -78,6 +80,8 @@ internal fun requireDurableText(value: String, field: String) {
     "$field must not contain a prompt transcript; \"${value.preview()}\" starts with a role prefix."
   }
 }
+
+private const val CODE_FENCE: String = "```"
 
 private val SERIALIZED_PAYLOAD = Regex(
   "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )",

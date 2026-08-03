@@ -86,7 +86,7 @@ class FeatureTaskRuntimeAuditRepairWireMapperTest {
       "@@ -1,4 +1,6 @@ fun leaked()",
       "diff --git a/src/Foo.kt b/src/Foo.kt",
       "assistant: I ran the focused tests",
-      "`./gradlew check`",
+      "```./gradlew check```",
       "multi\nline evidence",
     )
 
