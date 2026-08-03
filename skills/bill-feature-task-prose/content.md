@@ -83,7 +83,7 @@ conflicting tokens before its sole confirmation gate. For a non-interactive
 goal continuation, durable goal and child workflow state supply the immutable
 selection. This sidecar must not reparse the token, present another gate, or
 substitute a different mode for the initial pass. Persist the selected mode with the workflow as initial-pass policy. In Step 6 invoke
-`bill-code-review mode:<selected-mode>`; the sole review-fix pass invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. Audit remediation completes before review begins. When a parallel lane is
+`bill-code-review mode:<selected-mode>`; every later review-fix pass invokes `bill-code-review mode:inline context:feature-remediation` against only the remediation delta since the preceding implementation checkpoint. Audit remediation completes before review begins. When a parallel lane is
 configured, pass the same execution mode to both lanes without allowing
 recursive parallel launch.
 

@@ -155,7 +155,7 @@ stored baseline exactly; a missing, rewritten, unrelated, or non-ancestor base
 blocks loudly. Never substitute `HEAD`, `origin/main`, a merge base, the full
 feature branch, or an earlier subtask's commits.
 
-Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. The reserved later remediation pass is bounded to the remediation delta via `context:feature-remediation`. Pass the selected `mode:<auto|inline|delegated>` contract to both full parallel lanes. Lanes remain non-recursive and the coordinated lanes count as one review pass.
+Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. Every reserved later remediation pass is bounded to the remediation delta via `context:feature-remediation`. Pass the selected `mode:<auto|inline|delegated>` contract to both full parallel lanes. Lanes remain non-recursive and the coordinated lanes count as one review pass.
 
 The complete child-owned delta is the immutable `review_base_sha` through the
 current worktree plus `current untracked paths - baseline untracked inventory`.
