@@ -141,6 +141,15 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
+  fun `a transport-streamed claude launch preserves durable-progress-only idle policy`() {
+    val streamed = ClaudeAgentRunCommandBuilder().build(request().copy(streamProviderOutput = true))
+
+    assertContains(streamed.command, "stream-json")
+    assertEquals(AgentRunOutputDecoder.CLAUDE_STREAM_JSON, streamed.outputDecoder)
+    assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, streamed.idlePolicy)
+  }
+
+  @Test
   fun `builders that cannot stream fall back to process liveness instead of a watchdog they cannot satisfy`() {
     val streaming = request().copy(streamOutputForLiveness = true)
 

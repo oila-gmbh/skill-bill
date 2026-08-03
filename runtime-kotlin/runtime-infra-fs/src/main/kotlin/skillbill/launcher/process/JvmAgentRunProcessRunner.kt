@@ -112,6 +112,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
         val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
           requireNotNull(request.nativeReviewOperations),
           chunk,
+          request.progressEmitter,
         )
         if (usageOutcome != null) process.destroy()
       },
@@ -753,6 +754,7 @@ private class ProcessLifecycleEmitter(private val request: AgentRunProcessReques
           operationKind = CHILD_OPERATION_KIND,
           expectedLong = true,
           outcome = outcome,
+          authoritative = false,
         ),
       )
     }

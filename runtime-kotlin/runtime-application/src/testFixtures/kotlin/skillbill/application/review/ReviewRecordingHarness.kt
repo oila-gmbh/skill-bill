@@ -10,6 +10,7 @@ import skillbill.infrastructure.fs.FileSystemReviewEvidenceBroker
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.config.RepoLocalConfigPort
@@ -140,12 +141,19 @@ class ObservingReviewEvidenceBroker(
  * Writes the files a lane is allowed to read into the review repository so the production broker
  * measures real file bytes. Repeated bindings over one repository root rewrite identical content.
  */
+private val evidenceMaterializationLock = Any()
+
 private fun materializeLaneEvidence(binding: ReviewEvidenceBrokerBinding, body: (String) -> String) {
-  val paths = binding.assignment.assignedPaths + binding.assignment.expansions.map { it.requestedPath }
-  paths.distinct().forEach { path ->
-    val target = binding.repoRoot.resolve(path)
-    target.parent?.let(Files::createDirectories)
-    Files.writeString(target, body(path))
+  synchronized(evidenceMaterializationLock) {
+    val paths = binding.assignment.assignedPaths + binding.assignment.expansions.map { it.requestedPath }
+    paths.distinct().forEach { path ->
+      val target = binding.repoRoot.resolve(path)
+      target.parent?.let(Files::createDirectories)
+      val expected = body(path)
+      if (!Files.exists(target) || Files.readString(target) != expected) {
+        Files.writeString(target, expected)
+      }
+    }
   }
 }
 
@@ -162,6 +170,7 @@ data class RecordedWorkerResponse(
   val mcpStartupObserved: Boolean = false,
   val spawnFailed: Boolean = false,
   val interrupted: Boolean = false,
+  val liveness: AgentRunLivenessSnapshot? = null,
 )
 
 data class ReviewHarnessConfig(
@@ -256,6 +265,7 @@ private fun recordingWorkerLauncher(config: ReviewHarnessConfig, recorder: Revie
       timedOut = response.timedOut,
       interrupted = response.interrupted,
       spawnFailed = response.spawnFailed,
+      liveness = response.liveness,
       processStarted = response.processStarted && !response.spawnFailed,
       mcpStartupObserved = response.mcpStartupObserved ||
         (response.processStarted && !response.spawnFailed && request.mcpStartupProbe.startupObserved()),

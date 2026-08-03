@@ -50,7 +50,7 @@ class FileSystemAgentRunLauncher internal constructor(
     return adapter.launch(request.skillRunRequest)
   }
 
-  @Suppress("ReturnCount")
+  @Suppress("LongMethod", "ReturnCount")
   override fun launchNativeReview(request: NativeReviewWorkerRequest): AgentRunLaunchOutcome {
     val agent = InstallAgent.fromNormalizedId(request.agentId)
     val adapter = adapters[agent] ?: return UnsupportedAgentRunLaunch(
@@ -97,8 +97,9 @@ class FileSystemAgentRunLauncher internal constructor(
           declaredProgressProbe = livenessSignals.declaredProgressProbe,
           mcpStartupProbe = request.mcpStartupProbe,
           progressEmitter = livenessSignals.progressEmitter,
-          streamOutputForLiveness = true,
-          readOnlyPhase = true,
+          streamProviderOutput = true,
+          streamOutputForLiveness = false,
+          readOnlyPhase = false,
           promptOverride = request.prompt,
           modelOverride = request.modelOverride,
           conversationIsolation = ConversationIsolation.NONE,
@@ -122,11 +123,12 @@ class FileSystemAgentRunLauncher internal constructor(
     private val sequence = AtomicInteger(-1)
     private val latest = AtomicReference<AgentRunDeclaredProgressSnapshot?>()
 
-    val progressProbe = AgentRunProgressProbe { sequence.get().toString() }
+    val progressProbe = AgentRunProgressProbe { sequence.get().takeIf { it >= 0 }?.toString() }
     val declaredProgressProbe = AgentRunDeclaredProgressProbe { latest.get() }
     val progressEmitter = AgentRunProgressEmitter(::observe)
 
     private fun observe(emission: AgentRunProgressEmission) {
+      if (!emission.authoritative) return
       val event = GoalProgressEvent(
         eventKind = emission.eventKind,
         workflowId = "review:$issueKey",

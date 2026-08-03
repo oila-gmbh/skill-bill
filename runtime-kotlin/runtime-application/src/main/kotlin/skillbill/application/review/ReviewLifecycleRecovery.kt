@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.model.DelegatedReviewTerminalClassification
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
 import skillbill.ports.review.model.ReviewLifecycleComponent
 import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.ports.review.model.ReviewLifecycleEventKind
@@ -31,6 +32,7 @@ internal data class ReviewLifecycleRecoverySnapshot(
   val aggregationEvent: ReviewLifecycleEvent? = null,
   val terminalRecord: ReviewLifecycleEvent? = null,
   val terminalClassification: DelegatedReviewTerminalClassification? = null,
+  val persistedProjection: DelegatedReviewLifecycleSnapshot? = null,
   val attemptByAssignment: Map<String, Int> = emptyMap(),
   val actualWaves: List<DelegatedReviewWave> = emptyList(),
 ) {
@@ -67,8 +69,9 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
       aggregationEvent = aggregationEvent,
       terminalRecord = terminalRecord,
       terminalClassification = persistedProjection?.terminalClassification,
+      persistedProjection = persistedProjection,
       attemptByAssignment = attempts,
-      actualWaves = actualWaves(ledger.events, selectedAssignments, attempts),
+      actualWaves = actualWaves(ledger.events, selectedAssignments),
     )
   }
 
@@ -140,7 +143,6 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
   private fun actualWaves(
     events: List<ReviewLifecycleEvent>,
     selectedAssignments: Map<String, ReviewLifecycleWorkerIdentity>,
-    attempts: Map<String, Int>,
   ): List<DelegatedReviewWave> = events
     .asSequence()
     .filter { it.component == ReviewLifecycleComponent.WORKER }
@@ -148,7 +150,7 @@ class ReviewLifecycleRecovery(private val database: DatabaseSessionFactory) {
     .filter { it.waveNumber != null }
     .filter { event ->
       val digest = event.assignmentDigest
-      digest != null && digest in selectedAssignments && attempts[digest] == event.attempt
+      digest != null && digest in selectedAssignments
     }
     .groupBy { requireNotNull(it.waveNumber) }
     .toSortedMap()

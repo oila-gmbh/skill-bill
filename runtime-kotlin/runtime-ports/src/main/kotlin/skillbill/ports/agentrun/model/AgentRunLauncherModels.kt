@@ -31,6 +31,11 @@ data class SkillRunRequest(
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
   /**
+   * Request incremental provider transport without making arbitrary output authoritative progress.
+   * Builders may stream provider envelopes while retaining a durable-progress-only idle policy.
+   */
+  val streamProviderOutput: Boolean = false,
+  /**
    * Request incremental provider output so a launch that writes no durable workflow rows can still
    * prove liveness. A builder that cannot stream must keep the idle watchdog off its own launch.
    */
@@ -167,6 +172,8 @@ data class AgentRunProgressEmission(
   val operationKind: String,
   val expectedLong: Boolean = true,
   val outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
+  /** True only for provider-owned specialist progress; process wrapper events are observational. */
+  val authoritative: Boolean = false,
 )
 
 enum class AgentRunOutputStream {

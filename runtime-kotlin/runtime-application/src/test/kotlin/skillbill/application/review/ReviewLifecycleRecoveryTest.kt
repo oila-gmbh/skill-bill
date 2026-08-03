@@ -9,6 +9,7 @@ import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.ports.review.model.ReviewWorkerResultEnvelope
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.plan.DelegatedReviewWave
 import java.lang.reflect.Proxy
 import java.nio.file.Path
 import kotlin.test.Test
@@ -150,13 +151,110 @@ class ReviewLifecycleRecoveryTest {
     assertTrue(recovery.completedResults.isEmpty())
   }
 
-  private fun database(event: ReviewLifecycleEvent): skillbill.ports.persistence.DatabaseSessionFactory {
+  @Test fun `recovery preserves historical wave membership across retry attempts`() {
+    val firstAssignment = "b".repeat(64)
+    val secondAssignment = "c".repeat(64)
+    val events = listOf(
+      workerEvent(
+        eventId = "first-launched",
+        sequence = 1,
+        eventKind = ReviewLifecycleEventKind.WORKER_LAUNCHED,
+        workerId = "first-worker",
+        assignmentDigest = firstAssignment,
+        attempt = 1,
+        waveNumber = 1,
+        state = ReviewWorkerLifecycleState.LAUNCHED,
+      ),
+      workerEvent(
+        eventId = "first-failed",
+        sequence = 2,
+        eventKind = ReviewLifecycleEventKind.WORKER_FAILED,
+        workerId = "first-worker",
+        assignmentDigest = firstAssignment,
+        attempt = 1,
+        waveNumber = 1,
+        state = ReviewWorkerLifecycleState.FAILED,
+        processOutcome = ReviewProcessOutcome.NON_ZERO_EXIT,
+      ),
+      workerEvent(
+        eventId = "second-launched",
+        sequence = 3,
+        eventKind = ReviewLifecycleEventKind.WORKER_LAUNCHED,
+        workerId = "second-worker",
+        assignmentDigest = secondAssignment,
+        attempt = 1,
+        waveNumber = 2,
+        state = ReviewWorkerLifecycleState.LAUNCHED,
+      ),
+      workerEvent(
+        eventId = "second-completed",
+        sequence = 4,
+        eventKind = ReviewLifecycleEventKind.WORKER_COMPLETED,
+        workerId = "second-worker",
+        assignmentDigest = secondAssignment,
+        attempt = 1,
+        waveNumber = 2,
+        state = ReviewWorkerLifecycleState.COMPLETED,
+        processOutcome = ReviewProcessOutcome.ZERO_EXIT,
+        resultEnvelope = ReviewWorkerResultEnvelope(emptyList()),
+      ),
+    )
+
+    val recovery = ReviewLifecycleRecovery(database(events)).read(
+      "review",
+      mapOf(
+        firstAssignment to ReviewLifecycleWorkerIdentity("first-worker", "codex"),
+        secondAssignment to ReviewLifecycleWorkerIdentity("second-worker", "codex"),
+      ),
+    )
+
+    assertEquals(setOf(firstAssignment), recovery.pendingAssignmentDigests)
+    assertEquals(2, recovery.attemptFor(firstAssignment))
+    assertEquals(listOf(1, 2), recovery.actualWaves.map(DelegatedReviewWave::number))
+    assertEquals(listOf(firstAssignment), recovery.actualWaves[0].workerIds)
+    assertEquals(listOf(secondAssignment), recovery.actualWaves[1].workerIds)
+  }
+
+  private fun workerEvent(
+    eventId: String,
+    sequence: Long,
+    eventKind: ReviewLifecycleEventKind,
+    workerId: String,
+    assignmentDigest: String,
+    attempt: Int,
+    waveNumber: Int,
+    state: ReviewWorkerLifecycleState,
+    processOutcome: ReviewProcessOutcome? = null,
+    resultEnvelope: ReviewWorkerResultEnvelope? = null,
+  ) = ReviewLifecycleEvent(
+    eventId = eventId,
+    reviewId = "review",
+    sequence = sequence,
+    occurredAt = "2026-08-02T00:00:00Z",
+    component = ReviewLifecycleComponent.WORKER,
+    eventKind = eventKind,
+    packetDigest = "a".repeat(64),
+    workerId = workerId,
+    providerId = "codex",
+    attempt = attempt,
+    assignmentDigest = assignmentDigest,
+    routedArea = workerId,
+    waveNumber = waveNumber,
+    state = state,
+    processOutcome = processOutcome,
+    resultEnvelope = resultEnvelope,
+  )
+
+  private fun database(event: ReviewLifecycleEvent): skillbill.ports.persistence.DatabaseSessionFactory =
+    database(listOf(event))
+
+  private fun database(events: List<ReviewLifecycleEvent>): skillbill.ports.persistence.DatabaseSessionFactory {
     val reviews = Proxy.newProxyInstance(
       skillbill.ports.persistence.ReviewRepository::class.java.classLoader,
       arrayOf(skillbill.ports.persistence.ReviewRepository::class.java),
     ) { _, method, _ ->
       when (method.name) {
-        "loadReviewLifecycleEvents" -> listOf(event)
+        "loadReviewLifecycleEvents" -> events
         "saveDelegatedReviewLifecycle" -> Unit
         "loadDelegatedReviewLifecycle" -> null
         else -> null

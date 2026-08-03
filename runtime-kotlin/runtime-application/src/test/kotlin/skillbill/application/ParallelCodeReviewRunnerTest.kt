@@ -61,6 +61,8 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -269,7 +271,8 @@ class ParallelCodeReviewRunnerTest {
 
     assertFalse(result.lane1.success)
     assertEquals("agent timed out", result.lane1.failureReason)
-    assertTrue(result.lane2.success)
+    assertFalse(result.lane2.success)
+    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
   }
 
   @Test
@@ -534,11 +537,8 @@ class ParallelCodeReviewRunnerTest {
     val result = runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success, "The lane as a whole failed because its architecture specialist failed.")
-    assertEquals(
-      1,
-      result.mergeResult.findings.size,
-      "The testing specialist's finding must survive its failed sibling instead of being discarded.",
-    )
+    assertFalse(result.lane2.success, "Incomplete delegated worker coverage must block the aggregate result.")
+    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
   }
 
   @Test
@@ -616,7 +616,8 @@ class ParallelCodeReviewRunnerFailureTest {
 
     assertFalse(result.lane1.success)
     assertEquals("agent was interrupted", result.lane1.failureReason)
-    assertTrue(result.lane2.success)
+    assertFalse(result.lane2.success)
+    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
   }
 
   @Test
@@ -648,9 +649,9 @@ class ParallelCodeReviewRunnerFailureTest {
     val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
-    assertTrue(result.lane2.success)
-    assertEquals(1, result.mergeResult.findings.size, "failed lane findings must not appear in the merge result")
-    assertEquals(listOf("codex"), result.mergeResult.findings[0].agentIds)
+    assertFalse(result.lane2.success)
+    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
+    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
   }
 
   @Test
@@ -674,12 +675,9 @@ class ParallelCodeReviewRunnerFailureTest {
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "IllegalStateException")
-    assertTrue(result.lane2.success)
-    assertEquals(
-      1,
-      result.mergeResult.findings.size,
-      "sibling lane finding must survive an exception in the other lane",
-    )
+    assertFalse(result.lane2.success)
+    assertContains(result.lane2.failureReason.orEmpty(), "Aggregation blocked")
+    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
   }
 
   @Test
@@ -706,7 +704,8 @@ class ParallelCodeReviewRunnerFailureTest {
     )
 
     val result = runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, timeout = 1.seconds),
+      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, timeout = 1.seconds)
+        .copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
     assertFalse(result.lane1.success)
@@ -1015,6 +1014,8 @@ private const val TEST_SPECIALIST_CONTRACT: String =
     "## Shared Report Structure\n" +
     "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
 
+private val runnerRequestSequence = AtomicInteger()
+
 private fun baseRequest(
   agent1Id: String = "claude",
   agent2Id: String = "codex",
@@ -1028,6 +1029,7 @@ private fun baseRequest(
   repoRoot = repoRoot,
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+  reviewRunId = "runner-test-${runnerRequestSequence.incrementAndGet()}",
   baseRevision = "base-revision",
   headRevision = "head-revision",
 )
@@ -1064,7 +1066,7 @@ private fun createStagedFile(dir: Path) {
 private class ParallelSubtaskLauncher(
   private val outcome: AgentRunLaunchOutcome? = null,
 ) : GoalRunnerSubtaskLauncher {
-  val requests: MutableList<GoalRunnerSubtaskLaunchRequest> = mutableListOf()
+  val requests: MutableList<GoalRunnerSubtaskLaunchRequest> = CopyOnWriteArrayList()
 
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
     requests += request

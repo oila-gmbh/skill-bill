@@ -46,15 +46,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-@Suppress("LargeClass")
+@Suppress("LargeClass", "LongMethod")
 class AgentRunLauncherTest {
   @Test
-  fun `claude and codex native reviews launch with prompt-only identity`() {
-    listOf("claude", "codex").forEach { agentId ->
+  fun `supported native reviews keep provider startup and authoritative progress explicit`() {
+    listOf("claude", "codex", "cursor").forEach { agentId ->
       val runner = RecordingAgentRunProcessRunner()
       val launcher = FileSystemAgentRunLauncher(runner)
       val broker = Proxy.newProxyInstance(
@@ -93,17 +94,75 @@ class AgentRunLauncherTest {
       assertNotNull(runner.requests.single().nativeReviewOperations)
       assertFalse(runner.requests.single().command.any { it.startsWith("agent=") || it == "--agent" })
       val captured = runner.requests.single()
-      assertFalse(captured.idlePolicy === AgentRunIdlePolicy.DB_PROGRESS_ONLY)
+      assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, captured.idlePolicy)
+      assertEquals(1.seconds, captured.operationDeadline)
+      if (agentId == "claude") {
+        assertContains(captured.command, "stream-json")
+        assertFalse(captured.command.contains("json"))
+      }
+      if (agentId == "cursor") {
+        assertContains(captured.command, "--stream-partial-output")
+      }
+      val providerCallbacks = assertNotNull(captured.nativeReviewLifecycleCallbacks)
+      val operations = assertNotNull(captured.nativeReviewOperations)
+      providerCallbacks.observeProviderOutput(
+        operations,
+        """{"type":"assistant","mcp_servers":["skill-bill"],"message":{"text":"ordinary output"}}""",
+        captured.progressEmitter,
+      )
+      assertFalse(captured.mcpStartupProbe.startupObserved())
+      captured.progressEmitter.emit(
+        AgentRunProgressEmission(
+          eventKind = GoalProgressEventKind.OPERATION_STARTED,
+          processAlive = true,
+          operationName = "child_agent_run",
+          operationKind = "long_child_run",
+        ),
+      )
+      assertNull(captured.progressProbe.progressToken())
+      assertNull(captured.declaredProgressProbe.latestDeclaredProgress())
       captured.progressEmitter.emit(
         AgentRunProgressEmission(
           eventKind = GoalProgressEventKind.OPERATION_STARTED,
           processAlive = true,
           operationName = "delegated-review",
           operationKind = "review",
+          authoritative = true,
         ),
       )
       assertNotNull(captured.progressProbe.progressToken())
       assertNotNull(captured.declaredProgressProbe.latestDeclaredProgress())
+      val providerLifecycleEvents = when (agentId) {
+        "claude" -> listOf(
+          """{"type":"system","subtype":"init","session_id":"s-1"}""",
+          """{"type":"assistant","message":{"model":"claude-opus-4-8"}}""",
+          """{"type":"rate_limit_event","rate_limit_info":{"status":"allowed"}}""",
+          """{"type":"result","subtype":"success","result":"finding"}""",
+        )
+        "codex" -> listOf(
+          """{"type":"thread.started","thread_id":"t-1"}""",
+          """{"type":"item.started","item":{"type":"agent_message"}}""",
+          """{"type":"item.completed","item":{"type":"agent_message","text":"finding"}}""",
+          """{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}""",
+        )
+        else -> listOf(
+          """{"type":"partial","delta":"finding"}""",
+          """{"type":"result","result":"finding"}""",
+        )
+      }
+      providerLifecycleEvents.forEach { event ->
+        providerCallbacks.observeProviderOutput(operations, "$event\n", captured.progressEmitter)
+      }
+      assertEquals(
+        GoalProgressEventKind.OPERATION_COMPLETED,
+        captured.declaredProgressProbe.latestDeclaredProgress()?.latestEvent?.eventKind,
+      )
+      providerCallbacks.observeProviderOutput(
+        operations,
+        """{"type":"mcp_startup","server":"skill-bill"}""",
+        captured.progressEmitter,
+      )
+      assertTrue(captured.mcpStartupProbe.startupObserved())
     }
   }
 
@@ -511,6 +570,27 @@ class AgentRunLauncherTest {
           "workflow: subtask 4 workflow wfl-child step preplan" in event.second
       },
     )
+  }
+
+  @Test
+  fun `process wrapper heartbeats cannot keep a delegated worker past progress idle`() {
+    val providerProgress = SharedDeclaredProgressStore()
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 5"),
+        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
+        timeout = 5.seconds,
+        progressIdleTimeout = 100.milliseconds,
+        declaredProgressProbe = providerProgress::snapshot,
+        progressEmitter = AgentRunProgressEmitter { emission ->
+          if (emission.authoritative) providerProgress.record(emission)
+        },
+      ),
+    )
+
+    assertTrue(result.timedOut)
+    assertEquals("progress_idle_timeout", result.liveness?.reason)
+    assertTrue(providerProgress.recorded.isEmpty(), "Only provider-owned lifecycle envelopes may arm declared progress.")
   }
 
   @Test

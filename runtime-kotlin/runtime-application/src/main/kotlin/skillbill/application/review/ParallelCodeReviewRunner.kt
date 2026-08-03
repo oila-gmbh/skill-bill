@@ -266,11 +266,13 @@ class ParallelCodeReviewRunner(
         ),
       )
     }
-    persistLifecycleProjection(
-      prepared,
-      terminalOutcomes,
-      terminalClassificationOverride = terminalClassification,
-    )
+    if (recovery.persistedProjection == null) {
+      persistLifecycleProjection(
+        prepared,
+        terminalOutcomes,
+        terminalClassificationOverride = terminalClassification,
+      )
+    }
     return parallelResult(prepared.initial.agent1Id, prepared.initial.agent2Id, terminalOutcomes)
   }
 
@@ -835,14 +837,10 @@ class ParallelCodeReviewRunner(
     workerSlots: Int,
   ): List<skillbill.review.plan.DelegatedReviewWave> {
     val selectedDigests = selected.map { it.assignment.digest }.toSet()
-    val selectedAttempts = selected.associate { it.assignment.digest to it.attempt }
     val launchedEvents = lifecycleEvents
       .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
       .sortedBy(ReviewLifecycleEvent::sequence)
-      .filter {
-        it.assignmentDigest?.let(selectedDigests::contains) == true &&
-          selectedAttempts[it.assignmentDigest] == it.attempt
-      }
+      .filter { it.assignmentDigest?.let(selectedDigests::contains) == true }
       .distinctBy { it.assignmentDigest }
     val explicitlyRecorded = launchedEvents.all { it.waveNumber != null }
     if (explicitlyRecorded && launchedEvents.isNotEmpty()) {
@@ -1695,7 +1693,11 @@ class ParallelCodeReviewRunner(
               interrupted = true
               null
             } else {
-              throw error.cause ?: error
+              outcomesByDigest[workerId] = workerExecutionExceptionOutcome(
+                requireNotNull(requestByDigest[workerId]),
+                error.cause ?: error,
+              )
+              null
             }
           }
           outcome?.let {
@@ -1772,6 +1774,42 @@ class ParallelCodeReviewRunner(
         modelTurns = 0,
         resultBytes = 0,
         terminalStatus = "timeout",
+      ),
+    )
+  }
+
+  private fun workerExecutionExceptionOutcome(
+    launchRequest: DelegatedReviewLaunchRequest,
+    error: Throwable,
+  ): ParallelReviewLaneOutcome {
+    val detail = "Worker launch failed with ${error::class.simpleName ?: "unknown exception"}: " +
+      (error.message?.takeIf(String::isNotBlank) ?: "no detail")
+    recordWorkerLifecycle(
+      launchRequest,
+      ReviewLifecycleEventKind.WORKER_FAILED,
+      ReviewWorkerLifecycleState.FAILED,
+      ReviewProcessOutcome.NON_ZERO_EXIT,
+      ReviewDiagnosticReference(
+        "review-lifecycle/${launchRequest.assignment.reviewId}/" +
+          launchRequest.assignment.digest.take(DIAGNOSTIC_DIGEST_PREFIX_LENGTH),
+        detail.take(REVIEW_LIFECYCLE_MAX_TEXT_CHARS),
+      ),
+    )
+    return ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = detail,
+      accounting = ReviewLaneAccounting(
+        lane = launchRequest.assignment.lane,
+        reviewId = launchRequest.assignment.reviewId,
+        packetDigest = launchRequest.assignment.packetDigest,
+        assignmentDigest = launchRequest.assignment.digest,
+        evidenceBytes = 0,
+        expansions = emptyList(),
+        toolCalls = 0,
+        modelTurns = 0,
+        resultBytes = 0,
+        terminalStatus = "execution_exception",
       ),
     )
   }
@@ -1875,7 +1913,6 @@ class ParallelCodeReviewRunner(
           timeout = timeout,
           progressIdleTimeout = progressIdleTimeout,
           modelOverride = modelOverride,
-          mcpStartupProbe = skillbill.ports.agentrun.model.AgentRunMcpStartupProbe.NONE,
         ),
       )
     } catch (interrupted: InterruptedException) {

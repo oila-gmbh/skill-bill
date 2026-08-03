@@ -6,6 +6,7 @@ import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.model.DelegatedReviewProviderCapability
 import java.nio.file.Path
@@ -31,7 +32,10 @@ class ProcessAgentRunAdapter(
 
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
     val command = commandBuilder.build(request)
-    val result = processRunner.run(processRequest(command, request))
+    val lifecycleCallbacks = request.reviewEvidenceBroker?.let {
+      commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
+    }
+    val result = processRunner.run(processRequest(command, request, lifecycleCallbacks))
     val decoded = runCatching {
       (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
     }.getOrElse { error ->
@@ -80,15 +84,22 @@ class ProcessAgentRunAdapter(
     )
   }
 
-  private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
+  private fun processRequest(
+    command: AgentRunCommand,
+    request: SkillRunRequest,
+    lifecycleCallbacks: NativeReviewLifecycleCallbacks?,
+  ) = AgentRunProcessRequest(
     command = command.command,
     workingDirectory = command.workingDirectory,
     timeout = command.timeout,
     stdinText = command.stdinText,
     progressIdleTimeout = request.progressIdleTimeout,
+    operationDeadline = request.timeout,
     progressProbe = request.progressProbe,
     declaredProgressProbe = request.declaredProgressProbe,
-    mcpStartupProbe = request.mcpStartupProbe,
+    mcpStartupProbe = AgentRunMcpStartupProbe {
+      request.mcpStartupProbe.startupObserved() || lifecycleCallbacks?.mcpStartupObserved() == true
+    },
     progressEmitter = request.progressEmitter,
     activityProbe = WorktreeActivityProbe(command.workingDirectory),
     environment = command.environment,
@@ -100,9 +111,7 @@ class ProcessAgentRunAdapter(
     conversationIsolation = command.conversationIsolation,
     reviewEvidenceBroker = request.reviewEvidenceBroker,
     nativeReviewOperations = request.nativeReviewOperations,
-    nativeReviewLifecycleCallbacks = request.nativeReviewOperations?.let {
-      commandBuilder.nativeReviewCapabilities.lifecycleCallbacks?.newSession()
-    },
+    nativeReviewLifecycleCallbacks = lifecycleCallbacks,
     spawnAuthorization = request.spawnAuthorization,
   )
 
