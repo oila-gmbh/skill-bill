@@ -21,9 +21,7 @@ class ReviewFailureMatrixTest {
   private fun findMatrix(): Path {
     var current: Path? = Path.of("").toAbsolutePath().normalize()
     while (current != null) {
-      val candidate = current.resolve(
-        ".feature-specs/SKILL-145-delegated-code-review-reliability/failure-matrix.md",
-      )
+      val candidate = current.resolve("docs/delegated-review/failure-matrix.md")
       if (Files.isRegularFile(candidate)) return candidate
       current = current.parent
     }

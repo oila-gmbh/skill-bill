@@ -7,8 +7,8 @@ telemetry guidance aligned with the executable contracts.
 
 ## Scope and targets
 
-- `.feature-specs/SKILL-145-delegated-code-review-reliability/decision.md`
-- `.feature-specs/SKILL-145-delegated-code-review-reliability/reliability-contract.md`
+- `docs/delegated-review/decision.md`
+- `docs/delegated-review/reliability-contract.md`
 - `orchestration/review-orchestrator/PLAYBOOK.md`
 - `orchestration/review-delegation/PLAYBOOK.md`
 - `docs/review-telemetry.md`

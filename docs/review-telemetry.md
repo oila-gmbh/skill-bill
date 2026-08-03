@@ -16,8 +16,8 @@ successful aggregation, or a terminal completion. Inline is the review
 default and `auto` remains inline; telemetry does not promote providers.
 
 Provider classification and promotion evidence are governed by
-`.feature-specs/SKILL-145-delegated-code-review-reliability/decision.md` and
-`reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
+`docs/delegated-review/decision.md` and
+`docs/delegated-review/reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
 opt-in providers; Junie, Copilot, Opencode, and Zcode are unsupported.
 Promotion evidence uses at least 20 launched canaries per provider and size
 class in one 30-consecutive-UTC-day window, with nearest-rank p95 over every
