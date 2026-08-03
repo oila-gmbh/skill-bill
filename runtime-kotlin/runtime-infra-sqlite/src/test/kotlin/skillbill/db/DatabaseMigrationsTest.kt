@@ -15,6 +15,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -203,6 +204,171 @@ class DatabaseMigrationsTest {
 
       assertEquals(before, migrationRows(connection).map { row -> row.name })
       assertTrue(columnNames(connection, "producer_output_evidence").contains("generation"))
+    }
+  }
+
+  @Test
+  fun `an empty database with no ledger table migrates through the gated path`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-empty").resolve("empty.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      assertFalse(tableExists(connection, "schema_migrations"), "The seeded database must start with no ledger.")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.version to migration.name },
+        migrationRows(connection).map { row -> row.version to row.name },
+      )
+    }
+  }
+
+  @Test
+  fun `a version keyed ledger is rebuilt under the write lock`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-version-keyed").resolve("metrics.db")
+    seedVersionKeyedLedger(dbPath)
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+      try {
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { migrator ->
+          migrator.createStatement().use { it.execute("PRAGMA busy_timeout = 0") }
+          assertFailsWith<SQLException>(
+            "A version-keyed ledger must take the write lock so ensureNameKeyed runs inside it.",
+          ) { DatabaseMigrations.apply(migrator) }
+        }
+      } finally {
+        writer.createStatement().use { it.execute("ROLLBACK") }
+      }
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      DatabaseMigrations.apply(connection)
+      assertFalse(
+        versionIsPrimaryKey(connection),
+        "ensureNameKeyed must rebuild the ledger as name-keyed once it holds the write lock.",
+      )
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.name },
+        migrationRows(connection).map { row -> row.name },
+        "The rebuild must carry every recorded migration name across.",
+      )
+    }
+  }
+
+  @Test
+  fun `an already current database opens no write transaction while another connection holds the writer lock`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-current").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+    val expected = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      migrationRows(connection).map { row -> row.name }
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+      try {
+        DriverManager.getConnection("jdbc:sqlite:$dbPath").use { reader ->
+          // busy_timeout = 0 turns any attempt to take the write lock into an immediate failure, so a
+          // passing run proves the gate skipped the transaction instead of waiting out a timeout.
+          reader.createStatement().use { it.execute("PRAGMA busy_timeout = 0") }
+          val startedAt = System.nanoTime()
+          DatabaseMigrations.apply(reader)
+          val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+          assertTrue(elapsedMillis < 1_000, "A no-op apply must return promptly, took ${elapsedMillis}ms.")
+          assertEquals(expected, migrationRows(reader).map { row -> row.name })
+        }
+      } finally {
+        writer.createStatement().use { it.execute("ROLLBACK") }
+      }
+    }
+  }
+
+  @Test
+  fun `racing applies re-derive in lock and apply each pending migration exactly once`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-race").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      // Version 13 renames and rebuilds the planning tables, so a second application against an
+      // already-rebuilt schema fails loudly. Both racers see it pending; only one may run it.
+      connection.createStatement().use { it.executeUpdate("DELETE FROM schema_migrations WHERE version = 13") }
+    }
+    val ready = CountDownLatch(2)
+    val start = CountDownLatch(1)
+    val executor = Executors.newFixedThreadPool(2)
+
+    try {
+      val races = (1..2).map {
+        executor.submit {
+          DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+            connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+            ready.countDown()
+            check(start.await(5, TimeUnit.SECONDS))
+            DatabaseMigrations.apply(connection)
+          }
+        }
+      }
+      assertTrue(ready.await(5, TimeUnit.SECONDS))
+      start.countDown()
+      races.forEach { it.get(10, TimeUnit.SECONDS) }
+    } finally {
+      executor.shutdownNow()
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      assertEquals(
+        DatabaseMigrations.migrations.map { migration -> migration.version to migration.name },
+        migrationRows(connection).map { row -> row.version to row.name },
+        "The migration that lost the race must be re-derived away, not applied twice.",
+      )
+      assertTrue("payload_sha256" in tableColumns(connection, "goal_subtask_plans"))
+    }
+  }
+
+  @Test
+  fun `column heal still runs on a write capable open with no pending migration`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-gate-column-heal").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      // Drop a column an already-applied migration body appends today: the ledger stays complete and
+      // name-keyed, so DatabaseMigrations.apply short-circuits and only the column heal can restore it.
+      connection.createStatement().use {
+        it.executeUpdate("ALTER TABLE feature_task_workflows DROP COLUMN interruption_reason")
+      }
+      assertFalse("interruption_reason" in tableColumns(connection, "feature_task_workflows"))
+      assertFalse(versionIsPrimaryKey(connection), "The ledger must already be name-keyed for this to gate.")
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+      connection.createStatement().use {
+        it.executeUpdate(
+          """
+          INSERT INTO feature_task_workflows (
+            workflow_id, mode, contract_version, workflow_status, started_at, updated_at, state_entered_at
+          ) VALUES ('wfl-gate-heal', 'prose', '0.1', 'running', '2026-05-01T10:00:00Z', '', NULL)
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue(
+        "interruption_reason" in tableColumns(connection, "feature_task_workflows"),
+        "DatabaseColumnMigrations.apply must heal the column even though no migration is pending.",
+      )
+      assertEquals(
+        "2026-05-01T10:00:00Z",
+        tableColumnValue(connection, "feature_task_workflows", "workflow_id", "wfl-gate-heal", "state_entered_at"),
+        "healWorkListMetadata must keep running on a write-capable open with nothing pending.",
+      )
+    }
+  }
+
+  private fun seedVersionKeyedLedger(dbPath: Path) {
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate("DROP TABLE schema_migrations")
+        statement.executeUpdate(VERSION_KEYED_SCHEMA_MIGRATIONS_SQL)
+        DatabaseMigrations.migrations.forEach { migration ->
+          statement.executeUpdate(
+            "INSERT INTO schema_migrations (version, name) VALUES (${migration.version}, '${migration.name}')",
+          )
+        }
+      }
     }
   }
 
@@ -1719,6 +1885,12 @@ class DatabaseMigrationsTest {
       """
   }
 }
+
+private fun versionIsPrimaryKey(connection: java.sql.Connection): Boolean =
+  connection.prepareStatement("SELECT pk FROM pragma_table_info('schema_migrations') WHERE name = 'version'")
+    .use { statement ->
+      statement.executeQuery().use { resultSet -> resultSet.next() && resultSet.getInt("pk") > 0 }
+    }
 
 private fun tableExists(connection: java.sql.Connection, table: String): Boolean =
   connection.prepareStatement("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").use { statement ->

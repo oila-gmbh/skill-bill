@@ -1,5 +1,6 @@
 package skillbill.db.core
 
+import org.sqlite.SQLiteConfig
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -38,11 +39,16 @@ object DatabaseRuntime {
     userHome: Path = Paths.get(System.getProperty("user.home")),
   ): OpenDatabase {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
+    // Deliberate exception: an absent database is bootstrapped here because callers of the read seam
+    // rely on first-use creation. Every existing database is opened without write capability below.
     if (!Files.exists(dbPath)) {
       return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
     }
 
-    val connection = DriverManager.getConnection("jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}")
+    val connection = DriverManager.getConnection(
+      "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",
+      SQLiteConfig().apply { setReadOnly(true) }.toProperties(),
+    )
     try {
       configureConnection(connection, enableWal = false)
       return OpenDatabase(connection = connection, dbPath = dbPath)

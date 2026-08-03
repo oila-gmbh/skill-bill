@@ -31,6 +31,14 @@ class SQLiteDatabaseSessionFactory(
     block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
   }
 
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
+    cliValue = dbOverride ?: resolvedContext.dbPathOverride,
+    environment = resolvedContext.environment,
+    userHome = resolvedContext.userHome,
+  ).use { openDb ->
+    block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+  }
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
     cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,

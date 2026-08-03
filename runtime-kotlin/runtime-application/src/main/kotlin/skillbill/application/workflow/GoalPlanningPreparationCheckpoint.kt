@@ -39,7 +39,9 @@ class GoalPlanningPreparationCheckpoint(
   fun checkpoint(record: GoalPlanningPreparationRecord, dbOverride: String? = null) {
     val canonical = preparationValidator.canonicalize(record)
     envelopeValidator.validate(canonical.toEnvelopeMap(), "${canonical.parentGoalWorkflowId}#${canonical.subtaskId}")
-    database.read(dbOverride) { unitOfWork -> unitOfWork.goalPlanningPreparations.markPrepared(canonical) }
+    database.selfManagedWrite(dbOverride) { unitOfWork ->
+      unitOfWork.goalPlanningPreparations.markPrepared(canonical)
+    }
   }
 
   fun validate(record: GoalPlanningPreparationRecord) {
@@ -51,13 +53,13 @@ class GoalPlanningPreparationCheckpoint(
   fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
-    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
+    database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
   }
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint, dbOverride: String? = null) {
     val canonical = gate.canonicalizeSubtaskPlan(checkpoint)
     gate.validateSubtaskPlan(canonical)
-    database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
+    database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
   }
 
   /**
@@ -69,11 +71,11 @@ class GoalPlanningPreparationCheckpoint(
     gate.validateSharedPreplan(canonical)
     val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(canonical.identity) }
     if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
-      database.read(dbOverride) {
+      database.selfManagedWrite(dbOverride) {
         it.goalPlanningPreparations.replaceSharedPreplan(canonical, stored.payloadSha256)
       }
     } else {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
     }
   }
 
@@ -91,9 +93,9 @@ class GoalPlanningPreparationCheckpoint(
       dbOverride,
     )
     if (stored != null && gate.subtaskPlanIsRegenerable(stored)) {
-      database.read(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(canonical) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.replaceSubtaskPlan(canonical) }
     } else {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
     }
   }
 

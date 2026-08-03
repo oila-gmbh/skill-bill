@@ -3,6 +3,23 @@ package skillbill.db.core
 import java.sql.Connection
 
 internal object MigrationLedger {
+  class State(
+    val tableExists: Boolean,
+    val versionKeyed: Boolean,
+    val appliedNames: Set<String>,
+  )
+
+  // Read-only snapshot of the ledger, safe to take outside the write transaction. A version-keyed
+  // ledger still needs ensureNameKeyed under the lock, so callers must treat versionKeyed as work.
+  fun readState(connection: Connection): State {
+    val exists = tableExists(connection)
+    return State(
+      tableExists = exists,
+      versionKeyed = exists && versionIsPrimaryKey(connection),
+      appliedNames = if (exists) appliedNames(connection) else emptySet(),
+    )
+  }
+
   // Version numbers are assigned per branch, so two lineages can ship different migrations under the
   // same number. A version-keyed ledger records whichever ran first and skips the other forever.
   // Identity is the name; the version column is retained as ordering metadata only.

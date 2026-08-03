@@ -315,11 +315,11 @@ class GoalPlanningPreparationCheckpointTest {
 
     // Bypasses the write gate to reproduce a record persisted before the gate existed.
     fun storeRawShared(checkpoint: SharedGoalPreplanCheckpoint) {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(checkpoint) }
     }
 
     fun storeRawPlan(plan: GoalSubtaskPlanCheckpoint) {
-      database.read(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
+      database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(plan) }
     }
 
     fun readShared(): SharedGoalPreplanCheckpoint? =
