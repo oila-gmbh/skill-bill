@@ -5,6 +5,22 @@ description: Single source of truth for agent-specific delegated code-review exe
 
 # Shared Review Delegation Contract
 
+## Lifecycle evidence
+
+Lifecycle events are written at each ownership boundary and are keyed by packet digest, assignment
+digest, worker/provider identity, routed area, attempt, and a bounded diagnostic reference. A worker
+is not complete because its process or MCP heartbeat is alive; successful aggregation requires one
+normal zero-exit result for every selected assignment.
+
+The separate lifecycle projection is versioned at
+review-lifecycle-schema.yaml. It records selected/queued/launched/running and
+terminal worker states, durable `total_process_slots`, `coordinator_slots`,
+and `worker_slots` capacity, predicted and actual waves with a coordinator slot,
+startup/progress-idle/per-worker/aggregation/whole-review deadlines, bounded
+diagnostics, and measurements. Provider support is evaluated independently in
+the eight-dimension capability matrix; unsupported providers terminate
+explicitly and never fall back to inline review.
+
 This is the canonical review-delegation contract. Installed skills consume it through generated sibling support pointers (e.g. `review-delegation.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
@@ -16,6 +32,33 @@ list, evidence-surface rules, and report structure into the worker assignment.
 Workers do not reload those rules from disk, and this playbook does not restate
 them. Maintainer parity tests pin the runtime constants to the authoritative
 marked blocks and list in that source.
+
+Provider failure dispositions are keyed by provider in the SKILL-145 governed
+matrix. Capacity, startup measurement, scoped deadlines, bounded diagnostics,
+repair behavior, wave telemetry, and promotion thresholds are shared lifecycle
+contracts; a provider-specific mitigation must not change another provider's
+command builder or process strategy.
+
+## SKILL-145 provider decision boundary
+
+The current provider decision is recorded in the governed SKILL-145 decision
+and its versioned reliability contract. Codex, Claude, and Cursor are
+experimental explicit-opt-in providers. Junie, Copilot, Opencode, and Zcode
+are unsupported. No provider is supportable for promotion from the current
+evidence.
+
+Inline remains the default and `auto` resolves to inline. Only an explicit
+delegated selection launches workers. An explicit delegated request for an
+unsupported or unavailable provider terminates with a bounded unsupported
+outcome; it does not silently fall back to inline.
+
+Promotion requires provider-specific bounded latency, complete declared-area
+coverage, zero silent worker loss, deterministic terminal status, bounded
+evidence retention, and provider-isolation tests. The canary sample is at least
+20 launched runs per size class within one 30-consecutive-UTC-day window, uses
+nearest-rank p95, and keeps failed or timed-out runs in the denominator and
+promotion failure. A result from one provider cannot promote or alter another
+provider's adapter.
 
 ## Shared Delegation Rules
 

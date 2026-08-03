@@ -2,6 +2,7 @@
 
 package skillbill.review.context.model
 
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -89,6 +90,31 @@ data class ReviewDependencyAllowlist(val paths: List<String>) {
 
   companion object {
     val EMPTY: ReviewDependencyAllowlist = ReviewDependencyAllowlist(emptyList())
+  }
+}
+
+/** Closed-world policy for paths that are untracked at the selected review base. */
+data class ReviewBaselineUntrackedPolicy(
+  val includedPaths: List<String> = emptyList(),
+  val excludedPaths: List<String> = emptyList(),
+) {
+  init {
+    includedPaths.forEach(::requireRepositoryRelativePath)
+    excludedPaths.forEach(::requireRepositoryRelativePath)
+    require(includedPaths.distinct().size == includedPaths.size)
+    require(excludedPaths.distinct().size == excludedPaths.size)
+    require(includedPaths.intersect(excludedPaths.toSet()).isEmpty()) {
+      "A baseline-untracked path cannot be both included and excluded."
+    }
+  }
+
+  val canonical: String get() = canonicalFields(
+    canonicalFields(*includedPaths.sorted().toTypedArray()),
+    canonicalFields(*excludedPaths.sorted().toTypedArray()),
+  )
+
+  companion object {
+    val EMPTY = ReviewBaselineUntrackedPolicy()
   }
 }
 
@@ -301,6 +327,7 @@ data class ReviewAssignment(
   val laneDecision: ReviewLaneDecision,
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
   val expansions: List<ReviewExpansionRecord> = emptyList(),
+  val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
 ) {
   init {
     require(reviewId.isNotBlank() && lane.isNotBlank() && baseRevision.isNotBlank() && headRevision.isNotBlank())
@@ -354,6 +381,7 @@ data class ReviewAssignment(
         canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
         canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
         dependencyAllowlist.canonical,
+        baselineUntrackedPolicy.canonical,
       ).let { canonicalFields(*it.toTypedArray()) }.replace("\r\n", "\n"),
     )
 }
@@ -403,6 +431,7 @@ data class ReviewContextPacket(
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
   val expansionLedger: List<ReviewExpansionRecord> = emptyList(),
   val composedLayers: List<String> = emptyList(),
+  val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
 ) {
   init {
     require(reviewId.isNotBlank() && repositoryIdentity.isNotBlank())
@@ -483,6 +512,7 @@ data class ReviewContextPacket(
     canonicalFields(*learningsReferences.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*buildTestFacts.map { it.canonical }.sorted().toTypedArray()),
     dependencyAllowlist.canonical,
+    baselineUntrackedPolicy.canonical,
     canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
   ).let { canonicalFields(*it.toTypedArray()) }
 }
@@ -511,6 +541,9 @@ data class GovernedReviewLaunch(
     require(assignment.reviewRevision == packet.reviewRevision) { "Launch review revision differs from the packet." }
     require(assignment.baseRevision == packet.baseRevision && assignment.headRevision == packet.headRevision) {
       "Launch base/head revisions differ from the packet."
+    }
+    require(assignment.baselineUntrackedPolicy == packet.baselineUntrackedPolicy) {
+      "Launch baseline-untracked policy differs from the packet policy."
     }
     val packetDecision = packet.laneDecisions.single { it.lane == assignment.lane }
     require(assignment.laneDecision == packetDecision) { "Launch lane decision differs from the packet." }
@@ -548,7 +581,7 @@ data class GovernedReviewLaunch(
   }
 
   val canonicalPayload: String get() = buildString {
-    appendLine("contract_version: \"0.7\"")
+    appendLine("contract_version: \"$REVIEW_CONTEXT_CONTRACT_VERSION\"")
     appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
     appendLine("review_revision: ${assignment.reviewRevision.sessionId}@${assignment.reviewRevision.runRevision}")
@@ -591,6 +624,13 @@ data class GovernedReviewLaunch(
     assignment.evidenceTargets.map { it.targetId }.sorted().forEach { appendLine("  - $it") }
     appendLine("dependency_allowlist:")
     assignment.dependencyAllowlist.normalized.sorted().forEach { appendLine("  - ${structuredString(it)}") }
+    appendLine("baseline_untracked_policy:")
+    appendLine("  included_paths:")
+    assignment.baselineUntrackedPolicy.includedPaths.sorted()
+      .forEach { appendLine("    - ${structuredString(it)}") }
+    appendLine("  excluded_paths:")
+    assignment.baselineUntrackedPolicy.excludedPaths.sorted()
+      .forEach { appendLine("    - ${structuredString(it)}") }
     appendLine("forbidden_rediscovery:")
     ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY.forEach { appendLine("  - $it") }
     appendLine("evidence_surface_rules: |")

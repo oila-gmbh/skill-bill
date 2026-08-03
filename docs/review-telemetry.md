@@ -1,5 +1,43 @@
 # Review telemetry
 
+## Delegated lifecycle measurement boundary
+
+Delegated review telemetry is bounded evidence around the durable lifecycle;
+it is not a replacement for durable worker progress or terminal status. The
+SKILL-145 contract may record elapsed time, token dimensions, process count,
+observable MCP startup count, selected and completed areas, lost workers,
+predicted and actual waves, deadline scope/outcome, aggregation completeness,
+and bounded diagnostic references. It never retains prompts, complete diffs,
+source bodies, raw transcripts, or tool logs.
+
+Process/MCP heartbeats, provider output, file activity, and completion token
+counts remain observations only. They cannot satisfy a progress deadline,
+successful aggregation, or a terminal completion. Inline is the review
+default and `auto` remains inline; telemetry does not promote providers.
+
+Provider classification and promotion evidence are governed by
+`docs/delegated-review/decision.md` and
+`docs/delegated-review/reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
+opt-in providers; Junie, Copilot, Opencode, and Zcode are unsupported.
+Promotion evidence uses at least 20 launched canaries per provider and size
+class in one 30-consecutive-UTC-day window, with nearest-rank p95 over every
+launched sample. Failed or timed-out canaries remain in the denominator and
+fail promotion; one run cannot promote a provider. Telemetry reports retention
+age, while the persistence cleanup operation deletes expired lifecycle evidence
+at the 30-day boundary.
+
+## Delegated lifecycle evidence
+
+Delegated review records a bounded lifecycle package alongside accounting. The package binds every
+worker event to immutable packet and assignment digests, worker/provider identities, attempt, routed
+area, timestamp, process outcome, and a diagnostic reference. Coordinator preparation, worker
+terminal state, aggregation, and terminal completion remain separate durable transitions.
+
+Process and MCP heartbeats, provider output, and declared specialist progress are observations only;
+they cannot satisfy durable specialist progress. Terminal success requires normal zero-exit worker
+results for every selected assignment and a distinct successful aggregation event. The package has
+no prompt, complete diff, raw transcript, or tool-log fields.
+
 ## Bounded delegated-review accounting
 
 Delegated reviews enforce byte, evidence-read, result-size, and assignment-expansion limits before or during a lane. The named `ReviewContextBudgetPolicy.DEFAULT` policy uses 524288 parent-packet bytes, 65536 lane-launch bytes, 262144 cumulative lane-evidence bytes, 65536 bytes per evidence result and lane result, and three assignment expansions. Repositories may override individual values through the strict `review_context_budget` object in `.skill-bill/config.yaml`; malformed, negative, unknown, or inconsistent nested values fail before launch.

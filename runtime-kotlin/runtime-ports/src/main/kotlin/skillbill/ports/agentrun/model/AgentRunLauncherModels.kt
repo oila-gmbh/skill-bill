@@ -8,6 +8,7 @@ import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -25,9 +26,15 @@ data class SkillRunRequest(
   val progressIdleTimeout: Duration? = null,
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val declaredProgressProbe: AgentRunDeclaredProgressProbe = AgentRunDeclaredProgressProbe.NONE,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val promptOverride: String? = null,
+  /**
+   * Request incremental provider transport without making arbitrary output authoritative progress.
+   * Builders may stream provider envelopes while retaining a durable-progress-only idle policy.
+   */
+  val streamProviderOutput: Boolean = false,
   /**
    * Request incremental provider output so a launch that writes no durable workflow rows can still
    * prove liveness. A builder that cannot stream must keep the idle watchdog off its own launch.
@@ -142,6 +149,14 @@ data class AgentRunDeclaredProgressSnapshot(
   val processAlive: Boolean,
 )
 
+fun interface AgentRunMcpStartupProbe {
+  fun startupObserved(): Boolean
+
+  companion object {
+    val NONE: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe { false }
+  }
+}
+
 fun interface AgentRunProgressEmitter {
   fun emit(emission: AgentRunProgressEmission)
 
@@ -157,6 +172,8 @@ data class AgentRunProgressEmission(
   val operationKind: String,
   val expectedLong: Boolean = true,
   val outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
+  /** True only for provider-owned specialist progress; process wrapper events are observational. */
+  val authoritative: Boolean = false,
 )
 
 enum class AgentRunOutputStream {
@@ -214,6 +231,10 @@ data class AgentRunLaunchFacts(
   val spawnFailed: Boolean,
   val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val liveness: AgentRunLivenessSnapshot? = null,
+  /** True only when the launcher crossed the process-start boundary. */
+  val processStarted: Boolean = false,
+  /** True only when an MCP startup observation was explicitly emitted by the launcher. */
+  val mcpStartupObserved: Boolean = false,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
   val inputTokens: Long? = null,
@@ -241,6 +262,17 @@ data class AgentRunLaunchFacts(
       "Provider token values cannot be negative."
     }
   }
+}
+
+/** Maps process facts to a lifecycle class without using provider identity. */
+fun AgentRunLaunchFacts.reviewProcessOutcome(): ReviewProcessOutcome = when {
+  timedOut -> ReviewProcessOutcome.TIMED_OUT
+  interrupted -> ReviewProcessOutcome.INTERRUPTED
+  spawnFailed -> ReviewProcessOutcome.UNAVAILABLE
+  stdoutTruncated -> ReviewProcessOutcome.INVALID_OUTPUT
+  exitStatus == null -> ReviewProcessOutcome.NON_ZERO_EXIT
+  exitStatus != 0 -> ReviewProcessOutcome.NON_ZERO_EXIT
+  else -> ReviewProcessOutcome.ZERO_EXIT
 }
 
 enum class AgentRunTokenOwnership {

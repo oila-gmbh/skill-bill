@@ -570,6 +570,11 @@ internal object DatabaseMigrations {
         name = "add-goal-runner-control-state",
         operation = ::addGoalRunnerControlState,
       ),
+      DatabaseMigration(
+        version = 21,
+        name = "add-delegated-review-lifecycle-projection",
+        operation = ::addDelegatedReviewLifecycleProjection,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -654,6 +659,28 @@ private fun addGoalRunnerControlState(connection: Connection) {
     if (!hasControlState) {
       statement.execute("ALTER TABLE goal_runner_controls ADD COLUMN control_state_json TEXT")
     }
+  }
+}
+
+private fun addDelegatedReviewLifecycleProjection(connection: Connection) {
+  connection.createStatement().use { statement ->
+    statement.execute(
+      """
+      CREATE TABLE IF NOT EXISTS review_delegated_lifecycle (
+        review_id TEXT PRIMARY KEY,
+        packet_digest TEXT NOT NULL,
+        contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+        bounded_payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+    )
+    statement.execute(
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_delegated_lifecycle_review
+        ON review_delegated_lifecycle(review_id, updated_at)
+      """.trimIndent(),
+    )
   }
 }
 

@@ -84,6 +84,24 @@ class InvalidReviewContextSchemaError(
   cause,
 )
 
+class InvalidReviewLifecycleEvidenceSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Review lifecycle evidence '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+class InvalidReviewLifecycleSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Review lifecycle '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * SKILL-48 Subtask 2a: surfaced when a `WorkflowStateSnapshot` fails the
  * canonical `orchestration/contracts/workflow-state-schema.yaml` Draft

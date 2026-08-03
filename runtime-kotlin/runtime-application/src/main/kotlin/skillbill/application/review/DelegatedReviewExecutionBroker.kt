@@ -5,7 +5,9 @@ import skillbill.application.review.model.DelegatedReviewExecutionOutcome
 import skillbill.application.review.model.DelegatedReviewExecutionRequest
 import skillbill.application.review.model.DelegatedReviewLaunchOutcome
 import skillbill.application.review.model.DelegatedReviewWorkerRequest
+import skillbill.ports.agentrun.model.reviewProcessOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 
@@ -60,10 +62,28 @@ class DelegatedReviewExecutionBroker(
             agentId = request.launchRequest.agentId,
             repoRoot = request.repoRoot,
             timeout = request.timeout,
+            progressIdleTimeout = request.progressIdleTimeout,
             logicalWorkerName = request.launchRequest.logicalWorkerName,
             modelOverride = request.modelOverride,
+            mcpStartupProbe = request.mcpStartupProbe,
           ),
         ),
       )
     }
+
+  /** Provider-neutral classification used by durable lifecycle accounting. */
+  fun classifyLifecycleOutcome(execution: DelegatedReviewExecutionOutcome): ReviewProcessOutcome = when (execution) {
+    is DelegatedReviewExecutionOutcome.Terminated -> ReviewProcessOutcome.INVALID_OUTPUT
+    is DelegatedReviewExecutionOutcome.Completed -> when {
+      execution.worker.unsupportedReason != null -> ReviewProcessOutcome.UNAVAILABLE
+      execution.worker.facts != null -> execution.worker.facts.reviewProcessOutcome().let { processOutcome ->
+        if (processOutcome == ReviewProcessOutcome.ZERO_EXIT && execution.worker.budgetOutcome?.enforceable == true) {
+          ReviewProcessOutcome.INVALID_OUTPUT
+        } else {
+          processOutcome
+        }
+      }
+      else -> ReviewProcessOutcome.INVALID_OUTPUT
+    }
+  }
 }

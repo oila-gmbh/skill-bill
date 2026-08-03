@@ -62,6 +62,7 @@ class ReviewContextModelsTest {
   ) = ReviewAssignment(
     "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
     reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
+    baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
   )
 
   @Test fun `default budget is governed`() {
@@ -167,6 +168,40 @@ class ReviewContextModelsTest {
     assertEquals(packet(listOf(first, second)).digest, packet(listOf(second, first)).digest)
   }
 
+  @Test fun `baseline untracked policy is digest bound and mutually exclusive`() {
+    val included = ReviewBaselineUntrackedPolicy(
+      includedPaths = listOf("src/New.kt"),
+      excludedPaths = listOf("docs/old.md"),
+    )
+    val packet = launchPacket().copy(baselineUntrackedPolicy = included)
+    val changedPolicy = packet.copy(
+      baselineUntrackedPolicy = ReviewBaselineUntrackedPolicy(excludedPaths = listOf("src/New.kt")),
+    )
+    assertNotEquals(packet.digest, changedPolicy.digest)
+    assertNotEquals(packet.digest, packet.copy(baseRevision = "other-base").digest)
+    assertNotEquals(packet.digest, packet.copy(headRevision = "other-head").digest)
+    val launch = GovernedReviewLaunch(
+      launchAssignment(packet),
+      packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertTrue("baseline_untracked_policy" in launch.canonicalPayload)
+    assertTrue("src/New.kt" in launch.canonicalPayload)
+    assertTrue("docs/old.md" in launch.canonicalPayload)
+    assertFailsWith<IllegalArgumentException> {
+      ReviewBaselineUntrackedPolicy(listOf("src/New.kt"), listOf("src/New.kt"))
+    }
+    val forgedAssignment = launchAssignment(packet).copy(
+      baselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+    )
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewLaunch(forgedAssignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    }
+  }
+
   @Test fun `governed Codex launches reject inherited and omitted turns`() {
     val packet = launchPacket()
     val launch = GovernedReviewLaunch(
@@ -187,6 +222,7 @@ class ReviewContextModelsTest {
         "head_revision", "broker_id", "specialist_contract", "rubric", "consumer_contract",
         "assigned_paths", "assigned_hunks", "assigned_hunk_bodies",
         "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
+        "baseline_untracked_policy",
         "forbidden_rediscovery", "evidence_surface_rules", "report_structure", "budgets",
       ),
       launch.canonicalPayload.lines().filter { it.isNotBlank() && !it.startsWith("  ") }

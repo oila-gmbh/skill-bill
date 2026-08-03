@@ -80,6 +80,14 @@ class CodeReviewParallelCommand(
     "--execution-mode",
     help = "Shared execution mode for both lanes: inline (default), auto, or delegated.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
+  private val baselineUntrackedIncludes by option(
+    "--baseline-untracked-include",
+    help = "Baseline-untracked path to include in the packet. Repeatable.",
+  ).multiple()
+  private val baselineUntrackedExcludes by option(
+    "--baseline-untracked-exclude",
+    help = "Baseline-untracked path to exclude from the packet. Repeatable.",
+  ).multiple()
   private val reviewRunId by option(
     "--review-run-id",
     help = "Review run id (rvw-YYYYMMDD-HHMMSS-XXXX) this review will report. Pass the same id used " +
@@ -121,6 +129,10 @@ class CodeReviewParallelCommand(
           baseRevision = baseRevision?.takeIf(String::isNotBlank),
           headRevision = headRevision?.takeIf(String::isNotBlank),
           prelaunchExpansions = expandFiles.map(::parseExpansion),
+          baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
+            baselineUntrackedIncludes,
+            baselineUntrackedExcludes,
+          ),
         ),
       )
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {

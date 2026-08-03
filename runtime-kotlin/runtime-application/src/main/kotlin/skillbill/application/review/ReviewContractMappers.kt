@@ -13,11 +13,42 @@ import skillbill.contracts.review.ReviewPreviewContract
 import skillbill.contracts.review.TriageDecisionContract
 import skillbill.contracts.review.TriageListContract
 import skillbill.contracts.review.TriageRecordedContract
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.reviewProcessOutcome
+import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload as toPortReviewFinishedTelemetryPayload
+
+internal enum class ReviewOutputAdmission {
+  SUCCESS,
+  SCHEMA_REPAIR_ELIGIBLE,
+  REJECTED,
+}
+
+internal data class ReviewOutputClassification(
+  val processOutcome: ReviewProcessOutcome,
+  val admission: ReviewOutputAdmission,
+)
+
+/** Schema repair is a narrow envelope repair path, never a recovery path for process failure. */
+internal fun classifyReviewOutput(
+  facts: AgentRunLaunchFacts,
+  resultEnvelopeValid: Boolean,
+): ReviewOutputClassification {
+  val processOutcome = facts.reviewProcessOutcome()
+  return ReviewOutputClassification(
+    processOutcome = processOutcome,
+    admission = when {
+      processOutcome != ReviewProcessOutcome.ZERO_EXIT -> ReviewOutputAdmission.REJECTED
+      facts.stdout.isBlank() -> ReviewOutputAdmission.REJECTED
+      resultEnvelopeValid -> ReviewOutputAdmission.SUCCESS
+      else -> ReviewOutputAdmission.SCHEMA_REPAIR_ELIGIBLE
+    },
+  )
+}
 
 fun ImportedReview.toReviewPreviewResult(): ReviewPreviewResult = ReviewPreviewResult(
   reviewRunId = reviewRunId,

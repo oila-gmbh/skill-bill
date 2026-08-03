@@ -15,6 +15,7 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
@@ -92,6 +93,7 @@ internal object ParallelReviewPreparationCompiler {
       reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
       reviewRevision = ReviewRevision(revisionId, 1),
       criteriaReferences = routes.associate { it.lane to listOf("independent branch-diff specialist review") },
+      baselineUntrackedPolicy = input.baselineUntrackedPolicy,
     ),
   )
 
@@ -231,4 +233,5 @@ internal data class ParallelReviewPreparationInput(
   val baseRevision: String,
   val headRevision: String,
   val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
+  val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
 )

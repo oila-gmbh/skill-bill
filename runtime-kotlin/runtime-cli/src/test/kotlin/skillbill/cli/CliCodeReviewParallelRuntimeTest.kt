@@ -30,6 +30,7 @@ class CliCodeReviewParallelRuntimeTest {
     assertContains(help.stdout, "--scope")
     assertContains(help.stdout, "--base-revision")
     assertContains(help.stdout, "--expand-file")
+    assertContains(help.stdout, "--baseline-untracked-exclude")
   }
 
   @Test
@@ -82,6 +83,37 @@ class CliCodeReviewParallelRuntimeTest {
       assertContains(prompt, "fun expandedEvidence() = true")
       assertContains(prompt, "\"base_revision\":\"immutable-base\"")
       assertContains(prompt, "\"head_revision\":\"immutable-head\"")
+    }
+  }
+
+  @Test
+  fun `baseline untracked policy reaches both delegated packet launches`() {
+    val tempDir = createGitRepo()
+    Files.writeString(tempDir.resolve("Test.kt"), "fun review() = true\n")
+    val diff = Files.createTempFile("parallel-review", ".diff")
+    Files.writeString(diff, "diff --git a/Test.kt b/Test.kt\n+++ b/Test.kt\n+change\n")
+    val launcher = RecordingParallelLauncher()
+
+    val result = CliRuntime.run(
+      listOf(
+        "code-review-parallel",
+        "--agent1", "claude",
+        "--agent2", "codex",
+        "--diff-file", diff.toString(),
+        "--base-revision", "immutable-base",
+        "--head-revision", "immutable-head",
+        "--baseline-untracked-exclude", "baseline/old.kt",
+        "--execution-mode", "delegated",
+        "--repo-root", tempDir.toString(),
+      ),
+      parallelReviewContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(2, launcher.promptsByAgent.size)
+    launcher.promptsByAgent.values.forEach { prompt ->
+      assertContains(prompt, "baseline_untracked_policy")
+      assertContains(prompt, "baseline/old.kt")
     }
   }
 
@@ -530,7 +562,7 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
-      stdout = "",
+      stdout = "NO_FINDINGS",
       stderr = "",
       timedOut = false,
       spawnFailed = false,

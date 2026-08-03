@@ -1,15 +1,20 @@
 package skillbill.launcher.agentrun
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
+import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.ports.review.model.DelegatedReviewProviderCapability
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.workflow.model.GoalProgressOutcome
 import java.nio.file.Path
 import kotlin.time.DurationUnit
 
@@ -36,6 +41,8 @@ data class AgentRunCommand(
 
 interface AgentRunCommandBuilder {
   val agent: InstallAgent
+  val delegatedReviewCapability: DelegatedReviewProviderCapability
+    get() = DelegatedReviewProviderCapabilityRegistry.forProvider(agent)
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
   val nativeReviewCapabilities: NativeReviewProviderCapabilities
@@ -74,16 +81,49 @@ data class NativeReviewProviderCapabilities(
 interface NativeReviewLifecycleCallbacks {
   fun newSession(): NativeReviewLifecycleCallbacks = this
   fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome?
-  fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome?
+  fun observeProviderOutput(
+    operations: NativeReviewOperationProtocol,
+    chunk: String,
+    progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
+  ): ReviewBudgetOutcome?
   fun observeProviderUsage(operations: NativeReviewOperationProtocol, usage: ProviderTokenUsage): ReviewBudgetOutcome?
+  fun mcpStartupObserved(): Boolean = false
 }
 
 private abstract class StatefulNativeReviewLifecycleCallbacks : NativeReviewLifecycleCallbacks {
+  private val lifecycleSignals by lazy {
+    ProviderLifecycleSignals(::isProviderMcpStartupEvent, ::providerLifecycleSignal)
+  }
+
   override fun beforeModelTurn(operations: NativeReviewOperationProtocol): ReviewBudgetOutcome? = operations.modelTurn()
   override fun observeProviderUsage(
     operations: NativeReviewOperationProtocol,
     usage: ProviderTokenUsage,
   ): ReviewBudgetOutcome? = operations.providerUsage(usage)
+
+  final override fun observeProviderOutput(
+    operations: NativeReviewOperationProtocol,
+    chunk: String,
+    progressEmitter: AgentRunProgressEmitter,
+  ): ReviewBudgetOutcome? {
+    lifecycleSignals.observe(chunk, progressEmitter)
+    return observeProviderResult(operations, chunk)
+  }
+
+  final override fun mcpStartupObserved(): Boolean {
+    lifecycleSignals.flush()
+    return lifecycleSignals.mcpStartupObserved
+  }
+
+  protected abstract fun observeProviderResult(
+    operations: NativeReviewOperationProtocol,
+    chunk: String,
+  ): ReviewBudgetOutcome?
+
+  /** The adapter owns the provider envelope that is allowed to prove MCP startup. */
+  protected abstract fun isProviderMcpStartupEvent(event: JsonNode): Boolean
+
+  protected abstract fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal?
 }
 
 private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
@@ -95,8 +135,40 @@ private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
 
   override fun newSession(): NativeReviewLifecycleCallbacks = ClaudeNativeReviewLifecycleCallbacks()
 
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+  override fun observeProviderResult(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
     resultDecoder.observe(operations, chunk)
+
+  override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event) ||
+    (
+      event.textValue("type") == "system" && event.textValue("subtype") == "init" &&
+        event.path("mcp_servers").isArray && event.path("mcp_servers").size() > 0
+      )
+
+  override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "system" -> if (event.textValue("subtype") == "init") {
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+        } else {
+          null
+        }
+        "assistant", "rate_limit_event" -> if (
+          event.textValue("type") == "rate_limit_event" || event.path("message").path("model").isTextual
+        ) {
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
+        } else {
+          null
+        }
+        "result" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
+      }
 }
 
 private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
@@ -108,8 +180,28 @@ private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycl
 
   override fun newSession(): NativeReviewLifecycleCallbacks = CodexNativeReviewLifecycleCallbacks()
 
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+  override fun observeProviderResult(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
     textDecoder.observe(operations, chunk)
+
+  override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
+
+  override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "thread.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+        "turn.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED, expectedLong = true)
+        "item.started", "item.updated", "item.completed" ->
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT, expectedLong = true)
+        "turn.completed" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error", "turn.failed", "turn.interrupted" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
+      }
 }
 
 private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
@@ -121,8 +213,25 @@ private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
 
   override fun newSession(): NativeReviewLifecycleCallbacks = CursorNativeReviewLifecycleCallbacks()
 
-  override fun observeProviderOutput(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
+  override fun observeProviderResult(operations: NativeReviewOperationProtocol, chunk: String): ReviewBudgetOutcome? =
     resultDecoder.observe(operations, chunk)
+
+  override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
+
+  override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "partial" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
+        "result" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
+      }
 }
 
 /**
@@ -416,7 +525,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
-    val streaming = request.streamOutputForLiveness
+    val streaming = request.streamProviderOutput || request.streamOutputForLiveness
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("claude")
@@ -449,7 +558,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = when {
-        streaming -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        request.streamOutputForLiveness -> AgentRunIdlePolicy.OUTPUT_EXTENDED
         request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
         else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
       },
@@ -567,7 +676,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
-    val streaming = request.streamOutputForLiveness
+    val streaming = request.streamProviderOutput || request.streamOutputForLiveness
     val isReviewLaunch = request.reviewEvidenceBroker != null
 
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
@@ -579,7 +688,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
       inheritEnvironment = !isReviewLaunch,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = when {
-        streaming -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        request.streamOutputForLiveness -> AgentRunIdlePolicy.OUTPUT_EXTENDED
         request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
         else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
       },

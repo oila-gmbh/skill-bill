@@ -11,6 +11,7 @@ import skillbill.goalrunner.model.GoalRunnerLivenessInputs
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
@@ -92,6 +93,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     ptyMasterCloseable: AutoCloseable?,
   ): AgentRunProcessResult {
     liveProcesses.add(process)
+    val mcpStartupObservedAtStart = request.mcpStartupProbe.safeStartupObserved()
     val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
       requireNotNull(request.nativeReviewOperations),
     )
@@ -110,6 +112,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
         val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
           requireNotNull(request.nativeReviewOperations),
           chunk,
+          request.progressEmitter,
         )
         if (usageOutcome != null) process.destroy()
       },
@@ -128,7 +131,17 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     } catch (interrupt: InterruptedException) {
       Result.failure(interrupt)
     }
-    return finishRun(process, request, wait, outputTracker, stdout, stderr, lifecycleEmitter, ptyMasterCloseable)
+    return finishRun(
+      process,
+      request,
+      wait,
+      outputTracker,
+      stdout,
+      stderr,
+      lifecycleEmitter,
+      ptyMasterCloseable,
+      mcpStartupObservedAtStart,
+    )
   }
 
   @Suppress("LongParameterList")
@@ -141,6 +154,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     stderr: CappedUtf8Drain,
     lifecycleEmitter: ProcessLifecycleEmitter,
     ptyMasterCloseable: AutoCloseable?,
+    mcpStartupObservedAtStart: Boolean,
   ): AgentRunProcessResult {
     var interrupted = waitResult.exceptionOrNull() is InterruptedException
     val wait = waitResult.getOrNull()
@@ -163,7 +177,12 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     lifecycleEmitter.emitCompleted(processAlive = false, outcome = terminalOutcome)
     if (interrupted) {
       Thread.currentThread().interrupt()
-      return interruptedResult(stdout, stderr, outputTracker)
+      return interruptedResult(
+        stdout,
+        stderr,
+        outputTracker,
+        mcpStartupObservedAtStart || request.mcpStartupProbe.safeStartupObserved(),
+      )
     }
     return AgentRunProcessResult(
       exitStatus = if (finished) process.exitValue() else null,
@@ -174,6 +193,8 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       interrupted = false,
       spawnFailed = false,
       liveness = wait.liveness,
+      processStarted = true,
+      mcpStartupObserved = mcpStartupObservedAtStart || request.mcpStartupProbe.safeStartupObserved(),
       stdoutTruncated = stdout.wasTruncated(),
       stdoutByteSize = stdout.totalByteSize(),
       stdoutSha256 = stdout.sha256(),
@@ -184,6 +205,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     stdout: CappedUtf8Drain,
     stderr: CappedUtf8Drain,
     outputTracker: OutputObservationTracker,
+    mcpStartupObserved: Boolean,
   ): AgentRunProcessResult {
     val interruptMessage = "Agent run interrupted by parent signal before completion."
     return AgentRunProcessResult(
@@ -200,6 +222,8 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       timedOut = false,
       interrupted = true,
       spawnFailed = false,
+      processStarted = true,
+      mcpStartupObserved = mcpStartupObserved,
       liveness = AgentRunLivenessSnapshot(
         phase = "watchdog",
         reason = "parent_interrupted",
@@ -730,6 +754,7 @@ private class ProcessLifecycleEmitter(private val request: AgentRunProcessReques
           operationKind = CHILD_OPERATION_KIND,
           expectedLong = true,
           outcome = outcome,
+          authoritative = false,
         ),
       )
     }
@@ -744,6 +769,9 @@ private class ProcessLifecycleEmitter(private val request: AgentRunProcessReques
 private fun skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe.safeDeclaredProgress():
   AgentRunDeclaredProgressSnapshot? =
   runCatching { latestDeclaredProgress() }.getOrNull()
+
+private fun AgentRunMcpStartupProbe.safeStartupObserved(): Boolean =
+  runCatching { startupObserved() }.getOrDefault(false)
 
 private fun skillbill.ports.agentrun.model.AgentRunProgressProbe.safeProgressToken(): String? =
   runCatching { progressToken() }.getOrNull()

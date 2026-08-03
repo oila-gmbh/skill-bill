@@ -5,6 +5,38 @@ description: Single source of truth for shared stack-specific code-review orches
 
 # Shared Code Review Orchestrator Contract
 
+## Lifecycle evidence
+
+Delegated lifecycle evidence is durable and bounded. The coordinator records preparation and queue
+admission, workers record identity-bound launch and terminal outcomes, aggregation records readiness
+separately from terminal completion, and recovery reads `review_lifecycle_events`. Process/MCP
+heartbeats, provider output, and declared progress are observations; only a typed durable worker
+progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
+complete diffs, raw transcripts, or tool logs.
+
+Capacity planning persists `total_process_slots`, `coordinator_slots`, and
+`worker_slots = total_process_slots - coordinator_slots` before workers are
+assigned to deterministic waves. Restart admission uses those persisted values
+and the predicted wave count rather than live configuration. Aggregation admits
+only the durable selected assignment set with matching worker/provider/attempt
+identities, valid finding envelopes, and complete declared-area coverage. A
+missing or duplicate result is a bounded aggregation failure, not an invitation
+to repair or rediscover scope.
+
+The provider failure matrix records independent dispositions for capacity,
+bootstrap measurement, each deadline scope, bounded diagnostic repair, actual
+wave telemetry, and promotion thresholds. Shared lifecycle enforcement does not
+promote an experimental provider or alter another provider's launch strategy.
+
+SKILL-145 keeps the policy explicit: inline is the default, `auto` resolves to
+inline, and delegated review requires an explicit opt-in. Codex, Claude, and
+Cursor remain experimental; Junie, Copilot, Opencode, and Zcode are
+unsupported. Unsupported delegated requests terminate explicitly without an
+inline substitute. The complete classification, historical ledger, and
+promotion gate live in the governed SKILL-145 decision and reliability
+contract; this playbook consumes those boundaries and does not infer support
+from another provider.
+
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
@@ -114,6 +146,7 @@ Do NOT use markdown tables, numbered lists, or any other format for findings. Th
 - Confidence must be one of: `High`, `Medium`, `Low`
 - Finding ids must be unique within the current review run and stable enough for follow-up feedback or fix requests in the same workflow
 - Assign finding ids sequentially in risk-register order using `F-001`, `F-002`, `F-003`, and so on
+- A worker with no findings must return exactly `NO_FINDINGS`; an empty response is an incomplete result.
 
 ## Governed Add-Ons
 

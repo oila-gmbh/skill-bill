@@ -1,5 +1,6 @@
 package skillbill.ports.review.model
 
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -19,6 +20,8 @@ data class NativeReviewWorkerRequest(
   val prompt: String,
   val isolation: ReviewLaunchIsolationStrategy,
   val timeout: Duration,
+  val progressIdleTimeout: Duration? = null,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
   val modelOverride: String? = null,
   val broker: ReviewEvidenceBroker,
   val operations: NativeReviewOperationProtocol,

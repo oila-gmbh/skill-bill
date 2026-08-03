@@ -46,6 +46,10 @@ val canonicalReviewContextSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/review-context-schema.yaml").absolutePath
 
+val canonicalReviewLifecycleEvidenceSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/review-lifecycle-evidence-schema.yaml").absolutePath
+
 val canonicalSpecialistContractPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/review-orchestrator/specialist-contract.md")
@@ -73,6 +77,19 @@ val copyReviewContextSchema =
     doFirst {
       require(File(schemaPath).exists()) {
         "SKILL-125: canonical review-context schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val copyReviewLifecycleEvidenceSchema =
+  tasks.register<Copy>("copyReviewLifecycleEvidenceSchema") {
+    val schemaPath = canonicalReviewLifecycleEvidenceSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-145: canonical review lifecycle evidence schema is missing at $schemaPath."
       }
     }
   }
@@ -508,6 +525,7 @@ tasks.named("processResources") {
   dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
+  dependsOn(copyReviewLifecycleEvidenceSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
   dependsOn(copyNativeAgentLinkInventorySchema)
@@ -537,6 +555,7 @@ tasks.named("processTestResources") {
   dependsOn(copySpecialistContract)
   dependsOn(copyAgentAddonSchema)
   dependsOn(copyReviewContextSchema)
+  dependsOn(copyReviewLifecycleEvidenceSchema)
   dependsOn(copyPlatformPackSchema)
   dependsOn(copyNativeAgentCompositionSchema)
   dependsOn(copyNativeAgentLinkInventorySchema)

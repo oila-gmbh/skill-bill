@@ -7,6 +7,8 @@ internal object DatabaseSchema {
     setOf(
       "schema_migrations",
       "review_runs",
+      "review_lifecycle_events",
+      "review_delegated_lifecycle",
       "findings",
       "feedback_events",
       "learnings",
@@ -36,6 +38,8 @@ internal object DatabaseSchema {
   val indexNames: Set<String> =
     setOf(
       "idx_feedback_events_run",
+      "idx_review_lifecycle_events_review",
+      "idx_review_delegated_lifecycle_review",
       "idx_learnings_scope",
       "idx_telemetry_outbox_pending",
       "idx_feature_task_workflows_updated",
@@ -122,6 +126,34 @@ internal object DatabaseSchema {
         review_finished_event_emitted_at TEXT,
         imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_lifecycle_events (
+        event_id TEXT PRIMARY KEY,
+        review_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 1),
+        packet_digest TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        UNIQUE (review_id, sequence)
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_lifecycle_events_review
+        ON review_lifecycle_events(review_id, sequence)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_delegated_lifecycle (
+        review_id TEXT PRIMARY KEY,
+        packet_digest TEXT NOT NULL,
+        contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+        bounded_payload_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_delegated_lifecycle_review
+        ON review_delegated_lifecycle(review_id, updated_at)
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS review_accounting (

@@ -77,6 +77,10 @@ class DelegatedReviewWorkerLauncher(
         issueKey = prepared.launch.assignment.reviewId,
         repoRoot = request.repoRoot,
         timeout = request.timeout,
+        progressIdleTimeout = request.progressIdleTimeout,
+        // MCP startup is counted only when the provider launcher supplies an explicit observation;
+        // a broker model-turn callback is not evidence that MCP startup occurred.
+        mcpStartupProbe = request.mcpStartupProbe,
         prompt = boundedPrompt,
         modelOverride = request.modelOverride,
         isolation = prepared.isolation,

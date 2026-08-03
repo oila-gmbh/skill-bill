@@ -13,6 +13,7 @@ import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -115,6 +116,25 @@ class ReviewPreparationServiceTest {
       criteriaReferences = mapOf("security" to listOf("AC-002")),
       dependencyAllowlist = allowlist,
     )
+
+  @Test fun `baseline untracked policy is packet and assignment authority`() {
+    val policy = ReviewBaselineUntrackedPolicy(
+      includedPaths = listOf("baseline/kept.kt"),
+      excludedPaths = listOf("baseline/ignored.kt"),
+    )
+    val result = service(ports()).prepare(request()).let { baseline ->
+      service(ports()).prepare(
+        request().copy(baselineUntrackedPolicy = policy),
+      ) to baseline
+    }
+
+    val withPolicy = result.first
+    val withoutPolicy = result.second
+    assertEquals(policy, withPolicy.packet.baselineUntrackedPolicy)
+    assertTrue(withPolicy.assignments.all { it.baselineUntrackedPolicy == policy })
+    assertTrue(withPolicy.packet.digest != withoutPolicy.packet.digest)
+    assertTrue(withPolicy.assignments.map { it.digest } != withoutPolicy.assignments.map { it.digest })
+  }
 
   @Test fun `every fact port is resolved exactly once across a multi lane prepare`() {
     val counting = ports()
@@ -254,6 +274,17 @@ class ReviewPreparationServiceTest {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(staleRevision) + prepared.assignments.drop(1))
       }.message.orEmpty(),
     )
+  }
+
+  @Test fun `assignment baseline-untracked policy is immutable`() {
+    val prepared = service(ports()).prepare(request())
+    val forged = prepared.assignments.first().copy(
+      baselineUntrackedPolicy = ReviewBaselineUntrackedPolicy(includedPaths = listOf("src/New.kt")),
+    )
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      service(ports()).validateAgainstPacket(prepared.packet, listOf(forged) + prepared.assignments.drop(1))
+    }
+    assertTrue("baseline-untracked policy differs" in failure.message.orEmpty())
   }
 
   @Test fun `duplicate lane assignments are rejected`() {

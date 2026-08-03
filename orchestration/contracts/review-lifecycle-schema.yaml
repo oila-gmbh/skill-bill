@@ -1,0 +1,162 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://skill-bill.dev/contracts/review-lifecycle-schema.yaml
+title: Delegated review lifecycle contract
+description: Durable, bounded state for delegated review workers, provider capabilities, waves, deadlines, and terminal decisions.
+oneOf:
+  - $ref: "#/$defs/lifecycle"
+  - $ref: "#/$defs/provider_capability_matrix"
+$defs:
+  identifier: { type: string, minLength: 1, maxLength: 200, pattern: '.*\S.*' }
+  digest: { type: string, pattern: "^[a-f0-9]{64}$" }
+  bounded_text: { type: string, minLength: 1, maxLength: 500, pattern: '.*\S.*' }
+  timestamp: { type: string, minLength: 1, maxLength: 64, pattern: '^[0-9T:.+Z-]+$' }
+  worker_state:
+    enum: [selected, queued, launched, running, completed, failed, timed_out, cancelled, aggregated]
+  terminal_classification:
+    enum: [completed, failed, timed_out, cancelled, blocked_unsupported, blocked_aggregation,
+      interrupted_before_launch, interrupted_during_worker, interrupted_between_waves,
+      interrupted_during_aggregation, interrupted_before_terminal_persistence]
+  deadline_scope:
+    enum: [startup, progress_idle, per_worker, aggregation, whole_review]
+  capability_status: { enum: [supported, experimental, unsupported] }
+  capability:
+    type: object
+    additionalProperties: false
+    required: [fresh_context_isolation, worker_tracking, output_capture, declared_progress,
+      cancellation, timeout, token_reporting, terminal_result]
+    properties:
+      fresh_context_isolation: { type: boolean }
+      worker_tracking: { type: boolean }
+      output_capture: { type: boolean }
+      declared_progress: { type: boolean }
+      cancellation: { type: boolean }
+      timeout: { type: boolean }
+      token_reporting: { type: boolean }
+      terminal_result: { type: boolean }
+  provider:
+    type: object
+    additionalProperties: false
+    required: [provider_id, status, capabilities, rationale]
+    properties:
+      provider_id: { $ref: "#/$defs/identifier" }
+      status: { $ref: "#/$defs/capability_status" }
+      capabilities: { $ref: "#/$defs/capability" }
+      rationale: { $ref: "#/$defs/bounded_text" }
+    allOf:
+      - if:
+          properties: { status: { const: supported } }
+          required: [status]
+        then:
+          properties:
+            capabilities:
+              properties:
+                fresh_context_isolation: { const: true }
+                worker_tracking: { const: true }
+                output_capture: { const: true }
+                declared_progress: { const: true }
+                cancellation: { const: true }
+                timeout: { const: true }
+                token_reporting: { const: true }
+                terminal_result: { const: true }
+      - if:
+          properties: { status: { const: unsupported } }
+          required: [status]
+        then:
+          not:
+            properties:
+              capabilities:
+                properties:
+                  fresh_context_isolation: { const: true }
+                  worker_tracking: { const: true }
+                  output_capture: { const: true }
+                  declared_progress: { const: true }
+                  cancellation: { const: true }
+                  timeout: { const: true }
+                  token_reporting: { const: true }
+                  terminal_result: { const: true }
+                required: [fresh_context_isolation, worker_tracking, output_capture, declared_progress,
+                  cancellation, timeout, token_reporting, terminal_result]
+            required: [capabilities]
+  provider_capability_matrix:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, providers]
+    properties:
+      contract_version: { const: "0.1" }
+      kind: { const: provider_capability_matrix }
+      providers:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items: { $ref: "#/$defs/provider" }
+  deadline:
+    type: object
+    additionalProperties: false
+    required: [scope, limit_ms]
+    properties:
+      scope: { $ref: "#/$defs/deadline_scope" }
+      limit_ms: { type: integer, minimum: 1 }
+  worker:
+    type: object
+    additionalProperties: false
+    required: [worker_id, provider_id, assignment_digest, attempt, area, state]
+    properties:
+      worker_id: { $ref: "#/$defs/identifier" }
+      provider_id: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      attempt: { type: integer, minimum: 1 }
+      area: { $ref: "#/$defs/identifier" }
+      state: { $ref: "#/$defs/worker_state" }
+      diagnostic: { $ref: "#/$defs/bounded_text" }
+  wave:
+    type: object
+    additionalProperties: false
+    required: [wave_number, worker_ids]
+    properties:
+      wave_number: { type: integer, minimum: 1 }
+      worker_ids:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/identifier" }
+  metrics:
+    type: object
+    additionalProperties: false
+    required: [elapsed_ms, total_tokens, process_count, mcp_startup_count, selected_area_count,
+      completed_area_count, lost_worker_count]
+    properties:
+      elapsed_ms: { type: integer, minimum: 0 }
+      total_tokens: { type: integer, minimum: 0 }
+      process_count: { type: integer, minimum: 0 }
+      mcp_startup_count: { type: integer, minimum: 0 }
+      selected_area_count: { type: integer, minimum: 0 }
+      completed_area_count: { type: integer, minimum: 0 }
+      lost_worker_count: { type: integer, minimum: 0 }
+  lifecycle:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, review_id, packet_digest, selected_area_count, predicted_wave_count,
+      actual_wave_count, coordinator_slots, workers, waves, deadlines, metrics]
+    properties:
+      contract_version: { const: "0.1" }
+      kind: { const: delegated_review_lifecycle }
+      review_id: { $ref: "#/$defs/identifier" }
+      packet_digest: { $ref: "#/$defs/digest" }
+      selected_area_count: { type: integer, minimum: 0 }
+      predicted_wave_count: { type: integer, minimum: 0 }
+      actual_wave_count: { type: integer, minimum: 0 }
+      coordinator_slots: { type: integer, minimum: 1 }
+      workers:
+        type: array
+        maxItems: 128
+        items: { $ref: "#/$defs/worker" }
+      waves:
+        type: array
+        maxItems: 128
+        items: { $ref: "#/$defs/wave" }
+      deadlines:
+        type: array
+        maxItems: 8
+        uniqueItems: true
+        items: { $ref: "#/$defs/deadline" }
+      metrics: { $ref: "#/$defs/metrics" }
+      terminal_classification: { $ref: "#/$defs/terminal_classification" }

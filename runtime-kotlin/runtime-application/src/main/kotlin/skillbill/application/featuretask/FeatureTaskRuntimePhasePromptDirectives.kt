@@ -40,27 +40,49 @@ internal data class ReviewExecutionDirectiveInputs(
   val reviewPassNumber: Int?,
   val resolvedReviewTier: CodeReviewExecutionMode?,
   val reviewDecidingRule: String?,
+  val baselineUntrackedPaths: List<String> = emptyList(),
 )
 
 internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDirectiveInputs): String {
-  val codeReviewMode = inputs.codeReviewMode
-  val parallelReviewAgent = inputs.parallelReviewAgent
-  val goalSubtaskReviewInput = inputs.goalSubtaskReviewInput
-  val reviewPassNumber = inputs.reviewPassNumber
-  val resolvedReviewTier = inputs.resolvedReviewTier
-  val reviewDecidingRule = inputs.reviewDecidingRule
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
     return ""
   }
-  val parallel = parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
+  val parallel = inputs.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
     " Combine it with `parallel:$agent`; both lanes must receive the resolved tier " +
-      "${resolvedReviewTier?.wireValue ?: codeReviewMode.wireValue} " +
+      "${inputs.resolvedReviewTier?.wireValue ?: inputs.codeReviewMode.wireValue} " +
       "and the second lane must not launch parallel review recursively."
   }.orEmpty()
-  val remediationPass = reviewPassNumber == 2
+  val remediationPass = inputs.reviewPassNumber == 2
+  return """
+    ## Review execution mode
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves to INLINE on every pass. Only an explicit DELEGATED selection launches workers.$parallel${resolvedTierInfo(
+    inputs,
+  )}${baselineUntrackedPolicy(
+    inputs,
+    remediationPass,
+  )}${materializedScope(inputs, remediationPass)}${remediationContext(inputs, remediationPass)}
+  """.trimIndent()
+}
+
+private fun baselineUntrackedPolicy(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String =
+  inputs.baselineUntrackedPaths
+    .distinct()
+    .sorted()
+    .takeIf { it.isNotEmpty() && !remediationPass }
+    ?.let { paths ->
+      """
+      ## Baseline-untracked review policy
+      These paths existed before this run and are excluded from the immutable-base review packet:
+      ${paths.joinToString("\n") { path -> "- `$path`" }}
+      If you invoke `code-review-parallel`, pass `--baseline-untracked-exclude` once for every path above. Do not re-add these paths through a branch scope or a replacement diff.
+      """.trimIndent()
+    }
+    .orEmpty()
+
+private fun materializedScope(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String {
   // The immutable-base framing is pass one's authority only. Emitting it on pass two would contradict
   // the remediation-delta bound stated in the same prompt.
-  val materializedScope = goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
+  return inputs.goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
     """
     ## Immutable-base review scope
     Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
@@ -72,8 +94,11 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
     ${input.reviewText}
     """.trimIndent()
   }.orEmpty()
-  val remediationContext = if (remediationPass) {
-    val materialized = goalSubtaskReviewInput?.let { input ->
+}
+
+private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String =
+  if (remediationPass) {
+    val materialized = inputs.goalSubtaskReviewInput?.let { input ->
       "\nThe materialized remediation delta below runs from pre-fix tree `${input.reviewBaseSha}` to " +
         "post-fix HEAD `${input.currentHeadSha}`; treat it as authoritative and do not rediscover or " +
         "replace its scope.\n\n${input.reviewText}"
@@ -85,19 +110,16 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   } else {
     ""
   }
-  val resolvedTierInfo = if (resolvedReviewTier != null && reviewDecidingRule != null) {
+
+private fun resolvedTierInfo(inputs: ReviewExecutionDirectiveInputs): String =
+  if (inputs.resolvedReviewTier != null && inputs.reviewDecidingRule != null) {
     """
     ## Resolved review tier
-    AUTO resolved to tier ${resolvedReviewTier.wireValue} by rule "$reviewDecidingRule". An explicit INLINE or DELEGATED always overrides AUTO.
+    AUTO resolved to tier ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE or DELEGATED always overrides AUTO.
     """.trimIndent()
   } else {
     ""
   }
-  return """
-    ## Review execution mode
-    Run `bill-code-review mode:${codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. AUTO resolves to INLINE on every pass. Only an explicit DELEGATED selection launches workers.$parallel$resolvedTierInfo$materializedScope$remediationContext
-  """.trimIndent()
-}
 
 // Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
 // (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by

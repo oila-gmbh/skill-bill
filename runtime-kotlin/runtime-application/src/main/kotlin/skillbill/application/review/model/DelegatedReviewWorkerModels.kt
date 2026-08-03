@@ -1,6 +1,7 @@
 package skillbill.application.review.model
 
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
@@ -40,7 +41,12 @@ data class DelegatedReviewLaunchRequest(
   val repoRoot: Path,
   val namedDependencies: Set<String> = emptySet(),
   val prelaunchExpansions: List<ReviewExpansionAuthorizationRequest> = emptyList(),
-)
+  val attempt: Int = 1,
+) {
+  init {
+    require(attempt >= 1) { "Delegated review launch attempt must be positive." }
+  }
+}
 
 data class DelegatedReviewLaunch(
   val launch: GovernedReviewLaunch,
@@ -61,8 +67,10 @@ data class DelegatedReviewWorkerRequest(
   val agentId: String,
   val repoRoot: Path,
   val timeout: Duration,
+  val progressIdleTimeout: Duration? = null,
   val logicalWorkerName: String? = null,
   val modelOverride: String? = null,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
 )
 
 data class DelegatedReviewWorkerOutcome(
@@ -91,7 +99,9 @@ data class DelegatedReviewExecutionRequest(
   val launchRequest: DelegatedReviewLaunchRequest,
   val repoRoot: Path,
   val timeout: Duration,
+  val progressIdleTimeout: Duration? = null,
   val modelOverride: String? = null,
+  val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
 )
 
 sealed interface DelegatedReviewExecutionOutcome {

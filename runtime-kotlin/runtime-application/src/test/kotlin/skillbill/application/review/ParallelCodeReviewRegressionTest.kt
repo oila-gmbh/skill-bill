@@ -1,11 +1,23 @@
 package skillbill.application.review
 
 import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.goalrunner.model.GoalRunnerLivenessState
+import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
+import skillbill.ports.review.model.DelegatedReviewTerminalClassification
+import skillbill.ports.review.model.DelegatedReviewWorkerState
+import skillbill.ports.review.model.ReviewLifecycleComponent
+import skillbill.ports.review.model.ReviewLifecycleEventKind
+import skillbill.ports.review.model.ReviewProcessOutcome
+import skillbill.ports.review.model.ReviewWorkerLifecycleState
 import skillbill.review.context.model.ProviderTokenThresholds
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
 import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.plan.model.DelegatedReviewDeadlinePolicy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -75,11 +87,7 @@ class ParallelCodeReviewRegressionTest {
     val recorder = ReviewRecorder()
     var preflightCalled = false
     val runner = reviewHarness(
-      config(
-        preflight = {
-          preflightCalled = true
-        },
-      ),
+      config().copy(preflight = { preflightCalled = true }),
       recorder,
     )
 
@@ -89,6 +97,645 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(recorder.preflightRequests.isNotEmpty())
     assertTrue(recorder.nativeLaunches.isNotEmpty())
     assertTrue(recorder.nativeLaunches.all { it.logicalWorkerName != null })
+  }
+
+  @Test fun `durable lifecycle separates worker completion aggregation and terminal persistence`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val kinds = recorder.lifecycleEvents.map { it.eventKind }
+    assertTrue(ReviewLifecycleEventKind.COORDINATOR_PREPARED in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_SELECTED in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_QUEUED in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_LAUNCHED in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_RUNNING in kinds)
+    assertTrue(ReviewLifecycleEventKind.WORKER_COMPLETED in kinds)
+    assertTrue(ReviewLifecycleEventKind.AGGREGATION_STARTED in kinds)
+    assertTrue(ReviewLifecycleEventKind.AGGREGATION_COMPLETED in kinds)
+    assertTrue(ReviewLifecycleEventKind.TERMINAL_COMPLETED in kinds)
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
+    assertTrue(recorder.lifecycleEvents.zipWithNext().all { (first, second) -> first.sequence < second.sequence })
+  }
+
+  @Test fun `durable delegated projection preserves selected workers and wave metrics`() {
+    val recorder = ReviewRecorder()
+
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertEquals(1, projection.coordinatorSlots)
+    assertEquals(projection.selectedAreaCount, projection.workers.size)
+    assertEquals(projection.predictedWaveCount, projection.actualWaveCount)
+    assertEquals(projection.selectedAreaCount, projection.metrics.completedAreaCount)
+    assertEquals(recorder.nativeLaunches.size, projection.metrics.processCount)
+    assertEquals(0, projection.metrics.mcpStartupCount)
+    assertTrue(recorder.nativeLaunches.all { it.progressIdleTimeout != null })
+    assertTrue(projection.workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
+  }
+
+  @Test fun `deterministic lifecycle fixtures cover every durable worker state`() {
+    val observedLifecycleStates = mutableSetOf<ReviewWorkerLifecycleState>()
+    val observedProjectionStates = mutableSetOf<DelegatedReviewWorkerState>()
+    val fixtures = listOf(
+      config(),
+      config(response = { RecordedWorkerResponse(stdout = "") }),
+      config(response = { RecordedWorkerResponse(timedOut = true) }),
+      config(response = { throw InterruptedException("worker interrupted") }),
+    )
+
+    fixtures.forEachIndexed { index, fixture ->
+      val recorder = ReviewRecorder()
+      reviewHarness(fixture, recorder).run(harnessRequest(reviewRunId = "review-state-matrix-$index"))
+      observedLifecycleStates += recorder.lifecycleEvents
+        .filter { it.workerId != null }
+        .mapNotNull { it.state }
+      observedProjectionStates += recorder.lifecycleProjections.last().workers.map { it.state }
+    }
+
+    assertTrue(
+      observedLifecycleStates.containsAll(
+        setOf(
+          ReviewWorkerLifecycleState.SELECTED,
+          ReviewWorkerLifecycleState.QUEUED,
+          ReviewWorkerLifecycleState.LAUNCHED,
+          ReviewWorkerLifecycleState.RUNNING,
+          ReviewWorkerLifecycleState.COMPLETED,
+          ReviewWorkerLifecycleState.FAILED,
+          ReviewWorkerLifecycleState.TIMED_OUT,
+          ReviewWorkerLifecycleState.CANCELLED,
+        ),
+      ),
+    )
+    assertTrue(observedProjectionStates.contains(DelegatedReviewWorkerState.AGGREGATED))
+  }
+
+  @Test fun `lifecycle metrics count only explicit process and MCP startup observations`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(
+      config { RecordedWorkerResponse(processStarted = false, mcpStartupObserved = true) },
+      recorder,
+    ).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertEquals(0, projection.metrics.processCount)
+    assertEquals(recorder.nativeLaunches.size, projection.metrics.mcpStartupCount)
+  }
+
+  @Test fun `delegated application launch does not infer MCP startup from model turns`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(config(), recorder).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertTrue(recorder.nativeLaunches.all { !it.mcpStartupProbe.startupObserved() })
+    assertEquals(0, projection.metrics.mcpStartupCount)
+  }
+
+  @Test fun `lifecycle metrics exclude workers whose launcher never crossed process start`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(
+      config { RecordedWorkerResponse(stdout = "", processStarted = false, spawnFailed = true) },
+      recorder,
+    ).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.lastOrNull())
+    assertEquals(0, projection.metrics.processCount)
+    assertEquals(0, projection.metrics.mcpStartupCount)
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_UNAVAILABLE })
+    assertEquals(DelegatedReviewTerminalClassification.BLOCKED_UNSUPPORTED, projection.terminalClassification)
+  }
+
+  @Test fun `startup deadline blocks before provider launch and keeps its scope in durable evidence`() {
+    val recorder = ReviewRecorder()
+    var clockCalls = 0
+    reviewHarness(
+      config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 1,
+          progressIdleMs = 1_000,
+          perWorkerMs = 1_000,
+          aggregationMs = 1_000,
+          wholeReviewMs = 1_000,
+        ),
+      ).copy(monotonicNowNanos = { if (clockCalls++ == 0) 0L else 2_000_000L }),
+      recorder,
+    ).run(harnessRequest())
+
+    assertTrue(recorder.nativeLaunches.isEmpty())
+    assertTrue(
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_TIMED_OUT }
+        .all { it.diagnostic?.summary?.contains("scope=startup") == true },
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_TIMED_OUT })
+  }
+
+  @Test fun `worker timeout persists its deadline scope in bounded diagnostics`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(
+      config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 100,
+          progressIdleMs = 100,
+          perWorkerMs = 1,
+          aggregationMs = 100,
+          wholeReviewMs = 100,
+        ),
+        response = { RecordedWorkerResponse(timedOut = true) },
+      ),
+      recorder,
+    ).run(harnessRequest())
+
+    val timeoutEvents = recorder.lifecycleEvents.filter {
+      it.eventKind == ReviewLifecycleEventKind.WORKER_TIMED_OUT
+    }
+    assertTrue(timeoutEvents.isNotEmpty())
+    assertTrue(timeoutEvents.all { it.diagnostic?.summary?.contains("scope=per_worker") == true })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.TIMED_OUT })
+  }
+
+  @Test fun `progress-idle timeout persists its own deadline scope and timed-out worker state`() {
+    val recorder = ReviewRecorder()
+    val progressIdle = AgentRunLivenessSnapshot(
+      phase = "watchdog",
+      reason = "progress_idle_timeout",
+      processState = "killed",
+      livenessState = GoalRunnerLivenessState.IDLE,
+    )
+    reviewHarness(
+      config { RecordedWorkerResponse(timedOut = true, liveness = progressIdle) },
+      recorder,
+    ).run(harnessRequest())
+
+    val timeoutEvents = recorder.lifecycleEvents.filter {
+      it.eventKind == ReviewLifecycleEventKind.WORKER_TIMED_OUT
+    }
+    assertTrue(timeoutEvents.isNotEmpty())
+    assertTrue(timeoutEvents.all { it.diagnostic?.summary?.contains("scope=progress_idle") == true })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.TIMED_OUT })
+  }
+
+  @Test fun `aggregation deadline blocks with bounded durable diagnostics`() {
+    val recorder = ReviewRecorder()
+    val clock = ReviewTestClock()
+    reviewHarness(
+      config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 100,
+          progressIdleMs = 100,
+          perWorkerMs = 100,
+          aggregationMs = 1,
+          wholeReviewMs = 100,
+        ),
+        response = {
+          clock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = clock::now),
+      recorder,
+    ).run(harnessRequest())
+
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED })
+    assertTrue(
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED }
+        .all { it.diagnostic?.summary?.contains("deadline_scope=aggregation") == true },
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_TIMED_OUT })
+  }
+
+  @Test fun `whole-review deadline blocks after workers complete and preserves completed worker evidence`() {
+    val recorder = ReviewRecorder()
+    val clock = ReviewTestClock()
+    reviewHarness(
+      config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 100,
+          progressIdleMs = 100,
+          perWorkerMs = 100,
+          aggregationMs = 100,
+          wholeReviewMs = 1,
+        ),
+        response = {
+          clock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = clock::now),
+      recorder,
+    ).run(harnessRequest())
+
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED })
+    assertTrue(
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED }
+        .all { it.diagnostic?.summary?.contains("deadline_scope=whole_review") == true },
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_TIMED_OUT })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.COMPLETED })
+  }
+
+  @Test fun `aggregation blocks when a completed worker has no admitted result envelope`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      config { RecordedWorkerResponse(stdout = "") },
+      recorder,
+    ).run(harnessRequest())
+
+    assertFalse(result.lane1.success)
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED })
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_FAILED })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.FAILED })
+  }
+
+  @Test fun `coordinator capacity produces global multi-wave membership`() {
+    val recorder = ReviewRecorder()
+    val manyAreas = (1..8).map { "area-$it" }
+    reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", manyAreas, routingSignals = listOf("*.kt", "*.md"))),
+        diff = diffForPaths("src/Repo.kt"),
+      ),
+      recorder,
+    ).run(harnessRequest())
+
+    val projection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    val workerSlots = 6
+    assertEquals((projection.selectedAreaCount + workerSlots - 1) / workerSlots, projection.predictedWaveCount)
+    assertEquals(projection.predictedWaveCount, projection.actualWaveCount)
+    assertEquals(
+      projection.selectedAreaCount,
+      projection.waves.sumOf { it.workerIds.size },
+    )
+    assertTrue(projection.waves.all { it.workerIds.size <= projection.selectedAreaCount - projection.coordinatorSlots })
+    assertEquals(
+      (1..projection.predictedWaveCount).toList(),
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
+        .mapNotNull { it.waveNumber }
+        .distinct(),
+    )
+  }
+
+  @Test fun `workers in one wave cross the launch boundary concurrently`() {
+    val recorder = ReviewRecorder()
+    val entered = CountDownLatch(2)
+    val inFlight = AtomicInteger(0)
+    val maximumInFlight = AtomicInteger(0)
+    val runner = reviewHarness(
+      config {
+        val active = inFlight.incrementAndGet()
+        maximumInFlight.updateAndGet { current -> maxOf(current, active) }
+        entered.countDown()
+        entered.await(1, TimeUnit.SECONDS)
+        inFlight.decrementAndGet()
+        RecordedWorkerResponse()
+      },
+      recorder,
+    )
+
+    runner.run(harnessRequest())
+
+    assertTrue(maximumInFlight.get() > 1)
+    assertEquals(
+      recorder.nativeLaunches.size,
+      recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED },
+    )
+  }
+
+  private fun config(
+    diff: String = diffForPaths("src/Repo.kt"),
+    budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+    deadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
+    interruptionProbe: () -> Boolean = { false },
+    response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
+      RecordedWorkerResponse()
+    },
+  ) = ReviewHarnessConfig(
+    manifests = listOf(reviewPack("kotlin", areas, routingSignals = listOf("*.kt", "*.md"))),
+    diff = diff,
+    response = response,
+    budget = budget,
+    preflight = {},
+    delegatedReviewDeadlinePolicy = deadlinePolicy,
+    monotonicNowNanos = System::nanoTime,
+    interruptionProbe = interruptionProbe,
+  )
+
+  private class ReviewTestClock {
+    private var nowNanos = 0L
+    private var advance = false
+
+    fun now(): Long {
+      if (advance) nowNanos += 2_000_000L
+      return nowNanos
+    }
+
+    fun advanceAfterWorker() {
+      advance = true
+    }
+  }
+}
+
+class ParallelCodeReviewLifecycleRegressionTest {
+  private val areas = listOf("architecture", "security", "testing")
+
+  @Test fun `interruption before launch records one durable before-launch classification`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      config(interruptionProbe = { true }),
+      recorder,
+    ).run(harnessRequest())
+
+    assertFalse(result.lane1.success)
+    assertTrue(recorder.nativeLaunches.isEmpty())
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    assertEquals(1, recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED })
+  }
+
+  @Test fun `interruption during aggregation records one durable aggregation classification`() {
+    val recorder = ReviewRecorder()
+    var probeCalls = 0
+    reviewHarness(
+      config(interruptionProbe = { ++probeCalls >= 4 }),
+      recorder,
+    ).run(harnessRequest())
+
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_DURING_AGGREGATION,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED })
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.COMPLETED })
+  }
+
+  @Test fun `interruption after aggregation before terminal persistence is classified durably`() {
+    val recorder = ReviewRecorder()
+    var probeCalls = 0
+    reviewHarness(
+      config(interruptionProbe = { ++probeCalls >= 6 }),
+      recorder,
+    ).run(harnessRequest())
+
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_TERMINAL_PERSISTENCE,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED })
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED })
+    assertTrue(recorder.lifecycleProjections.last().workers.all { it.state == DelegatedReviewWorkerState.AGGREGATED })
+  }
+
+  @Test fun `interruption between waves cancels only the unlaunched wave`() {
+    val recorder = ReviewRecorder()
+    var probeCalls = 0
+    reviewHarness(
+      config(
+        diff = diffForPaths("src/Repo.kt"),
+        interruptionProbe = { ++probeCalls >= 3 },
+      ).let { harnessConfig ->
+        harnessConfig.copy(
+          manifests = listOf(
+            reviewPack(
+              "kotlin",
+              (1..8).map { "area-$it" },
+              routingSignals = listOf("*.kt", "*.md"),
+            ),
+          ),
+        )
+      },
+      recorder,
+    ).run(harnessRequest())
+
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BETWEEN_WAVES,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    assertEquals(1, recorder.lifecycleProjections.last().actualWaveCount)
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED })
+    assertTrue(recorder.lifecycleProjections.last().workers.any { it.state == DelegatedReviewWorkerState.CANCELLED })
+  }
+
+  @Test fun `resume after interruption between waves preserves durable wave numbering`() {
+    val recorder = ReviewRecorder()
+    val manyAreas = (1..8).map { "area-$it" }
+    var interruptionCalls = 0
+    val interruptedConfig = config(
+      interruptionProbe = { ++interruptionCalls >= 3 },
+    ).copy(
+      manifests = listOf(
+        reviewPack("kotlin", manyAreas, routingSignals = listOf("*.kt", "*.md")),
+      ),
+    )
+    val request = harnessRequest()
+
+    reviewHarness(interruptedConfig, recorder).run(request)
+    assertEquals(listOf(1), recorder.lifecycleProjections.last().waves.map { it.waveNumber })
+    recorder.lifecycleEvents.removeAll { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED }
+
+    val resumedConfig = interruptedConfig.copy(interruptionProbe = { false })
+    reviewHarness(resumedConfig, recorder).run(request)
+
+    val projection = recorder.lifecycleProjections.last()
+    val expectedWaveNumbers = (1..projection.predictedWaveCount).toList()
+    assertEquals(expectedWaveNumbers, projection.waves.map { it.waveNumber })
+    assertEquals(
+      expectedWaveNumbers,
+      recorder.lifecycleEvents
+        .filter { it.eventKind == ReviewLifecycleEventKind.WORKER_LAUNCHED }
+        .mapNotNull { it.waveNumber }
+        .distinct(),
+    )
+  }
+
+  @Test fun `interrupted coordinator closes the durable worker lifecycle before rethrowing`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(
+      config { throw InterruptedException("coordinator interrupted") },
+      recorder,
+    )
+
+    val result = runner.run(harnessRequest())
+    Thread.interrupted()
+
+    assertTrue(result.lane1.success.not())
+    assertTrue(
+      recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.WORKER_CANCELLED },
+      "An interrupted blocking execution must not leave only a durable WORKER_RUNNING event.",
+    )
+    assertTrue(recorder.lifecycleEvents.any { it.eventKind == ReviewLifecycleEventKind.TERMINAL_CANCELLED })
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_DURING_WORKER,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    assertTrue(
+      recorder.lifecycleProjections.last().workers.any { it.state == DelegatedReviewWorkerState.CANCELLED },
+    )
+  }
+
+  @Test fun `replaying a terminal lifecycle does not append conflicting evidence`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(config(), recorder)
+    val request = harnessRequest()
+
+    runner.run(request)
+    val firstEvents = recorder.lifecycleEvents.toList()
+    runner.run(request)
+
+    assertEquals(firstEvents, recorder.lifecycleEvents)
+    assertEquals(
+      1,
+      recorder.lifecycleEvents.count {
+        it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED
+      },
+    )
+  }
+
+  @Test fun `replaying cancellation reuses its durable boundary classification and repairs the projection`() {
+    val recorder = ReviewRecorder()
+    val request = harnessRequest(reviewRunId = "review-replay-cancellation")
+
+    reviewHarness(config(interruptionProbe = { true }), recorder).run(request)
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+    recorder.lifecycleProjections.clear()
+
+    val replay = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(replay.lane1.failureReason?.contains("interrupted_before_launch") == true)
+    assertTrue(replay.lane2.failureReason?.contains("interrupted_before_launch") == true)
+    assertEquals(
+      DelegatedReviewTerminalClassification.INTERRUPTED_BEFORE_LAUNCH,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+  }
+
+  @Test fun `replaying a terminal record repairs a missing lifecycle projection`() {
+    val recorder = ReviewRecorder()
+    val request = harnessRequest(reviewRunId = "review-replay-projection")
+    reviewHarness(config(), recorder).run(request)
+    val eventsBeforeReplay = recorder.lifecycleEvents.toList()
+    recorder.lifecycleProjections.clear()
+
+    val replay = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(replay.lane1.success && replay.lane2.success)
+    assertEquals(eventsBeforeReplay, recorder.lifecycleEvents)
+    assertEquals(
+      DelegatedReviewTerminalClassification.COMPLETED,
+      recorder.lifecycleProjections.last().terminalClassification,
+    )
+  }
+
+  @Test fun `replaying a terminal record preserves the authoritative token projection`() {
+    val recorder = ReviewRecorder()
+    val request = harnessRequest(reviewRunId = "review-replay-token-projection")
+    reviewHarness(
+      config { RecordedWorkerResponse(usage = ProviderTokenUsage(totalTokens = 123)) },
+      recorder,
+    ).run(request)
+
+    val firstProjection = assertNotNull(recorder.lifecycleProjections.singleOrNull())
+    assertTrue(firstProjection.metrics.totalTokens > 0)
+    val projectionCount = recorder.lifecycleProjections.size
+
+    val replay = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(replay.lane1.success && replay.lane2.success)
+    assertEquals(projectionCount, recorder.lifecycleProjections.size)
+    assertEquals(firstProjection.metrics.totalTokens, recorder.lifecycleProjections.last().metrics.totalTokens)
+  }
+
+  @Test fun `persisted cancellation and timeout remain authoritative on replay`() {
+    listOf(
+      "cancelled" to config(interruptionProbe = { true }),
+      "timed-out" to config(response = { RecordedWorkerResponse(timedOut = true) }),
+    ).forEach { (label, firstConfig) ->
+      val recorder = ReviewRecorder()
+      val request = harnessRequest(reviewRunId = "review-terminal-$label")
+      reviewHarness(firstConfig, recorder).run(request)
+      val eventsBeforeReplay = recorder.lifecycleEvents.toList()
+      val launchesBeforeReplay = recorder.nativeLaunches.size
+
+      val replay = reviewHarness(config(), recorder).run(request)
+
+      assertFalse(replay.lane1.success, "A persisted $label result must remain unsuccessful.")
+      assertFalse(replay.lane2.success, "A persisted $label result must remain unsuccessful.")
+      assertEquals(eventsBeforeReplay, recorder.lifecycleEvents)
+      assertEquals(launchesBeforeReplay, recorder.nativeLaunches.size)
+    }
+  }
+
+  @Test fun `recovery reuses durable aggregation completion when terminal persistence was interrupted`() {
+    val recorder = ReviewRecorder()
+    val runner = reviewHarness(config(), recorder)
+    val request = harnessRequest(reviewRunId = "review-recovery-terminal")
+
+    runner.run(request)
+    val persistedAggregation = recorder.lifecycleEvents.single {
+      it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED
+    }
+    recorder.lifecycleEvents.removeAll { it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED }
+
+    val result = reviewHarness(config(), recorder).run(request)
+
+    assertTrue(result.lane1.success && result.lane2.success)
+    assertEquals(
+      1,
+      recorder.lifecycleEvents.count { it.eventKind == ReviewLifecycleEventKind.AGGREGATION_COMPLETED },
+    )
+    val terminal = recorder.lifecycleEvents.single { it.eventKind == ReviewLifecycleEventKind.TERMINAL_COMPLETED }
+    assertEquals(persistedAggregation.terminalCompletion, terminal.terminalCompletion)
+  }
+
+  @Test
+  fun `replaying a failed aggregation preserves its durable timeout and interruption outcome`() {
+    fun replayWithoutTerminal(label: String, firstConfig: ReviewHarnessConfig, expectedOutcome: ReviewProcessOutcome) {
+      val recorder = ReviewRecorder()
+      val request = harnessRequest(reviewRunId = "review-failed-aggregation-$label")
+      reviewHarness(firstConfig, recorder).run(request)
+      val persistedAggregation = recorder.lifecycleEvents.single {
+        it.eventKind == ReviewLifecycleEventKind.AGGREGATION_FAILED
+      }
+      assertEquals(expectedOutcome, persistedAggregation.processOutcome)
+      recorder.lifecycleEvents.removeAll { it.component == ReviewLifecycleComponent.TERMINAL }
+
+      reviewHarness(config(), recorder).run(request)
+
+      val terminal = recorder.lifecycleEvents.last { it.component == ReviewLifecycleComponent.TERMINAL }
+      assertEquals(expectedOutcome, terminal.processOutcome)
+      assertEquals(expectedOutcome, terminal.terminalCompletion?.status)
+    }
+
+    val timeoutClock = ReviewTestClock()
+    replayWithoutTerminal(
+      label = "timeout",
+      firstConfig = config(
+        deadlinePolicy = DelegatedReviewDeadlinePolicy(
+          startupMs = 100,
+          progressIdleMs = 100,
+          perWorkerMs = 100,
+          aggregationMs = 1,
+          wholeReviewMs = 100,
+        ),
+        response = {
+          timeoutClock.advanceAfterWorker()
+          RecordedWorkerResponse()
+        },
+      ).copy(monotonicNowNanos = timeoutClock::now),
+      expectedOutcome = ReviewProcessOutcome.TIMED_OUT,
+    )
+
+    var interruptionCalls = 0
+    replayWithoutTerminal(
+      label = "interrupted",
+      firstConfig = config(interruptionProbe = { ++interruptionCalls >= 4 }),
+      expectedOutcome = ReviewProcessOutcome.INTERRUPTED,
+    )
   }
 
   @Test fun `excessive lane output terminates only the affected lane with a typed outcome`() {
@@ -250,7 +897,8 @@ class ParallelCodeReviewRegressionTest {
   private fun config(
     diff: String = diffForPaths("src/Repo.kt"),
     budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
-    preflight: (skillbill.ports.review.model.ReviewNativeAgentPreflightRequest) -> Unit = {},
+    deadlinePolicy: DelegatedReviewDeadlinePolicy = DelegatedReviewDeadlinePolicy.DEFAULT,
+    interruptionProbe: () -> Boolean = { false },
     response: (skillbill.ports.review.model.NativeReviewWorkerRequest) -> RecordedWorkerResponse = {
       RecordedWorkerResponse()
     },
@@ -259,8 +907,25 @@ class ParallelCodeReviewRegressionTest {
     diff = diff,
     response = response,
     budget = budget,
-    preflight = preflight,
+    preflight = {},
+    delegatedReviewDeadlinePolicy = deadlinePolicy,
+    monotonicNowNanos = System::nanoTime,
+    interruptionProbe = interruptionProbe,
   )
+
+  private class ReviewTestClock {
+    private var nowNanos = 0L
+    private var advance = false
+
+    fun now(): Long {
+      if (advance) nowNanos += 2_000_000L
+      return nowNanos
+    }
+
+    fun advanceAfterWorker() {
+      advance = true
+    }
+  }
 
   private fun assignedExpansion(path: String) = listOf(
     ReviewPrelaunchExpansion(

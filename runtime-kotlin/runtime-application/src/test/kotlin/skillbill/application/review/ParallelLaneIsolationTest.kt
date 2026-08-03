@@ -119,10 +119,9 @@ class ParallelLaneIsolationTest {
 
   @Test fun `a timed out specialist fails only its own lane and is still accounted`() {
     val recorder = ReviewRecorder()
-    val launchIndex = AtomicInteger()
     val runner = reviewHarness(
       config {
-        if (launchIndex.getAndIncrement() % areas.size == 1) {
+        if (it.broker.accounting().lane.endsWith("security")) {
           RecordedWorkerResponse(exitStatus = null, timedOut = true)
         } else {
           RecordedWorkerResponse(stdout = finding("src/Repo.kt"))

@@ -26,6 +26,7 @@ import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
+import skillbill.ports.persistence.ReviewLifecycleRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
@@ -38,6 +39,8 @@ import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
+import skillbill.ports.review.model.DelegatedReviewLifecycleSnapshot
+import skillbill.ports.review.model.ReviewLifecycleEvent
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -112,7 +115,9 @@ class SQLiteWorkflowStatsRepository(
 
 class SQLiteReviewRepository(
   private val connection: Connection,
-) : ReviewRepository, WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection) {
+) : ReviewRepository,
+  ReviewLifecycleRepository by SQLiteReviewLifecycleRepository(connection),
+  WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection) {
   private companion object {
     const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
   }
@@ -203,6 +208,22 @@ class SQLiteReviewRepository(
 
   override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot =
     ReviewStatsRuntime.statsSnapshot(connection, runId)
+}
+
+private class SQLiteReviewLifecycleRepository(
+  private val connection: Connection,
+) : ReviewLifecycleRepository {
+  override fun appendReviewLifecycleEvent(event: ReviewLifecycleEvent): Boolean =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.append(connection, event)
+
+  override fun loadReviewLifecycleEvents(reviewId: String): List<ReviewLifecycleEvent> =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.load(connection, reviewId)
+
+  override fun saveDelegatedReviewLifecycle(snapshot: DelegatedReviewLifecycleSnapshot) =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.saveLifecycleSnapshot(connection, snapshot)
+
+  override fun loadDelegatedReviewLifecycle(reviewId: String): DelegatedReviewLifecycleSnapshot? =
+    skillbill.infrastructure.sqlite.review.ReviewPersistenceSupport.loadLifecycleSnapshot(connection, reviewId)
 }
 
 class SQLiteLearningRepository(
