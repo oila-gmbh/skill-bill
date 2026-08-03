@@ -264,6 +264,44 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `resume accepts saved planning when a complete subtask's governed spec changed after completion`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val initial = manifest(subtaskCount = 1)
+    harness.sweep.prepare(harness.stateFor(initial), harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec_subtask_1.md", "# Subtask contract reconciled after completion")
+    val resumed = initial.copy(
+      subtasks = initial.subtasks.map { subtask ->
+        if (subtask.id == 1) subtask.copy(status = "complete") else subtask
+      },
+    )
+
+    val outcome = harness.sweep.prepare(harness.stateFor(resumed), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `resume accepts a complete local subtask whose governed spec is deleted`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val initial = manifest(subtaskCount = 2)
+    harness.sweep.prepare(harness.stateFor(initial), harness.request())
+    harness.manifestFileStore.remove("spec_subtask_1.md")
+    val launchCount = harness.launcher.requests.size
+    val resumed = initial.copy(
+      subtasks = initial.subtasks.map { subtask ->
+        if (subtask.id == 1) subtask.copy(status = "complete") else subtask
+      },
+    )
+
+    val outcome = harness.sweep.prepare(harness.stateFor(resumed), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
   fun `non-skipped subtask with an allocated workflow remains planning eligible`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val allocated = manifest(subtaskCount = 1).let { manifest ->

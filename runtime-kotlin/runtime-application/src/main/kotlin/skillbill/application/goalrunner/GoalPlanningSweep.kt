@@ -276,13 +276,12 @@ class DefaultGoalPlanningSweep(
       governedPath,
       shared.dbPathOverride,
     )
-    val subSpecHash = if (manifestFileStore.isRegularFile(path)) {
-      sha256HexUtf8(manifestFileStore.readText(path))
-    } else {
-      require(recovered != null && shared.specSource == SpecSource.LINEAR && subtask.status == "complete") {
-        unresolvedSpecReason(subtask)
-      }
-      recovered.subSpecHash
+    // A complete subtask's plan is never hydrated into a fresh child again, so its stored hash stays
+    // authoritative: a sub-spec edited or deleted after completion must not wedge goal recovery.
+    val subSpecHash = when {
+      recovered != null && subtask.status == "complete" -> recovered.subSpecHash
+      manifestFileStore.isRegularFile(path) -> sha256HexUtf8(manifestFileStore.readText(path))
+      else -> error(unresolvedSpecReason(subtask))
     }
     return GovernedGoalSubtaskDescriptor(
       subtask.id,

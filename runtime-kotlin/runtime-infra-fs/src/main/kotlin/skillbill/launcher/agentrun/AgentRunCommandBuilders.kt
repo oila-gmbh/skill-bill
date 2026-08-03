@@ -145,29 +145,30 @@ private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
       )
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
-      "system" -> if (event.textValue("subtype") == "init") {
-        ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
-      } else {
-        null
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "system" -> if (event.textValue("subtype") == "init") {
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+        } else {
+          null
+        }
+        "assistant", "rate_limit_event" -> if (
+          event.textValue("type") == "rate_limit_event" || event.path("message").path("model").isTextual
+        ) {
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
+        } else {
+          null
+        }
+        "result" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
       }
-      "assistant", "rate_limit_event" -> if (
-        event.textValue("type") == "rate_limit_event" || event.path("message").path("model").isTextual
-      ) {
-        ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
-      } else {
-        null
-      }
-      "result" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.SUCCEEDED,
-      )
-      "error" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.FAILED,
-      )
-      else -> null
-    }
 }
 
 private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
@@ -185,21 +186,22 @@ private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycl
   override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
-      "thread.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
-      "turn.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED, expectedLong = true)
-      "item.started", "item.updated", "item.completed" ->
-        ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT, expectedLong = true)
-      "turn.completed" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.SUCCEEDED,
-      )
-      "error", "turn.failed", "turn.interrupted" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.FAILED,
-      )
-      else -> null
-    }
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "thread.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+        "turn.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED, expectedLong = true)
+        "item.started", "item.updated", "item.completed" ->
+          ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT, expectedLong = true)
+        "turn.completed" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error", "turn.failed", "turn.interrupted" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
+      }
 }
 
 private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycleCallbacks() {
@@ -217,18 +219,19 @@ private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
   override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
-      "partial" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
-      "result" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.SUCCEEDED,
-      )
-      "error" -> ProviderLifecycleSignal(
-        GoalProgressEventKind.OPERATION_COMPLETED,
-        GoalProgressOutcome.FAILED,
-      )
-      else -> null
-    }
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong())
+      ?: when (event.textValue("type")) {
+        "partial" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
+        "result" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.SUCCEEDED,
+        )
+        "error" -> ProviderLifecycleSignal(
+          GoalProgressEventKind.OPERATION_COMPLETED,
+          GoalProgressOutcome.FAILED,
+        )
+        else -> null
+      }
 }
 
 /**

@@ -52,7 +52,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-@Suppress("LargeClass", "LongMethod")
+@Suppress("LargeClass", "LongMethod", "CyclomaticComplexMethod")
 class AgentRunLauncherTest {
   @Test
   fun `supported native reviews keep provider startup and authoritative progress explicit`() {
