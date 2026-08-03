@@ -96,6 +96,10 @@ enum class FeatureTaskRuntimeBackwardEdgeCapScope {
  * One declared backward edge: when [fromPhaseId] settles with [triggeringVerdict], the run re-enters
  * [destinationPhaseId]. [perEdgeCap] bounds re-entries when present; `null` allows reconciliation to
  * continue until the triggering verdict clears. [loopId] names the loop for durable accounting.
+ *
+ * [warnAfterIterations] is advisory metadata, not control flow: an edge that declares it asks the
+ * run loop to warn once when re-entry passes that iteration count while remediation continues. The
+ * transition function never reads it, so an edge carrying it transitions identically to one without.
  */
 data class FeatureTaskRuntimeBackwardEdge(
   val fromPhaseId: String,
@@ -106,8 +110,12 @@ data class FeatureTaskRuntimeBackwardEdge(
   val capExhaustionBehavior: FeatureTaskRuntimeCapExhaustionBehavior =
     FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
   val capScope: FeatureTaskRuntimeBackwardEdgeCapScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
+  val warnAfterIterations: Int? = null,
 ) {
   init {
+    require(warnAfterIterations == null || warnAfterIterations >= 1) {
+      "FeatureTaskRuntimeBackwardEdge.warnAfterIterations must be null or >= 1, was $warnAfterIterations."
+    }
     require(fromPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.fromPhaseId must be non-blank." }
     require(destinationPhaseId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.destinationPhaseId must be non-blank." }
     require(loopId.isNotBlank()) { "FeatureTaskRuntimeBackwardEdge.loopId must be non-blank." }

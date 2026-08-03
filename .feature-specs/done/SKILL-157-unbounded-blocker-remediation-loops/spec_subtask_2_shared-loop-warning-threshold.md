@@ -1,6 +1,6 @@
 # SKILL-157 Subtask 2 - Shared Loop Warning Threshold
 
-Parent spec: [.feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec.md](./spec.md)
+Parent spec: [.feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec.md](spec.md)
 Issue key: SKILL-157
 
 ## Scope

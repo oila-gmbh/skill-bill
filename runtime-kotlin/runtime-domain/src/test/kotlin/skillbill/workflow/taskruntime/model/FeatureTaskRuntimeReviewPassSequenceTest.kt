@@ -5,45 +5,49 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeReviewPassSequenceTest {
+  private val remediationPasses = listOf(2, 3, 5, 10, 47)
+
   @Test
-  fun `auto fans out on pass one and runs the single prompt on the remediation pass`() {
+  fun `pass one keeps the tier its pinned mode resolves to`() {
     assertEquals(
-      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
-      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.AUTO),
+      CodeReviewExecutionMode.DELEGATED,
+      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.AUTO, 1),
+    )
+    assertEquals(
+      CodeReviewExecutionMode.INLINE,
+      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.INLINE, 1),
+    )
+    assertEquals(
+      CodeReviewExecutionMode.DELEGATED,
+      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.DELEGATED, 1),
     )
   }
 
   @Test
-  fun `an explicit mode owns pass one and the remediation pass always runs inline`() {
-    assertEquals(
-      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
-      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.INLINE),
-    )
-    assertEquals(
-      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
-      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.DELEGATED),
-    )
+  fun `every remediation pass runs inline under the remediation rule for any pinned mode`() {
+    CodeReviewExecutionMode.entries.forEach { pinnedMode ->
+      remediationPasses.forEach { passNumber ->
+        val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
+        assertEquals(
+          CodeReviewExecutionMode.INLINE,
+          resolution.resolvedTier,
+          "Pass $passNumber under '$pinnedMode' must review only the remediation delta inline.",
+        )
+        assertEquals(
+          FeatureTaskRuntimeReviewPassSequence.REMEDIATION_PASS_RULE,
+          resolution.decidingRule,
+        )
+      }
+    }
   }
 
   @Test
   fun `auto never resolves silently and names the deciding rule`() {
-    listOf(1, 2).forEach { passNumber ->
-      val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, passNumber)
-      assertTrue(
-        resolution.decidingRule.startsWith("auto_mode_by_pass_number"),
-        "Auto must report the named rule that decided the mode, got '${resolution.decidingRule}'.",
-      )
-    }
     assertEquals(
       "auto_mode_by_pass_number:pass_1_delegated",
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 1).decidingRule,
-    )
-    assertEquals(
-      "auto_mode_by_pass_number:pass_n_inline",
-      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 2).decidingRule,
     )
   }
 
@@ -56,10 +60,6 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
     assertEquals(
       "explicit_delegated_override",
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 1).decidingRule,
-    )
-    assertEquals(
-      FeatureTaskRuntimeReviewPassSequence.REMEDIATION_PASS_RULE,
-      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 2).decidingRule,
     )
   }
 
@@ -76,9 +76,11 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
   }
 
   @Test
-  fun `a pass beyond the durable cap fails loudly`() {
-    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
-      FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.INLINE, 3)
+  fun `a non-positive pass number fails loudly`() {
+    listOf(0, -1, -7).forEach { passNumber ->
+      assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+        FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.INLINE, passNumber)
+      }
     }
   }
 }

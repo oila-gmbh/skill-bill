@@ -14,6 +14,8 @@ import skillbill.application.workflow.repoRoot
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -49,6 +51,7 @@ class FeatureTaskRuntimeRunner(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val phaseGates: FeatureTaskRuntimePhaseGates,
   private val crashReconciler: FeatureTaskRuntimeCrashReconciler,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
@@ -164,6 +167,7 @@ class FeatureTaskRuntimeRunner(
           transitions,
           phaseTokenAccumulator,
         ),
+        diagnostics,
       )
       runRequest.operatorDecision?.let { decision ->
         loop.applyOperatorDecision(decision)?.let { rejection ->

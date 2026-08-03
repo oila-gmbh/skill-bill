@@ -17,8 +17,8 @@ import kotlin.test.assertTrue
  * and `GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION`. Bumping one without the
  * other is a build break, by design.
  *
- * Also validates that reserved_pass_number and completed_pass_count maxima
- * remain at 2 per the bounded loop contract.
+ * Also validates that the pass-accounting fields declare no upper bound, so the
+ * remediation loop terminates on the Blocker disposition rather than a ceiling.
  */
 class GoalSubtaskReviewStateContractVersionTest {
   @Test
@@ -41,22 +41,35 @@ class GoalSubtaskReviewStateContractVersionTest {
   }
 
   @Test
-  fun `reserved_pass_number and completed_pass_count maxima remain at 2`() {
+  fun `pass accounting declares a positive lower bound and no upper bound`() {
     val schemaFile = repoRootFromTest().resolve(GoalSubtaskReviewStateSchemaPaths.REPO_RELATIVE_PATH)
     assertTrue(Files.isRegularFile(schemaFile), "Canonical schema file is missing at $schemaFile.")
 
     val schema: JsonNode = YAMLMapper().readTree(Files.readString(schemaFile))
-    listOf(
-      "reserved_pass_number",
-      "completed_pass_count",
-      "emitted_pass_count",
-    ).forEach { field ->
-      val node: JsonNode = schema.path("properties").path(field).path("maximum")
+    val properties = schema.path("properties")
+    mapOf(
+      "reserved_pass_number" to 1,
+      "completed_pass_count" to 0,
+      "emitted_pass_count" to 0,
+    ).forEach { (field, minimum) ->
+      val property = properties.path(field)
       assertTrue(
-        !node.isMissingNode && node.isIntegralNumber,
-        "Schema must declare $field.maximum as an integer; found: $node",
+        property.path("maximum").isMissingNode,
+        "$field must declare no maximum; a ceiling would re-impose the bounded remediation loop.",
       )
-      assertEquals(2, node.asInt(), "$field.maximum must remain 2.")
+      assertEquals(minimum, property.path("minimum").asInt(), "$field.minimum must be $minimum.")
     }
+
+    val passResults = properties.path("pass_results")
+    assertTrue(passResults.path("maxItems").isMissingNode, "pass_results must accept unboundedly many passes.")
+    assertTrue(
+      passResults.path("items").path("properties").path("pass_number").path("maximum").isMissingNode,
+      "pass_number must accept any positive pass.",
+    )
+    assertEquals(
+      1,
+      passResults.path("items").path("properties").path("pass_number").path("minimum").asInt(),
+      "pass_number must stay a positive integer.",
+    )
   }
 }

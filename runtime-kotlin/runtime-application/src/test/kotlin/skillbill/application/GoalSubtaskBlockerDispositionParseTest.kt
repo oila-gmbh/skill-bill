@@ -60,6 +60,33 @@ class GoalSubtaskBlockerDispositionParseTest {
   }
 
   @Test
+  fun `a remediation pass dispositions blockers its immediately preceding pass introduced`() {
+    // SKILL-157 AC-005: the expected id set is the previous pass's Blockers for any pass, including
+    // one the previous remediation introduced itself. Nothing is keyed to pass one any more.
+    val introducedByPassFour = listOf("F-041", "F-042")
+
+    val parsed = GoalSubtaskReviewSummaryReducer.blockerDispositions(
+      output(
+        mapOf("finding_id" to "F-041", "verdict" to "resolved", "evidence" to listOf("guard restored")),
+        mapOf("finding_id" to "F-042", "verdict" to "unresolved", "evidence" to listOf("still reproduces")),
+      ),
+      priorBlockerFindingIds = introducedByPassFour,
+    )
+    assertEquals(introducedByPassFour, parsed.map { it.findingId })
+
+    val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewSummaryReducer.blockerDispositions(
+        output(mapOf("finding_id" to "F-001", "verdict" to "resolved", "evidence" to listOf("stale round"))),
+        priorBlockerFindingIds = introducedByPassFour,
+      )
+    }
+    assertTrue(
+      error.message.orEmpty().contains("F-001"),
+      "A disposition against an older round's Blocker must be rejected by name.",
+    )
+  }
+
+  @Test
   fun `a prior blocker does not require a disposition`() {
     assertEquals(
       emptyList(),

@@ -560,11 +560,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
     val reviewFixIterations = loopEdges.filter { it.loopId == "review_fix" }.mapNotNull { it.edgeIteration }
     val auditGapIterations = loopEdges.filter { it.loopId == "audit_gap" }.mapNotNull { it.edgeIteration }
-    // The audit-gap counter is independent and reached 1; review-fix consumed the only later review.
+    // The audit-gap counter is independent and reached 1; the re-review then approved, so review-fix
+    // stopped on the verdict rather than on any count.
     assertEquals(listOf(1), auditGapIterations)
     assertTrue(reviewFixIterations.all { it == 1 })
-    assertEquals(1, reviewFixIterations.size, "the shared two-pass budget prevents a third review")
-    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" }, "review-fix consumed pass two")
+    assertEquals(1, reviewFixIterations.size, "the approving re-review settled the loop after one fix")
+    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" }, "one fix earned one re-review")
   }
 
   @Test

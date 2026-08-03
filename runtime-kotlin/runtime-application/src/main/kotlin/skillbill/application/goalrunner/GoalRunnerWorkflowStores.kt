@@ -97,7 +97,6 @@ import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
@@ -2126,13 +2125,8 @@ private fun validatedGoalReviewPasses(
       .envelope
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
-    val expectedVerdict = if (pass.passNumber == 2 && outcome.unresolvedFindingCount > 0) {
-      FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED
-    } else {
-      outcome.verdict
-    }
     if (
-      pass.verdict != expectedVerdict ||
+      pass.verdict != outcome.verdict ||
       pass.unresolvedFindingCount != outcome.unresolvedFindingCount ||
       pass.findings != findings
     ) {

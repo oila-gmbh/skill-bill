@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
@@ -153,11 +154,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
-    assertEquals(1, edge.perEdgeCap)
-    assertEquals(
-      FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
-      edge.capExhaustionBehavior,
-    )
+    assertNull(edge.perEdgeCap, "The Blocker disposition, not a finite cap, terminates the remediation loop.")
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds

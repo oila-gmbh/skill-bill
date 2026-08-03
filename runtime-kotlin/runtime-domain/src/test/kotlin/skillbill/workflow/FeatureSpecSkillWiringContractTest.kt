@@ -211,7 +211,7 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `prose review lanes share the two-pass cap while decomposed children retain cap continuation`() {
+  fun `prose review lanes count as one pass while decomposed children retain durable pass continuation`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runner = Files.readString(
@@ -226,14 +226,14 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(runner, "The coordinated lanes are exactly one pass")
     assertContains(nativeAgents, "Invoke both lanes directly and do not pass a parallel argument into either lane")
     assertContains(runner, "resume that accounted pass instead of reserving another")
-    assertContains(prose, "never start pass three")
+    assertContains(prose, "no pass number ends\nthe loop")
     assertContains(
       prose,
       "Continue past Major, Minor, and Nit findings while preserving them as review evidence",
     )
     assertContains(
       runner,
-      "preserve complete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
+      "preserve\ncomplete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
     )
     assertContains(runner, "class/symbol-or-sanitized label, and concise text")
     assertContains(
@@ -242,26 +242,27 @@ class FeatureSpecSkillWiringContractTest {
     )
     assertContains(
       prose,
-      "The two-pass cap applies to every feature task",
+      "This applies to every feature task",
     )
     assertContains(
       prose,
-      "and standalone prose feature tasks stop only when their inline re-review still\n" +
-        "has unresolved Blocker findings",
+      "standalone prose feature tasks advance only after every Blocker finding clears",
     )
   }
 
   @Test
   fun `the four governed feature surfaces state one audit-first order and reserve locations for the ledger`() {
-    val surfaces = mapOf(
-      "skills/bill-feature-goal/content.md" to "Review runs delegated first and inline second.",
-      "skills/bill-feature-task-runtime/content.md" to
-        "Review runs as a delegated pass followed by an inline pass.",
-      "skills/bill-feature-task-prose/content.md" to "Execute review delegated first and inline second.",
-      "skills/bill-feature-task-subtask-runner/content.md" to "Review is delegated first, then inline.",
+    val passSequence =
+      "Review pass one uses the selected mode, and every later pass runs inline against the " +
+        "remediation delta via `context:feature-remediation`."
+    val surfaces = listOf(
+      "skills/bill-feature-goal/content.md",
+      "skills/bill-feature-task-runtime/content.md",
+      "skills/bill-feature-task-prose/content.md",
+      "skills/bill-feature-task-subtask-runner/content.md",
     )
 
-    surfaces.forEach { (path, passSequence) ->
+    surfaces.forEach { path ->
       val content = Files.readString(repoRootFromTest().resolve(path))
       assertContains(content, "implement -> audit -> review -> validate", message = "$path phase order")
       assertContains(content, passSequence, message = "$path pass sequence")

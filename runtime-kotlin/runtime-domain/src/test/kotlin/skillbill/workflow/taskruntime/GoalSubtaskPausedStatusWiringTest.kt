@@ -6,12 +6,12 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,9 +20,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * AC-013 and AC-014: an unresolved Blocker disposition pauses the subtask on SKILL-141's existing
- * non-terminal resumable status rather than a second pause mechanism, and the operator decision is
- * only accepted from that state.
+ * A paused subtask rides SKILL-141's existing non-terminal resumable status rather than a second
+ * pause mechanism. Since SKILL-157 no pass count mints the pause: the operator's own decision opens
+ * it against any subtask still carrying an unresolved Blocker, which is the unbounded remediation
+ * loop's only escape.
  */
 class GoalSubtaskPausedStatusWiringTest {
   @Test
@@ -58,7 +59,26 @@ class GoalSubtaskPausedStatusWiringTest {
   }
 
   @Test
-  fun `an operator decision outside the paused state is rejected`() {
+  fun `an operator decision opens the pause on an unresolved Blocker without any cap`() {
+    val unresolved = firstPass().reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = emptyList(),
+      blockerDispositions = listOf(
+        GoalSubtaskBlockerDisposition("F-001", GoalSubtaskBlockerDispositionVerdict.UNRESOLVED, listOf("still")),
+      ),
+    )
+
+    assertTrue(!unresolved.pausedForOperatorDecision, "A settled remediation pass never pauses itself.")
+    assertTrue(unresolved.acceptsOperatorDecision)
+
+    val decided = unresolved.applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
+    assertTrue(decided.pausedForOperatorDecision, "The decision is what opens the pause.")
+    assertEquals(GoalSubtaskPauseRelease.RETRY_FIX, decided.pauseRelease)
+  }
+
+  @Test
+  fun `an operator decision with no unresolved Blocker is rejected`() {
     val resolvedPass = initialState().reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
@@ -107,9 +127,9 @@ class GoalSubtaskPausedStatusWiringTest {
 
     val reopened = consumed.reserveNextPass()
     assertEquals(
-      GOAL_SUBTASK_REVIEW_MAX_PASSES,
+      2,
       reopened.reservedPassNumber,
-      "A retry round re-opens the consumed final pass; it never reserves a pass beyond the cap.",
+      "A retry round re-opens the pass it was granted against; it never allocates an extra one.",
     )
     assertTrue(!reopened.pausedForOperatorDecision, "Re-opening clears the stale pause.")
 
@@ -121,11 +141,16 @@ class GoalSubtaskPausedStatusWiringTest {
         GoalSubtaskBlockerDisposition("F-001", GoalSubtaskBlockerDispositionVerdict.RESOLVED, listOf("fixed")),
       ),
     )
-    assertEquals(GOAL_SUBTASK_REVIEW_MAX_PASSES, settled.completedPassCount)
+    assertEquals(2, settled.completedPassCount)
     assertTrue(!settled.retryReviewPending, "A settled round is no longer pending.")
     assertTrue(!settled.pausedForOperatorDecision, "Every Blocker resolved, so the subtask advances.")
   }
 
+  /**
+   * SKILL-157 removed the pass ceiling, so no pass count mints a pause: an unresolved Blocker
+   * reserves the next remediation pass instead. The pause survives only as an operator-driven
+   * control over an already-settled pass, which is the state this builds directly.
+   */
   private fun pausedState() = firstPass().reserveNextPass().completeReservedPass(
     verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
     unresolvedFindingCount = 1,
@@ -137,9 +162,8 @@ class GoalSubtaskPausedStatusWiringTest {
         evidence = listOf("still reproduces at the same seam"),
       ),
     ),
-  )
+  ).copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
 
-  // The pause is only reachable on the final pass, so pass one must be consumed first.
   private fun firstPass() = initialState().reserveNextPass().completeReservedPass(
     verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
     unresolvedFindingCount = 1,

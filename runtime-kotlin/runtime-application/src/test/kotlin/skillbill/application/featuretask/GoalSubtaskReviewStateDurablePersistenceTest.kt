@@ -11,7 +11,6 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -19,9 +18,11 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -98,7 +99,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val reloaded = assertNotNull(recorder.reviewState(workflowId))
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "review_base_sha is immutable across the pause.")
     assertEquals(listOf("scratch/untracked.txt"), reloaded.baselineUntrackedPaths)
-    assertEquals(GOAL_SUBTASK_REVIEW_MAX_PASSES, reloaded.completedPassCount)
+    assertEquals(2, reloaded.completedPassCount)
     assertNull(reloaded.reservedPassNumber, "A consumed pass must never be re-reserved by a plain resume.")
   }
 
@@ -166,6 +167,42 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           evidence = listOf("still reproduces at the same seam"),
         ),
       ),
+      // Since SKILL-157 no pass count mints the pause; the operator control is applied directly.
+    ).copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
+  }
+
+  @Test
+  fun `a crash mid-remediation resumes the same reserved high pass without allocating another`() {
+    val reservedNinth = deepRemediationState(completedPasses = 8).reserveNextPass()
+    val recorder = recorderWith(reservedNinth)
+
+    val reloaded = assertNotNull(recorder.reviewState(workflowId))
+    assertEquals(9, reloaded.reservedPassNumber, "Resume must reuse the pass the crashed attempt reserved.")
+    assertEquals(8, reloaded.completedPassCount)
+    assertEquals(
+      (1..8).toList(),
+      reloaded.passResults.map { it.passNumber },
+      "Watermarks must stay contiguous across the crash.",
     )
+
+    val reReserved = recorder.reserveGoalReviewPass(workflowId)
+    val inFlight = assertIs<GoalSubtaskReviewPassInFlight>(reReserved)
+    assertEquals(9, inFlight.state.reservedPassNumber, "A resumed reservation is reused, never re-allocated.")
+  }
+
+  private fun deepRemediationState(completedPasses: Int): GoalSubtaskReviewState {
+    var state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = listOf("scratch/untracked.txt"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    )
+    repeat(completedPasses) {
+      state = state.reserveNextPass().completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = emptyList(),
+      )
+    }
+    return state
   }
 }

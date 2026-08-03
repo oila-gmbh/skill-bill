@@ -1,6 +1,6 @@
 # SKILL-157 Subtask 3 - Governed Prose And Validation Parity
 
-Parent spec: [.feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec.md](./spec.md)
+Parent spec: [.feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec.md](spec.md)
 Issue key: SKILL-157
 
 ## Scope

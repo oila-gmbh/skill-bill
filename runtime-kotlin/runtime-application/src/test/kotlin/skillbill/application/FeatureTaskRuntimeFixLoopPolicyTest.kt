@@ -22,6 +22,13 @@ import kotlin.test.assertTrue
  */
 class FeatureTaskRuntimeFixLoopPolicyTest {
   @Test
+  fun `the malformed-output correction cap stays pinned at three`() {
+    // SKILL-157 uncapped the two remediation loops. This cap is unrelated to them and must not drift
+    // along with that change, so it is pinned by literal rather than by the constant it guards.
+    assertEquals(3, FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS)
+  }
+
+  @Test
   fun `the mutating implement phase is a bounded fix-loop under the idempotency contract`() {
     // SKILL-85 Subtask 3 (AC2): implement now participates in the bounded fix loop because the
     // mutating-phase idempotency contract makes re-entry safe (reconcile-to-target, no double-apply).

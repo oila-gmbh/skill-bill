@@ -192,7 +192,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "review_scope: branch_diff")
     // SKILL-142 AC-012: pass two is bounded to the materialized remediation delta. The immutable-base
     // framing is pass one's authority and must not be restated here, or the two would contradict.
-    assertContains(prompt, "Reserved remediation pass (pass two)")
+    assertContains(prompt, "Reserved remediation pass (pass 2)")
     assertFalse(prompt.contains("Immutable-base review scope"))
     assertContains(prompt, "${"0".repeat(40)}")
     assertContains(prompt, "tracked delta")

@@ -9,9 +9,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Quarantine-and-regenerate is the declared migration story. A record written at any pre-SKILL-159
- * contract version carries the old review-mode semantics, so it loud-fails at the read seam rather
- * than being silently migrated or reinterpreted.
+ * Quarantine-and-regenerate is the declared migration story. A record written at any pre-SKILL-157
+ * contract version carries the old two-pass remediation ceiling, so it loud-fails at the read seam
+ * rather than being silently migrated or reinterpreted.
  */
 class GoalSubtaskReviewStateLegacyContractTest {
   private fun currentRecord() = GoalSubtaskReviewState.initial(
@@ -22,7 +22,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
 
   @Test
   fun `every legacy contract version loud-fails through the typed error with no silent migration`() {
-    listOf("0.1", "0.2").forEach { legacyVersion ->
+    listOf("0.1", "0.2", "0.3").forEach { legacyVersion ->
       val legacy = currentRecord().toMutableMap().apply { put("contract_version", legacyVersion) }
 
       val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
@@ -36,9 +36,9 @@ class GoalSubtaskReviewStateLegacyContractTest {
   }
 
   @Test
-  fun `a legacy record is never reinterpreted under the new mode semantics`() {
+  fun `a legacy record is never reinterpreted under the unbounded pass semantics`() {
     val legacy = currentRecord().toMutableMap().apply {
-      put("contract_version", "0.2")
+      put("contract_version", "0.3")
       put("code_review_mode", "inline")
     }
 
@@ -48,7 +48,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
   }
 
   @Test
-  fun `the durable contract version is the post-rename 0_3`() {
-    assertEquals("0.3", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
+  fun `the durable contract version is the unbounded-remediation 0_4`() {
+    assertEquals("0.4", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
 }

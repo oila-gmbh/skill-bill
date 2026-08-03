@@ -43,7 +43,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       prompt.contains("## Immutable-base review scope"),
       "The immutable-base scope block is pass one's authority only.",
     )
-    assertContains(prompt, "## Reserved remediation pass (pass two)")
+    assertContains(prompt, "## Reserved remediation pass (pass 2)")
   }
 
   @Test

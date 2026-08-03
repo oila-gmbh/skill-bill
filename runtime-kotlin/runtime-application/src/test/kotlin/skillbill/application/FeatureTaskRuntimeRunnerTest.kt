@@ -43,6 +43,8 @@ import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -1265,104 +1267,79 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
   }
 }
 
-// Recovery from a capped review whose verdict no longer describes the working tree, split from
-// FeatureTaskRuntimeRunnerPersistenceTest so each class stays within its size budget while sharing
-// the same file-private run harness.
-class FeatureTaskRuntimeCappedReviewRecoveryTest {
+// The goal-subtask remediation loop's durable review generation: SKILL-157 retired the two-pass
+// ceiling, so no verdict is ever settled by cap exhaustion and there is no capped generation to
+// reopen. What survives is the loop terminating on the Blocker clearing, each pass dispositioning its
+// immediately preceding pass, and the reviewed-delta digest recording what the settled pass judged.
+// Split from FeatureTaskRuntimeRunnerPersistenceTest so each class stays within its size budget while
+// sharing the same file-private run harness.
+class FeatureTaskRuntimeRemediationGenerationTest {
+  // AC-002/AC-005/AC-006: three passes, each dispositioning the one before it, converge on the pass
+  // that clears the Blocker — no cap settles the verdict and no pause is minted along the way.
   @Test
-  fun `a capped review holds on an unchanged delta and reopens once the reviewed delta changes`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-reopen")
+  fun `remediation converges on the clearing pass with each pass dispositioning the one before it`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-remediation-converge")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     var reviewLaunches = 0
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      cappedReviewLauncher {
+      remediationReviewLauncher {
         reviewLaunches += 1
         reviewLaunches
       },
     )
 
-    // SKILL-142: a cap exhausted with an unresolved Blocker disposition pauses for the bounded
-    // operator decision rather than blocking, and the pause is as authoritative on replay.
-    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
     )
-    assertEquals("review", paused.pausedPhase)
-    val cappedLaunches = reviewLaunches
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(3, reviewLaunches, "two blocking passes each earned a re-review before the clearing pass")
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(3, reviewState.completedPassCount)
+    assertEquals(listOf(1, 2, 3), reviewState.passResults.map { it.passNumber })
+    assertFalse(reviewState.reviewCapReached, "no cap exhaustion can settle an unbounded loop")
+    assertFalse(reviewState.pausedForOperatorDecision, "convergence never parks the subtask on a decision")
     assertEquals(
       harness.reviewedDeltaDigest(),
       harness.currentReviewDeltaDigest(git, repoRoot),
-      "the paused review must retain the digest of the unchanged delta it judged",
-    )
-
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(
-      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
-    )
-    assertEquals(
-      cappedLaunches,
-      reviewLaunches,
-      "an unchanged delta leaves the capped verdict authoritative and launches no review",
-    )
-
-    val repaired = GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = "0".repeat(40),
-        trackedDelta = "diff --git a/Repaired.kt b/Repaired.kt",
-        ownedUntrackedPatches = "",
-      ),
-    )
-    repeat(2) { git.goalReviewBuildResults += repaired }
-    assertTrue(
-      harness.ledgerRows.any { it.severity == "blocker" },
-      "the capped generation leaves blocker rows the reopened generation must retract",
-    )
-
-    val reopened = harness.runner.run(harness.request())
-    assertTrue(
-      reviewLaunches > cappedLaunches,
-      "a changed delta reopens the capped review instead of replaying its stale verdict: $reopened",
-    )
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(reopened)
-    assertTrue(
-      harness.ledgerRows.isEmpty(),
-      "invalidating the capped generation retracts its rows, which restarted pass numbering can no " +
-        "longer supersede: ${harness.ledgerRows}",
+      "the settled pass records the digest of the delta it judged",
     )
   }
 
+  // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
+  // so a resume neither re-reviews converged work nor allocates another pass.
   @Test
-  fun `a capped review recorded before the digest existed reopens once instead of wedging`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-capped-review-legacy")
+  fun `a resumed settled subtask replays its review without relaunching it or reserving another pass`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-remediation-resume")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     var reviewLaunches = 0
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      cappedReviewLauncher {
+      remediationReviewLauncher {
         reviewLaunches += 1
         reviewLaunches
       },
     )
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
-    val cappedLaunches = reviewLaunches
-    harness.stripReviewedDeltaDigest()
+    val settledLaunches = reviewLaunches
+    val settledPassCount = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)).completedPassCount
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertTrue(
-      reviewLaunches > cappedLaunches,
-      "a cap that cannot prove what it judged is not authoritative and reopens",
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
+
+    assertEquals(settledLaunches, reviewLaunches, "a settled review is replayed, never relaunched")
     assertEquals(
-      harness.reviewedDeltaDigest(),
-      harness.currentReviewDeltaDigest(git, repoRoot),
-      "the reopened pass records the digest that makes the next unchanged resume block",
+      settledPassCount,
+      requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)).completedPassCount,
+      "the resume allocates no further pass",
     )
   }
 }
@@ -2935,28 +2912,55 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
+  // AC-001/AC-002: the Blocker, never an iteration count, terminates the loop. A review that keeps
+  // raising a Blocker keeps earning remediation passes well past the retired two-pass ceiling, and the
+  // first Blocker-free pass advances however many rounds preceded it.
   @Test
-  fun `m1 unresolved Blocker at cap blocks with review findings preserved`() {
-    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 99))
+  fun `m1 an unresolved Blocker remediates past every retired cap and advances on the first clear pass`() {
+    val convergeOnReview = 12
+    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = convergeOnReview))
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, REVIEW_BLOCKER_MESSAGE)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(
       launched.indexOf("audit") < launched.indexOf("review"),
       "audit settles satisfied before review is reachable",
     )
-    assertEquals(1, launched.count { it == "implement_fix" }, "the fix ran once")
-    assertEquals(2, launched.count { it == "review" }, "the initial and inline review consumed the budget")
+    assertEquals(convergeOnReview, launched.count { it == "review" }, "every blocking pass earned a re-review")
+    assertEquals(
+      convergeOnReview - 1,
+      launched.count { it == "implement_fix" },
+      "every blocking pass earned its own remediation pass",
+    )
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals(2, reviewRecord.reviewPassNumber)
-    assertContains(requireNotNull(reviewRecord.outputArtifact), REVIEW_BLOCKER_MESSAGE)
+    assertEquals(convergeOnReview, reviewRecord.reviewPassNumber, "the pass watermark climbs past two")
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
-    assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
+    assertEquals(
+      (1 until convergeOnReview).toList(),
+      loopEdges.mapNotNull { it.edgeIteration },
+      "the review_fix edge fires contiguously with no finite ceiling",
+    )
+  }
+
+  // AC-001: the same loop re-entered at iterations 1, 2, 4, and 10 keeps remediating; no count settles it.
+  @Test
+  fun `m1 review_fix re-enters implement_fix at every iteration an unresolved Blocker survives`() {
+    listOf(1, 2, 4, 10).forEach { blockingPasses ->
+      val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = blockingPasses + 1))
+
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+      val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+        .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+        .mapNotNull { it.edgeIteration }
+      assertEquals(
+        (1..blockingPasses).toList(),
+        edgeIterations,
+        "$blockingPasses blocking passes must each re-enter implement_fix",
+      )
+    }
   }
 
   // (f) AC5/AC10: an idempotent re-entry — implement_fix's reconciliation gate is enforced, so a fix
@@ -3040,12 +3044,24 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertTrue(edgeIterations.all { it <= 1 }, "the cap is never exceeded across the crash")
   }
 
+  // AC-007 with AC-001: a durable fix already completed at the reserved iteration is re-reviewed rather
+  // than re-run (no double-applied mutation), and once that reserved iteration is spent a surviving
+  // Blocker earns the NEXT remediation pass instead of the loop replaying the reviewed fix forever.
   @Test
-  fun `m1 cap-exhausted review_fix loop blocks on resume without relaunching the fix`() {
+  fun `m1 review_fix loop resumed at a prior iteration keeps remediating instead of blocking on a cap`() {
+    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "review") reviewFindingsOutput(changesRequested = true) else validJsonOutput(phaseId))
+        when (phaseId) {
+          // The unbounded loop terminates on the Blocker clearing, never on the iteration count, so
+          // the resumed review raises it twice and then settles it.
+          "review" -> {
+            reviewLaunches += 1
+            facts(reviewFindingsOutput(changesRequested = reviewLaunches <= 2))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
       },
     )
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
@@ -3058,11 +3074,23 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
     assertTrue(launched.none { it == "audit" }, "the seeded satisfied audit is reused, not relaunched")
-    assertTrue(launched.none { it == "implement_fix" })
+    assertEquals(
+      1,
+      launched.count { it == "implement_fix" },
+      "the reserved iteration-1 fix is re-reviewed, not re-run; only iteration 2 launches a fix",
+    )
+    assertEquals(3, launched.count { it == "review" })
+    val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
+      .mapNotNull { it.edgeIteration }
+    assertEquals(
+      listOf(2),
+      edgeIterations,
+      "the seeded iteration-1 watermark no longer exhausts the edge; the next pass is minted",
+    )
   }
 
   @Test
@@ -4218,7 +4246,10 @@ private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 // model a repository that has commits.
 // Review returns a Blocker for the first two passes, then approves; every remediation pass carries the
 // evidenced disposition the parse seam requires for the prior pass's Blocker.
-private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
+// Pass one raises a Blocker, pass two still finds it unresolved and raises its own, pass three clears
+// it. Every remediation pass dispositions the Blocker ids of its IMMEDIATELY PRECEDING pass — the ids
+// the parse seam mints from that pass's durable result — not pass one's forever.
+private fun remediationReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
   RuntimeRecordingLauncher { request ->
     val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
     if (phaseId == "review") {
@@ -4226,7 +4257,7 @@ private fun cappedReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLaunche
       facts(
         reviewFindingsOutput(
           changesRequested = launch <= 2,
-          dispositionedBlockerIds = if (launch > 1) listOf("pass1-blocker-1") else emptyList(),
+          dispositionedBlockerIds = if (launch > 1) listOf("pass${launch - 1}-blocker-1") else emptyList(),
         ),
       )
     } else {
@@ -4364,6 +4395,7 @@ internal fun runnerHarness(
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
   crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
+  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ): RunnerHarness {
   val specScratchStore = RecordingSpecScratchStore()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
@@ -4397,6 +4429,7 @@ internal fun runnerHarness(
       runtimeConfig.planningProjectionValidator,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
+    diagnostics,
   )
   // Always capture events; a caller-supplied sink is chained after the capture.
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
@@ -4659,7 +4692,7 @@ internal fun reviewFindingsOutput(
 // The real M1 review_fix launcher: review returns changes_requested findings until [convergeOnReview]
 // (1-based review launch index at which it first approves); a value above the cap never converges.
 // implement_fix and every other phase return their schema-valid reconciled output.
-private fun reviewFixLauncher(
+internal fun reviewFixLauncher(
   convergeOnReview: Int,
   onReviewLaunch: (Int) -> Unit = {},
   onPhaseLaunch: (String) -> Unit = {},

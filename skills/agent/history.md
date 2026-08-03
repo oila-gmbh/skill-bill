@@ -1,3 +1,13 @@
+## [2026-08-03] SKILL-157 subtask 3 — governed prose and validation parity for unbounded remediation
+Areas: skills/bill-feature-task-runtime, skills/bill-feature-task-prose, skills/bill-feature-goal, skills/bill-feature-task-subtask-runner, runtime-kotlin/runtime-domain
+- Removed every governed claim that review is capped at two passes; review and audit remediation now loop until Blocker and Major findings are cleared, with crossing iteration 3 into 4 printing an advisory warning rather than terminating the loop.
+- Review pass one keeps the caller-selected mode; every later pass runs inline, so remediation re-reviews never re-fan-out specialists.
+- Regeneration loops stay bounded (MAX_RECORD_REGENERATION_ATTEMPTS=2, three regeneration edges): "unbounded" applies only to review/audit fix loops. reusable distinction for future loop-governance work.
+- Parity is test-enforced, not prose-only: `UnboundedRemediationLoopGovernedContentTest` binds the runtime advisory threshold, asserts semantic fix-loop edges carry no finite per-edge cap, and denylists legacy cap vocabulary across `skills/` and `platform-packs/`; red-checks confirmed each assertion fails on drift. reusable PATTERN: when documented behavior must match a runtime constant, assert the constant from the governed markdown rather than restating it.
+- Known limitation: `./install.sh` staging refresh is deferred to the parent goal boundary per the goal-continuation installer prohibition, so local installs lag until the goal finalizes.
+Feature flag: N/A
+Acceptance criteria: 6/7 implemented (AC#6 install.sh refresh deferred to the goal boundary)
+
 ## [2026-07-25] SKILL-142 subtask 4 — lane severity calibration test infrastructure
 Areas: runtime-kotlin/runtime-infra-fs, skills/bill-code-review
 - Fixed `ReviewSkillStructureConformanceTest.kt` compilation: added YAMLMapper import, helper functions `manifest()` and `declaredAreas()` for manifest parsing, converted string-labeled blocks to kotlin.test assertions. All 9 tests pass.

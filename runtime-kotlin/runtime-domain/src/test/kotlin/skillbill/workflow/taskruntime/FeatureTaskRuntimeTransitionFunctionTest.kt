@@ -461,23 +461,33 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review outcomes advance toward validation and never reopen audit`() {
+  fun `review remediation re-enters implement_fix at any iteration and never reopens audit`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val cap = requireNotNull(
+    assertEquals(
+      null,
       shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }.perEdgeCap,
+      "The review_fix edge declares no finite iteration cap.",
     )
-    // A review fix pass re-enters implement_fix, not audit.
-    val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED),
+    // An unresolved Blocker re-enters implement_fix at every iteration count, never audit and never
+    // a count-derived advance to validate.
+    listOf(0, 1, 3, 9, 24).forEach { priorIterations ->
+      val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(
+          def.PHASE_REVIEW,
+          FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+          edgeIterationCount = priorIterations,
+        ),
+      )
+      assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId, "iteration $priorIterations re-enters implement_fix")
+      assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
+      assertEquals(priorIterations + 1, fix.edgeIteration)
+    }
+    // The first Blocker-free result advances regardless of how many remediation passes ran.
+    val approved = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED, edgeIterationCount = 24),
     )
-    assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId)
-    assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
-    // Review pass exhaustion advances to validate rather than minting an audit_gap edge.
-    val exhausted = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edgeIterationCount = cap),
-    )
-    assertEquals(def.PHASE_VALIDATE, exhausted.phaseId)
-    assertEquals(null, exhausted.loopId)
+    assertEquals(def.PHASE_VALIDATE, approved.phaseId)
+    assertEquals(null, approved.loopId)
     // The implement_fix leg returns to review, still never to audit.
     assertEquals(
       def.PHASE_REVIEW,

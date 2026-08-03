@@ -9,8 +9,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * SKILL-142 AC-010 to AC-014 and AC-017: the evidenced per-Blocker disposition, not cap exhaustion,
- * terminates the bounded remediation loop.
+ * SKILL-142 AC-010 to AC-014 and AC-017, carried to the SKILL-157 unbounded loop: the evidenced
+ * per-Blocker disposition, never a pass count, decides whether remediation continues.
  */
 class GoalSubtaskBlockerDispositionTest {
   private fun reservedPassTwo(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
@@ -43,8 +43,8 @@ class GoalSubtaskBlockerDispositionTest {
   }
 
   @Test
-  fun `an unresolved blocker pauses resumably instead of blocking`() {
-    val paused = reservedPassTwo().completeReservedPass(
+  fun `an unresolved blocker reserves the next remediation pass instead of pausing or blocking`() {
+    val unresolved = reservedPassTwo().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
@@ -53,9 +53,15 @@ class GoalSubtaskBlockerDispositionTest {
         disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED),
       ),
     )
-    assertTrue(paused.pausedForOperatorDecision)
-    assertFalse(paused.reviewCapReached, "Pause and cap-exhaustion block are mutually exclusive.")
-    assertEquals(1, paused.unresolvedBlockerDispositions.size)
+    assertFalse(unresolved.pausedForOperatorDecision, "The unbounded loop remediates instead of pausing itself.")
+    assertFalse(unresolved.reviewCapReached, "No pass count exhausts the remediation loop.")
+    assertEquals(1, unresolved.unresolvedBlockerDispositions.size)
+    assertEquals(2, unresolved.completedPassCount)
+    assertEquals(3, unresolved.reserveNextPass().reservedPassNumber)
+    assertTrue(
+      unresolved.acceptsOperatorDecision,
+      "An operator may still take over a subtask carrying an unresolved Blocker.",
+    )
   }
 
   @Test

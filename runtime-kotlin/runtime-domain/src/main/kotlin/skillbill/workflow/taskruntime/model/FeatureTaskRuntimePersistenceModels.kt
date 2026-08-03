@@ -427,8 +427,8 @@ data class FeatureTaskRuntimePhaseRecord(
       }
     }
     reviewPassNumber?.let { pass ->
-      require(phaseId == "review" && pass in 1..2) {
-        "FeatureTaskRuntimePhaseRecord.reviewPassNumber must be 1 or 2 and present only for review."
+      require(phaseId == "review" && pass >= 1) {
+        "FeatureTaskRuntimePhaseRecord.reviewPassNumber must be >= 1 and present only for review."
       }
     }
   }

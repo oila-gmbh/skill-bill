@@ -21,7 +21,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_MAX_PASSES
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -110,7 +109,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       )
       return@transaction GoalSubtaskReviewPassReserved(retryReopened)
     }
-    if (state.reviewCapReached || state.reviewSkippedByUser || state.completedPassCount >= 2) {
+    if (state.reviewCapReached || state.reviewSkippedByUser) {
       return@transaction GoalSubtaskReviewPassCarryForward(state)
     }
     if (state.reservedPassNumber != null) {
@@ -239,10 +238,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation) = durable
     // Pass one is unchanged: the immutable review_base_sha and baseline untracked inventory stay its
-    // sole authority. Only the reserved remediation pass is rescoped, to diff(pre-fix tree -> HEAD),
-    // so the scope union the prompt states has a materialized input behind it.
+    // sole authority. Every remediation pass from two onward is rescoped to that round's
+    // diff(pre-fix tree -> HEAD), so the scope union the prompt states has a materialized input
+    // behind it.
     val remediationBaseline = state.remediationBaseSha
-      ?.takeIf { state.reservedPassNumber == GOAL_SUBTASK_REVIEW_MAX_PASSES }
+      ?.takeIf { (state.reservedPassNumber ?: 0) >= 2 }
       // The baseline untracked inventory is the exclusion list, not a per-pass detail: dropping it
       // would materialize every untracked file in the worktree into the pass-two input as an owned
       // change. Only the base sha is rescoped.

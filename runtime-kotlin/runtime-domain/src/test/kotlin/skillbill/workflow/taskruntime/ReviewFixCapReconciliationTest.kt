@@ -7,12 +7,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * SKILL-142 AC-017: `implement_fix` keeps `perEdgeCap = 1`, but the Blocker disposition rather than
- * cap exhaustion decides termination, so a child can never both advance on cap exhaustion and pause
- * on an unresolved Blocker.
+ * SKILL-157: `review_fix` declares no finite cap. The unresolved Blocker signal alone drives
+ * re-entry into `implement_fix`, and the first Blocker-free review advances however many remediation
+ * rounds preceded it.
  */
 class ReviewFixCapReconciliationTest {
   private val transitions = FeatureTaskRuntimePhaseWorkflowDefinition.transitions
@@ -21,41 +22,55 @@ class ReviewFixCapReconciliationTest {
     edge.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
   }
 
-  private fun transitionAtCap(unresolvedBlockerPresent: Boolean) = FeatureTaskRuntimeTransitionFunction.nextTransition(
-    declaration = transitions,
-    currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-    verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-    edgeIterationCount = 1,
-    context = FeatureTaskRuntimeTransitionContext(
-      settledVerdictsByPhaseId = mapOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to FeatureTaskRuntimeVerdict.SATISFIED,
+  private fun transitionAt(iteration: Int, verdict: FeatureTaskRuntimeVerdict) =
+    FeatureTaskRuntimeTransitionFunction.nextTransition(
+      declaration = transitions,
+      currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      verdict = verdict,
+      edgeIterationCount = iteration,
+      context = FeatureTaskRuntimeTransitionContext(
+        settledVerdictsByPhaseId = mapOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to FeatureTaskRuntimeVerdict.SATISFIED,
+        ),
       ),
-      unresolvedBlockerPresent = unresolvedBlockerPresent,
-    ),
-  )
+    )
 
   @Test
-  fun `the review fix edge keeps its cap of one and its per-subtask scope`() {
-    assertEquals(1, reviewFixEdge.perEdgeCap)
+  fun `the review fix edge declares no finite cap and keeps its per-subtask scope`() {
+    assertNull(reviewFixEdge.perEdgeCap, "A finite cap would re-impose the two-pass ceiling.")
     assertEquals(
-      FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER,
+      FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
       reviewFixEdge.capExhaustionBehavior,
+      "An uncapped edge never exhausts, so it must not declare an advance-or-pause exhaustion rule.",
     )
   }
 
   @Test
-  fun `a child with zero blockers still advances on cap exhaustion`() {
-    val transition = transitionAtCap(unresolvedBlockerPresent = false)
-    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(transition)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE, next.phaseId)
+  fun `an unresolved blocker re-enters implement_fix at every iteration count`() {
+    listOf(0, 1, 3, 9, 24, 199).forEach { consumed ->
+      val transition = transitionAt(consumed, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED)
+      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        transition,
+        "Iteration ${consumed + 1} must re-enter the fix loop, not settle.",
+      )
+      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)
+      assertEquals(consumed + 1, next.edgeIteration)
+      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID, next.loopId)
+    }
   }
 
   @Test
-  fun `a child with an unresolved blocker pauses rather than advancing or blocking`() {
-    val transition = transitionAtCap(unresolvedBlockerPresent = true)
-    val paused = assertIs<FeatureTaskRuntimeNextPhase.TerminalPause>(transition)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID, paused.loopId)
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, paused.unresolvedVerdict)
+  fun `the first blocker-free review advances however many rounds preceded it`() {
+    listOf(0, 1, 4, 12, 40).forEach { consumed ->
+      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        transitionAt(consumed, FeatureTaskRuntimeVerdict.APPROVED),
+      )
+      assertEquals(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        next.phaseId,
+        "An approved review after $consumed remediation rounds must advance normally.",
+      )
+    }
   }
 
   @Test
@@ -66,18 +81,5 @@ class ReviewFixCapReconciliationTest {
       "paused" !in definition.terminalStatuses,
       "Pause is SKILL-141's resumable status, not a terminal one.",
     )
-  }
-
-  @Test
-  fun `the first fix attempt still runs before any pause`() {
-    val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
-      declaration = transitions,
-      currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      edgeIterationCount = 0,
-      context = FeatureTaskRuntimeTransitionContext(unresolvedBlockerPresent = true),
-    )
-    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(transition)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)
   }
 }
