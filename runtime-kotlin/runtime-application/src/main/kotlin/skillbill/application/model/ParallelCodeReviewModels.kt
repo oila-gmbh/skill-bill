@@ -44,8 +44,8 @@ data class ParallelCodeReviewRequest(
       "A supplied diff requires paired baseRevision and headRevision immutable identities."
     }
     resolvedTier?.let { tier ->
-      require(tier == CodeReviewExecutionMode.INLINE || tier == CodeReviewExecutionMode.DELEGATED) {
-        "resolvedTier must be either INLINE or DELEGATED, got $tier."
+      require(tier != CodeReviewExecutionMode.AUTO) {
+        "resolvedTier must be a concrete mode, got $tier."
       }
       require(codeReviewMode == CodeReviewExecutionMode.AUTO || codeReviewMode == tier) {
         "Both parallel review lanes must share one resolved depth tier: lane 1 resolved to " +

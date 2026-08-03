@@ -38,6 +38,6 @@ class GoalSubtaskRemediationBaseShaTest {
   private fun initialState() = GoalSubtaskReviewState.initial(
     reviewBaseSha = "a".repeat(40),
     baselineUntrackedPaths = emptyList(),
-    codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    codeReviewMode = CodeReviewExecutionMode.INLINE,
   )
 }

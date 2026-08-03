@@ -31,7 +31,7 @@ sections:
       Inspect both the changed files and repo markers before routing.
 
       Resolve the scope before routing. If the caller asks for staged changes, route and review only the staged diff; do not let unstaged edits expand the findings beyond repo-marker stack detection.
-      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `inline`; malformed, repeated, unknown, or conflicting values fail before review work begins. Explicit `auto` also resolves to `inline` in every context, including first and later feature-task passes, oversized or high-risk diffs, and layered stacks; retain the applicable named auto rule only for auditable metadata. An explicit, defaulted, or auto-resolved `inline` request runs the light depth tier in the current context — one agent walking every manifest-declared review area and required baseline area as an explicit checklist at reduced depth under a bounded budget, without spawning specialists or fabricating lane totals, and never presented as equivalent coverage to delegated. Diff signals focus each area's inspection but never remove a declared area; record areas with no applicable signal as checked with no applicable signal. Only an explicit `delegated` request follows delegated routing, and it must never fall back inline if workers are unavailable.
+      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `delegated`; malformed, repeated, unknown, or conflicting values fail before review work begins. Explicit `auto` resolves through `auto_mode_by_pass_number` wherever a review pass number exists — pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline` — and through `auto_mode_default` to `delegated` for a standalone review with no pass number; diff size, risk, and stack layering never change that resolution, and the applicable named auto rule is retained for auditable metadata. An explicit or auto-resolved `inline` request runs the light depth tier in the current context — one agent walking every manifest-declared review area and required baseline area as an explicit checklist at reduced depth under a bounded budget, without spawning specialists or fabricating lane totals, and never presented as equivalent coverage to delegated. Diff signals focus each area's inspection but never remove a declared area; record areas with no applicable signal as checked with no applicable signal. An explicit, defaulted, or auto-resolved `delegated` request follows delegated routing, and it must never fall back inline if workers are unavailable.
 
   - heading: Local Review Learnings
     body: |
@@ -96,7 +96,7 @@ sections:
       - the changed files or diff source
       - the detected stack and key signals
       - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
-      - the parent thread's model when the runtime supports delegated-worker model inheritance
+      - the parent thread's model when the harness supports delegated-specialist model inheritance
       - the delegated skill name and rendered runtime instructions
       - the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
       - the delegated skill's `review-orchestrator.md` contract when the routed pack is a stack review orchestrator

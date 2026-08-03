@@ -160,7 +160,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
         issueKey = "SKILL-56",
         repoRoot = runtime.request().repoRoot,
         invokedAgentId = INVOKED_AGENT,
-        codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
         parallelReviewAgent = "claude",
       ),
     )
@@ -170,20 +170,20 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
     assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts.single(), "bill-code-review mode:delegated")
+    assertContains(reviewPrompts.single(), "bill-code-review mode:inline")
     assertContains(reviewPrompts.single(), "Combine it with `parallel:claude`")
     assertContains(reviewPrompts.single(), "durable base `${"0".repeat(40)}`")
     assertContains(reviewPrompts.single(), "committed, staged, unstaged, and owned untracked changes")
     assertContains(reviewPrompts.single(), "Do not use `origin/main...HEAD`")
-    assertEquals(CodeReviewExecutionMode.DELEGATED, runtime.runInvariantsStore.resolve(workflowId)?.codeReviewMode)
+    assertEquals(CodeReviewExecutionMode.INLINE, runtime.runInvariantsStore.resolve(workflowId)?.codeReviewMode)
     assertTrue(outcomes.acknowledgedReviewPasses.all { (_, passNumber) -> passNumber <= 2 })
   }
 
   @Test
-  fun `standalone and goal child preserve delegated parallel review composition`() {
+  fun `standalone and goal child preserve parallel review composition`() {
     val parity = standaloneAndGoalChildParity(
       launcher = ::defaultPhaseAwareLauncher,
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
       parallelReviewAgent = "claude",
     )
 
@@ -193,7 +193,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       parity.authoritativeOutcome(),
     ).reviewComposition
     assertEquals(1, reviews.size)
-    assertContains(reviews.single(), "bill-code-review mode:delegated|parallel:claude")
+    assertContains(reviews.single(), "bill-code-review mode:inline|parallel:claude")
     assertContains(reviews.single(), "durable base `${"0".repeat(40)}`")
     assertContains(reviews.single(), "committed, staged, unstaged")
   }
@@ -762,7 +762,7 @@ private fun standaloneAndGoalChildParity(
   gitOperations: () -> RecordingWorkflowGitOperations = {
     RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
   },
-  codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DELEGATED,
+  codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.INLINE,
   parallelReviewAgent: String? = null,
   acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 ): GoalChildParityRun {

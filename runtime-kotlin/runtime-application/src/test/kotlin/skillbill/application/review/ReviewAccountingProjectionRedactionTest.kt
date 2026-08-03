@@ -15,20 +15,20 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class ReviewAccountingProjectionRedactionTest {
-  private val forbidden = listOf("DIFF_SECRET", "SOURCE_SECRET", "RUBRIC_SECRET", "TOOL_OUTPUT_SECRET")
+  private val forbidden = listOf("DIFF_SECRET", "RUBRIC_SECRET", "TOOL_OUTPUT_SECRET")
 
   @Test fun `projection of a real review contains bounded metadata and no content bodies`() {
     val (recorder, recorded) = recordedReview()
     val serialized = recorded.toBoundedPayload().toString()
 
     assertTrue(
-      recorder.nativeLaunches.isNotEmpty() &&
-        recorder.nativeLaunches.all { launch -> forbidden.dropLast(1).all { launch.prompt.contains(it) } },
+      recorder.parentPrompts.isNotEmpty() &&
+        recorder.parentPrompts.all { prompt -> forbidden.dropLast(1).all { prompt.contains(it) } },
       "The projection proof needs a run whose prompts actually carried the content bodies.",
     )
     forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
     assertEquals(
-      recorder.nativeLaunches.size * 1_000L,
+      recorder.parentPrompts.size * 1_000L,
       recorded.aggregateDirectUsage.inputTokens,
       "The measured provider dimensions survive the projection the bodies do not.",
     )
@@ -107,7 +107,7 @@ class ReviewAccountingProjectionRedactionTest {
     assertTrue(failure is IllegalArgumentException, "Content-bearing accounting payload must fail loudly.")
   }
 
-  /** A production review run whose diff, rubric, brokered source, and lane result all carry secrets. */
+  /** A production review run whose diff, rubric, and lane result all carry secrets. */
   private fun recordedReview(): Pair<ReviewRecorder, ReviewAccountingSummary> {
     val recorder = ReviewRecorder()
     val result = reviewHarness(
@@ -120,7 +120,6 @@ class ReviewAccountingProjectionRedactionTest {
             usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
-        evidenceBody = { "SOURCE_SECRET ".repeat(8) },
         rubricBody = { "RUBRIC_SECRET ".repeat(8) },
       ),
       recorder,

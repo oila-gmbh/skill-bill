@@ -8,7 +8,7 @@ description: Use when you want a generic code-review entry point that detects th
 ## Review mode argument
 
 Recognize at most one `mode:auto`, `mode:inline`, or `mode:delegated` argument.
-Omission means `mode:inline`.
+Omission means `mode:delegated`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
@@ -21,11 +21,11 @@ branch/PR scope, or no bounded remediation scope.
 review. Report the requested mode and the resolved depth in the normal review
 metadata.
 
-`delegated` is the explicit full-depth review. `delegated` always runs the normal routed delegated path
+`delegated` is the default full-depth review. `delegated` always runs the normal routed delegated path
 including specialist selection, launching one worker per routed area. Inability
 to launch a required native worker blocks loudly; it never degrades to inline.
 
-`inline` is the default light tier: one agent in the current context, no specialist
+`inline` is the single-prompt light tier: one agent in the current context, no specialist
 workers, no nested baseline orchestrator, under a bounded budget. Build the
 checklist from every review area declared by the routed pack and every required
 baseline layer in its manifest composition. Walk every declared area once at
@@ -39,10 +39,10 @@ to justify having looked. An inline result lists every declared area with its
 checked status and states that specialist depth was not applied; never present
 it as equivalent to a delegated result.
 
-`auto` resolves to `inline` for every review pass and for standalone reviews,
-including oversized, high-risk, and layered-stack scopes. Preserve and report
-the applicable named auto rule for telemetry, but it never escalates to
-delegated execution. Only an explicit `delegated` selection launches workers.
+`auto` resolves to `delegated` for the first review pass of a subtask and for
+standalone reviews that carry no pass number, and to `inline` for every
+follow-up or remediation pass. Preserve and report the applicable named auto
+rule for telemetry.
 
 Depth is the only thing the light tier lowers. The severity vocabulary, the
 finding admission gate, the evidence and observable-consequence requirements, the
@@ -62,6 +62,33 @@ When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args 
 Lane 1 is the routed stack-specific review, run in this session at the resolved depth. At delegated depth it recursively flattens required baseline composition into direct specialist assignments and launches the resulting non-empty lanes; at inline depth it runs the single-agent light pass and launches no specialists. It never launches a nested baseline orchestrator. "In this session" only distinguishes it from lane 2; at delegated depth it does **not** mean a single in-thread read by the current agent. Lane 2 is the named agent, launched as a background subprocess via its CLI; it also runs `bill-code-review mode:<selected-mode>` in full and independently applies the same flattened planning contract. Do not pass `parallel:` into lane 2. Findings are merged deterministically by the `skill-bill code-review-merge` CLI so the output is machine-readable by downstream tooling.
 
 When the argument is absent, consult the repo-local config fallback (next section) before falling through to normal shell behaviour.
+
+## Single-prompt inline review
+
+When the resolved mode is `inline`, run exactly one review prompt in the current
+context. Do not launch a specialist worker, a nested baseline orchestrator, or a
+second review lane; only an explicit `parallel:<agent>` adds a second lane, and
+that lane is itself a single prompt at the same resolved mode.
+
+Scope is the child-owned delta the caller materialized: the diff from the
+immutable `review_base_sha` to current HEAD, minus the baseline-untracked
+inventory the caller supplied. Treat that delta as authoritative. Do not
+substitute `origin/main...HEAD`, a merge base, the full feature branch, or a
+rediscovered scope. Under `context:feature-remediation` the delta is the
+remediation diff instead, and the same single-prompt rule applies.
+
+Build the checklist from every review area declared by the routed pack and every
+required baseline layer in its manifest composition, and walk each area once at
+reduced depth. Record `checked — no applicable signal` for an area whose
+diff-signal is empty rather than dropping it.
+
+Report through the existing contract, unchanged: the same severity vocabulary,
+the same finding admission gate, the same evidence and observable-consequence
+requirements, and the same `[F-XXX] Severity | Confidence | location |
+description` risk-register lines the delegated path emits. The findings ledger,
+triage, and `skillbill_review_finished` telemetry consume an inline result
+exactly as they consume a delegated one. State that specialist depth was not
+applied; never present the result as equivalent to a delegated result.
 
 ## Config Fallback (when `parallel:` is absent)
 
@@ -188,7 +215,7 @@ Prepare discovery once at the parent, flatten layered composition into direct la
 Invoke `/bill-code-review` as a slash command — it handles all specialist routing automatically.
 
 **If you are `codex`:**
-Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Run selected subagents in deterministic waves. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
+Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Launch selected subagents in a deterministic order. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.
 
 Prepare the compact shared review-context packet from `review-delegation.md` once. Use its ordered flattened lane assignments without rediscovery and spawn only selected non-empty specialists; never spawn a baseline orchestrator. Give each worker only its broker projection, lane assignment, and applicable rubric. Packet facts are authoritative; workers must not repeat repository, scope, stack, routing, guidance, learnings, or telemetry discovery.
 

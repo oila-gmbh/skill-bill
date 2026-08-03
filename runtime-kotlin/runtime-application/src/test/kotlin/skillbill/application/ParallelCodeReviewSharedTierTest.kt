@@ -28,13 +28,10 @@ class ParallelCodeReviewSharedTierTest {
   fun `lane 2 receives the same tier lane 1 resolved to`() {
     val resolved = request(CodeReviewExecutionMode.AUTO, CodeReviewExecutionMode.INLINE)
     assertEquals(CodeReviewExecutionMode.INLINE, resolved.lane2Tier)
-
-    val delegated = request(CodeReviewExecutionMode.AUTO, CodeReviewExecutionMode.DELEGATED)
-    assertEquals(CodeReviewExecutionMode.DELEGATED, delegated.lane2Tier)
   }
 
   @Test
-  fun `a light lane paired with a full-depth lane is rejected before either lane starts`() {
+  fun `a removed delegated tier can no longer be represented on either lane`() {
     assertFailsWith<IllegalArgumentException> {
       request(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE)
     }

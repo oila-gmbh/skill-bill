@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
 
@@ -14,6 +15,7 @@ const val FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY: String = "feature_ta
 
 @OpenBoundaryMap("Feature-task-runtime run-invariants artifact map at the durable workflow-artifact seam")
 fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedMapOf(
+  "contract_version" to FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION,
   "spec_reference" to specReference,
   "feature_size" to featureSize.name,
   "acceptance_criteria" to acceptanceCriteria,
@@ -31,6 +33,7 @@ fun FeatureTaskRuntimeRunInvariants.toArtifactMap(): Map<String, Any?> = linkedM
 /** Strict decode of the durable run-invariants artifact. */
 @OpenBoundaryMap("Feature-task-runtime run-invariants decode from the durable workflow-artifact map")
 fun featureTaskRuntimeRunInvariantsFromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeRunInvariants {
+  raw.requireRunInvariantsContractVersion()
   val specReference = raw.requireInvariantStringField("spec_reference")
   val featureSize = raw.requireFeatureSizeField("feature_size")
   val acceptanceCriteria = raw.requireInvariantStringListField("acceptance_criteria")
@@ -87,6 +90,21 @@ private fun Map<String, Any?>.optionalAgentAddonSelection(): AgentAddonSelection
     )
   } catch (error: IllegalArgumentException) {
     throw InvalidWorkflowStateSchemaError("Agent add-on selection is invalid: ${error.message}", error)
+  }
+}
+
+private fun Map<String, Any?>.requireRunInvariantsContractVersion() {
+  val declared = this["contract_version"]
+    ?: runInvariantSchemaError(
+      "Feature-task-runtime run-invariants artifact is missing 'contract_version'; records written " +
+        "before $FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION carry pre-SKILL-159 " +
+        "code_review_mode semantics and must be quarantined and regenerated, not reinterpreted.",
+    )
+  if (declared != FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION) {
+    runInvariantSchemaError(
+      "Feature-task-runtime run-invariants artifact declares contract version '$declared'; this " +
+        "runtime only reads $FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION.",
+    )
   }
 }
 

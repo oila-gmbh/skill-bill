@@ -189,7 +189,7 @@ class IosPlatformPackTest {
       "build outputs",
       "non-stack/non-iOS files",
     ).forEach { marker -> assertContains(baseline, marker) }
-    assertContains(baseline, "deterministic, capacity-bounded waves")
+    assertContains(baseline, "as subagents in this harness in a deterministic order")
     assertContains(baseline, "retain every selected specialist result")
     assertContains(baseline, "attributed merge")
     assertContains(baseline, "without losing evidence")

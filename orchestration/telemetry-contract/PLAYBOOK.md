@@ -7,19 +7,16 @@ description: Single source of truth for shared telemetry event semantics, orches
 
 ## Delegated lifecycle evidence
 
-Delegated review telemetry consumes a bounded lifecycle evidence package. It keeps process/MCP
-heartbeat observations, provider output metadata, declared specialist progress, durable worker
-progress, aggregation state, and terminal state as separate fields. It never persists prompts,
-complete diffs, raw transcripts, or tool logs.
+Review telemetry consumes bounded mode accounting. It keeps the resolved mode, the routed areas
+selected and completed, launched and failed lanes, and terminal state as separate fields. It never
+persists prompts, complete diffs, raw transcripts, or tool logs.
 
-For delegated review, lifecycle telemetry is a bounded measurement projection,
-not the progress authority. It may report elapsed time, token dimensions,
-process count, observable MCP startup count, selected and completed areas,
-worker loss, predicted and actual waves, deadline scope/outcome, and
-aggregation completeness. Durable lifecycle rows decide progress, aggregation,
-and terminal status. The SKILL-145 decision keeps inline as default and
-`auto` inline; telemetry cannot promote a provider or turn an unsupported
-provider into an inline fallback.
+`delegated` is the default review — specialist subagent fan-out inside the invoking agent's harness.
+`inline` is the single-prompt review in the current context. `auto` resolves to `delegated` on pass
+one and for any scope with no pass number, and to `inline` on every follow-up or remediation pass.
+Telemetry reports which mode produced the result, including the applicable named `auto` rule, and
+records that specialist depth was not applied for an inline result; it never rewrites the resolved
+mode or substitutes one mode for another.
 
 This is the canonical telemetry contract for skill-bill skills. Installed skills consume it through a generated sibling `telemetry-contract.md` support pointer inside each staged skill directory, so changes here propagate to every linked skill after render/install refresh.
 

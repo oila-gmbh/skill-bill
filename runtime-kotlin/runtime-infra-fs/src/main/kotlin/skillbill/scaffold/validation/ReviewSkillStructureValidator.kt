@@ -164,8 +164,8 @@ internal object ReviewSkillStructureValidator {
         add(violation(file, "scoping exclusions"))
       }
       if (!containsAll(discipline, "severity", "precondition")) add(violation(file, "finding discipline"))
-      if (!containsAll(composedMixedDiffs, "deterministic", "wave", "capacity")) {
-        add(violation(file, "deterministic wave batching"))
+      if (!containsAll(composedMixedDiffs, "deterministic", "subagent", "harness")) {
+        add(violation(file, "deterministic subagent launch ordering"))
       }
       if (!containsAll(composedMixedDiffs, "retain", "every selected", "result")) {
         add(violation(file, "selected specialist result retention"))

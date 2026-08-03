@@ -185,9 +185,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "codex"),
       "phase override" to listOf("--phase-agent", "plan=codex"),
-      "delegated parallel review" to listOf(
+      "parallel review agent" to listOf(
         "--code-review-mode",
-        "delegated",
+        "inline",
         "--parallel-review-agent",
         "codex",
       ),
@@ -222,9 +222,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "claude"),
       "phase override" to listOf("--phase-agent", "plan=claude"),
-      "delegated parallel review" to listOf(
+      "parallel review agent" to listOf(
         "--code-review-mode",
-        "delegated",
+        "inline",
         "--parallel-review-agent",
         "claude",
       ),
@@ -1483,16 +1483,33 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       val reviewPrompt = launcher.requests
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .single { it.contains("Phase: review") }
-      // Auto never reaches the review skill unresolved; it resolves inline by the named rule.
+      // Omission resolves to the delegated fan-out, and auto resolves to delegated on pass one by
+      // the named rule; neither reaches the review skill unresolved.
       val forwardedMode = when (expectedMode) {
-        "omitted", "auto" -> "inline"
+        "omitted", "auto" -> "delegated"
         else -> expectedMode
       }
       assertContains(reviewPrompt, "bill-code-review mode:$forwardedMode")
       if (expectedMode == "auto") {
-        assertContains(reviewPrompt, "auto_depth_by_pass_number")
+        assertContains(reviewPrompt, "auto_mode_by_pass_number:pass_1_delegated")
       }
     }
+  }
+
+  @Test
+  fun `feature-task runtime rejects an unknown review mode before workflow opening`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex", "--code-review-mode", "external")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Unknown code-review execution mode 'external'")
+    assertEquals(emptyList(), launcher.requests)
+    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
   }
 
   @Test
@@ -1500,7 +1517,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
     listOf(
       "missing" to listOf("--code-review-mode"),
       "duplicate" to listOf("--code-review-mode", "auto", "--code-review-mode", "auto"),
-      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "delegated"),
+      "conflicting" to listOf("--code-review-mode", "inline", "--code-review-mode", "auto"),
     ).forEach { (caseName, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
@@ -2336,7 +2353,7 @@ class CursorAgentRuntimeCliTest {
           "--agent",
           "codex",
           "--code-review-mode",
-          "delegated",
+          "inline",
           "--parallel-review-agent",
           "cursor",
         ),

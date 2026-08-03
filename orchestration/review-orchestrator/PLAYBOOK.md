@@ -5,37 +5,30 @@ description: Single source of truth for shared stack-specific code-review orches
 
 # Shared Code Review Orchestrator Contract
 
-## Lifecycle evidence
+## Modes this contract backs
 
-Delegated lifecycle evidence is durable and bounded. The coordinator records preparation and queue
-admission, workers record identity-bound launch and terminal outcomes, aggregation records readiness
-separately from terminal completion, and recovery reads `review_lifecycle_events`. Process/MCP
-heartbeats, provider output, and declared progress are observations; only a typed durable worker
-progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
-complete diffs, raw transcripts, or tool logs.
+`delegated` is the default review: the reviewing agent fans the routed areas out
+to specialist subagents inside its own harness, and this specialist contract is
+what each of those subagents is held to. `inline` is the single-prompt review —
+one prompt in the current context over the child-owned delta, no fan-out — and it
+is held to the same finding bar, severity vocabulary, and report structure stated
+below. `auto` resolves by pass number: pass one, and any scope with no pass
+number, resolve to `delegated`; every follow-up or remediation pass resolves to
+`inline`.
 
-Capacity planning persists `total_process_slots`, `coordinator_slots`, and
-`worker_slots = total_process_slots - coordinator_slots` before workers are
-assigned to deterministic waves. Restart admission uses those persisted values
-and the predicted wave count rather than live configuration. Aggregation admits
-only the durable selected assignment set with matching worker/provider/attempt
-identities, valid finding envelopes, and complete declared-area coverage. A
-missing or duplicate result is a bounded aggregation failure, not an invitation
-to repair or rediscover scope.
+## Lane accounting
 
-The provider failure matrix records independent dispositions for capacity,
-bootstrap measurement, each deadline scope, bounded diagnostic repair, actual
-wave telemetry, and promotion thresholds. Shared lifecycle enforcement does not
-promote an experimental provider or alter another provider's launch strategy.
+Fan-out accounting is bounded and in-harness. The parent records, per launched
+lane, the routed area, the assignment it was launched with, and its terminal
+outcome; aggregation admits only the selected lane set with valid finding
+envelopes and complete declared-area coverage. A missing or duplicate lane result
+is a bounded aggregation failure, not an invitation to repair or rediscover scope.
+Lane accounting never carries prompts, complete diffs, raw transcripts, or tool
+logs.
 
-SKILL-145 keeps the policy explicit: inline is the default, `auto` resolves to
-inline, and delegated review requires an explicit opt-in. Codex, Claude, and
-Cursor remain experimental; Junie, Copilot, Opencode, and Zcode are
-unsupported. Unsupported delegated requests terminate explicitly without an
-inline substitute. The complete classification, historical ledger, and
-promotion gate live in the governed SKILL-145 decision and reliability
-contract; this playbook consumes those boundaries and does not infer support
-from another provider.
+If the harness cannot launch the required subagent lanes, stop and report that
+delegated review is unavailable here. A delegated selection is never silently
+substituted with an inline pass.
 
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
@@ -69,10 +62,10 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
-- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:inline`.
+- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`.
 - It also accepts at most one governed caller context, `context:feature-remediation`. This context is valid only with `mode:inline` for a bounded feature-task re-review of the supplied remediation delta. Reject it with any other mode or scope.
 - Reject malformed, unknown, repeated, or conflicting `mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
-- `auto` resolves to `inline` in every context. Preserve its named deciding rule in metadata without escalating from size, risk, layering, or pass number.
+- `auto` resolves by pass number: pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline`, and a scope with no pass number resolves to `delegated`. Preserve its named deciding rule in metadata; size, risk, and layering never change the resolution.
 - `inline` is authoritative as the light depth tier: one agent in the current context, no specialist workers, walking every manifest-declared area and required baseline area as an explicit checklist once each at reduced depth under a bounded budget. Diff signals focus an area's inspection but never drop that area. It is not equivalent depth to delegated, and the inline result says so. Do not spawn specialists, invent lane totals, refuse the request, or silently change it to another mode.
 - `context:feature-remediation` bounds pass two to the supplied remediation delta — the prior Blocker findings union the pre-fix-to-post-fix diff — rather than the full base-to-current delta. The immutable `review_base_sha` and baseline untracked inventory remain the authority for pass one only. The pass emits an evidenced `resolved`, `unresolved`, or `superseded` disposition for every prior Blocker. This context lowers depth and scope only; it does not weaken finding severity, evidence, admission, or approval rules.
 - Only an explicit `delegated` selection performs normal specialist selection and launch. Launch the required delegated workers using `review-delegation.md`; if a worker cannot start, stop loudly. Never fall back to inline.
@@ -86,9 +79,9 @@ Each lane receives only its assignment, bounded rubric, immutable identifiers, a
 
 Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
-- `auto` resolves through exactly one named rule, reported in review metadata alongside the inline tier. `auto` never resolves silently.
-- `auto_depth_by_pass_number` is authoritative wherever a review pass number exists and resolves every pass to `inline`.
-- `auto_depth_default` is the named standalone fallback rule and resolves every scope to `inline`, including oversized, high-risk, mixed-stack, and layered scopes.
+- `auto` resolves through exactly one named rule, reported in review metadata alongside the resolved mode. `auto` never resolves silently.
+- `auto_mode_by_pass_number` is authoritative wherever a review pass number exists: pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline`.
+- `auto_mode_default` is the named standalone fallback rule and resolves every scope with no pass number to `delegated`.
 - Inline mode must walk every area declared by the routed manifest and required baseline composition deliberately, using each area's governed rubric as a checklist in the current context; do not collapse the review into a generic skim or omit an area because its specialist would not have been selected.
 
 ## Shared Learnings Context

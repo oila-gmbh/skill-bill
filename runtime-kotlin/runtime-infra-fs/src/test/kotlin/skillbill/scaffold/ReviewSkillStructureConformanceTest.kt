@@ -183,8 +183,8 @@ class ReviewSkillStructureConformanceTest {
     assertContentRuleViolation(
       pack,
       "code-review/bill-fixture-code-review/content.md",
-      nondeterministicWaveBatching,
-      "deterministic wave batching",
+      nondeterministicSubagentOrdering,
+      "deterministic subagent launch ordering",
     )
     assertContentRuleViolation(
       pack,
@@ -499,7 +499,7 @@ private val fixtureBaseline = """
 
       Keep the baseline specialists for the whole review and use lightweight file-level classification.
       Exclude generated, vendored, and non-stack files from each specialist's scope.
-      When selected specialists exceed worker capacity, run them in deterministic waves and retain every selected specialist result.
+      Launch selected specialists as subagents in this harness in a deterministic order and retain every selected specialist result.
 
       ## Finding Discipline
 
@@ -582,9 +582,9 @@ private val undisciplinedBaseline = fixtureBaseline.replace(
   "Calibrate severity and verify each precondition.",
   "Merge the findings.",
 )
-private val nondeterministicWaveBatching = fixtureBaseline.replace(
-  "run them in deterministic waves",
-  "run them as capacity allows",
+private val nondeterministicSubagentOrdering = fixtureBaseline.replace(
+  "as subagents in this harness in a deterministic order",
+  "however the runtime happens to schedule them",
 )
 private val droppedSelectedResults = fixtureBaseline.replace(
   "retain every selected specialist result",

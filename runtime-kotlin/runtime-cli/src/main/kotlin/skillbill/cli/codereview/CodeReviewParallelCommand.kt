@@ -15,6 +15,7 @@ import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -78,7 +79,8 @@ class CodeReviewParallelCommand(
   ).multiple()
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: inline (default), auto, or delegated.",
+    help = "Shared execution mode for both lanes: delegated (default, specialist fan-out), " +
+      "inline (one review prompt per lane), or auto.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
   private val baselineUntrackedIncludes by option(
     "--baseline-untracked-include",
@@ -171,11 +173,7 @@ class CodeReviewParallelCommand(
     ?: InvokingAgentContextResolver.detect(state.environment)?.id
     ?: DEFAULT_AGENT
 
-  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = try {
-    CodeReviewExecutionMode.fromWire(value)
-  } catch (error: IllegalArgumentException) {
-    throw UsageError(error.message.orEmpty()).apply { initCause(error) }
-  }
+  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = RequestedReviewMode.parse(value)
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()

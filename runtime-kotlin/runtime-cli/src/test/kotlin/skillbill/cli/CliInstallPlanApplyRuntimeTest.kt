@@ -892,7 +892,7 @@ private fun cliBaselineBody(slug: String): String = """
 
   Keep the baseline specialists for the whole review and use lightweight file-level classification.
   Exclude generated, vendored, and non-stack files from each specialist's scope.
-  When selected specialists exceed worker capacity, run them in deterministic waves and retain every selected specialist result.
+  Launch selected specialists as subagents in this harness in a deterministic order and retain every selected specialist result.
 
   ## Finding Discipline
 

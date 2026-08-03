@@ -41,6 +41,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.review.RequestedReviewMode
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -148,8 +149,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   )
   protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: inline (default), auto, or delegated. " +
-      "Supply at most once; a resumed workflow remains pinned to its original mode.",
+    help = "Review execution mode: delegated (default, specialist fan-out), inline " +
+      "(one review prompt in the child's own context), or auto (delegated on pass one, " +
+      "inline on the remediation pass). Supply at most once; a resumed workflow remains " +
+      "pinned to its original mode.",
   ).multiple()
   protected val operatorDecisions by option(
     "--operator-decision",
@@ -392,12 +395,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
+  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = (
     CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
       ?: throw UsageError(
         "Unknown code-review execution mode '$raw'. Allowed: " +
           "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
       )
+    ).let(RequestedReviewMode::validate)
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

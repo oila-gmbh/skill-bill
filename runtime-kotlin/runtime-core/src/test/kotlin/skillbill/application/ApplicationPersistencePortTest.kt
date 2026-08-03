@@ -2400,7 +2400,7 @@ private fun blockedGoalChildRetryFixture(): BlockedGoalChildRetryFixture {
             suppressPr = true,
             goalBranch = "feat/SKILL-51-demo",
             parentWorkflowId = parentWorkflowId,
-            codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
           ).toArtifactMap(),
       ),
     ),

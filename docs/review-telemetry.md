@@ -1,42 +1,24 @@
 # Review telemetry
 
-## Delegated lifecycle measurement boundary
+## Review mode telemetry
 
-Delegated review telemetry is bounded evidence around the durable lifecycle;
-it is not a replacement for durable worker progress or terminal status. The
-SKILL-145 contract may record elapsed time, token dimensions, process count,
-observable MCP startup count, selected and completed areas, lost workers,
-predicted and actual waves, deadline scope/outcome, aggregation completeness,
-and bounded diagnostic references. It never retains prompts, complete diffs,
-source bodies, raw transcripts, or tool logs.
+There are three review modes and telemetry reports which one produced a result.
+`delegated` is the default: the reviewing agent fans the routed areas out to
+specialist subagents inside its own harness. `inline` is the single-prompt review
+in the current context, with no fan-out. `auto` resolves by pass number — pass
+one, and any scope with no pass number, resolve to `delegated`; every follow-up
+or remediation pass resolves to `inline`.
 
-Process/MCP heartbeats, provider output, file activity, and completion token
-counts remain observations only. They cannot satisfy a progress deadline,
-successful aggregation, or a terminal completion. Inline is the review
-default and `auto` remains inline; telemetry does not promote providers.
+Mode telemetry is bounded accounting, not a transcript. It may record elapsed
+time, token dimensions, selected and completed routed areas, launched and failed
+lanes, and the resolved mode with the applicable named `auto` rule. It never
+retains prompts, complete diffs, source bodies, raw transcripts, or tool logs.
 
-Provider classification and promotion evidence are governed by
-`docs/delegated-review/decision.md` and
-`docs/delegated-review/reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
-opt-in providers; Junie, Copilot, Opencode, and Zcode are unsupported.
-Promotion evidence uses at least 20 launched canaries per provider and size
-class in one 30-consecutive-UTC-day window, with nearest-rank p95 over every
-launched sample. Failed or timed-out canaries remain in the denominator and
-fail promotion; one run cannot promote a provider. Telemetry reports retention
-age, while the persistence cleanup operation deletes expired lifecycle evidence
-at the 30-day boundary.
-
-## Delegated lifecycle evidence
-
-Delegated review records a bounded lifecycle package alongside accounting. The package binds every
-worker event to immutable packet and assignment digests, worker/provider identities, attempt, routed
-area, timestamp, process outcome, and a diagnostic reference. Coordinator preparation, worker
-terminal state, aggregation, and terminal completion remain separate durable transitions.
-
-Process and MCP heartbeats, provider output, and declared specialist progress are observations only;
-they cannot satisfy durable specialist progress. Terminal success requires normal zero-exit worker
-results for every selected assignment and a distinct successful aggregation event. The package has
-no prompt, complete diff, raw transcript, or tool-log fields.
+An inline result is consumed exactly as a delegated one: the same severity
+vocabulary, the same finding admission gate, and the same `F-XXX` risk-register
+lines flow through import, triage, and `skillbill_review_finished`. Telemetry
+records that specialist depth was not applied rather than treating the inline
+result as equivalent coverage.
 
 ## Bounded delegated-review accounting
 
@@ -52,7 +34,7 @@ Thresholds that a provider can enforce live terminate the affected lane with `re
 
 Delegated specialists never rediscover what the parent already resolved. Repository status, scope, base/head revisions, diff recomputation, build and test invocation, platform-pack and add-on resolution, routing, learnings resolution, and project-guidance files are refused at the broker with a typed forbidden-operation category. Evidence outside a lane's assignment requires an authorized expansion recorded in the parent packet's ledger; the default budget admits three per assignment.
 
-Provider-native specialists are verified before any worker starts. A missing, stale, or dangling managed native-agent link fails the review with the logical worker name, provider, expected path, reason, and the repair command `skill-bill install apply`. There is no generic-worker fallback — repair the install and rerun.
+Harness-native specialists are verified before any lane starts. A missing, stale, or dangling managed native-agent link fails the review with the logical specialist name, harness, expected path, reason, and the repair command `skill-bill install apply`. There is no generic-specialist fallback — repair the install and rerun.
 
 Durable output and telemetry retain only numeric accounting, lane identifiers, packet and assignment digests, enforcement classification, and terminal outcomes. Prompts, diffs, source, project guidance, rubric bodies, and tool output remain transient.
 

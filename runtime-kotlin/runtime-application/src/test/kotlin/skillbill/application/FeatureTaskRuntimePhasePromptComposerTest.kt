@@ -45,10 +45,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ISSUE_KEY,
       briefingFor("review"),
       parallelReviewAgent = "claude",
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
 
-    assertContains(prompt, "bill-code-review mode:delegated")
+    assertContains(prompt, "bill-code-review mode:inline")
     assertContains(prompt, "parallel:claude")
     assertContains(prompt, "must not launch parallel review recursively")
   }
@@ -160,7 +160,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
       parallelReviewAgent = "claude",
       reviewPassNumber = 1,
       baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
@@ -212,7 +212,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       FeatureTaskRuntimePhasePromptComposer.compose(
         ISSUE_KEY,
         briefingFor("review"),
-        codeReviewMode = if (pass == 1) CodeReviewExecutionMode.DELEGATED else CodeReviewExecutionMode.INLINE,
+        codeReviewMode = if (pass == 1) CodeReviewExecutionMode.INLINE else CodeReviewExecutionMode.INLINE,
         reviewPassNumber = pass,
         goalSubtaskReviewInput = input,
       )

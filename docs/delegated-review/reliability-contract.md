@@ -256,4 +256,6 @@ authenticated evidence for the provider and all of these falsifiable checks:
 6. provider-isolation fixtures show no change to other providers' strategies.
 
 Until a separate governed change records those measurements and approves the
-gate, inline remains the default and `auto` resolves to inline.
+gate, delegated remains the default and `auto` resolves by pass number: pass one
+and pass-number-free scopes to delegated, follow-up and remediation passes to
+inline.

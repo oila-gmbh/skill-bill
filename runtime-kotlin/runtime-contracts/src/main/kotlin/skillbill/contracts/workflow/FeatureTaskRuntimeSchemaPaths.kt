@@ -85,6 +85,13 @@ object FeatureTaskRuntimePhaseHandoffSchemaPaths {
  */
 const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
 
+/**
+ * Pins the durable run-invariants artifact. Version 0.1 is the first version whose
+ * `code_review_mode` carries post-SKILL-159 semantics; unversioned records predate the rename and
+ * must quarantine instead of being reinterpreted.
+ */
+const val FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION: String = "0.1"
+
 object FeatureTaskRuntimePersistenceSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-persistence-schema.yaml"

@@ -575,6 +575,11 @@ internal object DatabaseMigrations {
         name = "add-delegated-review-lifecycle-projection",
         operation = ::addDelegatedReviewLifecycleProjection,
       ),
+      DatabaseMigration(
+        version = 22,
+        name = "drop-delegated-review-lifecycle-tables",
+        operation = ::dropDelegatedReviewLifecycleTables,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -681,6 +686,15 @@ private fun addDelegatedReviewLifecycleProjection(connection: Connection) {
         ON review_delegated_lifecycle(review_id, updated_at)
       """.trimIndent(),
     )
+  }
+}
+
+private fun dropDelegatedReviewLifecycleTables(connection: Connection) {
+  connection.createStatement().use { statement ->
+    statement.execute("DROP INDEX IF EXISTS idx_review_delegated_lifecycle_review")
+    statement.execute("DROP INDEX IF EXISTS idx_review_lifecycle_events_review")
+    statement.execute("DROP TABLE IF EXISTS review_delegated_lifecycle")
+    statement.execute("DROP TABLE IF EXISTS review_lifecycle_events")
   }
 }
 

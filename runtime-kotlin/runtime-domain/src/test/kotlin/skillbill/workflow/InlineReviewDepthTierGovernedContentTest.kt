@@ -58,15 +58,25 @@ class InlineReviewDepthTierGovernedContentTest {
   }
 
   @Test
-  fun `inline is the default and explicit delegated loud-fails unlaunchable workers`() {
-    assertTrue(codeReview.contains("`inline` is the default light tier:"))
+  fun `delegated is the default and loud-fails unlaunchable workers`() {
+    assertTrue(codeReview.contains("Omission means `mode:delegated`."))
+    assertTrue(codeReview.contains("`delegated` is the default full-depth review."))
     assertTrue(codeReview.contains("blocks loudly; it never degrades to inline"))
   }
 
   @Test
-  fun `auto always resolves inline and delegated remains explicit`() {
-    assertTrue(codeReview.contains("`auto` resolves to `inline` for every review pass"))
-    assertTrue(codeReview.contains("Only an explicit `delegated` selection launches workers"))
+  fun `auto resolves delegated on pass one and inline on later passes`() {
+    assertTrue(codeReview.contains("`auto` resolves to `delegated` for the first review pass"))
+    assertTrue(codeReview.contains("`inline` for every follow-up or remediation pass"))
+  }
+
+  @Test
+  fun `the single-prompt inline seam is governed content`() {
+    assertTrue(codeReview.contains("## Single-prompt inline review"))
+    assertTrue(codeReview.contains("run exactly one review prompt in the current context"))
+    assertTrue(codeReview.contains("Do not launch a specialist worker"))
+    assertTrue(codeReview.contains("minus the baseline-untracked inventory"))
+    assertTrue(codeReview.contains("risk-register lines the delegated path emits"))
   }
 
   @Test

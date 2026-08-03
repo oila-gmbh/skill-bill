@@ -185,7 +185,7 @@ internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine("Keep the baseline specialists for the whole review and use lightweight file-level classification.")
   appendLine("Exclude generated, vendored, and non-stack-owned files from every specialist's scope.")
   appendLine(
-    "When selected specialists exceed worker capacity, run them in deterministic waves " +
+    "Launch selected specialists as subagents in this harness in a deterministic order " +
       "and retain every selected specialist result.",
   )
   appendLine()

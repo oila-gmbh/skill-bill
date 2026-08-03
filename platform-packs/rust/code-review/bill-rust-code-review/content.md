@@ -40,7 +40,7 @@ Review Rust changes against the repository's edition, MSRV, Cargo workspace, fea
 - Rust used only for FFI bindings or wasm build support does not make the whole repository Rust-owned.
 - After exclusions, drop empty lanes and restore the minimum by assigning all Rust-owned files to platform-correctness when architecture would otherwise stand alone.
 - Load each selected specialist rubric so every selected specialist result is retained and attributed.
-- When selected specialists exceed delegated-worker capacity, batch them in deterministic waves and retain every selected specialist result.
+- Launch selected specialists as subagents in this harness in a deterministic order and retain every selected specialist result.
 
 ## Finding Discipline
 

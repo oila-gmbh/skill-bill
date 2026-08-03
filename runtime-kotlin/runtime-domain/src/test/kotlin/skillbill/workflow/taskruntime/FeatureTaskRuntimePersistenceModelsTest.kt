@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.appendBoundedHistoryBySequence
@@ -456,6 +457,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
   @Test
   fun `run-invariants decode loud-fails with typed schema error on unknown feature size`() {
     val malformed = mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION,
       "spec_reference" to ".feature-specs/SKILL-65/spec.md",
       "feature_size" to "HUGE",
       "acceptance_criteria" to listOf("AC-1"),
@@ -471,6 +473,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
   @Test
   fun `run-invariants decode translates constructor invariant failures to typed schema errors`() {
     val malformed = mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION,
       "spec_reference" to ".feature-specs/SKILL-135/spec.md",
       "feature_size" to "MEDIUM",
       "acceptance_criteria" to List(1_000) { index -> "Criterion ${index + 1}" },
@@ -510,6 +513,36 @@ class FeatureTaskRuntimePersistenceModelsTest {
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeRunInvariantsFromArtifactMap(invalid - "code_review_mode")
+    }
+  }
+
+  @Test
+  fun `run-invariants stamp the durable contract version`() {
+    val map = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-159/spec.md",
+      acceptanceCriteria = listOf("AC-1"),
+      mandatesAndOverrides = emptyList(),
+    ).toArtifactMap()
+
+    assertEquals(FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION, map["contract_version"])
+  }
+
+  @Test
+  fun `pre-SKILL-159 run invariants loud-fail instead of being reinterpreted under the new mode semantics`() {
+    val current = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-159/spec.md",
+      acceptanceCriteria = listOf("AC-1"),
+      mandatesAndOverrides = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+    ).toArtifactMap()
+
+    val unversioned = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(current - "contract_version")
+    }
+    assertTrue(unversioned.message.orEmpty().contains("contract_version"))
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeRunInvariantsFromArtifactMap(current + ("contract_version" to "0.0"))
     }
   }
 

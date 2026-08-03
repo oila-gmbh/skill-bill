@@ -1,8 +1,8 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.DelegatedReviewLaunchRequest
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
@@ -31,7 +31,7 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
     specialistContract: String,
-  ): List<DelegatedReviewLaunchRequest> {
+  ): List<ReviewSpecialistLaunchRequest> {
     val hunks = input.evidence.hunks
     val routes = specialistRoutes(input)
     val decisions = routes.map { route ->
@@ -146,7 +146,7 @@ internal object ParallelReviewPreparationCompiler {
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
     specialistContract: String,
-  ): List<DelegatedReviewLaunchRequest> {
+  ): List<ReviewSpecialistLaunchRequest> {
     val routesByLane = routes.associateBy(SpecialistRoute::lane).also {
       require(it.size == routes.size) { "Prepared specialist routes contain duplicate lane keys." }
     }
@@ -169,7 +169,7 @@ internal object ParallelReviewPreparationCompiler {
       require(assignment.assignedPaths == route.ownedPaths) {
         "Prepared assignment '${assignment.lane}' drifted from resolved ownership."
       }
-      DelegatedReviewLaunchRequest(
+      ReviewSpecialistLaunchRequest(
         packet = preparation.packet,
         assignment = assignment,
         specialistContract = specialistContract,

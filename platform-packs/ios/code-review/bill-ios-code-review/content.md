@@ -30,7 +30,7 @@ internal-for: bill-code-review
 - Keep `architecture` plus at least one other selected specialist for the whole review; default the second lane to `platform-correctness`, include `testing` for material test changes, and cap selection at ten specialists.
 - Use lightweight file-level classification to build a focused scope for each selected specialist from the routing signals.
 - Exclude generated `API.swift`, Pods, `.build`, snapshot baselines, incidental `project.pbxproj` churn, vendored dependencies, build outputs, and non-stack/non-iOS files from specialist scope and dominance scoring.
-- Process selected specialists in deterministic, capacity-bounded waves and retain every selected specialist result; do not drop a lane merely because another lane found the same issue.
+- Launch selected specialists as subagents in this harness in a deterministic order and retain every selected specialist result; do not drop a lane merely because another lane found the same issue.
 
 ## Finding Discipline
 

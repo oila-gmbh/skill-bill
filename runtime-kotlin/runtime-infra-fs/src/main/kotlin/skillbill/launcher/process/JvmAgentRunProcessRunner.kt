@@ -94,12 +94,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   ): AgentRunProcessResult {
     liveProcesses.add(process)
     val mcpStartupObservedAtStart = request.mcpStartupProbe.safeStartupObserved()
-    val turnOutcome = request.nativeReviewLifecycleCallbacks?.beforeModelTurn(
-      requireNotNull(request.nativeReviewOperations),
-    )
-    if (turnOutcome != null) {
-      process.destroy()
-    }
     val outputTracker = OutputObservationTracker()
     val lifecycleEmitter = ProcessLifecycleEmitter(request)
     val stdout = CappedUtf8Drain(
@@ -107,15 +101,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       limitBytes = AGENT_RUN_OUTPUT_LIMIT_BYTES,
       outputStream = AgentRunOutputStream.STDOUT,
       outputSink = request.outputSink,
-      onChunkRead = { chunk ->
-        outputTracker.markObserved()
-        val usageOutcome = request.nativeReviewLifecycleCallbacks?.observeProviderOutput(
-          requireNotNull(request.nativeReviewOperations),
-          chunk,
-          request.progressEmitter,
-        )
-        if (usageOutcome != null) process.destroy()
-      },
+      onChunkRead = { outputTracker.markObserved() },
     ).also { it.start() }
     val stderr = CappedUtf8Drain(
       input = stderrStream,

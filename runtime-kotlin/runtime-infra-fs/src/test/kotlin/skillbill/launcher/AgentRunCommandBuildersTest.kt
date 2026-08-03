@@ -10,9 +10,6 @@ import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
-import skillbill.launcher.agentrun.NativeReviewOperationBoundary
-import skillbill.launcher.agentrun.NativeReviewProviderCapabilities
-import skillbill.launcher.agentrun.ProviderUsageExposure
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
@@ -29,7 +26,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -316,24 +312,6 @@ class AgentRunCommandBuildersTest {
       assertEquals(expectedIsolation, builder.reviewIsolation)
       assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
     }
-    assertTrue(ClaudeAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
-    assertTrue(CodexAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
-    assertFalse(JunieAgentRunCommandBuilder().nativeReviewCapabilities.supportsGovernedLaunch)
-    assertEquals(
-      skillbill.launcher.agentrun.NativeReviewOperationBoundary.DISABLED,
-      CodexAgentRunCommandBuilder().nativeReviewCapabilities.operationBoundary,
-    )
-    assertEquals(
-      skillbill.launcher.agentrun.ProviderUsageExposure.COMPLETION_ONLY,
-      CodexAgentRunCommandBuilder().nativeReviewCapabilities.providerUsageExposure,
-    )
-    assertFalse(
-      NativeReviewProviderCapabilities(
-        operationBoundary = NativeReviewOperationBoundary.SYNCHRONOUS_BROKER,
-        providerUsageExposure = ProviderUsageExposure.IN_FLIGHT_ENFORCEABLE,
-        lifecycleCallbacks = null,
-      ).supportsGovernedLaunch,
-    )
     val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
     val claudeCommand = ClaudeAgentRunCommandBuilder().build(isolated).command
     assertTrue(codexCommand.contains("--skip-git-repo-check"))
@@ -347,10 +325,6 @@ class AgentRunCommandBuildersTest {
     assertFalse(
       CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
     )
-  }
-
-  @Test fun `codex exposes one-shot governed lifecycle support`() {
-    assertNotNull(CodexAgentRunCommandBuilder().nativeReviewCapabilities.lifecycleCallbacks)
   }
 
   @Test
