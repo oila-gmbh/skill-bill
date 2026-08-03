@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Unbounded Blocker remediation state and transitions"
   spec_path: ".feature-specs/SKILL-157-unbounded-blocker-remediation-loops/spec_subtask_1_unbounded-blocker-remediation-state.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260803-141248-5cof"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
