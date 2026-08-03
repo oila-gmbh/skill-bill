@@ -25,6 +25,15 @@ bootstrap measurement, each deadline scope, bounded diagnostic repair, actual
 wave telemetry, and promotion thresholds. Shared lifecycle enforcement does not
 promote an experimental provider or alter another provider's launch strategy.
 
+SKILL-145 keeps the policy explicit: inline is the default, `auto` resolves to
+inline, and delegated review requires an explicit opt-in. Codex, Claude, and
+Cursor remain experimental; Junie, Copilot, Opencode, and Zcode are
+unsupported. Unsupported delegated requests terminate explicitly without an
+inline substitute. The complete classification, historical ledger, and
+promotion gate live in the governed SKILL-145 decision and reliability
+contract; this playbook consumes those boundaries and does not infer support
+from another provider.
+
 This is the canonical review-orchestration contract. Installed skills consume it through generated sibling support pointers (e.g. `review-orchestrator.md` inside each staged skill directory), so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

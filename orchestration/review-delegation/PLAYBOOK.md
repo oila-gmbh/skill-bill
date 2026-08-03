@@ -38,6 +38,24 @@ repair behavior, wave telemetry, and promotion thresholds are shared lifecycle
 contracts; a provider-specific mitigation must not change another provider's
 command builder or process strategy.
 
+## SKILL-145 provider decision boundary
+
+The current provider decision is recorded in the governed SKILL-145 decision
+and its versioned reliability contract. Codex, Claude, and Cursor are
+experimental explicit-opt-in providers. Junie, Copilot, Opencode, and Zcode
+are unsupported. No provider is supportable for promotion from the current
+evidence.
+
+Inline remains the default and `auto` resolves to inline. Only an explicit
+delegated selection launches workers. An explicit delegated request for an
+unsupported or unavailable provider terminates with a bounded unsupported
+outcome; it does not silently fall back to inline.
+
+Promotion requires provider-specific bounded latency, complete declared-area
+coverage, zero silent worker loss, deterministic terminal status, bounded
+evidence retention, and provider-isolation tests. A result from one provider
+cannot promote or alter another provider's adapter.
+
 ## Shared Delegation Rules
 
 - Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`; Codex CLI launches MUST use a fresh process receiving only the governed compact assignment. Other providers retain their existing launch behavior.

@@ -12,6 +12,15 @@ heartbeat observations, provider output metadata, declared specialist progress, 
 progress, aggregation state, and terminal state as separate fields. It never persists prompts,
 complete diffs, raw transcripts, or tool logs.
 
+For delegated review, lifecycle telemetry is a bounded measurement projection,
+not the progress authority. It may report elapsed time, token dimensions,
+process count, observable MCP startup count, selected and completed areas,
+worker loss, predicted and actual waves, deadline scope/outcome, and
+aggregation completeness. Durable lifecycle rows decide progress, aggregation,
+and terminal status. The SKILL-145 decision keeps inline as default and
+`auto` inline; telemetry cannot promote a provider or turn an unsupported
+provider into an inline fallback.
+
 This is the canonical telemetry contract for skill-bill skills. Installed skills consume it through a generated sibling `telemetry-contract.md` support pointer inside each staged skill directory, so changes here propagate to every linked skill after render/install refresh.
 
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.

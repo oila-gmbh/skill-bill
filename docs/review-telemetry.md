@@ -1,5 +1,25 @@
 # Review telemetry
 
+## Delegated lifecycle measurement boundary
+
+Delegated review telemetry is bounded evidence around the durable lifecycle;
+it is not a replacement for durable worker progress or terminal status. The
+SKILL-145 contract may record elapsed time, token dimensions, process count,
+observable MCP startup count, selected and completed areas, lost workers,
+predicted and actual waves, deadline scope/outcome, aggregation completeness,
+and bounded diagnostic references. It never retains prompts, complete diffs,
+source bodies, raw transcripts, or tool logs.
+
+Process/MCP heartbeats, provider output, file activity, and completion token
+counts remain observations only. They cannot satisfy a progress deadline,
+successful aggregation, or a terminal completion. Inline is the review
+default and `auto` remains inline; telemetry does not promote providers.
+
+Provider classification and promotion evidence are governed by
+`.feature-specs/SKILL-145-delegated-code-review-reliability/decision.md` and
+`reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
+opt-in providers; Junie, Copilot, Opencode, and Zcode are unsupported.
+
 ## Delegated lifecycle evidence
 
 Delegated review records a bounded lifecycle package alongside accounting. The package binds every
