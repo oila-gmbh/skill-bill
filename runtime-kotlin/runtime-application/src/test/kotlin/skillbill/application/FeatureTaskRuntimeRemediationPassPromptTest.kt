@@ -104,7 +104,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     reviewPassNumber = passNumber,
     goalSubtaskReviewInput = if (withReviewInput) REVIEW_INPUT else null,
     resolvedReviewTier = resolvedTier,
-    reviewDecidingRule = "auto_depth_by_pass_number:later_pass_inline",
+    reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
     priorBlockerFindingIds = priorBlockerFindingIds,
   )
 }

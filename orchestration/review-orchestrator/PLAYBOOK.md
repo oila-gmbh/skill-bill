@@ -69,7 +69,7 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
-- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:inline`.
+- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`.
 - It also accepts at most one governed caller context, `context:feature-remediation`. This context is valid only with `mode:inline` for a bounded feature-task re-review of the supplied remediation delta. Reject it with any other mode or scope.
 - Reject malformed, unknown, repeated, or conflicting `mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
 - `auto` resolves to `inline` in every context. Preserve its named deciding rule in metadata without escalating from size, risk, layering, or pass number.
@@ -86,9 +86,9 @@ Each lane receives only its assignment, bounded rubric, immutable identifiers, a
 
 Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
-- `auto` resolves through exactly one named rule, reported in review metadata alongside the inline tier. `auto` never resolves silently.
-- `auto_depth_by_pass_number` is authoritative wherever a review pass number exists and resolves every pass to `inline`.
-- `auto_depth_default` is the named standalone fallback rule and resolves every scope to `inline`, including oversized, high-risk, mixed-stack, and layered scopes.
+- `auto` resolves through exactly one named rule, reported in review metadata alongside the resolved mode. `auto` never resolves silently.
+- `auto_mode_by_pass_number` is authoritative wherever a review pass number exists: pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline`.
+- `auto_mode_default` is the named standalone fallback rule and resolves every scope with no pass number to `delegated`.
 - Inline mode must walk every area declared by the routed manifest and required baseline composition deliberately, using each area's governed rubric as a checklist in the current context; do not collapse the review into a generic skim or omit an area because its specialist would not have been selected.
 
 ## Shared Learnings Context

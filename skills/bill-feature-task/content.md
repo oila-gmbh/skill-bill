@@ -49,7 +49,7 @@ Present one concise confirmation that includes:
 - the agent that will run each phase, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
-- the requested code-review selection, showing `inline (default)` when omitted
+- the requested code-review selection, showing `delegated (default)` when omitted
 - selected agent add-on slugs and manifest descriptions in caller order, or `none`
 
 Ask exactly one confirmation question: whether to proceed with the selected mode.

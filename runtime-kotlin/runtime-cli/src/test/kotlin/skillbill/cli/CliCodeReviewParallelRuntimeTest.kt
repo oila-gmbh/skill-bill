@@ -52,7 +52,7 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
-  fun `code-review-parallel rejects the removed delegated execution mode`() {
+  fun `code-review-parallel rejects an unknown execution mode`() {
     val tempDir = createGitRepo()
 
     val result = CliRuntime.run(
@@ -60,15 +60,14 @@ class CliCodeReviewParallelRuntimeTest {
         "code-review-parallel",
         "--agent1", "claude",
         "--agent2", "codex",
-        "--execution-mode", "delegated",
+        "--execution-mode", "external",
         "--repo-root", tempDir.toString(),
       ),
       parallelReviewContext(agentRunLauncher = RecordingParallelLauncher()),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "External delegated code review was removed")
-    assertContains(result.stdout, "parallel-review:<agent>")
+    assertContains(result.stdout, "Unknown code-review execution mode 'external'")
   }
 
   @Test

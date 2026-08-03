@@ -4,7 +4,6 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 /**
@@ -117,16 +116,10 @@ private fun Map<String, Any?>.requireFeatureSizeField(key: String): FeatureTaskR
   }
 }
 
-private fun Map<String, Any?>.requireCodeReviewModeField(key: String): CodeReviewExecutionMode {
-  val mode = try {
-    CodeReviewExecutionMode.fromWire(requireInvariantStringField(key))
-  } catch (_: IllegalArgumentException) {
-    runInvariantSchemaError("Feature-task-runtime artifact field '$key' must be one of auto, inline, delegated.")
-  }
-  if (mode == CodeReviewExecutionMode.DELEGATED) {
-    throw DelegatedReviewModeRemovedException("persisted run invariant '$key'=delegated")
-  }
-  return mode
+private fun Map<String, Any?>.requireCodeReviewModeField(key: String): CodeReviewExecutionMode = try {
+  CodeReviewExecutionMode.fromWire(requireInvariantStringField(key))
+} catch (_: IllegalArgumentException) {
+  runInvariantSchemaError("Feature-task-runtime artifact field '$key' must be one of auto, inline, delegated.")
 }
 
 private fun runInvariantSchemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)

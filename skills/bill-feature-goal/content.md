@@ -112,7 +112,7 @@ Then present a concise proposal that includes:
 - the agent that will be used for child runs, including any explicit override
 - the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
-- the requested code-review selection, showing `inline (default)` when omitted
+- the requested code-review selection, showing `delegated (default)` when omitted
 
 Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
 

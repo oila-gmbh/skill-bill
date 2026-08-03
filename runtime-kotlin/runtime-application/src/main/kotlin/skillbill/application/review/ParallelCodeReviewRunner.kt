@@ -153,23 +153,25 @@ class ParallelCodeReviewRunner(
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
         lane1 = {
-          launchInlineParentLane(
+          launchParentLane(
             initial.agent1Id,
             byAgent[initial.agent1Id].orEmpty(),
             initial.detection.routed,
             initial.budget,
             request,
             null,
+            initial.resolvedMode,
           )
         },
         lane2 = {
-          launchInlineParentLane(
+          launchParentLane(
             initial.agent2Id,
             byAgent[initial.agent2Id].orEmpty(),
             initial.detection.routed,
             initial.budget,
             request,
             request.agent2Model,
+            initial.resolvedMode,
           )
         },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
@@ -407,17 +409,18 @@ class ParallelCodeReviewRunner(
     return StackDetection(routed, manifests, routing.ownedPathsBySlug)
   }
 
-  private fun launchInlineParentLane(
+  private fun launchParentLane(
     agentId: String,
     launchRequests: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,
     budget: ReviewContextBudgetPolicy,
     request: ParallelCodeReviewRequest,
     modelOverride: String?,
+    resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
-    require(launchRequests.isNotEmpty()) { "Inline review selected no resolved assignments for '$agentId'." }
+    require(launchRequests.isNotEmpty()) { "Review selected no resolved assignments for '$agentId'." }
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
-    val prompt = inlineParentPrompt(selected, launchRequests, routedManifests)
+    val prompt = parentPrompt(selected, launchRequests, routedManifests, resolvedMode)
     val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -466,19 +469,35 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun inlineParentPrompt(
-    selected: List<ReviewSpecialistLaunchRequest>,
-    launchRequests: List<ReviewSpecialistLaunchRequest>,
-    routedManifests: List<PlatformManifest>,
-  ): String {
-    return buildString {
-      appendLine("Run one bill-code-review mode:inline parent review at the light depth tier.")
+  private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
+    if (resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+      appendLine("Run exactly one bill-code-review mode:inline review prompt in this context.")
       appendLine("Resolved execution mode: inline")
       appendLine(
         "Depth: reduced. Walk the routed areas below as an explicit checklist, once each, under a " +
           "bounded budget. This is not equivalent coverage to a full per-specialist review and must " +
           "not be presented as one; state that specialist depth was not applied.",
       )
+    } else {
+      appendLine("Run one bill-code-review mode:delegated review over the routed specialist fan-out.")
+      appendLine("Resolved execution mode: delegated")
+      appendLine(
+        "Depth: full. Launch one specialist worker per resolved rubric below and merge their " +
+          "registers. Inability to launch a required worker blocks loudly; never degrade to the " +
+          "single-prompt inline lane.",
+      )
+    }
+  }
+
+  private fun parentPrompt(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    launchRequests: List<ReviewSpecialistLaunchRequest>,
+    routedManifests: List<PlatformManifest>,
+    resolvedMode: ResolvedReviewExecutionMode,
+  ): String {
+    val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
+    return buildString {
+      append(modeFraming(resolvedMode))
       appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision
@@ -496,13 +515,22 @@ class ParallelCodeReviewRunner(
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
-      appendLine(
-        "Cover each routed rubric above once at reduced depth in this agent context and do not launch " +
-          "specialists. Follow only the signals that appear; do not build a case for a marginal finding. " +
-          "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
-          "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
-          "inherited unchanged.",
-      )
+      if (inline) {
+        appendLine(
+          "Cover each routed rubric above once at reduced depth in this agent context and do not launch " +
+            "specialists. Follow only the signals that appear; do not build a case for a marginal finding. " +
+            "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
+            "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
+            "inherited unchanged.",
+        )
+      } else {
+        appendLine(
+          "Assign each routed rubric above to its own specialist worker over that rubric's owned paths " +
+            "and merge the returned registers. The severity vocabulary, the finding admission gate, the " +
+            "evidence and observable-consequence requirements, the F-XXX register format, and telemetry " +
+            "are the same as every other mode.",
+        )
+      }
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
           "path=<JSON string> | line=<positive integer> | description' lines.",

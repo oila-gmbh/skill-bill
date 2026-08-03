@@ -21,7 +21,7 @@ Reject a malformed, unknown, repeated, or conflicting `code-review:` argument
 before preparing a spec, presenting confirmation, opening a workflow, or
 launching a child. Carry an explicit argument unchanged into the selected task
 or goal sidecar. When omitted, do not synthesize a `code-review:` token; preserve
-the omission so the downstream confirmation gate can show `inline (default)`
+the omission so the downstream confirmation gate can show `delegated (default)`
 before resolving the review policy.
 
 ## Update Check

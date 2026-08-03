@@ -1728,7 +1728,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
         "subtask_id" to 5,
         "suppress_pr" to true,
         "goal_branch" to "feat/existing-runtime-branch",
-        "code_review_mode" to "inline",
+        "code_review_mode" to "delegated",
         "parent_workflow_id" to "wfl-parent",
       ),
       artifacts["goal_continuation"],

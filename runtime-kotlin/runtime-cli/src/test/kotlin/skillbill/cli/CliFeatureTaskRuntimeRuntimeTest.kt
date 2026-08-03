@@ -1469,6 +1469,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       "omitted" to emptyList(),
       "auto" to listOf("--code-review-mode", "auto"),
       "inline" to listOf("--code-review-mode", "inline"),
+      "delegated" to listOf("--code-review-mode", "delegated"),
     ).forEach { (expectedMode, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
@@ -1482,32 +1483,31 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       val reviewPrompt = launcher.requests
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .single { it.contains("Phase: review") }
-      // Auto never reaches the review skill unresolved; it resolves inline by the named rule.
+      // Omission resolves to the delegated fan-out, and auto resolves to delegated on pass one by
+      // the named rule; neither reaches the review skill unresolved.
       val forwardedMode = when (expectedMode) {
-        "omitted", "auto" -> "inline"
+        "omitted", "auto" -> "delegated"
         else -> expectedMode
       }
       assertContains(reviewPrompt, "bill-code-review mode:$forwardedMode")
       if (expectedMode == "auto") {
-        assertContains(reviewPrompt, "auto_depth_by_pass_number")
+        assertContains(reviewPrompt, "auto_mode_by_pass_number:pass_1_delegated")
       }
     }
   }
 
   @Test
-  fun `feature-task runtime rejects the removed delegated review mode before workflow opening`() {
+  fun `feature-task runtime rejects an unknown review mode before workflow opening`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
 
     val result = CliRuntime.run(
-      fixture.runCommand(extra = listOf("--agent", "codex", "--code-review-mode", "delegated")),
+      fixture.runCommand(extra = listOf("--agent", "codex", "--code-review-mode", "external")),
       fixture.context(launcher),
     )
 
     assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "External delegated code review was removed")
-    assertContains(result.stdout, "code-review:inline")
-    assertContains(result.stdout, "parallel-review:<agent>")
+    assertContains(result.stdout, "Unknown code-review execution mode 'external'")
     assertEquals(emptyList(), launcher.requests)
     assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
   }

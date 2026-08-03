@@ -443,7 +443,7 @@ class TelemetryReliabilityContractTest {
         Routed to: bill-kmp-code-review
         Detected review scope: branch diff
         Detected stack: KMP/Kotlin mixed workspace
-        Execution mode: runtime
+        Execution mode: delegated
 
         ### 2. Risk Register
         No findings.

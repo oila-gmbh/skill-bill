@@ -26,7 +26,7 @@ object ReviewParser {
       routedSkill = routedSkill,
       detectedScope = extractSummaryValue(text, "detected_scope"),
       detectedStack = extractSummaryValue(text, "detected_stack"),
-      executionMode = extractSummaryValue(text, "execution_mode"),
+      executionMode = parseExecutionMode(text),
       specialistReviews = specialistReviews,
       findings = parseReviewFindings(text).map { finding ->
         finding.copy(
@@ -40,5 +40,14 @@ object ReviewParser {
         )
       },
     )
+  }
+
+  private fun parseExecutionMode(text: String): String? {
+    val reported = reportedExecutionModePattern.find(text)?.groups?.get("value")?.value?.trim()
+      ?: return null
+    return extractSummaryValue(text, "execution_mode")
+      ?: throw IllegalArgumentException(
+        "Review output reported an unknown execution mode '$reported'. Allowed: inline, delegated.",
+      )
   }
 }

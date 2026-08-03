@@ -4,7 +4,6 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 
 const val GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY: String = "goal_subtask_review_state"
@@ -344,15 +343,15 @@ data class GoalSubtaskReviewState(
   val contractVersion: String = GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
 ) {
   init {
-    if (codeReviewMode == CodeReviewExecutionMode.DELEGATED) {
-      throw DelegatedReviewModeRemovedException("persisted goal review state code_review_mode=delegated")
-    }
-    if (resolvedTier == CodeReviewExecutionMode.DELEGATED) {
-      throw DelegatedReviewModeRemovedException("persisted goal review state resolved_tier=delegated")
-    }
     require(contractVersion == GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION) {
       "Unsupported goal review state contract '$contractVersion'. " +
-        "Legacy 0.1 records are rejected and must be regenerated at 0.2."
+        "Records written before $GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION carry pre-SKILL-159 " +
+        "review-mode semantics, are rejected, and must be regenerated."
+    }
+    resolvedTier?.let { tier ->
+      require(tier != CodeReviewExecutionMode.AUTO) {
+        "Goal review resolved tier must be a concrete mode, never 'auto'."
+      }
     }
     require(GIT_COMMIT_SHA.matches(reviewBaseSha)) {
       "Goal review base SHA must be a 40- or 64-character lowercase commit SHA."
@@ -638,8 +637,6 @@ data class GoalSubtaskReviewState(
           remediationBaseSha = raw.optionalReviewStateString("remediation_base_sha", sourceLabel),
         )
       } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
-        throw error
-      } catch (error: DelegatedReviewModeRemovedException) {
         throw error
       } catch (error: IllegalArgumentException) {
         reviewStateError(sourceLabel, error.message.orEmpty(), error)

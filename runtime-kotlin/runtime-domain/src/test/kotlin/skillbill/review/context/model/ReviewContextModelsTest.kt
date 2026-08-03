@@ -296,13 +296,17 @@ class ReviewContextModelsTest {
   }
 
   @Test fun `explicit mode is authoritative`() {
-    assertEquals(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.DEFAULT)
+    assertEquals(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.DEFAULT)
     assertEquals(
       ResolvedReviewExecutionMode.INLINE,
       ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.INLINE),
     )
     assertEquals(
-      ResolvedReviewExecutionMode.INLINE,
+      ResolvedReviewExecutionMode.DELEGATED,
+      ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.DELEGATED),
+    )
+    assertEquals(
+      ResolvedReviewExecutionMode.DELEGATED,
       ReviewExecutionModePolicy.resolve(CodeReviewExecutionMode.AUTO),
     )
   }

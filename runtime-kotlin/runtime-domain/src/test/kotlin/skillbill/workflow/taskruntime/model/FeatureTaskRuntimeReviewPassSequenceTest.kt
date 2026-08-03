@@ -1,7 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
-import skillbill.review.context.DelegatedReviewModeRemovedException
 import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,23 +9,23 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeReviewPassSequenceTest {
   @Test
-  fun `an explicit mode runs at that depth on both passes and auto resolves by pass number`() {
+  fun `auto fans out on pass one and runs the single prompt on the remediation pass`() {
     assertEquals(
-      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
-      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.INLINE),
-    )
-    assertEquals(
-      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
+      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
       FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.AUTO),
     )
   }
 
   @Test
-  fun `auto resolves every pass to inline`() {
-    val passOne = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 1)
-    val passTwo = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 2)
-    assertEquals(CodeReviewExecutionMode.INLINE, passOne.resolvedTier)
-    assertEquals(CodeReviewExecutionMode.INLINE, passTwo.resolvedTier)
+  fun `an explicit mode owns pass one and the remediation pass always runs inline`() {
+    assertEquals(
+      listOf(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.INLINE),
+      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.INLINE),
+    )
+    assertEquals(
+      listOf(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.INLINE),
+      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.DELEGATED),
+    )
   }
 
   @Test
@@ -34,32 +33,34 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
     listOf(1, 2).forEach { passNumber ->
       val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, passNumber)
       assertTrue(
-        resolution.decidingRule.startsWith("auto_depth_by_pass_number"),
-        "Auto must report the named rule that decided the tier, got '${resolution.decidingRule}'.",
+        resolution.decidingRule.startsWith("auto_mode_by_pass_number"),
+        "Auto must report the named rule that decided the mode, got '${resolution.decidingRule}'.",
       )
     }
+    assertEquals(
+      "auto_mode_by_pass_number:pass_1_delegated",
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 1).decidingRule,
+    )
+    assertEquals(
+      "auto_mode_by_pass_number:pass_n_inline",
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 2).decidingRule,
+    )
   }
 
   @Test
-  fun `an explicit tier overrides auto and is recorded as an override`() {
+  fun `an explicit mode overrides auto and is recorded as an override`() {
     assertEquals(
       "explicit_inline_override",
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.INLINE, 1).decidingRule,
     )
-  }
-
-  @Test
-  fun `a pinned delegated mode fails loudly instead of resolving a tier or degrading to inline`() {
-    val failure = assertFailsWith<DelegatedReviewModeRemovedException> {
-      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 1)
-    }
-    assertTrue(
-      failure.message.orEmpty().contains("External delegated code review was removed"),
-      "the typed removal error must state the subsystem is gone, got '${failure.message}'.",
+    assertEquals(
+      "explicit_delegated_override",
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 1).decidingRule,
     )
-    assertFailsWith<DelegatedReviewModeRemovedException> {
-      FeatureTaskRuntimeReviewPassSequence.passes(CodeReviewExecutionMode.DELEGATED)
-    }
+    assertEquals(
+      FeatureTaskRuntimeReviewPassSequence.REMEDIATION_PASS_RULE,
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.DELEGATED, 2).decidingRule,
+    )
   }
 
   @Test

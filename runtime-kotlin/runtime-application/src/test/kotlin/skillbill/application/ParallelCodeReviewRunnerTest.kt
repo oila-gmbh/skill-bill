@@ -284,6 +284,78 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `inline mode issues exactly one review prompt per lane and launches no specialist`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertEquals(
+      listOf("claude", "codex"),
+      launcher.requests.map { it.invokedAgentId }.sorted(),
+      "Inline runs one prompt for the primary lane and one for the parallel-review lane, nothing else.",
+    )
+    launcher.requests.forEach { request ->
+      assertEquals(
+        null,
+        request.skillRunRequest.nativeReviewWorkerName,
+        "An inline prompt is never a specialist worker launch.",
+      )
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), "Resolved execution mode: inline")
+      assertContains(
+        request.skillRunRequest.promptOverride.orEmpty(),
+        "Run exactly one bill-code-review mode:inline review prompt in this context.",
+      )
+    }
+  }
+
+  @Test
+  fun `an omitted mode resolves to the delegated fan-out on both lanes`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    // The request default is what an omitted --execution-mode resolves to.
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.DEFAULT),
+    )
+
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "Resolved execution mode: delegated")
+      assertContains(prompt, "bill-code-review mode:delegated")
+      assertContains(prompt, "Launch one specialist worker per resolved rubric")
+      assertFalse(prompt.contains("do not launch specialists"))
+    }
+  }
+
+  @Test
+  fun `the parallel-review lane inherits the primary lane resolved mode`() {
+    listOf(
+      CodeReviewExecutionMode.INLINE to "inline",
+      CodeReviewExecutionMode.DELEGATED to "delegated",
+      CodeReviewExecutionMode.AUTO to "delegated",
+    ).forEach { (requested, expectedWire) ->
+      val launcher = ParallelSubtaskLauncher()
+      val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+      runner.run(
+        baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = requested),
+      )
+
+      assertEquals(2, launcher.requests.size, "$requested must run a primary lane and a second lane.")
+      launcher.requests.forEach { request ->
+        assertContains(
+          request.skillRunRequest.promptOverride.orEmpty(),
+          "Resolved execution mode: $expectedWire",
+        )
+      }
+    }
+  }
+
+  @Test
   fun `inline mode accounting carries the parent prompt and stdout as one specialist-free turn`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       AgentRunLaunchFacts(

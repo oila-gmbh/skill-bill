@@ -48,14 +48,14 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
     return ""
   }
   val parallel = inputs.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
-    " Combine it with `parallel:$agent`; both lanes must receive the resolved tier " +
+    " Combine it with `parallel:$agent`; both lanes must receive the resolved mode " +
       "${inputs.resolvedReviewTier?.wireValue ?: inputs.codeReviewMode.wireValue} " +
       "and the second lane must not launch parallel review recursively."
   }.orEmpty()
   val remediationPass = inputs.reviewPassNumber == 2
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. The reserved remediation pass adds context:feature-remediation and is bounded to the remediation delta. Never launch a third review pass. Every mode resolves to INLINE; external delegated review was removed by SKILL-159.$parallel${resolvedTierInfo(
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `delegated` runs the routed specialist fan-out; `inline` runs exactly one review prompt in this context with no specialist workers; `auto` resolves to delegated on pass one and inline on the reserved remediation pass. The reserved remediation pass adds context:feature-remediation, is bounded to the remediation delta, and always executes inline. Never launch a third review pass.$parallel${resolvedTierInfo(
     inputs,
   )}${baselineUntrackedPolicy(
     inputs,
@@ -114,8 +114,8 @@ private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediati
 private fun resolvedTierInfo(inputs: ReviewExecutionDirectiveInputs): String =
   if (inputs.resolvedReviewTier != null && inputs.reviewDecidingRule != null) {
     """
-    ## Resolved review tier
-    AUTO resolved to tier ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE always overrides AUTO.
+    ## Resolved review mode
+    AUTO resolved to ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE or DELEGATED always overrides AUTO.
     """.trimIndent()
   } else {
     ""

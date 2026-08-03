@@ -79,7 +79,8 @@ class CodeReviewParallelCommand(
   ).multiple()
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: inline (default) or auto; delegated was removed.",
+    help = "Shared execution mode for both lanes: delegated (default, specialist fan-out), " +
+      "inline (one review prompt per lane), or auto.",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
   private val baselineUntrackedIncludes by option(
     "--baseline-untracked-include",

@@ -9,30 +9,46 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * SKILL-142 AC-018: quarantine-and-regenerate is the declared migration story, so a legacy `0.1`
- * review-state record loud-fails rather than being silently migrated.
+ * Quarantine-and-regenerate is the declared migration story. A record written at any pre-SKILL-159
+ * contract version carries the old review-mode semantics, so it loud-fails at the read seam rather
+ * than being silently migrated or reinterpreted.
  */
 class GoalSubtaskReviewStateLegacyContractTest {
-  @Test
-  fun `a legacy 0_1 record loud-fails through the typed error with no silent migration`() {
-    val current = GoalSubtaskReviewState.initial(
-      reviewBaseSha = "c".repeat(40),
-      baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.AUTO,
-    )
-    val legacy = current.toArtifactMap().toMutableMap().apply { put("contract_version", "0.1") }
+  private fun currentRecord() = GoalSubtaskReviewState.initial(
+    reviewBaseSha = "c".repeat(40),
+    baselineUntrackedPaths = emptyList(),
+    codeReviewMode = CodeReviewExecutionMode.AUTO,
+  ).toArtifactMap()
 
-    val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
-      GoalSubtaskReviewState.fromArtifactMap(legacy)
+  @Test
+  fun `every legacy contract version loud-fails through the typed error with no silent migration`() {
+    listOf("0.1", "0.2").forEach { legacyVersion ->
+      val legacy = currentRecord().toMutableMap().apply { put("contract_version", legacyVersion) }
+
+      val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+        GoalSubtaskReviewState.fromArtifactMap(legacy)
+      }
+      assertTrue(
+        error.message.orEmpty().contains(legacyVersion),
+        "The rejection must name the quarantined legacy contract version '$legacyVersion'.",
+      )
     }
-    assertTrue(
-      error.message.orEmpty().contains("0.1"),
-      "The rejection must name the quarantined legacy contract version.",
-    )
   }
 
   @Test
-  fun `the durable contract version is no longer 0_1`() {
-    assertEquals("0.2", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
+  fun `a legacy record is never reinterpreted under the new mode semantics`() {
+    val legacy = currentRecord().toMutableMap().apply {
+      put("contract_version", "0.2")
+      put("code_review_mode", "inline")
+    }
+
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewState.fromArtifactMap(legacy)
+    }
+  }
+
+  @Test
+  fun `the durable contract version is the post-rename 0_3`() {
+    assertEquals("0.3", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
 }

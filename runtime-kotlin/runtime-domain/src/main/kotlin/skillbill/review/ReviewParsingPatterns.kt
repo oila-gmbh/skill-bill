@@ -17,6 +17,14 @@ val summaryPatterns: Map<String, Regex> =
     "detected_stack" to Regex("^Detected stack:\\s*(?<value>.+?)\\s*$", RegexOption.MULTILINE),
     "execution_mode" to Regex("^Execution mode:\\s*(?<value>inline|delegated)\\s*$", RegexOption.MULTILINE),
   )
+
+/**
+ * Matches any reported execution mode, including tokens outside the accepted set, so the parser can
+ * tell an absent line apart from one carrying an unknown or pre-SKILL-159 token and reject the
+ * latter instead of silently dropping it.
+ */
+val reportedExecutionModePattern =
+  Regex("^Execution mode:\\s*(?<value>\\S.*?)\\s*$", RegexOption.MULTILINE)
 val specialistReviewsPattern =
   Regex(
     "^(?:Specialist reviews|Baseline review|Backend specialist reviews|KMP specialist reviews):\\s*(?<value>.+?)\\s*$",
