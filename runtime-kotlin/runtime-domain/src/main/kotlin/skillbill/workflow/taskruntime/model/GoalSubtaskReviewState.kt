@@ -146,6 +146,19 @@ data class GoalSubtaskReviewCompactFinding(
   }
 }
 
+/**
+ * The closed vocabulary a durable goal-review pass result may carry. [FeatureTaskRuntimeVerdict.fromWire]
+ * accepts any non-blank value so durable records round-trip, so the producer of a pass result must
+ * canonicalize an emitted verdict into this set rather than persisting whatever string the review
+ * happened to write.
+ */
+val GOAL_SUBTASK_REVIEW_PASS_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(
+  FeatureTaskRuntimeVerdict.APPROVED,
+  FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+  FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
+  FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
+)
+
 data class GoalSubtaskReviewPassResult(
   val passNumber: Int,
   val verdict: FeatureTaskRuntimeVerdict,
@@ -156,14 +169,9 @@ data class GoalSubtaskReviewPassResult(
 ) {
   init {
     require(passNumber >= 1) { "Goal review pass number must be a positive integer." }
-    require(
-      verdict in setOf(
-        FeatureTaskRuntimeVerdict.APPROVED,
-        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-        FeatureTaskRuntimeVerdict.REVIEW_CAP_REACHED,
-        FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
-      ),
-    ) { "Goal review pass verdict is invalid: '${verdict.wireValue}'." }
+    require(verdict in GOAL_SUBTASK_REVIEW_PASS_VERDICTS) {
+      "Goal review pass verdict is invalid: '${verdict.wireValue}'."
+    }
     require(reviewResultArtifact == "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber") {
       "Goal review result artifact must identify its exact review pass."
     }
@@ -473,6 +481,16 @@ data class GoalSubtaskReviewState(
   /** Non-terminal: the subtask waits on a bounded operator decision, and resume reuses this state. */
   val pausedForOperatorDecision: Boolean get() = disposition == GoalSubtaskReviewDisposition.PAUSED
 
+  /**
+   * The remediation loop is unbounded, so no cap exhaustion ever mints the pause. The operator's own
+   * decision is what opens it: any subtask still carrying an unresolved Blocker may be taken over
+   * explicitly, which is the loop's only escape from a non-converging remediation.
+   */
+  val acceptsOperatorDecision: Boolean get() =
+    pausedForOperatorDecision ||
+      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
+      passResults.lastOrNull()?.blocksAdvance == true
+
   val unresolvedBlockerDispositions: List<GoalSubtaskBlockerDisposition>
     get() = blockerDispositions.filter { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED }
 
@@ -498,10 +516,13 @@ data class GoalSubtaskReviewState(
    * re-reserves one, so `completedPassCount` and `reservedPassNumber` are left untouched.
    */
   fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): GoalSubtaskReviewState {
-    if (!pausedForOperatorDecision) {
-      reviewStateError("operator_decision", "is only accepted while the subtask is paused.")
+    if (!acceptsOperatorDecision) {
+      reviewStateError(
+        "operator_decision",
+        "is only accepted while the subtask carries an unresolved Blocker.",
+      )
     }
-    return copy(operatorDecision = decision)
+    return copy(disposition = GoalSubtaskReviewDisposition.PAUSED, operatorDecision = decision)
   }
 
   /**

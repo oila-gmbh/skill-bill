@@ -52,10 +52,10 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
       "${inputs.resolvedReviewTier?.wireValue ?: inputs.codeReviewMode.wireValue} " +
       "and the second lane must not launch parallel review recursively."
   }.orEmpty()
-  val remediationPass = inputs.reviewPassNumber == 2
+  val remediationPass = (inputs.reviewPassNumber ?: 1) >= 2
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `delegated` runs the routed specialist fan-out; `inline` runs exactly one review prompt in this context with no specialist workers; `auto` resolves to delegated on pass one and inline on the reserved remediation pass. The reserved remediation pass adds context:feature-remediation, is bounded to the remediation delta, and always executes inline. Never launch a third review pass.$parallel${resolvedTierInfo(
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `delegated` runs the routed specialist fan-out; `inline` runs exactly one review prompt in this context with no specialist workers; `auto` resolves to delegated on pass one and inline on every remediation pass from pass two onward. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.$parallel${resolvedTierInfo(
     inputs,
   )}${baselineUntrackedPolicy(
     inputs,
@@ -80,8 +80,8 @@ private fun baselineUntrackedPolicy(inputs: ReviewExecutionDirectiveInputs, reme
     .orEmpty()
 
 private fun materializedScope(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String {
-  // The immutable-base framing is pass one's authority only. Emitting it on pass two would contradict
-  // the remediation-delta bound stated in the same prompt.
+  // The immutable-base framing is pass one's authority only. Emitting it on a remediation pass would
+  // contradict the remediation-delta bound stated in the same prompt.
   return inputs.goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
     """
     ## Immutable-base review scope
@@ -104,8 +104,8 @@ private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediati
         "replace its scope.\n\n${input.reviewText}"
     }.orEmpty()
     """
-    ## Reserved remediation pass (pass two)
-    This is the reserved remediation pass under context:feature-remediation. Scope is strictly the prior Blocker findings union diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
+    ## Reserved remediation pass (pass ${inputs.reviewPassNumber ?: 2})
+    This is a reserved remediation pass under context:feature-remediation. Scope is strictly the immediately preceding pass's Blocker findings union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
     """.trimIndent()
   } else {
     ""

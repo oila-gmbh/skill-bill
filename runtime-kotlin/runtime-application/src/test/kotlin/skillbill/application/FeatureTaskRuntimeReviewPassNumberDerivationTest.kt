@@ -9,6 +9,10 @@ import kotlin.test.assertEquals
  * reservation from a pass that already produced a result must not pin every later pass to one,
  * which would keep the remediation tier at pass one's and leave the Blocker-disposition prompt
  * addendum unreachable.
+ *
+ * AC-007: the completed-pass count fed here is the durable `GoalSubtaskReviewState.completedPassCount`,
+ * not the in-memory phase-output count, which holds at most one record per phase and so collapses on
+ * resume while the durable watermark keeps climbing.
  */
 class FeatureTaskRuntimeReviewPassNumberDerivationTest {
   @Test
@@ -31,6 +35,15 @@ class FeatureTaskRuntimeReviewPassNumberDerivationTest {
   fun `a live reservation ahead of completed outputs is reused so resume allocates no new pass`() {
     assertEquals(3, resolveReviewPassNumber(reservedPassNumber = 3, completedReviewPassCount = 2))
     assertEquals(7, resolveReviewPassNumber(reservedPassNumber = 7, completedReviewPassCount = 6))
+  }
+
+  @Test
+  fun `resume after two completed passes reports the durably reserved third pass`() {
+    assertEquals(
+      3,
+      resolveReviewPassNumber(reservedPassNumber = 3, completedReviewPassCount = 2),
+      "Feeding the collapsed in-memory output count instead would report pass 2 and drift from the record.",
+    )
   }
 
   @Test

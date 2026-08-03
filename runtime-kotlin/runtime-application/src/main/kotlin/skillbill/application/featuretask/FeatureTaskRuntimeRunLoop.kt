@@ -762,8 +762,17 @@ internal class FeatureTaskRuntimeRunLoop(
   ): FeatureTaskRuntimeBackwardEdge? =
     transitions.backwardEdges.firstOrNull { it.fromPhaseId == phaseId && it.triggeringVerdict == verdict }
 
+  /**
+   * Record-only resume reconstruction: a durable fix record carries this loop's context at the current
+   * watermark but no `LOOP_EDGE` ledger row reconstructed it as in-flight, so the reserved iteration is
+   * re-entered instead of a fresh one being allocated (no double-applied mutation). It is one-shot per
+   * run — the loop is live-claimed the moment either this path or a live edge fire mints an iteration.
+   * Without that bound the unbounded loop would re-satisfy this reconstruction on every re-review and
+   * keep replaying the already-reviewed fix instead of earning the next remediation pass.
+   */
   private fun resumeInFlightReviewFix(edge: FeatureTaskRuntimeBackwardEdge): String? {
     if (edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return null
+    if (state.isLoopLiveClaimed(edge.loopId)) return null
     val destinationRecord = state.recordFor(edge.destinationPhaseId)
       ?.takeIf { it.loopId == edge.loopId && it.edgeIteration == state.edgeIterationCount(edge.loopId) }
       ?: return null
@@ -842,13 +851,6 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun capExhaustionForRecord(phaseId: String, record: FeatureTaskRuntimePhaseRecord): String? {
-    if (
-      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-      record.reviewPassNumber == 2 &&
-      record.blockedReason?.startsWith("Backward-edge loop '") != true
-    ) {
-      return null
-    }
     val loopId = record.loopId
     val iteration = record.edgeIteration
     if (loopId == null || iteration == null || state.isLoopLiveClaimed(loopId)) {
@@ -1266,8 +1268,8 @@ internal class FeatureTaskRuntimeRunLoop(
   internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val reviewState = goalReviewStateOrNull()
       ?: return "No goal-subtask review state is present to apply an operator decision to."
-    if (!reviewState.pausedForOperatorDecision) {
-      return "The subtask is not paused; an operator decision is only accepted while it is paused."
+    if (!reviewState.acceptsOperatorDecision) {
+      return "The subtask carries no unresolved Blocker; an operator decision is only accepted while it does."
     }
     goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
       state.applyOperatorDecision(decision)
@@ -3242,9 +3244,12 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
+    // In-memory outputs hold at most one record per phase, so their count collapses to <= 1 after a
+    // resume while the durable pass watermark keeps climbing. The durable state is the counter.
+    val durable = goalReviewStateOrNull()
     return resolveReviewPassNumber(
-      reservedPassNumber = state.currentReviewPassNumber(),
-      completedReviewPassCount = state.outputCountFor(run.phaseId),
+      reservedPassNumber = durable?.reservedPassNumber ?: state.currentReviewPassNumber(),
+      completedReviewPassCount = durable?.completedPassCount ?: state.outputCountFor(run.phaseId),
     )
   }
 

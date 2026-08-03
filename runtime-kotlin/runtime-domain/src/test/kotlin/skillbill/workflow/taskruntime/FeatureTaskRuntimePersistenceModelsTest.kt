@@ -375,8 +375,14 @@ class FeatureTaskRuntimePersistenceModelsTest {
 
     assertEquals(2, map["review_pass_number"])
     assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(map))
+    listOf(3, 7, 42).forEach { pass ->
+      assertEquals(
+        pass,
+        FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("review_pass_number" to pass)).reviewPassNumber,
+      )
+    }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("review_pass_number" to 3))
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("review_pass_number" to 0))
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimePhaseRecord.fromArtifactMap(map + ("phase_id" to "audit"))

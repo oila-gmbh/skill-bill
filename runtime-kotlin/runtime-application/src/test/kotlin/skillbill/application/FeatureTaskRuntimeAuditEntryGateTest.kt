@@ -345,11 +345,20 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a dropped legacy review fix re-entry does not spend the fresh generation's fix pass`() {
+    val reviewPrompts = mutableListOf<String>()
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "review") BLOCKER_REVIEW_OUTPUT else defaultPhaseOutput(request))
+        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+        when (phaseIdFromPrompt(prompt)) {
+          // The remediation loop is unbounded, so the Blocker has to actually clear for the run to
+          // converge: the fresh review raises it once, and the pass earned by it settles it.
+          "review" -> {
+            reviewPrompts += prompt
+            facts(if (reviewPrompts.size == 1) BLOCKER_REVIEW_OUTPUT else CLEAN_REVIEW_OUTPUT)
+          }
+          else -> facts(defaultPhaseOutput(request))
+        }
       },
     )
     seedThroughImplement(harness)
@@ -362,9 +371,10 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertTrue(
       harness.launchedPromptPhaseOrder().contains("implement_fix"),
-      "the fresh review's changes_requested must still earn its fix pass; a watermark left behind by " +
-        "the dropped re-entry would exhaust the edge cap and advance to validation with the Blocker open",
+      "the fresh review's changes_requested must still earn its fix pass rather than being charged " +
+        "the watermark the dropped re-entry left behind",
     )
+    assertEquals(2, reviewPrompts.size, "the earned fix pass is re-reviewed exactly once")
   }
 
   @Test

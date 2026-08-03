@@ -5,6 +5,7 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
@@ -146,7 +147,13 @@ internal object GoalSubtaskReviewSummaryReducer {
     val verdict = when {
       hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      // The pass vocabulary is closed, so an off-vocabulary verdict cannot be persisted as emitted.
+      // It resolves the way the transition function already resolves it — only changes_requested
+      // remediates, everything else advances — so the durable pass cannot disagree with the loop that
+      // read the same output.
       declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
+        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
+        ?: FeatureTaskRuntimeVerdict.APPROVED
       else -> FeatureTaskRuntimeVerdict.APPROVED
     }
     return GoalSubtaskReviewOutputOutcome(

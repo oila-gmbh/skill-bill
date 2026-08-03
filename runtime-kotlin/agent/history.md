@@ -1,3 +1,15 @@
+## [2026-08-03] SKILL-157 unbounded blocker remediation state (subtask 1)
+Areas: runtime-kotlin/{runtime-domain,runtime-application,runtime-contracts,runtime-infra-fs}, orchestration/contracts, .feature-specs/SKILL-157-unbounded-blocker-remediation-loops
+- `review_fix` and `audit_gap` carry no finite iteration cap: an unresolved Blocker (or `gaps_found`) re-enters `implement_fix`/implementation at any iteration count, and the first Blocker-free review advances regardless of how many passes ran.
+- Loop settlement is now derived from the current verdict only, never from a pass count; `GoalSubtaskReviewState` accepts arbitrary positive pass numbers with contiguous reservation/result/completion/emission watermarks preserved across serialization and resume. reusable
+- `FeatureTaskRuntimeReviewPassSequence` centralizes per-pass tier resolution: pass one keeps its resolved tier, passes 2+ resolve inline under `REMEDIATION_PASS_RULE` and review only the delta since that round's pre-fix checkpoint. reusable
+- Each remediation pass dispositions the Blocker ids of its immediately preceding completed pass, so newly introduced Blockers above pass two are still accounted.
+- `goal-subtask-review-state-schema.yaml` bumped to 0.4 with Kotlin constant and parity test in lockstep; pre-0.4 records loud-fail with `InvalidGoalSubtaskReviewStateSchemaError` and are quarantined/regenerated in band.
+- Deliberately unchanged: `MAX_FIX_LOOP_ITERATIONS` stays 3 and `RECORD_REJECTED` malformed-output/regeneration edges keep their per-edge caps and BLOCK cap-exhaustion behavior — unbounded applies to semantic remediation, not to output-correction edges.
+- Pattern for removing a cap from a durable loop: bump the state schema so count-derived settlement in old records fails loudly instead of being reinterpreted, and add a crash/resume regression that proves a reserved pass is reused rather than reallocated. reusable
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-03] SKILL-159 remove external delegated review subsystem (subtask 1)
 Areas: runtime-kotlin/{runtime-application,runtime-domain,runtime-ports,runtime-infra-fs,runtime-infra-sqlite,runtime-contracts,runtime-core,runtime-cli}, orchestration/contracts, .feature-specs/SKILL-159-review-mode-restructure
 - The whole external delegated review subsystem is deleted: provider capability registry, capacity planner, aggregation gate, lifecycle recorder/recovery, worker launcher/brokers, and their dedicated tests; no main source launches or supervises a provider CLI as a review worker.

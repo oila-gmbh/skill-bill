@@ -21,9 +21,9 @@ import kotlin.test.assertTrue
 
 /**
  * A paused subtask rides SKILL-141's existing non-terminal resumable status rather than a second
- * pause mechanism, and the operator decision is only accepted from that state. Since SKILL-157 no
- * pass count mints the pause; it is an operator-driven control the remediation loop never triggers
- * on its own.
+ * pause mechanism. Since SKILL-157 no pass count mints the pause: the operator's own decision opens
+ * it against any subtask still carrying an unresolved Blocker, which is the unbounded remediation
+ * loop's only escape.
  */
 class GoalSubtaskPausedStatusWiringTest {
   @Test
@@ -59,7 +59,26 @@ class GoalSubtaskPausedStatusWiringTest {
   }
 
   @Test
-  fun `an operator decision outside the paused state is rejected`() {
+  fun `an operator decision opens the pause on an unresolved Blocker without any cap`() {
+    val unresolved = firstPass().reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = emptyList(),
+      blockerDispositions = listOf(
+        GoalSubtaskBlockerDisposition("F-001", GoalSubtaskBlockerDispositionVerdict.UNRESOLVED, listOf("still")),
+      ),
+    )
+
+    assertTrue(!unresolved.pausedForOperatorDecision, "A settled remediation pass never pauses itself.")
+    assertTrue(unresolved.acceptsOperatorDecision)
+
+    val decided = unresolved.applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
+    assertTrue(decided.pausedForOperatorDecision, "The decision is what opens the pause.")
+    assertEquals(GoalSubtaskPauseRelease.RETRY_FIX, decided.pauseRelease)
+  }
+
+  @Test
+  fun `an operator decision with no unresolved Blocker is rejected`() {
     val resolvedPass = initialState().reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
