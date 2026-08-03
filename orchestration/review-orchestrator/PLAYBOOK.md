@@ -14,11 +14,14 @@ heartbeats, provider output, and declared progress are observations; only a type
 progress event can satisfy specialist progress. The lifecycle evidence package never carries prompts,
 complete diffs, raw transcripts, or tool logs.
 
-Capacity planning reserves the coordinator slot before workers are assigned to
-deterministic waves. Aggregation admits only the durable selected assignment
-set with matching worker/provider/attempt identities, valid finding envelopes,
-and complete declared-area coverage. A missing or duplicate result is a
-bounded aggregation failure, not an invitation to repair or rediscover scope.
+Capacity planning persists `total_process_slots`, `coordinator_slots`, and
+`worker_slots = total_process_slots - coordinator_slots` before workers are
+assigned to deterministic waves. Restart admission uses those persisted values
+and the predicted wave count rather than live configuration. Aggregation admits
+only the durable selected assignment set with matching worker/provider/attempt
+identities, valid finding envelopes, and complete declared-area coverage. A
+missing or duplicate result is a bounded aggregation failure, not an invitation
+to repair or rediscover scope.
 
 The provider failure matrix records independent dispositions for capacity,
 bootstrap measurement, each deadline scope, bounded diagnostic repair, actual

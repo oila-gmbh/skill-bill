@@ -151,8 +151,20 @@ class AgentRunLauncherTest {
           """{"type":"result","result":"finding"}""",
         )
       }
-      providerLifecycleEvents.forEach { event ->
+      providerLifecycleEvents.forEachIndexed { index, event ->
         providerCallbacks.observeProviderOutput(operations, "$event\n", captured.progressEmitter)
+        if (agentId == "codex" && index == 1) {
+          assertTrue(
+            captured.declaredProgressProbe.latestDeclaredProgress()?.latestEvent?.expectedLong == true,
+            "Codex turn lifecycle must opt into long-operation liveness",
+          )
+        }
+        if (agentId != "codex" && index == 0) {
+          assertFalse(
+            captured.declaredProgressProbe.latestDeclaredProgress()?.latestEvent?.expectedLong == true,
+            "$agentId must retain the unchanged non-long provider classification",
+          )
+        }
       }
       assertEquals(
         GoalProgressEventKind.OPERATION_COMPLETED,

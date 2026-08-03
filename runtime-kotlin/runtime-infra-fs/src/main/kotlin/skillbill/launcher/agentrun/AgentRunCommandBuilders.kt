@@ -145,7 +145,7 @@ private class ClaudeNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
       )
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event) ?: when (event.textValue("type")) {
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
       "system" -> if (event.textValue("subtype") == "init") {
         ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
       } else {
@@ -185,10 +185,11 @@ private class CodexNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecycl
   override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event) ?: when (event.textValue("type")) {
-      "thread.started", "turn.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
+      "thread.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED)
+      "turn.started" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_STARTED, expectedLong = true)
       "item.started", "item.updated", "item.completed" ->
-        ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
+        ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT, expectedLong = true)
       "turn.completed" -> ProviderLifecycleSignal(
         GoalProgressEventKind.OPERATION_COMPLETED,
         GoalProgressOutcome.SUCCEEDED,
@@ -216,7 +217,7 @@ private class CursorNativeReviewLifecycleCallbacks : StatefulNativeReviewLifecyc
   override fun isProviderMcpStartupEvent(event: JsonNode): Boolean = explicitMcpStartupEvent(event)
 
   override fun providerLifecycleSignal(event: JsonNode): ProviderLifecycleSignal? =
-    syntheticProviderLifecycleSignal(event) ?: when (event.textValue("type")) {
+    syntheticProviderLifecycleSignal(event)?.copy(expectedLong = event.expectedLong()) ?: when (event.textValue("type")) {
       "partial" -> ProviderLifecycleSignal(GoalProgressEventKind.OPERATION_HEARTBEAT)
       "result" -> ProviderLifecycleSignal(
         GoalProgressEventKind.OPERATION_COMPLETED,

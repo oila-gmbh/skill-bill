@@ -41,12 +41,3 @@ evidence are required by provider, capacity, and aggregation evaluation.
 ## Next Path
 
 Proceed to provider-specific isolation, capacity, deadline, and aggregation evaluation.
-
-## Evidence Ledger Handoff
-
-The consolidated historical ledger is
-[`failure-matrix.md`](failure-matrix.md). It is the single keyed record for
-items 1–47 and carries status, owner, bounded evidence reference, evidence
-status, and rationale for every item. Subtask 1 supplies the lifecycle and
-scope evidence referenced by resolved rows; it does not create a second copy
-of the historical matrix.

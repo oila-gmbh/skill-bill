@@ -43,12 +43,3 @@ reproducible scope/lifecycle fixtures.
 ## Next Path
 
 Proceed to the provider-aware decision and implementation-ready reliability contract.
-
-## Evidence Ledger Handoff
-
-Provider, capacity, deadline, and aggregation dispositions are consolidated in
-[`failure-matrix.md`](failure-matrix.md), which owns the exact 1–47 key set.
-Subtask 2 contributes the provider matrix and bounded failure dispositions;
-unresolved rows remain explicit with an owner, evidence status, and rationale.
-The decision in subtask 3 must cite that ledger rather than infer support from
-another provider's behavior.

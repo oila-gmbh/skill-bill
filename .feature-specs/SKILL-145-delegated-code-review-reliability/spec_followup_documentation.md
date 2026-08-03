@@ -19,7 +19,12 @@ provider evidence; state all falsifiable promotion criteria; explain deadline
 and evidence-retention rationale. The fixed promotion bounds are 120 seconds
 p95 for 1–2 areas, 300 seconds for 3–5 areas, and 600 seconds for 6 or more
 areas, with at most 256 evidence events, 1,048,576 aggregate UTF-8 bytes, and
-30 days of retention per review. Preserve inline as default and state that
+30 days of retention per review. The promotion protocol requires 20 launched
+canaries per provider and size class within one 30-consecutive-UTC-day window,
+uses nearest-rank p95, and counts failed or timed-out canaries as retained
+failed samples rather than dropping or replacing them. Persistence cleanup,
+not schema or telemetry rejection, deletes evidence at the 30-day boundary.
+Preserve inline as default and state that
 `auto` remains inline. Every unresolved historical item must point to an owner,
 evidence status, and rationale in the ledger.
 

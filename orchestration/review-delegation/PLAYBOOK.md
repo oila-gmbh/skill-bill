@@ -14,7 +14,8 @@ normal zero-exit result for every selected assignment.
 
 The separate lifecycle projection is versioned at
 review-lifecycle-schema.yaml. It records selected/queued/launched/running and
-terminal worker states, predicted and actual waves with a coordinator slot,
+terminal worker states, durable `total_process_slots`, `coordinator_slots`,
+and `worker_slots` capacity, predicted and actual waves with a coordinator slot,
 startup/progress-idle/per-worker/aggregation/whole-review deadlines, bounded
 diagnostics, and measurements. Provider support is evaluated independently in
 the eight-dimension capability matrix; unsupported providers terminate
@@ -53,8 +54,11 @@ outcome; it does not silently fall back to inline.
 
 Promotion requires provider-specific bounded latency, complete declared-area
 coverage, zero silent worker loss, deterministic terminal status, bounded
-evidence retention, and provider-isolation tests. A result from one provider
-cannot promote or alter another provider's adapter.
+evidence retention, and provider-isolation tests. The canary sample is at least
+20 launched runs per size class within one 30-consecutive-UTC-day window, uses
+nearest-rank p95, and keeps failed or timed-out runs in the denominator and
+promotion failure. A result from one provider cannot promote or alter another
+provider's adapter.
 
 ## Shared Delegation Rules
 

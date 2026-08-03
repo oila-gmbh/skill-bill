@@ -33,7 +33,12 @@ coverage. Positive promotion fixtures assert p95 limits of 120 seconds for
 negative fixtures exceed each limit. Retention fixtures accept at most 256
 evidence events and 1,048,576 aggregate UTF-8 bytes within 30 days, and reject
 each count, byte, and age boundary independently. Missing provider canary
-measurements are rejected rather than promoted.
+measurements are rejected rather than promoted. Add deterministic sampling
+fixtures with 20 launched runs for every provider and size class in one
+30-consecutive-UTC-day window; assert nearest-rank p95, no cross-provider or
+cross-window pooling, and rejection when any failed or timed-out run is
+removed, replaced, or omitted from the denominator. One-run fixtures must
+remain ineligible.
 
 ## Repository validation owned by validate phase
 

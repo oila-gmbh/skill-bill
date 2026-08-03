@@ -47,6 +47,11 @@ The records retain only provider, capability count, launch disposition, and
 promotion outcome. They do not retain prompts, diffs, transcripts, source
 bodies, or tool logs. The later validation phase may add authenticated canary
 measurements; until then, a missing canary sample is a failed promotion gate.
+The canary protocol requires at least 20 launched runs per provider and size
+class (60 per provider) in one 30-consecutive-UTC-day window, uses nearest-rank
+p95, and includes every failed or timed-out run in both the sample count and
+the failed promotion result. The PM records are not canary samples and one run
+cannot promote any provider.
 
 ## Provider classification
 
@@ -67,8 +72,13 @@ an experimental one and does not promote an experimental provider.
 ## Promotion criteria
 
 Each experimental provider must provide a bounded, authenticated canary set
-covering small, medium, and multi-area reviews. Promotion is falsifiable only
-when all checks pass for that provider:
+covering small, medium, and multi-area reviews. Before evaluating the six
+gates, the provider must have at least 20 launched runs in each size class
+(60 provider-specific runs) collected within one 30-consecutive-UTC-day
+window. p95 uses the nearest-rank estimator over every launched terminal
+sample; failed, timed-out, cancelled, interrupted, and blocked samples remain
+in the denominator, cannot be replaced, and fail promotion. Promotion is
+falsifiable only when all checks pass for that provider:
 
 - p95 elapsed time is at most 120 seconds for small reviews (1–2 declared
   areas), 300 seconds for medium reviews (3–5 declared areas), and 600 seconds

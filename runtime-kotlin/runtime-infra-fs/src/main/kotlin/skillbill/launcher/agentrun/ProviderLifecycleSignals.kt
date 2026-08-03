@@ -53,7 +53,7 @@ internal class ProviderLifecycleSignals(
         processAlive = lifecycleSignal.processAlive,
         operationName = event.nonBlankText("operation_name", "delegated-review"),
         operationKind = event.nonBlankText("operation_kind", "specialist-review"),
-        expectedLong = event.path("expected_long").takeIf { it.isBoolean }?.asBoolean() ?: false,
+        expectedLong = lifecycleSignal.expectedLong,
         outcome = lifecycleSignal.outcome,
         authoritative = true,
       ),
@@ -64,6 +64,7 @@ internal class ProviderLifecycleSignals(
 internal data class ProviderLifecycleSignal(
   val eventKind: GoalProgressEventKind,
   val outcome: GoalProgressOutcome = GoalProgressOutcome.NONE,
+  val expectedLong: Boolean = false,
 ) {
   val processAlive: Boolean get() = eventKind != GoalProgressEventKind.OPERATION_COMPLETED
 }
@@ -95,6 +96,11 @@ internal fun JsonNode.textValue(field: String): String = path(field)
   .takeIf { it.isTextual }
   ?.asText()
   .orEmpty()
+
+internal fun JsonNode.expectedLong(): Boolean = path("expected_long")
+  .takeIf { it.isBoolean }
+  ?.asBoolean()
+  ?: false
 
 private fun JsonNode.nonBlankText(field: String, fallback: String): String =
   textValue(field).takeIf(String::isNotBlank) ?: fallback

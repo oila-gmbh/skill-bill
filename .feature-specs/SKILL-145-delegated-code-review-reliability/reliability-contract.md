@@ -73,17 +73,24 @@ The following boundaries are persisted before the next owner acts:
 
 ## Capacity and waves
 
-The coordinator slot is reserved before worker admission. The available worker
-capacity is `total_process_slots - coordinator_slots`, with both values
-positive and the coordinator count included in every snapshot. Selected worker
-ids are unique. Predicted waves are deterministic chunks of the selected set;
-actual waves must contain exactly the same worker ids with no duplicate or
-missing area. A retry of a completed assignment is forbidden. A retry of an
-incomplete assignment gets a new attempt and remains bound to the original
-assignment digest.
+The coordinator slot is reserved before worker admission. Every persisted
+lifecycle snapshot stores positive `total_process_slots`,
+`coordinator_slots`, and `worker_slots` values; the coherence rule is
+`worker_slots = total_process_slots - coordinator_slots`, with
+`coordinator_slots < total_process_slots`. `worker_slots` is stored even
+though it is derived so that restart admission and wave prediction use the
+same durable capacity rather than current process configuration. Selected
+worker ids are unique. Predicted waves are deterministic chunks of the
+selected set, with
+`predicted_wave_count = ceil(selected_worker_count / worker_slots)`; actual
+waves must contain exactly the same worker ids with no duplicate or missing
+area and must reconcile to the persisted prediction. A retry of a completed
+assignment is forbidden. A retry of an incomplete assignment gets a new
+attempt and remains bound to the original assignment digest.
 
-The snapshot records selected-area count, predicted and actual wave counts,
-coordinator slots, worker records, wave membership, elapsed time, token
+The snapshot records selected-area count, selected-worker count,
+`total_process_slots`, `coordinator_slots`, `worker_slots`, predicted and
+actual wave counts, worker records, wave membership, elapsed time, token
 dimensions, process count, observable MCP startup count, completed-area count,
 and lost-worker count. These are measurement facts, not proof of progress.
 
@@ -173,6 +180,46 @@ wave membership, terminal status, and diagnostic references. Diagnostic
 summaries and references are bounded to the schema limits. The contract never
 persists prompts, complete diffs, source bodies, raw transcripts, or tool logs.
 
+At terminal persistence, the lifecycle record stores
+`terminal_persisted_at` and `evidence_expires_at`, where the latter is exactly
+30 days after the former. A clock-driven persistence cleanup runs at startup
+recovery and on the configured maintenance tick. For each terminal review at
+or past `evidence_expires_at`, one transaction deletes its lifecycle evidence
+and bounded diagnostic payloads, then records `evidence_pruned_at`; the
+terminal classification, identities, aggregate status, and retention marker
+remain. The delete and marker update are atomic per review, so a failed
+cleanup rolls back both and a repeated cleanup is a no-op. Evidence is not
+considered expired before the boundary, and schema or telemetry rejection
+does not substitute for this deletion.
+
+## Deterministic promotion sampling protocol
+
+Promotion evidence is collected independently for each provider and adapter
+digest. A provider sample set contains at least 20 launched canary runs for
+each fixed size class (small, medium, and multi-area), for at least 60 runs in
+total, collected within one 30-consecutive-UTC-day window that starts with the
+provider's first launched canary. Samples are not pooled across providers,
+size classes, adapter digests, or windows; a changed adapter starts a new set.
+The fixture, declared-area count, lifecycle contract version, runner build,
+and authenticated provider identity are recorded with each bounded sample.
+
+Every launched canary remains in the sample denominator. A failed, timed-out,
+cancelled, interrupted, or blocked canary counts toward the required sample
+count, is never removed or replaced by a retry, and makes the provider
+promotion set fail. A retry is a separately identified sample and does not
+erase the original outcome. For the latency calculation, use elapsed
+milliseconds through the durable terminal outcome; a watchdog timeout uses
+the applicable deadline as its elapsed value. This treatment prevents
+discarding slow or failed attempts from improving p95.
+
+For a class with `n` samples, sort all terminal elapsed values in ascending
+order and use the nearest-rank estimator
+`p95 = value[ceil(0.95 * n)]` with one-based indexing. The protocol records
+`n`, window start/end, estimator, included terminal classes, and the ordered
+sample ids. A provider cannot enter promotion evaluation until all three
+classes meet the minimum count and window rule, and one run can never satisfy
+that precondition.
+
 ## Fixed promotion measurement bounds
 
 Promotion measurements use these fixed, inclusive size classes and p95 elapsed
@@ -197,8 +244,9 @@ limit fails the promotion gate; it is never treated as a pass by omission.
 Promotion from experimental explicit opt-in to supportable requires independent
 authenticated evidence for the provider and all of these falsifiable checks:
 
-1. p95 elapsed time is at most 120, 300, or 600 seconds for small, medium, or
-   multi-area reviews respectively;
+1. the sampling precondition above is satisfied, and p95 elapsed time computed
+   by the nearest-rank protocol is at most 120, 300, or 600 seconds for small,
+   medium, or multi-area reviews respectively;
 2. 100% of declared areas are covered exactly once;
 3. zero selected workers disappear without a durable terminal status;
 4. every run reaches one deterministic terminal classification;

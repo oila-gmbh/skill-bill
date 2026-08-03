@@ -21,9 +21,15 @@ terminal status remain authoritative.
 
 Promotion telemetry must classify reviews as small (1–2 areas), medium (3–5
 areas), or multi-area (6 or more areas) and evaluate p95 elapsed time against
-120, 300, or 600 seconds respectively. It must also report per-review evidence
-event count, aggregate UTF-8 evidence bytes, and retention age against limits
-of 256 events, 1,048,576 bytes, and 30 days after terminal persistence.
+120, 300, or 600 seconds respectively. For each provider and adapter digest,
+it must report at least 20 launched samples in each class within one
+30-consecutive-UTC-day window, use the nearest-rank estimator, and retain
+failed or timed-out samples in the denominator while marking the promotion set
+failed. It must also report per-review evidence event count, aggregate UTF-8
+evidence bytes, and retention age against limits of 256 events, 1,048,576
+bytes, and 30 days after terminal persistence. Telemetry reports the retention
+state; persistence cleanup owns deletion and is the only mechanism that
+removes expired evidence.
 
 ## Acceptance and rejection cases
 
@@ -37,7 +43,9 @@ days, and telemetry that claims completion from heartbeat or token activity.
 
 Use representative small, medium, and multi-area fixtures. Keep live provider
 canaries conditional on an installed authenticated provider and treat their
-observations as evidence, never as progress authority.
+observations as evidence, never as progress authority. Reject a provider
+promotion record with fewer than 20 samples per class, a mixed measurement
+window, an alternate percentile estimator, or omitted failed/timeout attempts.
 
 ## Exclusions
 

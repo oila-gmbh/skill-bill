@@ -19,6 +19,12 @@ Provider classification and promotion evidence are governed by
 `.feature-specs/SKILL-145-delegated-code-review-reliability/decision.md` and
 `reliability-contract.md`. Codex, Claude, and Cursor are experimental explicit
 opt-in providers; Junie, Copilot, Opencode, and Zcode are unsupported.
+Promotion evidence uses at least 20 launched canaries per provider and size
+class in one 30-consecutive-UTC-day window, with nearest-rank p95 over every
+launched sample. Failed or timed-out canaries remain in the denominator and
+fail promotion; one run cannot promote a provider. Telemetry reports retention
+age, while the persistence cleanup operation deletes expired lifecycle evidence
+at the 30-day boundary.
 
 ## Delegated lifecycle evidence
 

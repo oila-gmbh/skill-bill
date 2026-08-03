@@ -15,11 +15,15 @@ recovery, cancellation, and aggregation without provider branching.
 
 ## Required orchestration
 
-Prepare and persist the coordinator snapshot before launch. Persist selection,
-queue, launch, running, durable progress, worker terminal result, aggregation,
-and terminal reconciliation at their ownership boundaries. Account for both
-coordinator and worker slots. Launch only the immutable assignment projection;
-provider behavior remains behind injected strategies.
+Prepare and persist the coordinator snapshot before launch, including
+`total_process_slots`, `coordinator_slots`, `worker_slots`, selected worker
+count, and predicted wave count. Validate the capacity formula before admission
+and use the persisted values after restart; do not recompute them from live
+configuration. Persist selection, queue, launch, running, durable progress,
+worker terminal result, aggregation, and terminal reconciliation at their
+ownership boundaries. Account for both coordinator and worker slots. Launch
+only the immutable assignment projection; provider behavior remains behind
+injected strategies.
 
 The watchdog must enforce startup, progress-idle, per-worker, aggregation, and
 whole-review deadlines using a fake-clock seam. Recovery must reconcile an
@@ -32,8 +36,10 @@ may enter schema repair.
 Add deterministic interruption fixtures before launch, during a worker, between
 waves, during aggregation, and after aggregation but before terminal
 persistence. Each produces exactly one durable terminal classification. Add
-fixtures proving coordinator and worker slots are both counted, selected areas
-are neither dropped nor duplicated, and completed assignments are not relaunched.
+fixtures proving the persisted capacity fields survive restart, coordinator
+and worker slots are both counted, predicted and actual waves agree, selected
+areas are neither dropped nor duplicated, and completed assignments are not
+relaunched.
 
 ## Exclusions
 
