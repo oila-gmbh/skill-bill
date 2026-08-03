@@ -142,6 +142,11 @@ internal fun reconcileCheckpointPathInventory(
   }
 }
 
+// A reservation at or below the completed-review-output count is a stale latch from the pass that
+// already produced a result: re-entry must report the next ordinal, not replay pass one forever.
+internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int =
+  reservedPassNumber?.takeIf { it > completedReviewPassCount } ?: (completedReviewPassCount + 1)
+
 @Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 internal class FeatureTaskRuntimeRunLoop(
   private val dependencies: FeatureTaskRuntimeRunLoopDependencies,
@@ -3237,7 +3242,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    return state.currentReviewPassNumber() ?: (state.outputCountFor(run.phaseId) + 1)
+    return resolveReviewPassNumber(
+      reservedPassNumber = state.currentReviewPassNumber(),
+      completedReviewPassCount = state.outputCountFor(run.phaseId),
+    )
   }
 
   private fun prepareLaunch(
