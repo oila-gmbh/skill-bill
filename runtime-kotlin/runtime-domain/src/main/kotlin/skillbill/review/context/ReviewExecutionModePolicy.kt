@@ -13,11 +13,10 @@ object ReviewExecutionModePolicy {
   fun resolve(requested: CodeReviewExecutionMode): ResolvedReviewExecutionMode = resolveWithRule(requested).resolvedMode
 
   /**
-   * The two declared auto rules. The pass-number rule is authoritative wherever a review pass number
-   * exists (the feature-task review sequence): pass one runs the delegated specialist fan-out, and
-   * every follow-up or remediation pass runs the single-prompt inline lane. A standalone review
-   * carries no pass number, so auto falls back to the delegated default rule. Both are named so the
-   * resolved mode never reports silently.
+   * The two declared auto rules. Both now resolve inline: the delegated fan-out is the experimental
+   * tier, reachable only through an explicit `delegated` selection, because its cost scales with
+   * lanes multiplied by model turns while inline pays one context floor. The rules stay named and
+   * distinct so telemetry keeps reporting which one applied and a future retuning has a seam.
    */
   fun resolveWithRule(requested: CodeReviewExecutionMode, reviewPassNumber: Int? = null): ResolvedReviewDepth =
     when (requested) {
@@ -30,11 +29,11 @@ object ReviewExecutionModePolicy {
         "explicit_delegated_override",
       )
       CodeReviewExecutionMode.AUTO -> reviewPassNumber?.let(::resolveAutoByPassNumber)
-        ?: ResolvedReviewDepth(ResolvedReviewExecutionMode.DELEGATED, "$DEFAULT_RULE:delegated_default")
+        ?: ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$DEFAULT_RULE:inline_default")
     }
 
   private fun resolveAutoByPassNumber(passNumber: Int): ResolvedReviewDepth = if (passNumber == FIRST_REVIEW_PASS) {
-    ResolvedReviewDepth(ResolvedReviewExecutionMode.DELEGATED, "$PASS_NUMBER_RULE:pass_1_delegated")
+    ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$PASS_NUMBER_RULE:pass_1_inline")
   } else {
     ResolvedReviewDepth(ResolvedReviewExecutionMode.INLINE, "$PASS_NUMBER_RULE:pass_n_inline")
   }

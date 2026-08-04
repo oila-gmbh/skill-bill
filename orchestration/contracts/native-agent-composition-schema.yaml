@@ -99,6 +99,21 @@ $defs:
         description: >
           Free-form markdown body. Required when `compose` is absent
           (see the body-vs-compose anyOf below).
+      tools:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Optional allowlist of host tool names the rendered agent may
+          use, emitted verbatim as the `tools:` frontmatter field.
+          Omission preserves the host default, which is every tool the
+          parent can reach. Declaring the narrower set a worker actually
+          needs both removes capability the governed prose already
+          forbids (mutation, recursive delegation) and drops the unused
+          tool schemas from every one of that worker's model turns.
     anyOf:
       - required:
           - body
@@ -141,6 +156,13 @@ oneOf:
         $ref: "#/$defs/composeKind"
       body:
         type: string
+      tools:
+        type: array
+        minItems: 1
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
     anyOf:
       - required:
           - body

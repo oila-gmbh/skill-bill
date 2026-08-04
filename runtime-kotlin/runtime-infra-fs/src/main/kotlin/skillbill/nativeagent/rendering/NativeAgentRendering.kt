@@ -75,6 +75,9 @@ private fun renderFrontmatterAgent(agent: NativeAgentSource, mode: String?): Str
   if (mode != null) {
     append("mode: $mode").append('\n')
   }
+  if (agent.tools.isNotEmpty()) {
+    append("tools: ${agent.tools.joinToString(", ")}").append('\n')
+  }
   append("---").append('\n')
   append('\n')
   append(agent.body.trimEnd()).append('\n')

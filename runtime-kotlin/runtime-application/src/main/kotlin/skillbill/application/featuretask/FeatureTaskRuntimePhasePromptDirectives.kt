@@ -55,7 +55,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   val remediationPass = (inputs.reviewPassNumber ?: 1) >= 2
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `delegated` runs the routed specialist fan-out; `inline` runs exactly one review prompt in this context with no specialist workers; `auto` resolves to delegated on pass one and inline on every remediation pass from pass two onward. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.$parallel${resolvedTierInfo(
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `inline` is the default and runs exactly one review prompt in one declared `bill-code-review-inline` subagent with no per-area specialists; `auto` resolves to inline on every pass, first included; `delegated` is the experimental full-depth tier that runs the routed specialist fan-out and is reached only by an explicit selection. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.$parallel${resolvedTierInfo(
     inputs,
   )}${baselineUntrackedPolicy(
     inputs,

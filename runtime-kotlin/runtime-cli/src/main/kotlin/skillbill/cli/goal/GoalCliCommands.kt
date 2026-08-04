@@ -88,9 +88,9 @@ class GoalRunCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for child agent runs.")
   private val codeReviewMode by option(
     "--code-review-mode",
-    help = "Review execution mode for every child: delegated (default, specialist fan-out), " +
-      "inline (one review prompt in the child's own context), or auto (delegated on pass one, " +
-      "inline on the remediation pass).",
+    help = "Review execution mode for every child: inline (default, one review subagent per " +
+      "pass), auto (also resolves inline on every pass), or delegated (experimental " +
+      "specialist fan-out, explicit only).",
   )
   private val parallelReviewAgent by option(
     "--parallel-review-agent",

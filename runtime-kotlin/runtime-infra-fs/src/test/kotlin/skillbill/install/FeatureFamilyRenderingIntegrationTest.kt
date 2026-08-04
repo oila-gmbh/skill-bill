@@ -55,7 +55,7 @@ class FeatureFamilyRenderingIntegrationTest {
     assertContains(feature, "When omitted, do not synthesize a `code-review:` token; preserve")
     assertContains(feature, "omitting the `code-review:` token when the caller did not provide it")
     assertContains(feature, "canonical manifest source identity, content digest, and confirmation description")
-    assertContains(task, "Omission resolves to `delegated`")
+    assertContains(task, "Omission resolves to `inline`")
     assertContains(task, "Forward the resolved selection unchanged to either sidecar")
     assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
     assertContains(goal, "For a prose-goal resume, an omitted `code-review:`")

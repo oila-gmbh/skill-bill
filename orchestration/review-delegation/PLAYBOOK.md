@@ -7,12 +7,12 @@ description: Single source of truth for agent-specific delegated code-review exe
 
 ## Mode vocabulary
 
-`delegated` is the default review mode: the invoking agent fans the review out to
+`delegated` is the experimental full-depth review mode, reached only by explicit selection: the invoking agent fans the review out to
 specialist subagents inside its own harness and merges their findings. `inline`
 is the single-prompt review, where the invoking agent reviews the whole delta in
-one prompt with no fan-out. `auto` resolves by pass number — pass one, and any
-scope with no pass number, resolve to `delegated`; follow-up and remediation
-passes resolve to `inline`.
+one prompt with no fan-out. `auto` resolves to `inline` for every pass and for a
+scope with no pass number, so only an explicit `delegated` selection reaches the
+fan-out.
 
 Delegation never leaves the invoking agent's harness: every specialist lane is a
 subagent of the reviewing agent, and there is no separate lane lifecycle store.
@@ -43,8 +43,8 @@ Workers do not reload those rules from disk, and this playbook does not restate
 them. Maintainer parity tests pin the runtime constants to the authoritative
 marked blocks and list in that source.
 
-A delegated selection fans out to subagent lanes whether it is explicit,
-defaulted, or auto-resolved. Harness-specific launch mechanics live in the
+A delegated selection fans out to subagent lanes, and it is only ever explicit:
+neither an omitted selection nor `auto` resolves to delegated. Harness-specific launch mechanics live in the
 per-harness sections below; a mitigation for one harness must not change another
 harness's launch behavior.
 
@@ -90,7 +90,8 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Launch one subagent per delegated review skill or specialist review pass.
 - The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
 - Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
-- Run eligible delegated passes in parallel and merge the results in the parent review.
+- Run eligible delegated passes in parallel and merge the results in the parent review. On Claude Code, "in parallel" means every lane's `Task` call goes out in a **single assistant message**. Issuing one `Task` call, waiting for its result, then issuing the next satisfies the words but runs the fan-out serially and multiplies review wall-clock by the lane count. Launch them as one batch, then merge once all have returned.
+- Report per-lane timing in the parent review output so serial execution is detectable after the fact: one `Lane timing:` line per lane carrying the lane id, its launch timestamp, its return timestamp, and its model-turn count. Overlapping launch timestamps are the evidence that the batch was concurrent. The turn count is the token-cost signal: the per-turn context floor is re-sent every turn, so a lane that converges in three turns costs a fraction of one that wanders toward the 24-turn ceiling on the same assignment.
 - Do not inline delegated review logic on Claude when Task/subagents are available.
 
 ## OpenAI Codex

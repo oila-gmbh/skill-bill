@@ -3,9 +3,12 @@ agents:
   - name: bill-kmp-code-review-platform-correctness
     description: "KMP platform correctness specialist code reviewer. Runs against KMP expect/actual, source-set, target-runtime, and native-boundary correctness. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kmp-code-review-ui
     description: "KMP ui specialist code reviewer. Runs against KMP Compose UI correctness and framework usage. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kmp-code-review-ux-accessibility
     description: "KMP ux accessibility specialist code reviewer. Runs against KMP user experience, Compose semantics, and accessibility. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
