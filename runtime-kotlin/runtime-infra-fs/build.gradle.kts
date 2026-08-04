@@ -518,6 +518,24 @@ val copyFeatureTaskRuntimeAuditGenerationSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeCheckpointIdentitySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-checkpoint-identity-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeCheckpointIdentitySchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeCheckpointIdentitySchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeCheckpointIdentitySchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-150: canonical checkpoint-identity schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeQuarantineSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-quarantine-schema.yaml")
@@ -569,6 +587,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
   dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
   dependsOn(copyFeatureTaskRuntimeAuditGenerationSchema)
+  dependsOn(copyFeatureTaskRuntimeCheckpointIdentitySchema)
 }
 
 tasks.named("processTestResources") {
@@ -598,6 +617,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
   dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
   dependsOn(copyFeatureTaskRuntimeAuditGenerationSchema)
+  dependsOn(copyFeatureTaskRuntimeCheckpointIdentitySchema)
 }
 
 tasks.withType<Test>().configureEach {

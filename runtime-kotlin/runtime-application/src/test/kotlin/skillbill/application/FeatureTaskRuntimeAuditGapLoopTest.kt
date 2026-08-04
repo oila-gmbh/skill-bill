@@ -124,7 +124,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, commitMessagesObservedAtReview.size)
     assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
     assertContains(commitMessagesObservedAtReview[1], "audited implementation checkpoint")
-    assertEquals(2, git.stageAllCalls)
+    assertEquals(2, git.stagePathsCalls.size, "each checkpoint stages exactly its owned inventory")
   }
 
   @Test

@@ -24,6 +24,8 @@ interface WorkflowGitOperations {
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
+  // Retained for non-checkpoint consumers only. Production checkpoint code stages an explicit
+  // owned-path inventory through [stagePaths]; a repository-wide add cannot express ownership.
   fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
@@ -46,6 +48,80 @@ interface WorkflowGitOperations {
 
   fun selectedDiffHunks(repoRoot: Path, request: WorkflowSelectedDiffHunksRequest): WorkflowSelectedDiffHunksResult
 }
+
+/**
+ * SKILL-150: the scoped staging boundary a checkpoint commits through.
+ *
+ * A checkpoint owns an explicit path inventory, so it stages that inventory by literal pathspec and
+ * captures the pre-checkpoint index so any staging or commit failure can be undone exactly. Every
+ * listing here is NUL-delimited plumbing output: paths carrying spaces, quotes, or non-ASCII bytes
+ * must round-trip unchanged, and porcelain's C-quoting would silently rewrite them.
+ */
+interface ScopedStagingGitOperations {
+  /** Stages exactly [paths] by literal pathspec, leaving every other index entry untouched. */
+  fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
+
+  /**
+   * Snapshot of the current index for [paths], as `git ls-files --stage -z` output. Paths absent
+   * from the index are absent from the snapshot, which [restoreIndexState] reads as "remove".
+   */
+  fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
+
+  /**
+   * Restores the index for [paths] to [snapshot] exactly, removing entries the snapshot does not
+   * carry. The working tree is never touched: a restore recovers the index only.
+   */
+  fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult
+
+  /** NUL-delimited repository-relative paths with staged index changes against HEAD. */
+  fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult
+}
+
+interface ScopedStagingGitOperationsProvider {
+  val scopedStagingOperations: ScopedStagingGitOperations
+}
+
+// Silently staging nothing, or silently restoring nothing, both read downstream as success while the
+// index is left in whatever partial state a failure produced. A checkpoint must never be able to
+// reach that state, so an adapter without a real implementation refuses rather than degrades.
+private object UnavailableScopedStagingGitOperations : ScopedStagingGitOperations {
+  override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+    unavailable("stage an explicit owned-path inventory")
+
+  override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+    unavailable("capture the pre-checkpoint index state")
+
+  override fun restoreIndexState(
+    repoRoot: Path,
+    paths: List<String>,
+    snapshot: String,
+  ): WorkflowGitOperationResult = unavailable("restore the pre-checkpoint index state")
+
+  override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = unavailable("list staged paths")
+
+  private fun unavailable(capability: String) = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot $capability; scoped checkpoints require a git adapter.",
+  )
+}
+
+private fun WorkflowGitOperations.scopedStagingOperations(): ScopedStagingGitOperations =
+  (this as? ScopedStagingGitOperationsProvider)?.scopedStagingOperations ?: UnavailableScopedStagingGitOperations
+
+fun WorkflowGitOperations.stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+  scopedStagingOperations().stagePaths(repoRoot, paths)
+
+fun WorkflowGitOperations.captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+  scopedStagingOperations().captureIndexState(repoRoot, paths)
+
+fun WorkflowGitOperations.restoreIndexState(
+  repoRoot: Path,
+  paths: List<String>,
+  snapshot: String,
+): WorkflowGitOperationResult = scopedStagingOperations().restoreIndexState(repoRoot, paths, snapshot)
+
+fun WorkflowGitOperations.stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
+  scopedStagingOperations().stagedPaths(repoRoot)
 
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult

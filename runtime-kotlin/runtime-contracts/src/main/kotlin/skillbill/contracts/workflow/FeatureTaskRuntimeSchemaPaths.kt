@@ -183,6 +183,23 @@ object FeatureTaskRuntimeAuditGenerationSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-audit-generation-schema.yaml"
 }
 
+/**
+ * Runtime-side mirror of the checkpoint-identity schema's `contract_version`;
+ * `FeatureTaskRuntimeCheckpointIdentitySchemaContractVersionTest` fails the build if they diverge.
+ * Pins the append-only history binding every scoped checkpoint commit to the authority boundary,
+ * loop generation, parent commit, and owned-path digest that produced it.
+ */
+const val FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
+}
+
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"

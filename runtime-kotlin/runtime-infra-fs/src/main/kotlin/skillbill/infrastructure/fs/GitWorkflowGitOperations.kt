@@ -9,6 +9,8 @@ import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
+import skillbill.ports.workflow.ScopedStagingGitOperations
+import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -33,8 +35,10 @@ class GitWorkflowGitOperations :
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
-  RuntimePhaseFileManifestGitOperationsProvider {
+  RuntimePhaseFileManifestGitOperationsProvider,
+  ScopedStagingGitOperationsProvider {
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
+  override val scopedStagingOperations: ScopedStagingGitOperations = GitScopedStagingOperations
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     GitRuntimePhaseFileManifestOperations
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = GitRepositoryFingerprintOperations

@@ -79,6 +79,8 @@ import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
+import skillbill.ports.workflow.ScopedStagingGitOperations
+import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.SpecScratchStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
@@ -3699,7 +3701,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `dirty tree checkpoints review and remediation boundaries on the resolved feature branch`() {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.worktreeStatusValue = " M src/Foo.kt" // dirty tree => one checkpoint commit on the boundary
+    // A dirty tree the run OWNS => one checkpoint commit on the boundary.
+    git.worktreeStatusValue = " M src/Foo.kt"
+    git.ownedPathsValue = listOf("src/Foo.kt")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
@@ -3723,9 +3727,13 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertContains(git.createCommitMessages[1], "remediation checkpoint")
     assertContains(git.createCommitMessages[2], "audited implementation checkpoint")
     assertTrue(git.createCommitMessages.all { it.contains("feat/existing-runtime-branch") })
-    // The checkpoint stages the full tree before committing: agents never `git add`, so without a
-    // stage-all the bare commit would run against an empty index and fail (F-001).
-    assertEquals(3, git.stageAllCalls, "each checkpoint must stage the full tree before committing")
+    // The checkpoint stages its owned inventory before committing: agents never `git add`, so
+    // without an explicit staging the bare commit would run against an empty index and fail (F-001).
+    assertEquals(
+      listOf("src/Foo.kt", "src/Foo.kt", "src/Foo.kt"),
+      git.stagePathsCalls,
+      "each checkpoint must stage exactly its owned inventory before committing",
+    )
   }
 
   // F-001: a staging failure must block loudly rather than proceeding to a doomed empty-index commit.
@@ -3734,7 +3742,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.worktreeStatusValue = " M src/Foo.kt"
-    git.stageAllResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
+    git.ownedPathsValue = listOf("src/Foo.kt")
+    git.stagePathsResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
@@ -3754,6 +3763,173 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertContains(blocked.blockedReason, "stage failed")
     assertTrue(git.createCommitMessages.isEmpty(), "a failed staging must never proceed to a commit")
+    assertEquals(
+      1,
+      git.restoreIndexStateCalls.size,
+      "a failed staging must restore the pre-checkpoint index before blocking",
+    )
+    assertContains(blocked.blockedReason, "index was restored")
+  }
+
+  // AC-001/AC-002: the checkpoint commits its owned inventory and nothing else, whatever else is dirty.
+  @Test
+  fun `checkpoint stages only owned paths while foreign staged unstaged and untracked files are left alone`() {
+    val git = checkpointGit(
+      ownedPaths = listOf("src/Owned.kt"),
+      stagedPaths = listOf("unrelated/ForeignStaged.kt"),
+    )
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(git.stagePathsCalls.isNotEmpty(), "the owned inventory must be staged")
+    assertEquals(
+      setOf("src/Owned.kt"),
+      git.stagePathsCalls.toSet(),
+      "no foreign path may ever reach the staging call",
+    )
+  }
+
+  // AC-001: foreign dirt alone is not this workflow's work, so it must not produce a checkpoint commit.
+  @Test
+  fun `only foreign dirt present produces no checkpoint commit and does not block the phase transition`() {
+    val git = checkpointGit(ownedPaths = emptyList(), stagedPaths = listOf("unrelated/ForeignStaged.kt"))
+    git.worktreeStatusValue = " M unrelated/ForeignStaged.kt"
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(git.createCommitMessages.isEmpty(), "an empty owned delta must not commit foreign dirt")
+    assertTrue(git.stagePathsCalls.isEmpty())
+  }
+
+  // AC-005: an owned path that is also foreign-staged is ambiguous; the only permitted outcome is a block.
+  @Test
+  fun `an owned path that is also foreign-staged blocks with the exact path and recovery guidance`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"), stagedPaths = listOf("src/Owned.kt"))
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "src/Owned.kt")
+    assertContains(blocked.blockedReason, "git restore --staged")
+    assertTrue(git.createCommitMessages.isEmpty(), "an ambiguous overlap must never reach a commit")
+    assertTrue(git.stagePathsCalls.isEmpty(), "an ambiguous overlap must never stage over either side")
+  }
+
+  // AC-006: a commit failure must leave no partial index mutation behind for a later user commit.
+  @Test
+  fun `a failed checkpoint commit restores the pre-checkpoint index and reports the restore outcome`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    git.indexSnapshotValue = "100644 ${"a".repeat(40)} 0\tsrc/Owned.kt"
+    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "commit failed")
+    assertContains(blocked.blockedReason, "index was restored")
+    assertEquals(listOf(git.indexSnapshotValue), git.restoreIndexStateCalls)
+  }
+
+  // AC-006: a restore that itself fails must loud-fail into the block reason, never continue silently.
+  @Test
+  fun `a restore failure is reported in the checkpoint block reason rather than swallowed`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    git.createCommitResult = WorkflowGitOperationResult(status = "error", error = "commit failed")
+    git.restoreIndexStateResult = WorkflowGitOperationResult(status = "error", error = "restore failed")
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "could NOT be restored")
+    assertContains(blocked.blockedReason, "restore failed")
+  }
+
+  // AC-007/AC-008: identity survives in durable state and distinguishes each checkpoint's generation.
+  @Test
+  fun `every checkpoint commit records a durable identity carrying its branch phase generation and sha`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    val harness = checkpointRunHarness(git)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
+
+    val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
+    assertEquals(git.createCommitMessages.size, identities.size, "one identity record per checkpoint commit")
+    assertEquals(identities.map { it.commitSha }.distinct().size, identities.size, "commit shas are unique")
+    identities.forEach { identity ->
+      assertEquals("feat/existing-runtime-branch", identity.branch)
+      assertEquals(ISSUE_KEY, identity.issueKey)
+      assertEquals(1, identity.ownedPathCount)
+      assertTrue(identity.phaseId.isNotBlank())
+    }
+    assertTrue(
+      identities.any { it.loopId != null },
+      "a backward-edge checkpoint must record the loop it belongs to",
+    )
+  }
+
+  // AC-004/AC-010: a concurrently prepared foreign spec is never staged, committed, or reviewed here.
+  @Test
+  fun `a concurrently prepared foreign feature spec is never staged committed or reviewed`() {
+    val foreignSpec = ".feature-specs/OTHER-999-concurrent/spec_subtask_1.md"
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    // The foreign spec exists in the worktree beside this run's work but is not owned by it.
+    git.ownedPathsValue = listOf("src/Owned.kt", foreignSpec)
+    val reviewBaselines = mutableListOf<GoalSubtaskReviewBaseline>()
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    // Either outcome satisfies the contract: checkpoint only this run's paths, or block safely. What
+    // is never permitted is the foreign spec being staged, committed, or entering review input.
+    if (report is FeatureTaskRuntimeRunReport.Completed) {
+      assertFalse(foreignSpec in git.stagePathsCalls, "a foreign issue's spec must never be staged")
+    } else {
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+      assertContains(blocked.blockedReason, "OTHER-999")
+      assertTrue(git.createCommitMessages.isEmpty())
+    }
+    reviewBaselines.addAll(git.goalReviewBuildInputs)
+    reviewBaselines.forEach { baseline ->
+      assertTrue(
+        foreignSpec in baseline.baselineUntrackedPaths || baseline.baselineUntrackedPaths.isEmpty(),
+        "a foreign issue's spec must be excluded from review input, never materialized into it",
+      )
+    }
+  }
+
+  private fun checkpointGit(
+    ownedPaths: List<String>,
+    stagedPaths: List<String> = emptyList(),
+  ): RecordingWorkflowGitOperations =
+    RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").also {
+      it.worktreeStatusValue = ownedPaths.joinToString("\n") { path -> " M $path" }
+      it.ownedPathsValue = ownedPaths
+      it.stagedPathsValue = stagedPaths
+    }
+
+  private fun checkpointRunHarness(git: RecordingWorkflowGitOperations): RunnerHarness {
+    var reviewLaunches = 0
+    return runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
   }
 
   // F-002: the runner's protected-branch checkpoint guard is belt-and-suspenders — branch setup is the
@@ -5036,7 +5212,8 @@ internal class RecordingWorkflowGitOperations(
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
-  RuntimePhaseFileManifestGitOperationsProvider {
+  RuntimePhaseFileManifestGitOperationsProvider,
+  ScopedStagingGitOperationsProvider {
   // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
   // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
   var headCommitShaValue: String = ""
@@ -5066,10 +5243,21 @@ internal class RecordingWorkflowGitOperations(
   val createCommitMessages = mutableListOf<String>()
   var createCommitResult: WorkflowGitOperationResult? = null
 
-  // Counts stage-all calls (the checkpoint stages the full tree before committing); stageAllResult
-  // overrides the result to model a failed staging.
-  var stageAllCalls: Int = 0
-  var stageAllResult: WorkflowGitOperationResult? = null
+  // Records every path the checkpoint staged, in call order; stagePathsResult overrides the result
+  // to model a failed staging.
+  val stagePathsCalls = mutableListOf<String>()
+  var stagePathsResult: WorkflowGitOperationResult? = null
+
+  // Pre-checkpoint index snapshot and the restores performed against it; restoreIndexStateResult
+  // overrides the result to model a restore that itself fails.
+  var indexSnapshotValue: String = ""
+  var captureIndexStateResult: WorkflowGitOperationResult? = null
+  val restoreIndexStateCalls = mutableListOf<String>()
+  var restoreIndexStateResult: WorkflowGitOperationResult? = null
+
+  // Paths already staged before the checkpoint runs, modelling a foreign index entry.
+  var stagedPathsValue: List<String> = emptyList()
+  var stagedPathsResult: WorkflowGitOperationResult? = null
   val goalReviewBuildInputs = mutableListOf<GoalSubtaskReviewBaseline>()
   val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
@@ -5102,14 +5290,12 @@ internal class RecordingWorkflowGitOperations(
     return currentBranchResult ?: WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
   }
 
-  override fun stageAll(repoRoot: Path): WorkflowGitOperationResult {
-    stageAllCalls++
-    return stageAllResult ?: WorkflowGitOperationResult(status = "ok", value = "")
-  }
-
+  // A distinct, well-formed sha per commit: the durable checkpoint identity is keyed on commit sha,
+  // so a fake that returned one constant would collapse every checkpoint into a single record.
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
-    return createCommitResult ?: WorkflowGitOperationResult(status = "ok", value = "checkpoint-sha")
+    return createCommitResult
+      ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
   }
 
   var headCommitShaCalls: Int = 0
@@ -5152,6 +5338,32 @@ internal class RecordingWorkflowGitOperations(
       status = "ok",
       value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
     )
+
+  override val scopedStagingOperations: ScopedStagingGitOperations =
+    object : ScopedStagingGitOperations {
+      override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
+        stagePathsCalls += paths
+        return stagePathsResult ?: WorkflowGitOperationResult(status = "ok", value = "")
+      }
+
+      override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+        captureIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = indexSnapshotValue)
+
+      override fun restoreIndexState(
+        repoRoot: Path,
+        paths: List<String>,
+        snapshot: String,
+      ): WorkflowGitOperationResult {
+        restoreIndexStateCalls += snapshot
+        return restoreIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = "")
+      }
+
+      override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = stagedPathsResult
+        ?: WorkflowGitOperationResult(
+          status = "ok",
+          value = stagedPathsValue.joinToString(separator = "") { "$it " },
+        )
+    }
 
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
     object : RepositoryOwnedPathsGitOperations {

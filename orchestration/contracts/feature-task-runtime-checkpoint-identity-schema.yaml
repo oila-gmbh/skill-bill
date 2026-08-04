@@ -1,0 +1,90 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
+title: Feature task runtime checkpoint identity
+description: >-
+  Append-only durable identity for every scoped checkpoint commit a feature-task-runtime workflow
+  creates. Each entry binds one commit to the authority boundary that produced it: the issue key and
+  branch it was allowed to touch, the phase and loop generation that produced it, the parent commit it
+  advanced from, and the digest of the owned-path inventory that was staged. The record is bounded and
+  derived by construction — there is no field that can hold a raw prompt, a raw phase response, or a
+  diff body — so it survives crash and resume as the sole authority for what a checkpoint owned.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - checkpoints
+properties:
+  contract_version:
+    const: "0.1"
+  checkpoints:
+    type: array
+    maxItems: 200
+    items:
+      $ref: "#/$defs/checkpoint_identity"
+$defs:
+  checkpoint_identity:
+    type: object
+    additionalProperties: false
+    required:
+      - sequence_number
+      - issue_key
+      - branch
+      - phase_id
+      - generation
+      - owned_path_digest
+      - owned_path_count
+      - commit_sha
+      - recorded_at
+    properties:
+      sequence_number:
+        type: integer
+        minimum: 0
+      issue_key:
+        description: The authority boundary; a checkpoint may only ever carry paths this issue owns.
+        type: string
+        pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
+      branch:
+        type: string
+        minLength: 1
+        maxLength: 255
+      phase_id:
+        type: string
+        minLength: 1
+        maxLength: 64
+      loop_id:
+        description: Absent on a forward-edge checkpoint; present on every backward-edge checkpoint.
+        type: string
+        minLength: 1
+        maxLength: 64
+      generation:
+        description: >-
+          The loop generation this checkpoint belongs to. Distinguishes initial implementation from
+          audit repair and review remediation history at the same phase.
+        type: integer
+        minimum: 0
+      parent_sha:
+        description: Absent only when the checkpoint commit is the branch's first commit.
+        type: string
+        pattern: "^[0-9a-f]{40,64}$"
+      owned_path_digest:
+        description: SHA-256 over the sorted NUL-joined owned-path inventory that was staged.
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      owned_path_count:
+        type: integer
+        minimum: 0
+        maximum: 5000
+      commit_sha:
+        type: string
+        pattern: "^[0-9a-f]{40,64}$"
+      recorded_at:
+        type: string
+        minLength: 1
+        maxLength: 64
+x-coherence-checks:
+  - name: sequence_numbers_are_unique
+    description: No two checkpoint entries may share a sequence number; the history is append-only.
+  - name: commit_shas_are_unique
+    description: >-
+      One checkpoint commit yields exactly one identity record. A duplicate commit sha means a resume
+      re-recorded an already-recorded checkpoint instead of reconstructing it.

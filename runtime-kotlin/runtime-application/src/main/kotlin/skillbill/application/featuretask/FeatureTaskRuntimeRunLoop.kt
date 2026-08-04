@@ -38,12 +38,16 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.captureIndexState
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
+import skillbill.ports.workflow.restoreIndexState
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
+import skillbill.ports.workflow.stagePaths
+import skillbill.ports.workflow.stagedPaths
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -66,6 +70,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
@@ -653,7 +658,8 @@ internal class FeatureTaskRuntimeRunLoop(
   ) {
     checkpointEstablished(
       precedingPhaseId = precedingPhaseId,
-      commitMessage = ::auditReviewCheckpointMessage,
+      loopId = null,
+      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION,
       blockedReason = ::auditReviewCheckpointBlockedReason,
     )
   } else {
@@ -669,7 +675,8 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun establishRemediationCheckpoint(precedingPhaseId: String, loopId: String): Boolean {
     val established = checkpointEstablished(
       precedingPhaseId = precedingPhaseId,
-      commitMessage = ::remediationCheckpointMessage,
+      loopId = loopId,
+      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
       blockedReason = ::remediationCheckpointBlockedReason,
     )
     if (!established) return false
@@ -679,9 +686,15 @@ internal class FeatureTaskRuntimeRunLoop(
     return recordRemediationBaseSha(precedingPhaseId)
   }
 
+  /**
+   * A checkpoint commits the inventory this workflow owns and nothing else. The trigger is the OWNED
+   * delta, not a non-blank `git status`: a tree dirty only with someone else's work has nothing for
+   * this workflow to checkpoint, and committing it would attribute their changes to this run.
+   */
   private fun checkpointEstablished(
     precedingPhaseId: String,
-    commitMessage: (String) -> String,
+    loopId: String?,
+    intent: String,
     blockedReason: (String, String) -> String,
   ): Boolean {
     val branch = resolvedBranch ?: return true
@@ -692,13 +705,97 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!head.ok || head.value.trim() != branch.trim()) {
       return true
     }
-    val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
-    return when {
-      !status.ok -> blockCheckpoint(precedingPhaseId, branch, status.error, blockedReason)
-      status.value.isBlank() -> true
-      else -> commitCheckpoint(precedingPhaseId, branch, commitMessage, blockedReason)
+    val scope = resolveCheckpointScope(precedingPhaseId, branch, blockedReason) ?: return false
+    return when (scope) {
+      is FeatureTaskRuntimeCheckpointDecision.Skip -> true
+      is FeatureTaskRuntimeCheckpointDecision.Block -> {
+        blockAt(precedingPhaseId, scope.reason)
+        false
+      }
+      is FeatureTaskRuntimeCheckpointDecision.Stage -> commitCheckpoint(
+        precedingPhaseId = precedingPhaseId,
+        branch = branch,
+        loopId = loopId,
+        intent = intent,
+        ownedPaths = scope.ownedPaths,
+        blockedReason = blockedReason,
+      )
     }
   }
+
+  /**
+   * Resolves what this checkpoint may stage. Returns null when a git read failed and the phase was
+   * already blocked; an unmeasurable inventory can never degrade into "owns nothing", because a
+   * checkpoint reading that would skip silently and leave the phase's work uncommitted.
+   */
+  private fun resolveCheckpointScope(
+    precedingPhaseId: String,
+    branch: String,
+    blockedReason: (String, String) -> String,
+  ): FeatureTaskRuntimeCheckpointDecision? {
+    val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    val worktreeDelta = checkpointWorktreeDelta(resolved?.baselineOwnedPathsForCheckpoint().orEmpty())
+      ?: return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        "the owned-path inventory could not be read",
+        blockedReason,
+      )
+    val staged = phaseGates.gitOperations.stagedPaths(request.repoRoot)
+    if (!staged.ok) {
+      return blockCheckpointScope(precedingPhaseId, branch, staged.error, blockedReason)
+    }
+    val stagedPaths = staged.value.orEmpty().split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+    val ownedInventory = reconcileCheckpointPathInventory(
+      repoRoot = request.repoRoot,
+      issueKey = request.issueKey,
+      specReference = request.runInvariants.specReference,
+      specSource = specSource,
+      // The persisted inventory is the durable ownership authority; the working-tree delta only
+      // contributes paths this run has actually touched since its baseline.
+      paths = (resolved?.workflowOwnedPaths.orEmpty() + worktreeDelta).distinct(),
+    )
+    // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
+    // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
+    // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
+    // concurrently prepared issue coexist without producing a false block.
+    return FeatureTaskRuntimeCheckpointScope.decide(
+      issueKey = request.issueKey,
+      ownedPaths = ownedInventory,
+      phaseIntroducedPaths = worktreeDelta,
+      foreignStagedPaths = stagedPaths,
+    )
+  }
+
+  private fun blockCheckpointScope(
+    precedingPhaseId: String,
+    branch: String,
+    error: String,
+    blockedReason: (String, String) -> String,
+  ): FeatureTaskRuntimeCheckpointDecision? {
+    blockCheckpoint(precedingPhaseId, branch, error, blockedReason)
+    return null
+  }
+
+  private fun checkpointWorktreeDelta(baselineOwnedPaths: List<String>): List<String>? {
+    val owned = phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
+    if (!owned.ok) return null
+    val baseline = baselineOwnedPaths.toSet()
+    return owned.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .filterNot { it in baseline }
+      .distinct()
+      .sorted()
+  }
+
+  // The tracked-and-untracked baseline supersedes the untracked-only one; a run resolved before the
+  // wider baseline existed still has the narrower one and must keep using it rather than none.
+  private fun FeatureTaskRuntimeResolvedBranch.baselineOwnedPathsForCheckpoint(): List<String> =
+    baselineOwnedPaths.ifEmpty { baselineUntrackedPaths }
 
   /**
    * The checkpoint commit has just captured the pre-fix tree, so HEAD here IS the pre-fix tree. The
@@ -741,18 +838,118 @@ internal class FeatureTaskRuntimeRunLoop(
     return false
   }
 
+  /**
+   * Stages exactly [ownedPaths] and commits them. The pre-checkpoint index is snapshotted first, so a
+   * staging or commit failure restores the index to what it was rather than leaving a partial
+   * mutation that would silently ride along in the user's next commit. The working tree is never
+   * touched on any path through here.
+   */
   private fun commitCheckpoint(
     precedingPhaseId: String,
     branch: String,
-    commitMessage: (String) -> String,
+    loopId: String?,
+    intent: String,
+    ownedPaths: List<String>,
     blockedReason: (String, String) -> String,
   ): Boolean {
-    val staged = phaseGates.gitOperations.stageAll(request.repoRoot)
-    if (!staged.ok) {
-      return blockCheckpoint(precedingPhaseId, branch, staged.error, blockedReason)
+    val snapshot = phaseGates.gitOperations.captureIndexState(request.repoRoot, ownedPaths)
+    if (!snapshot.ok) {
+      return blockCheckpoint(precedingPhaseId, branch, snapshot.error, blockedReason)
     }
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, commitMessage(branch))
-    return if (commit.ok) true else blockCheckpoint(precedingPhaseId, branch, commit.error, blockedReason)
+    val parentSha = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+    val staged = phaseGates.gitOperations.stagePaths(request.repoRoot, ownedPaths)
+    if (!staged.ok) {
+      return blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        withIndexRestoreOutcome(staged.error, ownedPaths, snapshot.value.orEmpty()),
+        blockedReason,
+      )
+    }
+    val message = FeatureTaskRuntimeCheckpointMessage.build(
+      issueKey = request.issueKey,
+      branch = branch,
+      phaseId = precedingPhaseId,
+      loopId = loopId,
+      generation = checkpointGeneration(loopId),
+      intent = intent,
+    )
+    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    if (!commit.ok) {
+      return blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        withIndexRestoreOutcome(commit.error, ownedPaths, snapshot.value.orEmpty()),
+        blockedReason,
+      )
+    }
+    return recordCheckpointIdentity(
+      precedingPhaseId = precedingPhaseId,
+      branch = branch,
+      loopId = loopId,
+      ownedPaths = ownedPaths,
+      parentSha = parentSha,
+      commitSha = commit.value.orEmpty().trim(),
+      blockedReason = blockedReason,
+    )
+  }
+
+  /**
+   * A failed restore is worse than the failure that triggered it: the index is now in an unknown
+   * state and the operator has to know that before they touch the repository. It is reported in the
+   * block reason rather than swallowed.
+   */
+  private fun withIndexRestoreOutcome(error: String, ownedPaths: List<String>, snapshot: String): String {
+    val restored = phaseGates.gitOperations.restoreIndexState(request.repoRoot, ownedPaths, snapshot)
+    return if (restored.ok) {
+      "$error; the pre-checkpoint index was restored and the working tree is unchanged"
+    } else {
+      "$error; the pre-checkpoint index could NOT be restored (${restored.error}) — inspect " +
+        "`git status` before committing anything yourself"
+    }
+  }
+
+  private fun checkpointGeneration(loopId: String?): Int =
+    loopId?.let { state.edgeIterationCount(it) } ?: 0
+
+  private fun recordCheckpointIdentity(
+    precedingPhaseId: String,
+    branch: String,
+    loopId: String?,
+    ownedPaths: List<String>,
+    parentSha: String?,
+    commitSha: String,
+    blockedReason: (String, String) -> String,
+  ): Boolean {
+    val recorded = runCatching {
+      recorder.appendCheckpointIdentity(
+        workflowId = request.workflowId,
+        issueKey = request.issueKey,
+        branch = branch,
+        phaseId = precedingPhaseId,
+        loopId = loopId,
+        generation = checkpointGeneration(loopId),
+        parentSha = parentSha,
+        ownedPaths = ownedPaths,
+        commitSha = commitSha,
+        dbOverride = request.dbPathOverride,
+      )
+    }
+    // The commit already exists; without its identity record the review input has no immutable
+    // checkpoint to build from and no later phase can prove what this commit was allowed to own.
+    return if (recorded.getOrDefault(false)) {
+      true
+    } else {
+      blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        "checkpoint commit '$commitSha' was created but its durable identity record could not be " +
+          "written (${recorded.exceptionOrNull()?.message ?: "the workflow row was absent"}), so the " +
+          "commit cannot be attributed to this workflow's authority boundary",
+        blockedReason,
+      )
+    }
   }
 
   private fun blockCheckpoint(
@@ -1320,12 +1517,6 @@ internal class FeatureTaskRuntimeRunLoop(
     return null
   }
 
-  private fun remediationCheckpointMessage(branch: String): String =
-    "chore(skill-bill): remediation checkpoint on '$branch' before mutating-phase re-entry"
-
-  private fun auditReviewCheckpointMessage(branch: String): String =
-    "chore(skill-bill): audited implementation checkpoint on '$branch' before review"
-
   private fun remediationCheckpointBlockedReason(branch: String, error: String): String =
     "Feature-task-runtime could not establish a remediation checkpoint on the feature branch '$branch' " +
       "before re-entering a mutating phase" + (if (error.isBlank()) "." else " ($error).") +
@@ -1591,12 +1782,32 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
       run.request.repoRoot,
-      GoalSubtaskReviewBaseline(reviewBaseSha, resolved.baselineUntrackedPaths),
+      GoalSubtaskReviewBaseline(reviewBaseSha, scopedReviewUntrackedExclusions(resolved)),
       resolved.branch,
     )
     val input = result.input
       ?: return blockedGoalReviewRun(run, observability, result.error.ifBlank { "Standalone review input failed." })
     return GoalReviewRunReady(run.copy(goalReviewInput = input))
+  }
+
+  /**
+   * Review scope is the checkpoint's owned inventory, not whatever the worktree happens to hold. The
+   * persisted inventory is the same one the checkpoint identity digested, so the input a review sees
+   * is reproducible from the immutable commit rather than from the tree's current dirt.
+   */
+  private fun scopedReviewUntrackedExclusions(resolved: FeatureTaskRuntimeResolvedBranch): List<String> {
+    val current = phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
+    // An unreadable listing cannot widen the exclusion set, so fall back to the durable baseline
+    // rather than inventing a scope: the pre-existing behavior, never something looser.
+    if (!current.ok) return resolved.baselineUntrackedPaths
+    return FeatureTaskRuntimeCheckpointScope.reviewUntrackedExclusions(
+      baselineUntrackedPaths = resolved.baselineUntrackedPaths,
+      currentUntrackedPaths = current.value.orEmpty()
+        .split(OWNED_PATH_DELIMITER)
+        .map(String::trim)
+        .filter(String::isNotBlank),
+      ownedPaths = resolved.workflowOwnedPaths,
+    )
   }
 
   private fun reserveGoalReviewRun(
@@ -1638,6 +1849,8 @@ internal class FeatureTaskRuntimeRunLoop(
       gitOperations = phaseGates.gitOperations,
       repoRoot = run.request.repoRoot,
       dbOverride = run.request.dbPathOverride,
+      scopedUntrackedExclusions = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+        ?.let(::scopedReviewUntrackedExclusions),
     )
   }.fold(
     onSuccess = { prepared ->

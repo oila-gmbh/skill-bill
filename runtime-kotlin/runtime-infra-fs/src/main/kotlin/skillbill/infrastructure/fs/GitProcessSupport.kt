@@ -44,10 +44,44 @@ internal fun runGitForActivity(repoRoot: Path, args: List<String>): WorkflowGitO
   }
 }
 
-internal fun runGitProcess(repoRoot: Path, args: List<String>): GitProcessResult {
+/**
+ * Runs git with [stdin] written to the child's standard input as raw bytes. Used by the scoped
+ * checkpoint restore, which feeds `update-index --index-info` a NUL-delimited record stream that
+ * cannot survive being passed as arguments or re-encoded through a shell.
+ */
+internal fun runGitCommandWithStdin(repoRoot: Path, args: List<String>, stdin: ByteArray): WorkflowGitOperationResult {
+  val result = runGitProcess(repoRoot, args, stdin)
+  return when {
+    result.timedOut -> WorkflowGitOperationResult(
+      status = "error",
+      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+    )
+    result.readFailure != null -> WorkflowGitOperationResult(
+      status = "error",
+      error = result.readFailure.message.orEmpty(),
+    )
+    result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
+    else -> WorkflowGitOperationResult(
+      status = "error",
+      error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
+    )
+  }
+}
+
+internal fun runGitProcess(repoRoot: Path, args: List<String>, stdin: ByteArray? = null): GitProcessResult {
   val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args)
     .redirectErrorStream(true)
     .start()
+  if (stdin != null) {
+    try {
+      process.outputStream.use { it.write(stdin) }
+    } catch (error: IOException) {
+      process.destroyForcibly()
+      return GitProcessResult(output = "", readFailure = error)
+    }
+  } else {
+    runCatching { process.outputStream.close() }
+  }
   val output = StringBuilder()
   var readFailure: IOException? = null
   val outputThread = thread(start = true, name = "skill-bill-git-output") {

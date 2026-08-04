@@ -276,6 +276,22 @@ class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
 )
 
 /**
+ * Surfaced when the durable feature-task-runtime checkpoint-identity history fails the canonical
+ * checkpoint-identity schema. The history is the only durable authority for what a checkpoint commit
+ * was allowed to own, so a malformed record must never round-trip: reading one quarantines and
+ * regenerates the identity store rather than letting an unattributable commit pass as governed.
+ */
+class InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime checkpoint identity '${sourceLabel.ifBlank { "<unknown>" }}' fails schema " +
+    "validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when the durable feature-task-runtime quarantine record (the append-only list of
  * rejected upstream records) fails the canonical quarantine schema. Keeps the private evidence
  * store's parse seam loud so a malformed quarantine artifact never rounds trips silently.

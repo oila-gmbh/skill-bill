@@ -221,11 +221,18 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     completed
   }
 
+  /**
+   * @param scopedUntrackedExclusions when present, supersedes the durable baseline untracked
+   * inventory as the exclusion list. The caller widens it to every untracked path the run does not
+   * own, so foreign worktree dirt cannot enter the input. Only the exclusion list is affected; the
+   * remediation base-sha rescoping below is untouched.
+   */
   internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
+    scopedUntrackedExclusions: List<String>? = null,
   ): GoalSubtaskReviewInputPreparation {
     val durable = database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
@@ -241,15 +248,16 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     // sole authority. Every remediation pass from two onward is rescoped to that round's
     // diff(pre-fix tree -> HEAD), so the scope union the prompt states has a materialized input
     // behind it.
+    val exclusions = scopedUntrackedExclusions ?: state.baselineUntrackedPaths
     val remediationBaseline = state.remediationBaseSha
       ?.takeIf { (state.reservedPassNumber ?: 0) >= 2 }
-      // The baseline untracked inventory is the exclusion list, not a per-pass detail: dropping it
-      // would materialize every untracked file in the worktree into the pass-two input as an owned
-      // change. Only the base sha is rescoped.
-      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, state.baselineUntrackedPaths) }
+      // The untracked exclusion list is not a per-pass detail: dropping it would materialize every
+      // untracked file in the worktree into the pass-two input as an owned change. Only the base sha
+      // is rescoped.
+      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions) }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
+      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions),
       continuation.goalBranch,
     )
     val input = if (result.ok) {

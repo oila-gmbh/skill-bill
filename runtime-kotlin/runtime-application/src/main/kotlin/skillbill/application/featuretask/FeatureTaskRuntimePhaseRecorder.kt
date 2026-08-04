@@ -36,6 +36,12 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendCheckpointIdentity
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeOwnedPathDigest
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
@@ -1158,6 +1164,97 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@read null
       resolvedBranchFrom(decodeArtifacts(record.artifactsJson))
     }
+
+  /**
+   * Appends one checkpoint identity in the same transaction that advanced the checkpoint, so a crash
+   * cannot leave a commit whose authority boundary was never recorded. The append is idempotent on
+   * commit sha: a resume that re-reaches this seam converges on the single existing record instead of
+   * duplicating it.
+   *
+   * A store at an incompatible contract version is quarantined and regenerated rather than
+   * reinterpreted — the same edge every other feature-task-runtime durable artifact takes. Returns
+   * true when the workflow row exists and was updated.
+   */
+  @Suppress("LongParameterList") // one durable identity record; every field is part of its contract
+  fun appendCheckpointIdentity(
+    workflowId: String,
+    issueKey: String,
+    branch: String,
+    phaseId: String,
+    loopId: String?,
+    generation: Int,
+    parentSha: String?,
+    ownedPaths: List<String>,
+    commitSha: String,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val existing = checkpointIdentitiesFrom(artifacts)
+    val entry = FeatureTaskRuntimeCheckpointIdentity(
+      sequenceNumber = (existing.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      issueKey = issueKey,
+      branch = branch,
+      phaseId = phaseId,
+      generation = generation,
+      ownedPathDigest = featureTaskRuntimeOwnedPathDigest(ownedPaths),
+      ownedPathCount = ownedPaths.filter(String::isNotBlank).distinct().size,
+      commitSha = commitSha,
+      recordedAt = Instant.now().toString(),
+      loopId = loopId,
+      parentSha = parentSha,
+    )
+    val updated = featureTaskRuntimeAppendCheckpointIdentity(existing, entry)
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(
+        FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to
+          featureTaskRuntimeCheckpointIdentitiesToArtifact(updated),
+      ),
+    )
+    true
+  }
+
+  /**
+   * Strict read of the durable checkpoint-identity history. Returns null only when the workflow row
+   * is absent; an empty history is a real answer meaning no checkpoint has been committed yet.
+   */
+  fun loadCheckpointIdentities(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeCheckpointIdentity>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    checkpointIdentitiesFrom(decodeArtifacts(record.artifactsJson))
+  }
+
+  /**
+   * Drops a checkpoint-identity store this runtime cannot read. A legacy workflow predating the
+   * contract, or a record at an incompatible version, regenerates from the next checkpoint forward
+   * instead of failing every later read on a store no phase can repair.
+   */
+  fun quarantineCheckpointIdentities(workflowId: String, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to
+            featureTaskRuntimeCheckpointIdentitiesToArtifact(emptyList()),
+        ),
+      )
+      true
+    }
+
+  private fun checkpointIdentitiesFrom(
+    artifacts: Map<String, Any?>,
+  ): List<FeatureTaskRuntimeCheckpointIdentity> = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+    artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+  )
 
   fun recordWorkflowOwnedPaths(workflowId: String, ownedPaths: List<String>, dbOverride: String? = null): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
