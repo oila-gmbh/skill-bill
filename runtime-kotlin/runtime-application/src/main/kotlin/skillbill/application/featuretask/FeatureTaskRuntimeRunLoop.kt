@@ -2824,12 +2824,20 @@ internal class FeatureTaskRuntimeRunLoop(
    * output: the mandated audit shape always carries `produced_outputs.gaps`, so short-circuiting on that key
    * disabled this gate in production entirely.
    */
+  @Suppress("ReturnCount")
   private fun followUpAuditEvidenceGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
     val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
-    if (history.generations.isEmpty()) return null
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
     val reportedGapIds = expandedPlanGapIds(produced)
+    // Decoded before the no-history short-circuit: an initial audit that emits a disposition anyway is
+    // dispositioning a gap nothing carries, and that defect belongs in the fix loop too.
+    FeatureTaskRuntimeAuditGenerationGates.carriedGapDispositionDefect(
+      producedOutputs = produced,
+      carriedGapIds = history.latestGapStates().filterValues { it.open }.keys,
+      reportedGapIds = reportedGapIds,
+    )?.let { return it }
+    if (history.generations.isEmpty()) return null
     val blastRadius = runCatching { blastRadiusInspectionFrom(produced, phaseId) }
     blastRadius.exceptionOrNull()?.let { failure ->
       return "Audit blast_radius_inspection is not contract-safe: ${failure.diagnosticMessage()}"

@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBlastRadiusInspection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 
 /**
@@ -68,6 +69,58 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
     if (blastRadiusInspection == null) {
       return "Follow-up audit cannot emit a satisfied verdict without a blast-radius inspection over the " +
         "repair batch's changed production paths; the inspection record is absent."
+    }
+    return null
+  }
+
+  /**
+   * Every way an agent-authored carried-gap disposition can be unrepresentable or self-contradictory, as the
+   * first failing rule.
+   *
+   * The producer gate and the durable write share this one function. A defect the write path would throw on
+   * has to be named to the agent here first: an exception raised inside the recording transaction ends the
+   * run with no durable block and no repair prompt, while a gate reason re-enters the bounded audit fix loop.
+   */
+  @Suppress("ReturnCount")
+  fun carriedGapDispositionDefect(
+    producedOutputs: Map<String, Any?>,
+    carriedGapIds: Set<String>,
+    reportedGapIds: Set<String>,
+  ): String? {
+    FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS.forEach { key ->
+      (producedOutputs[key] as? List<*>).orEmpty().forEachIndexed { index, entry ->
+        val source = "produced_outputs.$key[$index]"
+        val decoded = runCatching { priorGapDispositionFromWire(entry, source) }
+        decoded.exceptionOrNull()?.let { failure ->
+          return "Carried gap disposition $source is not contract-safe: " +
+            (failure.message?.takeIf(String::isNotBlank) ?: failure::class.simpleName.orEmpty())
+        }
+        dispositionDefect(decoded.getOrThrow(), source, carriedGapIds, reportedGapIds)?.let { return it }
+      }
+    }
+    return null
+  }
+
+  @Suppress("ReturnCount")
+  private fun dispositionDefect(
+    disposition: FeatureTaskRuntimePriorGapDisposition,
+    source: String,
+    carriedGapIds: Set<String>,
+    reportedGapIds: Set<String>,
+  ): String? {
+    val gapId = disposition.gapId
+    if (gapId !in carriedGapIds) {
+      return "Carried gap disposition $source names gap '$gapId', which the durable unresolved-gap ledger " +
+        "does not carry; disposition only ${carriedGapIds.sorted().joinToString()}."
+    }
+    val resolved = disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
+    if (resolved && gapId in reportedGapIds) {
+      return "Carried gap '$gapId' is dispositioned resolved in $source while the same audit re-reports it " +
+        "as a gap; a gap is either verified resolved or still present, never both."
+    }
+    if (!resolved && gapId !in reportedGapIds) {
+      return "Carried gap '$gapId' is dispositioned recurring in $source but is not re-reported in " +
+        "produced_outputs.gaps; a recurring gap keeps its identity and must appear as a reported gap."
     }
     return null
   }

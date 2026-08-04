@@ -250,7 +250,13 @@ class FeatureTaskRuntimePhaseRecorder(
         phaseId = request.phaseId,
         prior = priorAuditState,
         latestPlan = latestPlan,
-        declared = declaredAuditGapDispositions(request.phaseId, outputProduced),
+        declared = declaredAuditGapDispositions(
+          phaseId = request.phaseId,
+          producedOutputs = outputProduced,
+          carriedGapIds = priorAuditState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
+            .mapTo(linkedSetOf()) { it.gapId },
+          reportedGapIds = latestPlan?.gaps.orEmpty().mapTo(linkedSetOf()) { it.gapId },
+        ),
       )
       val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
         priorAuditState != null
@@ -439,12 +445,24 @@ class FeatureTaskRuntimePhaseRecorder(
     return featureTaskRuntimeImplementationAttemptsFromWire(raw)
   }
 
-  /** What the audit output itself said about carried gaps, across both authorized disposition keys. */
+  /**
+   * What the audit output itself said about carried gaps, across both authorized disposition keys.
+   *
+   * The same validation the producer gate applies runs here before any decode, so a defect that slipped past
+   * the gate becomes a typed schema error instead of an untyped exception escaping the write transaction.
+   */
   private fun declaredAuditGapDispositions(
     phaseId: String,
     producedOutputs: Map<String, Any?>?,
+    carriedGapIds: Set<String>,
+    reportedGapIds: Set<String>,
   ): Map<String, FeatureTaskRuntimePriorGapDisposition> {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return emptyMap()
+    FeatureTaskRuntimeAuditGenerationGates.carriedGapDispositionDefect(
+      producedOutputs = producedOutputs.orEmpty(),
+      carriedGapIds = carriedGapIds,
+      reportedGapIds = reportedGapIds,
+    )?.let(::schemaError)
     return FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS.flatMap { key ->
       (producedOutputs?.get(key) as? List<*>).orEmpty().mapIndexed { index, value ->
         priorGapDispositionFromWire(value, "audit.$key[$index]")
