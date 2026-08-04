@@ -1,6 +1,6 @@
 # SKILL-154 Subtask 3 - Monitor-Only Skill and Integration Conformance
 
-Parent spec: [.feature-specs/SKILL-154-goal-context-efficiency-and-monitoring/spec.md](./spec.md)
+Parent spec: [.feature-specs/SKILL-154-goal-context-efficiency-and-monitoring/spec.md](spec.md)
 Issue key: SKILL-154
 
 ## Scope
