@@ -53,11 +53,9 @@ still-open repair item exactly once.
 ## Dependency Notes
 
 Depends on Subtask 1 for the truthful mutating-phase completion gate. Durable
-audit persistence is owned here: the quarry branch's audit-convergence tables and
-migrations (`77d32753`, `e051f2cd`, name-keyed 25/27/28 in its numbering) plus
-the `FeatureTaskRuntimeAuditRepairState` and disposition models are the starting
-material; renumber migrations after the current `main` tail and tolerate ledgers
-that already carry the quarry names.
+audit persistence is owned here: audit-generation tables and their migrations
+follow the runtime-contract recipe and the append-only, name-keyed migration
+rule, numbered after the current `main` tail.
 
 ## Validation Strategy
 

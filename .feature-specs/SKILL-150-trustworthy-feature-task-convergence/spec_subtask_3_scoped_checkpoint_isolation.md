@@ -34,10 +34,10 @@ concurrent-agent work.
 9. Review input is constructed from the immutable checkpoint plus the same
    owned-path inventory, so unrelated dirt cannot change its semantic delta
    digest.
-10. A regression reproduces the concurrent-spec incident (SKILL-149 appearing
-    during SKILL-134) and proves the foreign spec remains uncommitted and
-    outside review while the active workflow either checkpoints only its own
-    files or blocks safely on a real overlap.
+10. A regression prepares a second governed feature spec while another workflow
+    is active and proves the foreign spec remains uncommitted and outside review
+    while the active workflow either checkpoints only its own files or blocks
+    safely on a real overlap.
 
 ## Non-Goals
 
@@ -49,11 +49,9 @@ concurrent-agent work.
 ## Dependency Notes
 
 Independent of Subtasks 1–2; checkpoint identity persistence is owned here. The
-quarry branch's `2f41e027` (workflow-owned path inventory, private Git index,
-`WorkflowCheckpointIdentity` with owned-path digest verification, scoped review
-input) is the starting material; its review-input seam must be re-fitted to
-current `main`'s `buildGoalSubtaskReviewInput` remediation-baseline behavior
-rather than the branch's checkpoint-mandatory variant.
+scoped review-input construction must compose with the existing
+`buildGoalSubtaskReviewInput` remediation-baseline behavior rather than replace
+it.
 
 ## Validation Strategy
 

@@ -50,15 +50,11 @@ the complete bounded prior implementation receipt for every retry and resume.
 
 No upstream subtask. Durable attempt history is owned here: persist the bounded
 receipt/attempt records this gate and its continuation projection need, following
-the runtime-contract recipe and append-only name-keyed migrations. The quarry
-branch's `94a94fe4`/`ed746dbd` implementations (completion decision, continuation
-prompt, `RetryableTerminal` attempt handling, receipt persistence) are the
-starting material; re-validate them against current `main`'s `AttemptResult` and
-structural-repair seams instead of re-deriving from scratch.
+the runtime-contract recipe and append-only name-keyed migrations.
 
 ## Validation Strategy
 
-- Reproduce the SKILL-134 sequence where two honest incomplete outputs were
+- Reproduce the observed sequence where two honest incomplete outputs were
   followed by a false completed receipt; assert the third receipt cannot advance.
 - Test that incomplete retries receive their complete prior receipt and a
   continuation directive, while real schema errors receive the schema correction
