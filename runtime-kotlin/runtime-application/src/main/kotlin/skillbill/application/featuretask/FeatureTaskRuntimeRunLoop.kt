@@ -51,7 +51,6 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -2837,7 +2836,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
       history = history,
-      dispositionedGapIds = dispositionedCarriedGapIds(produced, history, reportedGapIds),
+      dispositionedGapIds = dispositionedCarriedGapIds(produced, reportedGapIds),
       blastRadiusInspection = blastRadius.getOrNull(),
       reportsGaps = reportedGapIds.isNotEmpty(),
     )
@@ -2850,23 +2849,19 @@ internal class FeatureTaskRuntimeRunLoop(
       .mapTo(linkedSetOf(), ::canonicalAuditIdentifier)
 
   /**
-   * Which carried gaps this audit dispositioned. An explicit `prior_gap_dispositions` list says so directly.
-   * The mandated compact audit shape cannot carry one and dispositions by omission instead: a carried gap the
-   * audit re-reports recurs, one it leaves out is claimed resolved. Both readings come from the expanded
-   * envelope, so the blast-radius requirement still applies to the compact satisfied verdict that previously
-   * bypassed the whole gate.
+   * Which carried gaps this audit actually spoke to. A re-reported gap recurs under its own identity. Any
+   * other carried gap must be dispositioned explicitly: the expanded envelope's `prior_gap_dispositions`, or
+   * `carried_gap_dispositions`, which the mandated compact audit shape can carry alongside `gaps`. Omission
+   * is deliberately not counted — claiming a gap resolved by staying silent about it is the laundering this
+   * gate exists to stop.
    */
   private fun dispositionedCarriedGapIds(
     produced: Map<String, Any?>,
-    history: FeatureTaskRuntimeAuditGenerationHistory,
     reportedGapIds: Set<String>,
-  ): Set<String> {
-    val explicit = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
-      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier)
-    if (explicit.isNotEmpty()) return explicit
-    return history.latestGapStates().filterValues { it.open }.keys + reportedGapIds
-  }
+  ): Set<String> = FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS
+    .flatMap { key -> (produced[key] as? List<*>).orEmpty() }
+    .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
+    .mapTo(linkedSetOf(), ::canonicalAuditIdentifier) + reportedGapIds
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.

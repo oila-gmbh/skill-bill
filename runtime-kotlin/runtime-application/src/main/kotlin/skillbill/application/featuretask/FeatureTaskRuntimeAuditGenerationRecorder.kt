@@ -132,7 +132,7 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
           ?: prior?.repairItemIds.orEmpty(),
       )
     }
-    return FeatureTaskRuntimeAuditGeneration(
+    val generation = FeatureTaskRuntimeAuditGeneration(
       generationOrdinal = ordinal,
       repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(request.repositoryFingerprint),
       inspectedCriteria = inspectedCriteria(request.auditScopeCriterionRefs, gaps),
@@ -145,6 +145,18 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
       ),
       blastRadiusInspection = request.blastRadiusInspection,
     )
+    // The write-path half of the follow-up evidence rule: a generation that closes every carried gap is the
+    // satisfied verdict, and the durable authority refuses to record one whose own blast radius is missing —
+    // independently of the producer-side gate that named the same requirement to the agent.
+    val closesEveryCarriedGap = carriedOpenGapIds.isNotEmpty() && generation.openGapIds.isEmpty()
+    if (closesEveryCarriedGap && !generation.satisfiedVerdictEligible) {
+      schemaError(
+        "A follow-up audit generation that closes every carried gap must carry the repair batch's " +
+          "blast-radius inspection; generation $ordinal closed ${carriedOpenGapIds.size} carried gap(s) " +
+          "with no inspection record.",
+      )
+    }
+    return generation
   }
 
   private fun resolveAuditGapState(

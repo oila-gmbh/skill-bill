@@ -246,13 +246,11 @@ class FeatureTaskRuntimePhaseRecorder(
             request.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
         }
         ?.mapIndexed { index, value -> repairItemResultFromWire(value, "implement.repair_item_results[$index]") }
-      val currentDispositions = (outputProduced?.get("prior_gap_dispositions") as? List<*>)
-        ?.takeIf { request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT }
-        ?.mapIndexed { index, value -> priorGapDispositionFromWire(value, "audit.prior_gap_dispositions[$index]") }
-      val effectiveDispositions = currentDispositions ?: inferAuditGapDispositions(
+      val effectiveDispositions = auditGapDispositions(
         phaseId = request.phaseId,
         prior = priorAuditState,
         latestPlan = latestPlan,
+        declared = declaredAuditGapDispositions(request.phaseId, outputProduced),
       )
       val reconcilesAuditState = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
         priorAuditState != null
@@ -441,34 +439,62 @@ class FeatureTaskRuntimePhaseRecorder(
     return featureTaskRuntimeImplementationAttemptsFromWire(raw)
   }
 
-  private fun inferAuditGapDispositions(
+  /** What the audit output itself said about carried gaps, across both authorized disposition keys. */
+  private fun declaredAuditGapDispositions(
+    phaseId: String,
+    producedOutputs: Map<String, Any?>?,
+  ): Map<String, FeatureTaskRuntimePriorGapDisposition> {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return emptyMap()
+    return FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS.flatMap { key ->
+      (producedOutputs?.get(key) as? List<*>).orEmpty().mapIndexed { index, value ->
+        priorGapDispositionFromWire(value, "audit.$key[$index]")
+      }
+    }.associateBy { it.gapId }
+  }
+
+  /**
+   * The disposition of every carried gap, as the durable authority will record it.
+   *
+   * A gap the audit re-reported recurs under its own identity, and its recurrence evidence comes from the
+   * re-report. Resolution is never inferred: a carried gap the audit neither re-reported nor dispositioned
+   * explicitly has said nothing about, and synthesizing `resolved` for it from the original failure evidence
+   * is exactly how an unfixed defect used to launder into a satisfied verdict.
+   */
+  private fun auditGapDispositions(
     phaseId: String,
     prior: FeatureTaskRuntimeAuditRepairState?,
     latestPlan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan?,
+    declared: Map<String, FeatureTaskRuntimePriorGapDisposition>,
   ): List<FeatureTaskRuntimePriorGapDisposition>? {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT || prior == null) return null
+    val carried = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId }
+    val foreign = declared.keys.filterNot(carried::contains).sorted()
+    if (foreign.isNotEmpty()) {
+      schemaError(
+        "An audit cannot disposition a gap the durable unresolved-gap ledger never carried; " +
+          "ledger=${carried.sorted()} foreign=$foreign.",
+      )
+    }
     val latestByGapId = latestPlan?.gaps.orEmpty().associateBy { it.gapId }
-    val priorByGapId = prior.acceptedPlans.last().gaps.associateBy { it.gapId }
     return prior.unresolvedGapLedger.unresolvedGaps.map { unresolved ->
       val recurring = latestByGapId[unresolved.gapId]
-      val evidenceSource = recurring ?: requireNotNull(priorByGapId[unresolved.gapId])
-      FeatureTaskRuntimePriorGapDisposition(
-        gapId = unresolved.gapId,
-        status = if (recurring == null) {
-          FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
-        } else {
-          FeatureTaskRuntimePriorGapDisposition.Status.RECURRING
-        },
-        evidence = FeatureTaskRuntimeEvidence(
-          observation = if (recurring == null) {
-            FeatureTaskRuntimeEvidence.Observation.RESOLUTION_VERIFIED
-          } else {
-            FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED
-          },
-          artifactRef = evidenceSource.failureEvidence.artifactRef,
-          checkRef = unresolved.acceptanceCriterionRef,
-        ),
-      )
+      declared[unresolved.gapId]
+        ?: recurring?.let {
+          FeatureTaskRuntimePriorGapDisposition(
+            gapId = unresolved.gapId,
+            status = FeatureTaskRuntimePriorGapDisposition.Status.RECURRING,
+            evidence = FeatureTaskRuntimeEvidence(
+              observation = FeatureTaskRuntimeEvidence.Observation.RECURRENCE_VERIFIED,
+              artifactRef = it.failureEvidence.artifactRef,
+              checkRef = unresolved.acceptanceCriterionRef,
+            ),
+          )
+        }
+        ?: schemaError(
+          "Carried gap '${unresolved.gapId}' has no disposition: a follow-up audit that verified it resolved " +
+            "must say so in carried_gap_dispositions with its own resolution evidence, and one still present " +
+            "must be re-reported under the same gap id. Omitting it does not close it.",
+        )
     }
   }
 

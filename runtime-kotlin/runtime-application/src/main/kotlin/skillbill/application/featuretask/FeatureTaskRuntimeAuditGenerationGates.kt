@@ -40,6 +40,10 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
    * A follow-up audit reaches a satisfied verdict only after it dispositions every gap the active batch was
    * opened against and records what the batch's changed production paths look like now. Without the blast
    * radius, a repair that closed its own gaps while breaking a neighbouring boundary reads as convergence.
+   *
+   * `dispositionedGapIds` must be what the output actually said about the carried gaps — re-reported gaps
+   * plus explicitly dispositioned ones. Silence about a carried gap is not a disposition: passing the
+   * carried set back in would make the undispositioned check a set difference against itself.
    */
   fun followUpAuditBlockReason(
     history: FeatureTaskRuntimeAuditGenerationHistory,
@@ -52,9 +56,11 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
     val dispositioned = dispositionedGapIds.toSet()
     val undispositioned = carriedGapIds.filterNot(dispositioned::contains).sorted()
     if (undispositioned.isNotEmpty()) {
-      return "Follow-up audit must disposition every gap the active repair batch was opened against; " +
+      return "Follow-up audit must account for every gap the active repair batch was opened against; " +
         "${undispositioned.size} carried gap(s) have no disposition, the first being " +
-        "'${undispositioned.first()}'."
+        "'${undispositioned.first()}'. Re-report a gap still present in produced_outputs.gaps under its " +
+        "existing gap_id, or disposition it in produced_outputs.carried_gap_dispositions with status " +
+        "resolved and resolution_verified evidence."
     }
     // A gap-reporting audit is not claiming convergence, so it owes no blast-radius record yet; only the
     // verdict that ends the loop does.

@@ -251,9 +251,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
     "Emit audit_result with clearance_status, review_scope, and the exact repository_checkpoint; " +
-    "keep audit reasoning and repair history outside the clearance. Disposition every carried gap the " +
-    "briefing lists as resolved or recurring against repository evidence, reusing its existing gap_id — a " +
-    "defect still present keeps its identity and recurs. Before emitting a satisfied clearance, also emit " +
+    "keep audit reasoning and repair history outside the clearance. Account for every carried gap the " +
+    "briefing lists against repository evidence: a defect still present keeps its identity and is re-reported " +
+    "in gaps under its existing gap_id, and one you verified fixed gets a carried_gap_dispositions entry with " +
+    "status resolved and your own resolution evidence. Leaving a carried gap out claims nothing and is " +
+    "rejected. Before emitting a satisfied clearance, also emit " +
     "blast_radius_inspection naming the repair batch's changed production paths, the gap ids any newly " +
     "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",

@@ -60,6 +60,12 @@ data class FeatureTaskRuntimeAuditRepairStatus(
   val attemptedRepairItemCount: Int,
   val resolvedRepairItemCount: Int,
   val auditGapIterationCount: Int,
+  /**
+   * Set when the replaceable audit-repair cache's loop counter disagrees with the value derived from the
+   * durable generations and ledger. The reported counters are always the derived ones; this names the
+   * disagreement so bookkeeping drift is visible without taking the status projection down.
+   */
+  val cachedCounterDisagreement: String? = null,
 )
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(

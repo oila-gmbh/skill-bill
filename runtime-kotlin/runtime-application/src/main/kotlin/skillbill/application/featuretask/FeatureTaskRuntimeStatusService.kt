@@ -91,15 +91,20 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
-      auditRepair = auditRepairStatus(auditRepairProgress),
+      auditRepair = auditRepairStatus(
+        auditRepairProgress,
+        cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
+      ),
     )
   }
 
   /**
    * Audit-convergence counters, derived from the append-only generation history rather than read from a
-   * stored counter. The audit-loop count comes from the phase ledger's own audit-gap edge trail, and a
-   * replaceable cache that disagrees with the derivation loud-fails instead of one of the two values being
-   * reported as if it were authoritative.
+   * stored counter. The audit-loop count comes from the phase ledger's own audit-gap edge trail. The
+   * replaceable cache is written before the loop edge it will later reflect and the ledger is pruned while
+   * the cache is monotone, so the two disagreeing is an ordinary bookkeeping state: status reports the
+   * derived value and names the disagreement as a field instead of failing the operator's only view of the
+   * run.
    */
   private fun auditRepairProgressFrom(
     history: FeatureTaskRuntimeAuditGenerationHistory,
@@ -107,14 +112,17 @@ class FeatureTaskRuntimeStatusService(
     cached: FeatureTaskRuntimeAuditRepairProgress?,
   ): FeatureTaskRuntimeAuditRepairProgress? {
     if (history.generations.isEmpty()) return cached
-    val derived = history.deriveProgress(auditGapIterationCount = ledgerAuditGapIterationCount(ledger))
-    if (cached != null) {
-      require(cached.auditGapIterationCount == derived.auditGapIterationCount) {
-        "Audit-loop count derived from durable generations (${derived.auditGapIterationCount}) disagrees with " +
-          "the replaceable audit-repair cache (${cached.auditGapIterationCount}); neither value is reported."
-      }
-    }
-    return derived
+    return history.deriveProgress(auditGapIterationCount = ledgerAuditGapIterationCount(ledger))
+  }
+
+  private fun cachedCounterDisagreement(
+    derived: FeatureTaskRuntimeAuditRepairProgress?,
+    cached: FeatureTaskRuntimeAuditRepairProgress?,
+  ): String? {
+    if (derived == null || cached == null || cached === derived) return null
+    if (cached.auditGapIterationCount == derived.auditGapIterationCount) return null
+    return "audit_gap_iteration_count derived from durable generations is ${derived.auditGapIterationCount}; " +
+      "the replaceable audit-repair cache holds ${cached.auditGapIterationCount}. The derived value is reported."
   }
 
   private fun ledgerAuditGapIterationCount(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>): Int =
@@ -127,8 +135,10 @@ class FeatureTaskRuntimeStatusService(
   // progress projection means no audit has settled, not that one converged on its first pass.
   private fun auditRepairStatus(
     progress: FeatureTaskRuntimeAuditRepairProgress?,
+    cachedCounterDisagreement: String?,
   ): FeatureTaskRuntimeAuditRepairStatus? = progress?.let {
     FeatureTaskRuntimeAuditRepairStatus(
+      cachedCounterDisagreement = cachedCounterDisagreement,
       firstPassConvergence = it.firstPassConvergence,
       recurringGapCount = it.recurringGapCount,
       newGapCount = it.newGapCount,

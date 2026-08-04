@@ -1167,6 +1167,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
           "attempted_repair_item_count" to progress.attemptedRepairItemCount,
           "resolved_repair_item_count" to progress.resolvedRepairItemCount,
           "audit_gap_iteration_count" to progress.auditGapIterationCount,
+          "cached_counter_disagreement" to progress.cachedCounterDisagreement,
         )
       },
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->

@@ -25,6 +25,14 @@ internal val AUDIT_GENERATION_KEYS = setOf(
   "repair_batch",
 )
 internal val AUDIT_GENERATION_OPTIONAL_KEYS = setOf("blast_radius_inspection")
+
+/**
+ * The audit produced-output keys that carry a carried-gap disposition, in precedence order. The expanded
+ * envelope key comes first; `carried_gap_dispositions` is the one the mandated compact audit shape can emit
+ * alongside `gaps`, so a follow-up audit can say a carried gap is resolved and back it with its own evidence.
+ */
+internal val FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS =
+  listOf("prior_gap_dispositions", "carried_gap_dispositions")
 internal val AUDIT_GENERATION_CHECKPOINT_KEYS = setOf("fingerprint")
 internal val AUDIT_GENERATION_INSPECTION_KEYS = setOf("acceptance_criterion_ref", "inspection_verdict")
 internal val AUDIT_GENERATION_GAP_KEYS = setOf(

@@ -264,17 +264,13 @@ class FeatureTaskRuntimeRunner(
 
   private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditRepairProgress? {
     // The append-only generation history is the authority; the replaceable audit-repair-state artifact is a
-    // derived cache of it, and a cache that disagrees with the derivation loud-fails rather than being
-    // emitted as if either value were true.
+    // derived cache of it. The cache is written before the loop edge it will later reflect, so preferring the
+    // derivation is what makes the emitted counters agree with the ledger — a disagreement is bookkeeping
+    // drift, not grounds for dropping the telemetry.
     val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
     val cached = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
     if (history.generations.isNotEmpty()) {
-      val derived = history.deriveProgress(auditGapIterationCount = loadAuditGapIterationCount(request))
-      require(cached == null || cached.auditGapIterationCount == derived.auditGapIterationCount) {
-        "Audit-loop count derived from durable generations (${derived.auditGapIterationCount}) disagrees with " +
-          "the replaceable audit-repair cache (${cached?.auditGapIterationCount}); neither value is emitted."
-      }
-      return derived
+      return history.deriveProgress(auditGapIterationCount = loadAuditGapIterationCount(request))
     }
     // No phase-record fallback: a completed audit always appends its generation, including the zero-gap one,
     // so first-pass convergence is derived from the durable authority rather than inferred from a record's
