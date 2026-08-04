@@ -24,6 +24,22 @@ const val FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY: String = "feature
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
 
+/**
+ * Durable append-only history of implementation ATTEMPTS, structurally separate from
+ * [FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]. The two keys must never merge: the phase-records
+ * store is put()-replaced per phase id and therefore holds only the LATEST implement output, which
+ * cannot carry the prior receipt a semantic continuation segment needs. This store is appended to and
+ * bounded, so retry and crash resume reconstruct the same continuation projection from it.
+ *
+ * An absent key decodes to zero prior attempts, so a workflow created before this contract needs no
+ * DDL migration.
+ */
+const val FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY: String =
+  "feature_task_runtime_implementation_attempts"
+
+/** Mirrors the schema's `attempts.maxItems`; a schema-valid store can therefore never overflow it. */
+const val FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_LIMIT: Int = 64
+
 data class FeatureTaskRuntimeOperatorBlockRetry(
   val phaseId: String,
   val reason: String,

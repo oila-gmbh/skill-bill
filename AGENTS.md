@@ -14,6 +14,7 @@ Non-negotiable contracts:
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
 - Discovery, install, routing, and validation surfaces stay dynamic and manifest-driven.
 - Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.
+- Every fallback, degradation, or swallowed failure emits a record; see `docs/observability-policy.md`.
 
 ## Product Intent
 

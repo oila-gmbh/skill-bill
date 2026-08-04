@@ -66,6 +66,29 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertTrue(!store.controlState.paused)
   }
 
+  // SKILL-150 subtask 1: the completion gate is a property of the runtime, not of standalone
+  // invocation, so a goal-launched child cannot advance on an unclosed implementation receipt either.
+  @Test
+  fun `goal child cannot advance on a receipt claiming completion while plan tasks remain open`() {
+    val parity = goalChildParityRun(
+      launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE),
+      config = GoalChildParityConfig(
+        gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+      ),
+    )
+
+    val launched = parity.runtime.launchedPromptPhaseOrder()
+    assertEquals(0, launched.count { it == "audit" }, "audit must never launch from an unclosed receipt")
+    assertEquals(0, launched.count { it == "review" }, "review must never launch from an unclosed receipt")
+    assertTrue(launched.count { it == "implement" } > 1, "the child must continue implement rather than advance")
+    assertEquals(
+      launched.count { it == "implement" },
+      parity.runtime.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
+        .count { it.phaseId == "implement" },
+      "every child segment is durably recorded, so a resume carries no lost obligations",
+    )
+  }
+
   @Test
   fun `goal runner completes when the typed commit receipt carries its commit sha`() {
     val parity = goalChildParityRun(

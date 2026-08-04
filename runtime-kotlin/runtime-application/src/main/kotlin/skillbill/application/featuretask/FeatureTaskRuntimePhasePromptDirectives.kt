@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -30,6 +31,100 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
 }
 
 /**
+ * Emitted when a prior segment of THIS implementation left obligations open.
+ *
+ * Deliberately not the schema-correction directive: that one tells the agent its output was rejected
+ * and to re-emit it, which is the wrong instruction and the wrong mental model for work that was
+ * accepted as far as it went. This one says continue, and hands over the complete bounded prior
+ * receipt so the next segment knows exactly what is already closed and must not be redone.
+ *
+ * Composed from the durable projection rather than declared as an upstream projection on an implement
+ * self-edge: a self-edge required input would fail the first attempt, which has no prior receipt by
+ * construction.
+ */
+internal fun implementationContinuationDirective(
+  phaseId: String,
+  continuation: FeatureTaskRuntimeImplementationContinuation?,
+): String {
+  if (continuation == null || continuation.phaseId != phaseId) return ""
+  val closed = continuation.completedTaskIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
+  val paths = continuation.changedPaths.takeIf { it.isNotEmpty() }?.joinToString() ?: "none recorded"
+  val deviations = continuation.deviations.takeIf { it.isNotEmpty() }
+    ?.joinToString("; ") { "${it.ref}: ${it.note}" } ?: "none"
+  val unresolved = continuation.unresolvedItems.takeIf { it.isNotEmpty() }?.joinToString("; ") ?: "none"
+  val reconciliation = continuation.reconciliationEvidence
+    ?.let { "reconciled=${it.reconciled}; ${it.evidence}" } ?: "not reported"
+  val checkpoint = continuation.repositoryCheckpoint?.fingerprint ?: "not reported"
+  val disposition = continuation.failureDisposition ?: "none"
+  return """
+    ## Continue this implementation — segment ${continuation.segmentNumber}
+    A prior segment of this same implementation ran and did real work. It was NOT rejected and its
+    output was NOT malformed: it simply did not close every ${continuation.obligationNoun} yet.
+    Continue from where it stopped. Do not restart the implementation, do not redo closed work, and do
+    not re-apply changes already present — the mutating-phase idempotency contract still governs.
+
+    Still open (${continuation.obligationNoun}s you must close in this segment): ${
+    continuation.openObligationIds.joinToString()
+  }
+
+    Prior receipt:
+    - completed ${continuation.obligationNoun} ids: $closed
+    - changed paths: $paths
+    - deviations: $deviations
+    - unresolved items: $unresolved
+    - reconciliation evidence: $reconciliation
+    - repository checkpoint: $checkpoint
+    - failure disposition: $disposition
+
+    Your receipt for this segment must list every ${continuation.obligationNoun} that is closed once
+    you are done — the ones above plus the ones you close now. Reporting `completed` while any listed
+    obligation is still open will not advance the run.
+  """.trimIndent()
+}
+
+/**
+ * Why the previous attempt at a phase must be corrected, kept typed rather than as a bare string.
+ *
+ * A schema-gate rejection and a retryable `blocked`/`failed` envelope both re-enter the same bounded
+ * semantic budget, but they are different events and must not be prompted, reported or dispositioned
+ * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
+ * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
+ */
+internal class PriorAttemptCorrection private constructor(
+  private val reason: String,
+  private val terminal: Boolean,
+) {
+  val schemaGateReason: String? get() = reason.takeUnless { terminal }
+  val retryableTerminalReason: String? get() = reason.takeIf { terminal }
+
+  companion object {
+    fun schemaGate(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = false)
+
+    fun retryableTerminal(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = true)
+  }
+}
+
+/**
+ * Emitted when the prior attempt ended in a retryable `blocked` or `failed` envelope.
+ *
+ * Deliberately not the schema-correction directive: that envelope validated. Telling its author the
+ * output was rejected and must be re-emitted describes an event that did not happen and invites a
+ * cosmetic re-serialization of the same blocked state instead of an attempt at the blocker itself.
+ */
+internal fun terminalRetryDirective(priorTerminalFailure: String?): String {
+  if (priorTerminalFailure.isNullOrBlank()) return ""
+  return """
+    ## Previous attempt reported a retryable block — try again
+    Your previous attempt at this phase emitted valid output that reported the phase could not finish.
+    It was NOT rejected and its format was NOT wrong. Reported reason:
+    $priorTerminalFailure
+    Re-attempt the phase against the current repository state. If the same obstacle still stands and you
+    cannot clear it, report it again with the disposition that matches it rather than restating it in a
+    different shape; a re-emitted block with no new attempt behind it will exhaust this phase's budget.
+  """.trimIndent()
+}
+
+/**
  * Everything the review-execution directive needs to state the run's review depth and scope. These
  * travel together from [FeatureTaskRuntimePhasePromptComposer.compose] and are only ever read as a set.
  */
@@ -42,84 +137,6 @@ internal data class ReviewExecutionDirectiveInputs(
   val reviewDecidingRule: String?,
   val baselineUntrackedPaths: List<String> = emptyList(),
 )
-
-internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDirectiveInputs): String {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
-    return ""
-  }
-  val parallel = inputs.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { agent ->
-    " Combine it with `parallel:$agent`; both lanes must receive the resolved mode " +
-      "${inputs.resolvedReviewTier?.wireValue ?: inputs.codeReviewMode.wireValue} " +
-      "and the second lane must not launch parallel review recursively."
-  }.orEmpty()
-  val remediationPass = (inputs.reviewPassNumber ?: 1) >= 2
-  return """
-    ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `inline` is the default and runs exactly one review prompt in one declared `bill-code-review-inline` subagent with no per-area specialists; `auto` resolves to inline on every pass, first included; `delegated` is the experimental full-depth tier that runs the routed specialist fan-out and is reached only by an explicit selection. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.$parallel${resolvedTierInfo(
-    inputs,
-  )}${baselineUntrackedPolicy(
-    inputs,
-    remediationPass,
-  )}${materializedScope(inputs, remediationPass)}${remediationContext(inputs, remediationPass)}
-  """.trimIndent()
-}
-
-private fun baselineUntrackedPolicy(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String =
-  inputs.baselineUntrackedPaths
-    .distinct()
-    .sorted()
-    .takeIf { it.isNotEmpty() && !remediationPass }
-    ?.let { paths ->
-      """
-      ## Baseline-untracked review policy
-      These paths existed before this run and are excluded from the immutable-base review packet:
-      ${paths.joinToString("\n") { path -> "- `$path`" }}
-      If you invoke `code-review-parallel`, pass `--baseline-untracked-exclude` once for every path above. Do not re-add these paths through a branch scope or a replacement diff.
-      """.trimIndent()
-    }
-    .orEmpty()
-
-private fun materializedScope(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String {
-  // The immutable-base framing is pass one's authority only. Emitting it on a remediation pass would
-  // contradict the remediation-delta bound stated in the same prompt.
-  return inputs.goalSubtaskReviewInput?.takeIf { !remediationPass }?.let { input ->
-    """
-    ## Immutable-base review scope
-    Review only this run-owned delta from durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`.
-    It includes committed, staged, unstaged, and owned untracked changes below.
-    Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
-    If parallel CLI delegation is required, give both lanes this exact diff through `--diff-file`;
-    never select a branch scope.
-
-    ${input.reviewText}
-    """.trimIndent()
-  }.orEmpty()
-}
-
-private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediationPass: Boolean): String =
-  if (remediationPass) {
-    val materialized = inputs.goalSubtaskReviewInput?.let { input ->
-      "\nThe materialized remediation delta below runs from pre-fix tree `${input.reviewBaseSha}` to " +
-        "post-fix HEAD `${input.currentHeadSha}`; treat it as authoritative and do not rediscover or " +
-        "replace its scope.\n\n${input.reviewText}"
-    }.orEmpty()
-    """
-    ## Reserved remediation pass (pass ${inputs.reviewPassNumber ?: 2})
-    This is a reserved remediation pass under context:feature-remediation. Scope is strictly the immediately preceding pass's Blocker findings union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
-    """.trimIndent()
-  } else {
-    ""
-  }
-
-private fun resolvedTierInfo(inputs: ReviewExecutionDirectiveInputs): String =
-  if (inputs.resolvedReviewTier != null && inputs.reviewDecidingRule != null) {
-    """
-    ## Resolved review mode
-    AUTO resolved to ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE or DELEGATED always overrides AUTO.
-    """.trimIndent()
-  } else {
-    ""
-  }
 
 // Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
 // (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
@@ -208,7 +225,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
     "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation.",
+    "settled implementation. Under the audit-gap loop, report repair_item_results for every carried " +
+    "repair item with a terminal fixed or already_satisfied outcome, or list it in " +
+    "superseded_repair_items with its governing decision, authority_ref, and rationale. Reporting fewer " +
+    "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
+    "read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address only the carried unresolved actionable Blocker findings on the CURRENT working tree as " +
     "incremental reconciliation. Approved, Major, Minor, and Nit findings, specialist narratives, " +
@@ -230,11 +251,23 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
     "Emit audit_result with clearance_status, review_scope, and the exact repository_checkpoint; " +
-    "keep audit reasoning and repair history outside the clearance.",
+    "keep audit reasoning and repair history outside the clearance. Account for every carried gap the " +
+    "briefing lists against repository evidence: a defect still present keeps its identity and is re-reported " +
+    "in gaps under its existing gap_id, and one you verified fixed gets a carried_gap_dispositions entry with " +
+    "status resolved and your own resolution evidence. Leaving a carried gap out claims nothing and is " +
+    "rejected. Before emitting a satisfied clearance, also emit " +
+    "blast_radius_inspection naming the repair batch's changed production paths, the gap ids any newly " +
+    "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
+    "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
     "Run tests written during the implement phase, then run the repository validation gate " +
-    "relevant to the change. Fix validation findings at their root cause and rerun the gate " +
-    "until it passes; validation findings are repair work, not a reason to block the phase. Emit a " +
+    "relevant to the change. A gate run costs minutes because it recompiles every dependent module " +
+    "and reruns their suites, so batch the repair: read the complete finding set from one gate run, " +
+    "fix every finding in it at its root cause, and only then run the gate again to verify. Never " +
+    "rerun the gate after an individual fix, and never rerun it to rediscover findings the previous " +
+    "run already reported. Rerun early only when a fix genuinely cannot be completed without fresh " +
+    "gate output, and say which finding forced it. Findings that share one root cause are one fix, " +
+    "not several. Validation findings are repair work, not a reason to block the phase. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
     "do not embed raw command output or telemetry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to

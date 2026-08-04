@@ -81,6 +81,7 @@ internal class FeatureTaskRuntimeRunState(
       )
     }
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
+  private val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
     ?.takeIf { FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in gateInvalidatedPhases }
   private var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber
@@ -524,6 +525,16 @@ internal class FeatureTaskRuntimeRunState(
   fun isComplete(phaseId: String): Boolean = phaseId in completed
 
   fun hasPriorRecord(phaseId: String): Boolean = phaseId in priorRecords
+
+  // An ACTUAL process-restart signal, unlike hasPriorRecord: this reads the records that existed when
+  // this process loaded state and is never grown by in-process progress. A phase that first ran in
+  // THIS process is not resuming after a crash no matter how many times it has re-entered since.
+  fun resumedFromPriorProcess(phaseId: String): Boolean =
+    phaseId in initialRecords && phaseId !in phasesLaunchedThisProcess
+
+  fun recordPhaseLaunched(phaseId: String) {
+    phasesLaunchedThisProcess += phaseId
+  }
 
   // The durable per-phase record's blocked reason. The runner decides whether it is retryable;
   // this map preserves the prior attempt count and reason across resume.

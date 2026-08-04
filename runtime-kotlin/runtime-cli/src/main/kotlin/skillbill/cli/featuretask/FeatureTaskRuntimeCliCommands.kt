@@ -910,14 +910,13 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: branch ${if (reused) "reused" else "created"} $branch\n"
   is FeatureTaskRuntimeRunEvent.BranchSetupBlocked ->
     "feature-task-runtime $workflowId: branch setup blocked at phase $phaseId: $blockedReason\n"
-  is FeatureTaskRuntimeRunEvent.PhaseStarted ->
-    "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
-      "agent=$resolvedAgentId attempt=$attemptCount" +
-      model?.let { " model=$it" }.orEmpty() +
-      effort?.let { " effort=$it" }.orEmpty() +
-      "\n"
+  is FeatureTaskRuntimeRunEvent.PhaseStarted -> progressLine()
+  is FeatureTaskRuntimeRunEvent.PhaseLoopEdge ->
+    "feature-task-runtime $workflowId: phase $phaseId $continuationKind loop=$loopId " +
+      "edge_iteration=$edgeIteration driving_verdict=$drivingVerdict\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
-    "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
+    "feature-task-runtime $workflowId: phase $phaseId " +
+      "${continuationKind ?: "fix_loop"} attempt=$attemptCount iteration=$fixLoopIteration\n"
   is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
@@ -926,6 +925,14 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
       "Work the first subtask first.\n"
 }
+
+private fun FeatureTaskRuntimeRunEvent.PhaseStarted.progressLine(): String =
+  "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
+    "agent=$resolvedAgentId attempt=$attemptCount" +
+    model?.let { " model=$it" }.orEmpty() +
+    effort?.let { " effort=$it" }.orEmpty() +
+    continuationKind?.let { " continuation=$it" }.orEmpty() +
+    "\n"
 
 private fun parsePhaseAgents(rawAssignments: List<String>): Map<String, String> {
   val parsed = LinkedHashMap<String, String>()
@@ -1160,6 +1167,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
           "attempted_repair_item_count" to progress.attemptedRepairItemCount,
           "resolved_repair_item_count" to progress.resolvedRepairItemCount,
           "audit_gap_iteration_count" to progress.auditGapIterationCount,
+          "cached_counter_disagreement" to progress.cachedCounterDisagreement,
         )
       },
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
@@ -1195,6 +1203,7 @@ private fun FeatureTaskRuntimePhaseStatus.toRuntimePhaseStatusCliMap(): Map<Stri
   "attempt_count" to attemptCount,
   "resolved_agent_id" to resolvedAgentId,
   "execution_origin" to executionOrigin,
+  "continuation_kind" to continuationKind,
   "finished" to finished,
 )
 

@@ -196,6 +196,30 @@ allOf:
               type: array
               maxItems: 50
               items: { $ref: "#/$defs/compactAuditGap" }
+            carried_gap_dispositions:
+              description: >
+                What this audit verified about the gaps the active repair batch was opened against. A
+                still-present gap is re-reported in `gaps` under its existing gap_id and needs no entry;
+                every other carried gap needs one here, with its own read-only repository evidence. The
+                runtime counts omission as saying nothing, not as resolution, so a follow-up audit cannot
+                reach a satisfied verdict by leaving a carried gap out.
+              type: array
+              maxItems: 50
+              items:
+                type: object
+                additionalProperties: false
+                required: [gap_id, status, evidence]
+                properties:
+                  gap_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  status: { enum: [resolved, recurring] }
+                  evidence:
+                    type: object
+                    additionalProperties: false
+                    required: [observation, artifact_ref, check_ref]
+                    properties:
+                      observation: { enum: [resolution_verified, recurrence_verified] }
+                      artifact_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                      check_ref: { type: string, minLength: 1, pattern: ".*\\S.*" }
             non_blocking_findings:
               description: >
                 Advisory sink for Minor and Nit findings. The runtime never reads entry bodies, so

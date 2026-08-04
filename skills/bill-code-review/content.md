@@ -41,9 +41,13 @@ specialist workers, no nested baseline orchestrator, under a bounded budget. The
 subagent performs the whole review in one isolated context, so the parent never
 carries the rubric text or the full delta forward. Build the
 checklist from every review area declared by the routed pack and every required
-baseline layer in its manifest composition. Walk every declared area once at
-reduced depth, including areas whose diff-signal lane would otherwise be empty;
-record `checked — no applicable signal` instead of silently dropping them.
+baseline layer in its manifest composition, and merge it into one combined
+checklist. The worker then traverses the delta exactly once against that combined
+checklist at reduced depth, holding all areas in mind simultaneously — it must
+never re-walk the same delta once per area. Areas whose diff-signal lane would otherwise be empty
+are still recorded `checked — no applicable signal` instead of being silently
+dropped; that record is coverage accounting for the single pass, not evidence of
+a separate pass.
 Its purpose is verification — confirm the change does what it claims and catch
 the defects a careful reader finds on one attentive pass. It is not an audit of
 every area in depth. Signals focus the inspection within an area; they do not
@@ -103,9 +107,13 @@ rediscovered scope. Under `context:feature-remediation` the delta is the
 remediation diff instead, and the same single-prompt rule applies.
 
 Build the checklist from every review area declared by the routed pack and every
-required baseline layer in its manifest composition, and walk each area once at
-reduced depth. Record `checked — no applicable signal` for an area whose
-diff-signal is empty rather than dropping it.
+required baseline layer in its manifest composition, and merge it into one
+combined checklist. The worker traverses the delta exactly once against that
+combined checklist and never re-walks it per area; iterating areas over the same
+code is the same review repeated N times at N times the cost, and it misses
+defects that only surface where two areas intersect. Record `checked — no
+applicable signal` for an area whose diff-signal is empty rather than dropping
+it — that is coverage accounting for the single pass, not a separate pass.
 
 Area selection is the parent's work, done once before the launch. Classify the
 delta against the routed pack's Diff-Signal Routing Table to decide which declared

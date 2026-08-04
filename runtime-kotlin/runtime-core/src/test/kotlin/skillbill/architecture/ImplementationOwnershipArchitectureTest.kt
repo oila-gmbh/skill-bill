@@ -131,6 +131,14 @@ class ImplementationOwnershipArchitectureTest {
       "runtime-core must reject every non-composition package beyond skillbill.di.",
     )
 
+    assertEquals(
+      emptyList(),
+      movedImplementationImportViolations(),
+      "runtime-core must not import moved implementation packages.",
+    )
+  }
+
+  private fun movedImplementationImportViolations(): List<String> {
     val bannedImplementationImports = listOf(
       "skillbill.install",
       "skillbill.launcher",
@@ -139,33 +147,15 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.skillremove",
       "skillbill.workflow",
     )
-    // The composition root may reference port types and concrete adapters only
-    // where it declares @Provides bindings. These explicit imports are not
-    // runtime-core implementation ownership.
-    val allowedCompositionImports = setOf(
-      "skillbill.install.model.InstallPlanWireValidator",
-      "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
-      "skillbill.workflow.DecompositionManifestValidator",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",
-      "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
-      "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator",
-      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator",
-      "skillbill.workflow.GoalObservabilityEventValidator",
-      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
-      "skillbill.workflow.GoalProgressEventValidator",
-      "skillbill.workflow.WorkflowSnapshotValidator",
-    )
-    val violations = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))
+    return kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))
       .flatMap { sourceFile ->
         sourceFile.readText().lineSequence()
           .mapNotNull { line -> line.trim().removePrefix("import ").takeIf { line.trim().startsWith("import ") } }
           .filter { importedName -> bannedImplementationImports.any(importedName::startsWith) }
-          .filterNot { importedName -> importedName in allowedCompositionImports }
+          .filterNot { importedName -> importedName in ALLOWED_COMPOSITION_IMPORTS }
           .map { importedName -> "${runtimeRoot.relativize(sourceFile)} imports $importedName" }
       }
       .sorted()
-    assertEquals(emptyList(), violations, "runtime-core must not import moved implementation packages.")
   }
 
   private fun assertNoRuntimeCorePublicProjectEdges(runtimeCoreBuild: String) {
@@ -647,6 +637,24 @@ class ImplementationOwnershipArchitectureTest {
   }
 
   private companion object {
+    // The composition root may reference port types and concrete adapters only where it declares
+    // @Provides bindings. These explicit imports are not runtime-core implementation ownership.
+    val ALLOWED_COMPOSITION_IMPORTS: Set<String> = setOf(
+      "skillbill.install.model.InstallPlanWireValidator",
+      "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
+      "skillbill.workflow.DecompositionManifestValidator",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
+      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",
+      "skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator",
+      "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
+      "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator",
+      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator",
+      "skillbill.workflow.GoalObservabilityEventValidator",
+      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
+      "skillbill.workflow.GoalProgressEventValidator",
+      "skillbill.workflow.WorkflowSnapshotValidator",
+    )
+
     val scaffoldApplicationServiceFileNames: Set<String> = setOf(
       "ScaffoldService.kt",
       "ScaffoldCatalogService.kt",
