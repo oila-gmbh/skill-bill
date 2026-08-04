@@ -17,6 +17,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -264,7 +265,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
           "prior_terminal_result_count" to repairState.repairItemResults.size,
           "audit_gap_iteration_count" to repairState.progress.auditGapIterationCount,
           "repository_fingerprint" to repairState.repositoryFingerprint,
-        ) + auditRepairReentryProjection(handoff.auditRepairPlan, repairState),
+        ) + auditRepairReentryProjection(handoff.auditRepairPlan, repairState, handoff.activeRepairBatch),
       ).lineSequence().forEach { appendLine("  $it") }
     }
     appendLine()
@@ -297,11 +298,18 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   private fun auditRepairReentryProjection(
     plan: FeatureTaskRuntimeAuditRepairPlan?,
     repairState: FeatureTaskRuntimeAuditRepairState,
+    activeBatch: FeatureTaskRuntimeRepairBatch?,
   ): Map<String, Any?> {
     val priorResults = repairState.repairItemResults.associateBy { it.repairItemId }
     val items = plan?.gaps.orEmpty().flatMap { gap -> gap.repairItems.map { gap.gapId to it } }
+    // Closure is scoped to the ACTIVE batch, not to every retained result. A recurring gap regenerates the
+    // same repair_item_id, so an earlier round's result for that id is prior evidence for a re-opened
+    // obligation; filtering on it delivered an empty open set while the completion gate still demanded a
+    // terminal result. Only a workflow with no durable generation falls back to the retained results.
+    val closed = activeBatch?.repairItemDispositions?.mapTo(linkedSetOf()) { it.repairItemId }
+      ?: priorResults.keys
     return mapOf(
-      "open_repair_items" to items.filterNot { (_, item) -> item.repairItemId in priorResults }
+      "open_repair_items" to items.filterNot { (_, item) -> item.repairItemId in closed }
         .map { (gapId, item) ->
           mapOf(
             "gap_id" to gapId,

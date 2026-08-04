@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBlastRadiusInspection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 
 /**
@@ -44,13 +43,13 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
    */
   fun followUpAuditBlockReason(
     history: FeatureTaskRuntimeAuditGenerationHistory,
-    dispositions: List<FeatureTaskRuntimePriorGapDisposition>,
+    dispositionedGapIds: Collection<String>,
     blastRadiusInspection: FeatureTaskRuntimeBlastRadiusInspection?,
     reportsGaps: Boolean,
   ): String? {
     val carriedGapIds = history.latestGapStates().filterValues { it.open }.keys
     if (carriedGapIds.isEmpty()) return null
-    val dispositioned = dispositions.mapTo(linkedSetOf()) { it.gapId }
+    val dispositioned = dispositionedGapIds.toSet()
     val undispositioned = carriedGapIds.filterNot(dispositioned::contains).sorted()
     if (undispositioned.isNotEmpty()) {
       return "Follow-up audit must disposition every gap the active repair batch was opened against; " +

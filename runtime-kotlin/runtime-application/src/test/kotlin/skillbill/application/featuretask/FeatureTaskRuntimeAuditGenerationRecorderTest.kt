@@ -172,7 +172,7 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
 
     val undispositioned = FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
       history = history,
-      dispositions = listOf(disposition("ac-001-gap-1", FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED)),
+      dispositionedGapIds = listOf("ac-001-gap-1"),
       blastRadiusInspection = blastRadius(),
       reportsGaps = false,
     )
@@ -183,14 +183,11 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
   @Test
   fun `follow-up audit cannot claim convergence without a blast-radius inspection`() {
     appendInitialAudit()
-    val dispositions = listOf(
-      disposition("ac-001-gap-1", FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED),
-      disposition("ac-002-gap-1", FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED),
-    )
+    val dispositioned = listOf("ac-001-gap-1", "ac-002-gap-1")
 
     val missing = FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
       history = generations.history(),
-      dispositions = dispositions,
+      dispositionedGapIds = dispositioned,
       blastRadiusInspection = null,
       reportsGaps = false,
     )
@@ -200,7 +197,7 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
     assertNull(
       FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
         history = generations.history(),
-        dispositions = dispositions,
+        dispositionedGapIds = dispositioned,
         blastRadiusInspection = blastRadius(),
         reportsGaps = false,
       ),
@@ -210,15 +207,12 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
   @Test
   fun `a gap-reporting follow-up audit owes no blast radius because it is not claiming convergence`() {
     appendInitialAudit()
-    val dispositions = listOf(
-      disposition("ac-001-gap-1", FeatureTaskRuntimePriorGapDisposition.Status.RECURRING),
-      disposition("ac-002-gap-1", FeatureTaskRuntimePriorGapDisposition.Status.RECURRING),
-    )
+    val dispositioned = listOf("ac-001-gap-1", "ac-002-gap-1")
 
     assertNull(
       FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
         history = generations.history(),
-        dispositions = dispositions,
+        dispositionedGapIds = dispositioned,
         blastRadiusInspection = null,
         reportsGaps = true,
       ),
@@ -353,6 +347,90 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
     assertEquals(emptyList(), generations.history().generations)
     appendInitialAudit()
     assertEquals(listOf(1), generations.rows.map { it.generationOrdinal })
+  }
+
+  @Test
+  fun `a zero-gap audit settlement persists its generation with an empty closure-complete batch`() {
+    FeatureTaskRuntimeAuditGenerationRecorder.append(
+      generations,
+      AuditGenerationAppend(
+        workflowId = WORKFLOW,
+        repositoryFingerprint = CHECKPOINT,
+        auditScopeCriterionRefs = SCOPE,
+        auditSettlement = true,
+      ),
+    )
+
+    val generation = assertNotNull(generations.history().latestGeneration)
+    assertEquals(1, generation.generationOrdinal)
+    assertEquals(CHECKPOINT, generation.repositoryCheckpoint.fingerprint)
+    assertEquals(SCOPE, generation.inspectedCriteria.map { it.acceptanceCriterionRef })
+    assertEquals(SCOPE, generation.satisfiedCriterionRefs)
+    assertEquals(emptyList(), generation.gaps)
+    assertEquals(emptyList(), generation.repairBatch.repairItemIds)
+    assertNull(generations.history().activeRepairBatch())
+  }
+
+  @Test
+  fun `first-pass convergence is derived from the zero-gap generation rather than a phase record`() {
+    FeatureTaskRuntimeAuditGenerationRecorder.append(
+      generations,
+      AuditGenerationAppend(
+        workflowId = WORKFLOW,
+        repositoryFingerprint = CHECKPOINT,
+        auditScopeCriterionRefs = SCOPE,
+        auditSettlement = true,
+      ),
+    )
+
+    val progress = generations.history().deriveProgress(auditGapIterationCount = 0)
+    assertTrue(progress.firstPassConvergence)
+    assertEquals(0, progress.newGapCount)
+    assertEquals(0, progress.attemptedRepairItemCount)
+  }
+
+  @Test
+  fun `a recurring gap re-opens its repair item as an unclosed obligation of the new batch`() {
+    appendInitialAudit()
+    appendRepair(itemIds = listOf(EXACT_BYTE_ITEM, CANONICAL_SCHEMA_ITEM))
+    appendFollowUpAudit(
+      recurringGapIds = listOf("ac-001-gap-1", "ac-002-gap-1"),
+      plan = plan(EXACT_BYTE_GAP_TEXT, CANONICAL_SCHEMA_GAP_TEXT),
+    )
+
+    // The repair ids repeat because the identities are stable, so the earlier round's terminal results must
+    // not read as closure for the new batch: re-entry owes both items again.
+    val batch = assertNotNull(generations.history().activeRepairBatch())
+    assertEquals("batch-3", batch.batchId)
+    assertEquals(listOf(EXACT_BYTE_ITEM, CANONICAL_SCHEMA_ITEM), batch.repairItemIds)
+    assertEquals(listOf(EXACT_BYTE_ITEM, CANONICAL_SCHEMA_ITEM), batch.unclosedRepairItemIds)
+    assertEquals(emptyList(), batch.repairItemDispositions)
+  }
+
+  @Test
+  fun `an audit dispositioning by omission still owes the blast-radius record before claiming convergence`() {
+    appendInitialAudit()
+    val carried = generations.history().latestGapStates().filterValues { it.open }.keys
+
+    // The compact audit shape cannot carry prior_gap_dispositions, so every carried gap counts as
+    // dispositioned by omission; the blast radius is then the only evidence the verdict rests on.
+    val missing = FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
+      history = generations.history(),
+      dispositionedGapIds = carried,
+      blastRadiusInspection = null,
+      reportsGaps = false,
+    )
+    assertNotNull(missing)
+    assertContains(missing, "blast-radius")
+
+    assertNull(
+      FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
+        history = generations.history(),
+        dispositionedGapIds = carried,
+        blastRadiusInspection = blastRadius(),
+        reportsGaps = false,
+      ),
+    )
   }
 
   private fun activeBatchCount(): Int = if (generations.history().activeRepairBatch() == null) 0 else 1

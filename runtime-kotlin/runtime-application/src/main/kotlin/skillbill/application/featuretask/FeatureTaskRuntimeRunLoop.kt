@@ -51,6 +51,7 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -65,6 +66,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
@@ -2765,7 +2767,7 @@ internal class FeatureTaskRuntimeRunLoop(
       ?: repairClosureGateReason(phaseId, outputMap)?.let { "audit-repair-closure" to it }
       ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
         ?.let { "audit-durable-ledger" to it }
-      ?: followUpAuditEvidenceGateReason(phaseId, outputText, outputMap)
+      ?: followUpAuditEvidenceGateReason(phaseId, outputMap)
         ?.let { "audit-followup-evidence" to it }
       ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
 
@@ -2819,38 +2821,51 @@ internal class FeatureTaskRuntimeRunLoop(
 
   /**
    * A follow-up audit reaches a satisfied verdict only after it dispositions every carried gap and records the
-   * repair batch's production blast radius. A compact gap handoff is not claiming convergence, so it is not
-   * gated here.
+   * repair batch's production blast radius. Evaluated against the EXPANDED envelope, never the raw compact
+   * output: the mandated audit shape always carries `produced_outputs.gaps`, so short-circuiting on that key
+   * disabled this gate in production entirely.
    */
-  private fun followUpAuditEvidenceGateReason(
-    phaseId: String,
-    outputText: String,
-    outputMap: Map<String, Any?>,
-  ): String? {
+  private fun followUpAuditEvidenceGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    if (isCompactAuditOutput(phaseId, outputText)) return null
     val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
     if (history.generations.isEmpty()) return null
     val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val dispositions = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
-      .mapIndexedNotNull { index, entry ->
-        JsonSupport.anyToStringAnyMap(entry)?.let {
-          runCatching { priorGapDispositionFromWire(it, "prior_gap_dispositions[$index]") }.getOrNull()
-        }
-      }
-    val reportsGaps = (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
-      .orEmpty()
-      .isNotEmpty()
+    val reportedGapIds = expandedPlanGapIds(produced)
     val blastRadius = runCatching { blastRadiusInspectionFrom(produced, phaseId) }
     blastRadius.exceptionOrNull()?.let { failure ->
       return "Audit blast_radius_inspection is not contract-safe: ${failure.diagnosticMessage()}"
     }
     return FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
       history = history,
-      dispositions = dispositions,
+      dispositionedGapIds = dispositionedCarriedGapIds(produced, history, reportedGapIds),
       blastRadiusInspection = blastRadius.getOrNull(),
-      reportsGaps = reportsGaps,
+      reportsGaps = reportedGapIds.isNotEmpty(),
     )
+  }
+
+  private fun expandedPlanGapIds(produced: Map<String, Any?>): Set<String> =
+    (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
+      .orEmpty()
+      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
+      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier)
+
+  /**
+   * Which carried gaps this audit dispositioned. An explicit `prior_gap_dispositions` list says so directly.
+   * The mandated compact audit shape cannot carry one and dispositions by omission instead: a carried gap the
+   * audit re-reports recurs, one it leaves out is claimed resolved. Both readings come from the expanded
+   * envelope, so the blast-radius requirement still applies to the compact satisfied verdict that previously
+   * bypassed the whole gate.
+   */
+  private fun dispositionedCarriedGapIds(
+    produced: Map<String, Any?>,
+    history: FeatureTaskRuntimeAuditGenerationHistory,
+    reportedGapIds: Set<String>,
+  ): Set<String> {
+    val explicit = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
+      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
+      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier)
+    if (explicit.isNotEmpty()) return explicit
+    return history.latestGapStates().filterValues { it.open }.keys + reportedGapIds
   }
 
   /**
@@ -3657,6 +3672,16 @@ internal class FeatureTaskRuntimeRunLoop(
     },
   )
 
+  /**
+   * The active repair batch read from the durable generation authority at the launch seam, so first entry,
+   * in-process retry, and fresh-process resume all project the same open obligations from the same records.
+   */
+  private fun activeAuditRepairBatch(run: PhaseRun): FeatureTaskRuntimeRepairBatch? {
+    if (run.reentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) return null
+    return recorder.loadAuditGenerationHistory(run.request.workflowId, run.request.dbPathOverride)
+      .activeRepairBatch()
+  }
+
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
     // In-memory outputs hold at most one record per phase, so their count collapses to <= 1 after a
@@ -3684,6 +3709,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       auditRepairPlan = run.reentry?.auditRepairPlan,
       auditRepairState = run.reentry?.auditRepairState,
+      activeRepairBatch = activeAuditRepairBatch(run),
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repositoryCheckpoint = repositoryCheckpoint,
       expectedRepositoryCheckpoint = (

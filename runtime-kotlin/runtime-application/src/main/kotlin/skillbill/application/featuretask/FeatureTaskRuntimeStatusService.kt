@@ -91,7 +91,7 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
-      auditRepair = auditRepairStatus(records, auditRepairProgress),
+      auditRepair = auditRepairStatus(auditRepairProgress),
     )
   }
 
@@ -123,8 +123,9 @@ class FeatureTaskRuntimeStatusService(
       .maxOrNull()
       ?: 0
 
+  // Derived from the generation history alone: a completed audit always appends its generation, so an absent
+  // progress projection means no audit has settled, not that one converged on its first pass.
   private fun auditRepairStatus(
-    records: Map<String, FeatureTaskRuntimePhaseRecord>,
     progress: FeatureTaskRuntimeAuditRepairProgress?,
   ): FeatureTaskRuntimeAuditRepairStatus? = progress?.let {
     FeatureTaskRuntimeAuditRepairStatus(
@@ -135,9 +136,7 @@ class FeatureTaskRuntimeStatusService(
       resolvedRepairItemCount = it.resolvedRepairItemCount,
       auditGapIterationCount = it.auditGapIterationCount,
     )
-  } ?: records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
-    ?.takeIf { it.status == STATUS_COMPLETED }
-    ?.let { FeatureTaskRuntimeAuditRepairStatus(true, 0, 0, 0, 0, 0) }
+  }
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run

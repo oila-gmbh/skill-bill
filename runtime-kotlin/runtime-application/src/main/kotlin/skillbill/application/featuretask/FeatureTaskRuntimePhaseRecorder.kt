@@ -316,7 +316,16 @@ class FeatureTaskRuntimePhaseRecorder(
     producedOutputs: Map<String, Any?>?,
     priorFingerprint: String?,
   ) {
-    if (latestPlan == null && dispositions.isEmpty() && repairResults.isEmpty()) return
+    // Every completed audit settlement is a generation, including the zero-gap one: its checkpoint, its
+    // per-criterion inspection, and its empty closure-complete batch are what make first-pass convergence a
+    // durable fact instead of an inference from phase records. A settlement with nothing in audit scope
+    // inspected nothing, so it contributes no generation.
+    val zeroGapAuditSettlement = request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+      request.auditScopeCriterionRefs.isNotEmpty() &&
+      // A generation names the checkpoint its decision was made at. A settlement that could not prove one —
+      // the closure-derived audit that never launches a child — records no new inspection to anchor.
+      (request.repositoryFingerprint?.isNotBlank() == true || priorFingerprint != null)
+    if (!zeroGapAuditSettlement && latestPlan == null && dispositions.isEmpty() && repairResults.isEmpty()) return
     val fingerprint = request.repositoryFingerprint?.takeIf { it.isNotBlank() }
       ?: priorFingerprint
       ?: schemaError(
@@ -329,6 +338,7 @@ class FeatureTaskRuntimePhaseRecorder(
         workflowId = request.workflowId,
         repositoryFingerprint = fingerprint,
         auditScopeCriterionRefs = request.auditScopeCriterionRefs,
+        auditSettlement = zeroGapAuditSettlement,
         latestPlan = latestPlan,
         dispositions = dispositions,
         repairResults = repairResults,

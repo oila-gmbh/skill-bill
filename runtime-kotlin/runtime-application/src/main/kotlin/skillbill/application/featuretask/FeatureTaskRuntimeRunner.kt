@@ -276,19 +276,10 @@ class FeatureTaskRuntimeRunner(
       }
       return derived
     }
-    cached?.let { return it }
-    val auditCompleted = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
-      .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
-      ?.status == "completed"
-    if (!auditCompleted || loadAuditGapIterationCount(request) != 0) return null
-    return FeatureTaskRuntimeAuditRepairProgress(
-      firstPassConvergence = true,
-      recurringGapCount = 0,
-      newGapCount = 0,
-      attemptedRepairItemCount = 0,
-      resolvedRepairItemCount = 0,
-      auditGapIterationCount = 0,
-    )
+    // No phase-record fallback: a completed audit always appends its generation, including the zero-gap one,
+    // so first-pass convergence is derived from the durable authority rather than inferred from a record's
+    // status. Only a legacy workflow predating the generation table falls back to its replaceable cache.
+    return cached
   }
 
   // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the

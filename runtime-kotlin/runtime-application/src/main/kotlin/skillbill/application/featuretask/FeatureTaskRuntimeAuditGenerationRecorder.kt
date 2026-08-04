@@ -29,6 +29,8 @@ internal data class AuditGenerationAppend(
   val workflowId: String,
   val repositoryFingerprint: String,
   val auditScopeCriterionRefs: List<String>,
+  /** True when the settling phase is the audit itself, which contributes a generation even with no gap. */
+  val auditSettlement: Boolean = false,
   val latestPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val dispositions: List<FeatureTaskRuntimePriorGapDisposition> = emptyList(),
   val repairResults: List<FeatureTaskRuntimeRepairItemResult> = emptyList(),
@@ -83,7 +85,7 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
     request: AuditGenerationAppend,
   ): FeatureTaskRuntimeAuditGeneration {
     val ordinal = (history.latestGeneration?.generationOrdinal ?: 0) + 1
-    return if (request.latestPlan != null || request.dispositions.isNotEmpty()) {
+    return if (request.auditSettlement || request.latestPlan != null || request.dispositions.isNotEmpty()) {
       buildAuditGeneration(history, request, ordinal)
     } else {
       buildRepairGeneration(history, request, ordinal)
