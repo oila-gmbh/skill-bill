@@ -31,7 +31,11 @@ class SQLiteDatabaseSessionFactory(
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   ).use { openDb ->
-    block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+    try {
+      block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+    } catch (error: SQLException) {
+      throw databaseAccessError(openDb.dbPath, DatabaseAccessOperation.READ, error)
+    }
   }
 
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
