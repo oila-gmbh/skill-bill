@@ -94,12 +94,20 @@ internal class FeatureTaskRuntimeRunObservability(
     attemptCount: Int,
     resumed: Boolean,
     directive: PhaseModelDirective?,
+    crashResumed: Boolean = false,
+    verifierReentry: Boolean = false,
   ) {
-    // A resumed start is a crash resume; a fresh start that is nonetheless a repeat attempt is a
-    // process retry. Both were previously indistinguishable from each other and from a fix-loop
-    // re-run in the ledger.
+    // The kind is derived from [crashResumed] — a durable record this process did not create — rather
+    // than from [resumed], which only means "not the first visit" and so also covers an in-process
+    // re-entry. A repeat attempt that is not a crash resume is a process retry.
+    //
+    // A verifier re-entry claims no start kind at all: the LOOP_EDGE entry emitted for that edge
+    // already carries `verifier_reentry`, and since the status projection takes the newest kind-bearing
+    // ledger entry, a start kind appended after it would overwrite the accurate description with a
+    // generic one.
     val startKind = when {
-      resumed -> FeatureTaskRuntimeContinuationKind.CRASH_RESUME
+      verifierReentry -> null
+      crashResumed -> FeatureTaskRuntimeContinuationKind.CRASH_RESUME
       attemptCount > 1 -> FeatureTaskRuntimeContinuationKind.PROCESS_RETRY
       else -> null
     }

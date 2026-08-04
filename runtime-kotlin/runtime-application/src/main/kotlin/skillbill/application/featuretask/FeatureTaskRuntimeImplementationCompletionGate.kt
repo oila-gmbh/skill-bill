@@ -44,6 +44,13 @@ internal data class FeatureTaskRuntimeImplementationObligations(
   val plannedTaskIds: List<String>,
   val carriedRepairItemIds: List<String>,
   val loopId: String?,
+  /**
+   * The backward-edge iteration this launch belongs to, null for a base forward launch. Scopes the
+   * continuation projection: a loop id alone is shared by every round of the same loop, so round 2 of
+   * the audit-gap loop would otherwise inherit round 1's closures and be told a gap the audit just
+   * RE-raised is already closed.
+   */
+  val edgeIteration: Int? = null,
 ) {
   val underAuditRepairLoop: Boolean
     get() = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
@@ -160,13 +167,20 @@ data class FeatureTaskRuntimeImplementationContinuation(
  * prior attempt for this phase — the first launch has no prior receipt by construction, which is
  * exactly why this is composed here rather than declared as a required upstream projection on an
  * implement self-edge.
+ *
+ * Accumulation is scoped to ONE visit: same phase, same loop, same edge iteration. Segments of the
+ * current visit are what "already closed" can honestly mean. An earlier round of the same loop closed
+ * obligations the verifier has since re-raised, so folding its closures in would report a recurring
+ * gap as closed and instruct the repair agent to skip the very item it was sent back for.
  */
 internal fun featureTaskRuntimeImplementationContinuationFrom(
   phaseId: String,
   attempts: List<FeatureTaskRuntimeImplementationAttempt>,
   obligations: FeatureTaskRuntimeImplementationObligations,
 ): FeatureTaskRuntimeImplementationContinuation? {
-  val phaseAttempts = attempts.filter { it.phaseId == phaseId && it.loopId == obligations.loopId }
+  val phaseAttempts = attempts.filter {
+    it.phaseId == phaseId && it.loopId == obligations.loopId && it.edgeIteration == obligations.edgeIteration
+  }
   val latest = phaseAttempts.maxByOrNull { it.sequenceNumber } ?: return null
   val closedAcrossSegments = phaseAttempts.flatMap { it.completedTaskIds }.distinct()
   val accumulated = FeatureTaskRuntimeImplementationClaim(
@@ -227,6 +241,15 @@ internal fun featureTaskRuntimePlannedTaskIdsFrom(
  *
  * Under the audit-gap loop the closed set is the repair-item closure rather than
  * `completed_task_ids`, so the same claim type serves both loops and the gate needs no second shape.
+ *
+ * TOTAL for untrusted input by construction. "Validated" here means the phase-output schema accepted
+ * the envelope, and that schema leaves `produced_outputs` value shapes entirely open — so an agent
+ * controls every string below. The receipt models are strict (`require` non-blank ref/note/evidence/
+ * fingerprint), and a blocked envelope reaches this parser BEFORE the producer-projection gate, so
+ * constructing them optimistically let a producer-supplied `{"fingerprint": ""}` throw inside the
+ * durable blocked write's transaction and roll the block record back. Malformed entries are dropped
+ * here instead: the claim understates rather than aborts, and the completion gate then refuses to
+ * advance on what it cannot read.
  */
 internal fun featureTaskRuntimeImplementationClaimFrom(
   outputMap: Map<String, Any?>,
@@ -243,16 +266,17 @@ internal fun featureTaskRuntimeImplementationClaimFrom(
     unresolvedItems = produced.stringList("unresolved_items"),
     deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { entry ->
       val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      val ref = map["ref"] as? String ?: return@mapNotNull null
-      val note = map["note"] as? String ?: return@mapNotNull null
+      val ref = (map["ref"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+      val note = (map["note"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
       FeatureTaskRuntimeReceiptDeviation(ref = ref, note = note)
     },
     reconciliationEvidence = JsonSupport.anyToStringAnyMap(produced["reconciliation_evidence"])?.let { map ->
-      val evidence = map["evidence"] as? String
-      evidence?.let { FeatureTaskRuntimeReceiptReconciliation(map["reconciled"] as? Boolean ?: false, it) }
+      (map["evidence"] as? String)?.takeIf(String::isNotBlank)?.let { evidence ->
+        FeatureTaskRuntimeReceiptReconciliation(map["reconciled"] as? Boolean ?: false, evidence)
+      }
     },
     repositoryCheckpoint = JsonSupport.anyToStringAnyMap(produced["repository_checkpoint"])?.let { map ->
-      (map["fingerprint"] as? String)?.let { fingerprint ->
+      (map["fingerprint"] as? String)?.takeIf(String::isNotBlank)?.let { fingerprint ->
         FeatureTaskRuntimeReceiptCheckpoint(
           fingerprint = fingerprint,
           baseRef = map["base_ref"] as? String,
@@ -278,7 +302,7 @@ internal fun featureTaskRuntimeCarriedRepairItemIds(
 internal fun featureTaskRuntimeClosedRepairItemIds(outputMap: Map<String, Any?>): List<String> {
   val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
   val results = (produced["repair_item_results"] as? List<*>).orEmpty().mapNotNull { entry ->
-    JsonSupport.anyToStringAnyMap(entry)?.get("repair_item_id") as? String
+    (JsonSupport.anyToStringAnyMap(entry)?.get("repair_item_id") as? String)?.takeIf(String::isNotBlank)
   }
   return (results + produced.stringList("deferred_repair_item_ids")).distinct()
 }

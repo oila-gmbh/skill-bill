@@ -1901,20 +1901,32 @@ internal class FeatureTaskRuntimeRunLoop(
   ): PhaseOutcome {
     val agentId = run.resolvedAgent.resolvedAgentId
     var iteration = state.nextIteration(run.phaseId)
-    val budgetBaseOffset = iteration - state.fixLoopIterationFor(run.phaseId, iteration)
+    // Continuation segments advance the persisted attempt watermark like any other attempt, but they
+    // are budgeted on their own axis (MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS). In-process the two
+    // stay separate because settleIncompleteWork never advances semanticIteration; across a process
+    // boundary only the watermark survives, so without discounting the durable segments a resume
+    // would charge honest continuation work to the semantic fix loop and block a run that never
+    // emitted invalid output. Read before the entry check for exactly that reason.
+    val continuationSegmentCount = durableContinuationSegmentCount(run)
+    // Clamped because a re-entry baseline may already have absorbed the same watermark the segment
+    // count discounts; double-discounting must not drive the semantic index below its first attempt.
+    val semanticIteration =
+      (state.fixLoopIterationFor(run.phaseId, iteration) - continuationSegmentCount).coerceAtLeast(1)
     FeatureTaskRuntimeFixLoopPolicy
-      .blockReasonIfBudgetExhausted(run.phaseId, iteration - budgetBaseOffset)
+      .blockReasonIfBudgetExhausted(run.phaseId, semanticIteration)
       ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
+    val crashResumed = state.resumedFromPriorProcess(run.phaseId)
+    state.recordPhaseLaunched(run.phaseId)
     observability.started(
       run.phaseId,
       agentId,
       iteration,
       iteration > 1 || state.hasPriorRecord(run.phaseId),
       run.modelDirective,
+      crashResumed = crashResumed,
+      verifierReentry = run.reentry != null,
     )
     var outcome: PhaseOutcome? = null
-    val semanticIteration = iteration - budgetBaseOffset
-    val continuationSegmentCount = durableContinuationSegmentCount(run)
     FeatureTaskRuntimeFixLoopPolicy
       .incompleteWorkBlockReasonIfBudgetExhausted(run.phaseId, continuationSegmentCount)
       ?.let { reason ->
@@ -1990,6 +2002,11 @@ internal class FeatureTaskRuntimeRunLoop(
     ) {
       is FeatureTaskRuntimeFixLoopDecision.Retry -> {
         loop.iteration += 1
+        // This attempt was schema-VALID and merely incomplete, so any correction carried from an
+        // earlier malformed attempt is now stale. Leaving it set would hand the next segment both the
+        // continuation directive and a schema-rejection directive naming a reason from two attempts
+        // ago, telling the agent its valid output was rejected by the schema gate.
+        loop.priorCorrection = null
         observability.continuation(
           run.phaseId,
           agentId,
@@ -2101,6 +2118,10 @@ internal class FeatureTaskRuntimeRunLoop(
    * Continuation segments already spent on this phase, read from the durable attempt history rather
    * than an in-memory counter. Without this a crash resume would silently refill the budget and the
    * bounded continuation loop would not be bounded across process lifetimes.
+   *
+   * Scoped to this visit — phase, loop AND edge iteration — matching the continuation projection.
+   * Counting earlier rounds of the same loop would charge a brand-new repair round for segments spent
+   * on work it was never given, and could block it before its first launch.
    */
   private fun durableContinuationSegmentCount(run: PhaseRun): Int {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return 0
@@ -2109,6 +2130,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return attempts.count {
       it.phaseId == run.phaseId &&
         it.loopId == run.reentry?.loopId &&
+        it.edgeIteration == run.reentry?.edgeIteration &&
         it.status == skillbill.workflow.taskruntime.model
           .FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
     }
@@ -2669,6 +2691,7 @@ internal class FeatureTaskRuntimeRunLoop(
         run.reentry?.auditRepairPlan?.gaps.orEmpty().flatMap { gap -> gap.repairItems.map { it.repairItemId } },
       ),
       loopId = loopId,
+      edgeIteration = run.reentry?.edgeIteration,
     )
   }
 
