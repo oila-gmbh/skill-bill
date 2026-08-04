@@ -202,6 +202,8 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     override fun resolveDbPath(dbOverride: String?) = unitOfWork.dbPath
     override fun databaseExists(dbOverride: String?) = true
     override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
+    override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
     override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
   }
 }

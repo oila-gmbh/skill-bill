@@ -98,6 +98,8 @@ private class TestDatabaseSessionFactory : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = dbOverride?.let(Path::of) ?: dbPath
   override fun databaseExists(dbOverride: String?): Boolean = Files.exists(resolveDbPath(dbOverride))
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = error("unused")
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = error("unused")
 }
 

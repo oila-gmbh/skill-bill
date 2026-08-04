@@ -141,6 +141,8 @@ private class LedgerOnlySessionFactory(
 
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
 
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unit())
 
   private fun unit(): UnitOfWork = object : UnitOfWork {

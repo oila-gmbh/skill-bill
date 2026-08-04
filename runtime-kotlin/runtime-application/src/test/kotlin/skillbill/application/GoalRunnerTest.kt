@@ -3605,6 +3605,8 @@ private class GoalStatusSeedableDatabase(
 
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
@@ -3694,6 +3696,8 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
 
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
@@ -3725,6 +3729,8 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
     transactionDbOverrides += dbOverride
     return block(unitOfWork())

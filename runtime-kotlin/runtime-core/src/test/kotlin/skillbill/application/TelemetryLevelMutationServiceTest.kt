@@ -65,6 +65,8 @@ private class FakeTelemetryDatabaseSessionFactory(
     return block(fakeUnitOfWork())
   }
 
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
     calls += "transaction"
     return block(fakeUnitOfWork())
