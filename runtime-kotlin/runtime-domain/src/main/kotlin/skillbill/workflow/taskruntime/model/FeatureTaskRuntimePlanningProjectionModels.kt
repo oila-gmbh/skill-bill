@@ -284,6 +284,19 @@ data class FeatureTaskRuntimePlanTask(
     append(" | tests: ${testObligations.joinToString("; ")}")
     if (constraints.isNotEmpty()) append(" | constraints: ${constraints.joinToString("; ")}")
   }
+
+  companion object {
+    /**
+     * Recovers the task id from a line [toBriefingLine] produced. The id is always the leading token
+     * and matches [TASK_ID_PATTERN], which admits neither spaces nor brackets, so this is exact
+     * rather than a best-effort parse — it is what lets the completion gate read the authoritative
+     * planned task ids back out of the DELIVERED executable-plan projection instead of trusting the
+     * implementing agent's own envelope. A line that does not start with a well-formed id yields
+     * null so the caller can loud-fail rather than invent an obligation.
+     */
+    fun taskIdFromBriefingLine(line: String): String? =
+      line.substringBefore(' ').takeIf(TASK_ID_PATTERN::matches)
+  }
 }
 
 /**

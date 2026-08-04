@@ -24,7 +24,9 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
+import skillbill.workflow.NoopFeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.NoopFeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -35,6 +37,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
@@ -49,6 +52,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -56,6 +61,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
@@ -68,6 +74,9 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendImplementationAttempt
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import java.time.Duration
@@ -97,6 +106,8 @@ class FeatureTaskRuntimePhaseRecorder(
   private val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
   private val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
   private val quarantineValidator: FeatureTaskRuntimeQuarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
+  private val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator =
+    NoopFeatureTaskRuntimeImplementationAttemptValidator,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
 ) {
@@ -176,7 +187,7 @@ class FeatureTaskRuntimePhaseRecorder(
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
-      )
+      ) + implementationAttemptPatch(artifacts, request, attemptStatusFor(request))
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -272,11 +283,108 @@ class FeatureTaskRuntimePhaseRecorder(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ) + auditRepairPatch,
+        ) + auditRepairPatch +
+          implementationAttemptPatch(artifacts, request, FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED),
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true
     }
+  }
+
+  /**
+   * The durable implementation-attempt append for one phase write, as an artifact patch to be merged
+   * into the SAME `persistPatch` call that advances the workflow row.
+   *
+   * Returning a patch rather than performing a second write is the point: a crash between the receipt
+   * landing and the workflow advancing is then not a reachable state, so resume always finds exactly
+   * one resumable attempt with no lost obligations. Every appended record is validated against the
+   * canonical schema before it is handed back, so a malformed attempt is rejected before any write.
+   *
+   * Empty for every non-mutating phase and for any write that carries no implementation receipt.
+   */
+  private fun implementationAttemptPatch(
+    artifacts: Map<String, Any?>,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    attemptStatus: FeatureTaskRuntimeImplementationAttemptStatus,
+  ): Map<String, Any?> {
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
+    val envelope = request.normalizedOutput?.envelope ?: return emptyMap()
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]) ?: return emptyMap()
+    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
+      return emptyMap()
+    }
+    val existing = implementationAttemptsFrom(artifacts)
+    val claim = featureTaskRuntimeImplementationClaimFrom(
+      envelope,
+      FeatureTaskRuntimeImplementationObligations(emptyList(), emptyList(), request.loopId),
+    )
+    val appended = featureTaskRuntimeAppendImplementationAttempt(
+      existing = existing,
+      entry = FeatureTaskRuntimeImplementationAttempt(
+        sequenceNumber = (existing.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+        phaseId = request.phaseId,
+        attemptNumber = request.attemptCount,
+        agentId = request.resolvedAgentId,
+        status = attemptStatus,
+        recordedAt = Instant.now().toString(),
+        completedTaskIds = claim.completedTaskIds.distinct(),
+        changedPaths = claim.changedPaths.distinct(),
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+        failureDisposition = request.failureDisposition,
+        deviations = claim.deviations,
+        unresolvedItems = claim.unresolvedItems,
+        reconciliationEvidence = claim.reconciliationEvidence,
+        repositoryCheckpoint = claim.repositoryCheckpoint,
+      ),
+    )
+    val wire = featureTaskRuntimeImplementationAttemptRecordToWire(appended)
+    implementationAttemptValidator.validateImplementationAttemptRecord(
+      wire,
+      FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY,
+    )
+    return mapOf(FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY to wire)
+  }
+
+  /**
+   * Records a semantically incomplete implementation attempt. This path has no workflow advance to
+   * ride along with — the phase is being continued, not settled — so it is the one attempt write that
+   * is legitimately its own transaction.
+   */
+  fun recordIncompleteImplementationAttempt(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return@transaction false
+    val patch = implementationAttemptPatch(
+      decodeArtifacts(record.artifactsJson),
+      request,
+      FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
+    )
+    if (patch.isEmpty()) return@transaction false
+    persistPatch(unitOfWork.workflowStates, record, patch)
+    true
+  }
+
+  /**
+   * Strict read of the durable implementation-attempt history in append order. An absent key yields
+   * an empty list; a malformed record loud-fails. Returns null only when the workflow row is absent.
+   */
+  fun loadImplementationAttempts(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeImplementationAttempt>? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read null
+    implementationAttemptsFrom(decodeArtifacts(record.artifactsJson))
+  }
+
+  private fun implementationAttemptsFrom(
+    artifacts: Map<String, Any?>,
+  ): List<FeatureTaskRuntimeImplementationAttempt> {
+    val raw = artifacts[FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY] ?: return emptyList()
+    return featureTaskRuntimeImplementationAttemptsFromWire(raw)
   }
 
   private fun inferAuditGapDispositions(
@@ -1202,6 +1310,17 @@ private fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): Str
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
     "completed"
   else -> "running"
+}
+
+// The attempt status a non-completing phase write records. A blocked write carries the receipt the
+// block was decided on; anything else that reaches this seam is a still-running transition, which is
+// recorded as incomplete rather than claiming an outcome the phase has not reached.
+private fun attemptStatusFor(
+  request: FeatureTaskRuntimePhaseStateRequest,
+): FeatureTaskRuntimeImplementationAttemptStatus = when (request.status) {
+  "completed" -> FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED
+  FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FeatureTaskRuntimeImplementationAttemptStatus.BLOCKED
+  else -> FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
 }
 
 private fun durationMillis(startedAt: String, finishedAt: String): Long =

@@ -42,7 +42,11 @@ class FeatureTaskRuntimeStatusService(
     val durableBlockedPhaseIds = records.filterValues { it.status == STATUS_BLOCKED }.keys
     val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
     val phases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
-      records[phaseId].toPhaseStatus(phaseId, blocked = phaseId in blockedPhaseIds)
+      records[phaseId].toPhaseStatus(
+        phaseId,
+        blocked = phaseId in blockedPhaseIds,
+        continuationKind = latestContinuationKind(ledger, phaseId),
+      )
     }
     val terminalDecomposeRecorded = decomposeTerminal != null
     return FeatureTaskRuntimeStatusProjection(
@@ -151,9 +155,19 @@ class FeatureTaskRuntimeStatusService(
     return reopenedSpan.firstOrNull { it !in completedAfterEdge }
   }
 
+  // The kind of the phase's most recent re-entry, read from the durable ledger. A phase that never
+  // re-entered reports none rather than a default kind that would imply a re-entry that never happened.
+  private fun latestContinuationKind(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>, phaseId: String): String? =
+    ledger
+      .filter { it.phaseId == phaseId && it.action == FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION }
+      .maxByOrNull { it.sequenceNumber }
+      ?.let { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
+      ?.wireValue
+
   private fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
     phaseId: String,
     blocked: Boolean,
+    continuationKind: String? = null,
   ): FeatureTaskRuntimePhaseStatus = if (this == null) {
     FeatureTaskRuntimePhaseStatus(
       phaseId = phaseId,
@@ -163,6 +177,7 @@ class FeatureTaskRuntimeStatusService(
       attemptCount = 0,
       resolvedAgentId = null,
       finished = false,
+      continuationKind = continuationKind,
     )
   } else {
     FeatureTaskRuntimePhaseStatus(
@@ -174,6 +189,7 @@ class FeatureTaskRuntimeStatusService(
       resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
       finished = finishedAt != null,
       executionOrigin = executionOrigin.wireValue,
+      continuationKind = continuationKind,
     )
   }
 

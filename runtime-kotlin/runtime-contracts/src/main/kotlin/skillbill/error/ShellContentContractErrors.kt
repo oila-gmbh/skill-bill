@@ -274,6 +274,23 @@ class InvalidFeatureTaskRuntimeQuarantineSchemaError(
   cause,
 )
 
+/**
+ * Surfaced when the durable feature-task-runtime implementation-attempt history (the append-only
+ * bounded receipt store the semantic continuation projection is reconstructed from) fails the
+ * canonical implementation-attempt schema. Keeps that parse seam loud so a malformed attempt store
+ * can never be silently best-effort decoded into a continuation projection that understates the
+ * still-open obligations.
+ */
+class InvalidFeatureTaskRuntimeImplementationAttemptSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime implementation attempt '${sourceLabel.ifBlank { "<unknown>" }}' fails schema " +
+    "validation: $reason",
+  cause,
+)
+
 class InvalidFeatureTaskRuntimePhaseHandoffSchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -5640,7 +5640,15 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     )
   }
 
+  // Fault injection for atomicity coverage: when this predicate matches the row about to be written,
+  // the single save carrying both the artifact patch and the workflow advance fails, standing in for a
+  // process killed at that instant.
+  var failSaveWhen: ((WorkflowStateRecord) -> Boolean)? = null
+
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    if (failSaveWhen?.invoke(row) == true) {
+      error("simulated process kill during the feature-task-runtime save")
+    }
     taskRuntimeRows[row.workflowId] = row
   }
 

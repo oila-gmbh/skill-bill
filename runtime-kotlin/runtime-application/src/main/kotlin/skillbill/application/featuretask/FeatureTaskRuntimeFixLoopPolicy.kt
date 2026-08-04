@@ -23,6 +23,18 @@ object FeatureTaskRuntimeFixLoopPolicy {
   /** Malformed serialization gets its own bounded correction budget and does not consume semantic retries. */
   const val MAX_FORMAT_RETRY_ATTEMPTS: Int = 3
 
+  /**
+   * Honest incomplete work gets its own bounded budget, independent of both caps above.
+   *
+   * A receipt that closes three of five plan tasks is not a malformed output and it is not a failed
+   * repair: it is partial work that should be continued. Charging it to [MAX_FORMAT_RETRY_ATTEMPTS]
+   * would spend the structural-repair budget on something structurally fine; charging it to
+   * [MAX_FIX_LOOP_ITERATIONS] would let normal multi-segment delivery exhaust the budget that exists
+   * for genuinely failing output. It is still bounded — this is a continuation loop, not an
+   * unbounded autonomous one — and exhausting it blocks for a human rather than looping.
+   */
+  const val MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS: Int = 5
+
   private val FIX_LOOP_PHASES: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
@@ -78,6 +90,43 @@ object FeatureTaskRuntimeFixLoopPolicy {
       null
     }
   }
+
+  /**
+   * Decides whether a semantically incomplete implementation receipt earns another continuation
+   * segment. [segmentCount] is the number of incomplete segments already observed (1-based after the
+   * first). Retry carries no fix-loop index because a continuation is not a fix-loop iteration; the
+   * caller counts segments on its own axis.
+   */
+  fun incompleteWorkContinuationDecision(phaseId: String, segmentCount: Int): FeatureTaskRuntimeFixLoopDecision {
+    require(segmentCount >= 1) { "segmentCount must be >= 1, was $segmentCount." }
+    return if (segmentCount < MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS) {
+      FeatureTaskRuntimeFixLoopDecision.Retry(
+        nextIteration = segmentCount + 1,
+        fixLoopIteration = segmentCount,
+      )
+    } else {
+      FeatureTaskRuntimeFixLoopDecision.Block(
+        blockedReason = incompleteWorkBlockedReason(phaseId, segmentCount),
+      )
+    }
+  }
+
+  /**
+   * Used on resume so a run whose durable continuation-segment count already reached the cap
+   * re-blocks immediately instead of relaunching the agent and bypassing the budget across resumes.
+   */
+  fun incompleteWorkBlockReasonIfBudgetExhausted(phaseId: String, segmentCount: Int): String? =
+    if (segmentCount >= MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS) {
+      incompleteWorkBlockedReason(phaseId, segmentCount)
+    } else {
+      null
+    }
+
+  fun incompleteWorkBlockedReason(phaseId: String, segmentCount: Int): String =
+    "Phase '$phaseId' exhausted the bounded implementation-continuation budget after $segmentCount " +
+      "segments (cap=$MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS) with obligations still open; the run " +
+      "blocks for an operator decision rather than continuing indefinitely. The malformed-output and " +
+      "semantic fix-loop budgets were not consumed."
 
   private fun blockedReason(phaseId: String, currentIteration: Int): String = if (participatesInFixLoop(phaseId)) {
     "Phase '$phaseId' exhausted the bounded fix loop after $currentIteration attempts " +

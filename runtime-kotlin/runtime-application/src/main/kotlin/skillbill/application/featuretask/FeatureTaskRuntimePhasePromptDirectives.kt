@@ -30,6 +30,58 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
 }
 
 /**
+ * Emitted when a prior segment of THIS implementation left obligations open.
+ *
+ * Deliberately not the schema-correction directive: that one tells the agent its output was rejected
+ * and to re-emit it, which is the wrong instruction and the wrong mental model for work that was
+ * accepted as far as it went. This one says continue, and hands over the complete bounded prior
+ * receipt so the next segment knows exactly what is already closed and must not be redone.
+ *
+ * Composed from the durable projection rather than declared as an upstream projection on an implement
+ * self-edge: a self-edge required input would fail the first attempt, which has no prior receipt by
+ * construction.
+ */
+internal fun implementationContinuationDirective(
+  phaseId: String,
+  continuation: FeatureTaskRuntimeImplementationContinuation?,
+): String {
+  if (continuation == null || continuation.phaseId != phaseId) return ""
+  val closed = continuation.completedTaskIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
+  val paths = continuation.changedPaths.takeIf { it.isNotEmpty() }?.joinToString() ?: "none recorded"
+  val deviations = continuation.deviations.takeIf { it.isNotEmpty() }
+    ?.joinToString("; ") { "${it.ref}: ${it.note}" } ?: "none"
+  val unresolved = continuation.unresolvedItems.takeIf { it.isNotEmpty() }?.joinToString("; ") ?: "none"
+  val reconciliation = continuation.reconciliationEvidence
+    ?.let { "reconciled=${it.reconciled}; ${it.evidence}" } ?: "not reported"
+  val checkpoint = continuation.repositoryCheckpoint?.fingerprint ?: "not reported"
+  val disposition = continuation.failureDisposition ?: "none"
+  return """
+    ## Continue this implementation — segment ${continuation.segmentNumber}
+    A prior segment of this same implementation ran and did real work. It was NOT rejected and its
+    output was NOT malformed: it simply did not close every ${continuation.obligationNoun} yet.
+    Continue from where it stopped. Do not restart the implementation, do not redo closed work, and do
+    not re-apply changes already present — the mutating-phase idempotency contract still governs.
+
+    Still open (${continuation.obligationNoun}s you must close in this segment): ${
+    continuation.openObligationIds.joinToString()
+  }
+
+    Prior receipt:
+    - completed ${continuation.obligationNoun} ids: $closed
+    - changed paths: $paths
+    - deviations: $deviations
+    - unresolved items: $unresolved
+    - reconciliation evidence: $reconciliation
+    - repository checkpoint: $checkpoint
+    - failure disposition: $disposition
+
+    Your receipt for this segment must list every ${continuation.obligationNoun} that is closed once
+    you are done — the ones above plus the ones you close now. Reporting `completed` while any listed
+    obligation is still open will not advance the run.
+  """.trimIndent()
+}
+
+/**
  * Everything the review-execution directive needs to state the run's review depth and scope. These
  * travel together from [FeatureTaskRuntimePhasePromptComposer.compose] and are only ever read as a set.
  */

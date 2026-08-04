@@ -21,6 +21,12 @@ data class FeatureTaskRuntimePhaseStatus(
   val resolvedAgentId: String?,
   val finished: Boolean,
   val executionOrigin: String? = null,
+  /**
+   * Why this phase last re-entered, when it did. Null when the phase never re-ran. Reported instead
+   * of leaving an operator to guess from a bare attempt count whether the runtime was correcting
+   * malformed output or carrying partial implementation work forward.
+   */
+  val continuationKind: String? = null,
 )
 
 /**

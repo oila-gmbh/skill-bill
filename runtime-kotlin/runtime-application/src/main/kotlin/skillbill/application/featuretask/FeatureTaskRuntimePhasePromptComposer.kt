@@ -42,6 +42,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorSchemaFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
+    implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -65,6 +66,10 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
+      // The two are mutually exclusive by construction: a semantically incomplete receipt never sets
+      // priorSchemaFailure (it is not schema-invalid), and a real schema failure produces no
+      // continuation projection. A prompt therefore carries at most one of them.
+      implementationContinuationDirective(briefing.phaseId, implementationContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure),
       outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")

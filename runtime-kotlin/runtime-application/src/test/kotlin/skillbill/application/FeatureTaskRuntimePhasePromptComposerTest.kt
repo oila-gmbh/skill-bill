@@ -35,6 +35,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import skillbill.application.featuretask.FeatureTaskRuntimeImplementationContinuation
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // single suite over one composer; splitting would scatter the per-phase prompt contract
@@ -807,6 +808,49 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       )
     }
   }
+
+  // SKILL-150 subtask 1: a semantically incomplete receipt and a schema-invalid one are different
+  // failures and must reach the agent as different directives.
+  @Test
+  fun `an incomplete-work retry carries the continuation directive and not the schema-correction directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
+        phaseId = "implement",
+        segmentNumber = 2,
+        completedTaskIds = listOf("task-1"),
+        openObligationIds = listOf("task-2"),
+        obligationNoun = "plan task",
+        changedPaths = listOf("src/Foo.kt"),
+        deviations = emptyList(),
+        unresolvedItems = emptyList(),
+        reconciliationEvidence = null,
+        repositoryCheckpoint = null,
+        failureDisposition = null,
+      ),
+    )
+
+    assertContains(prompt, "segment 2")
+    assertContains(prompt, "task-2")
+    assertTrue(
+      !prompt.contains("REJECTED by the schema gate"),
+      "an honest partial receipt is not a schema failure",
+    )
+  }
+
+  @Test
+  fun `a real schema failure carries the schema-correction directive and no continuation directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "produced_outputs did not validate against implementation_receipt",
+    )
+
+    assertContains(prompt, "produced_outputs did not validate against implementation_receipt")
+    assertTrue(!prompt.contains("Continue this implementation"), "no continuation directive without a continuation")
+  }
+
 }
 
 private const val ISSUE_KEY = "SKILL-66"

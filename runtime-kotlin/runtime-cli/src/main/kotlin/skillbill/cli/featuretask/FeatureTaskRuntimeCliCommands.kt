@@ -917,7 +917,8 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
       effort?.let { " effort=$it" }.orEmpty() +
       "\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
-    "feature-task-runtime $workflowId: phase $phaseId fix_loop attempt=$attemptCount iteration=$fixLoopIteration\n"
+    "feature-task-runtime $workflowId: phase $phaseId " +
+      "${continuationKind ?: "fix_loop"} attempt=$attemptCount iteration=$fixLoopIteration\n"
   is FeatureTaskRuntimeRunEvent.PhaseCompleted ->
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
@@ -1195,6 +1196,7 @@ private fun FeatureTaskRuntimePhaseStatus.toRuntimePhaseStatusCliMap(): Map<Stri
   "attempt_count" to attemptCount,
   "resolved_agent_id" to resolvedAgentId,
   "execution_origin" to executionOrigin,
+  "continuation_kind" to continuationKind,
   "finished" to finished,
 )
 

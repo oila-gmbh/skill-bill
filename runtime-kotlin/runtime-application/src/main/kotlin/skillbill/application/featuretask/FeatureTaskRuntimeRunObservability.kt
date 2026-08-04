@@ -8,6 +8,31 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 /**
+ * Why a phase is running again. Five kinds that a bare fix-loop iteration counter could not tell
+ * apart, and that call for different operator responses: schema correction is the runtime repairing
+ * malformed output, implementation continuation is honest partial work being carried forward, process
+ * retry and crash resume are infrastructure recovery, and audit/review re-entry is a verifier sending
+ * work back.
+ */
+enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
+  IMPLEMENTATION_CONTINUATION("implementation_continuation"),
+  SCHEMA_CORRECTION("schema_correction"),
+  PROCESS_RETRY("process_retry"),
+  CRASH_RESUME("crash_resume"),
+  VERIFIER_REENTRY("verifier_reentry"),
+  ;
+
+  companion object {
+    /** Category prefix keeping ledger detail inside the documented closed vocabulary. */
+    const val LEDGER_DETAIL_PREFIX: String = "continuation:"
+
+    fun fromLedgerDetail(detail: String?): FeatureTaskRuntimeContinuationKind? = detail
+      ?.removePrefix(LEDGER_DETAIL_PREFIX)
+      ?.let { value -> entries.firstOrNull { it.wireValue == value } }
+  }
+}
+
+/**
  * Per-phase observability and attempt-ledger sink for one run: at each phase boundary it emits a
  * typed [FeatureTaskRuntimeRunEvent] to the run's event sink and appends a ledger entry. The
  * recorder mints the timestamp and monotonic sequence, so this class never sources time or order.
@@ -61,6 +86,14 @@ internal class FeatureTaskRuntimeRunObservability(
     resumed: Boolean,
     directive: PhaseModelDirective?,
   ) {
+    // A resumed start is a crash resume; a fresh start that is nonetheless a repeat attempt is a
+    // process retry. Both were previously indistinguishable from each other and from a fix-loop
+    // re-run in the ledger.
+    val startKind = when {
+      resumed -> FeatureTaskRuntimeContinuationKind.CRASH_RESUME
+      attemptCount > 1 -> FeatureTaskRuntimeContinuationKind.PROCESS_RETRY
+      else -> null
+    }
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseStarted(
         workflowId = request.workflowId,
@@ -83,18 +116,45 @@ internal class FeatureTaskRuntimeRunObservability(
         phaseId = phaseId,
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
+        blockedReason = startKind?.let { "${FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX}${it.wireValue}" },
       ),
     )
   }
 
   fun fixLoopIteration(phaseId: String, resolvedAgentId: String, attemptCount: Int, fixLoopIteration: Int) {
+    continuation(
+      phaseId,
+      resolvedAgentId,
+      attemptCount,
+      fixLoopIteration,
+      FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
+    )
+  }
+
+  /**
+   * Emits one phase re-entry stamped with WHY the phase is running again. Both the event and the
+   * durable ledger entry carry the kind, so a status query and a telemetry consumer report the same
+   * distinction rather than each inferring one from a bare counter.
+   *
+   * The ledger's `blocked_reason` column is reused as the kind carrier for non-blocking entries: it
+   * is the entry's free-text detail field and a FIX_LOOP_ITERATION entry never carries a block. The
+   * value stays inside the documented category-prefix vocabulary.
+   */
+  fun continuation(
+    phaseId: String,
+    resolvedAgentId: String,
+    attemptCount: Int,
+    iteration: Int,
+    kind: FeatureTaskRuntimeContinuationKind,
+  ) {
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration(
         workflowId = request.workflowId,
         phaseId = phaseId,
         resolvedAgentId = resolvedAgentId,
         attemptCount = attemptCount,
-        fixLoopIteration = fixLoopIteration,
+        fixLoopIteration = iteration,
+        continuationKind = kind.wireValue,
       ),
     )
     appendLedger(
@@ -104,7 +164,8 @@ internal class FeatureTaskRuntimeRunObservability(
         phaseId = phaseId,
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
-        fixLoopIteration = fixLoopIteration,
+        fixLoopIteration = iteration,
+        blockedReason = "${FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX}${kind.wireValue}",
       ),
     )
   }
@@ -167,7 +228,11 @@ internal class FeatureTaskRuntimeRunObservability(
         attemptCount = 1,
         loopId = loopId,
         edgeIteration = edgeIteration,
-        blockedReason = "driving_verdict=${drivingVerdict.wireValue}",
+        // A backward edge is a verifier (audit/review) sending work back; the driving verdict stays in
+        // the same detail field so the existing trail is not lost.
+        blockedReason = "${FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX}" +
+          "${FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY.wireValue} " +
+          "driving_verdict=${drivingVerdict.wireValue}",
       ),
     )
   }

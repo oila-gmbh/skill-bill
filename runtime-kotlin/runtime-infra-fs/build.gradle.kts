@@ -482,6 +482,24 @@ val copyFeatureTaskRuntimePlanningProjectionsSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeImplementationAttemptSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-implementation-attempt-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeImplementationAttemptSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeImplementationAttemptSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeImplementationAttemptSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-150: canonical implementation-attempt schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeQuarantineSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-quarantine-schema.yaml")
@@ -531,6 +549,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
+  dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
 }
 
 tasks.named("processTestResources") {
@@ -558,6 +577,7 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalPlanningPreparationSchema)
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
+  dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
 }
 
 tasks.withType<Test>().configureEach {

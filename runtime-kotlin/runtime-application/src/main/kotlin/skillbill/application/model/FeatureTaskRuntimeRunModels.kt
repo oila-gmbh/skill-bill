@@ -262,6 +262,13 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val resolvedAgentId: String,
     val attemptCount: Int,
     val fixLoopIteration: Int,
+    /**
+     * Which KIND of re-entry this is. A bare iteration counter said only "the phase ran again",
+     * which read identically whether the runtime was correcting malformed JSON, continuing partial
+     * implementation work, recovering a crashed process, or re-entering from audit. The axis is
+     * additive-optional: a legacy consumer that ignores it still sees the counter it always saw.
+     */
+    val continuationKind: String? = null,
   ) : FeatureTaskRuntimeRunEvent
 
   data class PhaseCompleted(
