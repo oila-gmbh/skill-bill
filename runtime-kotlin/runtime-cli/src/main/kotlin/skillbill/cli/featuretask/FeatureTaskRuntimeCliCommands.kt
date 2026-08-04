@@ -915,7 +915,11 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
       "agent=$resolvedAgentId attempt=$attemptCount" +
       model?.let { " model=$it" }.orEmpty() +
       effort?.let { " effort=$it" }.orEmpty() +
+      continuationKind?.let { " continuation=$it" }.orEmpty() +
       "\n"
+  is FeatureTaskRuntimeRunEvent.PhaseLoopEdge ->
+    "feature-task-runtime $workflowId: phase $phaseId $continuationKind loop=$loopId " +
+      "edge_iteration=$edgeIteration driving_verdict=$drivingVerdict\n"
   is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration ->
     "feature-task-runtime $workflowId: phase $phaseId " +
       "${continuationKind ?: "fix_loop"} attempt=$attemptCount iteration=$fixLoopIteration\n"

@@ -65,7 +65,7 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
       harness.launchedPromptPhaseOrder().count { it == "implement" },
       "the runtime must stop at the declared continuation cap, not loop indefinitely",
     )
-    assertEquals("implement", blocked.phaseId)
+    assertEquals("implement", blocked.lastIncompletePhase)
   }
 
   @Test
@@ -137,6 +137,79 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+  }
+
+  @Test
+  fun `an unrelenting retryable terminal envelope is never prompted or blocked as a schema failure`() {
+    // AC-004: the envelope validated at every attempt. Its retry prompt must not claim a rejection and
+    // its exhaustion block must not be dressed as a schema-gate failure.
+    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked"))
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertTrue(
+      !blocked.blockedReason.contains("Last schema-gate failure"),
+      "a schema-valid terminal envelope must not block as a schema-gate failure: ${blocked.blockedReason}",
+    )
+    harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+      .forEach { prompt ->
+        assertTrue(
+          !prompt.contains("REJECTED by the schema gate"),
+          "a retryable terminal envelope must never be told its output was rejected",
+        )
+      }
+  }
+
+  @Test
+  fun `a retryable terminal re-entry is stamped as a process retry, not a schema correction`() {
+    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked"))
+
+    harness.runner.run(harness.request())
+
+    val kinds = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION && it.phaseId == "implement" }
+      .mapNotNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
+
+    assertTrue(kinds.isNotEmpty(), "the terminal envelope must re-enter the loop at least once")
+    assertEquals(
+      emptyList(),
+      kinds.filter { it == FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION },
+      "a schema-VALID terminal envelope must never be stamped schema_correction",
+    )
+    assertEquals(
+      List(kinds.size) { FeatureTaskRuntimeContinuationKind.PROCESS_RETRY },
+      kinds,
+    )
+  }
+
+  @Test
+  fun `a receipt that both under-closes and breaks its projection contract takes the structural path`() {
+    // AC-005: evaluating incompleteness before the projection gate routed a repairable contract defect
+    // into the continuation loop, where the defect is never named to the agent and the run burns every
+    // continuation segment before blocking. The structural gates must see it first.
+    val harness = runnerHarness(launcher = malformedProjectionImplementLauncher())
+
+    harness.runner.run(harness.request())
+
+    val attempts = harness.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
+      .filter { it.phaseId == "implement" }
+    assertEquals(
+      emptyList(),
+      attempts.filter { it.status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE },
+      "a receipt failing its projection contract is a structural failure, not an incomplete-work segment",
+    )
+    val implementPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+    assertTrue(implementPrompts.size > 1, "the structural-repair path must re-prompt the phase")
+    assertTrue(
+      implementPrompts.drop(1).any { it.contains("REJECTED by the schema gate") },
+      "the repairable contract defect must be named to the agent rather than silently retried",
+    )
   }
 }
 
@@ -224,6 +297,49 @@ internal fun convergingImplementLauncher(closeAllOnSegment: Int): RuntimeRecordi
     }
   }
 }
+
+// A `completed` implement envelope that both under-closes the plan AND breaks the receipt projection
+// contract: deviations must carry {ref, note} objects, so free-text entries fail the projection gate.
+private fun malformedProjectionImplementOutput(): String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "implement",
+    "status": "completed",
+    "summary": "Implementation segment produced a validated envelope with an invalid receipt.",
+    "produced_outputs": {
+      "projection_kind":"implementation_receipt",
+      "contract_version":"0.1",
+      "completed_task_ids":["task-1"],
+      "changed_paths":["src/Foo1.kt"],
+      "tests_executed":[],
+      "deviations":["a free-text deviation the projection contract forbids"],
+      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
+      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
+      "reconciled_state":{"reconciled":true},
+      "deferred_repair_item_ids":[],
+      "repair_item_results":[]
+    }
+  }
+""".trimIndent()
+
+private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher = RuntimeRecordingLauncher { request ->
+  when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+    "plan" -> facts(threeTaskPlanOutput())
+    "implement" -> facts(malformedProjectionImplementOutput())
+    else -> facts(defaultPhaseOutput(request))
+  }
+}
+
+// Every implement launch returns the same retryable terminal envelope, so the phase exhausts its
+// budget without ever emitting a schema-invalid document.
+private fun alwaysTerminalImplementLauncher(status: String): RuntimeRecordingLauncher =
+  RuntimeRecordingLauncher { request ->
+    when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+      "plan" -> facts(threeTaskPlanOutput())
+      "implement" -> facts(terminalImplementOutput(status))
+      else -> facts(defaultPhaseOutput(request))
+    }
+  }
 
 // The first implement launch returns a retryable terminal envelope; the second closes every plan task.
 private fun terminalThenConvergingLauncher(status: String): RuntimeRecordingLauncher {

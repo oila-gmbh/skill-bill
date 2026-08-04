@@ -1913,10 +1913,8 @@ internal class FeatureTaskRuntimeRunLoop(
       run.modelDirective,
     )
     var outcome: PhaseOutcome? = null
-    var priorSchemaFailure: String? = null
-    var malformedAttemptCount = 0
-    var semanticIteration = iteration - budgetBaseOffset
-    var continuationSegmentCount = durableContinuationSegmentCount(run)
+    val semanticIteration = iteration - budgetBaseOffset
+    val continuationSegmentCount = durableContinuationSegmentCount(run)
     FeatureTaskRuntimeFixLoopPolicy
       .incompleteWorkBlockReasonIfBudgetExhausted(run.phaseId, continuationSegmentCount)
       ?.let { reason ->
@@ -1928,80 +1926,175 @@ internal class FeatureTaskRuntimeRunLoop(
           failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
         )
       }
+    val loop = PhaseAttemptLoopState(
+      iteration = iteration,
+      malformedAttemptCount = 0,
+      semanticIteration = semanticIteration,
+      continuationSegmentCount = continuationSegmentCount,
+    )
     while (outcome == null) {
-      val attempt = attemptOnce(run, state, iteration, observability, priorSchemaFailure, phaseTokenAccumulator)
-      outcome = attempt.settledOutcome ?: if (attempt.incompleteWorkContinuationReason != null) {
-        continuationSegmentCount += 1
-        recordIncompleteAttempt(run, iteration, attempt)
-        val decision = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision(
-          run.phaseId,
-          continuationSegmentCount,
-        )
-        when (decision) {
-          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-            iteration += 1
-            observability.continuation(
-              run.phaseId,
-              agentId,
-              iteration,
-              continuationSegmentCount,
-              FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
-            )
-            null
-          }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-            run,
-            iteration,
-            "${decision.blockedReason} ${requireNotNull(attempt.incompleteWorkContinuationReason)}",
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-            fileManifest = attempt.fileManifest,
-          )
-        }
-      } else if (attempt.malformedOutput) {
-        malformedAttemptCount += 1
-        val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
-          run.phaseId,
-          malformedAttemptCount,
-        )
-        if (formatBlock == null) {
-          iteration += 1
-          priorSchemaFailure = attempt.schemaInvalidRetryReason
-          observability.fixLoopIteration(run.phaseId, agentId, iteration, malformedAttemptCount)
-          null
-        } else {
-          blockAndPersistInPhase(
-            run,
-            iteration,
-            withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidOperatorReason)),
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
-            fileManifest = attempt.fileManifest,
-            rejectedOutput = attempt.rejectedOutput,
-          )
-        }
-      } else {
-        when (val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, semanticIteration)) {
-          is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-            iteration += 1
-            semanticIteration += 1
-            priorSchemaFailure = attempt.semanticRetryReason
-            observability.fixLoopIteration(run.phaseId, agentId, iteration, decision.fixLoopIteration)
-            null
-          }
-          is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-            run,
-            iteration,
-            withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.retryableOperatorReason)),
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
-            fileManifest = attempt.fileManifest,
-            rejectedOutput = attempt.rejectedOutput,
-          )
-        }
+      val attempt = attemptOnce(run, state, loop.iteration, observability, loop.priorCorrection, phaseTokenAccumulator)
+      val context = FixLoopBranchContext(run, attempt, loop, observability, agentId)
+      outcome = attempt.settledOutcome ?: when {
+        attempt.incompleteWorkContinuationReason != null -> settleIncompleteWork(context)
+        attempt.malformedOutput -> settleMalformedOutput(context)
+        // Its own branch, not the semantic-schema one: a retryable blocked/failed envelope is
+        // schema-VALID, so prompting it with the schema-correction directive, reporting its block as a
+        // schema-gate failure, or dispositioning it INVALID_OUTPUT would all misdescribe it.
+        attempt.retryableTerminalRetryReason != null -> settleRetryableTerminal(context)
+        else -> settleSemanticFailure(context)
       }
     }
     return outcome
+  }
+
+  /** Mutable per-phase fix-loop bookkeeping, held together so the branch handlers can advance it. */
+  private class PhaseAttemptLoopState(
+    var iteration: Int,
+    var malformedAttemptCount: Int,
+    var semanticIteration: Int,
+    var continuationSegmentCount: Int,
+    var priorCorrection: PriorAttemptCorrection? = null,
+  )
+
+  /** Everything a fix-loop branch handler reads; they only ever travel as a set. */
+  private data class FixLoopBranchContext(
+    val run: PhaseRun,
+    val attempt: AttemptResult,
+    val loop: PhaseAttemptLoopState,
+    val observability: FeatureTaskRuntimeRunObservability,
+    val agentId: String,
+  )
+
+  private fun settleIncompleteWork(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    loop.continuationSegmentCount += 1
+    if (!recordIncompleteAttempt(run, loop.iteration, attempt)) {
+      return blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        "Feature-task-runtime phase '${run.phaseId}' could not durably append its incomplete " +
+          "implementation attempt (segment ${loop.continuationSegmentCount}). Continuing would lose the " +
+          "continuation projection and the durable segment budget, so the run stops here rather than " +
+          "retrying against state that was never persisted.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        fileManifest = attempt.fileManifest,
+      )
+    }
+    return when (
+      val decision = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision(
+        run.phaseId,
+        loop.continuationSegmentCount,
+      )
+    ) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        observability.continuation(
+          run.phaseId,
+          agentId,
+          loop.iteration,
+          loop.continuationSegmentCount,
+          FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
+        )
+        null
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        "${decision.blockedReason} ${requireNotNull(attempt.incompleteWorkContinuationReason)}",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        fileManifest = attempt.fileManifest,
+      )
+    }
+  }
+
+  private fun settleMalformedOutput(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    loop.malformedAttemptCount += 1
+    val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+      run.phaseId,
+      loop.malformedAttemptCount,
+    )
+    if (formatBlock == null) {
+      loop.iteration += 1
+      loop.priorCorrection = PriorAttemptCorrection.schemaGate(requireNotNull(attempt.schemaInvalidRetryReason))
+      observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, loop.malformedAttemptCount)
+      return null
+    }
+    return blockAndPersistInPhase(
+      run,
+      loop.iteration,
+      withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidOperatorReason)),
+      observability,
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+      fileManifest = attempt.fileManifest,
+      rejectedOutput = attempt.rejectedOutput,
+    )
+  }
+
+  /**
+   * A retryable `blocked` or `failed` envelope re-entering the loop as itself.
+   *
+   * It shares the semantic budget with schema-invalid retries but nothing else: the prompt gets the
+   * terminal-retry directive rather than the schema-correction one, the block reason is not wrapped in
+   * the schema-gate preamble, the block carries the envelope's own disposition instead of
+   * INVALID_OUTPUT, and the re-entry is stamped PROCESS_RETRY so the AC-009 status and telemetry
+   * surfaces do not report a schema correction that never happened.
+   */
+  private fun settleRetryableTerminal(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    return when (
+      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)
+    ) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        loop.semanticIteration += 1
+        loop.priorCorrection =
+          PriorAttemptCorrection.retryableTerminal(requireNotNull(attempt.retryableTerminalRetryReason))
+        observability.continuation(
+          run.phaseId,
+          agentId,
+          loop.iteration,
+          decision.fixLoopIteration,
+          FeatureTaskRuntimeContinuationKind.PROCESS_RETRY,
+        )
+        null
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        "${decision.blockedReason} ${requireNotNull(attempt.retryableOperatorReason)}",
+        observability,
+        failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
+        fileManifest = attempt.fileManifest,
+      )
+    }
+  }
+
+  private fun settleSemanticFailure(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    return when (
+      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)
+    ) {
+      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+        loop.iteration += 1
+        loop.semanticIteration += 1
+        loop.priorCorrection = attempt.semanticRetryReason?.let(PriorAttemptCorrection::schemaGate)
+        observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, decision.fixLoopIteration)
+        null
+      }
+      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.retryableOperatorReason)),
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+        fileManifest = attempt.fileManifest,
+        rejectedOutput = attempt.rejectedOutput,
+      )
+    }
   }
 
   /**
@@ -2021,9 +2114,20 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun recordIncompleteAttempt(run: PhaseRun, iteration: Int, attempt: AttemptResult) {
-    val normalized = attempt.incompleteWorkOutput ?: return
-    recorder.recordIncompleteImplementationAttempt(
+  /**
+   * Appends the incomplete attempt to the durable history, reporting whether it actually landed.
+   *
+   * A false return must never be swallowed. The continuation projection and the durable segment
+   * budget are both derived from this history: a silently dropped append leaves the next segment with
+   * no prior receipt AND leaves the segment count at zero, so a crash resume would refill the budget
+   * from scratch and the bounded continuation loop would stop being bounded across process lifetimes.
+   * Blocking is the only safe response. The ordering fix above removed the one reachable trigger
+   * (a non-`implementation_receipt` projection_kind reaching this path); this stays as the
+   * defense-in-depth guard for any future empty-patch condition.
+   */
+  private fun recordIncompleteAttempt(run: PhaseRun, iteration: Int, attempt: AttemptResult): Boolean {
+    val normalized = attempt.incompleteWorkOutput ?: return false
+    return recorder.recordIncompleteImplementationAttempt(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = run.request.workflowId,
         phaseId = run.phaseId,
@@ -2297,11 +2401,11 @@ internal class FeatureTaskRuntimeRunLoop(
     state: FeatureTaskRuntimeRunState,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
-    priorSchemaFailure: String?,
+    priorCorrection: PriorAttemptCorrection?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): AttemptResult {
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
-    val launch = launchAndCapture(run, state, priorSchemaFailure, phaseTokenAccumulator)
+    val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
     launch.infraFailureReason?.let { reason ->
       return AttemptResult.settled(
         blockAndPersistInPhase(
@@ -2482,17 +2586,6 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest,
       )
     }
-    // Placed with the producer gate and after the terminal path, so blocked/failed envelopes and
-    // decomposition packages bypass it. Returned directly rather than through reject(): semantic
-    // incompleteness is not a rejected output and must never be recorded or budgeted as one.
-    incompleteImplementationReason(run, outputMap)?.let { reason ->
-      return AttemptResult.incompleteWork(
-        operatorReason = reason,
-        continuationReason = reason,
-        fileManifest = fileManifest,
-        normalizedOutput = normalizedOutput,
-      )
-    }
     // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
     // claiming 'completed' owes the projection its consumer will parse.
     producerProjectionGateReason(
@@ -2514,6 +2607,23 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
       return reject("output-verification", reason)
+    }
+    // Deliberately LAST of the gates: a receipt that both under-closes its plan tasks and carries a
+    // real projection, reconciliation-report or output-verification defect is a structural failure
+    // first. Evaluating incompleteness ahead of those gates routed such a document into the
+    // continuation loop, where priorSchemaFailure stays null, so the repairable contract defect was
+    // never named to the agent and the run burned every continuation segment before blocking. Running
+    // last means the continuation path only ever sees a receipt that already satisfies its contract.
+    // Returned directly rather than through reject(): semantic incompleteness is not a rejected
+    // output and must never be recorded or budgeted as one. Blocked/failed envelopes and
+    // decomposition packages still bypass it, via the terminal path and the producer gate above.
+    incompleteImplementationReason(run, outputMap)?.let { reason ->
+      return AttemptResult.incompleteWork(
+        operatorReason = reason,
+        continuationReason = reason,
+        fileManifest = fileManifest,
+        normalizedOutput = normalizedOutput,
+      )
     }
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
@@ -2874,7 +2984,7 @@ internal class FeatureTaskRuntimeRunLoop(
       // A retryable blocked/failed envelope re-enters the semantic fix loop as itself. It is NOT
       // relabelled schema-invalid: it validated, and converting it would both misreport the run and
       // charge the structural-repair budget for a document with nothing structurally wrong.
-      AttemptResult.retryableTerminal(reason, fileManifest)
+      AttemptResult.retryableTerminal(reason, fileManifest, disposition)
     } else {
       AttemptResult.settled(
         blockAndPersistInPhase(
@@ -3411,7 +3521,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun prepareLaunch(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
-    priorSchemaFailure: String?,
+    priorCorrection: PriorAttemptCorrection?,
     durablyClosedCriterionRefs: List<String>,
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ): PreparedLaunch {
@@ -3469,7 +3579,8 @@ internal class FeatureTaskRuntimeRunLoop(
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(),
       specSource = run.specSource,
-      priorSchemaFailure = priorSchemaFailure,
+      priorSchemaFailure = priorCorrection?.schemaGateReason,
+      priorTerminalFailure = priorCorrection?.retryableTerminalReason,
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       specReference = run.request.runInvariants.specReference,
@@ -3482,7 +3593,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun launchAndCapture(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
-    priorSchemaFailure: String? = null,
+    priorCorrection: PriorAttemptCorrection? = null,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): LaunchResult {
     val before = gitOperations.worktreeStatus(run.request.repoRoot)
@@ -3497,7 +3608,7 @@ internal class FeatureTaskRuntimeRunLoop(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
       )
     }
-    val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorSchemaFailure)) {
+    val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorCorrection)) {
       is PreparedLaunchReady -> preparation.value
       is LaunchPreparationRejected -> return preparation.result
       else -> error("Unexpected launch preparation result.")
@@ -3576,7 +3687,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun prepareLaunchForCapture(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
-    priorSchemaFailure: String?,
+    priorCorrection: PriorAttemptCorrection?,
   ): LaunchPreparation {
     val measurementContext = when (val resolution = resolveLaunchMeasurementContext(run, state)) {
       is LaunchMeasurementContextReady -> resolution.value
@@ -3593,7 +3704,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return prepareDeclaredLaunch(
       run,
       state,
-      priorSchemaFailure,
+      priorCorrection,
       durablyClosedCriterionRefs,
       measurementContext,
     )
@@ -3666,7 +3777,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun prepareDeclaredLaunch(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
-    priorSchemaFailure: String?,
+    priorCorrection: PriorAttemptCorrection?,
     durablyClosedCriterionRefs: List<String>,
     context: LaunchRejectionMeasurementContext,
   ): LaunchPreparation = try {
@@ -3674,7 +3785,7 @@ internal class FeatureTaskRuntimeRunLoop(
       prepareLaunch(
         run,
         state,
-        priorSchemaFailure,
+        priorCorrection,
         durablyClosedCriterionRefs,
         context.repositoryCheckpoint,
       ),
@@ -3959,6 +4070,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val operatorReason: String,
       val retryReason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      val failureDisposition: FeatureTaskRuntimeFailureDisposition,
     ) : AttemptResult
 
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
@@ -3983,13 +4095,25 @@ internal class FeatureTaskRuntimeRunLoop(
         else -> null
       }
 
-    /** Prompt-facing constraint text for the semantic fix loop; null on the continuation path. */
+    /**
+     * Prompt-facing constraint text for the SCHEMA-correction fix loop; null on every other path.
+     *
+     * [RetryableTerminal] is deliberately absent: it is schema-valid, so feeding its reason here would
+     * render it through the schema-correction directive and tell the agent its output was rejected
+     * when it was not. It exposes its own [retryableTerminalRetryReason] instead.
+     */
     val semanticRetryReason: String?
       get() = when (this) {
         is SchemaInvalid -> retryReason
-        is RetryableTerminal -> retryReason
         else -> null
       }
+
+    /** Prompt-facing constraint text for a retryable terminal envelope's own continuation directive. */
+    val retryableTerminalRetryReason: String? get() = (this as? RetryableTerminal)?.retryReason
+
+    /** The envelope's declared disposition, so a capped terminal retry never blocks as INVALID_OUTPUT. */
+    val retryableTerminalDisposition: FeatureTaskRuntimeFailureDisposition?
+      get() = (this as? RetryableTerminal)?.failureDisposition
 
     val incompleteWorkContinuationReason: String? get() = (this as? IncompleteWork)?.continuationReason
     val incompleteWorkOutput: NormalizedFeatureTaskRuntimePhaseOutput?
@@ -4008,7 +4132,8 @@ internal class FeatureTaskRuntimeRunLoop(
       fun retryableTerminal(
         operatorReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
-      ): AttemptResult = RetryableTerminal(operatorReason, operatorReason, fileManifest)
+        failureDisposition: FeatureTaskRuntimeFailureDisposition,
+      ): AttemptResult = RetryableTerminal(operatorReason, operatorReason, fileManifest, failureDisposition)
       fun schemaInvalid(
         operatorReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,

@@ -157,11 +157,16 @@ class FeatureTaskRuntimeStatusService(
 
   // The kind of the phase's most recent re-entry, read from the durable ledger. A phase that never
   // re-entered reports none rather than a default kind that would imply a re-entry that never happened.
+  //
+  // Every action that can carry a kind is considered, not FIX_LOOP_ITERATION alone: crash resume and
+  // process retry are stamped on START/RESUME entries and verifier re-entry on the LOOP_EDGE entry, so
+  // filtering to the fix-loop action made three of the five kinds unreportable. The newest such entry
+  // across all of them wins, so the reported kind is the phase's actual latest re-entry.
   private fun latestContinuationKind(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>, phaseId: String): String? =
     ledger
-      .filter { it.phaseId == phaseId && it.action == FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION }
-      .maxByOrNull { it.sequenceNumber }
-      ?.let { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
+      .filter { it.phaseId == phaseId && it.action in CONTINUATION_KIND_ACTIONS }
+      .sortedByDescending { it.sequenceNumber }
+      .firstNotNullOfOrNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
       ?.wireValue
 
   private fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
@@ -198,6 +203,15 @@ class FeatureTaskRuntimeStatusService(
     const val STATUS_COMPLETED = "completed"
     const val STATUS_BLOCKED = "blocked"
     val TERMINAL_PHASE_STATUSES = setOf(STATUS_COMPLETED, STATUS_BLOCKED)
+
+    // Ledger actions whose detail field may carry a continuation kind. BLOCKED is excluded on purpose:
+    // its detail is the operator-facing block reason, not a kind token.
+    val CONTINUATION_KIND_ACTIONS = setOf(
+      FeatureTaskRuntimePhaseLedgerAction.START,
+      FeatureTaskRuntimePhaseLedgerAction.RESUME,
+      FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+      FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
+    )
 
     // Loop-only phases (backward-edge destinations the forward edge skips) are never the current
     // phase of a forward run; sourced from the workflow definition's transition topology.

@@ -38,6 +38,17 @@ class FeatureTaskRuntimeContinuationKindTest {
   }
 
   @Test
+  fun `a loop-edge detail carrying trailing attributes still resolves its kind`() {
+    val detail = "${FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX}" +
+      "${FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY.wireValue} driving_verdict=gaps_found"
+
+    assertEquals(
+      FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY,
+      FeatureTaskRuntimeContinuationKind.fromLedgerDetail(detail),
+    )
+  }
+
+  @Test
   fun `an unrelated blocked reason does not decode as a continuation kind`() {
     assertNull(FeatureTaskRuntimeContinuationKind.fromLedgerDetail(null))
     assertNull(FeatureTaskRuntimeContinuationKind.fromLedgerDetail("needs_human: operator decision required"))

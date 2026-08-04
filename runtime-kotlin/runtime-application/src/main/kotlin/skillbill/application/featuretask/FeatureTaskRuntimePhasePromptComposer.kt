@@ -40,6 +40,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorBlockerFindingIds: List<String> = emptyList(),
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
+    priorTerminalFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
@@ -66,11 +67,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
-      // The two are mutually exclusive by construction: a semantically incomplete receipt never sets
-      // priorSchemaFailure (it is not schema-invalid), and a real schema failure produces no
-      // continuation projection. A prompt therefore carries at most one of them.
+      // The three are mutually exclusive by construction: a semantically incomplete receipt never sets
+      // priorSchemaFailure (it is not schema-invalid), a real schema failure produces no continuation
+      // projection, and a retryable terminal envelope is schema-valid so it sets neither. A prompt
+      // therefore carries at most one of them.
       implementationContinuationDirective(briefing.phaseId, implementationContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure),
+      terminalRetryDirective(priorTerminalFailure),
       outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }

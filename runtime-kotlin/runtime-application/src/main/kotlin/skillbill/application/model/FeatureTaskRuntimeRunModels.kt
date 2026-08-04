@@ -254,6 +254,28 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val resumed: Boolean,
     val model: String? = null,
     val effort: String? = null,
+    /**
+     * Set when this start is itself a re-entry — a crash resume or a process retry. Without it a
+     * telemetry consumer could distinguish neither from a first attempt, and the `resumed` flag alone
+     * does not separate a resumed process from a relaunched one. Null on a genuine first attempt.
+     */
+    val continuationKind: String? = null,
+  ) : FeatureTaskRuntimeRunEvent
+
+  /**
+   * A backward-edge re-entry: a verifier (audit or review) sending work back to an earlier phase.
+   *
+   * Emitted so the event stream carries the same five-way continuation distinction the status
+   * projection reports. Previously the loop edge appended a ledger entry but emitted no event, so a
+   * telemetry consumer saw the re-entered phase simply start again with no stated cause.
+   */
+  data class PhaseLoopEdge(
+    override val workflowId: String,
+    override val phaseId: String,
+    val loopId: String,
+    val edgeIteration: Int,
+    val drivingVerdict: String,
+    val continuationKind: String,
   ) : FeatureTaskRuntimeRunEvent
 
   data class PhaseFixLoopIteration(

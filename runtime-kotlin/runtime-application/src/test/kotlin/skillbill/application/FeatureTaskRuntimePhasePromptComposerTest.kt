@@ -607,6 +607,38 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `a retryable terminal envelope is prompted to retry, not told it was rejected`() {
+    // AC-004: the envelope validated. Rendering it through the schema-correction directive told its
+    // author the output was rejected and had to be re-emitted, describing an event that never happened.
+    val reason = "Implement phase reported blocked: the target module does not compile on this branch."
+
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorTerminalFailure = reason,
+    )
+
+    assertContains(retry, "reported a retryable block", false, "terminal retry names its own kind")
+    assertContains(retry, reason, false, "terminal retry carries the reported reason verbatim")
+    assertTrue(
+      !retry.contains("REJECTED by the schema gate"),
+      "a schema-valid terminal envelope must never receive the schema-correction directive",
+    )
+  }
+
+  @Test
+  fun `a real schema failure still receives the schema-correction directive and not the terminal one`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "produced_outputs must be an object.",
+    )
+
+    assertContains(retry, "REJECTED by the schema gate", false, "schema failure keeps its directive")
+    assertTrue(!retry.contains("reported a retryable block"), "schema failure must not get the terminal directive")
+  }
+
+  @Test
   fun `an operator blocked-phase retry decision is delivered only to its matching phase`() {
     val reason = "Use fresh-process isolation for Codex CLI workers."
     val retry = FeatureTaskRuntimeOperatorBlockRetry(

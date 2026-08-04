@@ -26,8 +26,17 @@ enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
     /** Category prefix keeping ledger detail inside the documented closed vocabulary. */
     const val LEDGER_DETAIL_PREFIX: String = "continuation:"
 
+    /**
+     * Parses the kind from a ledger detail that may carry trailing attributes.
+     *
+     * The loop-edge detail is `continuation:verifier_reentry driving_verdict=<v>`, so matching the
+     * whole remainder against a bare wire value never resolved it. Only the first whitespace-delimited
+     * token after the prefix is the kind; anything after it is that entry's own detail.
+     */
     fun fromLedgerDetail(detail: String?): FeatureTaskRuntimeContinuationKind? = detail
+      ?.takeIf { it.startsWith(LEDGER_DETAIL_PREFIX) }
       ?.removePrefix(LEDGER_DETAIL_PREFIX)
+      ?.substringBefore(' ')
       ?.let { value -> entries.firstOrNull { it.wireValue == value } }
   }
 }
@@ -103,6 +112,7 @@ internal class FeatureTaskRuntimeRunObservability(
         resumed = resumed,
         model = directive?.model,
         effort = directive?.effort,
+        continuationKind = startKind?.wireValue,
       ),
     )
     appendLedger(
@@ -220,6 +230,16 @@ internal class FeatureTaskRuntimeRunObservability(
   // loop id and per-edge iteration (distinct from attempt_count) so the loop trail is auditable. The
   // re-entered phase's own start/complete events still emit on its relaunch.
   fun loopEdge(phaseId: String, loopId: String, edgeIteration: Int, drivingVerdict: FeatureTaskRuntimeVerdict) {
+    request.eventSink.emit(
+      FeatureTaskRuntimeRunEvent.PhaseLoopEdge(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        loopId = loopId,
+        edgeIteration = edgeIteration,
+        drivingVerdict = drivingVerdict.wireValue,
+        continuationKind = FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY.wireValue,
+      ),
+    )
     appendLedger(
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = request.workflowId,

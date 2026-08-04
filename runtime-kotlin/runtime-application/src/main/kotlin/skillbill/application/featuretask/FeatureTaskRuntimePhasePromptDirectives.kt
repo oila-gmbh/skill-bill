@@ -82,6 +82,48 @@ internal fun implementationContinuationDirective(
 }
 
 /**
+ * Why the previous attempt at a phase must be corrected, kept typed rather than as a bare string.
+ *
+ * A schema-gate rejection and a retryable `blocked`/`failed` envelope both re-enter the same bounded
+ * semantic budget, but they are different events and must not be prompted, reported or dispositioned
+ * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
+ * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
+ */
+internal class PriorAttemptCorrection private constructor(
+  private val reason: String,
+  private val terminal: Boolean,
+) {
+  val schemaGateReason: String? get() = reason.takeUnless { terminal }
+  val retryableTerminalReason: String? get() = reason.takeIf { terminal }
+
+  companion object {
+    fun schemaGate(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = false)
+
+    fun retryableTerminal(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = true)
+  }
+}
+
+/**
+ * Emitted when the prior attempt ended in a retryable `blocked` or `failed` envelope.
+ *
+ * Deliberately not the schema-correction directive: that envelope validated. Telling its author the
+ * output was rejected and must be re-emitted describes an event that did not happen and invites a
+ * cosmetic re-serialization of the same blocked state instead of an attempt at the blocker itself.
+ */
+internal fun terminalRetryDirective(priorTerminalFailure: String?): String {
+  if (priorTerminalFailure.isNullOrBlank()) return ""
+  return """
+    ## Previous attempt reported a retryable block — try again
+    Your previous attempt at this phase emitted valid output that reported the phase could not finish.
+    It was NOT rejected and its format was NOT wrong. Reported reason:
+    $priorTerminalFailure
+    Re-attempt the phase against the current repository state. If the same obstacle still stands and you
+    cannot clear it, report it again with the disposition that matches it rather than restating it in a
+    different shape; a re-emitted block with no new attempt behind it will exhaust this phase's budget.
+  """.trimIndent()
+}
+
+/**
  * Everything the review-execution directive needs to state the run's review depth and scope. These
  * travel together from [FeatureTaskRuntimePhasePromptComposer.compose] and are only ever read as a set.
  */

@@ -1,9 +1,11 @@
 package skillbill.application
 
+import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -34,6 +36,27 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
       harness.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty().isEmpty(),
       "no attempt may survive a write that never committed",
     )
+  }
+
+  @Test
+  fun `an attempt that cannot be persisted reports false rather than a silent no-op`() {
+    // AC-007: the run loop blocks the phase with PROCESS_FAILURE on this false. If the append could
+    // report success it never had, the continuation projection and the durable segment budget would
+    // both be lost and the continuation loop would stop being bounded across process lifetimes.
+    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = 1))
+
+    val persisted = harness.recorder.recordIncompleteImplementationAttempt(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = "wftr-no-such-workflow",
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+      ),
+    )
+
+    assertFalse(persisted, "an append against an absent workflow row must report failure, not success")
   }
 
   @Test
