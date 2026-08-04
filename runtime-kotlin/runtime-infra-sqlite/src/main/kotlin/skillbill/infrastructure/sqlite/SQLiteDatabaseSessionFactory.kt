@@ -2,12 +2,15 @@ package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.core.databaseAccessError
+import skillbill.error.DatabaseAccessOperation
 import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
+import java.sql.SQLException
 
 @Inject
 class SQLiteDatabaseSessionFactory(
@@ -44,7 +47,7 @@ class SQLiteDatabaseSessionFactory(
     environment = resolvedContext.environment,
     userHome = resolvedContext.userHome,
   ).use { openDb ->
-    openDb.connection.inTransaction {
+    openDb.connection.inTransaction(openDb.dbPath) {
       block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
     }
   }
@@ -65,14 +68,22 @@ private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
 }
 
 @Suppress("TooGenericExceptionCaught")
-private fun <T> Connection.inTransaction(block: () -> T): T {
-  createStatement().use { it.execute("BEGIN IMMEDIATE") }
+private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
+  typedStatement(dbPath, "BEGIN IMMEDIATE")
   return try {
     val result = block()
-    createStatement().use { it.execute("COMMIT") }
+    typedStatement(dbPath, "COMMIT")
     result
   } catch (error: Throwable) {
     runCatching { createStatement().use { it.execute("ROLLBACK") } }
     throw error
+  }
+}
+
+private fun Connection.typedStatement(dbPath: Path, sql: String) {
+  try {
+    createStatement().use { it.execute(sql) }
+  } catch (error: SQLException) {
+    throw databaseAccessError(dbPath, DatabaseAccessOperation.OPEN, error)
   }
 }

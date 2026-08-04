@@ -1,11 +1,14 @@
 package skillbill.db.core
 
 import org.sqlite.SQLiteConfig
+import skillbill.error.DatabaseAccessError
+import skillbill.error.DatabaseAccessOperation
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 
 data class OpenDatabase(
   val connection: Connection,
@@ -45,13 +48,20 @@ object DatabaseRuntime {
       return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
     }
 
-    val connection = DriverManager.getConnection(
-      "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",
-      SQLiteConfig().apply { setReadOnly(true) }.toProperties(),
-    )
+    val connection = try {
+      DriverManager.getConnection(
+        "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",
+        SQLiteConfig().apply { setReadOnly(true) }.toProperties(),
+      )
+    } catch (error: SQLException) {
+      throw databaseAccessError(dbPath, DatabaseAccessOperation.READ, error)
+    }
     try {
       configureConnection(connection, enableWal = false)
       return OpenDatabase(connection = connection, dbPath = dbPath)
+    } catch (error: SQLException) {
+      connection.closeQuietly()
+      throw databaseAccessError(dbPath, DatabaseAccessOperation.READ, error)
     } catch (error: Throwable) {
       connection.close()
       throw error
@@ -61,7 +71,11 @@ object DatabaseRuntime {
   @Suppress("TooGenericExceptionCaught")
   fun ensureDatabase(path: Path): Connection {
     path.parent?.toAbsolutePath()?.normalize()?.toFile()?.mkdirs()
-    val connection = DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath().normalize()}")
+    val connection = try {
+      DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath().normalize()}")
+    } catch (error: SQLException) {
+      throw databaseAccessError(path, DatabaseAccessOperation.OPEN, error)
+    }
     try {
       configureConnection(connection, enableWal = true)
       DatabaseSchema.createBaseSchema(connection)
@@ -69,6 +83,9 @@ object DatabaseRuntime {
       DatabaseColumnMigrations.apply(connection)
       DatabaseColumnMigrations.healWorkListMetadata(connection)
       return connection
+    } catch (error: SQLException) {
+      connection.closeQuietly()
+      throw databaseAccessError(path, DatabaseAccessOperation.OPEN, error)
     } catch (error: Throwable) {
       connection.close()
       throw error
@@ -82,5 +99,24 @@ object DatabaseRuntime {
       if (enableWal) statement.execute("PRAGMA journal_mode = WAL")
       statement.execute("PRAGMA foreign_keys = ON")
     }
+  }
+}
+
+internal fun databaseAccessError(
+  dbPath: Path,
+  operation: DatabaseAccessOperation,
+  error: SQLException,
+): DatabaseAccessError = DatabaseAccessError(
+  dbPath = dbPath.toAbsolutePath().normalize().toString(),
+  operation = operation,
+  condition = "sqlite result code ${error.errorCode}: ${error.message.orEmpty()}",
+)
+
+@Suppress("SwallowedException")
+internal fun Connection.closeQuietly() {
+  try {
+    close()
+  } catch (ignored: SQLException) {
+    // A failed close on an already-broken connection must not mask the typed access error.
   }
 }

@@ -35,6 +35,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.contracts.system.RuntimeProvenanceContract
+import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -321,9 +322,14 @@ class GoalStatusCommand(
     if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {
       throw UsageError("Monitor accepts only one bounded status snapshot; omit diff options.")
     }
-    val projection = goalRunnerStatusService.status(
-      state.goalStatusRequest(options),
-    )
+    val projection = try {
+      goalRunnerStatusService.status(state.goalStatusRequest(options))
+    } catch (error: DatabaseAccessError) {
+      if (!options.monitorOnly) throw error
+      val payload = databaseUnavailableGoalStatusCliMap(issueKey, error)
+      state.completeText(goalMonitorStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
+      return
+    }
     val payload = if (options.monitorOnly) {
       projection.toBoundedGoalStatusCliMap(issueKey)
     } else {
@@ -793,6 +799,8 @@ private fun singleLineBounded(value: String, limit: Int = MAX_TERMINAL_FIELD_CHA
 
 private const val MAX_TERMINAL_FIELD_CHARS = 240
 
+private const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
+
 private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
 private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
@@ -866,6 +874,16 @@ private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: Stri
   "resumable_state" to "not_found",
 )
 
+private fun databaseUnavailableGoalStatusCliMap(
+  issueKey: String,
+  error: DatabaseAccessError,
+): Map<String, Any?> = linkedMapOf(
+  "status" to GOAL_STATUS_DATABASE_UNAVAILABLE,
+  "issue_key" to singleLineBounded(issueKey),
+  "resumable_state" to GOAL_STATUS_DATABASE_UNAVAILABLE,
+  "reason" to singleLineBounded(error.condition),
+)
+
 private fun GoalRunnerStatusProjection.monitorResumableState(): String = currentStep.let { step ->
   when {
     paused -> "paused"
@@ -936,6 +954,13 @@ private fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payl
     appendLine("goal: ${payload["issue_key"]}")
     appendLine("status: not_found")
     appendLine("resumable_state: not_found")
+  }
+} else if (payload["status"] == GOAL_STATUS_DATABASE_UNAVAILABLE) {
+  buildString {
+    appendLine("goal: ${payload["issue_key"]}")
+    appendLine("status: $GOAL_STATUS_DATABASE_UNAVAILABLE")
+    appendLine("resumable_state: $GOAL_STATUS_DATABASE_UNAVAILABLE")
+    appendLine("reason: ${payload["reason"]}")
   }
 } else {
   buildString {
