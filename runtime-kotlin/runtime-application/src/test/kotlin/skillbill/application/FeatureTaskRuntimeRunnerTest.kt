@@ -3701,14 +3701,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `dirty tree checkpoints review and remediation boundaries on the resolved feature branch`() {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    // A dirty tree the run OWNS => one checkpoint commit on the boundary.
-    git.ownedPathsValue = listOf("src/Foo.kt")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") git.worktreeStatusValue = " M src/Foo.kt"
+        // A dirty tree the run OWNS because its writing phase produced it => one checkpoint commit
+        // on the boundary.
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
@@ -3741,14 +3744,16 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `dirty tree checkpoint that fails to stage blocks loudly and never commits`() {
     var reviewLaunches = 0
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.ownedPathsValue = listOf("src/Foo.kt")
     git.stagePathsResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") git.worktreeStatusValue = " M src/Foo.kt"
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
@@ -3881,7 +3886,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     // The foreign spec exists in the worktree beside this run's work but is not owned by it.
     git.ownedPathsValue = listOf("src/Owned.kt", foreignSpec)
-    val reviewBaselines = mutableListOf<GoalSubtaskReviewBaseline>()
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -3890,15 +3894,20 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     // is never permitted is the foreign spec being staged, committed, or entering review input.
     if (report is FeatureTaskRuntimeRunReport.Completed) {
       assertFalse(foreignSpec in git.stagePathsCalls, "a foreign issue's spec must never be staged")
+      assertTrue(
+        git.goalReviewBuildInputs.isNotEmpty(),
+        "a completed run must have built review input for the exclusion to be proven on",
+      )
     } else {
       val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
       assertContains(blocked.blockedReason, "OTHER-999")
       assertTrue(git.createCommitMessages.isEmpty())
     }
-    reviewBaselines.addAll(git.goalReviewBuildInputs)
-    reviewBaselines.forEach { baseline ->
+    // Excluded either way it can be: named in the untracked exclusion list, or absent from the
+    // pathspec that bounds the tracked delta. Neither disjunct is satisfiable by doing nothing.
+    git.goalReviewBuildInputs.forEach { baseline ->
       assertTrue(
-        foreignSpec in baseline.baselineUntrackedPaths || baseline.baselineUntrackedPaths.isEmpty(),
+        foreignSpec in baseline.baselineUntrackedPaths || foreignSpec !in baseline.ownedPathspec,
         "a foreign issue's spec must be excluded from review input, never materialized into it",
       )
     }
@@ -3976,6 +3985,31 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     }
   }
 
+  // AC-001/AC-009: a fix written after the first checkpoint must still reach the checkpoint commit and
+  // the review pathspec. A durable inventory that only ever bootstraps would drop it from both, and the
+  // second review would then pass on a delta that omits the fix.
+  @Test
+  fun `a file first written by implement_fix is staged and reviewed rather than dropped`() {
+    val fixFile = "src/FixWrote.kt"
+    var writingLaunches = 0
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    val harness = checkpointRunHarness(git) { phaseId ->
+      // The remediation re-entry of the writing phase, i.e. the fix pass after review asked for one.
+      if ((phaseId == "implement" || phaseId == "implement_fix") && ++writingLaunches == 2) {
+        git.ownedPathsValue = listOf("src/Owned.kt", fixFile)
+        git.worktreeStatusValue = " M src/Owned.kt\n?? $fixFile"
+      }
+    }
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
+
+    assertTrue(fixFile in git.stagePathsCalls, "the fix's new file must be staged by the next checkpoint")
+    assertTrue(
+      git.goalReviewBuildInputs.any { fixFile in it.ownedPathspec },
+      "the fix's new file must be inside the delta the remediation review judges",
+    )
+  }
+
   // The tree starts clean and the writing phase dirties it, so the phase file manifest the checkpoint
   // reads shows those paths as this phase's own writes rather than as ambient pre-existing dirt.
   private fun checkpointGit(
@@ -3992,7 +4026,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     onPhase: (String) -> Unit = {},
   ): RunnerHarness {
     var reviewLaunches = 0
-    val writtenStatus = git.ownedPathsValue.joinToString("\n") { path -> " M $path" }
+    val ownedPaths = git.ownedPathsValue
+    val writtenStatus = ownedPaths.joinToString("\n") { path -> " M $path" }
+    // The run's own files do not exist yet when branch setup baselines foreign ownership; they
+    // appear because a writing phase writes them, which is what makes them this workflow's.
+    git.ownedPathsValue = emptyList()
     return runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
@@ -4000,6 +4038,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "implement" || phaseId == "implement_fix") {
           git.worktreeStatusValue = writtenStatus
+          git.ownedPathsValue = (git.ownedPathsValue + ownedPaths).distinct()
         }
         onPhase(phaseId)
         when (phaseId) {
@@ -4047,7 +4086,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.worktreeStatusValue = " M src/Foo.kt"
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -4064,6 +4102,10 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       ),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1

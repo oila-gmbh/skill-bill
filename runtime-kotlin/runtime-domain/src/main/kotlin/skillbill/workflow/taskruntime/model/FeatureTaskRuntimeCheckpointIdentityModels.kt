@@ -142,13 +142,16 @@ data class FeatureTaskRuntimeCheckpointIdentity(
 
 /**
  * Digest over the inventory a checkpoint staged. Sorting first makes the digest independent of the
- * order git listed the paths in, and NUL joining keeps a path containing the delimiter from forging
- * the digest of a different inventory.
+ * order git listed the paths in. Each entry is length-prefixed rather than only delimiter-joined, so
+ * a path that itself contains the delimiter cannot forge the digest of a different inventory.
  */
 fun featureTaskRuntimeOwnedPathDigest(ownedPaths: List<String>): String {
   val normalized = ownedPaths.filter(String::isNotBlank).distinct().sorted()
   val digest = MessageDigest.getInstance("SHA-256")
-  digest.update(normalized.joinToString(OWNED_PATH_DIGEST_DELIMITER.toString()).toByteArray())
+  val framed = normalized.joinToString(OWNED_PATH_DIGEST_DELIMITER.toString()) { path ->
+    "${path.length}:$path"
+  }
+  digest.update(framed.toByteArray())
   return digest.digest().joinToString("") { "%02x".format(it) }
 }
 

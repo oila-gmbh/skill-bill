@@ -40,7 +40,6 @@ import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
 import skillbill.ports.workflow.pathContentIdentities
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.restoreIndexState
@@ -188,6 +187,11 @@ internal class FeatureTaskRuntimeRunLoop(
   private val phaseContentIdentities = mutableMapOf<String, Map<String, String>>()
 
   private var resolvedBranch: String? = null
+
+  // Set once a checkpoint has decided ownership in this process. Until then the durable inventory is
+  // only a seed and the working tree still bootstraps the scope; afterwards the checkpoint decision is
+  // authoritative and ambient dirt must not widen it.
+  private var checkpointOwnershipDecided: Boolean = false
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var paused: FeatureTaskRuntimeRunReport.Paused? = null
   private var operatorGrantedFixIteration: Boolean = false
@@ -759,15 +763,17 @@ internal class FeatureTaskRuntimeRunLoop(
       issueKey = request.issueKey,
       specReference = request.runInvariants.specReference,
       specSource = specSource,
-      // The persisted inventory is the sole ownership authority. A phase permitted to write extends
-      // it with the paths IT wrote — never with whatever else happens to be dirty, which is how
+      // The persisted inventory is the sole ownership authority. It is extended with the paths the
+      // writing phases themselves wrote — never with whatever else happens to be dirty, which is how
       // someone else's concurrent edit used to be adopted and committed as this run's work.
       paths = (
         resolved?.workflowOwnedPaths.orEmpty() +
-          phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty()
+          phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
+          writingPhaseIntroducedPaths(worktreeDelta)
         ).distinct(),
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
+    checkpointOwnershipDecided = true
     // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
     // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
     // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
@@ -790,6 +796,34 @@ internal class FeatureTaskRuntimeRunLoop(
    * here would turn the boundary AC-003 exists to enforce into a formality.
    */
   private fun mayExtendOwnedInventory(phaseId: String): Boolean = phaseId in INVENTORY_EXTENDING_PHASES
+
+  /**
+   * Every checkpoint seam runs from a reader phase (audit before review, review before the fix edge),
+   * so the preceding phase can never widen ownership on its own. The paths a writing phase introduced
+   * and left dirty would then be excluded from both the checkpoint commit and the pathspec-limited
+   * review input: work that is neither committed, blocked, nor reviewed. The durable per-phase
+   * manifests of the writing phases carry that attribution, so the inventory grows from those and
+   * from nothing else.
+   */
+  private fun writingPhaseIntroducedPaths(worktreeDelta: List<String>): List<String> {
+    val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride).orEmpty()
+    val writingRecords = INVENTORY_EXTENDING_PHASES.mapNotNull { records[it] }
+    if (writingRecords.isEmpty()) {
+      if (worktreeDelta.isNotEmpty()) {
+        runCatching {
+          diagnostics.warning(
+            "Feature-task-runtime checkpoint has no durable file manifest for any writing phase; " +
+              "the whole working-tree delta is treated as this workflow's own writes.",
+          )
+        }
+      }
+      return worktreeDelta
+    }
+    // A writing phase owns both what it created and what it left dirty when it finished. A path that
+    // only appears later, while a reader phase is running, was written by somebody else and stays out.
+    val introduced = writingRecords.flatMap { it.fileManifestIntroduced + it.fileManifestAfter }.distinct()
+    return FeatureTaskRuntimeCheckpointScope.phaseWrittenPaths(worktreeDelta, introduced)
+  }
 
   /**
    * The subset of the working-tree delta the phase itself wrote, taken from its own durable
@@ -1857,10 +1891,11 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
       run.request.repoRoot,
-      GoalSubtaskReviewBaseline(
+      FeatureTaskRuntimeScopedReviewBaseline.of(
+        phaseGates.gitOperations,
+        run.request.repoRoot,
+        resolved,
         reviewBaseSha,
-        scopedReviewUntrackedExclusions(resolved),
-        resolved.workflowOwnedPaths,
       ),
       resolved.branch,
     )
@@ -1874,20 +1909,12 @@ internal class FeatureTaskRuntimeRunLoop(
    * persisted inventory is the same one the checkpoint identity digested, so the input a review sees
    * is reproducible from the immutable commit rather than from the tree's current dirt.
    */
-  private fun scopedReviewUntrackedExclusions(resolved: FeatureTaskRuntimeResolvedBranch): List<String> {
-    val current = phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
-    // An unreadable listing cannot widen the exclusion set, so fall back to the durable baseline
-    // rather than inventing a scope: the pre-existing behavior, never something looser.
-    if (!current.ok) return resolved.baselineUntrackedPaths
-    return FeatureTaskRuntimeCheckpointScope.reviewUntrackedExclusions(
-      baselineUntrackedPaths = resolved.baselineUntrackedPaths,
-      currentUntrackedPaths = current.value.orEmpty()
-        .split(OWNED_PATH_DELIMITER)
-        .map(String::trim)
-        .filter(String::isNotBlank),
-      ownedPaths = resolved.workflowOwnedPaths,
+  private fun scopedReviewUntrackedExclusions(resolved: FeatureTaskRuntimeResolvedBranch): List<String> =
+    FeatureTaskRuntimeScopedReviewBaseline.untrackedExclusions(
+      phaseGates.gitOperations,
+      request.repoRoot,
+      resolved,
     )
-  }
 
   private fun reserveGoalReviewRun(
     run: PhaseRun,
@@ -3282,12 +3309,16 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let(FeatureTaskRuntimePhaseSafetyPolicy::lineSeparatedPaths)
         ?: return null
     }.orEmpty()
-    // Once the checkpoint has established a durable inventory, that inventory bounds the fingerprint
-    // scope: unrelated working-tree dirt must not be able to shift the digest a consumer compares
-    // against. The working-tree listing is only the bootstrap, for a run whose first checkpoint has
-    // not yet recorded ownership.
+    // Before a checkpoint has decided ownership the working tree is the only listing there is, so it
+    // bootstraps the scope. Once a checkpoint has decided, that decision bounds the scope — it already
+    // absorbed what the writing phases wrote, so nothing of this run's work is dropped, and ambient
+    // dirt can no longer shift the digest a consumer compares against.
     val durableInventory = persistedOwnedPaths.orEmpty().filter(String::isNotBlank)
-    val discovered = durableInventory.ifEmpty { workingTreePaths }
+    val discovered = if (checkpointOwnershipDecided && durableInventory.isNotEmpty()) {
+      durableInventory
+    } else {
+      (durableInventory + workingTreePaths).distinct()
+    }
     val inventory = reconcileCheckpointPathInventory(
       repoRoot = run.request.repoRoot,
       issueKey = run.request.issueKey,
@@ -4188,7 +4219,6 @@ internal class FeatureTaskRuntimeRunLoop(
       if (identity.isBlank() || path.isBlank()) null else path to identity
     }
     .toMap()
-  }
 
   private fun prepareLaunchForCapture(
     run: PhaseRun,

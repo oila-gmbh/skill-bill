@@ -102,13 +102,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `final audit repair iteration is committed before review`() {
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").apply {
-      worktreeStatusValue = " M src/Foo.kt"
-    }
+    // The tree is clean when ownership is baselined at branch setup; the file is this run's work
+    // because a writing phase is what makes it appear.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val delegate = auditGapLauncher(convergeOnAudit = 2)
     var commitMessagesObservedAtReview: List<String> = emptyList()
     val launcher = RuntimeRecordingLauncher { request ->
       val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "implement" || phaseId == "implement_fix") {
+        git.worktreeStatusValue = " M src/Foo.kt"
+        git.ownedPathsValue = listOf("src/Foo.kt")
+      }
       if (phaseId == "review") {
         commitMessagesObservedAtReview = git.createCommitMessages.toList()
       }
