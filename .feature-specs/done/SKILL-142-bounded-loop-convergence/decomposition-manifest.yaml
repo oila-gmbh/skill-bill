@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-142"
 feature_name: "bounded-loop-convergence"
 parent_spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-142-inline-review-depth-tier"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Review-phase liveness, preflight, and loop accounting"
@@ -67,12 +67,12 @@ subtasks:
 - id: 5
   name: "Inline as a bounded light tier; remediation pass bounded to its delta"
   spec_path: ".feature-specs/SKILL-142-bounded-loop-convergence/spec_subtask_5_inline_light_tier_bounded_remediation.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260725-172600-dsgk"
   blocked_reason: null
-  last_resumable_step: "write_history"
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

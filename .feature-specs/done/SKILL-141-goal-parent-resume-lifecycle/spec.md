@@ -1,5 +1,13 @@
 # SKILL-141 - Goal Parent Workflow Resume Lifecycle
 
+## Status
+
+Complete. Merged to `main` via PR #236 (`e586cb43`, 2026-07-24): non-terminal
+`paused` parent status, parent-id reuse on resume, terminal reason-stamped
+abandonment unchanged. Follow-up `af092ef0` made the work list accept paused
+rows. The manifest reconciliation here was authored on the feature branch
+(`54c0fae9`) but never pushed; it is applied verbatim.
+
 ## Mode
 
 single_spec
