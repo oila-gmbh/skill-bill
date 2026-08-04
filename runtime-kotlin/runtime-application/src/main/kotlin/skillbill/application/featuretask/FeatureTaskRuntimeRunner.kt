@@ -263,7 +263,20 @@ class FeatureTaskRuntimeRunner(
       ?: 0
 
   private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditRepairProgress? {
-    recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress?.let { return it }
+    // The append-only generation history is the authority; the replaceable audit-repair-state artifact is a
+    // derived cache of it, and a cache that disagrees with the derivation loud-fails rather than being
+    // emitted as if either value were true.
+    val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
+    val cached = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
+    if (history.generations.isNotEmpty()) {
+      val derived = history.deriveProgress(auditGapIterationCount = loadAuditGapIterationCount(request))
+      require(cached == null || cached.auditGapIterationCount == derived.auditGapIterationCount) {
+        "Audit-loop count derived from durable generations (${derived.auditGapIterationCount}) disagrees with " +
+          "the replaceable audit-repair cache (${cached?.auditGapIterationCount}); neither value is emitted."
+      }
+      return derived
+    }
+    cached?.let { return it }
     val auditCompleted = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
       .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
       ?.status == "completed"

@@ -9,6 +9,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -33,12 +34,18 @@ class FeatureTaskRuntimeStatusService(
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
-    val auditRepairProgress = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
+    val cachedAuditRepairProgress =
+      recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
     // Blocked-ness is derived primarily from the DURABLE per-phase records (a blocked phase
     // persists a terminal `blocked` record that survives ledger pruning); the append-only ledger
     // is supplementary detail only. A later non-blocked ledger entry from a resumed run can still
     // supersede a stale block, but a durable blocked record on a phase always reports blocked.
     val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
+    val auditRepairProgress = auditRepairProgressFrom(
+      recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride),
+      ledger,
+      cachedAuditRepairProgress,
+    )
     val durableBlockedPhaseIds = records.filterValues { it.status == STATUS_BLOCKED }.keys
     val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
     val phases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
@@ -87,6 +94,34 @@ class FeatureTaskRuntimeStatusService(
       auditRepair = auditRepairStatus(records, auditRepairProgress),
     )
   }
+
+  /**
+   * Audit-convergence counters, derived from the append-only generation history rather than read from a
+   * stored counter. The audit-loop count comes from the phase ledger's own audit-gap edge trail, and a
+   * replaceable cache that disagrees with the derivation loud-fails instead of one of the two values being
+   * reported as if it were authoritative.
+   */
+  private fun auditRepairProgressFrom(
+    history: FeatureTaskRuntimeAuditGenerationHistory,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+    cached: FeatureTaskRuntimeAuditRepairProgress?,
+  ): FeatureTaskRuntimeAuditRepairProgress? {
+    if (history.generations.isEmpty()) return cached
+    val derived = history.deriveProgress(auditGapIterationCount = ledgerAuditGapIterationCount(ledger))
+    if (cached != null) {
+      require(cached.auditGapIterationCount == derived.auditGapIterationCount) {
+        "Audit-loop count derived from durable generations (${derived.auditGapIterationCount}) disagrees with " +
+          "the replaceable audit-repair cache (${cached.auditGapIterationCount}); neither value is reported."
+      }
+    }
+    return derived
+  }
+
+  private fun ledgerAuditGapIterationCount(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>): Int =
+    ledger.filter { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
+      .mapNotNull { it.edgeIteration }
+      .maxOrNull()
+      ?: 0
 
   private fun auditRepairStatus(
     records: Map<String, FeatureTaskRuntimePhaseRecord>,

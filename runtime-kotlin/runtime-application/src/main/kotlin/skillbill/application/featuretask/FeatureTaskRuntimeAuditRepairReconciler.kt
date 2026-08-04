@@ -20,6 +20,19 @@ internal data class AuditRepairReconciliation(
   val auditScopeCriterionRefs: List<String> = emptyList(),
 )
 
+private val TEST_ADEQUACY_PHRASES: List<String> = listOf(
+  "test adequacy",
+  "test coverage",
+  "insufficient test",
+  "missing test",
+  "no test",
+  "untested",
+  "test fixture",
+  "missing assertion",
+  "weak assertion",
+  "coverage gap",
+)
+
 internal object FeatureTaskRuntimeAuditRepairReconciler {
   private data class GapReconciliation(
     val dispositions: List<FeatureTaskRuntimePriorGapDisposition>,
@@ -131,6 +144,7 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
     val resolvedCriteria = resolvedIds.mapNotNullTo(linkedSetOf(), criterionByPriorGapId::get)
     val reopenedCriteria = latestGaps.map { it.acceptanceCriterionRef }.filter { it in resolvedCriteria }.sorted()
     rejectReopenedClosedCriteria(input, latestGaps)
+    rejectTestAdequacyGaps(latestGaps)
     if (!latestIds.containsAll(recurringIds) || latestIds.any(resolvedIds::contains) ||
       reopenedCriteria.isNotEmpty()
     ) {
@@ -165,6 +179,25 @@ internal object FeatureTaskRuntimeAuditRepairReconciler {
       schemaError(
         "An audit cannot report a gap against an acceptance criterion that already reached a satisfied " +
           "verdict and is durably closed; reopened criteria were $reopenedClosedCriteria.",
+      )
+    }
+  }
+
+  /**
+   * Completeness audit inspects whether behavior exists, not whether it is well tested. A gap whose own
+   * diagnosis is about test adequacy, coverage, fixtures, or assertions is rejected here rather than accepted
+   * and handed to repair: validation owns test execution and failures, so such a finding has no repair item
+   * that could close it against read-only repository facts.
+   */
+  private fun rejectTestAdequacyGaps(latestGaps: List<FeatureTaskRuntimeAuditGap>) {
+    val offending = latestGaps.filter { gap ->
+      val diagnosis = "${gap.diagnosis} ${gap.affectedBoundary}".lowercase()
+      TEST_ADEQUACY_PHRASES.any(diagnosis::contains)
+    }.map { it.gapId }.sorted()
+    if (offending.isNotEmpty()) {
+      schemaError(
+        "Completeness audit excludes test adequacy, coverage, fixtures, and assertions as gaps; validation " +
+          "owns test execution and failures. Offending gaps were $offending.",
       )
     }
   }

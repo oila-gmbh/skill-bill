@@ -165,6 +165,24 @@ object FeatureTaskRuntimeImplementationAttemptSchemaPaths {
 
 const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
 
+/**
+ * Runtime-side mirror of the audit-generation schema's `contract_version`;
+ * `FeatureTaskRuntimeAuditGenerationSchemaContractVersionTest` fails the build if they diverge.
+ * Pins the append-only audit-generation history that is the sole durable authority for gap identity,
+ * gap state, recurrence, and repair-batch disposition. The replaceable audit-repair-state artifact
+ * pinned by [FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION] is a derived cache of it.
+ */
+const val FEATURE_TASK_RUNTIME_AUDIT_GENERATION_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeAuditGenerationSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-audit-generation-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-audit-generation-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-audit-generation-schema.yaml"
+}
+
 object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"

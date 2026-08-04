@@ -225,7 +225,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "reconciliation_evidence, and the repository_checkpoint the audit will verify against). When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
     "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation.",
+    "settled implementation. Under the audit-gap loop, report repair_item_results for every carried " +
+    "repair item with a terminal fixed or already_satisfied outcome, or list it in " +
+    "superseded_repair_items with its governing decision, authority_ref, and rationale. Reporting fewer " +
+    "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
+    "read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address only the carried unresolved actionable Blocker findings on the CURRENT working tree as " +
     "incremental reconciliation. Approved, Major, Minor, and Nit findings, specialist narratives, " +
@@ -247,7 +251,12 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
     "Emit audit_result with clearance_status, review_scope, and the exact repository_checkpoint; " +
-    "keep audit reasoning and repair history outside the clearance.",
+    "keep audit reasoning and repair history outside the clearance. Disposition every carried gap the " +
+    "briefing lists as resolved or recurring against repository evidence, reusing its existing gap_id — a " +
+    "defect still present keeps its identity and recurs. Before emitting a satisfied clearance, also emit " +
+    "blast_radius_inspection naming the repair batch's changed production paths, the gap ids any newly " +
+    "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
+    "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
     "Run tests written during the implement phase, then run the repository validation gate " +
     "relevant to the change. Fix validation findings at their root cause and rerun the gate " +

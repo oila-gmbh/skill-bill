@@ -245,6 +245,21 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
 )
 
 /**
+ * Surfaced when an append-only audit generation fails the canonical audit-generation schema. Distinct
+ * from [InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError] because a generation is durable history:
+ * rejecting one quarantines and regenerates the workflow's audit authority rather than re-prompting a
+ * producer for a better plan.
+ */
+class InvalidFeatureTaskRuntimeAuditGenerationSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime audit generation '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
  * plan commitment, or implementation receipt) fails the canonical planning-projections schema.
  * Mirrors [InvalidReviewContextSchemaError]; the dedicated subclass keeps the four concrete bounded

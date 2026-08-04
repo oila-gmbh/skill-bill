@@ -12,6 +12,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.ShellContentContractException
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
@@ -47,6 +48,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PA
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
@@ -276,6 +278,15 @@ class FeatureTaskRuntimePhaseRecorder(
       } else {
         emptyMap()
       }
+      appendAuditGeneration(
+        unitOfWork,
+        request,
+        latestPlan = latestPlan,
+        dispositions = effectiveDispositions.orEmpty(),
+        repairResults = repairResults.orEmpty(),
+        producedOutputs = outputProduced,
+        priorFingerprint = priorAuditState?.repositoryFingerprint,
+      )
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -289,6 +300,42 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+  }
+
+  /**
+   * Appends the audit generation inside the SAME transaction as the phase advance, so a crash between the
+   * generation landing and the workflow advancing is not a reachable state: resume finds exactly one active
+   * repair batch and the complete prior history, never an orphaned or duplicated generation.
+   */
+  private fun appendAuditGeneration(
+    unitOfWork: skillbill.ports.persistence.UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    latestPlan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan?,
+    dispositions: List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapDisposition>,
+    repairResults: List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult>,
+    producedOutputs: Map<String, Any?>?,
+    priorFingerprint: String?,
+  ) {
+    if (latestPlan == null && dispositions.isEmpty() && repairResults.isEmpty()) return
+    val fingerprint = request.repositoryFingerprint?.takeIf { it.isNotBlank() }
+      ?: priorFingerprint
+      ?: schemaError(
+        "An audit generation records the repository checkpoint its decision was made at; the settlement for " +
+          "phase '${request.phaseId}' carries no repository fingerprint.",
+      )
+    FeatureTaskRuntimeAuditGenerationRecorder.append(
+      unitOfWork.featureTaskRuntimeAuditGenerations,
+      AuditGenerationAppend(
+        workflowId = request.workflowId,
+        repositoryFingerprint = fingerprint,
+        auditScopeCriterionRefs = request.auditScopeCriterionRefs,
+        latestPlan = latestPlan,
+        dispositions = dispositions,
+        repairResults = repairResults,
+        supersededRepairItems = supersededRepairItemsFrom(producedOutputs),
+        blastRadiusInspection = blastRadiusInspectionFrom(producedOutputs, request.phaseId),
+      ),
+    )
   }
 
   /**
@@ -896,6 +943,39 @@ class FeatureTaskRuntimePhaseRecorder(
       val artifact = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY]
         ?: return@read null
       auditRepairStateFromWire(artifact, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
+    }
+
+  /**
+   * The append-only audit-generation history, the sole durable authority for gap identity, gap state,
+   * recurrence, and repair-batch disposition.
+   *
+   * A history that cannot be decoded against the current contract is quarantined and reported empty rather
+   * than surfaced as drift: a legacy live workflow carrying only the replaceable audit-repair-state artifact
+   * regenerates its authority in band on the next audit settlement instead of needing out-of-band surgery.
+   */
+  fun loadAuditGenerationHistory(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeAuditGenerationHistory =
+    runCatching {
+      database.read(dbOverride) { unitOfWork ->
+        FeatureTaskRuntimeAuditGenerationRecorder.loadHistory(
+          unitOfWork.featureTaskRuntimeAuditGenerations,
+          workflowId,
+        )
+      }
+    }.getOrElse { error ->
+      if (error is ShellContentContractException || error is InvalidWorkflowStateSchemaError) {
+        quarantineAuditGenerationHistory(workflowId, dbOverride)
+        FeatureTaskRuntimeAuditGenerationHistory(emptyList())
+      } else {
+        throw error
+      }
+    }
+
+  fun quarantineAuditGenerationHistory(workflowId: String, dbOverride: String? = null): Int =
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.featureTaskRuntimeAuditGenerations.quarantineAll(workflowId)
     }
 
   /**

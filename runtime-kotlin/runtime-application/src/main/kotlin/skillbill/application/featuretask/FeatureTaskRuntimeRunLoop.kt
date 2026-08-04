@@ -2762,9 +2762,96 @@ internal class FeatureTaskRuntimeRunLoop(
     mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
       ?: terminalAuditRepairBlockGateReason(phaseId, outputMap)?.let { "terminal-audit-repair" to it }
       ?: auditRepairResultGateReason(phaseId, outputMap)?.let { "audit-repair-result" to it }
+      ?: repairClosureGateReason(phaseId, outputMap)?.let { "audit-repair-closure" to it }
       ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
         ?.let { "audit-durable-ledger" to it }
+      ?: followUpAuditEvidenceGateReason(phaseId, outputText, outputMap)
+        ?.let { "audit-followup-evidence" to it }
       ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
+
+  /**
+   * Producer-side closure gate for an audit-gap repair attempt, evaluated against the durable generation
+   * authority rather than the receipt's own account of what it was carrying. A receipt that dispositions
+   * fewer items than the active batch carries is a resumable partial repair, so it is named and re-entered
+   * instead of settling as completion.
+   */
+  private fun repairClosureGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+    if (activeReentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) return null
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
+    if (outputMap["status"] != STATUS_COMPLETED) return null
+    val activeBatch = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
+      .activeRepairBatch()
+      ?: return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    return FeatureTaskRuntimeAuditGenerationGates.repairClosureBlockReason(
+      activeBatch,
+      reportedRepairItemIds = reportedRepairItemIds(produced),
+    )
+  }
+
+  /**
+   * Every terminal disposition a repair receipt claims: a verified outcome, or a governed supersession. Both
+   * close a carried obligation; nothing else does.
+   */
+  private fun reportedRepairItemIds(produced: Map<String, Any?>): Set<String> {
+    val results = (produced["repair_item_results"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
+    return results.toSet() + supersededRepairItemIds(produced)
+  }
+
+  /**
+   * A malformed supersession claim is a repairable contract defect, so it is named to the agent as a gate
+   * reason rather than escaping as an exception that would end the run with no durable block.
+   */
+  private fun supersededRepairItemDiagnostic(produced: Map<String, Any?>): String? =
+    runCatching { supersededRepairItemsFrom(produced) }.exceptionOrNull()?.let { failure ->
+      structuredRepairDiagnostic(
+        "audit_repair.superseded_repair_items.shape",
+        "/produced_outputs/superseded_repair_items",
+        "A governed supersession must name repair_item_id, governing_decision, authority_ref, and rationale: " +
+          failure.diagnosticMessage(),
+      )
+    }
+
+  private fun supersededRepairItemIds(produced: Map<String, Any?>): Set<String> =
+    runCatching { supersededRepairItemsFrom(produced).keys }.getOrDefault(emptySet())
+
+  /**
+   * A follow-up audit reaches a satisfied verdict only after it dispositions every carried gap and records the
+   * repair batch's production blast radius. A compact gap handoff is not claiming convergence, so it is not
+   * gated here.
+   */
+  private fun followUpAuditEvidenceGateReason(
+    phaseId: String,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): String? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    if (isCompactAuditOutput(phaseId, outputText)) return null
+    val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
+    if (history.generations.isEmpty()) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val dispositions = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
+      .mapIndexedNotNull { index, entry ->
+        JsonSupport.anyToStringAnyMap(entry)?.let {
+          runCatching { priorGapDispositionFromWire(it, "prior_gap_dispositions[$index]") }.getOrNull()
+        }
+      }
+    val reportsGaps = (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
+      .orEmpty()
+      .isNotEmpty()
+    val blastRadius = runCatching { blastRadiusInspectionFrom(produced, phaseId) }
+    blastRadius.exceptionOrNull()?.let { failure ->
+      return "Audit blast_radius_inspection is not contract-safe: ${failure.diagnosticMessage()}"
+    }
+    return FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
+      history = history,
+      dispositions = dispositions,
+      blastRadiusInspection = blastRadius.getOrNull(),
+      reportsGaps = reportsGaps,
+    )
+  }
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
@@ -3120,12 +3207,18 @@ internal class FeatureTaskRuntimeRunLoop(
         "Only blocked audit-gap remediation may identify an unresolvable repair item.",
       )
     }
+    supersededRepairItemDiagnostic(produced)?.let { return it }
+    // A governed supersession is a terminal disposition, so it closes a carried item exactly as a verified
+    // outcome does; counting it here is what keeps the plan-exhaustion rule and the closure gate agreeing.
+    val superseded = supersededRepairItemIds(produced)
+    val closed = actual.toSet() + superseded
     val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
+      superseded.any { it !in expected } || actual.toSet().intersect(superseded).isNotEmpty() ||
       if (blocked) {
-        actual.toSet() + deferred.toSet() != expected.toSet() ||
-          actual.toSet().intersect(deferred.toSet()).isNotEmpty()
+        closed + deferred.toSet() != expected.toSet() ||
+          closed.intersect(deferred.toSet()).isNotEmpty()
       } else {
-        actual.toSet() != expected.toSet()
+        closed != expected.toSet()
       }
     if (identifiersInvalid) {
       return structuredRepairDiagnostic(

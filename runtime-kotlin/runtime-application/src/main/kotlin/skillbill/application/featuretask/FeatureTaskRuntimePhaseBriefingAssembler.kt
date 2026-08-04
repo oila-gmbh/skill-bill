@@ -8,6 +8,8 @@ import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
@@ -262,7 +264,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
           "prior_terminal_result_count" to repairState.repairItemResults.size,
           "audit_gap_iteration_count" to repairState.progress.auditGapIterationCount,
           "repository_fingerprint" to repairState.repositoryFingerprint,
-        ),
+        ) + auditRepairReentryProjection(handoff.auditRepairPlan, repairState),
       ).lineSequence().forEach { appendLine("  $it") }
     }
     appendLine()
@@ -283,6 +285,41 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         },
       )
     }
+  }
+
+  /**
+   * The complete ordered set of still-open repair obligations, reconstructed from durable audit-repair state
+   * alone. First entry, in-process retry, and fresh-process resume all reach this from the same records, so a
+   * resumed repair is delivered the same batch it would have been delivered originally — each still-open item
+   * exactly once, with its dependencies, the evidence prior attempts already recorded, and the criteria a
+   * repair must not regress.
+   */
+  private fun auditRepairReentryProjection(
+    plan: FeatureTaskRuntimeAuditRepairPlan?,
+    repairState: FeatureTaskRuntimeAuditRepairState,
+  ): Map<String, Any?> {
+    val priorResults = repairState.repairItemResults.associateBy { it.repairItemId }
+    val items = plan?.gaps.orEmpty().flatMap { gap -> gap.repairItems.map { gap.gapId to it } }
+    return mapOf(
+      "open_repair_items" to items.filterNot { (_, item) -> item.repairItemId in priorResults }
+        .map { (gapId, item) ->
+          mapOf(
+            "gap_id" to gapId,
+            "repair_item_id" to item.repairItemId,
+            "depends_on" to item.dependsOn,
+          )
+        },
+      "prior_repair_item_evidence" to items.mapNotNull { (_, item) -> priorResults[item.repairItemId] }
+        .map { result ->
+          mapOf(
+            "repair_item_id" to result.repairItemId,
+            "outcome" to result.outcome.name.lowercase(),
+            "artifact_ref" to result.resultEvidence.artifactRef,
+            "check_ref" to result.resultEvidence.checkRef,
+          )
+        },
+      "non_regression_criterion_refs" to repairState.satisfiedCriterionRefs,
+    )
   }
 
   /**

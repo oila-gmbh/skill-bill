@@ -68,6 +68,9 @@ class SQLiteUnitOfWork(
   override val goalRunnerControls: skillbill.ports.persistence.GoalRunnerControlRepository =
     skillbill.db.workflow.GoalRunnerControlStore(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
+  override val featureTaskRuntimeAuditGenerations:
+    skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository =
+    skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)
   override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =

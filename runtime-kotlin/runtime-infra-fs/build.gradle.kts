@@ -500,6 +500,24 @@ val copyFeatureTaskRuntimeImplementationAttemptSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeAuditGenerationSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-audit-generation-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeAuditGenerationSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeAuditGenerationSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeAuditGenerationSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-150: canonical audit-generation schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeQuarantineSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-quarantine-schema.yaml")
@@ -550,6 +568,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
   dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
+  dependsOn(copyFeatureTaskRuntimeAuditGenerationSchema)
 }
 
 tasks.named("processTestResources") {
@@ -578,6 +597,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePlanningProjectionsSchema)
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
   dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
+  dependsOn(copyFeatureTaskRuntimeAuditGenerationSchema)
 }
 
 tasks.withType<Test>().configureEach {

@@ -34,6 +34,8 @@ interface UnitOfWork {
     get() = EmptyGoalRunnerControlRepository
   val unaddressedFindings: UnaddressedFindingsRepository
     get() = UnavailableUnaddressedFindingsRepository
+  val featureTaskRuntimeAuditGenerations: FeatureTaskRuntimeAuditGenerationRepository
+    get() = UnavailableFeatureTaskRuntimeAuditGenerationRepository
   val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?
     get() = null
   val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions?
