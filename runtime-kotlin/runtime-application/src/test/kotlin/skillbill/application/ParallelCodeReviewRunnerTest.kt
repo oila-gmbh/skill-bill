@@ -312,7 +312,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `an omitted mode resolves to the delegated fan-out on both lanes`() {
+  fun `an omitted mode resolves to the inline tier on both lanes`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
@@ -324,10 +324,9 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "Resolved execution mode: delegated")
-      assertContains(prompt, "bill-code-review mode:delegated")
-      assertContains(prompt, "Launch one specialist worker per resolved rubric")
-      assertFalse(prompt.contains("do not launch specialists"))
+      assertContains(prompt, "bill-code-review mode:inline")
+      assertContains(prompt, "do not launch specialists")
+      assertFalse(prompt.contains("Launch one specialist worker per resolved rubric"))
     }
   }
 
@@ -336,7 +335,7 @@ class ParallelCodeReviewRunnerTest {
     listOf(
       CodeReviewExecutionMode.INLINE to "inline",
       CodeReviewExecutionMode.DELEGATED to "delegated",
-      CodeReviewExecutionMode.AUTO to "delegated",
+      CodeReviewExecutionMode.AUTO to "inline",
     ).forEach { (requested, expectedWire) ->
       val launcher = ParallelSubtaskLauncher()
       val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))

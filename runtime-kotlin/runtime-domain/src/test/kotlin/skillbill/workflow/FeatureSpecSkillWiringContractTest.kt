@@ -150,7 +150,7 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(feature, "Reject a malformed, unknown, repeated, or conflicting")
     assertContains(feature, "When omitted, do not synthesize a `code-review:` token")
     assertContains(feature, "omitting the `code-review:` token when the caller did not provide it")
-    assertContains(task, "the requested code-review selection, showing `delegated (default)` when omitted")
+    assertContains(task, "the requested code-review selection, showing `inline (default)` when omitted")
     assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
     assertContains(task, "not repeat intake or present another confirmation gate")
     assertContains(runtime, "The `bill-feature-task` router has already rejected invalid review-selection")
@@ -166,9 +166,10 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(goal, "selected mode is immutable for the parent and every child")
     assertContains(review, "`delegated` always runs the normal routed delegated path")
     // Inline is a distinct, shallower depth tier (SKILL-142), no longer "the same review, run inline".
-    assertContains(review, "`inline` is the single-prompt light tier: one agent in the current context")
+    // It runs in one parent-launched subagent so the parent keeps neither rubric text nor the delta.
+    assertContains(review, "`inline` is the single-prompt light tier: one review subagent launched by the")
     assertContains(review, "equivalent to a delegated result")
-    assertContains(review, "Omission means `mode:delegated`.")
+    assertContains(review, "Omission means `mode:inline`.")
     assertContains(review, "Do not pass `parallel:` into lane 2")
     assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
     assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")

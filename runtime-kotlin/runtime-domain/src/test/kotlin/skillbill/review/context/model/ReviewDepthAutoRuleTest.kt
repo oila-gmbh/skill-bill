@@ -6,17 +6,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * SKILL-159 AC-002: `auto` resolves through named rules and the deciding rule is reportable. Pass
- * one gets the delegated fan-out, later passes get the single-prompt inline lane, and a standalone
- * review with no pass number falls back to the named delegated default rule.
+ * SKILL-159 AC-002: `auto` resolves through named rules and the deciding rule is reportable. Both
+ * rules now resolve inline — first pass, later passes, and a standalone review with no pass number —
+ * so the delegated fan-out is reachable only through an explicit selection.
  */
 class ReviewDepthAutoRuleTest {
   @Test
-  fun `auto on pass one resolves delegated by the pass-number rule`() {
+  fun `auto on pass one resolves inline by the pass-number rule`() {
     val resolved = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, reviewPassNumber = 1)
 
-    assertEquals(ResolvedReviewExecutionMode.DELEGATED, resolved.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:pass_1_delegated", resolved.decidingRule)
+    assertEquals(ResolvedReviewExecutionMode.INLINE, resolved.resolvedMode)
+    assertEquals("${ReviewExecutionModePolicy.PASS_NUMBER_RULE}:pass_1_inline", resolved.decidingRule)
   }
 
   @Test
@@ -28,11 +28,24 @@ class ReviewDepthAutoRuleTest {
   }
 
   @Test
-  fun `auto without a pass number resolves delegated by the named default rule`() {
+  fun `auto without a pass number resolves inline by the named default rule`() {
     val resolved = ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO)
 
-    assertEquals(ResolvedReviewExecutionMode.DELEGATED, resolved.resolvedMode)
-    assertEquals("${ReviewExecutionModePolicy.DEFAULT_RULE}:delegated_default", resolved.decidingRule)
+    assertEquals(ResolvedReviewExecutionMode.INLINE, resolved.resolvedMode)
+    assertEquals("${ReviewExecutionModePolicy.DEFAULT_RULE}:inline_default", resolved.decidingRule)
+  }
+
+  @Test
+  fun `no auto rule reaches the experimental delegated tier`() {
+    val resolutions = listOf(null, 1, 2, 7).map { pass ->
+      ReviewExecutionModePolicy.resolveWithRule(CodeReviewExecutionMode.AUTO, reviewPassNumber = pass)
+    }
+
+    assertEquals(
+      emptyList(),
+      resolutions.filter { it.resolvedMode == ResolvedReviewExecutionMode.DELEGATED },
+      "auto must never resolve delegated; only an explicit selection may.",
+    )
   }
 
   @Test
@@ -47,7 +60,7 @@ class ReviewDepthAutoRuleTest {
   }
 
   @Test
-  fun `the default requested mode is the delegated fan-out`() {
-    assertEquals(CodeReviewExecutionMode.DELEGATED, CodeReviewExecutionMode.DEFAULT)
+  fun `the default requested mode is the inline tier`() {
+    assertEquals(CodeReviewExecutionMode.INLINE, CodeReviewExecutionMode.DEFAULT)
   }
 }

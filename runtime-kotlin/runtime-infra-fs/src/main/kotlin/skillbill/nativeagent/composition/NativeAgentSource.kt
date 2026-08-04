@@ -17,6 +17,8 @@ data class NativeAgentSource(
   val composition: NativeAgentCompositionDirective? = null,
   val path: Path? = null,
   val bundleEntryName: String? = null,
+  /** Empty means "declare nothing", which leaves the rendered agent on the host default of every tool. */
+  val tools: List<String> = emptyList(),
 )
 
 data class NativeAgentCompositionDirective(
@@ -58,6 +60,7 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   val name = frontmatter["name"].orEmpty()
   val description = frontmatter["description"].orEmpty()
   val composition = parseCompositionDirective(frontmatter["compose"], label)
+  val tools = parseNativeAgentTools(frontmatter["tools"]?.let { decodeFlowSequence(it, label) }, label)
   require(name.matches(Regex("^[a-z][a-z0-9-]*$"))) {
     "$label: native agent name must be lowercase kebab-case"
   }
@@ -83,11 +86,33 @@ fun parseNativeAgentSourceText(text: String, label: String = "native agent sourc
   frontmatter["description"]?.let { instance.put("description", it) }
   frontmatter["compose"]?.let { instance.put("compose", it) }
   frontmatter["contract_version"]?.let { instance.put("contract_version", it) }
+  if (tools.isNotEmpty()) {
+    instance.putArray("tools").apply { tools.forEach { add(it) } }
+  }
   if (body.isNotBlank()) {
     instance.put("body", body)
   }
   NativeAgentCompositionSchemaValidator.validateParsedNode(instance, label)
-  return NativeAgentSource(name = name, description = description, body = body, composition = composition)
+  return NativeAgentSource(
+    name = name,
+    description = description,
+    body = body,
+    composition = composition,
+    tools = tools,
+  )
+}
+
+// The frontmatter parser is deliberately scalar-only, so `tools` round-trips through the one-line
+// flow form the renderer emits rather than teaching that parser block-sequence syntax.
+private fun decodeFlowSequence(value: String, label: String): List<String> {
+  val trimmed = value.trim()
+  require(trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    "$label: native agent frontmatter 'tools' must use the inline form [A, B]"
+  }
+  return trimmed.substring(1, trimmed.length - 1)
+    .split(',')
+    .map { it.trim() }
+    .filter { it.isNotEmpty() }
 }
 
 fun renderNativeAgentSource(agent: NativeAgentSource): String = buildString {
@@ -97,6 +122,9 @@ fun renderNativeAgentSource(agent: NativeAgentSource): String = buildString {
   append("description: ${agent.description}").append('\n')
   agent.composition?.let { directive ->
     append("compose: ${directive.kind.wireValue}").append('\n')
+  }
+  if (agent.tools.isNotEmpty()) {
+    append("tools: [").append(agent.tools.joinToString(", ")).append(']').append('\n')
   }
   append("---").append('\n')
   append('\n')
@@ -119,7 +147,7 @@ private fun parseSimpleFrontmatter(raw: String, label: String): Map<String, Stri
     // key (the canonical schema keeps it optional; on-disk fixtures may
     // omit it). Future writes that include the pin must not be rejected
     // by the parser.
-    require(key in setOf("name", "description", "compose", "contract_version")) {
+    require(key in setOf("name", "description", "compose", "contract_version", "tools")) {
       "$label: unsupported native agent frontmatter key '$key'"
     }
     parsed[key] = value

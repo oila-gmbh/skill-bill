@@ -8,7 +8,7 @@ description: Use when you want a generic code-review entry point that detects th
 ## Review mode argument
 
 Recognize at most one `mode:auto`, `mode:inline`, or `mode:delegated` argument.
-Omission means `mode:delegated`.
+Omission means `mode:inline`.
 Reject malformed, unknown, duplicate, or conflicting values before resolving
 scope, starting a lane, or importing telemetry.
 
@@ -21,12 +21,25 @@ branch/PR scope, or no bounded remediation scope.
 review. Report the requested mode and the resolved depth in the normal review
 metadata.
 
-`delegated` is the default full-depth review. `delegated` always runs the normal routed delegated path
+`inline` is the default depth. `delegated` is the experimental full-depth tier and
+runs only on an explicit `mode:delegated`, or an explicit `code-review:delegated`
+selection carried down from a governed feature caller. Neither an omitted argument
+nor `mode:auto` ever reaches it.
+It is experimental because its cost scales with lanes multiplied by model turns:
+every lane re-pays the whole per-turn context floor, so a routed pack with several
+signal-bearing areas can spend an order of magnitude more than the same review at
+inline depth. Choose it when a change genuinely warrants per-area depth, not by
+default.
+
+`delegated` always runs the normal routed delegated path
 including specialist selection, launching one worker per routed area. Inability
 to launch a required native worker blocks loudly; it never degrades to inline.
 
-`inline` is the single-prompt light tier: one agent in the current context, no specialist
-workers, no nested baseline orchestrator, under a bounded budget. Build the
+`inline` is the single-prompt light tier: one review subagent launched by the
+parent as the declared `bill-code-review-inline` native agent, no per-area
+specialist workers, no nested baseline orchestrator, under a bounded budget. The parent classifies signals and loads the selected rubrics; the
+subagent performs the whole review in one isolated context, so the parent never
+carries the rubric text or the full delta forward. Build the
 checklist from every review area declared by the routed pack and every required
 baseline layer in its manifest composition. Walk every declared area once at
 reduced depth, including areas whose diff-signal lane would otherwise be empty;
@@ -39,10 +52,10 @@ to justify having looked. An inline result lists every declared area with its
 checked status and states that specialist depth was not applied; never present
 it as equivalent to a delegated result.
 
-`auto` resolves to `delegated` for the first review pass of a subtask and for
-standalone reviews that carry no pass number, and to `inline` for every
-follow-up or remediation pass. Preserve and report the applicable named auto
-rule for telemetry.
+`auto` resolves to `inline` everywhere: a subtask's first review pass, a standalone
+review with no pass number, and every follow-up or remediation pass. Preserve and
+report the applicable named auto rule for telemetry. `auto` never reaches the
+experimental delegated tier — only an explicit `mode:delegated` does.
 
 Depth is the only thing the light tier lowers. The severity vocabulary, the
 finding admission gate, the evidence and observable-consequence requirements, the
@@ -65,10 +78,22 @@ When the argument is absent, consult the repo-local config fallback (next sectio
 
 ## Single-prompt inline review
 
-When the resolved mode is `inline`, run exactly one review prompt in the current
-context. Do not launch a specialist worker, a nested baseline orchestrator, or a
-second review lane; only an explicit `parallel:<agent>` adds a second lane, and
-that lane is itself a single prompt at the same resolved mode.
+When the resolved mode is `inline`, run exactly one review prompt in exactly one
+subagent, and launch it as the declared `bill-code-review-inline` native agent
+rather than a general-purpose worker. That agent declares the narrow toolset a
+reviewer needs, which keeps every unused tool schema out of the worker's context
+on every one of its model turns; a general-purpose worker inherits the host's
+whole tool surface and pays that weight per turn for capability the read-only
+review contract forbids anyway. A missing, dangling, stale, or undeclared
+`bill-code-review-inline` worker is a hard preflight failure that reports the
+governed repair command — never substitute a general-purpose agent.
+The parent resolves scope, classifies diff signals, names the
+applicable pack rubrics, and launches that single worker; it does not perform the
+review in its own context, because the rubrics and the full delta would then
+remain in the parent for the rest of its run. Do not launch a per-area
+specialist, a nested baseline orchestrator, or a second review lane; only an
+explicit `parallel:<agent>` adds a second lane, and that lane is itself a single
+subagent at the same resolved mode.
 
 Scope is the child-owned delta the caller materialized: the diff from the
 immutable `review_base_sha` to current HEAD, minus the baseline-untracked
@@ -81,6 +106,21 @@ Build the checklist from every review area declared by the routed pack and every
 required baseline layer in its manifest composition, and walk each area once at
 reduced depth. Record `checked — no applicable signal` for an area whose
 diff-signal is empty rather than dropping it.
+
+Area selection is the parent's work, done once before the launch. Classify the
+delta against the routed pack's Diff-Signal Routing Table to decide which declared
+areas carry signal, then resolve each of those areas to its rubric path through the
+manifest's `declared_files.areas` map. Name those paths and `declared_files.baseline`
+in the launch brief and have the worker read them itself; the parent does not read
+the rubric text into its own context, because holding it there would defeat the
+isolation the subagent exists for. The named set is authoritative: the worker must
+not rediscover routing, reopen the manifest, or read an area rubric the parent did
+not name. An area with no signal is reported `checked — no applicable signal` from
+the parent's own classification — its rubric is deliberately not read, because
+reading a rubric is not what establishes that an area has nothing to inspect.
+Reading every declared rubric regardless of signal is a contract violation, not
+thoroughness; the saving is modest on a diff that touches most areas and large on a
+narrow one, and either way the unselected rubrics cannot inform a finding.
 
 Report through the existing contract, unchanged: the same severity vocabulary,
 the same finding admission gate, the same evidence and observable-consequence
@@ -212,7 +252,7 @@ Prepare discovery once at the parent, flatten layered composition into direct la
 ## Agent-specific subagent instructions
 
 **If you are `claude`:**
-Invoke `/bill-code-review` as a slash command — it handles all specialist routing automatically.
+Invoke `/bill-code-review` as a slash command — it handles all specialist routing automatically. Launch every selected specialist as one batch of `Task` calls in a **single assistant message**, then merge once all lanes return. One `Task` call per message runs the fan-out serially and multiplies review wall-clock by the lane count. Emit one `Lane timing: <lane-id> launched=<iso-8601> returned=<iso-8601> turns=<model-turn-count>` line per lane in the review output so serial execution and lane token cost both stay detectable after the fact.
 
 **If you are `codex`:**
 Spawn one isolated-context subagent per specialist domain below using your native `SpawnAgent` mechanism with `fork_turns: "none"`. Omitted or inherited turns are forbidden. Do **not** shell out to `codex exec` subprocesses. Launch selected subagents in a deterministic order. Specialists use the bounded evidence surface and must not run repository status, scope discovery, or broad branch-diff commands.

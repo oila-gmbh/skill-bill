@@ -49,7 +49,7 @@ private fun parseValidatedNativeAgentBundle(path: Path, yamlText: String): List<
 private fun parseNativeAgentBundleEntry(path: Path, index: Int, entry: Any?): NativeAgentSource {
   val entryLabel = "$path agent[$index]"
   val map = entry as? Map<*, *> ?: invalidBundle("$entryLabel: native agent bundle entry must be a mapping")
-  requireSupportedKeys(map.keys, setOf("name", "description", "compose", "body")) { key ->
+  requireSupportedKeys(map.keys, setOf("name", "description", "compose", "body", "tools")) { key ->
     "$entryLabel: unsupported native agent bundle entry key '$key'"
   }
   val name = map.requiredString("name", entryLabel)
@@ -73,7 +73,31 @@ private fun parseNativeAgentBundleEntry(path: Path, index: Int, entry: Any?): Na
     composition = composition,
     path = path,
     bundleEntryName = name,
+    tools = parseNativeAgentTools(map["tools"], label),
   )
+}
+
+internal fun parseNativeAgentTools(raw: Any?, label: String): List<String> {
+  if (raw == null) {
+    return emptyList()
+  }
+  val entries = raw as? List<*> ?: throw IllegalArgumentException(
+    "$label: native agent 'tools' must be a list of tool names",
+  )
+  require(entries.isNotEmpty()) {
+    "$label: native agent 'tools' must not be empty; omit the key to inherit every host tool"
+  }
+  val names = entries.map { entry ->
+    val name = (entry as? String)?.trim().orEmpty()
+    require(name.isNotEmpty()) {
+      "$label: native agent 'tools' entries must be non-empty tool names"
+    }
+    name
+  }
+  require(names.distinct().size == names.size) {
+    "$label: native agent 'tools' must not repeat a tool name"
+  }
+  return names
 }
 
 fun renderNativeAgentBundle(agents: List<NativeAgentSource>): String = buildString {
@@ -84,6 +108,9 @@ fun renderNativeAgentBundle(agents: List<NativeAgentSource>): String = buildStri
     append("    description: ${nativeAgentYamlDoubleQuotedScalar(agent.description)}").append('\n')
     agent.composition?.let { directive ->
       append("    compose: ${directive.kind.wireValue}").append('\n')
+    }
+    if (agent.tools.isNotEmpty()) {
+      append("    tools: [").append(agent.tools.joinToString(", ")).append(']').append('\n')
     }
     val body = agent.body.trimEnd()
     if (body.isNotEmpty()) {

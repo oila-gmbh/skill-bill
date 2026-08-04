@@ -12,7 +12,7 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
   @Test
   fun `pass one keeps the tier its pinned mode resolves to`() {
     assertEquals(
-      CodeReviewExecutionMode.DELEGATED,
+      CodeReviewExecutionMode.INLINE,
       FeatureTaskRuntimeReviewPassSequence.modeForPass(CodeReviewExecutionMode.AUTO, 1),
     )
     assertEquals(
@@ -46,7 +46,7 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
   @Test
   fun `auto never resolves silently and names the deciding rule`() {
     assertEquals(
-      "auto_mode_by_pass_number:pass_1_delegated",
+      "auto_mode_by_pass_number:pass_1_inline",
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.AUTO, 1).decidingRule,
     )
   }

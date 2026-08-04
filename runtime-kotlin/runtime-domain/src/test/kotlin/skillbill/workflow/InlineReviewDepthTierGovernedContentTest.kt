@@ -24,10 +24,25 @@ class InlineReviewDepthTierGovernedContentTest {
   @Test
   fun `inline is a distinct depth tier, not a topology variant of delegated`() {
     assertTrue(codeReview.contains("two review depths, not two ways to execute the same"))
-    assertTrue(codeReview.contains("no specialist workers"))
+    assertTrue(codeReview.contains("no per-area specialist workers"))
     assertTrue(codeReview.contains("bounded budget"))
     assertTrue(codeReview.contains("Walk every declared area"))
     assertTrue(codeReview.contains("reduced depth"))
+  }
+
+  // One isolated worker for the whole review is still one review at reduced depth: the tier stays
+  // distinct by depth, and the parent keeps neither the rubric text nor the delta after it returns.
+  @Test
+  fun `inline runs as exactly one parent-launched subagent over parent-selected rubrics`() {
+    assertTrue(codeReview.contains("one review subagent launched by the"))
+    assertTrue(codeReview.contains("run exactly one review prompt in exactly one"))
+    assertTrue(codeReview.contains("`bill-code-review-inline` native agent"))
+    assertTrue(codeReview.contains("never substitute a general-purpose agent"))
+    assertTrue(codeReview.contains("Do not launch a per-area"))
+    assertTrue(codeReview.contains("Area selection is the parent's work"))
+    assertTrue(codeReview.contains("`declared_files.areas`"))
+    assertTrue(codeReview.contains("Name those paths and `declared_files.baseline`"))
+    assertTrue(codeReview.contains("Reading every declared rubric regardless of signal"))
   }
 
   @Test
@@ -58,23 +73,25 @@ class InlineReviewDepthTierGovernedContentTest {
   }
 
   @Test
-  fun `delegated is the default and loud-fails unlaunchable workers`() {
-    assertTrue(codeReview.contains("Omission means `mode:delegated`."))
-    assertTrue(codeReview.contains("`delegated` is the default full-depth review."))
+  fun `inline is the default and delegated stays explicit-only while loud-failing unlaunchable workers`() {
+    assertTrue(codeReview.contains("Omission means `mode:inline`."))
+    assertTrue(codeReview.contains("`inline` is the default depth."))
+    assertTrue(codeReview.contains("experimental full-depth tier"))
+    assertTrue(codeReview.contains("Neither an omitted argument"))
     assertTrue(codeReview.contains("blocks loudly; it never degrades to inline"))
   }
 
   @Test
-  fun `auto resolves delegated on pass one and inline on later passes`() {
-    assertTrue(codeReview.contains("`auto` resolves to `delegated` for the first review pass"))
-    assertTrue(codeReview.contains("`inline` for every follow-up or remediation pass"))
+  fun `auto resolves inline on every pass and never reaches delegated`() {
+    assertTrue(codeReview.contains("`auto` resolves to `inline` everywhere"))
+    assertTrue(codeReview.contains("`auto` never reaches the"))
   }
 
   @Test
   fun `the single-prompt inline seam is governed content`() {
     assertTrue(codeReview.contains("## Single-prompt inline review"))
-    assertTrue(codeReview.contains("run exactly one review prompt in the current context"))
-    assertTrue(codeReview.contains("Do not launch a specialist worker"))
+    assertTrue(codeReview.contains("run exactly one review prompt in exactly one"))
+    assertTrue(codeReview.contains("Do not launch a per-area"))
     assertTrue(codeReview.contains("minus the baseline-untracked inventory"))
     assertTrue(codeReview.contains("risk-register lines the delegated path emits"))
   }

@@ -7,14 +7,15 @@ description: Single source of truth for shared stack-specific code-review orches
 
 ## Modes this contract backs
 
-`delegated` is the default review: the reviewing agent fans the routed areas out
+`delegated` is the experimental full-depth review, reached only by explicit selection: the reviewing agent fans the routed areas out
 to specialist subagents inside its own harness, and this specialist contract is
 what each of those subagents is held to. `inline` is the single-prompt review —
 one prompt in the current context over the child-owned delta, no fan-out — and it
 is held to the same finding bar, severity vocabulary, and report structure stated
-below. `auto` resolves by pass number: pass one, and any scope with no pass
-number, resolve to `delegated`; every follow-up or remediation pass resolves to
-`inline`.
+below. `auto` resolves to `inline` under both of its named rules — pass one, any scope
+with no pass number, and every follow-up or remediation pass. `inline` is also the
+default when no mode is selected at all, so only an explicit `delegated` selection
+reaches the fan-out.
 
 ## Lane accounting
 
@@ -80,8 +81,8 @@ Each lane receives only its assignment, bounded rubric, immutable identifiers, a
 Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - `auto` resolves through exactly one named rule, reported in review metadata alongside the resolved mode. `auto` never resolves silently.
-- `auto_mode_by_pass_number` is authoritative wherever a review pass number exists: pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline`.
-- `auto_mode_default` is the named standalone fallback rule and resolves every scope with no pass number to `delegated`.
+- `auto_mode_by_pass_number` is authoritative wherever a review pass number exists and resolves every pass, first included, to `inline`.
+- `auto_mode_default` is the named standalone fallback rule and resolves every scope with no pass number to `inline`.
 - Inline mode must walk every area declared by the routed manifest and required baseline composition deliberately, using each area's governed rubric as a checklist in the current context; do not collapse the review into a generic skim or omit an area because its specialist would not have been selected.
 
 ## Shared Learnings Context

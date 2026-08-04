@@ -149,9 +149,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   )
   protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: delegated (default, specialist fan-out), inline " +
-      "(one review prompt in the child's own context), or auto (delegated on pass one, " +
-      "inline on the remediation pass). Supply at most once; a resumed workflow remains " +
+    help = "Review execution mode: inline (default, one review subagent per pass), auto " +
+      "(also resolves inline on every pass), or delegated (experimental specialist " +
+      "fan-out, explicit only). Supply at most once; a resumed workflow remains " +
       "pinned to its original mode.",
   ).multiple()
   protected val operatorDecisions by option(

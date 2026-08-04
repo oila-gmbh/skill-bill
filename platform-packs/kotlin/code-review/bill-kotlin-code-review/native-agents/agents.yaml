@@ -3,30 +3,40 @@ agents:
   - name: bill-kotlin-code-review-api-contracts
     description: "Kotlin api contracts specialist code reviewer. Runs against Kotlin explicitNulls and encodeDefaults compatibility, Jackson module behavior, validation, and stable error contracts. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-architecture
     description: "Kotlin architecture specialist code reviewer. Runs against Kotlin use-case and transaction ownership, injected CoroutineScope lifecycles, internal visibility, and Gradle module boundaries. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-performance
     description: "Kotlin performance specialist code reviewer. Runs against Kotlin runBlocking and dispatcher starvation, Flow backpressure, eager collections, and ORM hydration costs. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-persistence
     description: "Kotlin persistence specialist code reviewer. Runs against Kotlin Exposed newSuspendedTransaction boundaries, Spring proxy transactions, Hibernate sessions, and scoped atomic writes. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-platform-correctness
     description: "Kotlin platform correctness specialist code reviewer. Runs against Kotlin CancellationException propagation, SupervisorJob isolation, Mutex reentrancy, and StateFlow or SharedFlow delivery invariants. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-reliability
     description: "Kotlin reliability specialist code reviewer. Runs against Kotlin consumer supervision, TimeoutCancellationException classification, bounded replay, outbox ordering, and failure telemetry. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-security
     description: "Kotlin security specialist code reviewer. Runs against Kotlin dangerous input sinks, object authorization, tenant isolation, unsafe deserialization, and JWT verification. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-testing
     description: "Kotlin testing specialist code reviewer. Runs against Kotlin runTest virtual time, test dispatcher ordering, Flow sequence assertions, and real persistence effects. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-ui
     description: "Kotlin ui specialist code reviewer. Runs against Kotlin Compose Desktop state and lifecycle, Swing or JavaFX thread interop, server rendering, and CLI or TUI behavior. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
   - name: bill-kotlin-code-review-ux-accessibility
     description: "Kotlin ux accessibility specialist code reviewer. Runs against Kotlin desktop semantics and focus, semantic server output, terminal accessibility, keyboard use, and localization. Returns a Risk Register in the F-XXX bullet format."
     compose: governed-content
+    tools: [Read, Grep, Glob, Bash]

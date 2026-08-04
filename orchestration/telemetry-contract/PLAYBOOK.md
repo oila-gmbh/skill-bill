@@ -11,7 +11,7 @@ Review telemetry consumes bounded mode accounting. It keeps the resolved mode, t
 selected and completed, launched and failed lanes, and terminal state as separate fields. It never
 persists prompts, complete diffs, raw transcripts, or tool logs.
 
-`delegated` is the default review — specialist subagent fan-out inside the invoking agent's harness.
+`delegated` is the experimental full-depth review — specialist subagent fan-out inside the invoking agent's harness, reached only by explicit selection.
 `inline` is the single-prompt review in the current context. `auto` resolves to `delegated` on pass
 one and for any scope with no pass number, and to `inline` on every follow-up or remediation pass.
 Telemetry reports which mode produced the result, including the applicable named `auto` rule, and
