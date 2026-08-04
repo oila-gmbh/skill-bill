@@ -128,12 +128,28 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   fun `closed repair item ids union results and deferrals`() {
     val closed = featureTaskRuntimeClosedRepairItemIds(
       mapOf(
-        "repair_item_results" to listOf(mapOf("repair_item_id" to "gap-1")),
-        "deferred_repair_item_ids" to listOf("gap-2"),
+        "produced_outputs" to mapOf(
+          "repair_item_results" to listOf(mapOf("repair_item_id" to "gap-1")),
+          "deferred_repair_item_ids" to listOf("gap-2"),
+        ),
       ),
     )
 
     assertEquals(setOf("gap-1", "gap-2"), closed.toSet())
+  }
+
+  @Test
+  fun `closed repair item ids are canonicalized so an uppercase echo still closes the item`() {
+    val closed = featureTaskRuntimeClosedRepairItemIds(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "repair_item_results" to listOf(mapOf("repair_item_id" to "AC-002-GAP-1-ITEM-1")),
+          "deferred_repair_item_ids" to emptyList<String>(),
+        ),
+      ),
+    )
+
+    assertEquals(listOf("ac-002-gap-1-item-1"), closed)
   }
 
   @Test
@@ -178,12 +194,74 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
 
     assertEquals(1, parsed.unresolvedItems.size)
     assertEquals(ATTEMPT_MAX_LENGTH, parsed.unresolvedItems.single().length)
-    assertEquals(listOf("task-2", "task-3"), parsed.deviations.map { it.ref })
+    assertEquals(listOf("task-2", "task-3", "task-1"), parsed.deviations.map { it.ref })
     parsed.deviations.forEach { deviation ->
       assertTrue(SCHEMA_COMPACT_SUMMARY.matches(deviation.note), "not schema-valid: '${deviation.note}'")
       assertTrue(deviation.note.length <= ATTEMPT_MAX_LENGTH)
     }
     assertTrue(parsed.deviations.first().note.contains("migration still open"))
+  }
+
+  @Test
+  fun `a non-string open-work entry is rendered and retained, not dropped for its JSON type`() {
+    val parsed = featureTaskRuntimeImplementationClaimFrom(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "task-2", "task-3"),
+          "unresolved_items" to listOf(mapOf("item" to "migration script still owed for task-3")),
+          "deviations" to listOf(mapOf("ref" to "task-3", "note" to mapOf("text" to "deferred"))),
+        ),
+      ),
+      obligations(),
+    )
+
+    assertEquals(1, parsed.unresolvedItems.size)
+    assertTrue(
+      parsed.unresolvedItems.single().contains("migration script still owed"),
+      "got: ${parsed.unresolvedItems}",
+    )
+    assertEquals(listOf("task-3"), parsed.deviations.map { it.ref })
+    parsed.deviations.forEach { deviation ->
+      assertTrue(SCHEMA_COMPACT_SUMMARY.matches(deviation.note), "not schema-valid: '${deviation.note}'")
+    }
+  }
+
+  @Test
+  fun `a non-string unresolved item still blocks a completed receipt covering every plan task`() {
+    val reason = featureTaskRuntimeIncompleteWorkGateReason(
+      phaseId = "implement",
+      outputMap = mapOf(
+        "status" to "completed",
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "task-2", "task-3"),
+          "unresolved_items" to listOf(mapOf("item" to "migration script still owed for task-3")),
+        ),
+      ),
+      obligations = obligations(),
+    )
+
+    assertNotNull(reason, "A non-string unresolved item must not vanish into an advance.")
+    assertTrue(reason.contains("unresolved_items"), "got: $reason")
+  }
+
+  @Test
+  fun `a deviation whose note is unusable is retained under a placeholder note`() {
+    val parsed = featureTaskRuntimeImplementationClaimFrom(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "task-2"),
+          "deviations" to listOf(mapOf("ref" to "task-3", "note" to "   ")),
+        ),
+      ),
+      obligations(),
+    )
+
+    assertEquals(
+      listOf("task-3"),
+      parsed.actionableDeviations(obligations().requiredIds).map { it.ref },
+      "A blank note must not erase the unclosed obligation its ref names.",
+    )
+    assertTrue(SCHEMA_COMPACT_SUMMARY.matches(parsed.deviations.single().note))
   }
 
   @Test
@@ -228,12 +306,11 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
     featureTaskRuntimeImplementationCompletionReason("implement", obligations(), claim)
 
-  private fun obligations(): FeatureTaskRuntimeImplementationObligations =
-    FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = listOf("task-1", "task-2", "task-3"),
-      carriedRepairItemIds = emptyList(),
-      loopId = null,
-    )
+  private fun obligations(): FeatureTaskRuntimeImplementationObligations = FeatureTaskRuntimeImplementationObligations(
+    plannedTaskIds = listOf("task-1", "task-2", "task-3"),
+    carriedRepairItemIds = emptyList(),
+    loopId = null,
+  )
 
   private fun claim(
     completedTaskIds: List<String>,

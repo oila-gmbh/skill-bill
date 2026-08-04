@@ -1,7 +1,12 @@
+@file:Suppress("DestructuringDeclarationWithTooManyEntries")
+// FixLoopBranchContext is a deliberate parameter object: the fix-loop branch handlers each read the
+// whole set, so destructuring it is what keeps them readable rather than a smell to split.
+
 package skillbill.application.featuretask
 
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
@@ -1927,10 +1932,15 @@ internal class FeatureTaskRuntimeRunLoop(
       run.phaseId,
       agentId,
       iteration,
-      iteration > 1 || state.hasPriorRecord(run.phaseId),
       run.modelDirective,
-      crashResumed = crashResumed,
-      verifierReentry = run.reentry?.let { isLoopDestination(it) } == true,
+      FeatureTaskRuntimePhaseStartReentry(
+        resumed = iteration > 1 || state.hasPriorRecord(run.phaseId),
+        startKind = featureTaskRuntimeStartContinuationKind(
+          crashResumed = crashResumed,
+          verifierReentry = run.reentry?.let { isLoopDestination(it) } == true,
+          attemptCount = iteration,
+        ),
+      ),
     )
     var outcome: PhaseOutcome? = null
     FeatureTaskRuntimeFixLoopPolicy
@@ -2616,26 +2626,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     // Placed after the terminal path so a blocked or failed envelope never reaches it: only a phase
     // claiming 'completed' owes the projection its consumer will parse.
-    producerProjectionGateReason(
-      run.phaseId,
-      outputMap,
-      planningProjectionValidator,
-      allowDecompositionPackage = true,
-    )?.let { reason ->
-      return reject("producer-projection", reason)
-    }
-    immediateConsumerProjectionGateReason(
+    completionProjectionRejection(
       run,
       iteration,
+      outputMap,
       normalizedOutput,
       repairEvidence,
       repositoryFingerprint,
-    )?.let { reason ->
-      return reject("consumer-projection", reason)
-    }
-    outputVerificationGateReason(run.phaseId, outputMap)?.let { reason ->
-      return reject("output-verification", reason)
-    }
+    )?.let { (rule, reason) -> return reject(rule, reason) }
     // Deliberately LAST of the gates: a receipt that both under-closes its plan tasks and carries a
     // real projection, reconciliation-report or output-verification defect is a structural failure
     // first. Evaluating incompleteness ahead of those gates routed such a document into the
@@ -2725,6 +2723,36 @@ internal class FeatureTaskRuntimeRunLoop(
     outputText: String,
     outputMap: Map<String, Any?>,
   ): String? = if (isCompactAuditOutput(phaseId, outputText)) null else auditDurableLedgerGateReason(phaseId, outputMap)
+
+  /**
+   * The structural contract a phase claiming completion owes its consumer, as the first failing rule.
+   *
+   * Grouped so the settle function reads as one structural-gate step: these three share a disposition
+   * (all route through the SKILL-153 reject path and its bounded cap) and an ordering constraint (all
+   * run before the semantic incompleteness gate, so a repairable contract defect is named to the agent
+   * rather than burning continuation segments).
+   */
+  private fun completionProjectionRejection(
+    run: PhaseRun,
+    iteration: Int,
+    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repositoryFingerprint: String?,
+  ): Pair<String, String>? = producerProjectionGateReason(
+    run.phaseId,
+    outputMap,
+    planningProjectionValidator,
+    allowDecompositionPackage = true,
+  )?.let { "producer-projection" to it }
+    ?: immediateConsumerProjectionGateReason(
+      run,
+      iteration,
+      normalizedOutput,
+      repairEvidence,
+      repositoryFingerprint,
+    )?.let { "consumer-projection" to it }
+    ?: outputVerificationGateReason(run.phaseId, outputMap)?.let { "output-verification" to it }
 
   private fun firstValidatedOutputRejection(
     phaseId: String,

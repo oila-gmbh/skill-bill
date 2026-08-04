@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
@@ -11,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
+import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage
 
 /**
@@ -137,28 +139,6 @@ internal fun featureTaskRuntimeOpenObligations(
 }
 
 /**
- * The bounded prior receipt plus the still-open obligations a continuation segment needs.
- *
- * Reconstructed entirely from durable records, so an in-process retry and a fresh-process crash resume
- * derive an identical projection: it does not read the latest in-memory prompt, and it does not read
- * the phase-records artifact, which is put()-replaced per phase id and therefore cannot hold a prior
- * receipt at all.
- */
-data class FeatureTaskRuntimeImplementationContinuation(
-  val phaseId: String,
-  val segmentNumber: Int,
-  val completedTaskIds: List<String>,
-  val openObligationIds: List<String>,
-  val obligationNoun: String,
-  val changedPaths: List<String>,
-  val deviations: List<FeatureTaskRuntimeReceiptDeviation>,
-  val unresolvedItems: List<String>,
-  val reconciliationEvidence: FeatureTaskRuntimeReceiptReconciliation?,
-  val repositoryCheckpoint: FeatureTaskRuntimeReceiptCheckpoint?,
-  val failureDisposition: String?,
-)
-
-/**
  * Builds the continuation projection from the durable attempt history and the durable obligations.
  *
  * Obligations closed in an earlier segment STAY closed: closure is accumulated across every prior
@@ -237,122 +217,11 @@ internal fun featureTaskRuntimePlannedTaskIdsFrom(
   .orEmpty()
 
 /**
- * Parses the producer's bounded claim out of a validated phase-output envelope.
- *
- * Under the audit-gap loop the closed set is the repair-item closure rather than
- * `completed_task_ids`, so the same claim type serves both loops and the gate needs no second shape.
- *
- * TOTAL for untrusted input by construction. "Validated" here means the phase-output schema accepted
- * the envelope, and that schema leaves `produced_outputs` value shapes entirely open — so an agent
- * controls every string below. The receipt models are strict (`require` non-blank ref/note/evidence/
- * fingerprint), and a blocked envelope reaches this parser BEFORE the producer-projection gate, so
- * constructing them optimistically let a producer-supplied `{"fingerprint": ""}` throw inside the
- * durable blocked write's transaction and roll the block record back. Malformed entries are handled
- * here instead, and the direction matters: closure fields are DROPPED, so the claim understates and the
- * gate refuses to advance on what it cannot read; open-work fields (`unresolved_items`, deviations) are
- * SANITIZED and kept, because dropping one of those would delete an open-work signal and hand a
- * 'completed' status the escape the gate exists to close.
- */
-internal fun featureTaskRuntimeImplementationClaimFrom(
-  outputMap: Map<String, Any?>,
-  obligations: FeatureTaskRuntimeImplementationObligations,
-): FeatureTaskRuntimeImplementationClaim {
-  val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-  return FeatureTaskRuntimeImplementationClaim(
-    completedTaskIds = if (obligations.underAuditRepairLoop) {
-      featureTaskRuntimeClosedRepairItemIds(outputMap)
-    } else {
-      produced.stringList("completed_task_ids")
-    }.filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS),
-    changedPaths = produced.stringList("changed_paths")
-      .filter(::isAttemptRepoPath).distinct().take(ATTEMPT_MAX_PATH_ITEMS),
-    unresolvedItems = produced.stringList("unresolved_items")
-      .mapNotNull(::sanitizeAttemptNonBlank).take(ATTEMPT_MAX_ITEMS),
-    deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { entry ->
-      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      val ref = (map["ref"] as? String)?.let(::sanitizeAttemptNonBlank) ?: return@mapNotNull null
-      val note = (map["note"] as? String)?.let(::sanitizeAttemptCompactSummary) ?: return@mapNotNull null
-      FeatureTaskRuntimeReceiptDeviation(ref = ref, note = note)
-    }.take(ATTEMPT_MAX_ITEMS),
-    reconciliationEvidence = JsonSupport.anyToStringAnyMap(produced["reconciliation_evidence"])?.let { map ->
-      (map["evidence"] as? String)?.takeIf(::isAttemptNonBlank)?.let { evidence ->
-        FeatureTaskRuntimeReceiptReconciliation(map["reconciled"] as? Boolean ?: false, evidence)
-      }
-    },
-    repositoryCheckpoint = JsonSupport.anyToStringAnyMap(produced["repository_checkpoint"])?.let { map ->
-      (map["fingerprint"] as? String)?.takeIf(::isAttemptNonBlank)?.let { fingerprint ->
-        FeatureTaskRuntimeReceiptCheckpoint(
-          fingerprint = fingerprint,
-          baseRef = (map["base_ref"] as? String)?.takeIf(::isAttemptNonBlank),
-          headRef = (map["head_ref"] as? String)?.takeIf(::isAttemptNonBlank),
-        )
-      }
-    },
-  )
-}
-
-// The attempt schema, not the Kotlin receipt models, is the narrowest gate this claim has to clear:
-// the claim is appended as a durable attempt record inside the same transaction that persists a
-// blocked or failed phase, so any value the schema rejects rolls that record back. These mirror
-// `feature-task-runtime-implementation-attempt-schema.yaml`'s $defs so the parser drops or sanitizes
-// what the validator would reject rather than throwing from inside the write.
-private const val ATTEMPT_MAX_ITEMS = 128
-private const val ATTEMPT_MAX_PATH_ITEMS = 512
-private const val ATTEMPT_NON_BLANK_MAX_LENGTH = 4096
-private const val ATTEMPT_TASK_ID_MAX_LENGTH = 128
-private const val ATTEMPT_REPO_PATH_MAX_LENGTH = 1024
-private val ATTEMPT_TASK_ID_PATTERN = Regex("^[a-z][a-z0-9-]*$")
-private val ATTEMPT_REPO_PATH_PATTERN = Regex("^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$")
-private val ATTEMPT_SUMMARY_FORBIDDEN_CHARS = Regex("[\\n\\r\\t`]")
-private val ATTEMPT_SUMMARY_STRUCTURED = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
-
-// Removing the quote and at-sign characters is what makes the JSON-shaped and hunk-header branches of
-// ATTEMPT_SUMMARY_STRUCTURED unmatchable, leaving only its line-anchored diff-header branch, which a
-// prefix defeats.
-private val ATTEMPT_SUMMARY_NEUTRALIZED_CHARS = Regex("[\"@]")
-private val ATTEMPT_WHITESPACE_RUN = Regex("\\s+")
-private const val ATTEMPT_SUMMARY_PREFIX = "note: "
-
-private fun isAttemptNonBlank(value: String): Boolean =
-  value.isNotBlank() && value.length <= ATTEMPT_NON_BLANK_MAX_LENGTH
-
-private fun isAttemptTaskId(value: String): Boolean =
-  value.length <= ATTEMPT_TASK_ID_MAX_LENGTH && ATTEMPT_TASK_ID_PATTERN.matches(value)
-
-private fun isAttemptRepoPath(value: String): Boolean =
-  value.isNotEmpty() &&
-    value.length <= ATTEMPT_REPO_PATH_MAX_LENGTH &&
-    ATTEMPT_REPO_PATH_PATTERN.matches(value)
-
-// Dropping a value understates the claim, which TIGHTENS the gate for closures (completed_task_ids,
-// changed_paths, checkpoint refs) but LOOSENS it for open-work signals: a dropped unresolved item or
-// deviation erases the very evidence that holds an incomplete receipt back. Open-work fields are
-// therefore sanitized into a schema-valid shape and retained, never dropped for shape alone.
-private fun sanitizeAttemptNonBlank(value: String): String? =
-  value.trim().take(ATTEMPT_NON_BLANK_MAX_LENGTH).takeIf(String::isNotBlank)
-
-private fun sanitizeAttemptCompactSummary(value: String): String? {
-  val flattened = value
-    .replace(ATTEMPT_SUMMARY_FORBIDDEN_CHARS, " ")
-    .replace(ATTEMPT_SUMMARY_NEUTRALIZED_CHARS, " ")
-    .replace(ATTEMPT_WHITESPACE_RUN, " ")
-    .trim()
-  if (flattened.isBlank()) return null
-  val unanchored = if (ATTEMPT_SUMMARY_STRUCTURED.containsMatchIn(flattened)) {
-    "$ATTEMPT_SUMMARY_PREFIX$flattened"
-  } else {
-    flattened
-  }
-  return unanchored.take(ATTEMPT_NON_BLANK_MAX_LENGTH).trim().takeIf(String::isNotBlank)
-}
-
-/**
  * The repair items an audit-gap re-entry carries. Read from the receipt's own result/deferral lists is
  * NOT acceptable as authority, so this takes the ids the runtime delivered in the launch briefing.
  */
-internal fun featureTaskRuntimeCarriedRepairItemIds(
-  briefingRepairItemIds: List<String>,
-): List<String> = briefingRepairItemIds.distinct()
+internal fun featureTaskRuntimeCarriedRepairItemIds(briefingRepairItemIds: List<String>): List<String> =
+  briefingRepairItemIds.distinct()
 
 /**
  * Repair items a receipt closes: an explicitly deferred item is closed for the purposes of this
@@ -363,7 +232,13 @@ internal fun featureTaskRuntimeClosedRepairItemIds(outputMap: Map<String, Any?>)
   val results = (produced["repair_item_results"] as? List<*>).orEmpty().mapNotNull { entry ->
     (JsonSupport.anyToStringAnyMap(entry)?.get("repair_item_id") as? String)?.takeIf(String::isNotBlank)
   }
-  return (results + produced.stringList("deferred_repair_item_ids")).distinct()
+  // Canonicalized for the same reason the audit-repair result gate canonicalizes: the repair-plan
+  // schema permits an uppercase AC- prefix and plan ingest lowercases it, so a remediation echoing the
+  // identifier as the criterion spells it must still count as closing that item. Without this the gate
+  // read an uppercase echo as an unclosed obligation and deadlocked the audit repair loop.
+  return (results + produced.stringList("deferred_repair_item_ids"))
+    .map(::canonicalAuditIdentifier)
+    .distinct()
 }
 
 /**
@@ -378,16 +253,14 @@ internal fun featureTaskRuntimeIncompleteWorkGateReason(
   outputMap: Map<String, Any?>,
   obligations: FeatureTaskRuntimeImplementationObligations,
 ): String? {
-  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-  if (outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED) return null
-  if (featureTaskRuntimeIsDecompositionPackage(outputMap)) return null
-  if (obligations.requiredIds.isEmpty()) return null
+  val gateApplies = FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) &&
+    outputMap["status"] == PHASE_OUTPUT_STATUS_COMPLETED &&
+    !featureTaskRuntimeIsDecompositionPackage(outputMap) &&
+    obligations.requiredIds.isNotEmpty()
+  if (!gateApplies) return null
   return featureTaskRuntimeImplementationCompletionReason(
     phaseId = phaseId,
     obligations = obligations,
     claim = featureTaskRuntimeImplementationClaimFrom(outputMap, obligations),
   )
 }
-
-private fun Map<String, Any?>.stringList(key: String): List<String> =
-  (this[key] as? List<*>).orEmpty().mapNotNull { it as? String }.filter(String::isNotBlank)

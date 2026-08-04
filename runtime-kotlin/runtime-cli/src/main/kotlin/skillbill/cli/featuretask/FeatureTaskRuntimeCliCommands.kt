@@ -910,13 +910,7 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: branch ${if (reused) "reused" else "created"} $branch\n"
   is FeatureTaskRuntimeRunEvent.BranchSetupBlocked ->
     "feature-task-runtime $workflowId: branch setup blocked at phase $phaseId: $blockedReason\n"
-  is FeatureTaskRuntimeRunEvent.PhaseStarted ->
-    "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
-      "agent=$resolvedAgentId attempt=$attemptCount" +
-      model?.let { " model=$it" }.orEmpty() +
-      effort?.let { " effort=$it" }.orEmpty() +
-      continuationKind?.let { " continuation=$it" }.orEmpty() +
-      "\n"
+  is FeatureTaskRuntimeRunEvent.PhaseStarted -> progressLine()
   is FeatureTaskRuntimeRunEvent.PhaseLoopEdge ->
     "feature-task-runtime $workflowId: phase $phaseId $continuationKind loop=$loopId " +
       "edge_iteration=$edgeIteration driving_verdict=$drivingVerdict\n"
@@ -931,6 +925,14 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
       "Work the first subtask first.\n"
 }
+
+private fun FeatureTaskRuntimeRunEvent.PhaseStarted.progressLine(): String =
+  "feature-task-runtime $workflowId: phase $phaseId ${if (resumed) "resumed" else "started"} " +
+    "agent=$resolvedAgentId attempt=$attemptCount" +
+    model?.let { " model=$it" }.orEmpty() +
+    effort?.let { " effort=$it" }.orEmpty() +
+    continuationKind?.let { " continuation=$it" }.orEmpty() +
+    "\n"
 
 private fun parsePhaseAgents(rawAssignments: List<String>): Map<String, String> {
   val parsed = LinkedHashMap<String, String>()

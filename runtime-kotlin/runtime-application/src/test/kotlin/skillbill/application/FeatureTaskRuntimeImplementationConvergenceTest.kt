@@ -290,8 +290,14 @@ internal fun convergingImplementLauncher(closeAllOnSegment: Int): RuntimeRecordi
       "plan" -> facts(threeTaskPlanOutput())
       "implement" -> {
         implementSegment += 1
-        val closed = if (implementSegment >= closeAllOnSegment) CONVERGENCE_PLAN_TASK_COUNT else implementSegment
-        facts(partialImplementOutput(closed.coerceAtMost(CONVERGENCE_PLAN_TASK_COUNT)))
+        // A non-closing segment is capped BELOW the plan's task count: coercing to the count itself
+        // let segment three close every task even when the fixture was asked never to close.
+        val closed = if (implementSegment >= closeAllOnSegment) {
+          CONVERGENCE_PLAN_TASK_COUNT
+        } else {
+          implementSegment.coerceAtMost(CONVERGENCE_PLAN_TASK_COUNT - 1)
+        }
+        facts(partialImplementOutput(closed))
       }
       else -> facts(defaultPhaseOutput(request))
     }

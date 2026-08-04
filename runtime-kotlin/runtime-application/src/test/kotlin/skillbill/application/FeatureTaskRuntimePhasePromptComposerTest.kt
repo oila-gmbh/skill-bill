@@ -5,6 +5,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -35,7 +36,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import skillbill.application.featuretask.FeatureTaskRuntimeImplementationContinuation
 import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // single suite over one composer; splitting would scatter the per-phase prompt contract
@@ -882,7 +882,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "produced_outputs did not validate against implementation_receipt")
     assertTrue(!prompt.contains("Continue this implementation"), "no continuation directive without a continuation")
   }
-
 }
 
 private const val ISSUE_KEY = "SKILL-66"

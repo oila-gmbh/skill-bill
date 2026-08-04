@@ -689,7 +689,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(streamed, "phase plan started")
     assertContains(streamed, "run started feature_size=SMALL")
     assertContains(streamed, "phase plan completed")
-    assertContains(streamed, "phase review fix_loop")
+    // SKILL-150 (AC-009): the re-entry line names WHY the phase is running again. An invalid-then-valid
+    // review is a schema correction, so the generic `fix_loop` label is no longer what is streamed.
+    assertContains(streamed, "phase review schema_correction")
     assertContains(streamed, "phase review completed")
   }
 

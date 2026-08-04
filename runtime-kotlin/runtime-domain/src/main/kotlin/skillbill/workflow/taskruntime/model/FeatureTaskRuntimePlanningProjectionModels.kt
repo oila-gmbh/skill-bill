@@ -294,8 +294,7 @@ data class FeatureTaskRuntimePlanTask(
      * implementing agent's own envelope. A line that does not start with a well-formed id yields
      * null so the caller can loud-fail rather than invent an obligation.
      */
-    fun taskIdFromBriefingLine(line: String): String? =
-      line.substringBefore(' ').takeIf(TASK_ID_PATTERN::matches)
+    fun taskIdFromBriefingLine(line: String): String? = line.substringBefore(' ').takeIf(TASK_ID_PATTERN::matches)
   }
 }
 

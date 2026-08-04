@@ -150,13 +150,13 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recordRunning("implement", attemptCount = 3)
     harness.recordContinuationLedger(
       phaseId = "implement",
-      attemptCount =2,
+      attemptCount = 2,
       action = FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
       kind = FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
     )
     harness.recordContinuationLedger(
       phaseId = "implement",
-      attemptCount =3,
+      attemptCount = 3,
       action = FeatureTaskRuntimePhaseLedgerAction.RESUME,
       kind = FeatureTaskRuntimeContinuationKind.CRASH_RESUME,
     )
@@ -525,14 +525,13 @@ class FeatureTaskRuntimeStatusServiceTest {
       action: FeatureTaskRuntimePhaseLedgerAction,
       kind: FeatureTaskRuntimeContinuationKind,
       trailingDetail: String = "",
-      resolvedAgentId: String = "claude",
     ) = recorder.appendLedgerEntry(
       FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = WORKFLOW_ID,
         action = action,
         phaseId = phaseId,
         attemptCount = attemptCount,
-        resolvedAgentId = resolvedAgentId,
+        resolvedAgentId = DEFAULT_LEDGER_AGENT,
         blockedReason = FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX + kind.wireValue + trailingDetail,
       ),
     )
@@ -574,6 +573,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   private companion object {
     const val WORKFLOW_ID = "wftr-20260603-status-0001"
     const val SESSION_ID = "ftr-status-001"
+    const val DEFAULT_LEDGER_AGENT = "claude"
   }
 }
 

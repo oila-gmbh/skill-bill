@@ -108,24 +108,21 @@ class FeatureTaskRuntimeImplementationContinuationTest {
     assertEquals("", implementationContinuationDirective("implement", null))
   }
 
-  private fun obligations(): FeatureTaskRuntimeImplementationObligations =
-    FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = listOf("task-1", "task-2", "task-3"),
-      carriedRepairItemIds = emptyList(),
-      loopId = null,
-    )
-
-  private fun attempt(
-    sequenceNumber: Int,
-    completedTaskIds: List<String>,
-  ): FeatureTaskRuntimeImplementationAttempt = FeatureTaskRuntimeImplementationAttempt(
-    sequenceNumber = sequenceNumber,
-    phaseId = "implement",
-    attemptNumber = sequenceNumber,
-    agentId = "claude",
-    status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
-    recordedAt = "2026-08-04T10:0$sequenceNumber:00Z",
-    completedTaskIds = completedTaskIds,
-    changedPaths = listOf("src/Foo.kt"),
+  private fun obligations(): FeatureTaskRuntimeImplementationObligations = FeatureTaskRuntimeImplementationObligations(
+    plannedTaskIds = listOf("task-1", "task-2", "task-3"),
+    carriedRepairItemIds = emptyList(),
+    loopId = null,
   )
+
+  private fun attempt(sequenceNumber: Int, completedTaskIds: List<String>): FeatureTaskRuntimeImplementationAttempt =
+    FeatureTaskRuntimeImplementationAttempt(
+      sequenceNumber = sequenceNumber,
+      phaseId = "implement",
+      attemptNumber = sequenceNumber,
+      agentId = "claude",
+      status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
+      recordedAt = "2026-08-04T10:0$sequenceNumber:00Z",
+      completedTaskIds = completedTaskIds,
+      changedPaths = listOf("src/Foo.kt"),
+    )
 }

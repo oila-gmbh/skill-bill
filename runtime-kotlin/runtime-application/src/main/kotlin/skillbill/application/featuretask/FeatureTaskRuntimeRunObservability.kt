@@ -14,7 +14,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
  * retry and crash resume are infrastructure recovery, and audit/review re-entry is a verifier sending
  * work back.
  */
-enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
+internal enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
   IMPLEMENTATION_CONTINUATION("implementation_continuation"),
   SCHEMA_CORRECTION("schema_correction"),
   PROCESS_RETRY("process_retry"),
@@ -38,6 +38,23 @@ enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
       ?.removePrefix(LEDGER_DETAIL_PREFIX)
       ?.substringBefore(' ')
       ?.let { value -> entries.firstOrNull { it.wireValue == value } }
+  }
+}
+
+/**
+ * Whether a phase start is a first visit, and if not, why it is running again.
+ *
+ * One value rather than two parameters because the two answers are one fact: `resumed` alone says only
+ * "not the first visit", which is what made a crash resume, a process retry and an in-process re-entry
+ * read identically at the event seam.
+ */
+internal data class FeatureTaskRuntimePhaseStartReentry(
+  val resumed: Boolean,
+  val startKind: FeatureTaskRuntimeContinuationKind?,
+) {
+  companion object {
+    val FIRST_VISIT: FeatureTaskRuntimePhaseStartReentry =
+      FeatureTaskRuntimePhaseStartReentry(resumed = false, startKind = null)
   }
 }
 
@@ -92,12 +109,11 @@ internal class FeatureTaskRuntimeRunObservability(
     phaseId: String,
     resolvedAgentId: String,
     attemptCount: Int,
-    resumed: Boolean,
     directive: PhaseModelDirective?,
-    crashResumed: Boolean = false,
-    verifierReentry: Boolean = false,
+    reentry: FeatureTaskRuntimePhaseStartReentry = FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
   ) {
-    val startKind = featureTaskRuntimeStartContinuationKind(crashResumed, verifierReentry, attemptCount)
+    val resumed = reentry.resumed
+    val startKind = reentry.startKind
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseStarted(
         workflowId = request.workflowId,

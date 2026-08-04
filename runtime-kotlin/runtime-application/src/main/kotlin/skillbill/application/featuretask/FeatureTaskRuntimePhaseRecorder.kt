@@ -309,10 +309,9 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Map<String, Any?> {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
     val envelope = request.normalizedOutput?.envelope ?: return emptyMap()
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]) ?: return emptyMap()
-    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
-      return emptyMap()
-    }
+    val carriesReceipt = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
+      ?.get("projection_kind") == FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue
+    if (!carriesReceipt) return emptyMap()
     val existing = implementationAttemptsFrom(artifacts)
     val claim = featureTaskRuntimeImplementationClaimFrom(
       envelope,
@@ -380,9 +379,7 @@ class FeatureTaskRuntimePhaseRecorder(
     implementationAttemptsFrom(decodeArtifacts(record.artifactsJson))
   }
 
-  private fun implementationAttemptsFrom(
-    artifacts: Map<String, Any?>,
-  ): List<FeatureTaskRuntimeImplementationAttempt> {
+  private fun implementationAttemptsFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimeImplementationAttempt> {
     val raw = artifacts[FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY] ?: return emptyList()
     return featureTaskRuntimeImplementationAttemptsFromWire(raw)
   }

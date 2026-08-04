@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import kotlin.test.Test
 import kotlin.test.assertEquals
