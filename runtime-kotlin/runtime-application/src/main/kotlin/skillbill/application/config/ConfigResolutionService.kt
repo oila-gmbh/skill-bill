@@ -7,11 +7,15 @@ import skillbill.config.model.CompactionSettingsParse
 import skillbill.config.model.EXECUTION_MATRIX_KEY
 import skillbill.config.model.ExecutionMatrix
 import skillbill.config.model.ExecutionMatrixParse
+import skillbill.config.model.PROVIDER_PROFILES_KEY
+import skillbill.config.model.ProviderProfile
+import skillbill.config.model.ProviderProfileParse
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigResolution
 import skillbill.config.model.SpecType
 import skillbill.config.model.parseCompactionSettings
 import skillbill.config.model.parseExecutionMatrix
+import skillbill.config.model.parseProviderProfiles
 import skillbill.error.MalformedMachineConfigError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
@@ -44,6 +48,32 @@ class ConfigResolutionService(
     return when (val parsed = parseExecutionMatrix(payload[EXECUTION_MATRIX_KEY])) {
       is ExecutionMatrixParse.Valid -> parsed.matrix
       is ExecutionMatrixParse.Invalid -> throw MalformedMachineConfigError(
+        path = configPath.toString(),
+        key = parsed.keyPath,
+        value = parsed.value,
+        reason = parsed.reason,
+      )
+    }
+  }
+
+  /** Resolves named provider profiles from the machine-wide config; absent key yields an empty map. */
+  fun resolveProviderProfiles(): Map<String, ProviderProfile> {
+    val configPath = machineConfigStore.configPath()
+    val payload = try {
+      machineConfigStore.read()?.payload
+    } catch (error: IllegalArgumentException) {
+      throw MalformedMachineConfigError(
+        path = configPath.toString(),
+        key = "",
+        value = "<document>",
+        reason = "is not valid JSON.",
+        cause = error,
+      )
+    } ?: return emptyMap()
+    if (!payload.containsKey(PROVIDER_PROFILES_KEY)) return emptyMap()
+    return when (val parsed = parseProviderProfiles(payload[PROVIDER_PROFILES_KEY])) {
+      is ProviderProfileParse.Valid -> parsed.profiles
+      is ProviderProfileParse.Invalid -> throw MalformedMachineConfigError(
         path = configPath.toString(),
         key = parsed.keyPath,
         value = parsed.value,

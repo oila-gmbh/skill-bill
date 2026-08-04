@@ -173,6 +173,55 @@ class JvmAgentRunProcessRunnerTest {
     assertEquals("1", builder.environment()["SKILL_BILL_GOAL_CONTINUATION"])
     assertNull(builder.environment()["SOME_AMBIENT_SECRET"])
   }
+
+  @Test
+  fun `inherit launch removes inherited variables before applying overlays`() {
+    val builder = ProcessBuilder("echo", "test")
+    builder.environment().clear()
+    builder.environment()["ANTHROPIC_BASE_URL"] = "https://api.deepinfra.com/anthropic"
+    builder.environment()["ANTHROPIC_AUTH_TOKEN"] = "deepinfra-secret"
+    builder.environment()["KEEP_ME"] = "stays"
+
+    configureLaunchEnvironment(
+      builder,
+      AgentRunProcessRequest(
+        command = listOf("echo"),
+        workingDirectory = Path.of("."),
+        environment = mapOf(
+          "ANTHROPIC_BASE_URL" to "https://api.anthropic.com",
+          "ANTHROPIC_AUTH_TOKEN" to "anthropic-token",
+        ),
+        inheritEnvironment = true,
+        environmentRemovals = setOf("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"),
+      ),
+    )
+
+    // Removals run before overlays: the removed-and-set keys take the overlay value, not the
+    // inherited DeepInfra value.
+    assertEquals("https://api.anthropic.com", builder.environment()["ANTHROPIC_BASE_URL"])
+    assertEquals("anthropic-token", builder.environment()["ANTHROPIC_AUTH_TOKEN"])
+    assertEquals("stays", builder.environment()["KEEP_ME"])
+  }
+
+  @Test
+  fun `isolated launch removals drop a passthrough-listed key a profile unset names`() {
+    val isolated = isolatedLaunchEnvironment(
+      parentEnvironment = mapOf(
+        "HOME" to "/home/dev",
+        "PATH" to "/usr/bin",
+        "ANTHROPIC_BASE_URL" to "https://api.deepinfra.com/anthropic",
+        "ANTHROPIC_AUTH_TOKEN" to "deepinfra-secret",
+      ),
+      overrides = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1"),
+      additionalPassthroughKeys = setOf("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"),
+      removals = setOf("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"),
+    )
+
+    assertEquals("/home/dev", isolated["HOME"])
+    assertEquals("1", isolated["SKILL_BILL_GOAL_CONTINUATION"])
+    assertNull(isolated["ANTHROPIC_BASE_URL"])
+    assertNull(isolated["ANTHROPIC_AUTH_TOKEN"])
+  }
 }
 
 private class FakeReapableProcess(private val staysAlive: Boolean) : Process() {

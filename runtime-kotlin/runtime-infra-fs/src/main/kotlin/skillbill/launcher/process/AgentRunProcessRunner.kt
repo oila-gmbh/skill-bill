@@ -41,6 +41,12 @@ data class AgentRunProcessRequest(
    * infra layer. Has no effect when inheritEnvironment is true.
    */
   val environmentPassthroughKeys: Set<String> = emptySet(),
+  /**
+   * Inherited variable names to drop after inheritance (or after the isolated passthrough filter)
+   * and before [environment] overlays. Lets a resolved provider profile remove ambient provider
+   * variables a spawned child would otherwise re-read from the session.
+   */
+  val environmentRemovals: Set<String> = emptySet(),
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,

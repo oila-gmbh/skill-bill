@@ -1,6 +1,7 @@
 package skillbill.launcher
 
 import skillbill.config.model.PhaseCompactionDirective
+import skillbill.config.model.ResolvedProviderProfile
 import skillbill.infrastructure.fs.CursorReviewStreamError
 import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.InstallAgent
@@ -13,6 +14,7 @@ import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
+import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -29,6 +31,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+@Suppress("LargeClass")
 class AgentRunCommandBuildersTest {
   @Test
   fun `a compaction directive reaches the claude launch environment`() {
@@ -392,6 +395,92 @@ class AgentRunCommandBuildersTest {
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, ClaudeAgentRunCommandBuilder().build(request()).idlePolicy)
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, CodexAgentRunCommandBuilder().build(request()).idlePolicy)
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, JunieAgentRunCommandBuilder().build(request()).idlePolicy)
+  }
+
+  @Test
+  fun `a resolved provider profile reaches the claude launch environment and removals`() {
+    val command = ClaudeAgentRunCommandBuilder().build(
+      request().copy(
+        providerProfile = ResolvedProviderProfile(
+          environment = mapOf(
+            "ANTHROPIC_BASE_URL" to "https://api.anthropic.com",
+            "ANTHROPIC_AUTH_TOKEN" to "tok-123",
+            "CLAUDE_CONFIG_DIR" to "/home/u/.claude",
+          ),
+          removals = setOf("ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"),
+        ),
+      ),
+    )
+
+    assertEquals("https://api.anthropic.com", command.environment["ANTHROPIC_BASE_URL"])
+    assertEquals("tok-123", command.environment["ANTHROPIC_AUTH_TOKEN"])
+    assertEquals("/home/u/.claude", command.environment["CLAUDE_CONFIG_DIR"])
+    assertEquals(setOf("ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"), command.environmentRemovals)
+  }
+
+  @Test
+  fun `a profile cannot override or remove skill-bill and compaction environment keys`() {
+    val command = ClaudeAgentRunCommandBuilder().build(
+      request(compaction = PhaseCompactionDirective(windowTokens = 400_000, triggerPct = 70)).copy(
+        goalContinuation = SkillRunGoalContinuationContext(
+          parentIssueKey = "SKILL-161",
+          subtaskId = 1,
+          goalBranch = "feat/x",
+          suppressPr = true,
+          specPath = ".feature-specs/x/spec.md",
+        ),
+        providerProfile = ResolvedProviderProfile(
+          environment = mapOf(
+            "SKILL_BILL_GOAL_CONTINUATION" to "0",
+            "SKILL_BILL_GOAL_PARENT_ISSUE_KEY" to "evil",
+          ),
+          removals = setOf("SKILL_BILL_GOAL_PARENT_ISSUE_KEY", "CLAUDE_CODE_AUTO_COMPACT_WINDOW"),
+        ),
+      ),
+    )
+
+    // Goal-continuation and compaction keys win over the profile.
+    assertEquals("1", command.environment["SKILL_BILL_GOAL_CONTINUATION"])
+    assertEquals("SKILL-161", command.environment["SKILL_BILL_GOAL_PARENT_ISSUE_KEY"])
+    assertEquals("400000", command.environment["CLAUDE_CODE_AUTO_COMPACT_WINDOW"])
+    // A profile's unset list can never delete a skill-bill or compaction key.
+    assertFalse("SKILL_BILL_GOAL_PARENT_ISSUE_KEY" in command.environmentRemovals)
+    assertFalse("CLAUDE_CODE_AUTO_COMPACT_WINDOW" in command.environmentRemovals)
+  }
+
+  @Test
+  fun `a profile omitting config_dir produces no config_dir entry or removal`() {
+    val command = ClaudeAgentRunCommandBuilder().build(
+      request().copy(
+        providerProfile = ResolvedProviderProfile(
+          environment = mapOf("ANTHROPIC_BASE_URL" to "https://api.anthropic.com"),
+          removals = setOf("ANTHROPIC_MODEL"),
+        ),
+      ),
+    )
+
+    assertFalse(command.environment.containsKey("CLAUDE_CONFIG_DIR"))
+    assertFalse("CLAUDE_CONFIG_DIR" in command.environmentRemovals)
+  }
+
+  @Test
+  fun `no profile leaves claude and non-claude launches byte-for-byte unchanged`() {
+    // AC-010: a directive without a profile, even with provider_profiles configured, must produce
+    // the same command, environment map, inherit flag, passthrough keys, and empty removals.
+    val noProfile = request()
+    val claude = ClaudeAgentRunCommandBuilder().build(noProfile)
+    assertEquals(emptySet(), claude.environmentRemovals)
+
+    // Non-claude builders ignore a provider profile entirely.
+    val profiled = noProfile.copy(
+      providerProfile = ResolvedProviderProfile(
+        environment = mapOf("ANTHROPIC_BASE_URL" to "x"),
+        removals = setOf("ANTHROPIC_MODEL"),
+      ),
+    )
+    assertEquals(emptySet(), CodexAgentRunCommandBuilder().build(profiled).environmentRemovals)
+    assertEquals(emptySet(), CursorAgentRunCommandBuilder().build(profiled).environmentRemovals)
+    assertEquals(emptySet(), JunieAgentRunCommandBuilder().build(profiled).environmentRemovals)
   }
 
   private fun request(

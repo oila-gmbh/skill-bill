@@ -16,6 +16,8 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
+import skillbill.config.model.ResolvedProviderProfile
+import skillbill.config.model.resolveFor
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
@@ -27,6 +29,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.UnresolvableProviderProfileDirectiveError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -4143,6 +4146,10 @@ internal class FeatureTaskRuntimeRunLoop(
       run.modelDirective?.model to run.modelDirective?.effort
     }
 
+    // A profile-bearing directive resolves against the machine-wide provider_profiles map at launch
+    // time. CLI preflight makes an unresolvable name unreachable here; this is the defensive typed
+    // loud-fail that keeps a launcher from silently running a phase without its intended provider.
+    val providerProfile = resolveProviderProfile(run)
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = run.resolvedAgent.invokedAgentId,
@@ -4155,6 +4162,7 @@ internal class FeatureTaskRuntimeRunLoop(
           modelOverride = modelOverride,
           effortOverride = effortOverride,
           compaction = run.compaction,
+          providerProfile = providerProfile,
           promptOverride = prepared.prompt,
           readOnlyPhase = isReviewPhase,
           progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes.takeIf { isReviewPhase },
@@ -4197,6 +4205,13 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     capturePhaseContentIdentities(run.phaseId)
     return reconcileLaunch(run.phaseId, outcome, fileManifest)
+  }
+
+  private fun resolveProviderProfile(run: PhaseRun): ResolvedProviderProfile? {
+    val profileName = run.modelDirective?.profile ?: return null
+    return run.request.providerProfiles[profileName]
+      ?.resolveFor(run.request.environment)
+      ?: throw UnresolvableProviderProfileDirectiveError(run.phaseId, profileName)
   }
 
   /**

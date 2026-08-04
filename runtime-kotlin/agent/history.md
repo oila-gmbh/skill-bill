@@ -1,3 +1,14 @@
+## [2026-08-04] SKILL-161 session-adaptive execution matrix with provider profiles
+Areas: runtime-kotlin/{runtime-domain,runtime-application,runtime-cli,runtime-infra-fs,runtime-contracts,runtime-ports}, docs, .feature-specs/SKILL-161-execution-matrix-provider-profiles
+- New `provider_profiles` config key: named presets (`base_url`, `auth_token_env`, `config_dir`, `unset`) that tier directives reference by name; raw tokens never appear in config or state — `auth_token_env` names an env var resolved only at spawn. reusable
+- `execution_matrix.sessions` overlays: `SKILL_BILL_SESSION_PROFILE` selects a session's `phase_tiers`/`agents`, whole-field replacing the default matrix; unset or an undeclared name resolves against the default fields with no degradation record. reusable
+- Tier directives gain an optional `profile`; CLI preflight (`refuseUnresolvableProfileDirectives`) refuses undeclared profiles, missing `auth_token_env` vars, and profile directives on non-claude agents before any phase launches, never echoing the token. reusable
+- `SkillRunRequest` gains `environmentRemovals` plus a `ResolvedProviderProfile` env set; `JvmAgentRunProcessRunner` removes inherited vars before applying overlays and never clobbers goal-continuation/compaction keys.
+- No selector match and no `profile` reproduce today's command line and environment byte-for-byte apart from model/effort flags.
+- Parsing, selection, preflight, and env-composition covered by dedicated unit suites beside the existing matrix/refusal/builder/process-runner tests.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-04] SKILL-155 typed bounded DB failure surface (subtask 2)
 Areas: runtime-kotlin/{runtime-contracts,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-155-read-path-db-lock-contention
 - SQLite open/read/transaction failures now convert to a typed `DatabaseAccessError` in `runtime-contracts/skillbill/error`; no `org.sqlite` type crosses the ports boundary from `SQLiteDatabaseSessionFactory` or `DatabaseRuntime`.

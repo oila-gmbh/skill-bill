@@ -4,6 +4,7 @@ package skillbill.ports.agentrun.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.config.model.PhaseCompactionDirective
+import skillbill.config.model.ResolvedProviderProfile
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -49,6 +50,11 @@ data class SkillRunRequest(
   val modelOverride: String? = null,
   val effortOverride: String? = null,
   val compaction: PhaseCompactionDirective? = null,
+  /**
+   * Resolved provider-profile environment for a profile-bearing directive (claude only). The token
+   * value exists only inside this in-memory map; it is never persisted or serialized.
+   */
+  val providerProfile: ResolvedProviderProfile? = null,
   val goalContinuation: SkillRunGoalContinuationContext? = null,
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,

@@ -47,10 +47,13 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseRuntimeRefusedAgents
+import skillbill.cli.core.refuseUnresolvableProfileDirectives
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.CompactionSettings
 import skillbill.config.model.PhaseModelDirective
+import skillbill.config.model.ProviderProfile
+import skillbill.config.model.SESSION_PROFILE_ENV_VAR
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
@@ -232,6 +235,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           agentAssignment = prepared.agentAssignment,
           modelAssignment = prepared.modelAssignment,
           compactionSettings = prepared.compactionSettings,
+          providerProfiles = prepared.providerProfiles,
           environment = state.environment,
           dbPathOverride = state.dbOverride,
           repoRoot = prepared.repoRoot,
@@ -262,20 +266,23 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       perPhaseAgentIds = phaseAgentMap,
       override = agentOverride?.takeIf(String::isNotBlank),
     )
+    // Session selection happens exactly once, here, on the environment value the CLI seam already
+    // holds — never via System.getenv. Preflight and launch both read this same selected instance.
+    val matrix = deps.configResolutionService.resolveExecutionMatrix()
+      ?.selectSession(environment[SESSION_PROFILE_ENV_VAR])
     val modelAssignment = FeatureTaskRuntimeModelAssignment(
       perPhaseDirectives = parsePhaseModels(phaseModels),
-      matrix = deps.configResolutionService.resolveExecutionMatrix(),
+      matrix = matrix,
     )
     val compactionSettings = deps.configResolutionService.resolveCompactionSettings()
-    val resolvedAgentIds = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.associateWith { phaseId ->
-      FeatureTaskRuntimeAgentResolver.resolve(phaseId, agentAssignment, invokedAgentId).resolvedAgentId
-    }
-    val directives = resolvedAgentIds.mapNotNull { (phaseId, resolvedAgentId) ->
-      FeatureTaskRuntimeModelResolver.resolve(phaseId, resolvedAgentId, modelAssignment)?.let { directive ->
-        phaseId to directive
-      }
-    }.toMap()
-    refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
+    val providerProfiles = deps.configResolutionService.resolveProviderProfiles()
+    resolveAndPreflightDirectives(
+      environment,
+      agentAssignment,
+      invokedAgentId,
+      modelAssignment,
+      providerProfiles,
+    )
     val receivingAgents = buildList {
       addAll(resolvedAgentIds.values)
       addAll(parsePhaseAgents(phaseAgents).values)
@@ -301,8 +308,28 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       agentAssignment,
       modelAssignment,
       compactionSettings,
+      providerProfiles,
       hydratedSelection,
     )
+  }
+
+  private fun resolveAndPreflightDirectives(
+    environment: Map<String, String>,
+    agentAssignment: FeatureTaskRuntimeAgentAssignment,
+    invokedAgentId: String,
+    modelAssignment: FeatureTaskRuntimeModelAssignment,
+    providerProfiles: Map<String, ProviderProfile>,
+  ) {
+    val resolvedAgentIds = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.associateWith { phaseId ->
+      FeatureTaskRuntimeAgentResolver.resolve(phaseId, agentAssignment, invokedAgentId).resolvedAgentId
+    }
+    val directives = resolvedAgentIds.mapNotNull { (phaseId, resolvedAgentId) ->
+      FeatureTaskRuntimeModelResolver.resolve(phaseId, resolvedAgentId, modelAssignment)?.let { directive ->
+        phaseId to directive
+      }
+    }.toMap()
+    refuseUnsupportedModelDirectives(directives, resolvedAgentIds)
+    refuseUnresolvableProfileDirectives(directives, resolvedAgentIds, providerProfiles, environment)
   }
 
   protected fun resolveSpecPath(
@@ -994,6 +1021,7 @@ private data class PreparedRuntimeRun(
   val agentAssignment: FeatureTaskRuntimeAgentAssignment,
   val modelAssignment: FeatureTaskRuntimeModelAssignment,
   val compactionSettings: CompactionSettings,
+  val providerProfiles: Map<String, ProviderProfile>,
   val agentAddonSelection: HydratedAgentAddonSelection,
 )
 

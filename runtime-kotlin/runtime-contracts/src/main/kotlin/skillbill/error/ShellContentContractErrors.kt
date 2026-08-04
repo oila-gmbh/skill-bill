@@ -379,6 +379,20 @@ class FeatureTaskRuntimeOperatorDecisionRejectedError(
   "Operator decision '$decision' was rejected for workflow '$workflowId': $reason",
 )
 
+/**
+ * Surfaced when a phase directive names a provider profile that is absent from the resolved profile
+ * map. CLI preflight makes this unreachable for runtime launches; this is the defensive typed loud
+ * fail that keeps a launcher from silently running a phase without its intended provider rather
+ * than launching "unprofiled" on a wrong guess.
+ */
+class UnresolvableProviderProfileDirectiveError(
+  val phaseId: String,
+  val profileName: String,
+) : ShellContentContractException(
+  "Feature-task-runtime phase '$phaseId' references provider profile '$profileName', which is " +
+    "not a declared provider_profiles entry; the phase fails loudly rather than launching unprofiled.",
+)
+
 class InvalidFeatureTaskExecutionIdentitySchemaError(
   val sourceLabel: String,
   val reason: String,

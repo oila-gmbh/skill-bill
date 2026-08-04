@@ -17,6 +17,8 @@ data class AgentRunCommand(
   val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
+  /** Inherited variable names the process seam must drop after inheritance, before overlays. */
+  val environmentRemovals: Set<String> = emptySet(),
   val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
@@ -115,6 +117,9 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
     val streaming = request.streamProviderOutput || request.streamOutputForLiveness
+    val goalEnv = goalContinuationEnvironment(request)
+    val compactionEnv = compactionEnvironment(request)
+    val profileEnv = request.providerProfile?.environment.orEmpty()
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("claude")
@@ -143,7 +148,11 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
-      environment = goalContinuationEnvironment(request) + compactionEnvironment(request),
+      // Profile env composes with — never clobbers — goal-continuation and compaction keys: they
+      // come last and therefore always win on collision.
+      environment = profileEnv + goalEnv + compactionEnv,
+      // A profile's unset list can never delete a skill-bill or compaction key.
+      environmentRemovals = request.providerProfile?.removals.orEmpty() - goalEnv.keys - compactionEnv.keys,
       inheritEnvironment = request.reviewEvidenceBroker == null,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = when {

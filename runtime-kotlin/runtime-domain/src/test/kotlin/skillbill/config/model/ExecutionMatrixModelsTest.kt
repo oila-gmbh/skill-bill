@@ -158,4 +158,101 @@ class ExecutionMatrixModelsTest {
 
     assertNull(matrix.directiveFor("unknown", "plan"))
   }
+
+  @Test
+  fun `directive accepts an optional profile and rejects a blank one and unknown fields`() {
+    val valid = assertIs<ExecutionMatrixParse.Valid>(
+      parseExecutionMatrix(
+        mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "m", "profile" to "p")))),
+      ),
+    )
+    assertEquals("p", valid.matrix.directiveFor("claude", "plan")?.profile)
+
+    val blank = assertIs<ExecutionMatrixParse.Invalid>(
+      parseExecutionMatrix(
+        mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "m", "profile" to "")))),
+      ),
+    )
+    assertEquals("execution_matrix.agents.claude.reasoning.profile", blank.keyPath)
+
+    val unknown = assertIs<ExecutionMatrixParse.Invalid>(
+      parseExecutionMatrix(
+        mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "m", "agent" to "x")))),
+      ),
+    )
+    assertEquals("execution_matrix.agents.claude.reasoning.agent", unknown.keyPath)
+  }
+
+  @Test
+  fun `parses session overlays in every present-field combination`() {
+    val parsed = assertIs<ExecutionMatrixParse.Valid>(
+      parseExecutionMatrix(
+        mapOf(
+          "agents" to emptyMap<String, Any?>(),
+          "sessions" to mapOf(
+            "deep" to mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "deep-opus")))),
+            "work" to mapOf("phase_tiers" to mapOf("plan" to "implementation")),
+            "both" to mapOf(
+              "phase_tiers" to mapOf("review" to "implementation"),
+              "agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "both"))),
+            ),
+          ),
+        ),
+      ),
+    )
+    val sessions = parsed.matrix.sessions
+    val deepModel = sessions.getValue("deep")
+      .agents?.getValue(InstallAgent.CLAUDE)?.getValue(ExecutionTier.REASONING)?.model
+    assertEquals("deep-opus", deepModel)
+    assertEquals(ExecutionTier.IMPLEMENTATION, sessions.getValue("work").phaseTiers?.getValue("plan"))
+    val bothModel = sessions.getValue("both")
+      .agents?.getValue(InstallAgent.CLAUDE)?.getValue(ExecutionTier.REASONING)?.model
+    assertEquals("both", bothModel)
+  }
+
+  @Test
+  fun `rejects malformed sessions at their dotted paths`() {
+    val cases = listOf(
+      Pair(mapOf("sessions" to mapOf(1 to emptyMap<String, Any?>())), "execution_matrix.sessions.1"),
+      Pair(mapOf("sessions" to mapOf("" to emptyMap<String, Any?>())), "execution_matrix.sessions."),
+      Pair(mapOf("sessions" to mapOf("deep" to "not-a-map")), "execution_matrix.sessions.deep"),
+      Pair(
+        mapOf("sessions" to mapOf("deep" to mapOf("agent" to emptyMap<String, Any?>()))),
+        "execution_matrix.sessions.deep.agent",
+      ),
+    )
+    cases.forEach { (raw, path) ->
+      val invalid = assertIs<ExecutionMatrixParse.Invalid>(parseExecutionMatrix(raw))
+      assertEquals(path, invalid.keyPath)
+    }
+  }
+
+  @Test
+  fun `selectSession resolves overlay or default fields with whole-field replace`() {
+    val matrix = assertIs<ExecutionMatrixParse.Valid>(
+      parseExecutionMatrix(
+        mapOf(
+          "agents" to mapOf(
+            "claude" to mapOf(
+              "reasoning" to mapOf("model" to "default-opus"),
+              "implementation" to mapOf("model" to "default-impl"),
+            ),
+          ),
+          "sessions" to mapOf(
+            "deep" to mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "deep-opus")))),
+          ),
+        ),
+      ),
+    ).matrix
+
+    // Declared session: overlay directive wins.
+    assertEquals("deep-opus", matrix.selectSession("deep").directiveFor("claude", "plan")?.model)
+    // Undeclared / null / blank selector: default matrix fields.
+    assertEquals("default-opus", matrix.selectSession("nope").directiveFor("claude", "plan")?.model)
+    assertEquals("default-opus", matrix.selectSession(null).directiveFor("claude", "plan")?.model)
+    assertEquals("default-opus", matrix.selectSession("").directiveFor("claude", "plan")?.model)
+    // Whole-field replace: an overlay declaring only agents drops the default phase_tiers-aligned
+    // implementation directive (agents replaced, so implementation is gone).
+    assertNull(matrix.selectSession("deep").directiveFor("claude", "implement"))
+  }
 }

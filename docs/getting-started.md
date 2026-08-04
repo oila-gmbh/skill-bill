@@ -111,6 +111,73 @@ Your `config.json` (telemetry choices, `install_id`, and shared `external_addon_
 
 Feature-task model and effort preferences also belong in this machine-wide JSON file under `execution_matrix`; they apply to every repository you run on this machine.
 
+#### Provider profiles and session-adaptive execution matrix
+
+A tier directive can pin a *provider*, not just a model name, by referencing a named
+`provider_profiles` entry. Profiles are unconditional environment presets; adaptivity comes from
+selecting a *session* overlay. With both, one shell launcher can run reasoning phases on a real
+Anthropic account while implementation phases inherit the session's own provider untouched.
+
+```json
+{
+  "provider_profiles": {
+    "anthropic-default": {
+      "config_dir": "~/.claude",
+      "unset": ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
+                "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"]
+    }
+  },
+  "execution_matrix": {
+    "sessions": {
+      "deep": {
+        "agents": {
+          "claude": {
+            "reasoning": { "model": "claude-opus-5", "profile": "anthropic-default" },
+            "implementation": { "model": "deepseek-ai/DeepSeek-V4-Flash-0731" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+`provider_profiles` maps a profile name to any of these fields — at least one is required, and any
+other field is rejected:
+
+- `base_url` — sets `ANTHROPIC_BASE_URL` on the spawned claude child.
+- `auth_token_env` — names an environment variable whose value becomes `ANTHROPIC_AUTH_TOKEN`.
+  It names a variable; **no token is ever written to config or persisted state** — the value is
+  read from the named variable at spawn time only.
+- `config_dir` — sets `CLAUDE_CONFIG_DIR`; a leading `~` expands against `HOME`. Omit it to inherit
+  the session's own `CLAUDE_CONFIG_DIR`.
+- `unset` — a list of inherited environment variables to remove from the spawned child.
+
+`execution_matrix.sessions` maps a session name to `{ "phase_tiers"?, "agents"?
+}` using the same field shapes as the top-level matrix. Selection reads the
+`SKILL_BILL_SESSION_PROFILE` environment variable once at launch. When it is set to a declared
+session name, that overlay's fields **whole-field replace** the default matrix fields (an absent
+overlay field means empty, not inherited). When it is unset, or set to a name with no overlay, the
+default matrix fields apply unchanged — an undeclared selector is normal operation for accounts
+without an overlay.
+
+A profile-bearing directive is restricted to the claude agent and is validated before any phase
+launches: an undeclared profile name, or a referenced profile whose `auth_token_env` variable is
+missing from the runtime environment, fails loudly rather than launching.
+
+The mixed-provider example above: from a `deep` session, reasoning phases run `claude-opus-5`
+against the real Anthropic `~/.claude` account (the profile unset list drops the inherited DeepInfra
+`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and model variables so they do not override the
+`--model` flag), while implementation phases inherit the session's DeepSeek environment untouched.
+Other sessions (`cc`, `cc work`, `cc glm`) keep their own account end to end. The variable export
+is operator-side in your shell launcher — skill-bill ships no launcher change:
+
+```bash
+# overridable in each account's cc fish wrapper; only sessions with an overlay need it
+export SKILL_BILL_SESSION_PROFILE=deep
+```
+
+
 - **Fresh installs** write there by default.
 - **Existing installs** are migrated automatically: the installer moves a legacy `~/.skill-bill/config.json` to the durable path before the pre-install cleanup, so nothing is lost on upgrade.
 - **Custom location**: set `SKILL_BILL_CONFIG_PATH` to pin the config anywhere (this override always wins, for both the installer and the runtime). If you exported this in an earlier version just to relocate the config to `~/.config/skill-bill/`, you can drop it — the durable default now covers that automatically.

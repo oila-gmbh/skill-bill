@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.config.model.CompactionSettings
+import skillbill.config.model.ProviderProfile
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
@@ -28,6 +29,8 @@ data class FeatureTaskRuntimeRunRequest(
   val agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
   val modelAssignment: FeatureTaskRuntimeModelAssignment = FeatureTaskRuntimeModelAssignment(),
   val compactionSettings: CompactionSettings = CompactionSettings.DEFAULT,
+  /** Named provider profiles a phase directive may reference by `profile`. */
+  val providerProfiles: Map<String, ProviderProfile> = emptyMap(),
   val environment: Map<String, String> = emptyMap(),
   val dbPathOverride: String? = null,
   val repoRoot: Path,

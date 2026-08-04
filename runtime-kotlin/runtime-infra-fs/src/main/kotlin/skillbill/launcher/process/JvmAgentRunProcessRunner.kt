@@ -1037,10 +1037,12 @@ internal fun configureLaunchEnvironment(builder: ProcessBuilder, request: AgentR
       builder.environment(),
       request.environment,
       request.environmentPassthroughKeys,
+      request.environmentRemovals,
     )
     builder.environment().clear()
     builder.environment().putAll(isolated)
   } else {
+    request.environmentRemovals.forEach { key -> builder.environment().remove(key) }
     builder.environment().putAll(request.environment)
   }
 }
@@ -1049,9 +1051,10 @@ internal fun isolatedLaunchEnvironment(
   parentEnvironment: Map<String, String>,
   overrides: Map<String, String>,
   additionalPassthroughKeys: Set<String> = emptySet(),
+  removals: Set<String> = emptySet(),
 ): Map<String, String> = parentEnvironment.filterKeys {
   it in ISOLATED_LAUNCH_PASSTHROUGH_KEYS || it in additionalPassthroughKeys
-} + overrides
+}.filterKeys { it !in removals } + overrides
 
 // An isolated launch drops the caller's ambient session state, but the spawned agent still has to
 // be executable and still has to resolve the user's own installation: without these the worker has

@@ -85,6 +85,7 @@ class ProcessAgentRunAdapter(
     environment = command.environment,
     inheritEnvironment = command.inheritEnvironment,
     environmentPassthroughKeys = command.environmentPassthroughKeys,
+    environmentRemovals = command.environmentRemovals,
     outputSink = request.outputSink,
     usePtyStdio = command.usePtyStdio,
     idlePolicy = command.idlePolicy,
