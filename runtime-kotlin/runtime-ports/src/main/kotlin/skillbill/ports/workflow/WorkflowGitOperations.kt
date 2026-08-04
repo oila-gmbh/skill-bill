@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions") // single cohesive boundary: the git reads and writes a workflow phase needs
+
 package skillbill.ports.workflow
 
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -99,11 +101,8 @@ private object UnavailableScopedStagingGitOperations : ScopedStagingGitOperation
   override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
     unavailable("capture the pre-checkpoint index state")
 
-  override fun restoreIndexState(
-    repoRoot: Path,
-    paths: List<String>,
-    snapshot: String,
-  ): WorkflowGitOperationResult = unavailable("restore the pre-checkpoint index state")
+  override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
+    unavailable("restore the pre-checkpoint index state")
 
   override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = unavailable("list staged paths")
 

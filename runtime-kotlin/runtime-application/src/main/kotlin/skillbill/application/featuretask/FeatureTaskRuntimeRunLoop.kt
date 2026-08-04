@@ -39,16 +39,16 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
-import skillbill.ports.workflow.pathContentIdentities
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.pathContentIdentities
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
-import skillbill.ports.workflow.restoreIndexState
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
+import skillbill.ports.workflow.restoreIndexState
 import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
+import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.stagedPaths
-import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
@@ -70,9 +70,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
@@ -706,8 +706,8 @@ internal class FeatureTaskRuntimeRunLoop(
     intent: String,
     blockedReason: (String, String) -> String,
   ): Boolean {
-    val branch = resolvedBranch ?: return true
-    if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
+    val branch = resolvedBranch
+    if (branch == null || FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
       return true
     }
     val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
@@ -979,9 +979,11 @@ internal class FeatureTaskRuntimeRunLoop(
     val message = FeatureTaskRuntimeCheckpointMessage.build(
       issueKey = request.issueKey,
       branch = branch,
-      phaseId = precedingPhaseId,
-      loopId = loopId,
-      generation = checkpointGeneration(loopId),
+      identity = FeatureTaskRuntimeCheckpointIdentity(
+        phaseId = precedingPhaseId,
+        loopId = loopId,
+        generation = checkpointGeneration(loopId),
+      ),
       intent = intent,
     )
     val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
@@ -1019,8 +1021,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun checkpointGeneration(loopId: String?): Int =
-    loopId?.let { state.edgeIterationCount(it) } ?: 0
+  private fun checkpointGeneration(loopId: String?): Int = loopId?.let { state.edgeIterationCount(it) } ?: 0
 
   private fun recordCheckpointIdentity(
     precedingPhaseId: String,
@@ -1955,9 +1956,11 @@ internal class FeatureTaskRuntimeRunLoop(
       workflowId = run.request.workflowId,
       gitOperations = phaseGates.gitOperations,
       repoRoot = run.request.repoRoot,
-      dbOverride = run.request.dbPathOverride,
-      scopedUntrackedExclusions = resolved?.let(::scopedReviewUntrackedExclusions),
-      ownedPathspec = resolved?.workflowOwnedPaths.orEmpty(),
+      scope = FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope(
+        dbOverride = run.request.dbPathOverride,
+        scopedUntrackedExclusions = resolved?.let(::scopedReviewUntrackedExclusions),
+        ownedPathspec = resolved?.workflowOwnedPaths.orEmpty(),
+      ),
     )
   }.fold(
     onSuccess = { prepared ->

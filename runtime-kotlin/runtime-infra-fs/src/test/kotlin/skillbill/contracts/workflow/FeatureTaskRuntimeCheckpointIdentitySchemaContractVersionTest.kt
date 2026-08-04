@@ -2,7 +2,6 @@ package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

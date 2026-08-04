@@ -47,52 +47,56 @@ internal data class FeatureTaskRuntimeCheckpointScopeInput(
   val concurrentlyModifiedOwnedPaths: List<String> = emptyList(),
 )
 
+@Suppress("TooManyFunctions") // single cohesive decision surface for the checkpoint scope guards and messages
 internal object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
     val owned = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
     val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
 
-    val foreignGovernedSpecs = input.phaseIntroducedPaths.filter { path ->
-      isForeignGovernedSpecPath(path, input.issueKey)
-    }.distinct().sorted()
-    if (foreignGovernedSpecs.isNotEmpty()) {
-      return blockForeignGovernedSpec(input.issueKey, foreignGovernedSpecs)
-    }
-
-    val outsideInventory = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
-      .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
-      .sorted()
-    if (outsideInventory.isNotEmpty()) {
-      return blockOutsideInventory(input.issueKey, outsideInventory)
-    }
-
-    // An owned path that someone else already staged is genuinely ambiguous: staging over it would
-    // commit their index content as this workflow's work, and restoring it would discard their
-    // staging. Neither is recoverable from the outside, so the only permitted outcome is a block.
-    val overlapping = input.foreignStagedPaths.filter(String::isNotBlank).distinct()
-      .mapNotNull { foreign -> ownedAliases[normalizeForAliasComparison(foreign)] }
-      .distinct()
-      .sorted()
-    if (overlapping.isNotEmpty()) {
-      return blockStagedOverlap(overlapping)
-    }
-
-    // The unstaged half of the same ambiguity: nobody staged the file, but its content is no longer
-    // the content this phase left behind, so committing it would attribute a stranger's edit here.
-    val concurrent = input.concurrentlyModifiedOwnedPaths.filter(String::isNotBlank).distinct()
-      .mapNotNull { modified -> ownedAliases[normalizeForAliasComparison(modified)] }
-      .distinct()
-      .sorted()
-    if (concurrent.isNotEmpty()) {
-      return blockConcurrentModification(concurrent)
-    }
+    blockingDecision(input, ownedAliases)?.let { return it }
 
     val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
       .map(::normalizeForAliasComparison)
       .toSet()
     val stageable = owned.filter { normalizeForAliasComparison(it) in deltaAliases }
-    return if (stageable.isEmpty()) FeatureTaskRuntimeCheckpointDecision.Skip
-    else FeatureTaskRuntimeCheckpointDecision.Stage(stageable)
+    return if (stageable.isEmpty()) {
+      FeatureTaskRuntimeCheckpointDecision.Skip
+    } else {
+      FeatureTaskRuntimeCheckpointDecision.Stage(stageable)
+    }
+  }
+
+  /**
+   * The guards that block a checkpoint before anything may be staged. Ordering is structural: a
+   * foreign governed spec is the broadest violation, then phase-introduced paths outside the owned
+   * inventory, then staged/concurrent overlaps with owned paths. Returns null when none apply, so
+   * [decide] may fall through to the stageable set.
+   */
+  private fun blockingDecision(
+    input: FeatureTaskRuntimeCheckpointScopeInput,
+    ownedAliases: Map<String, String>,
+  ): FeatureTaskRuntimeCheckpointDecision.Block? {
+    val foreign = input.phaseIntroducedPaths.filter { isForeignGovernedSpecPath(it, input.issueKey) }
+      .distinct().sorted().takeIf { it.isNotEmpty() }
+      ?.let { blockForeignGovernedSpec(input.issueKey, it) }
+    val outside = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
+      .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
+      .sorted().takeIf { it.isNotEmpty() }
+      ?.let { blockOutsideInventory(input.issueKey, it) }
+    // An owned path that someone else already staged is genuinely ambiguous: staging over it would
+    // commit their index content as this workflow's work, and restoring it would discard their
+    // staging. Neither is recoverable from the outside, so the only permitted outcome is a block.
+    val overlapping = input.foreignStagedPaths.filter(String::isNotBlank).distinct()
+      .mapNotNull { overlappingPath -> ownedAliases[normalizeForAliasComparison(overlappingPath)] }
+      .distinct().sorted().takeIf { it.isNotEmpty() }
+      ?.let { blockStagedOverlap(it) }
+    // The unstaged half of the same ambiguity: nobody staged the file, but its content is no longer
+    // the content this phase left behind, so committing it would attribute a stranger's edit here.
+    val concurrent = input.concurrentlyModifiedOwnedPaths.filter(String::isNotBlank).distinct()
+      .mapNotNull { modified -> ownedAliases[normalizeForAliasComparison(modified)] }
+      .distinct().sorted().takeIf { it.isNotEmpty() }
+      ?.let { blockConcurrentModification(it) }
+    return listOfNotNull(foreign, outside, overlapping, concurrent).firstOrNull()
   }
 
   /**
@@ -154,8 +158,7 @@ internal object FeatureTaskRuntimeCheckpointScope {
    * treating them as distinct would let a foreign staged entry slip past the overlap check and be
    * silently overwritten by the checkpoint's own staging.
    */
-  private fun normalizeForAliasComparison(path: String): String =
-    path.trim().trimEnd('/').lowercase(Locale.ROOT)
+  private fun normalizeForAliasComparison(path: String): String = path.trim().trimEnd('/').lowercase(Locale.ROOT)
 
   private fun blockForeignGovernedSpec(issueKey: String, paths: List<String>) =
     FeatureTaskRuntimeCheckpointDecision.Block(
@@ -165,13 +168,12 @@ internal object FeatureTaskRuntimeCheckpointScope {
         "resume.",
     )
 
-  private fun blockOutsideInventory(issueKey: String, paths: List<String>) =
-    FeatureTaskRuntimeCheckpointDecision.Block(
-      "needs_human: the active phase introduced path(s) outside its owned inventory: " +
-        "${formatPaths(paths)}. This workflow's authority boundary is '$issueKey' and its durable " +
-        "owned-path inventory; a checkpoint never commits a path it does not own. Bring those paths " +
-        "into the run's scope or revert them, then resume.",
-    )
+  private fun blockOutsideInventory(issueKey: String, paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
+    "needs_human: the active phase introduced path(s) outside its owned inventory: " +
+      "${formatPaths(paths)}. This workflow's authority boundary is '$issueKey' and its durable " +
+      "owned-path inventory; a checkpoint never commits a path it does not own. Bring those paths " +
+      "into the run's scope or revert them, then resume.",
+  )
 
   private fun blockStagedOverlap(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
     "git: owned path(s) ${formatPaths(paths)} are already staged outside this workflow, so the " +
@@ -200,22 +202,21 @@ internal object FeatureTaskRuntimeCheckpointScope {
  * which loop generation it belongs to — otherwise initial implementation, audit repair, and review
  * remediation checkpoints on one branch are indistinguishable after the fact.
  */
+internal class FeatureTaskRuntimeCheckpointIdentity(
+  val phaseId: String,
+  val loopId: String?,
+  val generation: Int,
+) {
+  override fun toString(): String = buildList {
+    add("phase=$phaseId")
+    loopId?.takeIf(String::isNotBlank)?.let { add("loop=$it") }
+    add("generation=$generation")
+  }.joinToString(" ")
+}
+
 internal object FeatureTaskRuntimeCheckpointMessage {
-  fun build(
-    issueKey: String,
-    branch: String,
-    phaseId: String,
-    loopId: String?,
-    generation: Int,
-    intent: String,
-  ): String {
-    val identity = buildList {
-      add("phase=$phaseId")
-      loopId?.takeIf(String::isNotBlank)?.let { add("loop=$it") }
-      add("generation=$generation")
-    }.joinToString(" ")
-    return "chore($issueKey): $intent checkpoint on '$branch' [$identity]"
-  }
+  fun build(issueKey: String, branch: String, identity: FeatureTaskRuntimeCheckpointIdentity, intent: String): String =
+    "chore($issueKey): $intent checkpoint on '$branch' [$identity]"
 
   const val INTENT_AUDITED_IMPLEMENTATION: String = "audited implementation"
   const val INTENT_REMEDIATION: String = "remediation"

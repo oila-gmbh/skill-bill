@@ -222,6 +222,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   }
 
   /**
+   * Scope tuning for [buildGoalReviewInput].
+   *
+   * @param dbOverride optional workflow-store override for the caller's run.
    * @param scopedUntrackedExclusions when present, supersedes the durable baseline untracked
    * inventory as the exclusion list. The caller widens it to every untracked path the run does not
    * own, so foreign worktree dirt cannot enter the input. Only the exclusion list is affected; the
@@ -229,15 +232,19 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
    * @param ownedPathspec the workflow-owned inventory the tracked delta is limited to. It bounds
    * which tracked files the input may contain; the base sha it is measured from is unaffected.
    */
+  internal class GoalReviewInputScope(
+    val dbOverride: String? = null,
+    val scopedUntrackedExclusions: List<String>? = null,
+    val ownedPathspec: List<String> = emptyList(),
+  )
+
   internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
-    dbOverride: String? = null,
-    scopedUntrackedExclusions: List<String>? = null,
-    ownedPathspec: List<String> = emptyList(),
+    scope: GoalReviewInputScope = GoalReviewInputScope(),
   ): GoalSubtaskReviewInputPreparation {
-    val durable = database.read(dbOverride) { unitOfWork ->
+    val durable = database.read(scope.dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
       val state = reviewStateFromArtifacts(artifacts)
@@ -251,16 +258,16 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     // sole authority. Every remediation pass from two onward is rescoped to that round's
     // diff(pre-fix tree -> HEAD), so the scope union the prompt states has a materialized input
     // behind it.
-    val exclusions = scopedUntrackedExclusions ?: state.baselineUntrackedPaths
+    val exclusions = scope.scopedUntrackedExclusions ?: state.baselineUntrackedPaths
     val remediationBaseline = state.remediationBaseSha
       ?.takeIf { (state.reservedPassNumber ?: 0) >= 2 }
       // The untracked exclusion list is not a per-pass detail: dropping it would materialize every
       // untracked file in the worktree into the pass-two input as an owned change. Only the base sha
       // is rescoped.
-      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, ownedPathspec) }
+      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, scope.ownedPathspec) }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, ownedPathspec),
+      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec),
       continuation.goalBranch,
     )
     val input = if (result.ok) {
@@ -273,11 +280,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
           continuation = continuation,
           failureReason = result.failureReason,
           failureMessage = result.error,
-          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, dbOverride),
+          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, scope.dbOverride),
         ),
       ) ?: return GoalSubtaskReviewInputBlocked(result.error)
     }
-    val persisted = persistGoalReviewInput(workflowId, input, dbOverride)
+    val persisted = persistGoalReviewInput(workflowId, input, scope.dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
   }

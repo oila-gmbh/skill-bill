@@ -8,8 +8,11 @@ import kotlin.concurrent.thread
 
 internal const val GIT_TIMEOUT_SECONDS = 30L
 
-internal fun runGitCommand(repoRoot: Path, vararg args: String): WorkflowGitOperationResult {
-  val argList = args.toList()
+internal fun runGitCommand(repoRoot: Path, vararg args: String): WorkflowGitOperationResult =
+  runGitCommand(repoRoot, args.toList())
+
+internal fun runGitCommand(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
+  val argList = args
   val result = runGitProcess(repoRoot, argList)
   return when {
     result.timedOut -> WorkflowGitOperationResult(

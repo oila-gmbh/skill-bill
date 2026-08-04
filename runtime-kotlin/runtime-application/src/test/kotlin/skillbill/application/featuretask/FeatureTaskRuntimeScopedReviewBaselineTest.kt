@@ -1,14 +1,14 @@
 package skillbill.application.featuretask
 
-import java.nio.file.Path
-import kotlin.test.Test
-import kotlin.test.assertEquals
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import java.nio.file.Path
+import kotlin.test.Test
+import kotlin.test.assertEquals
 
 private const val NUL: Char = '\u0000'
 

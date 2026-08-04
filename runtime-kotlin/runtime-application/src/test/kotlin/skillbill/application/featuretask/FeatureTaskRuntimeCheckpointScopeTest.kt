@@ -226,25 +226,19 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     val initial = FeatureTaskRuntimeCheckpointMessage.build(
       issueKey = ISSUE,
       branch = BRANCH,
-      phaseId = "audit",
-      loopId = null,
-      generation = 0,
+      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "audit", loopId = null, generation = 0),
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION,
     )
     val auditRepair = FeatureTaskRuntimeCheckpointMessage.build(
       issueKey = ISSUE,
       branch = BRANCH,
-      phaseId = "audit",
-      loopId = "audit_gap",
-      generation = 1,
+      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "audit", loopId = "audit_gap", generation = 1),
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
     )
     val reviewRemediation = FeatureTaskRuntimeCheckpointMessage.build(
       issueKey = ISSUE,
       branch = BRANCH,
-      phaseId = "review",
-      loopId = "review_fix",
-      generation = 2,
+      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "review", loopId = "review_fix", generation = 2),
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
     )
 

@@ -113,20 +113,18 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
     assertNotEquals(split, joined)
   }
 
-  private fun identity(
-    sequenceNumber: Int = 0,
-    commitSuffix: Int = 1,
-  ): FeatureTaskRuntimeCheckpointIdentity = FeatureTaskRuntimeCheckpointIdentity(
-    sequenceNumber = sequenceNumber,
-    issueKey = "SKILL-150",
-    branch = "feat/SKILL-150-scoped-checkpoint",
-    phaseId = "audit",
-    generation = 1,
-    ownedPathDigest = featureTaskRuntimeOwnedPathDigest(listOf("src/Owned.kt")),
-    ownedPathCount = 1,
-    commitSha = commitSuffix.toString(16).padStart(40, '0'),
-    recordedAt = "2026-08-04T00:00:00Z",
-    loopId = "audit_gap",
-    parentSha = "b".repeat(40),
-  )
+  private fun identity(sequenceNumber: Int = 0, commitSuffix: Int = 1): FeatureTaskRuntimeCheckpointIdentity =
+    FeatureTaskRuntimeCheckpointIdentity(
+      sequenceNumber = sequenceNumber,
+      issueKey = "SKILL-150",
+      branch = "feat/SKILL-150-scoped-checkpoint",
+      phaseId = "audit",
+      generation = 1,
+      ownedPathDigest = featureTaskRuntimeOwnedPathDigest(listOf("src/Owned.kt")),
+      ownedPathCount = 1,
+      commitSha = commitSuffix.toString(16).padStart(40, '0'),
+      recordedAt = "2026-08-04T00:00:00Z",
+      loopId = "audit_gap",
+      parentSha = "b".repeat(40),
+    )
 }

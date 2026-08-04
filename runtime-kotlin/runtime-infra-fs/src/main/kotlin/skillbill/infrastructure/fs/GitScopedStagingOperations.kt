@@ -29,7 +29,7 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
     normalized.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
       // `--all` scoped to explicit pathspecs, so a deleted owned path is staged as a deletion
       // instead of being silently skipped. Scope stays the listed paths; there is no `-A` here.
-      val staged = runGitCommand(repoRoot, *(listOf("add", "--all", "--") + batch).toTypedArray())
+      val staged = runGitCommand(repoRoot, listOf("add", "--all", "--") + batch)
       if (!staged.ok) return staged
     }
     return WorkflowGitOperationResult(status = "ok", value = "")
@@ -40,21 +40,14 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
     if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
     val entries = mutableListOf<String>()
     normalized.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
-      val listed = runGitCommand(
-        repoRoot,
-        *(listOf("ls-files", "--stage", "-z", "--") + batch).toTypedArray(),
-      )
+      val listed = runGitCommand(repoRoot, listOf("ls-files", "--stage", "-z", "--") + batch)
       if (!listed.ok) return listed
       entries += listed.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank)
     }
     return WorkflowGitOperationResult(status = "ok", value = entries.joinToString(GIT_NUL.toString()))
   }
 
-  override fun restoreIndexState(
-    repoRoot: Path,
-    paths: List<String>,
-    snapshot: String,
-  ): WorkflowGitOperationResult {
+  override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult {
     val normalized = paths.filter(String::isNotBlank).distinct()
     if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
     val entries = snapshot.split(GIT_NUL).filter(String::isNotBlank)
@@ -78,7 +71,7 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
     if (present.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
     val records = mutableListOf<String>()
     present.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
-      val hashed = runGitCommand(repoRoot, *(listOf("hash-object", "--") + batch).toTypedArray())
+      val hashed = runGitCommand(repoRoot, listOf("hash-object", "--") + batch)
       if (!hashed.ok) return hashed
       val hashes = hashed.value.orEmpty().lineSequence().map(String::trim).filter(String::isNotBlank).toList()
       // One sha per input path, in input order. A short read means some path was not hashed, and

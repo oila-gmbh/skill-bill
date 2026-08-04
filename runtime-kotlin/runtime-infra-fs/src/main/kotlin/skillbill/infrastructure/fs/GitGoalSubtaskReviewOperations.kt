@@ -246,7 +246,7 @@ private fun materializeReviewInput(
   val trackedDelta = indexTree?.takeIf(String::isNotBlank)?.let {
     val arguments = listOf("diff", "--binary", baseline.reviewBaseSha) +
       baseline.ownedPathspec.takeIf { spec -> spec.isNotEmpty() }?.let { spec -> listOf("--") + spec }.orEmpty()
-    goalReviewGitValue(repoRoot, *arguments.toTypedArray())
+    goalReviewGitValue(repoRoot, arguments)
   }
   val untracked = trackedDelta?.let { goalReviewUntrackedPaths(repoRoot) }
   val patches = untracked?.let { paths ->
