@@ -78,7 +78,7 @@ class RejectedOutputInspectCliCommand(
   ).flag(default = false)
 
   override fun run() {
-    database.read(state.dbOverride) { unitOfWork ->
+    database.selfManagedWrite(state.dbOverride) { unitOfWork ->
       RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
         RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput),
         System.out,

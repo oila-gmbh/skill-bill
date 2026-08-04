@@ -1,3 +1,14 @@
+## [2026-08-04] SKILL-155 typed bounded DB failure surface (subtask 2)
+Areas: runtime-kotlin/{runtime-contracts,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-155-read-path-db-lock-contention
+- SQLite open/read/transaction failures now convert to a typed `DatabaseAccessError` in `runtime-contracts/skillbill/error`; no `org.sqlite` type crosses the ports boundary from `SQLiteDatabaseSessionFactory` or `DatabaseRuntime`.
+- Error message is bounded and single-line: resolved DB path plus SQLite result code, with no JDBC detail or stack frames; transaction failures still roll back and no connection leaks on the failure path. reusable
+- `CliRuntime` and `GoalCliCommands` catch `DatabaseAccessError` and exit non-zero with a bounded monitor payload distinct from both `not_found` and the healthy payload; unrelated exceptions still propagate untouched.
+- Test lesson: the original negative CLI test passed vacuously through `runCatching` plus an ambient `GOAL_CONTINUATION` env var — CLI negative tests must pin an empty environment and assert a thrown exception. reusable
+- Revert-proofed both seams: deleting the typed conversion fails 4 infra-sqlite tests, deleting the CLI catch fails all 4 bounded-failure CLI tests.
+- Detekt `ThrowsCount` on the conversion seam was resolved by helper extraction, not suppression.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-03] SKILL-157 unbounded blocker remediation state (subtask 1)
 Areas: runtime-kotlin/{runtime-domain,runtime-application,runtime-contracts,runtime-infra-fs}, orchestration/contracts, .feature-specs/SKILL-157-unbounded-blocker-remediation-loops
 - `review_fix` and `audit_gap` carry no finite iteration cap: an unresolved Blocker (or `gaps_found`) re-enters `implement_fix`/implementation at any iteration count, and the first Blocker-free review advances regardless of how many passes ran.

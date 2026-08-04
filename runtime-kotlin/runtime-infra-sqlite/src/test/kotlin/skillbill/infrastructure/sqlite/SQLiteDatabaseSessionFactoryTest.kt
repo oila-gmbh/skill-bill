@@ -1,12 +1,15 @@
 package skillbill.infrastructure.sqlite
 
+import skillbill.db.core.DatabaseRuntime
 import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.nio.file.Files
+import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -88,6 +91,65 @@ class SQLiteDatabaseSessionFactoryTest {
   }
 
   @Test
+  fun `the read seam hands out a connection without write capability`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-only-open")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-read-only"))
+    }
+
+    DatabaseRuntime.openReadDb(cliValue = dbPath.toString(), environment = emptyMap(), userHome = tempDir)
+      .use { openDb ->
+        assertEquals(
+          "running",
+          workflowStatus(openDb.connection, "wfl-read-only"),
+          "A read-only open must still serve queries against a WAL database closed by its writer.",
+        )
+        assertFailsWith<SQLException>("The read seam must not hand out a write-capable connection.") {
+          openDb.connection.createStatement().use {
+            it.executeUpdate("UPDATE feature_task_workflows SET workflow_status = 'tampered'")
+          }
+        }
+        assertFailsWith<SQLException>("The read seam must not permit schema mutation.") {
+          openDb.connection.createStatement().use { it.execute("CREATE TABLE read_path_probe (x TEXT)") }
+        }
+      }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      assertEquals("running", workflowStatus(connection, "wfl-read-only"))
+      assertFalse(tableExists(connection, "read_path_probe"), "The read seam must leave no schema behind.")
+    }
+  }
+
+  @Test
+  fun `the read seam serves a query while another connection holds the writer lock`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-only-contention")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-read-only-contention"))
+    }
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
+      try {
+        val startedAt = System.nanoTime()
+        val status = database.read(dbPath.toString()) { unitOfWork ->
+          unitOfWork.workflowStates.getFeatureImplementWorkflow("wfl-read-only-contention")?.workflowStatus
+        }
+        val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
+        assertEquals("running", status)
+        // Well inside the 5000 ms busy_timeout, so a pass proves the read never contended for the
+        // write lock rather than having waited one out.
+        assertTrue(elapsedMillis < 1_000, "A contended read must return promptly, took ${elapsedMillis}ms.")
+      } finally {
+        writer.createStatement().use { it.execute("ROLLBACK") }
+      }
+    }
+  }
+
+  @Test
   fun `write transactions reserve the writer before entering the transaction block`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-write-reservation")
     val dbPath = tempDir.resolve("metrics.db")
@@ -146,7 +208,9 @@ class SQLiteDatabaseSessionFactoryTest {
       it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.updatedAt
     }
     val ownership = expiredOwnership(workflowId)
-    database.read(dbPath.toString()) { it.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, updatedAt) }
+    database.selfManagedWrite(dbPath.toString()) {
+      it.workflowStates.acquireFeatureTaskRuntimeWorker(ownership, updatedAt)
+    }
 
     // The production reconciler and goal-parent both call the reconcile write inside
     // database.transaction; assert that composition succeeds instead of raising a nested BEGIN.
@@ -196,6 +260,20 @@ class SQLiteDatabaseSessionFactoryTest {
     phaseId = "implement",
     phaseAttempt = 1,
   )
+
+  private fun workflowStatus(connection: Connection, workflowId: String): String? = connection
+    .prepareStatement("SELECT workflow_status FROM feature_task_workflows WHERE workflow_id = ?")
+    .use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeQuery().use { rows -> if (rows.next()) rows.getString(1) else null }
+    }
+
+  private fun tableExists(connection: Connection, table: String): Boolean = connection
+    .prepareStatement("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .use { statement ->
+      statement.setString(1, table)
+      statement.executeQuery().use { rows -> rows.next() }
+    }
 
   private fun workflowRecord(workflowId: String) = WorkflowStateRecord(
     workflowId = workflowId,

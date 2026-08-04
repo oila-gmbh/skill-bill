@@ -1,6 +1,6 @@
 # SKILL-155 Subtask 2 - Typed Bounded Database Failure Surface
 
-Parent spec: [.feature-specs/SKILL-155-read-path-db-lock-contention/spec.md](./spec.md)
+Parent spec: [.feature-specs/SKILL-155-read-path-db-lock-contention/spec.md](spec.md)
 Issue key: SKILL-155
 
 ## Scope
