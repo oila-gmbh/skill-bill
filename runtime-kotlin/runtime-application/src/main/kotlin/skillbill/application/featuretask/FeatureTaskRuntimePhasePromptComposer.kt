@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
@@ -40,8 +41,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorBlockerFindingIds: List<String> = emptyList(),
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
+    priorTerminalFailure: String? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
+    implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -65,7 +68,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
+      // The three are mutually exclusive by construction: a semantically incomplete receipt never sets
+      // priorSchemaFailure (it is not schema-invalid), a real schema failure produces no continuation
+      // projection, and a retryable terminal envelope is schema-valid so it sets neither. A prompt
+      // therefore carries at most one of them.
+      implementationContinuationDirective(briefing.phaseId, implementationContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure),
+      terminalRetryDirective(priorTerminalFailure),
       outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
@@ -475,8 +484,22 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      {\"criterion\":\"AC-003\",\"severity\":\"major\",\"location\":\"ReviewRunner.merge\",\n" +
       "       \"file\":\"ReviewRunner.kt\",\"issue\":\"Rejected lanes are omitted\",\n" +
       "       \"fix\":\"Include rejected lanes in the aggregate\"}.\n" +
-      "      Do not emit unmet_criteria, audit_repair_plan, gap IDs, repair-item IDs, dependency arrays,\n" +
-      "      acceptance-criterion text, or repeated paths; the runtime derives its durable repair model.\n" +
+      "      A gaps entry never carries a gap ID, a repair-item ID, a dependency array, acceptance-criterion\n" +
+      "      text, or repeated paths, and produced_outputs never carries unmet_criteria, audit_repair_plan,\n" +
+      "      or prior_gap_dispositions; the runtime derives its durable repair model.\n" +
+      "      Carried gaps are the exception: they are addressed by gap_id, in\n" +
+      "      produced_outputs.carried_gap_dispositions (one entry per carried gap you verified is no longer\n" +
+      "      present) and produced_outputs.blast_radius_inspection (required before any satisfied verdict in a\n" +
+      "      follow-up round). Example:\n" +
+      "      \"carried_gap_dispositions\":[{\"gap_id\":\"ac-006-gap-1\",\"status\":\"resolved\",\n" +
+      "       \"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"AuditGates.kt:56\",\n" +
+      "       \"check_ref\":\"AC-006\"}}],\n" +
+      "      \"blast_radius_inspection\":{\"inspected_paths\":[\"AuditGates.kt\"],\n" +
+      "       \"newly_introduced_gap_ids\":[],\"evidence\":{\"observation\":\"resolution_verified\",\n" +
+      "       \"artifact_ref\":\"AuditGates.kt\",\"check_ref\":\"AC-006\"}}.\n" +
+      "      status resolved pairs only with observation resolution_verified, and status recurring only with\n" +
+      "      recurrence_verified. A carried gap you dispositioned resolved must NOT also appear in gaps, and a\n" +
+      "      carried gap that still recurs is re-reported in gaps instead of dispositioned.\n" +
       "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
       "      NEVER trigger gaps_found. Those entries use their own shape, not the gap shape:\n" +
       "      severity (minor or nit) is required, acceptance_criterion_ref and message are expected.\n" +
@@ -510,7 +533,12 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
         "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
         "      a preference for a different repair approach never makes a resolved gap recurring. Emit a\n" +
-        "      compact gap only when one of the carried gaps still recurs; otherwise emit satisfied with gaps [].\n"
+        "      compact gap only when one of the carried gaps still recurs. Every carried gap you verified is\n" +
+        "      fixed needs its own produced_outputs.carried_gap_dispositions entry with status resolved and\n" +
+        "      resolution_verified evidence: silence about a carried gap claims nothing and is rejected. A\n" +
+        "      satisfied verdict in this round therefore carries gaps [], one carried_gap_dispositions entry\n" +
+        "      per carried gap, and produced_outputs.blast_radius_inspection over the repair batch's changed\n" +
+        "      production paths.\n"
     }
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =

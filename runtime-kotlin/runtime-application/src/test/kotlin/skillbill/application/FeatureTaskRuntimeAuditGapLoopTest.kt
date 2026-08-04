@@ -102,13 +102,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
   @Test
   fun `final audit repair iteration is committed before review`() {
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").apply {
-      worktreeStatusValue = " M src/Foo.kt"
-    }
+    // The tree is clean when ownership is baselined at branch setup; the file is this run's work
+    // because a writing phase is what makes it appear.
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val delegate = auditGapLauncher(convergeOnAudit = 2)
     var commitMessagesObservedAtReview: List<String> = emptyList()
     val launcher = RuntimeRecordingLauncher { request ->
       val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "implement" || phaseId == "implement_fix") {
+        git.worktreeStatusValue = " M src/Foo.kt"
+        git.ownedPathsValue = listOf("src/Foo.kt")
+      }
       if (phaseId == "review") {
         commitMessagesObservedAtReview = git.createCommitMessages.toList()
       }
@@ -124,7 +128,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, commitMessagesObservedAtReview.size)
     assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
     assertContains(commitMessagesObservedAtReview[1], "audited implementation checkpoint")
-    assertEquals(2, git.stageAllCalls)
+    assertEquals(2, git.stagePathsCalls.size, "each checkpoint stages exactly its owned inventory")
   }
 
   @Test
@@ -442,10 +446,21 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
+    // Naming the gap recurring while dropping it from the reported gaps is the defect the carried-gap
+    // disposition gate catches first, ahead of the reopened closed criterion the same output also carries:
+    // the substitution starts with the recurring gap losing its identity, and that is what the agent must undo.
     assertPrivateDiagnosticRejection(
       report.blockedReason,
-      "audit-closed-criterion",
-      "durably closed acceptance criteria [AC-003]",
+      "audit-followup-evidence",
+      "ac-002-gap-1",
+    )
+    val auditPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertRetryPromptNamesConstraint(
+      auditPrompts.last(),
+      "audit-followup-evidence",
+      "must appear as a reported gap",
     )
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
@@ -503,9 +518,16 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    val error = assertFailsWith<InvalidWorkflowStateSchemaError> { harness.runner.run(harness.request()) }
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertContains(error.message.orEmpty(), "never carried")
+    // The producer gate owns this defect, not the durable write: an exception inside the recording
+    // transaction would end the run with no block and no repair prompt, so the gate names the uncarried
+    // gap to the agent and re-enters the bounded audit fix loop instead.
+    assertPrivateDiagnosticRejection(report.blockedReason, "audit-followup-evidence", "ac-002-gap-1")
+    val auditPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertRetryPromptNamesConstraint(auditPrompts[1], "audit-followup-evidence", "carries no unresolved gap")
     assertEquals(
       null,
       harness.recorder.loadAuditRepairState(WORKFLOW_ID),
@@ -575,7 +597,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val loopedFinished = looped.lifecycle.finishedRecords.single()
     assertEquals(2, loopedFinished.auditGapIterationCount, "two audit-gap iterations are reflected in telemetry")
     assertEquals(false, loopedFinished.auditFirstPassConvergence)
-    assertEquals(0, loopedFinished.auditRecurringGapCount)
+    // Cumulative over the generation history, like every other counter here: the second audit re-reported
+    // ac-002-gap-1 under its existing identity, and that recurrence stays counted after it resolves.
+    assertEquals(1, loopedFinished.auditRecurringGapCount)
     assertEquals(2, loopedFinished.auditAttemptedRepairItemCount)
     assertEquals(2, loopedFinished.auditResolvedRepairItemCount)
 
@@ -835,6 +859,17 @@ private fun auditCriterionRegenerationOutput(disposition: String): String = """
   }
 """.trimIndent()
 
+// A follow-up audit that ends the loop owes both halves of AC-006: a disposition for every carried gap and
+// the repair batch's blast-radius inspection. An initial audit carries neither, so `followUp` drives both.
+private const val FOLLOW_UP_SATISFIED_EVIDENCE =
+  ",\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"resolved\"," +
+    "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"runtime-kotlin\"," +
+    "\"check_ref\":\"AC-002\"}}]" +
+    ",\"blast_radius_inspection\":{\"inspected_paths\":[\"runtime-kotlin\"]," +
+    "\"newly_introduced_gap_ids\":[]," +
+    "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"runtime-kotlin\"," +
+    "\"check_ref\":\"AC-002\"}}"
+
 internal fun auditSatisfiedOutput(followUp: Boolean = true): String = """
   {
     "contract_version": "0.2",
@@ -843,7 +878,7 @@ internal fun auditSatisfiedOutput(followUp: Boolean = true): String = """
     "summary": "Every acceptance criterion is met.",
     "verdict": "satisfied",
     "produced_outputs": {
-      "unmet_criteria": []${if (followUp) ",\"prior_gap_dispositions\":[{\"gap_id\":\"ac-002-gap-1\",\"status\":\"resolved\",\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"runtime-kotlin\",\"check_ref\":\"AC-002\"}}]" else ""}
+      "unmet_criteria": []${if (followUp) FOLLOW_UP_SATISFIED_EVIDENCE else ""}
     }
   }
 """.trimIndent()

@@ -560,7 +560,12 @@ private fun skill128SatisfiedOutput(): String = """
         {"gap_id":"ac-001-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"src/Production.kt","check_ref":"AC-001"}},
         {"gap_id":"ac-002-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"src/Integration.kt","check_ref":"AC-002"}},
         {"gap_id":"ac-003-gap-1","status":"resolved","evidence":{"observation":"resolution_verified","artifact_ref":"test/RegressionTest.kt","check_ref":"AC-003"}}
-      ]
+      ],
+      "blast_radius_inspection":{
+        "inspected_paths":["src/Production.kt","src/Integration.kt"],
+        "newly_introduced_gap_ids":[],
+        "evidence":{"observation":"resolution_verified","artifact_ref":"src/Production.kt","check_ref":"AC-001"}
+      }
     }
   }
 """.trimIndent()

@@ -991,7 +991,9 @@ private fun canonicalRepositoryRoot(start: Path): Path {
 private fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {
     this["status"] == "not_found" -> "not_found"
-    this["paused"] == true || this["pause_requested"] == true -> "goal_paused"
+    // Only a reached pause is terminal. `pause_requested` is deferred to the next launch boundary, so
+    // the current subtask keeps running; stopping on the request blinds the monitor for the rest of it.
+    this["paused"] == true -> "goal_paused"
     (this["pending_count"] as? Number)?.toInt() == 0 -> "goal_terminal"
     idleStop -> "goal_idle"
     maxRefreshes > 0 && refreshCount >= maxRefreshes -> "max_refreshes"

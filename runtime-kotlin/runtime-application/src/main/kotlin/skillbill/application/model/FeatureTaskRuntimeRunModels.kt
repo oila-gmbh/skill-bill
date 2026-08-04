@@ -6,6 +6,9 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.config.model.CompactionSettings
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
@@ -254,6 +257,28 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val resumed: Boolean,
     val model: String? = null,
     val effort: String? = null,
+    /**
+     * Set when this start is itself a re-entry — a crash resume or a process retry. Without it a
+     * telemetry consumer could distinguish neither from a first attempt, and the `resumed` flag alone
+     * does not separate a resumed process from a relaunched one. Null on a genuine first attempt.
+     */
+    val continuationKind: String? = null,
+  ) : FeatureTaskRuntimeRunEvent
+
+  /**
+   * A backward-edge re-entry: a verifier (audit or review) sending work back to an earlier phase.
+   *
+   * Emitted so the event stream carries the same five-way continuation distinction the status
+   * projection reports. Previously the loop edge appended a ledger entry but emitted no event, so a
+   * telemetry consumer saw the re-entered phase simply start again with no stated cause.
+   */
+  data class PhaseLoopEdge(
+    override val workflowId: String,
+    override val phaseId: String,
+    val loopId: String,
+    val edgeIteration: Int,
+    val drivingVerdict: String,
+    val continuationKind: String,
   ) : FeatureTaskRuntimeRunEvent
 
   data class PhaseFixLoopIteration(
@@ -262,6 +287,13 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val resolvedAgentId: String,
     val attemptCount: Int,
     val fixLoopIteration: Int,
+    /**
+     * Which KIND of re-entry this is. A bare iteration counter said only "the phase ran again",
+     * which read identically whether the runtime was correcting malformed JSON, continuing partial
+     * implementation work, recovering a crashed process, or re-entering from audit. The axis is
+     * additive-optional: a legacy consumer that ignores it still sees the counter it always saw.
+     */
+    val continuationKind: String? = null,
   ) : FeatureTaskRuntimeRunEvent
 
   data class PhaseCompleted(
@@ -303,3 +335,25 @@ sealed interface FeatureTaskRuntimeFixLoopDecision {
 
   data class Block(val blockedReason: String) : FeatureTaskRuntimeFixLoopDecision
 }
+
+/**
+ * The bounded prior receipt plus the still-open obligations a continuation segment needs.
+ *
+ * Reconstructed entirely from durable records, so an in-process retry and a fresh-process crash resume
+ * derive an identical projection: it does not read the latest in-memory prompt, and it does not read
+ * the phase-records artifact, which is put()-replaced per phase id and therefore cannot hold a prior
+ * receipt at all.
+ */
+data class FeatureTaskRuntimeImplementationContinuation(
+  val phaseId: String,
+  val segmentNumber: Int,
+  val completedTaskIds: List<String>,
+  val openObligationIds: List<String>,
+  val obligationNoun: String,
+  val changedPaths: List<String>,
+  val deviations: List<FeatureTaskRuntimeReceiptDeviation>,
+  val unresolvedItems: List<String>,
+  val reconciliationEvidence: FeatureTaskRuntimeReceiptReconciliation?,
+  val repositoryCheckpoint: FeatureTaskRuntimeReceiptCheckpoint?,
+  val failureDisposition: String?,
+)

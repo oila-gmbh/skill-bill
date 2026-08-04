@@ -1955,6 +1955,20 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire",
+      // SKILL-150: durable append-only implementation-attempt history (the continuation projection's
+      // only source of prior receipts) and its domain-owned schema validator port, mirroring the
+      // quarantine store above.
+      "skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",

@@ -76,6 +76,7 @@ object FeatureTaskRuntimeHandoffContract {
     reentryGapCriteria: List<String> = emptyList(),
     auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
     auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+    activeRepairBatch: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch? = null,
     durablyClosedCriterionRefs: List<String> = emptyList(),
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
@@ -95,6 +96,7 @@ object FeatureTaskRuntimeHandoffContract {
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,
     auditRepairState = auditRepairState,
+    activeRepairBatch = activeRepairBatch,
     durablyClosedCriterionRefs = durablyClosedCriterionRefs,
   )
 }

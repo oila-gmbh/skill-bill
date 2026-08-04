@@ -79,6 +79,7 @@ class DatabaseMigrationsTest {
         20 to "add-goal-runner-control-state",
         21 to "add-delegated-review-lifecycle-projection",
         22 to "drop-delegated-review-lifecycle-tables",
+        23 to "add-feature-task-runtime-audit-generations",
       ),
       migrationDefinitions,
     )

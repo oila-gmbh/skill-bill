@@ -4,6 +4,7 @@ import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
@@ -99,6 +100,75 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals("implement", projection.currentPhaseId)
     assertEquals("completed", projection.phases.single { it.phaseId == "plan" }.status)
     assertEquals("blocked", projection.phases.single { it.phaseId == "implement" }.status)
+  }
+
+  @Test
+  fun `crash resume process retry and verifier reentry all surface as continuation kinds`() {
+    val cases = listOf(
+      Triple(FeatureTaskRuntimePhaseLedgerAction.RESUME, FeatureTaskRuntimeContinuationKind.CRASH_RESUME, ""),
+      Triple(FeatureTaskRuntimePhaseLedgerAction.START, FeatureTaskRuntimeContinuationKind.PROCESS_RETRY, ""),
+      Triple(
+        FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
+        FeatureTaskRuntimeContinuationKind.VERIFIER_REENTRY,
+        " driving_verdict=gaps_found",
+      ),
+      Triple(
+        FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
+        FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
+        "",
+      ),
+    )
+
+    cases.forEach { (action, kind, trailing) ->
+      val harness = statusHarness()
+      harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+      harness.recordRunning("implement", attemptCount = 2)
+      harness.recordContinuationLedger(
+        phaseId = "implement",
+        attemptCount = 2,
+        action = action,
+        kind = kind,
+        trailingDetail = trailing,
+      )
+
+      val projection = requireNotNull(
+        harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+      )
+
+      assertEquals(
+        kind.wireValue,
+        projection.phases.single { it.phaseId == "implement" }.continuationKind,
+        "$action must surface ${kind.wireValue} rather than being filtered out of the lookup",
+      )
+    }
+  }
+
+  @Test
+  fun `the newest continuation entry across actions wins`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordRunning("implement", attemptCount = 3)
+    harness.recordContinuationLedger(
+      phaseId = "implement",
+      attemptCount = 2,
+      action = FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
+      kind = FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION,
+    )
+    harness.recordContinuationLedger(
+      phaseId = "implement",
+      attemptCount = 3,
+      action = FeatureTaskRuntimePhaseLedgerAction.RESUME,
+      kind = FeatureTaskRuntimeContinuationKind.CRASH_RESUME,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals(
+      FeatureTaskRuntimeContinuationKind.CRASH_RESUME.wireValue,
+      projection.phases.single { it.phaseId == "implement" }.continuationKind,
+    )
   }
 
   @Test
@@ -449,6 +519,23 @@ class FeatureTaskRuntimeStatusServiceTest {
       ),
     )
 
+    fun recordContinuationLedger(
+      phaseId: String,
+      attemptCount: Int,
+      action: FeatureTaskRuntimePhaseLedgerAction,
+      kind: FeatureTaskRuntimeContinuationKind,
+      trailingDetail: String = "",
+    ) = recorder.appendLedgerEntry(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = WORKFLOW_ID,
+        action = action,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = DEFAULT_LEDGER_AGENT,
+        blockedReason = FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX + kind.wireValue + trailingDetail,
+      ),
+    )
+
     fun recordLoopEdge(
       phaseId: String,
       attemptCount: Int,
@@ -486,6 +573,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   private companion object {
     const val WORKFLOW_ID = "wftr-20260603-status-0001"
     const val SESSION_ID = "ftr-status-001"
+    const val DEFAULT_LEDGER_AGENT = "claude"
   }
 }
 
@@ -514,6 +602,8 @@ private class StatusFakeDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val featureTaskRuntimeAuditGenerations =
+      skillbill.ports.persistence.EmptyFeatureTaskRuntimeAuditGenerationRepository
   }
 }
 

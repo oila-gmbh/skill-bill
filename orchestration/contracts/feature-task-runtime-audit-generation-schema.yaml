@@ -1,0 +1,225 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-audit-generation-schema.yaml"
+title: "Feature-task-runtime audit generation"
+description: >
+  One append-only completeness-audit generation. A generation is the sole durable authority for what an
+  audit inspected, at which repository checkpoint it decided, which gaps it opened or carried, how each
+  carried gap moved, and how the repair batch it authorized was disposed. Rows are insert-only: a later
+  plan or checkpoint appends the next ordinal and never rewrites an earlier one.
+x-coherence-checks:
+  append-only-ordinal: "generation_ordinal is unique per workflow and assigned in strictly increasing insert order; an existing generation is never updated or deleted."
+  full-criterion-inspection: "inspected_criteria covers every acceptance criterion in run scope exactly once; satisfied_criterion_refs and the gaps' criteria partition it."
+  stable-gap-identity: "A gap carried from an earlier generation reuses its criterion-generation gap_id; identity reallocation for a live gap is a violation."
+  recurrence-monotonicity: "recurrence_count is non-decreasing for one gap_id across generations and increments only when that same identity is reported again as recurring."
+  terminal-state-closure: "state 'resolved' and 'superseded' are terminal for that gap_id; 'new', 'recurring', and 'still_open' leave it open."
+  closure-complete-repair-batch: "A generation that authorizes its own batch (batch_id 'batch-<own ordinal>') declares exactly the ordered repair items of its open gaps; a generation carrying an earlier batch declares that batch's items, every one belonging to a gap it lists. A gap with no repair item cannot be open."
+  single-active-batch: "At most one batch is active per workflow: the latest generation's batch, and only while it is not closure-complete."
+  terminal-disposition-coverage: "Every repair_item_id in the batch that carries a disposition names a repair item the same batch declares, at most once."
+  governed-supersession: "A disposition of 'superseded' requires governance_evidence; fixed and already_satisfied must omit it."
+  blast-radius-before-satisfied: "A follow-up generation that dispositions a carried batch must carry blast_radius_inspection; newly discovered defects there open new gap identities in this generation rather than mutating carried ones."
+  test-adequacy-excluded: "Test adequacy, coverage, fixtures, and assertions are not audit gaps; validation owns test execution, so no gap or evidence reference may name one."
+  evidence-reference-bound: "Evidence references are capped at 256 characters at both layers so an encoded source body cannot ride into durable state as a reference."
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - generation_ordinal
+  - repository_checkpoint
+  - inspected_criteria
+  - satisfied_criterion_refs
+  - gaps
+  - repair_batch
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  generation_ordinal:
+    type: integer
+    minimum: 1
+    maximum: 10000
+    description: "Per-workflow insert order of this generation, from 1. Never reused, never renumbered."
+  repository_checkpoint:
+    $ref: "#/$defs/repositoryCheckpoint"
+  inspected_criteria:
+    type: array
+    minItems: 1
+    maxItems: 200
+    items: { $ref: "#/$defs/criterionInspection" }
+  satisfied_criterion_refs:
+    type: array
+    maxItems: 200
+    uniqueItems: true
+    items: { $ref: "#/$defs/criterionRef" }
+  gaps:
+    type: array
+    maxItems: 50
+    items: { $ref: "#/$defs/generationGap" }
+  repair_batch:
+    $ref: "#/$defs/repairBatch"
+  blast_radius_inspection:
+    $ref: "#/$defs/blastRadiusInspection"
+$defs:
+  nonBlank:
+    type: string
+    minLength: 1
+    maxLength: 2048
+    pattern: ".*\\S.*"
+  # Same accept/reject rule as the audit-repair-plan contract's compactSummary: a gap or repair
+  # description has to be able to name symbols, so `=`, `[]`, and `<>` are ordinary content, while
+  # pasted payloads are excluded structurally. requireDurableText in the domain layer pins the
+  # matching rule so the two layers cannot drift.
+  compactSummary:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - pattern: "^[^\\n\\r\\t]+$"
+      - not: { pattern: "```" }
+      - not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" }
+      - not: { pattern: "(?i)^\\s*(system|user|assistant|developer|tool)(?:\\s+(?:prompt|message|output))?\\s*:" }
+  artifactRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.#-]+)?$"
+  checkRef:
+    type: string
+    minLength: 1
+    maxLength: 256
+    pattern: "^(?:AC-[0-9]{3}|F-[0-9]{3}|[A-Za-z][A-Za-z0-9_.-]*(?:Test|Check)(?::[A-Za-z0-9_.#-]+)?)$"
+  criterionRef:
+    type: string
+    pattern: "^AC-[0-9]{3}$"
+  gapId:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - pattern: "^ac-[0-9]{3,}-gap-[1-9][0-9]*$"
+  repairItemId:
+    allOf:
+      - { $ref: "#/$defs/nonBlank" }
+      - pattern: "^ac-[0-9]{3,}-gap-[1-9][0-9]*-item-[1-9][0-9]*$"
+  evidence:
+    type: object
+    additionalProperties: false
+    required: [observation, artifact_ref, check_ref]
+    properties:
+      observation:
+        enum:
+          - required_behavior_absent
+          - verification_failed
+          - contract_rejected
+          - state_mismatch
+          - fix_verified
+          - already_satisfied_verified
+          - resolution_verified
+          - recurrence_verified
+      artifact_ref: { $ref: "#/$defs/artifactRef" }
+      check_ref: { $ref: "#/$defs/checkRef" }
+  repositoryCheckpoint:
+    type: object
+    additionalProperties: false
+    required: [fingerprint]
+    properties:
+      fingerprint:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^\\S(?:.*\\S)?$"
+        description: "The repository checkpoint at which this generation's decision was made."
+  criterionInspection:
+    type: object
+    additionalProperties: false
+    required: [acceptance_criterion_ref, inspection_verdict]
+    properties:
+      acceptance_criterion_ref: { $ref: "#/$defs/criterionRef" }
+      inspection_verdict:
+        enum: [satisfied, gap]
+  generationGap:
+    type: object
+    additionalProperties: false
+    required:
+      - gap_id
+      - acceptance_criterion_ref
+      - acceptance_criterion_text
+      - state
+      - recurrence_count
+      - failure_evidence
+      - diagnosis
+      - affected_boundary
+      - repair_item_ids
+    properties:
+      gap_id: { $ref: "#/$defs/gapId" }
+      acceptance_criterion_ref: { $ref: "#/$defs/criterionRef" }
+      acceptance_criterion_text: { $ref: "#/$defs/compactSummary" }
+      state:
+        enum: [new, recurring, resolved, superseded, still_open]
+      recurrence_count:
+        type: integer
+        minimum: 0
+        maximum: 10000
+        description: "Durable count of times this same gap_id was re-reported after a repair claimed to close it."
+      failure_evidence: { $ref: "#/$defs/evidence" }
+      diagnosis: { $ref: "#/$defs/compactSummary" }
+      affected_boundary: { $ref: "#/$defs/compactSummary" }
+      repair_item_ids:
+        type: array
+        maxItems: 100
+        uniqueItems: true
+        items: { $ref: "#/$defs/repairItemId" }
+  governanceEvidence:
+    type: object
+    additionalProperties: false
+    required: [governing_decision, authority_ref, rationale]
+    properties:
+      governing_decision: { $ref: "#/$defs/compactSummary" }
+      authority_ref: { $ref: "#/$defs/artifactRef" }
+      rationale: { $ref: "#/$defs/compactSummary" }
+  repairItemDisposition:
+    type: object
+    additionalProperties: false
+    required: [repair_item_id, disposition, result_evidence]
+    properties:
+      repair_item_id: { $ref: "#/$defs/repairItemId" }
+      disposition:
+        enum: [fixed, already_satisfied, superseded]
+      result_evidence: { $ref: "#/$defs/evidence" }
+      governance_evidence: { $ref: "#/$defs/governanceEvidence" }
+  repairBatch:
+    type: object
+    additionalProperties: false
+    required: [batch_id, repair_item_ids, repair_item_dispositions]
+    properties:
+      batch_id:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^batch-[1-9][0-9]*$"
+        description: >
+          Stable per-workflow batch identity 'batch-<ordinal of the generation that authorized it>'. A
+          generation that records dispositions for an earlier batch repeats that batch's id rather than
+          minting a new one, so the batch keeps one identity from authorization to closure.
+      repair_item_ids:
+        type: array
+        maxItems: 100
+        uniqueItems: true
+        items: { $ref: "#/$defs/repairItemId" }
+      repair_item_dispositions:
+        type: array
+        maxItems: 100
+        items: { $ref: "#/$defs/repairItemDisposition" }
+  blastRadiusInspection:
+    type: object
+    additionalProperties: false
+    required: [inspected_paths, newly_introduced_gap_ids, evidence]
+    properties:
+      inspected_paths:
+        type: array
+        minItems: 1
+        maxItems: 100
+        uniqueItems: true
+        items: { $ref: "#/$defs/artifactRef" }
+        description: "Production paths the disposed repair batch changed, read as repository facts only."
+      newly_introduced_gap_ids:
+        type: array
+        maxItems: 50
+        uniqueItems: true
+        items: { $ref: "#/$defs/gapId" }
+      evidence: { $ref: "#/$defs/evidence" }

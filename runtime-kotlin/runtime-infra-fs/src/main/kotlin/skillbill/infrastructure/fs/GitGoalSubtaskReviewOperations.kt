@@ -241,8 +241,12 @@ private fun materializeReviewInput(
   val indexTree = baseIsAncestor?.takeIf { it.ok }?.let {
     goalReviewGitValue(repoRoot, "write-tree")?.trim()
   }
+  // Pathspec-limited to the workflow-owned inventory: a tracked file this run does not own stays
+  // out of the review input no matter how dirty the worktree is around it.
   val trackedDelta = indexTree?.takeIf(String::isNotBlank)?.let {
-    goalReviewGitValue(repoRoot, "diff", "--binary", baseline.reviewBaseSha)
+    val arguments = listOf("diff", "--binary", baseline.reviewBaseSha) +
+      baseline.ownedPathspec.takeIf { spec -> spec.isNotEmpty() }?.let { spec -> listOf("--") + spec }.orEmpty()
+    goalReviewGitValue(repoRoot, arguments)
   }
   val untracked = trackedDelta?.let { goalReviewUntrackedPaths(repoRoot) }
   val patches = untracked?.let { paths ->

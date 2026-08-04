@@ -21,6 +21,12 @@ data class FeatureTaskRuntimePhaseStatus(
   val resolvedAgentId: String?,
   val finished: Boolean,
   val executionOrigin: String? = null,
+  /**
+   * Why this phase last re-entered, when it did. Null when the phase never re-ran. Reported instead
+   * of leaving an operator to guess from a bare attempt count whether the runtime was correcting
+   * malformed output or carrying partial implementation work forward.
+   */
+  val continuationKind: String? = null,
 )
 
 /**
@@ -54,6 +60,12 @@ data class FeatureTaskRuntimeAuditRepairStatus(
   val attemptedRepairItemCount: Int,
   val resolvedRepairItemCount: Int,
   val auditGapIterationCount: Int,
+  /**
+   * Set when the replaceable audit-repair cache's loop counter disagrees with the value derived from the
+   * durable generations and ledger. The reported counters are always the derived ones; this names the
+   * disagreement so bookkeeping drift is visible without taking the status projection down.
+   */
+  val cachedCounterDisagreement: String? = null,
 )
 
 data class FeatureTaskRuntimeDecomposeTerminalStatus(

@@ -5,6 +5,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -140,6 +141,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "\"validation_result\": {")
     assertContains(prompt, "\"repository_checkpoint\": { \"fingerprint\":")
     assertContains(prompt, "never a prefixed string")
+  }
+
+  // A gate run recompiles every dependent module and reruns its suites, so per-fix reruns dominate the
+  // phase's wall clock. The prompt must ask for one batched repair pass, not fix-then-rerun iteration.
+  @Test
+  fun `validate prompt batches repair instead of rerunning the gate per fix`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+    )
+
+    assertContains(prompt, "read the complete finding set from one gate run")
+    assertContains(prompt, "only then run the gate again to verify")
+    assertContains(prompt, "Never rerun the gate after an individual fix")
+    assertContains(prompt, "share one root cause are one fix")
   }
 
   @Test
@@ -606,6 +622,38 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `a retryable terminal envelope is prompted to retry, not told it was rejected`() {
+    // AC-004: the envelope validated. Rendering it through the schema-correction directive told its
+    // author the output was rejected and had to be re-emitted, describing an event that never happened.
+    val reason = "Implement phase reported blocked: the target module does not compile on this branch."
+
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorTerminalFailure = reason,
+    )
+
+    assertContains(retry, "reported a retryable block", false, "terminal retry names its own kind")
+    assertContains(retry, reason, false, "terminal retry carries the reported reason verbatim")
+    assertTrue(
+      !retry.contains("REJECTED by the schema gate"),
+      "a schema-valid terminal envelope must never receive the schema-correction directive",
+    )
+  }
+
+  @Test
+  fun `a real schema failure still receives the schema-correction directive and not the terminal one`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "produced_outputs must be an object.",
+    )
+
+    assertContains(retry, "REJECTED by the schema gate", false, "schema failure keeps its directive")
+    assertTrue(!retry.contains("reported a retryable block"), "schema failure must not get the terminal directive")
+  }
+
+  @Test
   fun `an operator blocked-phase retry decision is delivered only to its matching phase`() {
     val reason = "Use fresh-process isolation for Codex CLI workers."
     val retry = FeatureTaskRuntimeOperatorBlockRetry(
@@ -806,6 +854,48 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
       )
     }
+  }
+
+  // SKILL-150 subtask 1: a semantically incomplete receipt and a schema-invalid one are different
+  // failures and must reach the agent as different directives.
+  @Test
+  fun `an incomplete-work retry carries the continuation directive and not the schema-correction directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
+        phaseId = "implement",
+        segmentNumber = 2,
+        completedTaskIds = listOf("task-1"),
+        openObligationIds = listOf("task-2"),
+        obligationNoun = "plan task",
+        changedPaths = listOf("src/Foo.kt"),
+        deviations = emptyList(),
+        unresolvedItems = emptyList(),
+        reconciliationEvidence = null,
+        repositoryCheckpoint = null,
+        failureDisposition = null,
+      ),
+    )
+
+    assertContains(prompt, "segment 2")
+    assertContains(prompt, "task-2")
+    assertTrue(
+      !prompt.contains("REJECTED by the schema gate"),
+      "an honest partial receipt is not a schema failure",
+    )
+  }
+
+  @Test
+  fun `a real schema failure carries the schema-correction directive and no continuation directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "produced_outputs did not validate against implementation_receipt",
+    )
+
+    assertContains(prompt, "produced_outputs did not validate against implementation_receipt")
+    assertTrue(!prompt.contains("Continue this implementation"), "no continuation directive without a continuation")
   }
 }
 

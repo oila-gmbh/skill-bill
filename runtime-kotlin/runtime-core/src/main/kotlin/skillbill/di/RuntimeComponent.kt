@@ -52,6 +52,7 @@ import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeImplementationAttemptValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
@@ -192,6 +193,7 @@ import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
@@ -627,6 +629,15 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeQuarantineValidator(
     adapter: FeatureTaskRuntimeQuarantineValidatorAdapter,
   ): FeatureTaskRuntimeQuarantineValidator = adapter
+
+  // SKILL-150: the canonical implementation-attempt schema gate. The recorder validates every
+  // appended attempt through this port inside the advancing transaction, so a malformed receipt
+  // never reaches the durable store the continuation projection is reconstructed from.
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeImplementationAttemptValidator(
+    adapter: FeatureTaskRuntimeImplementationAttemptValidatorAdapter,
+  ): FeatureTaskRuntimeImplementationAttemptValidator = adapter
 
   @Provides
   @JvmSynthetic

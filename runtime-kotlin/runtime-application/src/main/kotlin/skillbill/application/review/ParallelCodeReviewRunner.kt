@@ -474,9 +474,11 @@ class ParallelCodeReviewRunner(
       appendLine("Run exactly one bill-code-review mode:inline review prompt in this context.")
       appendLine("Resolved execution mode: inline")
       appendLine(
-        "Depth: reduced. Walk the routed areas below as an explicit checklist, once each, under a " +
-          "bounded budget. This is not equivalent coverage to a full per-specialist review and must " +
-          "not be presented as one; state that specialist depth was not applied.",
+        "Depth: reduced. Merge the routed areas below into one combined checklist and traverse the " +
+          "diff exactly once against it, holding all areas in mind simultaneously, under a bounded " +
+          "budget. Never re-walk the diff once per area; coverage is accounted per area in your " +
+          "output, not by separate passes. This is not equivalent coverage to a full per-specialist " +
+          "review and must not be presented as one; state that specialist depth was not applied.",
       )
     } else {
       appendLine("Run one bill-code-review mode:delegated review over the routed specialist fan-out.")
@@ -517,8 +519,12 @@ class ParallelCodeReviewRunner(
       appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
       if (inline) {
         appendLine(
-          "Cover each routed rubric above once at reduced depth in this agent context and do not launch " +
-            "specialists. Follow only the signals that appear; do not build a case for a marginal finding. " +
+          "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
+            "once against it at reduced depth in this agent context, holding all rubrics in mind " +
+            "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric: " +
+            "iterating rubrics over the same code is the same review repeated N times at N times the " +
+            "cost, and it misses defects that only surface where two rubrics intersect. " +
+            "Follow only the signals that appear; do not build a case for a marginal finding. " +
             "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
             "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
             "inherited unchanged.",

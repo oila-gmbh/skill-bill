@@ -245,6 +245,21 @@ class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
 )
 
 /**
+ * Surfaced when an append-only audit generation fails the canonical audit-generation schema. Distinct
+ * from [InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError] because a generation is durable history:
+ * rejecting one quarantines and regenerates the workflow's audit authority rather than re-prompting a
+ * producer for a better plan.
+ */
+class InvalidFeatureTaskRuntimeAuditGenerationSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime audit generation '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
  * plan commitment, or implementation receipt) fails the canonical planning-projections schema.
  * Mirrors [InvalidReviewContextSchemaError]; the dedicated subclass keeps the four concrete bounded
@@ -261,6 +276,22 @@ class InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
 )
 
 /**
+ * Surfaced when the durable feature-task-runtime checkpoint-identity history fails the canonical
+ * checkpoint-identity schema. The history is the only durable authority for what a checkpoint commit
+ * was allowed to own, so a malformed record must never round-trip: reading one quarantines and
+ * regenerates the identity store rather than letting an unattributable commit pass as governed.
+ */
+class InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime checkpoint identity '${sourceLabel.ifBlank { "<unknown>" }}' fails schema " +
+    "validation: $reason",
+  cause,
+)
+
+/**
  * Surfaced when the durable feature-task-runtime quarantine record (the append-only list of
  * rejected upstream records) fails the canonical quarantine schema. Keeps the private evidence
  * store's parse seam loud so a malformed quarantine artifact never rounds trips silently.
@@ -271,6 +302,23 @@ class InvalidFeatureTaskRuntimeQuarantineSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime quarantine record '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
+ * Surfaced when the durable feature-task-runtime implementation-attempt history (the append-only
+ * bounded receipt store the semantic continuation projection is reconstructed from) fails the
+ * canonical implementation-attempt schema. Keeps that parse seam loud so a malformed attempt store
+ * can never be silently best-effort decoded into a continuation projection that understates the
+ * still-open obligations.
+ */
+class InvalidFeatureTaskRuntimeImplementationAttemptSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime implementation attempt '${sourceLabel.ifBlank { "<unknown>" }}' fails schema " +
+    "validation: $reason",
   cause,
 )
 

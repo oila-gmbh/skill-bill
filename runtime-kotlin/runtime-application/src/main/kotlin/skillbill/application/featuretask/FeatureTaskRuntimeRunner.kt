@@ -31,6 +31,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
@@ -233,6 +235,10 @@ class FeatureTaskRuntimeRunner(
    * judged. A cap is authoritative only while the delta it judged still matches the tree, so a record
    * predating the digest cannot prove itself and reopens once, after which its fresh pass records a
    * digest and an unchanged resume blocks again. An unbuildable delta answers false, keeping the cap.
+   *
+   * The rebuild is scoped exactly as the recorded input was — same owned-path inventory, same widened
+   * untracked exclusions, same remediation base selection — because a digest compared across two
+   * different scopes measures the tree's dirt rather than the workflow's own delta.
    */
   private fun cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
     val goalBranch = request.goalContinuation?.goalBranch ?: return false
@@ -243,13 +249,28 @@ class FeatureTaskRuntimeRunner(
       ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
       ?: return false
     val judgedDigest = state.reviewedDeltaDigest ?: return true
-    val current = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
-      request.repoRoot,
-      GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
-      goalBranch,
-    ).input
-    return current != null && current.deltaDigest != judgedDigest
+    val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    // A remediation pass records its digest from the rescoped pre-fix base, and the reservation that
+    // selected that base is cleared once the pass completes. The base a resume can no longer identify
+    // is therefore tried alongside the immutable one: a match under either is the same judged delta.
+    val digests = listOfNotNull(state.remediationBaseSha, state.reviewBaseSha).distinct().mapNotNull { base ->
+      phaseGates.gitOperations.buildGoalSubtaskReviewInput(
+        request.repoRoot,
+        reviewBaseline(request, resolved, state, base),
+        goalBranch,
+      ).input?.deltaDigest
+    }
+    return digests.isNotEmpty() && judgedDigest !in digests
   }
+
+  private fun reviewBaseline(
+    request: FeatureTaskRuntimeRunRequest,
+    resolved: FeatureTaskRuntimeResolvedBranch?,
+    state: GoalSubtaskReviewState,
+    reviewBaseSha: String,
+  ): GoalSubtaskReviewBaseline = resolved
+    ?.let { FeatureTaskRuntimeScopedReviewBaseline.of(phaseGates.gitOperations, request.repoRoot, it, reviewBaseSha) }
+    ?: GoalSubtaskReviewBaseline(reviewBaseSha, state.baselineUntrackedPaths)
 
   private fun loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
@@ -263,19 +284,19 @@ class FeatureTaskRuntimeRunner(
       ?: 0
 
   private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditRepairProgress? {
-    recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress?.let { return it }
-    val auditCompleted = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
-      .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT]
-      ?.status == "completed"
-    if (!auditCompleted || loadAuditGapIterationCount(request) != 0) return null
-    return FeatureTaskRuntimeAuditRepairProgress(
-      firstPassConvergence = true,
-      recurringGapCount = 0,
-      newGapCount = 0,
-      attemptedRepairItemCount = 0,
-      resolvedRepairItemCount = 0,
-      auditGapIterationCount = 0,
-    )
+    // The append-only generation history is the authority; the replaceable audit-repair-state artifact is a
+    // derived cache of it. The cache is written before the loop edge it will later reflect, so preferring the
+    // derivation is what makes the emitted counters agree with the ledger — a disagreement is bookkeeping
+    // drift, not grounds for dropping the telemetry.
+    val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
+    val cached = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
+    if (history.generations.isNotEmpty()) {
+      return history.deriveProgress(auditGapIterationCount = loadAuditGapIterationCount(request))
+    }
+    // No phase-record fallback: a completed audit always appends its generation, including the zero-gap one,
+    // so first-pass convergence is derived from the durable authority rather than inferred from a record's
+    // status. Only a legacy workflow predating the generation table falls back to its replaceable cache.
+    return cached
   }
 
   // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the

@@ -173,6 +173,13 @@ data class FeatureTaskRuntimePhaseHandoff(
   val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
   /**
+   * The active repair batch from the append-only audit-generation authority: which repair items this batch
+   * carries and which of them already hold a terminal disposition. Repair-item ids repeat across batches
+   * because a recurring gap keeps its identity, so only the active batch's dispositions decide what is still
+   * open; a retained result from an earlier batch is prior evidence, not closure.
+   */
+  val activeRepairBatch: FeatureTaskRuntimeRepairBatch? = null,
+  /**
    * Canonical refs of the acceptance criteria already durably closed by a satisfied audit verdict.
    * Carried only for the audit phase, which narrows its verified set to the remaining criteria; every
    * other phase receives an empty list and its briefing is unchanged.
