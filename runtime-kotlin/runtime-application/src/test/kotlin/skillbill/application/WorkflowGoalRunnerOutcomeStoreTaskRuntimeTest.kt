@@ -17,8 +17,10 @@ import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.workflow.WorkflowEngine
@@ -532,7 +534,10 @@ private object DeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
-  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+  override fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ) = NoopFeatureTaskRuntimeHeartbeat
   override fun pause(durationMillis: Long) = Unit
 }
 
@@ -541,6 +546,9 @@ private object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.ExactLive
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
-  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+  override fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ) = NoopFeatureTaskRuntimeHeartbeat
   override fun pause(durationMillis: Long) = Unit
 }

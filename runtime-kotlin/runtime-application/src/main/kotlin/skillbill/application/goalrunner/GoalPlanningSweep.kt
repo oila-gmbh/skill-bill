@@ -549,28 +549,26 @@ class DefaultGoalPlanningSweep(
     prompt: String,
   ): AgentRunLaunchOutcome {
     request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
-    val launch = {
-      subtaskLauncher.launch(
-        GoalRunnerSubtaskLaunchRequest(
-          invokedAgentId = shared.invokedAgentId,
-          configuredAgentOverrideId = shared.configuredAgentOverrideId,
-          skillRunRequest = SkillRunRequest(
-            issueKey = request.issueKey,
-            repoRoot = shared.repoRoot,
-            subtaskId = subtask?.id,
-            dbPathOverride = shared.dbPathOverride,
-            timeout = request.planningBudget,
-            progressIdleTimeout = request.progressIdleTimeout,
-            outputSink = request.outputSink,
-            promptOverride = prompt,
-            streamOutputForLiveness = true,
-          ),
+    return subtaskLauncher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = shared.invokedAgentId,
+        configuredAgentOverrideId = shared.configuredAgentOverrideId,
+        skillRunRequest = SkillRunRequest(
+          issueKey = request.issueKey,
+          repoRoot = shared.repoRoot,
+          subtaskId = subtask?.id,
+          dbPathOverride = shared.dbPathOverride,
+          timeout = request.planningBudget,
+          progressIdleTimeout = request.progressIdleTimeout,
+          outputSink = request.outputSink,
+          promptOverride = prompt,
+          streamOutputForLiveness = true,
+          // The authorization write transaction must close before the child is awaited. Wrapping the
+          // blocking launch instead held it for the whole planning run, starving lease renewal.
+          spawnAuthorization = manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride),
         ),
-      )
-    }
-    return manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride)
-      ?.withAuthorization(launch)
-      ?: launch()
+      ),
+    )
   }
 
   private fun composePlanningPrompt(

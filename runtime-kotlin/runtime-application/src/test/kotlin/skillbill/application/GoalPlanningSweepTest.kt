@@ -19,6 +19,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -77,6 +78,32 @@ class GoalPlanningSweepTest {
 
     assertNotNull(prepared.hydrationFor(1))
     assertEquals(null, prepared.hydrationFor(2))
+  }
+
+  @Test
+  fun `planning launch authorization closes before the child run is awaited`() {
+    val authorization = TrackingPlanningAuthorization()
+    val openWhileAwaitingChild = mutableListOf<Boolean>()
+    val store = AuthorizingGoalPlanningManifestStore(authorization)
+    val harness = sweepHarness(manifestStore = store) { phase, _, request ->
+      val spawnAuthorization = assertNotNull(
+        request.skillRunRequest.spawnAuthorization,
+        "a planning launch must carry its authorization into the spawn seam, not wrap the blocking launch",
+      )
+      spawnAuthorization.withAuthorization { }
+      openWhileAwaitingChild += authorization.open
+      validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(3, authorization.invocations, "every planning launch is authorized exactly once")
+    assertEquals(
+      listOf(false, false, false),
+      openWhileAwaitingChild,
+      "the authorization transaction must be closed while the planning child is awaited",
+    )
   }
 
   @Test
@@ -1517,6 +1544,7 @@ private fun sweepHarness(
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+  manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1534,7 +1562,7 @@ private fun sweepHarness(
     contextDiscovery,
     planningProjectionValidator,
     planningAttemptRecorder,
-    manifestStore = NoopGoalPlanningManifestStore,
+    manifestStore = manifestStore,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }
@@ -1560,6 +1588,35 @@ private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
     null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+}
+
+private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
+  var invocations: Int = 0
+    private set
+  var open: Boolean = false
+    private set
+
+  override fun <T> withAuthorization(spawn: () -> T): T {
+    invocations += 1
+    open = true
+    return try {
+      spawn()
+    } finally {
+      open = false
+    }
+  }
+}
+
+private class AuthorizingGoalPlanningManifestStore(
+  private val authorization: AgentRunSpawnAuthorization,
+) : GoalRunnerManifestStore {
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String?): AgentRunSpawnAuthorization =
+    authorization
 }
 
 private class CountingContextDiscovery : GoalPlanningContextDiscovery {

@@ -6,6 +6,8 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Duration
 import java.time.Instant
@@ -34,8 +36,8 @@ class FeatureTaskRuntimeWorkerCoordinator(
 ) {
   fun <T> runOwned(workflowId: String, dbOverride: String?, block: () -> T): T {
     val ownership = acquireOrRecover(workflowId, dbOverride)
-    val heartbeats = supervisor.startHeartbeat(HEARTBEAT_SECONDS) { heartbeat(ownership, dbOverride) }
-    return try {
+    val heartbeats = supervisor.startHeartbeat(heartbeatPlan(workflowId)) { heartbeat(ownership, dbOverride) }
+    val result = try {
       block()
     } finally {
       heartbeats.stop()
@@ -43,7 +45,18 @@ class FeatureTaskRuntimeWorkerCoordinator(
         it.workflowStates.releaseFeatureTaskRuntimeWorker(workflowId, ownership.ownerToken, ownership.generation)
       }
     }
+    // Checked after the block rather than inside the finally so a failing block reports its own cause.
+    heartbeats.fencingLostReason()?.let { reason ->
+      error("Worker for workflow '$workflowId' lost lease fencing mid-phase: $reason")
+    }
+    return result
   }
+
+  private fun heartbeatPlan(workflowId: String) = FeatureTaskRuntimeHeartbeatPlan(
+    label = workflowId,
+    intervalSeconds = HEARTBEAT_SECONDS,
+    leaseSeconds = LEASE_DURATION.seconds,
+  )
 
   private fun acquireOrRecover(workflowId: String, dbOverride: String?): FeatureTaskRuntimeWorkerOwnership {
     val existing = database.read(dbOverride) { it.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId) }
@@ -111,13 +124,22 @@ class FeatureTaskRuntimeWorkerCoordinator(
     }
   }
 
-  private fun heartbeat(base: FeatureTaskRuntimeWorkerOwnership, dbOverride: String?) {
+  private fun heartbeat(
+    base: FeatureTaskRuntimeWorkerOwnership,
+    dbOverride: String?,
+  ): FeatureTaskRuntimeHeartbeatTick {
     val now = Instant.now()
     val updated = base.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
     val persisted = database.transaction(dbOverride) {
       it.workflowStates.heartbeatFeatureTaskRuntimeWorker(updated)
     }
-    check(persisted) { "Worker lease fencing was lost for workflow '${base.workflowId}'." }
+    return if (persisted) {
+      FeatureTaskRuntimeHeartbeatTick.Renewed
+    } else {
+      FeatureTaskRuntimeHeartbeatTick.FencingLost(
+        "worker lease fencing was lost for workflow '${base.workflowId}'",
+      )
+    }
   }
 
   private fun newOwnership(

@@ -5,8 +5,11 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -95,14 +98,56 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
 
     assertTrue(failure.message.orEmpty().contains("Concurrent continuation"))
   }
+
+  @Test
+  fun `a heartbeat tick renews the lease while this process still owns it`() {
+    val repository = InMemoryRuntimeWorkflowRepository()
+    repository.seedWorkerOwnership(ownership())
+    val supervisor = FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+
+    coordinator.runOwned(WORKFLOW_ID, null) {
+      val owned = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
+      assertEquals(FeatureTaskRuntimeHeartbeatTick.Renewed, supervisor.runHeartbeatTick())
+      val renewed = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
+      assertEquals(owned.ownerToken, renewed.ownerToken)
+      assertTrue(Instant.parse(renewed.expiresAt) >= Instant.parse(owned.expiresAt))
+    }
+
+    assertEquals(WORKFLOW_ID, supervisor.capturedPlan?.label)
+    assertEquals(LEASE_SECONDS, supervisor.capturedPlan?.leaseSeconds)
+  }
+
+  @Test
+  fun `a heartbeat tick that lost fencing fails the phase instead of reporting success`() {
+    val repository = InMemoryRuntimeWorkflowRepository()
+    repository.seedWorkerOwnership(ownership())
+    val supervisor = FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+
+    val failure = assertFailsWith<IllegalStateException> {
+      coordinator.runOwned(WORKFLOW_ID, null) {
+        repository.seedWorkerOwnership(ownership(ownerToken = "usurper-token-0002", generation = 9))
+        assertTrue(supervisor.runHeartbeatTick() is FeatureTaskRuntimeHeartbeatTick.FencingLost)
+      }
+    }
+
+    assertTrue(failure.message.orEmpty().contains("lost lease fencing mid-phase"))
+  }
 }
+
+private const val LEASE_SECONDS = 30L
 
 private class FakeWorkerSupervisor(
   initialInspection: FeatureTaskRuntimeProcessInspection,
 ) : FeatureTaskRuntimeWorkerSupervisor {
   private var inspection = initialInspection
+  private var tick: (() -> FeatureTaskRuntimeHeartbeatTick)? = null
+  private var fencingLostReason: String? = null
   var gracefulTerminationRequested = false
   var forceTerminationRequested = false
+  var capturedPlan: FeatureTaskRuntimeHeartbeatPlan? = null
+    private set
 
   override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200")
 
@@ -120,15 +165,37 @@ private class FakeWorkerSupervisor(
     return true
   }
 
-  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit) = FeatureTaskRuntimeHeartbeat {}
+  override fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ): FeatureTaskRuntimeHeartbeat {
+    capturedPlan = plan
+    tick = heartbeat
+    return object : FeatureTaskRuntimeHeartbeat {
+      override fun stop() = Unit
+
+      override fun fencingLostReason(): String? = fencingLostReason
+    }
+  }
+
+  /** Drives one renewal the way the real loop does, including latching a proven fencing loss. */
+  fun runHeartbeatTick(): FeatureTaskRuntimeHeartbeatTick {
+    val outcome = requireNotNull(tick) { "startHeartbeat was never called." }.invoke()
+    if (outcome is FeatureTaskRuntimeHeartbeatTick.FencingLost) fencingLostReason = outcome.reason
+    return outcome
+  }
 
   override fun pause(durationMillis: Long) = Unit
 }
 
-private fun ownership(expiresAt: String = "2999-01-01T00:00:30Z") = FeatureTaskRuntimeWorkerOwnership(
+private fun ownership(
+  expiresAt: String = "2999-01-01T00:00:30Z",
+  ownerToken: String = "old-owner-token-0001",
+  generation: Long = 1,
+) = FeatureTaskRuntimeWorkerOwnership(
   workflowId = WORKFLOW_ID,
-  generation = 1,
-  ownerToken = "old-owner-token-0001",
+  generation = generation,
+  ownerToken = ownerToken,
   hostIdentity = "host",
   bootIdentity = "boot",
   pid = 100,

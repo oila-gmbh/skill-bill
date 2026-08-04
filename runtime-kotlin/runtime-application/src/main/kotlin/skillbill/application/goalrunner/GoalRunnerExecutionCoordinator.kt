@@ -6,6 +6,8 @@ import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Clock
@@ -42,14 +44,23 @@ class DefaultGoalRunnerExecutionCoordinator(
         "another goal runner claimed the execution lease before this run could start",
       )
     }
-    val heartbeat = supervisor.startHeartbeat(HEARTBEAT_SECONDS) {
+    val plan = FeatureTaskRuntimeHeartbeatPlan(
+      label = parentWorkflowId,
+      intervalSeconds = HEARTBEAT_SECONDS,
+      leaseSeconds = LEASE_DURATION.seconds,
+    )
+    val heartbeat = supervisor.startHeartbeat(plan) {
       val now = clock.instant()
       val updated = lease.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
-      check(manifestStore.heartbeatExecutionLease(parentWorkflowId, updated, dbPathOverride)) {
-        "Goal parent '$parentWorkflowId' execution lease fencing was lost."
+      if (manifestStore.heartbeatExecutionLease(parentWorkflowId, updated, dbPathOverride)) {
+        FeatureTaskRuntimeHeartbeatTick.Renewed
+      } else {
+        FeatureTaskRuntimeHeartbeatTick.FencingLost(
+          "goal parent '$parentWorkflowId' execution lease fencing was lost",
+        )
       }
     }
-    return try {
+    val result = try {
       block()
     } finally {
       heartbeat.stop()
@@ -60,6 +71,11 @@ class DefaultGoalRunnerExecutionCoordinator(
         dbPathOverride,
       )
     }
+    // Checked after the block rather than inside the finally so a failing block reports its own cause.
+    heartbeat.fencingLostReason()?.let { reason ->
+      throw GoalRunnerExecutionAlreadyRunningException(parentWorkflowId, reason)
+    }
+    return result
   }
 
   private fun reclaimableOwnerToken(parentWorkflowId: String, existing: GoalRunnerExecutionLease): String {

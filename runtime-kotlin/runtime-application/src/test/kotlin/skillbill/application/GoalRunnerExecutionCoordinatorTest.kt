@@ -8,6 +8,8 @@ import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Clock
@@ -17,6 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class GoalRunnerExecutionCoordinatorTest {
   @Test
@@ -51,7 +54,40 @@ class GoalRunnerExecutionCoordinatorTest {
     }
     assertEquals("live-owner", requireNotNull(store.executionLeaseValue).ownerToken)
   }
+
+  @Test
+  fun `a heartbeat tick renews the parent lease while this runner still owns it`() {
+    val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, supervisor, fixedClock())
+
+    coordinator.runOwned("parent-1", null) {
+      assertEquals(FeatureTaskRuntimeHeartbeatTick.Renewed, supervisor.runHeartbeatTick())
+      assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
+    }
+
+    assertEquals("parent-1", supervisor.capturedPlan?.label)
+    assertEquals(PARENT_LEASE_SECONDS, supervisor.capturedPlan?.leaseSeconds)
+  }
+
+  @Test
+  fun `a parent heartbeat tick that lost fencing fails the goal instead of reporting success`() {
+    val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, supervisor, fixedClock())
+
+    val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
+      coordinator.runOwned("parent-1", null) {
+        store.executionLeaseValue = lease(generation = 9, ownerToken = "usurper-owner")
+        assertTrue(supervisor.runHeartbeatTick() is FeatureTaskRuntimeHeartbeatTick.FencingLost)
+      }
+    }
+
+    assertTrue(failure.message.orEmpty().contains("execution lease fencing was lost"))
+  }
 }
+
+private const val PARENT_LEASE_SECONDS = 30L
 
 private class InMemoryExecutionLeaseStore(
   initialLease: GoalRunnerExecutionLease?,
@@ -107,6 +143,11 @@ private class InMemoryExecutionLeaseStore(
 private class FakeGoalSupervisor(
   private val inspection: FeatureTaskRuntimeProcessInspection,
 ) : FeatureTaskRuntimeWorkerSupervisor {
+  private var tick: (() -> FeatureTaskRuntimeHeartbeatTick)? = null
+  private var fencingLostReason: String? = null
+  var capturedPlan: FeatureTaskRuntimeHeartbeatPlan? = null
+    private set
+
   override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
     FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200")
 
@@ -116,8 +157,25 @@ private class FakeGoalSupervisor(
 
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean = false
 
-  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit): FeatureTaskRuntimeHeartbeat =
-    FeatureTaskRuntimeHeartbeat {}
+  override fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ): FeatureTaskRuntimeHeartbeat {
+    capturedPlan = plan
+    tick = heartbeat
+    return object : FeatureTaskRuntimeHeartbeat {
+      override fun stop() = Unit
+
+      override fun fencingLostReason(): String? = fencingLostReason
+    }
+  }
+
+  /** Drives one renewal the way the real loop does, including latching a proven fencing loss. */
+  fun runHeartbeatTick(): FeatureTaskRuntimeHeartbeatTick {
+    val outcome = requireNotNull(tick) { "startHeartbeat was never called." }.invoke()
+    if (outcome is FeatureTaskRuntimeHeartbeatTick.FencingLost) fencingLostReason = outcome.reason
+    return outcome
+  }
 
   override fun pause(durationMillis: Long) = Unit
 }

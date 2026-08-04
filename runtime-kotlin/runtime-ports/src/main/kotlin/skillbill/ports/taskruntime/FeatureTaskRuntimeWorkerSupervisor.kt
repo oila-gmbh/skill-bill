@@ -1,6 +1,8 @@
 package skillbill.ports.taskruntime
 
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 
@@ -13,13 +15,30 @@ interface FeatureTaskRuntimeWorkerSupervisor {
 
   fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean
 
-  fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit): FeatureTaskRuntimeHeartbeat
+  fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ): FeatureTaskRuntimeHeartbeat
 
   fun pause(durationMillis: Long)
 }
 
-fun interface FeatureTaskRuntimeHeartbeat {
+interface FeatureTaskRuntimeHeartbeat {
   fun stop()
+
+  /**
+   * The reason renewal ended because another owner holds the lease, or null while this process is
+   * still the fenced owner. The run owner must consult this before reporting its phase successful:
+   * only lease operations are owner-token fenced, so a de-fenced process that kept running would go
+   * on writing workflow state alongside the owner that displaced it.
+   */
+  fun fencingLostReason(): String?
+}
+
+object NoopFeatureTaskRuntimeHeartbeat : FeatureTaskRuntimeHeartbeat {
+  override fun stop() = Unit
+
+  override fun fencingLostReason(): String? = null
 }
 
 /**
@@ -38,8 +57,10 @@ object NoopFeatureTaskRuntimeWorkerSupervisor : FeatureTaskRuntimeWorkerSupervis
 
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean = false
 
-  override fun startHeartbeat(intervalSeconds: Long, heartbeat: () -> Unit): FeatureTaskRuntimeHeartbeat =
-    FeatureTaskRuntimeHeartbeat {}
+  override fun startHeartbeat(
+    plan: FeatureTaskRuntimeHeartbeatPlan,
+    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
+  ): FeatureTaskRuntimeHeartbeat = NoopFeatureTaskRuntimeHeartbeat
 
   override fun pause(durationMillis: Long) = Unit
 }
