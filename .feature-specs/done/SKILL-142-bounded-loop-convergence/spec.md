@@ -1,5 +1,20 @@
 # SKILL-142 - Bounded Loop Convergence: Planning Gate Parity, Blocker-Only Reopen, Lane Severity Calibration, Review Depth Tiers, Liveness
 
+## Status
+
+Complete. All five subtasks landed on `main`. The final subtask-5 follow-up
+commit (`44300fe6`, deferred review findings: durable planning-attempt telemetry,
+compare-and-replace shared-preplan regeneration, content-based specialist
+routing in preflight) was superseded on the branch but its fixes exist on `main`
+via later work.
+
+Supersession note: this spec kept `delegated` as the full-depth default with
+`inline` as the light tier. `bf2845f3` (#252) and SKILL-145 later reversed the
+default — `inline` is now the default depth and `auto` resolves to inline until
+a governed change promotes delegated. The depth-tier mechanics themselves
+(bounded light tier, remediation pass scoped to its delta, evidenced
+per-Blocker disposition) shipped as specified.
+
 ## Mode
 
 decomposed
@@ -583,10 +598,10 @@ not follow unit numbering:
 | subtask | unit | title | depends on | status |
 |---|---|---|---|---|
 | 1 | 5 | Review-phase liveness, preflight, and loop accounting | — | **complete** |
-| 2 | 1 | Producer-side planning projection gate parity | — | pending |
-| 3 | 2 | Blocker-only reopen | — | pending |
-| 4 | 3 | Per-lane severity calibration | — | pending |
-| 5 | 4 | Inline as a bounded light tier; remediation pass bounded to its delta | 3 (required), 1 (soft) | in progress |
+| 2 | 1 | Producer-side planning projection gate parity | — | **complete** |
+| 3 | 2 | Blocker-only reopen | — | **complete** |
+| 4 | 3 | Per-lane severity calibration | — | **complete** |
+| 5 | 4 | Inline as a bounded light tier; remediation pass bounded to its delta | 3 (required), 1 (soft) | **complete** |
 
 Unit 5 lands first: it carries the largest measured wall-clock payoff and blocks
 nothing. Unit 4 lands last — SKILL-141 has landed (merge `e586cb43`), and it also
