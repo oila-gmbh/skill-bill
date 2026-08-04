@@ -1,8 +1,6 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.error.DatabaseAccessError
-import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
@@ -11,9 +9,9 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CliGoalStatusDatabaseFailureTest {
@@ -61,7 +59,7 @@ class CliGoalStatusDatabaseFailureTest {
     assertEquals(1, reason.lines().size, reason)
     assertEquals(
       setOf("status", "issue_key", "resumable_state", "reason"),
-      failure.payload!!.keys,
+      failure.payload.keys,
       failure.stdout,
     )
   }
@@ -87,7 +85,7 @@ class CliGoalStatusDatabaseFailureTest {
     val fixture = goalFixture(subtaskCount = 1)
     val missingSource = fixture.tempDir.resolve("absent-skill")
 
-    val error = assertFailsWith<SkillBillRuntimeException> {
+    val thrown = runCatching {
       CliRuntime.run(
         listOf(
           "install",
@@ -99,18 +97,25 @@ class CliGoalStatusDatabaseFailureTest {
           "--agent",
           "codex",
         ),
-        fixture.context(launcher = UnusedStatusAgentRunLauncher),
+        // Pinned so the probe does not hit the goal-continuation install refusal, which would
+        // return a result instead of throwing and leave the propagation claim unexercised.
+        fixture.context(launcher = UnusedStatusAgentRunLauncher).copy(environment = emptyMap()),
       )
     }
 
-    assertFalse(error is DatabaseAccessError, "the new database catch swallowed an unrelated failure: $error")
+    val error = assertNotNull(
+      thrown.exceptionOrNull(),
+      "the new database catch swallowed an unrelated failure instead of letting it propagate",
+    )
+    val rendered = error.toString()
+    assertFalse(
+      rendered.contains("Database open failed") || rendered.contains("Database read failed"),
+      "the new database catch reclassified an unrelated failure: $rendered",
+    )
+    assertFalse(rendered.contains("database_unavailable"), rendered)
   }
 
-  private fun monitorStatus(
-    fixture: GoalCliFixture,
-    dbPath: Path,
-    issueKey: String = "SKILL-901",
-  ) = CliRuntime.run(
+  private fun monitorStatus(fixture: GoalCliFixture, dbPath: Path, issueKey: String = "SKILL-901") = CliRuntime.run(
     listOf(
       "--db",
       dbPath.toString(),

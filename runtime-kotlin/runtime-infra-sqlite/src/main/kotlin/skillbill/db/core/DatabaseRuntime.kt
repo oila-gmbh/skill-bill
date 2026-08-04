@@ -35,7 +35,6 @@ object DatabaseRuntime {
     return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
   }
 
-  @Suppress("TooGenericExceptionCaught")
   fun openReadDb(
     cliValue: String? = null,
     environment: Map<String, String> = System.getenv(),
@@ -48,47 +47,34 @@ object DatabaseRuntime {
       return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
     }
 
-    val connection = try {
+    val connection = asTypedFailure(dbPath, DatabaseAccessOperation.READ) {
       DriverManager.getConnection(
         "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",
         SQLiteConfig().apply { setReadOnly(true) }.toProperties(),
       )
-    } catch (error: SQLException) {
-      throw databaseAccessError(dbPath, DatabaseAccessOperation.READ, error)
     }
-    try {
-      configureConnection(connection, enableWal = false)
-      return OpenDatabase(connection = connection, dbPath = dbPath)
-    } catch (error: SQLException) {
-      connection.closeQuietly()
-      throw databaseAccessError(dbPath, DatabaseAccessOperation.READ, error)
-    } catch (error: Throwable) {
-      connection.close()
-      throw error
+    return connection.closingOnFailure {
+      asTypedFailure(dbPath, DatabaseAccessOperation.READ) {
+        configureConnection(connection, enableWal = false)
+      }
+      OpenDatabase(connection = connection, dbPath = dbPath)
     }
   }
 
-  @Suppress("TooGenericExceptionCaught")
   fun ensureDatabase(path: Path): Connection {
     path.parent?.toAbsolutePath()?.normalize()?.toFile()?.mkdirs()
-    val connection = try {
+    val connection = asTypedFailure(path, DatabaseAccessOperation.OPEN) {
       DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath().normalize()}")
-    } catch (error: SQLException) {
-      throw databaseAccessError(path, DatabaseAccessOperation.OPEN, error)
     }
-    try {
-      configureConnection(connection, enableWal = true)
-      DatabaseSchema.createBaseSchema(connection)
-      DatabaseMigrations.apply(connection)
-      DatabaseColumnMigrations.apply(connection)
-      DatabaseColumnMigrations.healWorkListMetadata(connection)
-      return connection
-    } catch (error: SQLException) {
-      connection.closeQuietly()
-      throw databaseAccessError(path, DatabaseAccessOperation.OPEN, error)
-    } catch (error: Throwable) {
-      connection.close()
-      throw error
+    return connection.closingOnFailure {
+      asTypedFailure(path, DatabaseAccessOperation.OPEN) {
+        configureConnection(connection, enableWal = true)
+        DatabaseSchema.createBaseSchema(connection)
+        DatabaseMigrations.apply(connection)
+        DatabaseColumnMigrations.apply(connection)
+        DatabaseColumnMigrations.healWorkListMetadata(connection)
+      }
+      connection
     }
   }
 
@@ -100,6 +86,20 @@ object DatabaseRuntime {
       statement.execute("PRAGMA foreign_keys = ON")
     }
   }
+}
+
+private fun <T> asTypedFailure(dbPath: Path, operation: DatabaseAccessOperation, block: () -> T): T = try {
+  block()
+} catch (error: SQLException) {
+  throw databaseAccessError(dbPath, operation, error)
+}
+
+@Suppress("TooGenericExceptionCaught")
+private fun <T> Connection.closingOnFailure(block: () -> T): T = try {
+  block()
+} catch (error: Throwable) {
+  closeQuietly()
+  throw error
 }
 
 internal fun databaseAccessError(

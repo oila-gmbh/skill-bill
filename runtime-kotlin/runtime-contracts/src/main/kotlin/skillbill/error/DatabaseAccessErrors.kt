@@ -10,12 +10,16 @@ enum class DatabaseAccessOperation(val wireValue: String) {
 /**
  * SKILL-155 Subtask 2: typed bounded failure surface for SQLite open and read conditions.
  * The underlying JDBC exception never crosses this boundary as a public field or rendered cause.
+ *
+ * Deliberately NOT a [SkillBillRuntimeException]: that supertype is caught across the runtime to
+ * classify domain failures as terminal (for example the planning stopper's Blocked terminal), and a
+ * transient infrastructure condition such as a write lock must not be reclassified that way.
  */
 class DatabaseAccessError(
   val dbPath: String,
   val operation: DatabaseAccessOperation,
   condition: String,
-) : SkillBillRuntimeException(
+) : RuntimeException(
   "Database ${operation.wireValue} failed for '$dbPath': ${boundedCondition(condition)}",
 ) {
   val condition: String = boundedCondition(condition)

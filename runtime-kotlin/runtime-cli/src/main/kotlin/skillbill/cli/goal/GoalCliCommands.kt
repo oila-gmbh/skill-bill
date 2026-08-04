@@ -874,15 +874,13 @@ private fun GoalRunnerStatusProjection?.toBoundedGoalStatusCliMap(issueKey: Stri
   "resumable_state" to "not_found",
 )
 
-private fun databaseUnavailableGoalStatusCliMap(
-  issueKey: String,
-  error: DatabaseAccessError,
-): Map<String, Any?> = linkedMapOf(
-  "status" to GOAL_STATUS_DATABASE_UNAVAILABLE,
-  "issue_key" to singleLineBounded(issueKey),
-  "resumable_state" to GOAL_STATUS_DATABASE_UNAVAILABLE,
-  "reason" to singleLineBounded(error.condition),
-)
+private fun databaseUnavailableGoalStatusCliMap(issueKey: String, error: DatabaseAccessError): Map<String, Any?> =
+  linkedMapOf(
+    "status" to GOAL_STATUS_DATABASE_UNAVAILABLE,
+    "issue_key" to singleLineBounded(issueKey),
+    "resumable_state" to GOAL_STATUS_DATABASE_UNAVAILABLE,
+    "reason" to singleLineBounded(error.condition),
+  )
 
 private fun GoalRunnerStatusProjection.monitorResumableState(): String = currentStep.let { step ->
   when {

@@ -55,6 +55,20 @@ class DatabaseAccessErrorTest {
   }
 
   @Test
+  fun `the typed error is not absorbed by supertype catches for domain failures`() {
+    val error = DatabaseAccessError(
+      dbPath = "/tmp/metrics.db",
+      operation = DatabaseAccessOperation.OPEN,
+      condition = "sqlite result code 5: database is locked",
+    )
+
+    assertFalse(
+      SkillBillRuntimeException::class.java.isInstance(error),
+      "a transient database condition would be reclassified as a terminal domain failure",
+    )
+  }
+
+  @Test
   fun `blank condition falls back to a bounded placeholder`() {
     val error = DatabaseAccessError(
       dbPath = "/tmp/metrics.db",

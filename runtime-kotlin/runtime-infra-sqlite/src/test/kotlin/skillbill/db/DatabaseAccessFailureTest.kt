@@ -39,7 +39,7 @@ class DatabaseAccessFailureTest {
 
     assertFalse(thrown is SQLiteException, "raw JDBC exception escaped: $thrown")
     assertTrue(thrown is DatabaseAccessError, "expected the typed error, got $thrown")
-    val rendered = thrown?.message.orEmpty()
+    val rendered = thrown.message.orEmpty()
     assertFalse(rendered.contains("org.sqlite"), rendered)
     assertFalse(rendered.contains("\n"), rendered)
   }
