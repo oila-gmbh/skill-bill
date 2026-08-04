@@ -247,9 +247,11 @@ internal fun featureTaskRuntimePlannedTaskIdsFrom(
  * controls every string below. The receipt models are strict (`require` non-blank ref/note/evidence/
  * fingerprint), and a blocked envelope reaches this parser BEFORE the producer-projection gate, so
  * constructing them optimistically let a producer-supplied `{"fingerprint": ""}` throw inside the
- * durable blocked write's transaction and roll the block record back. Malformed entries are dropped
- * here instead: the claim understates rather than aborts, and the completion gate then refuses to
- * advance on what it cannot read.
+ * durable blocked write's transaction and roll the block record back. Malformed entries are handled
+ * here instead, and the direction matters: closure fields are DROPPED, so the claim understates and the
+ * gate refuses to advance on what it cannot read; open-work fields (`unresolved_items`, deviations) are
+ * SANITIZED and kept, because dropping one of those would delete an open-work signal and hand a
+ * 'completed' status the escape the gate exists to close.
  */
 internal fun featureTaskRuntimeImplementationClaimFrom(
   outputMap: Map<String, Any?>,
@@ -265,11 +267,11 @@ internal fun featureTaskRuntimeImplementationClaimFrom(
     changedPaths = produced.stringList("changed_paths")
       .filter(::isAttemptRepoPath).distinct().take(ATTEMPT_MAX_PATH_ITEMS),
     unresolvedItems = produced.stringList("unresolved_items")
-      .filter(::isAttemptNonBlank).take(ATTEMPT_MAX_ITEMS),
+      .mapNotNull(::sanitizeAttemptNonBlank).take(ATTEMPT_MAX_ITEMS),
     deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { entry ->
       val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      val ref = (map["ref"] as? String)?.takeIf(::isAttemptNonBlank) ?: return@mapNotNull null
-      val note = (map["note"] as? String)?.takeIf(::isAttemptCompactSummary) ?: return@mapNotNull null
+      val ref = (map["ref"] as? String)?.let(::sanitizeAttemptNonBlank) ?: return@mapNotNull null
+      val note = (map["note"] as? String)?.let(::sanitizeAttemptCompactSummary) ?: return@mapNotNull null
       FeatureTaskRuntimeReceiptDeviation(ref = ref, note = note)
     }.take(ATTEMPT_MAX_ITEMS),
     reconciliationEvidence = JsonSupport.anyToStringAnyMap(produced["reconciliation_evidence"])?.let { map ->
@@ -292,8 +294,8 @@ internal fun featureTaskRuntimeImplementationClaimFrom(
 // The attempt schema, not the Kotlin receipt models, is the narrowest gate this claim has to clear:
 // the claim is appended as a durable attempt record inside the same transaction that persists a
 // blocked or failed phase, so any value the schema rejects rolls that record back. These mirror
-// `feature-task-runtime-implementation-attempt-schema.yaml`'s $defs so the parser drops what the
-// validator would reject rather than throwing from inside the write.
+// `feature-task-runtime-implementation-attempt-schema.yaml`'s $defs so the parser drops or sanitizes
+// what the validator would reject rather than throwing from inside the write.
 private const val ATTEMPT_MAX_ITEMS = 128
 private const val ATTEMPT_MAX_PATH_ITEMS = 512
 private const val ATTEMPT_NON_BLANK_MAX_LENGTH = 4096
@@ -303,6 +305,13 @@ private val ATTEMPT_TASK_ID_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 private val ATTEMPT_REPO_PATH_PATTERN = Regex("^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$")
 private val ATTEMPT_SUMMARY_FORBIDDEN_CHARS = Regex("[\\n\\r\\t`]")
 private val ATTEMPT_SUMMARY_STRUCTURED = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
+
+// Removing the quote and at-sign characters is what makes the JSON-shaped and hunk-header branches of
+// ATTEMPT_SUMMARY_STRUCTURED unmatchable, leaving only its line-anchored diff-header branch, which a
+// prefix defeats.
+private val ATTEMPT_SUMMARY_NEUTRALIZED_CHARS = Regex("[\"@]")
+private val ATTEMPT_WHITESPACE_RUN = Regex("\\s+")
+private const val ATTEMPT_SUMMARY_PREFIX = "note: "
 
 private fun isAttemptNonBlank(value: String): Boolean =
   value.isNotBlank() && value.length <= ATTEMPT_NON_BLANK_MAX_LENGTH
@@ -315,10 +324,27 @@ private fun isAttemptRepoPath(value: String): Boolean =
     value.length <= ATTEMPT_REPO_PATH_MAX_LENGTH &&
     ATTEMPT_REPO_PATH_PATTERN.matches(value)
 
-private fun isAttemptCompactSummary(value: String): Boolean =
-  isAttemptNonBlank(value) &&
-    !ATTEMPT_SUMMARY_FORBIDDEN_CHARS.containsMatchIn(value) &&
-    !ATTEMPT_SUMMARY_STRUCTURED.containsMatchIn(value)
+// Dropping a value understates the claim, which TIGHTENS the gate for closures (completed_task_ids,
+// changed_paths, checkpoint refs) but LOOSENS it for open-work signals: a dropped unresolved item or
+// deviation erases the very evidence that holds an incomplete receipt back. Open-work fields are
+// therefore sanitized into a schema-valid shape and retained, never dropped for shape alone.
+private fun sanitizeAttemptNonBlank(value: String): String? =
+  value.trim().take(ATTEMPT_NON_BLANK_MAX_LENGTH).takeIf(String::isNotBlank)
+
+private fun sanitizeAttemptCompactSummary(value: String): String? {
+  val flattened = value
+    .replace(ATTEMPT_SUMMARY_FORBIDDEN_CHARS, " ")
+    .replace(ATTEMPT_SUMMARY_NEUTRALIZED_CHARS, " ")
+    .replace(ATTEMPT_WHITESPACE_RUN, " ")
+    .trim()
+  if (flattened.isBlank()) return null
+  val unanchored = if (ATTEMPT_SUMMARY_STRUCTURED.containsMatchIn(flattened)) {
+    "$ATTEMPT_SUMMARY_PREFIX$flattened"
+  } else {
+    flattened
+  }
+  return unanchored.take(ATTEMPT_NON_BLANK_MAX_LENGTH).trim().takeIf(String::isNotBlank)
+}
 
 /**
  * The repair items an audit-gap re-entry carries. Read from the receipt's own result/deferral lists is

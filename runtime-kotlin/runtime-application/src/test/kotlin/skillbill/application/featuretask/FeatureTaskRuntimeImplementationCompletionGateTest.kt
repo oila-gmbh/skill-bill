@@ -137,18 +137,14 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   }
 
   @Test
-  fun `the parser drops every claim value the attempt schema would reject`() {
+  fun `the parser drops every closure value the attempt schema would reject`() {
     val parsed = featureTaskRuntimeImplementationClaimFrom(
       mapOf(
         "produced_outputs" to mapOf(
           "completed_task_ids" to listOf("task-1", "Task_1", "1-task"),
           "changed_paths" to listOf("runtime-kotlin/Sample.kt", "/home/user/repo/Foo.kt", "a\\b.kt", "../x.kt"),
           "unresolved_items" to listOf("open item", "  "),
-          "deviations" to listOf(
-            mapOf("ref" to "task-1", "note" to "fine"),
-            mapOf("ref" to "task-1", "note" to "has\nnewline"),
-            mapOf("ref" to "task-1", "note" to "has`backtick"),
-          ),
+          "deviations" to listOf(mapOf("ref" to "task-1", "note" to "fine")),
           "repository_checkpoint" to mapOf("fingerprint" to "abc", "base_ref" to "", "head_ref" to "  "),
         ),
       ),
@@ -162,6 +158,71 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     assertNull(parsed.repositoryCheckpoint?.baseRef)
     assertNull(parsed.repositoryCheckpoint?.headRef)
     assertEquals("abc", parsed.repositoryCheckpoint?.fingerprint)
+  }
+
+  @Test
+  fun `an open-work value the attempt schema would reject is sanitized into schema shape not dropped`() {
+    val parsed = featureTaskRuntimeImplementationClaimFrom(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "unresolved_items" to listOf("x".repeat(ATTEMPT_MAX_LENGTH + 500), "  "),
+          "deviations" to listOf(
+            mapOf("ref" to "task-2", "note" to "renamed `foo` to `bar`; migration still open"),
+            mapOf("ref" to "task-3", "note" to "--- a/x.kt\n@@ -1 +1 @@ {\"k\": [1]}"),
+            mapOf("ref" to "task-1", "note" to "   "),
+          ),
+        ),
+      ),
+      obligations(),
+    )
+
+    assertEquals(1, parsed.unresolvedItems.size)
+    assertEquals(ATTEMPT_MAX_LENGTH, parsed.unresolvedItems.single().length)
+    assertEquals(listOf("task-2", "task-3"), parsed.deviations.map { it.ref })
+    parsed.deviations.forEach { deviation ->
+      assertTrue(SCHEMA_COMPACT_SUMMARY.matches(deviation.note), "not schema-valid: '${deviation.note}'")
+      assertTrue(deviation.note.length <= ATTEMPT_MAX_LENGTH)
+    }
+    assertTrue(parsed.deviations.first().note.contains("migration still open"))
+  }
+
+  @Test
+  fun `an over-length unresolved item still blocks a completed receipt`() {
+    val reason = featureTaskRuntimeIncompleteWorkGateReason(
+      phaseId = "implement",
+      outputMap = mapOf(
+        "status" to "completed",
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "task-2", "task-3"),
+          "unresolved_items" to listOf("y".repeat(ATTEMPT_MAX_LENGTH + 1)),
+        ),
+      ),
+      obligations = obligations(),
+    )
+
+    assertNotNull(reason, "An over-length unresolved item must not vanish into an advance.")
+    assertTrue(reason.contains("unresolved_items"), "got: $reason")
+  }
+
+  @Test
+  fun `a backtick-bearing deviation survives the parser and stays actionable`() {
+    val parsed = featureTaskRuntimeImplementationClaimFrom(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "task-2"),
+          "deviations" to listOf(
+            mapOf("ref" to "task-3", "note" to "renamed `foo` to `bar`; migration still open"),
+          ),
+        ),
+      ),
+      obligations(),
+    )
+
+    assertEquals(
+      listOf("task-3"),
+      parsed.actionableDeviations(obligations().requiredIds).map { it.ref },
+      "A routine deviation note carrying a backtick must not erase the open-work signal.",
+    )
   }
 
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
@@ -186,4 +247,14 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     reconciliationEvidence = FeatureTaskRuntimeReceiptReconciliation(true, "re-read every changed path"),
     repositoryCheckpoint = FeatureTaskRuntimeReceiptCheckpoint("abc123", null, null),
   )
+
+  private companion object {
+    // Mirrors feature-task-runtime-implementation-attempt-schema.yaml's nonBlank maxLength and the
+    // compactSummary allOf, so a sanitized note is asserted against the shape the validator enforces.
+    const val ATTEMPT_MAX_LENGTH = 4096
+    val SCHEMA_COMPACT_SUMMARY = Regex(
+      "^(?!.*\\{\\s*\")(?!.*\"\\s*:\\s*[\\[{\"])(?!.*@@[^@]*@@)" +
+        "(?!(?:diff --git|\\+\\+\\+ |--- ))[^\\n\\r\\t`]*\\S[^\\n\\r\\t`]*$",
+    )
+  }
 }

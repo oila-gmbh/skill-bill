@@ -15,12 +15,12 @@ subtasks:
 - id: 1
   name: "Truthful implementation completion"
   spec_path: ".feature-specs/SKILL-150-trustworthy-feature-task-convergence/spec_subtask_1_truthful_implementation_completion.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260804-104416-xwda"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "implement_fix"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
