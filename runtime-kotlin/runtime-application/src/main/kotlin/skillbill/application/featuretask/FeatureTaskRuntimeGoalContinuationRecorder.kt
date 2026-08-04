@@ -226,6 +226,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
    * inventory as the exclusion list. The caller widens it to every untracked path the run does not
    * own, so foreign worktree dirt cannot enter the input. Only the exclusion list is affected; the
    * remediation base-sha rescoping below is untouched.
+   * @param ownedPathspec the workflow-owned inventory the tracked delta is limited to. It bounds
+   * which tracked files the input may contain; the base sha it is measured from is unaffected.
    */
   internal fun buildGoalReviewInput(
     workflowId: String,
@@ -233,6 +235,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
     scopedUntrackedExclusions: List<String>? = null,
+    ownedPathspec: List<String> = emptyList(),
   ): GoalSubtaskReviewInputPreparation {
     val durable = database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
@@ -254,10 +257,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       // The untracked exclusion list is not a per-pass detail: dropping it would materialize every
       // untracked file in the worktree into the pass-two input as an owned change. Only the base sha
       // is rescoped.
-      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions) }
+      ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, ownedPathspec) }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions),
+      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, ownedPathspec),
       continuation.goalBranch,
     )
     val input = if (result.ok) {

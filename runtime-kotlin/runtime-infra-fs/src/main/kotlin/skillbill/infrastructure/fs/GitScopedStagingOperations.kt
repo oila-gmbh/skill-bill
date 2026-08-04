@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.ScopedStagingGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import java.nio.file.Files
 import java.nio.file.Path
 
 internal const val GIT_NUL: Char = '\u0000'
@@ -70,6 +71,28 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
 
   override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
     runGitCommand(repoRoot, "diff", "--cached", "--name-only", "-z")
+
+  override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
+    val present = paths.filter(String::isNotBlank).distinct().sorted()
+      .filter { Files.isRegularFile(repoRoot.resolve(it)) }
+    if (present.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
+    val records = mutableListOf<String>()
+    present.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
+      val hashed = runGitCommand(repoRoot, *(listOf("hash-object", "--") + batch).toTypedArray())
+      if (!hashed.ok) return hashed
+      val hashes = hashed.value.orEmpty().lineSequence().map(String::trim).filter(String::isNotBlank).toList()
+      // One sha per input path, in input order. A short read means some path was not hashed, and
+      // pairing the remainder by index would silently attribute one file's content to another.
+      if (hashes.size != batch.size) {
+        return WorkflowGitOperationResult(
+          status = "error",
+          error = "git hash-object returned ${hashes.size} identities for ${batch.size} paths.",
+        )
+      }
+      records += batch.indices.map { index -> "${hashes[index]}\t${batch[index]}" }
+    }
+    return WorkflowGitOperationResult(status = "ok", value = records.joinToString(GIT_NUL.toString()))
+  }
 
   // `ls-files --stage` records are `<mode> <sha> <stage>\t<path>`; the path is everything after the
   // first tab, so a path containing a tab still parses correctly.

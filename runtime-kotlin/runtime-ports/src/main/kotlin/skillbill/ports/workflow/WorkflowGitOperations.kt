@@ -75,6 +75,14 @@ interface ScopedStagingGitOperations {
 
   /** NUL-delimited repository-relative paths with staged index changes against HEAD. */
   fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult
+
+  /**
+   * Content identity of each of [paths] in the working tree, as NUL-delimited `<blob-sha>\t<path>`
+   * records. Paths absent from the working tree are absent from the result, which reads as "gone".
+   * Comparing two of these tells a checkpoint whether an owned file still holds the content the
+   * phase left there, which no path listing can answer.
+   */
+  fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
 }
 
 interface ScopedStagingGitOperationsProvider {
@@ -99,6 +107,9 @@ private object UnavailableScopedStagingGitOperations : ScopedStagingGitOperation
 
   override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult = unavailable("list staged paths")
 
+  override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+    unavailable("read owned-path content identities")
+
   private fun unavailable(capability: String) = WorkflowGitOperationResult(
     status = "error",
     error = "This git operations implementation cannot $capability; scoped checkpoints require a git adapter.",
@@ -122,6 +133,9 @@ fun WorkflowGitOperations.restoreIndexState(
 
 fun WorkflowGitOperations.stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
   scopedStagingOperations().stagedPaths(repoRoot)
+
+fun WorkflowGitOperations.pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+  scopedStagingOperations().pathContentIdentities(repoRoot, paths)
 
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult

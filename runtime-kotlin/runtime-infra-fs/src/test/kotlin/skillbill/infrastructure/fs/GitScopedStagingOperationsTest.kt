@@ -169,6 +169,39 @@ class GitScopedStagingOperationsTest {
     assertEquals(before, indexSnapshot())
   }
 
+  // AC-005: content identity is what distinguishes "this phase wrote it" from "someone else did".
+  @Test
+  fun `pathContentIdentities reports one identity per present path and changes when content changes`() {
+    write("owned/Owned.kt", "owned\n")
+    write("owned/Spaced Path.kt", "spaced\n")
+
+    val paths = listOf("owned/Owned.kt", "owned/Spaced Path.kt", "owned/Absent.kt")
+    val first = GitScopedStagingOperations.pathContentIdentities(repo, paths)
+    assertTrue(first.ok, first.error)
+    val identities = contentIdentities(first.value.orEmpty())
+    assertEquals(setOf("owned/Owned.kt", "owned/Spaced Path.kt"), identities.keys)
+
+    write("owned/Owned.kt", "edited by someone else\n")
+    val second = contentIdentities(
+      GitScopedStagingOperations.pathContentIdentities(repo, paths).value.orEmpty(),
+    )
+
+    assertTrue(
+      second["owned/Owned.kt"] != identities["owned/Owned.kt"],
+      "a concurrent edit must change the reported identity",
+    )
+    assertEquals(
+      identities["owned/Spaced Path.kt"],
+      second["owned/Spaced Path.kt"],
+      "an untouched path keeps its identity, whatever characters it carries",
+    )
+  }
+
+  private fun contentIdentities(raw: String): Map<String, String> = raw
+    .split(GIT_NUL)
+    .filter(String::isNotBlank)
+    .associate { record -> record.substringAfter('\t') to record.substringBefore('\t') }
+
   private fun indexSnapshot(): Map<String, String> = runGitCommand(repo, "ls-files", "--stage", "-z")
     .value.orEmpty()
     .split(GIT_NUL)

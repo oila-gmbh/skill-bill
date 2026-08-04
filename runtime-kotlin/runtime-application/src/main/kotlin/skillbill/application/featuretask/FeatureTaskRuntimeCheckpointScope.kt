@@ -26,49 +26,90 @@ internal sealed interface FeatureTaskRuntimeCheckpointDecision {
   data class Block(val reason: String) : FeatureTaskRuntimeCheckpointDecision
 }
 
+/**
+ * @param issueKey the authority boundary; only this issue's governed spec paths may be committed.
+ * @param ownedPaths the durable workflow-owned inventory: the SOLE staging authority. A path is
+ * never staged by virtue of being dirty, only by being in this inventory.
+ * @param phaseIntroducedPaths paths the active phase itself wrote, from its own before/after file
+ * manifest. Used to police the inventory boundary, never to widen it.
+ * @param worktreeDeltaPaths paths currently differing from the ownership baseline. Used only to
+ * decide whether the owned inventory has anything left to stage.
+ * @param foreignStagedPaths paths already staged by someone else before this checkpoint ran.
+ * @param concurrentlyModifiedOwnedPaths owned paths whose working-tree content changed after the
+ * active phase finished writing them, so the change cannot be attributed to this workflow.
+ */
+internal data class FeatureTaskRuntimeCheckpointScopeInput(
+  val issueKey: String,
+  val ownedPaths: List<String>,
+  val phaseIntroducedPaths: List<String>,
+  val worktreeDeltaPaths: List<String>,
+  val foreignStagedPaths: List<String> = emptyList(),
+  val concurrentlyModifiedOwnedPaths: List<String> = emptyList(),
+)
+
 internal object FeatureTaskRuntimeCheckpointScope {
-  /**
-   * @param issueKey the authority boundary; only this issue's governed spec paths may be committed.
-   * @param ownedPaths the durable workflow-owned inventory resolved for the active subtask and phase.
-   * @param phaseIntroducedPaths paths the active phase created or modified in the working tree.
-   * @param foreignStagedPaths paths already staged by someone else before this checkpoint ran.
-   */
-  fun decide(
-    issueKey: String,
-    ownedPaths: List<String>,
-    phaseIntroducedPaths: List<String>,
-    foreignStagedPaths: List<String>,
-  ): FeatureTaskRuntimeCheckpointDecision {
-    val owned = ownedPaths.filter(String::isNotBlank).distinct().sorted()
+  fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
+    val owned = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
     val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
 
-    val foreignGovernedSpecs = phaseIntroducedPaths.filter { path ->
-      isForeignGovernedSpecPath(path, issueKey)
+    val foreignGovernedSpecs = input.phaseIntroducedPaths.filter { path ->
+      isForeignGovernedSpecPath(path, input.issueKey)
     }.distinct().sorted()
     if (foreignGovernedSpecs.isNotEmpty()) {
-      return blockForeignGovernedSpec(issueKey, foreignGovernedSpecs)
+      return blockForeignGovernedSpec(input.issueKey, foreignGovernedSpecs)
     }
 
-    val outsideInventory = phaseIntroducedPaths.filter(String::isNotBlank).distinct()
+    val outsideInventory = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
       .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
       .sorted()
     if (outsideInventory.isNotEmpty()) {
-      return blockOutsideInventory(issueKey, outsideInventory)
+      return blockOutsideInventory(input.issueKey, outsideInventory)
     }
 
     // An owned path that someone else already staged is genuinely ambiguous: staging over it would
     // commit their index content as this workflow's work, and restoring it would discard their
     // staging. Neither is recoverable from the outside, so the only permitted outcome is a block.
-    val overlapping = foreignStagedPaths.filter(String::isNotBlank).distinct()
+    val overlapping = input.foreignStagedPaths.filter(String::isNotBlank).distinct()
       .mapNotNull { foreign -> ownedAliases[normalizeForAliasComparison(foreign)] }
       .distinct()
       .sorted()
     if (overlapping.isNotEmpty()) {
-      return blockOverlap(overlapping)
+      return blockStagedOverlap(overlapping)
     }
 
-    return if (owned.isEmpty()) FeatureTaskRuntimeCheckpointDecision.Skip
-    else FeatureTaskRuntimeCheckpointDecision.Stage(owned)
+    // The unstaged half of the same ambiguity: nobody staged the file, but its content is no longer
+    // the content this phase left behind, so committing it would attribute a stranger's edit here.
+    val concurrent = input.concurrentlyModifiedOwnedPaths.filter(String::isNotBlank).distinct()
+      .mapNotNull { modified -> ownedAliases[normalizeForAliasComparison(modified)] }
+      .distinct()
+      .sorted()
+    if (concurrent.isNotEmpty()) {
+      return blockConcurrentModification(concurrent)
+    }
+
+    val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
+      .map(::normalizeForAliasComparison)
+      .toSet()
+    val stageable = owned.filter { normalizeForAliasComparison(it) in deltaAliases }
+    return if (stageable.isEmpty()) FeatureTaskRuntimeCheckpointDecision.Skip
+    else FeatureTaskRuntimeCheckpointDecision.Stage(stageable)
+  }
+
+  /**
+   * The subset of [worktreeDeltaPaths] the active phase actually wrote.
+   *
+   * The delta is plumbing output; the phase file manifest is porcelain, which collapses a wholly
+   * untracked directory to a single `dir/` entry. Matching a delta path against a manifest directory
+   * prefix keeps the two representations comparable without widening the phase's write set to
+   * everything dirty in the tree.
+   */
+  fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPaths: List<String>): List<String> {
+    val manifest = phaseManifestPaths.filter(String::isNotBlank).map(::normalizeForAliasComparison)
+    if (manifest.isEmpty()) return emptyList()
+    return worktreeDeltaPaths.filter(String::isNotBlank).filter { path ->
+      val normalized = normalizeForAliasComparison(path)
+      manifest.any { entry -> normalized == entry || normalized.startsWith("$entry/") }
+    }.distinct().sorted()
   }
 
   /**
@@ -132,11 +173,19 @@ internal object FeatureTaskRuntimeCheckpointScope {
         "into the run's scope or revert them, then resume.",
     )
 
-  private fun blockOverlap(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
+  private fun blockStagedOverlap(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
     "git: owned path(s) ${formatPaths(paths)} are already staged outside this workflow, so the " +
       "checkpoint cannot tell which content to commit. The runtime will not resolve this for you: " +
       "either commit or unstage those paths yourself (git restore --staged -- <path>) and then " +
       "resume. Both the index and worktree versions have been left untouched.",
+  )
+
+  private fun blockConcurrentModification(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
+    "git: owned path(s) ${formatPaths(paths)} were modified in the working tree after this phase " +
+      "finished writing them, so the checkpoint cannot tell which content is this workflow's work. " +
+      "The runtime will not resolve this for you: review those paths, keep or revert the concurrent " +
+      "edit yourself (git diff -- <path>), and then resume. Both the index and worktree versions " +
+      "have been left untouched.",
   )
 
   private fun formatPaths(paths: List<String>): String {
