@@ -261,31 +261,64 @@ internal fun featureTaskRuntimeImplementationClaimFrom(
       featureTaskRuntimeClosedRepairItemIds(outputMap)
     } else {
       produced.stringList("completed_task_ids")
-    },
-    changedPaths = produced.stringList("changed_paths"),
-    unresolvedItems = produced.stringList("unresolved_items"),
+    }.filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS),
+    changedPaths = produced.stringList("changed_paths")
+      .filter(::isAttemptRepoPath).distinct().take(ATTEMPT_MAX_PATH_ITEMS),
+    unresolvedItems = produced.stringList("unresolved_items")
+      .filter(::isAttemptNonBlank).take(ATTEMPT_MAX_ITEMS),
     deviations = (produced["deviations"] as? List<*>).orEmpty().mapNotNull { entry ->
       val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      val ref = (map["ref"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-      val note = (map["note"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+      val ref = (map["ref"] as? String)?.takeIf(::isAttemptNonBlank) ?: return@mapNotNull null
+      val note = (map["note"] as? String)?.takeIf(::isAttemptCompactSummary) ?: return@mapNotNull null
       FeatureTaskRuntimeReceiptDeviation(ref = ref, note = note)
-    },
+    }.take(ATTEMPT_MAX_ITEMS),
     reconciliationEvidence = JsonSupport.anyToStringAnyMap(produced["reconciliation_evidence"])?.let { map ->
-      (map["evidence"] as? String)?.takeIf(String::isNotBlank)?.let { evidence ->
+      (map["evidence"] as? String)?.takeIf(::isAttemptNonBlank)?.let { evidence ->
         FeatureTaskRuntimeReceiptReconciliation(map["reconciled"] as? Boolean ?: false, evidence)
       }
     },
     repositoryCheckpoint = JsonSupport.anyToStringAnyMap(produced["repository_checkpoint"])?.let { map ->
-      (map["fingerprint"] as? String)?.takeIf(String::isNotBlank)?.let { fingerprint ->
+      (map["fingerprint"] as? String)?.takeIf(::isAttemptNonBlank)?.let { fingerprint ->
         FeatureTaskRuntimeReceiptCheckpoint(
           fingerprint = fingerprint,
-          baseRef = map["base_ref"] as? String,
-          headRef = map["head_ref"] as? String,
+          baseRef = (map["base_ref"] as? String)?.takeIf(::isAttemptNonBlank),
+          headRef = (map["head_ref"] as? String)?.takeIf(::isAttemptNonBlank),
         )
       }
     },
   )
 }
+
+// The attempt schema, not the Kotlin receipt models, is the narrowest gate this claim has to clear:
+// the claim is appended as a durable attempt record inside the same transaction that persists a
+// blocked or failed phase, so any value the schema rejects rolls that record back. These mirror
+// `feature-task-runtime-implementation-attempt-schema.yaml`'s $defs so the parser drops what the
+// validator would reject rather than throwing from inside the write.
+private const val ATTEMPT_MAX_ITEMS = 128
+private const val ATTEMPT_MAX_PATH_ITEMS = 512
+private const val ATTEMPT_NON_BLANK_MAX_LENGTH = 4096
+private const val ATTEMPT_TASK_ID_MAX_LENGTH = 128
+private const val ATTEMPT_REPO_PATH_MAX_LENGTH = 1024
+private val ATTEMPT_TASK_ID_PATTERN = Regex("^[a-z][a-z0-9-]*$")
+private val ATTEMPT_REPO_PATH_PATTERN = Regex("^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$")
+private val ATTEMPT_SUMMARY_FORBIDDEN_CHARS = Regex("[\\n\\r\\t`]")
+private val ATTEMPT_SUMMARY_STRUCTURED = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
+
+private fun isAttemptNonBlank(value: String): Boolean =
+  value.isNotBlank() && value.length <= ATTEMPT_NON_BLANK_MAX_LENGTH
+
+private fun isAttemptTaskId(value: String): Boolean =
+  value.length <= ATTEMPT_TASK_ID_MAX_LENGTH && ATTEMPT_TASK_ID_PATTERN.matches(value)
+
+private fun isAttemptRepoPath(value: String): Boolean =
+  value.isNotEmpty() &&
+    value.length <= ATTEMPT_REPO_PATH_MAX_LENGTH &&
+    ATTEMPT_REPO_PATH_PATTERN.matches(value)
+
+private fun isAttemptCompactSummary(value: String): Boolean =
+  isAttemptNonBlank(value) &&
+    !ATTEMPT_SUMMARY_FORBIDDEN_CHARS.containsMatchIn(value) &&
+    !ATTEMPT_SUMMARY_STRUCTURED.containsMatchIn(value)
 
 /**
  * The repair items an audit-gap re-entry carries. Read from the receipt's own result/deferral lists is

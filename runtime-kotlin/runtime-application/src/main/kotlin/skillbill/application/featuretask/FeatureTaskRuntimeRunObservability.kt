@@ -97,20 +97,7 @@ internal class FeatureTaskRuntimeRunObservability(
     crashResumed: Boolean = false,
     verifierReentry: Boolean = false,
   ) {
-    // The kind is derived from [crashResumed] — a durable record this process did not create — rather
-    // than from [resumed], which only means "not the first visit" and so also covers an in-process
-    // re-entry. A repeat attempt that is not a crash resume is a process retry.
-    //
-    // A verifier re-entry claims no start kind at all: the LOOP_EDGE entry emitted for that edge
-    // already carries `verifier_reentry`, and since the status projection takes the newest kind-bearing
-    // ledger entry, a start kind appended after it would overwrite the accurate description with a
-    // generic one.
-    val startKind = when {
-      verifierReentry -> null
-      crashResumed -> FeatureTaskRuntimeContinuationKind.CRASH_RESUME
-      attemptCount > 1 -> FeatureTaskRuntimeContinuationKind.PROCESS_RETRY
-      else -> null
-    }
+    val startKind = featureTaskRuntimeStartContinuationKind(crashResumed, verifierReentry, attemptCount)
     request.eventSink.emit(
       FeatureTaskRuntimeRunEvent.PhaseStarted(
         workflowId = request.workflowId,
@@ -268,4 +255,27 @@ internal class FeatureTaskRuntimeRunObservability(
   private fun appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {
     recorder.appendLedgerEntry(ledgerRequest, request.dbPathOverride)
   }
+}
+
+/**
+ * The continuation kind a phase START/RESUME ledger entry claims.
+ *
+ * Derived from [crashResumed] — a durable record this process did not create — rather than from
+ * "resumed", which only means "not the first visit" and so also covers in-process re-entry. A repeat
+ * attempt that is not a crash resume is a process retry.
+ *
+ * A verifier re-entry claims no kind only when it is not also a crash resume: the LOOP_EDGE entry for
+ * that edge already carries `verifier_reentry`, and the status projection takes the newest kind-bearing
+ * entry, so a generic start kind appended after it would overwrite the accurate description. A crash
+ * resume inside a reopened span has no LOOP_EDGE entry of its own, so it must still claim its kind.
+ */
+internal fun featureTaskRuntimeStartContinuationKind(
+  crashResumed: Boolean,
+  verifierReentry: Boolean,
+  attemptCount: Int,
+): FeatureTaskRuntimeContinuationKind? = when {
+  crashResumed -> FeatureTaskRuntimeContinuationKind.CRASH_RESUME
+  verifierReentry -> null
+  attemptCount > 1 -> FeatureTaskRuntimeContinuationKind.PROCESS_RETRY
+  else -> null
 }

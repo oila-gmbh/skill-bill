@@ -928,6 +928,12 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  // Only the edge destination gets a LOOP_EDGE ledger entry carrying `verifier_reentry`, so only the
+  // destination may defer its start kind to that entry. Every other phase in the reopened span still
+  // owns its own start kind.
+  private fun isLoopDestination(reentry: PendingReentry): Boolean =
+    transitions.backwardEdges.firstOrNull { it.loopId == reentry.loopId }?.destinationPhaseId == reentry.phaseId
+
   private fun blockInvalidAuditGapRecovery(reentry: PendingReentry, reason: String) {
     val phaseId = reentry.phaseId
     val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
@@ -1924,7 +1930,7 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration > 1 || state.hasPriorRecord(run.phaseId),
       run.modelDirective,
       crashResumed = crashResumed,
-      verifierReentry = run.reentry != null,
+      verifierReentry = run.reentry?.let { isLoopDestination(it) } == true,
     )
     var outcome: PhaseOutcome? = null
     FeatureTaskRuntimeFixLoopPolicy

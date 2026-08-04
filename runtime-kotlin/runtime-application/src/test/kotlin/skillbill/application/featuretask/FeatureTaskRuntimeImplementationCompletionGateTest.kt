@@ -136,6 +136,34 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     assertEquals(setOf("gap-1", "gap-2"), closed.toSet())
   }
 
+  @Test
+  fun `the parser drops every claim value the attempt schema would reject`() {
+    val parsed = featureTaskRuntimeImplementationClaimFrom(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("task-1", "Task_1", "1-task"),
+          "changed_paths" to listOf("runtime-kotlin/Sample.kt", "/home/user/repo/Foo.kt", "a\\b.kt", "../x.kt"),
+          "unresolved_items" to listOf("open item", "  "),
+          "deviations" to listOf(
+            mapOf("ref" to "task-1", "note" to "fine"),
+            mapOf("ref" to "task-1", "note" to "has\nnewline"),
+            mapOf("ref" to "task-1", "note" to "has`backtick"),
+          ),
+          "repository_checkpoint" to mapOf("fingerprint" to "abc", "base_ref" to "", "head_ref" to "  "),
+        ),
+      ),
+      obligations(),
+    )
+
+    assertEquals(listOf("task-1"), parsed.completedTaskIds)
+    assertEquals(listOf("runtime-kotlin/Sample.kt"), parsed.changedPaths)
+    assertEquals(listOf("open item"), parsed.unresolvedItems)
+    assertEquals(listOf("fine"), parsed.deviations.map { it.note })
+    assertNull(parsed.repositoryCheckpoint?.baseRef)
+    assertNull(parsed.repositoryCheckpoint?.headRef)
+    assertEquals("abc", parsed.repositoryCheckpoint?.fingerprint)
+  }
+
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
     featureTaskRuntimeImplementationCompletionReason("implement", obligations(), claim)
 
