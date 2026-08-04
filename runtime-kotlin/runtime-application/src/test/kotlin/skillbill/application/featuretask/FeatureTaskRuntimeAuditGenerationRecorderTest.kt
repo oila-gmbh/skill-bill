@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapState
@@ -480,32 +480,31 @@ class FeatureTaskRuntimeAuditGenerationRecorderTest {
     )
   }
 
-  private fun plan(vararg gapTexts: String): FeatureTaskRuntimeAuditRepairPlan =
-    FeatureTaskRuntimeAuditRepairPlan(
-      AUDIT_REPAIR_CONTRACT_VERSION,
-      gapTexts.mapIndexed { index, text ->
-        val criterion = "AC-00${index + 1}"
-        val gapId = "ac-00${index + 1}-gap-1"
-        FeatureTaskRuntimeAuditGap(
-          gapId = gapId,
-          acceptanceCriterionRef = criterion,
-          acceptanceCriterionText = text,
-          failureEvidence = evidence(FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT, criterion),
-          diagnosis = "The behavior the criterion names is absent at that boundary",
-          affectedBoundary = "runtime-application",
-          repairItems = listOf(
-            FeatureTaskRuntimeRepairItem(
-              repairItemId = "$gapId-item-1",
-              intendedOutcome = "The named behavior exists at that boundary",
-              implementationActions = listOf("Add the missing behavior"),
-              affectedPathsOrSymbols = listOf("runtime-kotlin/runtime-application/Example.kt"),
-              requiredVerification = listOf("Re-read the changed symbol"),
-              dependsOn = emptyList(),
-            ),
+  private fun plan(vararg gapTexts: String): FeatureTaskRuntimeAuditRepairPlan = FeatureTaskRuntimeAuditRepairPlan(
+    AUDIT_REPAIR_CONTRACT_VERSION,
+    gapTexts.mapIndexed { index, text ->
+      val criterion = "AC-00${index + 1}"
+      val gapId = "ac-00${index + 1}-gap-1"
+      FeatureTaskRuntimeAuditGap(
+        gapId = gapId,
+        acceptanceCriterionRef = criterion,
+        acceptanceCriterionText = text,
+        failureEvidence = evidence(FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT, criterion),
+        diagnosis = "The behavior the criterion names is absent at that boundary",
+        affectedBoundary = "runtime-application",
+        repairItems = listOf(
+          FeatureTaskRuntimeRepairItem(
+            repairItemId = "$gapId-item-1",
+            intendedOutcome = "The named behavior exists at that boundary",
+            implementationActions = listOf("Add the missing behavior"),
+            affectedPathsOrSymbols = listOf("runtime-kotlin/runtime-application/Example.kt"),
+            requiredVerification = listOf("Re-read the changed symbol"),
+            dependsOn = emptyList(),
           ),
-        )
-      },
-    )
+        ),
+      )
+    },
+  )
 
   private fun result(repairItemId: String) = FeatureTaskRuntimeRepairItemResult(
     repairItemId = repairItemId,

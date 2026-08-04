@@ -2,8 +2,9 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.workflow.taskruntime.model.AUDIT_GENERATION_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGeneration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
@@ -52,10 +53,8 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
     workflowId: String,
   ): FeatureTaskRuntimeAuditGenerationHistory = FeatureTaskRuntimeAuditGenerationHistory(
     generations.listOrdered(workflowId).map { row ->
-      auditGenerationFromWire(
-        JsonSupport.jsonStringToMap(row.generationJson),
-        "audit_generation:${row.workflowId}#${row.generationOrdinal}",
-      )
+      val source = "audit_generation:${row.workflowId}#${row.generationOrdinal}"
+      auditGenerationFromWire(auditGenerationWireMap(row.generationJson, source), source)
     },
   )
 
@@ -98,38 +97,16 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
     ordinal: Int,
   ): FeatureTaskRuntimeAuditGeneration {
     val priorStates = history.latestGapStates()
-    val priorRecurrence = history.recurrenceCounts()
     val dispositionByGapId = request.dispositions.associateBy { it.gapId }
     val reported = request.latestPlan?.gaps.orEmpty().associateBy { it.gapId }
     val carriedOpenGapIds = priorStates.filterValues { it.open }.keys
     val gapIds = (carriedOpenGapIds + reported.keys).toList()
     val gaps = gapIds.map { gapId ->
-      val planGap = reported[gapId]
-      val prior = history.generations.flatMap { it.gaps }.lastOrNull { it.gapId == gapId }
-      val disposition = dispositionByGapId[gapId]
-      val state = resolveAuditGapState(priorStates[gapId], disposition, planGap != null)
-      val recurrence = (priorRecurrence[gapId] ?: 0) +
-        if (state == FeatureTaskRuntimeAuditGapState.RECURRING) 1 else 0
-      FeatureTaskRuntimeGenerationGap(
+      generationGap(
         gapId = gapId,
-        acceptanceCriterionRef = planGap?.acceptanceCriterionRef
-          ?: prior?.acceptanceCriterionRef
-          ?: schemaError("Carried gap '$gapId' has no durable acceptance criterion."),
-        acceptanceCriterionText = planGap?.acceptanceCriterionText
-          ?: prior?.acceptanceCriterionText
-          ?: schemaError("Carried gap '$gapId' has no durable acceptance criterion text."),
-        state = state,
-        recurrenceCount = recurrence,
-        failureEvidence = planGap?.failureEvidence
-          ?: disposition?.evidence
-          ?: prior?.failureEvidence
-          ?: schemaError("Carried gap '$gapId' has no durable failure evidence."),
-        diagnosis = planGap?.diagnosis ?: prior?.diagnosis ?: schemaError("Carried gap '$gapId' has no diagnosis."),
-        affectedBoundary = planGap?.affectedBoundary
-          ?: prior?.affectedBoundary
-          ?: schemaError("Carried gap '$gapId' has no affected boundary."),
-        repairItemIds = planGap?.repairItems?.map { it.repairItemId }
-          ?: prior?.repairItemIds.orEmpty(),
+        planGap = reported[gapId],
+        prior = history.generations.flatMap { it.gaps }.lastOrNull { it.gapId == gapId },
+        disposition = dispositionByGapId[gapId],
       )
     }
     val generation = FeatureTaskRuntimeAuditGeneration(
@@ -157,6 +134,46 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
       )
     }
     return generation
+  }
+
+  /**
+   * One gap's durable row for this generation. Identity-carrying fields fall back from what the plan just
+   * reported to what the gap was opened under, and a gap that can name neither is a contract defect rather
+   * than a gap silently rewritten with narrower text.
+   */
+  private fun generationGap(
+    gapId: String,
+    planGap: FeatureTaskRuntimeAuditGap?,
+    prior: FeatureTaskRuntimeGenerationGap?,
+    disposition: FeatureTaskRuntimePriorGapDisposition?,
+  ): FeatureTaskRuntimeGenerationGap {
+    val state = resolveAuditGapState(prior?.state, disposition, planGap != null)
+    return FeatureTaskRuntimeGenerationGap(
+      gapId = gapId,
+      acceptanceCriterionRef = gapId.carried(
+        "durable acceptance criterion",
+        planGap?.acceptanceCriterionRef,
+        prior?.acceptanceCriterionRef,
+      ),
+      acceptanceCriterionText = gapId.carried(
+        "durable acceptance criterion text",
+        planGap?.acceptanceCriterionText,
+        prior?.acceptanceCriterionText,
+      ),
+      state = state,
+      recurrenceCount = (prior?.recurrenceCount ?: 0) +
+        if (state == FeatureTaskRuntimeAuditGapState.RECURRING) 1 else 0,
+      failureEvidence = gapId.carried(
+        "durable failure evidence",
+        planGap?.failureEvidence,
+        disposition?.evidence,
+        prior?.failureEvidence,
+      ),
+      diagnosis = gapId.carried("diagnosis", planGap?.diagnosis, prior?.diagnosis),
+      affectedBoundary = gapId.carried("affected boundary", planGap?.affectedBoundary, prior?.affectedBoundary),
+      repairItemIds = planGap?.repairItems?.map { it.repairItemId }
+        ?: prior?.repairItemIds.orEmpty(),
+    )
   }
 
   private fun resolveAuditGapState(
@@ -257,3 +274,21 @@ internal object FeatureTaskRuntimeAuditGenerationRecorder {
 
   const val CONTRACT_VERSION: String = AUDIT_GENERATION_CONTRACT_VERSION
 }
+
+/**
+ * The first source that can still name an identity-carrying gap field: what the plan just reported, then what
+ * the gap was opened under. A gap none of them can name is a contract defect, because recording it would
+ * rewrite append-only history with narrower text than the identity was opened with.
+ */
+private fun <T : Any> String.carried(description: String, vararg candidates: T?): T =
+  candidates.firstNotNullOfOrNull { it }
+    ?: schemaError("Carried gap '$this' has no $description.")
+
+private fun auditGenerationWireMap(generationJson: String, source: String): Map<String, Any?> =
+  JsonSupport.parseObjectOrNull(generationJson)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: error(
+      "$source has unparseable generation_json. A durable audit generation is append-only evidence; " +
+        "decoding it to an empty map would silently erase recorded gaps and recurrence.",
+    )

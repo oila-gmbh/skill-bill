@@ -73,11 +73,13 @@ class FeatureTaskRuntimeAuditGenerationWireTest {
   fun `an evidence reference beyond the durable bound is rejected at the wire layer`() {
     val wire = auditGenerationToWire(generation()).toMutableMap()
     val gaps = (wire["gaps"] as List<*>).map { gap ->
-      (gap as Map<*, *>) + ("failure_evidence" to mapOf(
-        "observation" to "required_behavior_absent",
-        "artifact_ref" to "a".repeat(300),
-        "check_ref" to "AC-001",
-      ))
+      (gap as Map<*, *>) + (
+        "failure_evidence" to mapOf(
+          "observation" to "required_behavior_absent",
+          "artifact_ref" to "a".repeat(300),
+          "check_ref" to "AC-001",
+        )
+        )
     }
     wire["gaps"] = gaps
 

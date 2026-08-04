@@ -43,8 +43,8 @@ carries the rubric text or the full delta forward. Build the
 checklist from every review area declared by the routed pack and every required
 baseline layer in its manifest composition, and merge it into one combined
 checklist. The worker then traverses the delta exactly once against that combined
-checklist, holding all areas in mind simultaneously — it must never re-walk the
-same delta once per area. Areas whose diff-signal lane would otherwise be empty
+checklist at reduced depth, holding all areas in mind simultaneously — it must
+never re-walk the same delta once per area. Areas whose diff-signal lane would otherwise be empty
 are still recorded `checked — no applicable signal` instead of being silently
 dropped; that record is coverage accounting for the single pass, not evidence of
 a separate pass.

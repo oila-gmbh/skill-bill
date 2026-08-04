@@ -143,6 +143,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "never a prefixed string")
   }
 
+  // A gate run recompiles every dependent module and reruns its suites, so per-fix reruns dominate the
+  // phase's wall clock. The prompt must ask for one batched repair pass, not fix-then-rerun iteration.
+  @Test
+  fun `validate prompt batches repair instead of rerunning the gate per fix`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+    )
+
+    assertContains(prompt, "read the complete finding set from one gate run")
+    assertContains(prompt, "only then run the gate again to verify")
+    assertContains(prompt, "Never rerun the gate after an individual fix")
+    assertContains(prompt, "share one root cause are one fix")
+  }
+
   @Test
   fun `review prompt preserves every durable execution mode unchanged`() {
     CodeReviewExecutionMode.entries.forEach { mode ->

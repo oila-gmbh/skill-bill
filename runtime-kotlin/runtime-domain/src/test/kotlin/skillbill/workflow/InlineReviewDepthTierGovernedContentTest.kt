@@ -19,6 +19,8 @@ class InlineReviewDepthTierGovernedContentTest {
 
   private val codeReview: String = governedText("skills/bill-code-review/content.md")
 
+  private val inlineWorker: String = governedText("skills/bill-code-review-inline/content.md")
+
   private val featureGoal: String = governedText("skills/bill-feature-goal/content.md")
 
   @Test
@@ -26,8 +28,21 @@ class InlineReviewDepthTierGovernedContentTest {
     assertTrue(codeReview.contains("two review depths, not two ways to execute the same"))
     assertTrue(codeReview.contains("no per-area specialist workers"))
     assertTrue(codeReview.contains("bounded budget"))
-    assertTrue(codeReview.contains("Walk every declared area"))
     assertTrue(codeReview.contains("reduced depth"))
+  }
+
+  // The light tier's cost model depends on one traversal carrying every area at once. Area-major
+  // phrasing reads as an iteration order and makes the worker re-review the same delta per area, so
+  // the single-pass rule and the explicit prohibition are both pinned.
+  @Test
+  fun `inline traverses the delta once with every area held simultaneously`() {
+    assertTrue(codeReview.contains("merge it into one combined"))
+    assertTrue(codeReview.contains("traverses the delta exactly once"))
+    assertTrue(codeReview.contains("never re-walk the same delta once per area"))
+    assertTrue(codeReview.contains("holding all areas in mind simultaneously"))
+    assertTrue(inlineWorker.contains("One pass over the delta. Never re-walk it per area."))
+    assertTrue(inlineWorker.contains("traverse the delta exactly once"))
+    assertTrue(inlineWorker.contains("not an iteration order"))
   }
 
   // One isolated worker for the whole review is still one review at reduced depth: the tier stays

@@ -224,6 +224,37 @@ class CliGoalRuntimeTest {
     assertEquals("goal_paused", watch.payload?.get("stop_reason"))
   }
 
+  // A pause request is honoured at the next launch boundary, so the current subtask keeps running.
+  // Treating the request as terminal ended the monitor immediately and left the operator blind for the
+  // rest of that subtask.
+  @Test
+  fun `goal watch keeps following while a pause is requested but not reached`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    CliRuntime.run(goalControlCommand(fixture, "pause"), fixture.context(launcher = launcher))
+    forcePendingPauseRequest(fixture.dbPath)
+
+    val watch = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "watch",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--interval-seconds",
+        "0",
+        "--max-refreshes",
+        "1",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, watch.exitCode, watch.stdout)
+    assertEquals("max_refreshes", watch.payload?.get("stop_reason"))
+  }
+
   @Test
   fun `goal status help documents diff observability cost controls`() {
     val status = CliRuntime.run(listOf("goal", "status", "--help"), CliRuntimeContext())

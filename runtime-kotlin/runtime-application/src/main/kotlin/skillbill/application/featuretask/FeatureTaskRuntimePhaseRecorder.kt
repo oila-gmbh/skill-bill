@@ -329,7 +329,8 @@ class FeatureTaskRuntimePhaseRecorder(
       // A generation names the checkpoint its decision was made at. A settlement that could not prove one —
       // the closure-derived audit that never launches a child — records no new inspection to anchor.
       (request.repositoryFingerprint?.isNotBlank() == true || priorFingerprint != null)
-    if (!zeroGapAuditSettlement && latestPlan == null && dispositions.isEmpty() && repairResults.isEmpty()) return
+    val settlesNothing = latestPlan == null && dispositions.isEmpty() && repairResults.isEmpty()
+    if (!zeroGapAuditSettlement && settlesNothing) return
     val fingerprint = request.repositoryFingerprint?.takeIf { it.isNotBlank() }
       ?: priorFingerprint
       ?: schemaError(
@@ -1010,22 +1011,21 @@ class FeatureTaskRuntimePhaseRecorder(
   fun loadAuditGenerationHistory(
     workflowId: String,
     dbOverride: String? = null,
-  ): FeatureTaskRuntimeAuditGenerationHistory =
-    runCatching {
-      database.read(dbOverride) { unitOfWork ->
-        FeatureTaskRuntimeAuditGenerationRecorder.loadHistory(
-          unitOfWork.featureTaskRuntimeAuditGenerations,
-          workflowId,
-        )
-      }
-    }.getOrElse { error ->
-      if (error is ShellContentContractException || error is InvalidWorkflowStateSchemaError) {
-        quarantineAuditGenerationHistory(workflowId, dbOverride)
-        FeatureTaskRuntimeAuditGenerationHistory(emptyList())
-      } else {
-        throw error
-      }
+  ): FeatureTaskRuntimeAuditGenerationHistory = runCatching {
+    database.read(dbOverride) { unitOfWork ->
+      FeatureTaskRuntimeAuditGenerationRecorder.loadHistory(
+        unitOfWork.featureTaskRuntimeAuditGenerations,
+        workflowId,
+      )
     }
+  }.getOrElse { error ->
+    if (error is ShellContentContractException || error is InvalidWorkflowStateSchemaError) {
+      quarantineAuditGenerationHistory(workflowId, dbOverride)
+      FeatureTaskRuntimeAuditGenerationHistory(emptyList())
+    } else {
+      throw error
+    }
+  }
 
   fun quarantineAuditGenerationHistory(workflowId: String, dbOverride: String? = null): Int =
     database.transaction(dbOverride) { unitOfWork ->

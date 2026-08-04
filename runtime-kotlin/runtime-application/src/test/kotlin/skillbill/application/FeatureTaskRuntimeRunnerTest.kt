@@ -56,6 +56,7 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
+import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
@@ -5297,6 +5298,10 @@ internal class RuntimeFakeDatabaseSessionFactory(
     linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
     linkedMapOf<ProducerEvidenceKey, skillbill.ports.persistence.ProducerOutputEvidence>()
+  private val auditGenerationRows = repository.auditGenerationRows
+
+  fun auditGenerations(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
+    auditGenerationRows.filter { it.workflowId == workflowId }.sortedBy { it.generationOrdinal }
 
   fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
     diagnosticRecords.values.toList()
@@ -5337,6 +5342,31 @@ internal class RuntimeFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
+
+    // Mirrors the store's insert-only semantics: a duplicate ordinal is rejected rather than overwriting
+    // durable history, so a test that re-appends a generation fails the same way production does.
+    override val featureTaskRuntimeAuditGenerations =
+      object : skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository {
+        override fun append(row: FeatureTaskRuntimeAuditGenerationRow) {
+          require(
+            auditGenerationRows.none {
+              it.workflowId == row.workflowId && it.generationOrdinal == row.generationOrdinal
+            },
+          ) {
+            "generation ${row.generationOrdinal} already exists for ${row.workflowId}"
+          }
+          auditGenerationRows += row
+        }
+
+        override fun listOrdered(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
+          auditGenerationRows.filter { it.workflowId == workflowId }.sortedBy { it.generationOrdinal }
+
+        override fun quarantineAll(workflowId: String): Int {
+          val removed = auditGenerationRows.count { it.workflowId == workflowId }
+          auditGenerationRows.removeAll { it.workflowId == workflowId }
+          return removed
+        }
+      }
     override val rejectedOutputDiagnosticPermissions =
       skillbill.ports.persistence.RejectedOutputDiagnosticPermissions { }
     override val rejectedOutputDiagnostics = object : skillbill.ports.persistence.RejectedOutputDiagnosticRepository {
@@ -5494,6 +5524,14 @@ private fun FeatureTaskRuntimeWorkerOwnership.matchesActiveOwnership(
 
 internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   private var workerOwnership: FeatureTaskRuntimeWorkerOwnership? = null
+
+  /**
+   * Append-only audit-generation history, held here rather than on the session factory because a resume is
+   * modelled by building a fresh factory over this same repository. On the factory it would model a database
+   * that forgot its audit history at every restart, and a repair settlement would then be the first
+   * generation.
+   */
+  val auditGenerationRows = mutableListOf<FeatureTaskRuntimeAuditGenerationRow>()
 
   fun seedWorkerOwnership(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) {
     workerOwnership = ownership

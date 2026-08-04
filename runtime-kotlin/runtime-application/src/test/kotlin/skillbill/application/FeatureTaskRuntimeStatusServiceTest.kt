@@ -602,6 +602,8 @@ private class StatusFakeDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = skillbill.ports.persistence.EmptyWorkListRepository
     override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val featureTaskRuntimeAuditGenerations =
+      skillbill.ports.persistence.EmptyFeatureTaskRuntimeAuditGenerationRepository
   }
 }
 

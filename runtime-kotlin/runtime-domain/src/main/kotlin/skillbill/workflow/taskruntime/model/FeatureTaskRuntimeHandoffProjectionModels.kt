@@ -231,6 +231,10 @@ data class FeatureTaskRuntimeRepositoryCheckpoint(
       "FeatureTaskRuntimeRepositoryCheckpoint.fingerprint must be non-blank; an unidentified checkpoint " +
         "cannot satisfy must_match or refresh_from_repository."
     }
+    require(fingerprint.length <= MAX_REPOSITORY_FINGERPRINT_LENGTH) {
+      "FeatureTaskRuntimeRepositoryCheckpoint.fingerprint allows at most " +
+        "$MAX_REPOSITORY_FINGERPRINT_LENGTH characters, had ${fingerprint.length}."
+    }
     require(workingTreeOwnedPaths.none(String::isBlank)) {
       "FeatureTaskRuntimeRepositoryCheckpoint.workingTreeOwnedPaths must not contain blank entries."
     }

@@ -1,7 +1,8 @@
 package skillbill.db.workflow
 
+import skillbill.db.telemetry.bind
 import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
 import java.sql.Connection
 
 /**
@@ -23,11 +24,13 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
       ) VALUES (?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, row.workflowId)
-      statement.setInt(2, row.generationOrdinal)
-      statement.setString(3, row.repositoryCheckpoint)
-      statement.setString(4, row.contractVersion)
-      statement.setString(5, row.generationJson)
+      statement.bind(
+        row.workflowId,
+        row.generationOrdinal,
+        row.repositoryCheckpoint,
+        row.contractVersion,
+        row.generationJson,
+      )
       statement.executeUpdate()
     }
   }
@@ -59,11 +62,10 @@ internal class FeatureTaskRuntimeAuditGenerationStore(
       }
     }
 
-  override fun quarantineAll(workflowId: String): Int =
-    connection.prepareStatement(
-      "DELETE FROM feature_task_runtime_audit_generations WHERE workflow_id = ?",
-    ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeUpdate()
-    }
+  override fun quarantineAll(workflowId: String): Int = connection.prepareStatement(
+    "DELETE FROM feature_task_runtime_audit_generations WHERE workflow_id = ?",
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeUpdate()
+  }
 }

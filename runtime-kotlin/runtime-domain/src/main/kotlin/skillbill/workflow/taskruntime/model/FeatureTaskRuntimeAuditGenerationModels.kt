@@ -232,21 +232,6 @@ data class FeatureTaskRuntimeGenerationGap(
   val generation: Int get() = gapId.substringAfterLast("-gap-").toInt()
 }
 
-data class FeatureTaskRuntimeRepositoryCheckpoint(val fingerprint: String) {
-  init {
-    requireRule(fingerprint.isNotBlank(), "repository_checkpoint.fingerprint must be nonblank.") {
-      "repository_checkpoint.fingerprint must be nonblank, was blank."
-    }
-    requireRule(
-      fingerprint.length <= MAX_REPOSITORY_FINGERPRINT_LENGTH,
-      "repository_checkpoint.fingerprint allows at most $MAX_REPOSITORY_FINGERPRINT_LENGTH characters.",
-    ) {
-      "repository_checkpoint.fingerprint allows at most $MAX_REPOSITORY_FINGERPRINT_LENGTH characters, " +
-        "had ${fingerprint.length}."
-    }
-  }
-}
-
 /**
  * One append-only completeness-audit generation: the sole durable authority for what an audit inspected,
  * the checkpoint it decided at, the gap identities and states it recorded, and the repair batch it

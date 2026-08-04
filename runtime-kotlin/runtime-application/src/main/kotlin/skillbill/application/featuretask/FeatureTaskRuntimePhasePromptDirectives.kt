@@ -261,8 +261,13 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
     "Run tests written during the implement phase, then run the repository validation gate " +
-    "relevant to the change. Fix validation findings at their root cause and rerun the gate " +
-    "until it passes; validation findings are repair work, not a reason to block the phase. Emit a " +
+    "relevant to the change. A gate run costs minutes because it recompiles every dependent module " +
+    "and reruns their suites, so batch the repair: read the complete finding set from one gate run, " +
+    "fix every finding in it at its root cause, and only then run the gate again to verify. Never " +
+    "rerun the gate after an individual fix, and never rerun it to rediscover findings the previous " +
+    "run already reported. Rerun early only when a fix genuinely cannot be completed without fresh " +
+    "gate output, and say which finding forced it. Findings that share one root cause are one fix, " +
+    "not several. Validation findings are repair work, not a reason to block the phase. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
     "do not embed raw command output or telemetry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to

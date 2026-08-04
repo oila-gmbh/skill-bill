@@ -1,7 +1,7 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DatabaseMigrations
-import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.tempDbConnection
 import java.nio.file.Path
 import java.sql.Connection
@@ -101,8 +101,7 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
     assertFailsWith<SQLException> { store.append(row(1, contractVersion = "0.2")) }
   }
 
-  private fun store(): FeatureTaskRuntimeAuditGenerationStore =
-    FeatureTaskRuntimeAuditGenerationStore(connect().second)
+  private fun store(): FeatureTaskRuntimeAuditGenerationStore = FeatureTaskRuntimeAuditGenerationStore(connect().second)
 
   private fun connect(): Pair<Path, Connection> = tempDbConnection("audit-generations").also {
     opened += it.second

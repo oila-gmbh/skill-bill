@@ -2776,6 +2776,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * fewer items than the active batch carries is a resumable partial repair, so it is named and re-entered
    * instead of settling as completion.
    */
+  @Suppress("ReturnCount")
   private fun repairClosureGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
     if (activeReentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) return null
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
@@ -2837,11 +2838,14 @@ internal class FeatureTaskRuntimeRunLoop(
       carriedGapIds = history.latestGapStates().filterValues { it.open }.keys,
       reportedGapIds = reportedGapIds,
     )?.let { return it }
-    if (history.generations.isEmpty()) return null
+    // Decoded before the no-history short-circuit for the same reason: the recorder parses this key inside its
+    // durable write transaction, and the phase-output schema does not validate it, so an unnamed decode failure
+    // on an initial audit would kill the run instead of entering the bounded audit fix loop.
     val blastRadius = runCatching { blastRadiusInspectionFrom(produced, phaseId) }
     blastRadius.exceptionOrNull()?.let { failure ->
       return "Audit blast_radius_inspection is not contract-safe: ${failure.diagnosticMessage()}"
     }
+    if (history.generations.isEmpty()) return null
     return FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
       history = history,
       dispositionedGapIds = dispositionedCarriedGapIds(produced, reportedGapIds),
@@ -2863,13 +2867,11 @@ internal class FeatureTaskRuntimeRunLoop(
    * is deliberately not counted — claiming a gap resolved by staying silent about it is the laundering this
    * gate exists to stop.
    */
-  private fun dispositionedCarriedGapIds(
-    produced: Map<String, Any?>,
-    reportedGapIds: Set<String>,
-  ): Set<String> = FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS
-    .flatMap { key -> (produced[key] as? List<*>).orEmpty() }
-    .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
-    .mapTo(linkedSetOf(), ::canonicalAuditIdentifier) + reportedGapIds
+  private fun dispositionedCarriedGapIds(produced: Map<String, Any?>, reportedGapIds: Set<String>): Set<String> =
+    FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS
+      .flatMap { key -> (produced[key] as? List<*>).orEmpty() }
+      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
+      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier) + reportedGapIds
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.

@@ -14,6 +14,7 @@ Non-negotiable contracts:
 - Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
 - Discovery, install, routing, and validation surfaces stay dynamic and manifest-driven.
 - Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.
+- Every fallback, degradation, or swallowed failure emits a record; see `docs/observability-policy.md`.
 
 ## Product Intent
 
@@ -154,34 +155,6 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 - `usePtyStdio` — whether to use a PTY pair instead of separate stdout/stderr streams
 
 `ProcessWaitLoop` calls injected strategies with no agent-identity branching; new behavior adds a strategy constant in the command builder. Crash reconciliation uses the injectable `FeatureTaskRuntimeWorkerSupervisor`: a killed child's expired-lease row self-heals to resumable at startup.
-
-## Observability Policy
-
-Every fallback, degradation, and swallowed failure emits a record. A silent
-fallback is a defect: it produces the symptom of a bug with none of the evidence.
-
-Emit an observability event, structured log line, or telemetry field at each of
-these seams:
-
-- a `?:`, `takeIf`, `getOrNull`, `orEmpty`, or default-value path that
-  substitutes a narrower or wider scope than the caller asked for
-- a `runCatching` or `catch` that continues instead of rethrowing
-- a retry, timeout, cap, truncation, or sampling decision
-- a capability that resolves to absent and is skipped
-- a legacy-record migration, quarantine, or regeneration
-- a reconciliation that repairs drift between durable state and disk
-
-Each record names the seam, the value actually used, the value that was expected,
-and why the substitution happened. A fallback that cannot be attributed to a
-specific cause is a loud-fail, not a log line.
-
-Prefer loud-fail over log-and-continue whenever the substituted value changes a
-contract the caller depends on — scope bounds, review deltas, staged path
-inventories, and durable identity are contracts. Log-and-continue is for
-degradations the caller can still trust.
-
-Bounded output rules still apply: records carry counts, identities, and sanitized
-labels, never raw payloads, diff hunks, or unbounded child output.
 
 ## Writing Policy
 

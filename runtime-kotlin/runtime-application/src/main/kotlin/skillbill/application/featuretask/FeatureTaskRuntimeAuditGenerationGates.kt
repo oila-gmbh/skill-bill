@@ -56,21 +56,21 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
     if (carriedGapIds.isEmpty()) return null
     val dispositioned = dispositionedGapIds.toSet()
     val undispositioned = carriedGapIds.filterNot(dispositioned::contains).sorted()
-    if (undispositioned.isNotEmpty()) {
-      return "Follow-up audit must account for every gap the active repair batch was opened against; " +
-        "${undispositioned.size} carried gap(s) have no disposition, the first being " +
-        "'${undispositioned.first()}'. Re-report a gap still present in produced_outputs.gaps under its " +
-        "existing gap_id, or disposition it in produced_outputs.carried_gap_dispositions with status " +
-        "resolved and resolution_verified evidence."
+    return when {
+      undispositioned.isNotEmpty() ->
+        "Follow-up audit must account for every gap the active repair batch was opened against; " +
+          "${undispositioned.size} carried gap(s) have no disposition, the first being " +
+          "'${undispositioned.first()}'. Re-report a gap still present in produced_outputs.gaps under its " +
+          "existing gap_id, or disposition it in produced_outputs.carried_gap_dispositions with status " +
+          "resolved and resolution_verified evidence."
+      // A gap-reporting audit is not claiming convergence, so it owes no blast-radius record yet; only the
+      // verdict that ends the loop does.
+      reportsGaps -> null
+      blastRadiusInspection == null ->
+        "Follow-up audit cannot emit a satisfied verdict without a blast-radius inspection over the " +
+          "repair batch's changed production paths; the inspection record is absent."
+      else -> null
     }
-    // A gap-reporting audit is not claiming convergence, so it owes no blast-radius record yet; only the
-    // verdict that ends the loop does.
-    if (reportsGaps) return null
-    if (blastRadiusInspection == null) {
-      return "Follow-up audit cannot emit a satisfied verdict without a blast-radius inspection over the " +
-        "repair batch's changed production paths; the inspection record is absent."
-    }
-    return null
   }
 
   /**
@@ -110,8 +110,14 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
   ): String? {
     val gapId = disposition.gapId
     if (gapId !in carriedGapIds) {
-      return "Carried gap disposition $source names gap '$gapId', which the durable unresolved-gap ledger " +
-        "does not carry; disposition only ${carriedGapIds.sorted().joinToString()}."
+      // Rendering an empty list here told the agent to "disposition only" nothing, which is unrepairable
+      // guidance on the one surface that has to be repairable.
+      val carried = if (carriedGapIds.isEmpty()) {
+        "carries no unresolved gap, so this audit dispositions nothing"
+      } else {
+        "does not carry; disposition only ${carriedGapIds.sorted().joinToString()}"
+      }
+      return "Carried gap disposition $source names gap '$gapId', which the durable unresolved-gap ledger $carried."
     }
     val resolved = disposition.status == FeatureTaskRuntimePriorGapDisposition.Status.RESOLVED
     if (resolved && gapId in reportedGapIds) {
