@@ -204,6 +204,34 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `backtick-quoted brace in prose outside a fenced envelope is commentary not a competing document`() {
+    val response = """
+      All three carried Blockers are reconciled; no bare `}` follows `parseContentIdentities`.
+
+      ```json
+      $validJson
+      ```
+    """.trimIndent()
+
+    val result = adapter.validatePhaseOutput(response, "plan")
+
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+    assertEquals("plan", accepted.normalizedOutput.envelope["phase_id"])
+  }
+
+  @Test
+  fun `bare closing delimiter in prose outside the envelope still rejects with an actionable reason`() {
+    val response = "trailing fragment of a truncated draft }\n```json\n$validJson\n```"
+
+    val result = adapter.validatePhaseOutput(response, "plan")
+
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE, rejected.code)
+    assertTrue(rejected.reason.contains("outside the selected"))
+    assertTrue(rejected.reason.contains("offset"))
+  }
+
+  @Test
   fun `multiple strictly parseable delimiter candidates are rejected as ambiguous repair`() {
     val first = validJson.replace("Plan output.", "first")
     val second = validJson.replace("Plan output.", "second")

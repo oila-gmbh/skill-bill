@@ -39,6 +39,7 @@ internal sealed interface FeatureTaskRuntimePhaseOutputStructuralRepairDecision 
  */
 internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
   private val fencedBlock = Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
+  private val inlineCodeSpan = Regex("`[^`\\n]*`")
 
   fun inspect(phaseOutputText: String, sourceLabel: String): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
     if (phaseOutputText.isBlank()) {
@@ -203,18 +204,36 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
       )
     }
     val selected = comparable.firstOrNull() ?: relevant.first()
-    if (hasUnmatchedClosingOutside(text, selected.sourceStart, selected.sourceEnd)) {
+    unmatchedClosingOutsideOffset(text, selected.sourceStart, selected.sourceEnd)?.let { offset ->
       throw StructuralRepairSelectionException(
         FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
-        "Phase output contains a closing delimiter outside the selected envelope.",
+        "Phase output contains a bare closing delimiter ('}' or ']') in the text outside the selected " +
+          "envelope, at offset $offset of that surrounding text. Delimiters quoted in backticks or " +
+          "inside fenced code blocks are ignored, so mention braces only in backticks or in words; " +
+          "keep the JSON envelope itself unchanged.",
       )
     }
     return selected
   }
 
-  private fun hasUnmatchedClosingOutside(text: String, sourceStart: Int, sourceEnd: Int): Boolean {
+  // This guard looks for a competing partial document, not for prose punctuation: a delimiter the
+  // agent quoted in backticks (e.g. describing a brace fix as `}`) is commentary, so code spans and
+  // fenced blocks are masked before scanning. Masking preserves length, so the reported offset is
+  // valid in the unmasked outside text.
+  private fun unmatchedClosingOutsideOffset(text: String, sourceStart: Int, sourceEnd: Int): Int? {
     val outside = text.removeRange(sourceStart.coerceAtLeast(0), sourceEnd.coerceAtMost(text.length))
-    return StructuralRepairSyntax.scanDelimiters(outside).unmatchedClosingOffsets.isNotEmpty()
+    return StructuralRepairSyntax.scanDelimiters(maskCodeQuoting(outside))
+      .unmatchedClosingOffsets.firstOrNull()
+  }
+
+  private fun maskCodeQuoting(text: String): String {
+    val masked = StringBuilder(text)
+    fun blank(range: IntRange) = range.forEach { index ->
+      if (masked[index] != '\n') masked.setCharAt(index, ' ')
+    }
+    fencedBlock.findAll(text).forEach { blank(it.range) }
+    inlineCodeSpan.findAll(text).forEach { blank(it.range) }
+    return masked.toString()
   }
 
   private fun embeddedCandidates(text: String): List<TextCandidate> = buildList {
