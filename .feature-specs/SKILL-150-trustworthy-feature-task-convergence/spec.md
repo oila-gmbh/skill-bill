@@ -1,76 +1,189 @@
 # SKILL-150 Trustworthy Feature-Task Convergence
 
+## Status
+
+Rewritten 2026-08-04 against current `main`. The original seven-subtask design was
+authored before SKILL-153 (phase-output structural repair), SKILL-155 (typed
+bounded DB failures), SKILL-157 (unbounded Blocker remediation, no review pass
+cap), and SKILL-159 (delegated-review subsystem removal) landed, and much of it
+answered questions the runtime no longer asks. This rewrite keeps the three
+problems that remain unsolved on `main` and drops the rest:
+
+- Dropped: the generic eight-kind convergence-record ledger (original subtask 1) —
+  each surviving subtask owns the narrow durable slice it needs instead.
+- Dropped: lossless review generations (original subtask 4) — it existed to make
+  capped-verdict reopening safe; SKILL-157 removed the cap, settlement is
+  disposition-driven, and SKILL-142 already routes Major and lower into the
+  unaddressed-findings ledger.
+- Dropped: adaptive sizing and the pre-review quality seam (original subtask 6) —
+  a separate feature, not a convergence guarantee; propose independently if wanted.
+- Dropped: the migration/e2e umbrella (original subtask 7) — each subtask now
+  carries its own migration and end-to-end obligations.
+
+Salvage: the parked branch `quarry/SKILL-150-convergence-rebased` (rebased onto
+`main` at `50506d4c`-era, compiles, tests unreconciled) contains prior
+implementations of all three surviving subtasks — truthful completion
+(`94a94fe4`, `ed746dbd`), audit repair convergence (`77d32753`, `e051f2cd`),
+scoped checkpoint isolation (`2f41e027`), and audit-convergence migrations
+renumbered to the 23–28 range. Treat it as a code quarry: salvaged code must be
+re-validated against the acceptance criteria below, never bulk-merged. The
+remote `feat/SKILL-150-trustworthy-feature-task-convergence` still holds the
+pre-rebase history.
+
+## Mode
+
+decomposed
+
+Three dependency-light units:
+
+1. Truthful implementation completion — a phase cannot settle `completed` while
+   plan tasks remain open.
+2. Audit repair convergence — durable, recurrence-aware audit gap and repair
+   history with closure-complete re-entry. Depends on unit 1's completion gate.
+3. Scoped checkpoint isolation — checkpoints stage only workflow-owned paths and
+   never absorb foreign work. Independent of units 1–2.
+
 ## Intended Outcome
 
-Make feature-task implementation, completeness audit, and code review converge from durable evidence instead of agent claims or replaceable snapshots. Incomplete work must remain incomplete, audit and review findings must survive retries and repository changes, and workflow-owned commits must never absorb unrelated work.
+Feature-task implementation and completeness audit converge from durable evidence
+instead of agent claims or replaceable snapshots, and workflow-owned commits never
+absorb unrelated work. Incomplete work remains visibly incomplete, audit findings
+survive retries and repository changes, and a checkpoint is exactly the active
+workflow's delta.
 
 ## Problem Statement
 
-The SKILL-134 runtime run exposed interacting reliability failures:
+Observed on real runs (SKILL-134 lineage) and still reproducible on current `main`:
 
-- an implementation attempt could report `completed` while declaring unfinished plan tasks;
-- retryable `blocked` and `failed` implementation outputs were described as schema failures and relaunched without their full unresolved-work receipt;
-- audit repairs could claim closure while repeating the same production defect;
-- review invalidation cleared prior results and unresolved findings when the repository delta changed;
-- checkpoint commits staged the full worktree and committed an unrelated feature spec;
-- a cross-module persistence, privacy, lifecycle, CLI, and recovery change was classified MEDIUM and reviewed at light depth;
-- deterministic compilation and migration failures reached review instead of a pre-review quality seam;
-- aggregate counters did not preserve enough append-only evidence to explain recurring gaps and review generations.
+- An implementation attempt can report `completed` while its own receipt declares
+  unfinished plan tasks; audit and review then reason from a false premise.
+  SKILL-153 repairs *structurally invalid* output, but a structurally valid,
+  semantically false `completed` passes every existing gate.
+- Audit repairs can claim closure while repeating the same production defect.
+  Aggregate counters do not preserve identity across generations, so a recurring
+  gap looks like a new one and the loop re-litigates instead of converging. This
+  is the recorded "inspection-only fixed claims" recurrence failure mode.
+- Checkpoint commits stage the full worktree. A concurrently prepared foreign
+  feature spec (SKILL-149 during the SKILL-134 run) was committed, reviewed, and
+  attributed to the wrong workflow; any user work dirty in the tree is one
+  checkpoint away from being absorbed.
+
+What `main` already solves and this spec must not re-solve: structural output
+repair and producer-side gates (SKILL-153), read-path lock contention and typed
+DB failures (SKILL-155), Blocker-disposition-terminated unbounded remediation
+(SKILL-157), review-mode restructure with inline default (SKILL-159, #252),
+Blocker-only reopen and lane severity calibration (SKILL-142).
 
 ## Acceptance Criteria
 
-1. A mutating phase cannot settle as completed while any governed plan task, carried audit repair item, or required remediation finding remains unresolved.
-2. Retryable incomplete work uses a continuation path distinct from schema-invalid output handling and receives the complete bounded prior receipt on retry and resume.
-3. Implementation attempt outcomes, audit gaps and repair results, and review findings and dispositions have durable generation-aware records that are never deleted merely because a later repository checkpoint exists.
-4. Audit re-entry carries one closure-complete unresolved repair batch, and every subsequent audit dispositions all carried gaps before it can clear the phase.
-5. Review approval is impossible while any prior or current Blocker lacks a durable resolved, superseded, accepted, or otherwise governed terminal disposition.
-6. Repository-delta invalidation creates a new review generation without clearing historical review evidence or the unresolved-finding ledger.
-7. Checkpoint commits stage only the workflow-owned path inventory and preserve unrelated staged, unstaged, and untracked work byte-for-byte.
-8. Foreign governed feature paths introduced outside the active workflow are never committed, reviewed, or attributed to that workflow.
-9. Planning automatically escalates or decomposes work whose boundary breadth, task graph, risk, or expected change surface exceeds the resolved feature-size contract.
-10. Cross-cutting or high-risk changes receive an appropriate minimum review depth, and deterministic compile, format, static-analysis, and focused-test failures are repaired before consuming a code-review pass.
-11. Legacy active workflows migrate or reconcile into the durable convergence model idempotently, with typed loud failures or quarantine for incompatible state and no silent evidence loss.
-12. Status, watch, and telemetry report implementation continuations, schema retries, audit recurrence, review generations, carried findings, and repair outcomes from durable records without exposing raw phase output.
-13. Crash, resume, operator-decision, changed-delta, and concurrent-dirty-worktree tests prove the same convergence and isolation guarantees in standalone and goal-child execution.
-14. Deterministic end-to-end fixtures demonstrate that a partial implementation remains in implementation, a correct closure-complete audit repair needs at most one verification pass, and a carried review Blocker cannot disappear across repeated delta changes.
+Unit 1 — truthful implementation completion:
+
+1. An implementation phase reporting `completed` advances only when its receipt
+   closes every task ID declared by the authoritative executable plan and has no
+   unresolved item or actionable deviation; the gate reports the exact missing
+   task or unresolved field.
+2. Retryable `blocked` and `failed` envelopes remain schema-valid outcomes with
+   their own continuation path; they are not converted into `schemaInvalid` to
+   enter the bounded correction cap, and genuine extraction/schema/projection
+   failures keep the existing correction path.
+3. Incomplete-work retries use a distinct continuation prompt carrying the
+   complete bounded prior receipt, reconstructed from durable records on retry
+   and resume — never from an in-memory prompt or replaceable snapshot.
+4. Status and telemetry distinguish semantic implementation continuation, schema
+   correction, process retry, crash resume, and audit or review re-entry.
+
+Unit 2 — audit repair convergence:
+
+5. Each completeness audit persists one generation: repository checkpoint,
+   satisfied criteria, gaps, closure-complete repair batch, bounded evidence
+   references. History is append-only; a later plan or checkpoint never discards
+   earlier gap text, repair results, or recurrence.
+6. Gap and repair-item identities are stable across generations with explicit
+   new / recurring / resolved / superseded / still-open transitions; a recurring
+   gap increments durable recurrence under the same identity.
+7. Implementation re-entry receives the complete ordered set of unresolved repair
+   items with dependencies and prior evidence; repair cannot report `completed`
+   (per unit 1's gate) until every carried item has a terminal disposition.
+8. Follow-up audit reverifies every carried gap and inspects the repair batch's
+   blast radius for newly introduced gaps before emitting `satisfied`; audit
+   convergence metrics derive from durable generations and agree with the phase
+   ledger.
+9. The audit test-exclusion contract is preserved: validation owns test execution
+   and failures; audit repair evidence stays read-only repository facts.
+
+Unit 3 — scoped checkpoint isolation:
+
+10. Checkpoint creation stages only the durable workflow-owned path inventory for
+    the active subtask and phase; no production checkpoint path runs
+    repository-wide `git add -A`. Foreign staged, unstaged, and untracked paths
+    remain byte-for-byte and index-for-index unchanged.
+11. A path introduced by the active phase outside its allowed inventory, and any
+    foreign governed `.feature-specs/` path, produces a typed non-retryable
+    policy block naming the exact path before any commit; staging or commit
+    failure restores the pre-checkpoint index.
+12. Checkpoint identity (branch, phase, loop/generation, parent SHA, owned-path
+    digest, commit SHA) is durable, and review input is constructed from the
+    immutable checkpoint plus the same owned-path inventory so unrelated dirt
+    cannot change its semantic delta digest.
+13. A regression reproduces the concurrent-spec incident: two issue keys active,
+    each checkpoint contains only its own paths or blocks safely on a real
+    overlap.
+
+Cross-cutting:
+
+14. New durable state follows the runtime-contract recipe (schema, pinned Kotlin
+    constant, parity test, typed error, loud-fail seams) and the append-only
+    migration rule; new migrations are name-keyed and numbered after the current
+    `main` tail, tolerating databases that ran the parked branch's 23–28 range.
+15. Crash, resume, and operator-decision tests prove the same guarantees in
+    standalone and goal-child execution.
 
 ## Constraints
 
-- Keep governed runtime contracts versioned under `orchestration/contracts/`, with matching Kotlin constants, typed schema errors, parity tests, and loud-fail parse seams.
-- Use normalized SQLite records when append-only history, stable identity, transactional ownership, or cross-generation queries would otherwise be weakened by replaceable artifact JSON.
-- Keep workflow artifact projections bounded and derived; do not move raw prompts, raw phase responses, private diagnostics, full diffs, or unbounded review text into SQLite or artifact JSON.
-- Preserve dynamic, manifest-driven routing and platform packs. Do not hard-code Kotlin, KMP, or a fixed platform catalogue into orchestration.
-- Preserve explicit operator decisions and bounded retry policies. Reliability changes must not create an unbounded autonomous loop.
-- Preserve the audit test-exclusion contract: completeness audit reports production behavior and implementation gaps; validation owns test execution and failures.
-- Keep final validation authoritative even when a focused pre-review quality seam passes.
-- Do not weaken audit or review to reduce iteration counts.
+- Build against current `main` semantics: unbounded disposition-terminated
+  remediation (no `GOAL_SUBTASK_REVIEW_MAX_PASSES`), structural repair and
+  producer-side projection gates (SKILL-153), typed `DatabaseAccessError`
+  surfaces (SKILL-155), no delegated-review subsystem (SKILL-159).
+- Keep governed runtime contracts versioned under `orchestration/contracts/`
+  with matching Kotlin constants, typed schema errors, parity tests, and
+  loud-fail parse seams.
+- Keep workflow artifact projections bounded and derived; no raw prompts, raw
+  phase responses, private diagnostics, or unbounded review text in SQLite or
+  artifact JSON.
+- Preserve explicit operator decisions and bounded correction policies; do not
+  create a new unbounded autonomous loop and do not weaken audit or review to
+  reduce iteration counts.
+- Salvaged quarry code enters through the same review and validation gates as
+  new code.
 
 ## Non-Goals
 
-- Guaranteeing that every model completes a large feature in one process invocation.
-- Replacing code review with tests or replacing validation with code review.
-- Automatically accepting unresolved findings because their source checkpoint became stale.
-- Storing full agent prompts, raw model responses, or private rejected-output bodies as convergence history.
-- Rewriting or completing SKILL-134 as part of this feature.
-- Squashing or rewriting existing feature branches automatically.
+- Reintroducing any dropped original subtask (generic convergence ledger, review
+  generations, adaptive sizing, pre-review quality seam, migration umbrella).
+- Guaranteeing single-invocation completion of large features.
+- Storing full agent prompts, raw model responses, or private rejected-output
+  bodies as convergence history.
+- Deleting, stashing, resetting, or auto-committing foreign user changes.
+- Force-updating or deleting the parked quarry branch histories.
 
-## Decomposition
+## Subtask Mapping
 
-1. Add durable convergence-state contracts and persistence.
-2. Enforce truthful implementation completion and continuation semantics.
-3. Make audit repair state append-only and convergence-gated.
-4. Preserve review findings and dispositions across review generations.
-5. Isolate checkpoint commits to workflow-owned paths.
-6. Add adaptive sizing, review-depth routing, and a pre-review quality seam.
-7. Migrate legacy state and prove end-to-end recovery, telemetry, and convergence.
+| subtask | title | depends on | status |
+|---|---|---|---|
+| 1 | Truthful implementation completion | — | pending |
+| 2 | Audit repair convergence | 1 (required) | pending |
+| 3 | Scoped checkpoint isolation | — | pending |
 
 ## Validation Strategy
 
-- Add contract-version parity and strict schema acceptance/rejection coverage for every new runtime contract.
-- Add migration tests from current production database versions and artifact-only workflow fixtures.
-- Exercise implementation completion, blocked continuation, schema-invalid retry, audit recurrence, review invalidation, operator decisions, and crash recovery through real workflow state transitions.
-- Use concurrent dirty-worktree fixtures with staged, unstaged, untracked, and unrelated governed spec paths.
-- Run focused module tests after each subtask, then run:
+- Contract-version parity and strict schema acceptance/rejection coverage for
+  every new runtime contract.
+- Migration tests from current production database versions, including a fixture
+  seeded with the quarry branch's name-keyed 23–28 migration ledger rows.
+- Reproduce the SKILL-134 false-completion sequence; assert the third receipt
+  cannot advance. Reproduce the recurring-gap sequence; assert identity-stable
+  recurrence. Reproduce the concurrent-spec commit; assert isolation.
+- Run focused module tests after each subtask, then:
 
 ```bash
 skill-bill validate
@@ -78,4 +191,3 @@ skill-bill validate
 npx --yes agnix --strict .
 scripts/validate_agent_configs
 ```
-
