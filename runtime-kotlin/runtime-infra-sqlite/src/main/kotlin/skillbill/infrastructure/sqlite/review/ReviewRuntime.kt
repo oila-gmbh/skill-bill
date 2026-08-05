@@ -15,13 +15,16 @@ object ReviewRuntime {
     val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
     val existingFindings = fetchImportedFindings(connection, review.reviewRunId)
     val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
+    val laneAttributionChanged =
+      findingLaneAttributionChanged(fetchReviewRunLanes(connection, review.reviewRunId), review.planLanes)
     connection.autoCommit = false
     try {
       upsertReviewRun(connection, review, sourcePath)
+      replaceReviewRunLanes(connection, review.reviewRunId, review.planLanes)
       if (summarySnapshotChanged) {
         ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
       }
-      if (existingFindings != review.findings) {
+      if (existingFindings != review.findings || laneAttributionChanged) {
         replaceFindings(connection, review)
       }
       connection.commit()

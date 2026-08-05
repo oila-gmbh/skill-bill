@@ -7,6 +7,7 @@ internal object DatabaseSchema {
     setOf(
       "schema_migrations",
       "review_runs",
+      "review_run_lanes",
       "findings",
       "feedback_events",
       "learnings",
@@ -52,6 +53,36 @@ internal object DatabaseSchema {
       "idx_telemetry_reconciliation_completed",
       "idx_unaddressed_findings_issue",
       "idx_rejected_output_diagnostics_selector",
+      "idx_review_run_lanes_pack_area",
+      "idx_review_runs_routed_skill_canonical",
+      "idx_findings_lane",
+    )
+
+  // Per-lane review attribution. Shared verbatim between the base schema and the named ledger
+  // migration so an existing store and a fresh one converge on one definition.
+  internal val reviewRunLaneStatements: List<String> =
+    listOf(
+      """
+      CREATE TABLE IF NOT EXISTS review_run_lanes (
+        review_run_id TEXT NOT NULL,
+        lane_skill_name TEXT NOT NULL,
+        pack_slug TEXT NOT NULL,
+        area TEXT NOT NULL,
+        depth INTEGER NOT NULL DEFAULT 0,
+        required INTEGER NOT NULL DEFAULT 0,
+        order_index INTEGER NOT NULL DEFAULT 0,
+        origin_layer_chain TEXT NOT NULL DEFAULT '',
+        resolution_state TEXT NOT NULL DEFAULT 'resolved'
+          CHECK (resolution_state IN ('resolved', 'unresolved')),
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (review_run_id, lane_skill_name),
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_run_lanes_pack_area
+        ON review_run_lanes(pack_slug, area, review_run_id)
+      """.trimIndent(),
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -547,5 +578,5 @@ internal object DatabaseSchema {
       CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_updated
         ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
-    )
+    ) + reviewRunLaneStatements
 }

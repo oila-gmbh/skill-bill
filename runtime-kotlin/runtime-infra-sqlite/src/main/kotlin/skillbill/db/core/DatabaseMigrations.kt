@@ -436,6 +436,11 @@ internal object DatabaseMigrations {
         name = "backfill-review-attribution-canonicals",
         operation = ReviewAttributionBackfillMigration::apply,
       ),
+      DatabaseMigration(
+        version = 25,
+        name = "add-review-run-lane-attribution",
+        operation = ::addReviewRunLaneAttribution,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -538,6 +543,13 @@ private fun addDelegatedReviewLifecycleProjection(connection: Connection) {
       """.trimIndent(),
     )
   }
+}
+
+private fun addReviewRunLaneAttribution(connection: Connection) {
+  DatabaseSchema.reviewRunLaneStatements.forEach { sql ->
+    connection.createStatement().use { statement -> statement.execute(sql) }
+  }
+  DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
 }
 
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {

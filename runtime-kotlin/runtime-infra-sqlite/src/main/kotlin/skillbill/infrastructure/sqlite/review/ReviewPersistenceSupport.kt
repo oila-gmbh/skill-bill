@@ -5,6 +5,8 @@ import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewLaneEffectivenessRow
+import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
@@ -125,11 +127,15 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
 }
 
 fun replaceFindings(connection: Connection, review: ImportedReview) {
+  // The run's persisted plan lanes are the only source of a finding's pack and area: a finding
+  // reports which lane produced it, never what that lane covers.
+  val lanesByName = review.planLanes.associateBy { it.laneSkillName }
   connection.prepareStatement("DELETE FROM findings WHERE review_run_id = ?").use { statement ->
     statement.setString(PARAM_ONE, review.reviewRunId)
     statement.executeUpdate()
   }
   review.findings.forEach { finding ->
+    val lane = finding.laneSkillName?.let(lanesByName::get)
     connection.prepareStatement(
       """
       INSERT INTO findings (
@@ -140,8 +146,11 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
         issue_category,
         location,
         description,
-        finding_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        finding_text,
+        lane_skill_name,
+        lane_area,
+        lane_pack_slug
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(PARAM_ONE, review.reviewRunId)
@@ -152,10 +161,133 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
       statement.setString(PARAM_SIX, finding.location)
       statement.setString(PARAM_SEVEN, finding.description)
       statement.setString(PARAM_EIGHT, finding.findingText)
+      statement.setString(PARAM_NINE, finding.laneSkillName)
+      statement.setString(PARAM_TEN, lane?.area)
+      statement.setString(PARAM_ELEVEN, lane?.packSlug)
       statement.executeUpdate()
     }
   }
 }
+
+/**
+ * Replaces a run's lane set. Delete-then-insert keyed by the run makes a re-import converge on one
+ * row per lane instead of accumulating duplicates.
+ */
+fun replaceReviewRunLanes(connection: Connection, reviewRunId: String, lanes: List<ReviewRunLane>) {
+  reserveReviewRun(connection, reviewRunId)
+  connection.prepareStatement("DELETE FROM review_run_lanes WHERE review_run_id = ?").use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeUpdate()
+  }
+  lanes.forEach { lane ->
+    connection.prepareStatement(
+      """
+      INSERT INTO review_run_lanes (
+        review_run_id,
+        lane_skill_name,
+        pack_slug,
+        area,
+        depth,
+        required,
+        order_index,
+        origin_layer_chain,
+        resolution_state
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(PARAM_ONE, reviewRunId)
+      statement.setString(PARAM_TWO, lane.laneSkillName)
+      statement.setString(PARAM_THREE, lane.packSlug)
+      statement.setString(PARAM_FOUR, lane.area)
+      statement.setInt(PARAM_FIVE, lane.depth)
+      statement.setBoolean(PARAM_SIX, lane.required)
+      statement.setInt(PARAM_SEVEN, lane.orderIndex)
+      statement.setString(PARAM_EIGHT, lane.originLayerChain.joinToString("->"))
+      statement.setString(PARAM_NINE, lane.resolutionState)
+      statement.executeUpdate()
+    }
+  }
+}
+
+// shortcut: the runtime records a run's launch plan before the review text is imported, so the
+// parent row is reserved here to keep the lane foreign key honest; drop this once review runs gain
+// a registration seam of their own. The import upsert overwrites every reserved placeholder field.
+private fun reserveReviewRun(connection: Connection, reviewRunId: String) {
+  connection.prepareStatement(
+    "INSERT OR IGNORE INTO review_runs (review_run_id, review_session_id, raw_text) VALUES (?, ?, '')",
+  ).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.setString(PARAM_TWO, reviewRunId)
+    statement.executeUpdate()
+  }
+}
+
+fun fetchReviewRunLanes(connection: Connection, reviewRunId: String): List<ReviewRunLane> =
+  connection.prepareStatement(reviewRunLanesSql).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add(
+            ReviewRunLane(
+              laneSkillName = resultSet.getString("lane_skill_name"),
+              packSlug = resultSet.getString("pack_slug"),
+              area = resultSet.getString("area"),
+              depth = resultSet.getInt("depth"),
+              required = resultSet.getBoolean("required"),
+              orderIndex = resultSet.getInt("order_index"),
+              originLayerChain = resultSet.getString("origin_layer_chain")
+                .orEmpty()
+                .split("->")
+                .filter(String::isNotEmpty),
+              resolutionState = resultSet.getString("resolution_state"),
+            ),
+          )
+        }
+      }
+    }
+  }
+
+fun queryReviewLaneEffectiveness(connection: Connection, reviewRunId: String?): List<ReviewLaneEffectivenessRow> {
+  val counters = linkedMapOf<Triple<String, String, String>, MutableList<String>>()
+  connection.prepareStatement(laneEffectivenessSql).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.setString(PARAM_TWO, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      while (resultSet.next()) {
+        val key = Triple(
+          resultSet.getString("routed_skill_canonical") ?: UNRESOLVED_ROUTED_SKILL,
+          resultSet.getString("pack_slug") ?: UNATTRIBUTED_LANE,
+          resultSet.getString("area") ?: UNATTRIBUTED_LANE,
+        )
+        counters.getOrPut(key) { mutableListOf() } += resultSet.getString("outcome_type").orEmpty()
+      }
+    }
+  }
+  return counters.map { (key, outcomes) ->
+    ReviewLaneEffectivenessRow(
+      routedSkillCanonical = key.first,
+      packSlug = key.second,
+      area = key.third,
+      totalFindings = outcomes.size,
+      acceptedFindings = outcomes.count { it in acceptedFindingOutcomeTypes },
+      rejectedFindings = outcomes.count { it in rejectedFindingOutcomeTypes },
+    )
+  }
+}
+
+/**
+ * Whether a run's lane set changed the pack/area a finding resolves to. Findings are only rewritten
+ * when something about them actually changed, because deleting a finding row cascades away its
+ * recorded dispositions.
+ */
+fun findingLaneAttributionChanged(existingLanes: List<ReviewRunLane>, lanes: List<ReviewRunLane>): Boolean =
+  existingLanes.associate { it.laneSkillName to (it.packSlug to it.area) } !=
+    lanes.associate { it.laneSkillName to (it.packSlug to it.area) }
+
+/** Bucket for a finding whose producing lane was never recorded; never silently dropped. */
+const val UNATTRIBUTED_LANE: String = "unattributed"
+private const val UNRESOLVED_ROUTED_SKILL: String = "unresolved"
 
 fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
   findingId = getString("finding_id"),
@@ -165,6 +297,7 @@ fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
   location = getString("location"),
   description = getString("description"),
   findingText = getString("finding_text"),
+  laneSkillName = getString("lane_skill_name"),
 )
 
 fun java.sql.ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(

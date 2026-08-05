@@ -6,8 +6,8 @@ import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
-private val acceptedFindingOutcomeTypes = setOf("finding_accepted", "fix_applied", "finding_edited")
-private val rejectedFindingOutcomeTypes = setOf("fix_rejected", "false_positive")
+internal val acceptedFindingOutcomeTypes = setOf("finding_accepted", "fix_applied", "finding_edited")
+internal val rejectedFindingOutcomeTypes = setOf("fix_rejected", "false_positive")
 private val findingOutcomeTypes =
   listOf(
     "finding_accepted",

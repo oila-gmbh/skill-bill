@@ -194,12 +194,12 @@ class WorkflowGoalRunnerManifestStore(
     val stored = loadFromWorkflowStore(issueKey, dbPathOverride, projected)
     if (shouldRefreshFromCompleteProjection(stored, projected)) {
       return saveWorkflowProjection(
-        requireNotNull(stored).copy(manifest = requireNotNull(projected)),
+        requireNotNull(stored).copy(manifest = requireNotNull(projected), repoRoot = repoRoot),
         dbPathOverride,
       ).state
     }
-    return stored ?: projected?.let { manifest ->
-      importFromManifestProjection(manifest, dbPathOverride)
+    return stored?.copy(repoRoot = repoRoot) ?: projected?.let { manifest ->
+      importFromManifestProjection(manifest, dbPathOverride)?.copy(repoRoot = repoRoot)
     }
   }
 
@@ -209,12 +209,14 @@ class WorkflowGoalRunnerManifestStore(
     return when {
       shouldRefreshFromCompleteProjection(stored, projected) -> requireNotNull(stored).copy(
         manifest = requireNotNull(projected),
+        repoRoot = repoRoot,
       )
-      stored != null -> stored
+      stored != null -> stored.copy(repoRoot = repoRoot)
       projected != null -> GoalRunnerManifestState(
         parentWorkflowId = "",
         dbPath = dbPathOverride.orEmpty(),
         manifest = projected,
+        repoRoot = repoRoot,
       )
       else -> null
     }
@@ -234,7 +236,7 @@ class WorkflowGoalRunnerManifestStore(
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState {
     val saved = saveWorkflowProjection(state, dbPathOverride)
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      Path.of("").toAbsolutePath(),
+      state.repoRoot ?: Path.of("").toAbsolutePath(),
       saved.projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,
@@ -318,7 +320,7 @@ class WorkflowGoalRunnerManifestStore(
       )
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      Path.of("").toAbsolutePath(),
+      state.repoRoot ?: Path.of("").toAbsolutePath(),
       saved.projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,
@@ -350,7 +352,7 @@ class WorkflowGoalRunnerManifestStore(
       saveWorkflowProjectionInTransaction(unitOfWork, state.copy(manifest = recoveredManifest))
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      Path.of("").toAbsolutePath(),
+      state.repoRoot ?: Path.of("").toAbsolutePath(),
       saved.projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,
@@ -410,7 +412,7 @@ class WorkflowGoalRunnerManifestStore(
       ) to projection.projectionArtifactsJson
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      Path.of("").toAbsolutePath(),
+      state.repoRoot ?: Path.of("").toAbsolutePath(),
       saved.second,
       decompositionManifestValidator,
       decompositionManifestFileStore,
@@ -432,7 +434,7 @@ class WorkflowGoalRunnerManifestStore(
       saveNewChildWorkflowInTransaction(unitOfWork, state, setup)
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      Path.of("").toAbsolutePath(),
+      state.repoRoot ?: Path.of("").toAbsolutePath(),
       saved.projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,
@@ -783,6 +785,7 @@ class WorkflowGoalRunnerManifestStore(
         dbPath = unitOfWork.dbPath.toString(),
         manifest = refreshed.decompositionRuntime(decompositionManifestValidator) ?: manifest,
         controlState = unitOfWork.goalRunnerControls.controlState(refreshed.workflowId),
+        repoRoot = state.repoRoot,
       ),
       projectionArtifactsJson = refreshed.artifactsJson,
     )

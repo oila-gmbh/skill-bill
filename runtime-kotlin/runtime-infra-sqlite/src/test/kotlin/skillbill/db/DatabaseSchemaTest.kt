@@ -100,6 +100,43 @@ class DatabaseSchemaTest {
     }
   }
 
+  // SKILL-136 subtask 5 AC-002/AC-003: a fresh database carries per-lane attribution as its own
+  // table and per-finding lane columns, so specialist reviews are never a comma-joined string.
+  @Test
+  fun `ensureDatabase creates the review run lanes table and finding lane columns`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-lane-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_run_lanes" in DatabaseSchema.tableNames)
+      assertTrue("review_run_lanes" in sqliteObjects(connection, "table"))
+      assertTrue("idx_review_run_lanes_pack_area" in sqliteObjects(connection, "index"))
+      assertTrue("idx_findings_lane" in sqliteObjects(connection, "index"))
+      assertTrue("idx_review_runs_routed_skill_canonical" in sqliteObjects(connection, "index"))
+
+      val laneColumns = tableInfo(connection, "review_run_lanes").associateBy { it.name }
+      assertEquals(
+        setOf(
+          "review_run_id",
+          "lane_skill_name",
+          "pack_slug",
+          "area",
+          "depth",
+          "required",
+          "order_index",
+          "origin_layer_chain",
+          "resolution_state",
+          "recorded_at",
+        ),
+        laneColumns.keys,
+      )
+      assertEquals(1, laneColumns.getValue("review_run_id").primaryKeyPosition)
+      assertEquals(2, laneColumns.getValue("lane_skill_name").primaryKeyPosition)
+
+      val findingColumns = tableInfo(connection, "findings").map { it.name }.toSet()
+      assertTrue(findingColumns.containsAll(setOf("lane_skill_name", "lane_area", "lane_pack_slug")))
+    }
+  }
+
   private fun assertPragmas(connection: Connection) {
     assertEquals(1, pragmaInt(connection, "foreign_keys"))
     assertEquals(5000, pragmaInt(connection, "busy_timeout"))

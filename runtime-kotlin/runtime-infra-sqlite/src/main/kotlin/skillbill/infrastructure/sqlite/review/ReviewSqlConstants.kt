@@ -37,10 +37,47 @@ val reviewSummarySql =
 
 val importedFindingsSql =
   """
-  SELECT finding_id, severity, confidence, issue_category, location, description, finding_text
+  SELECT finding_id, severity, confidence, issue_category, location, description, finding_text, lane_skill_name
   FROM findings
   WHERE review_run_id = ?
   ORDER BY finding_id
+  """.trimIndent()
+
+val reviewRunLanesSql =
+  """
+  SELECT lane_skill_name, pack_slug, area, depth, required, order_index, origin_layer_chain, resolution_state
+  FROM review_run_lanes
+  WHERE review_run_id = ?
+  ORDER BY order_index, lane_skill_name
+  """.trimIndent()
+
+/**
+ * Pack-and-area effectiveness input: one row per finding, carrying the run's canonical routed skill
+ * (never the free-prose routed_skill text) plus the lane that produced it and its latest
+ * disposition. A finding with no lane attribution keeps NULL lane columns here so the caller can
+ * report it under an explicit unattributed bucket instead of dropping it from the join.
+ */
+val laneEffectivenessSql =
+  """
+  WITH latest_feedback AS (
+    SELECT review_run_id, finding_id, MAX(id) AS latest_id
+    FROM feedback_events
+    GROUP BY review_run_id, finding_id
+  )
+  SELECT
+    r.routed_skill_canonical AS routed_skill_canonical,
+    COALESCE(l.pack_slug, f.lane_pack_slug) AS pack_slug,
+    COALESCE(l.area, f.lane_area) AS area,
+    COALESCE(fe.event_type, '') AS outcome_type
+  FROM findings f
+  JOIN review_runs r ON r.review_run_id = f.review_run_id
+  LEFT JOIN review_run_lanes l
+    ON l.review_run_id = f.review_run_id AND l.lane_skill_name = f.lane_skill_name
+  LEFT JOIN latest_feedback lf
+    ON lf.review_run_id = f.review_run_id AND lf.finding_id = f.finding_id
+  LEFT JOIN feedback_events fe
+    ON fe.id = lf.latest_id
+  WHERE (? IS NULL OR f.review_run_id = ?)
   """.trimIndent()
 
 val findingMetadataSql =

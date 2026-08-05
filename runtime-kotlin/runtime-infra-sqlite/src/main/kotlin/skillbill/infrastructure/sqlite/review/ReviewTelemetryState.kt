@@ -58,6 +58,28 @@ fun ensureReviewFinishedTimestamp(
   return ReviewRuntime.fetchReviewSummary(connection, reviewRunId)
 }
 
+/**
+ * Records the durable terminal facts of a run independently of whether telemetry is enabled or any
+ * event was emitted: a finish timestamp and an execution mode. Telemetry may decline to emit for a
+ * run, and the zero-findings path may clear a provisional timestamp, but the run still finished.
+ *
+ * An already-recorded `review_finished_at` is never overwritten, so re-running this is a no-op.
+ */
+fun ensureTerminalReviewState(connection: Connection, reviewRunId: String, executionMode: String?) {
+  connection.prepareStatement(
+    """
+    UPDATE review_runs
+    SET review_finished_at = COALESCE(NULLIF(review_finished_at, ''), CURRENT_TIMESTAMP),
+        execution_mode = COALESCE(NULLIF(execution_mode, ''), NULLIF(?, ''), 'unresolved')
+    WHERE review_run_id = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(PARAM_ONE, executionMode)
+    statement.setString(PARAM_TWO, reviewRunId)
+    statement.executeUpdate()
+  }
+}
+
 fun finalizeReviewFinishedTelemetry(
   connection: Connection,
   reviewRunId: String,

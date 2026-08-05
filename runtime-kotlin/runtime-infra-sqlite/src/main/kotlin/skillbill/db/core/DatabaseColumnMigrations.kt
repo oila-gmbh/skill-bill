@@ -414,6 +414,14 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "review_runs", "detected_stack_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_detail", "TEXT")
+    // Created here rather than in the base schema: a legacy store still lacks routed_skill_canonical
+    // when createBaseSchema runs, so the index can only be declared once the column is healed.
+    connection.createStatement().use { statement ->
+      statement.execute(
+        "CREATE INDEX IF NOT EXISTS idx_review_runs_routed_skill_canonical " +
+          "ON review_runs(routed_skill_canonical, review_run_id)",
+      )
+    }
   }
 
   private fun ensureFindingColumns(connection: Connection) {
@@ -423,6 +431,21 @@ internal object DatabaseColumnMigrations {
       columnName = "issue_category",
       definition = "TEXT NOT NULL DEFAULT 'other'",
     )
+    ensureFindingLaneColumns(connection)
+  }
+
+  // Per-finding lane attribution. Additive and nullable: a finding recorded before lane attribution
+  // existed keeps a NULL lane rather than being guessed into a bucket.
+  internal fun ensureFindingLaneColumns(connection: Connection) {
+    if (!tableExists(connection, "findings")) return
+    ensureColumn(connection, "findings", "lane_skill_name", "TEXT")
+    ensureColumn(connection, "findings", "lane_area", "TEXT")
+    ensureColumn(connection, "findings", "lane_pack_slug", "TEXT")
+    connection.createStatement().use { statement ->
+      statement.execute(
+        "CREATE INDEX IF NOT EXISTS idx_findings_lane ON findings(lane_skill_name, review_run_id)",
+      )
+    }
   }
 
   private fun backfillReviewSessionIds(connection: Connection) {

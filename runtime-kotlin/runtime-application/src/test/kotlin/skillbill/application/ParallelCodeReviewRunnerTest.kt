@@ -34,6 +34,7 @@ import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
+import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
@@ -787,6 +788,32 @@ class ParallelCodeReviewRunnerFailureTest {
     }
   }
 
+  // SKILL-136 subtask 5 AC-001/AC-002: a runtime-launched review is attributed from the launch plan
+  // it resolved, not from the review text it later produces.
+  @Test
+  fun `runtime launched review records one lane row per planned lane from the plan`() {
+    val database = RecordingReviewDatabase()
+    val runner = createRunner(
+      ParallelSubtaskLauncher(),
+      RunnerFixtureConfig(
+        catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+        diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+        database = database,
+      ),
+    )
+    val request = baseRequest(scope = ParallelReviewScope.STAGED)
+
+    runner.run(request)
+
+    val (runId, lanes) = database.laneWrites.single()
+    assertEquals(request.reviewRunId, runId)
+    assertTrue(lanes.isNotEmpty(), "A runtime-launched review must record the lanes it planned.")
+    assertTrue(lanes.all { it.resolutionState == "resolved" })
+    assertTrue(lanes.all { it.packSlug.isNotBlank() && it.area.isNotBlank() })
+    assertEquals(lanes.map { it.laneSkillName }.distinct().size, lanes.size)
+    assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
+  }
+
   @Test
   fun `stack detection excludes generated dependency and build paths`() {
     val launcher = ParallelSubtaskLauncher()
@@ -824,6 +851,7 @@ private data class RunnerFixtureConfig(
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
   val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
+  val database: RecordingReviewDatabase = RecordingReviewDatabase(),
 )
 
 private fun runner(
@@ -866,18 +894,24 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     },
     reviewRubricResolver = config.rubricResolver,
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
-    database = NoopReviewDatabase,
+    database = config.database,
     installedReviewCatalog = config.installedReviewCatalog,
   )
 
-private object NoopReviewDatabase : DatabaseSessionFactory {
+private class RecordingReviewDatabase : DatabaseSessionFactory {
+  val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
+
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
     arrayOf(ReviewRepository::class.java),
-  ) { _, method, _ ->
+  ) { _, method, args ->
     when (method.name) {
       "saveAccounting" -> Unit
       "loadAccounting" -> null
+      "replaceReviewRunLanes" -> {
+        @Suppress("UNCHECKED_CAST")
+        laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
+      }
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

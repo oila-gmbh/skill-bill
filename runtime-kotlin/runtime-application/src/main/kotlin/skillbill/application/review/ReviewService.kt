@@ -21,6 +21,7 @@ import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
+import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.TriageDecisionParser
 import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
@@ -29,9 +30,12 @@ import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.GoalWorkflowStats
+import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.TriageDecision
+import skillbill.review.plan.model.ReviewLaunchPlan
 import skillbill.review.withCanonicalAttribution
 
 @Suppress("TooManyFunctions")
@@ -55,10 +59,11 @@ class ReviewService(
     finishZeroFindingTelemetry: Boolean = true,
   ): ImportedReviewResult {
     val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
-    val review = ReviewParser.parseReview(text).withCanonicalAttribution(
+    val parsed = ReviewParser.parseReview(text).withCanonicalAttribution(
       knownPackSkillNames = reviewAttributionPort.knownPackSkillNames() + canonicalPackSkillNames,
       knownPlatformSlugs = reviewAttributionPort.knownPlatformSlugs() + canonicalPlatformSlugs,
     )
+    val review = parsed.copy(planLanes = composedRunLanes(parsed))
     return database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {
@@ -70,8 +75,23 @@ class ReviewService(
           routedSkillPlatformSlugs = reviewAttributionPort.routedSkillPlatformSlugs(),
         )
       }
+      // After the telemetry branch: that branch may decline to emit, or clear a provisional
+      // timestamp, and the run's terminal facts must survive either outcome.
+      unitOfWork.reviews.ensureTerminalReviewState(review.reviewRunId, review.executionMode)
       review.toImportedReviewResult(dbPath = unitOfWork.dbPath.toString())
     }
+  }
+
+  /**
+   * Lane attribution for a run, composed from the launch plan of the pack its canonical routed skill
+   * belongs to. A run whose pack cannot be resolved still imports: its reported lanes are retained
+   * and marked unresolved rather than failing the import or being guessed into a pack.
+   */
+  private fun composedRunLanes(review: ImportedReview): List<ReviewRunLane> {
+    val routedPackSlug = reviewAttributionPort.routedSkillPlatformSlugs()[review.routedSkillCanonical]
+    val plan = routedPackSlug?.let(reviewAttributionPort::composedLaunchPlan)
+      ?: ReviewLaunchPlan(review.routedSkillCanonical, emptyList())
+    return ReviewRunLaneResolver.resolve(plan, review.specialistReviews)
   }
 
   fun markOrchestrated(runId: String, dbOverride: String?) {

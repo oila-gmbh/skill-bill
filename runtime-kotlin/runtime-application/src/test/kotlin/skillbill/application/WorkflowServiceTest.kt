@@ -1027,6 +1027,51 @@ class WorkflowServiceTest {
   }
 
   @Test
+  fun `save writes the manifest projection under the loaded repoRoot, never the process cwd`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-save-repo-root")
+    val manifestPath = repoRoot.resolve(".feature-specs/SKILL-52.1-implementation/decomposition-manifest.yaml")
+    Files.createDirectories(manifestPath.parent)
+    Files.writeString(
+      manifestPath,
+      encodeDecompositionManifestYaml(
+        decompositionRuntime(status = "blocked"),
+        testDecompositionManifestValidator,
+        TestDecompositionManifestFileStore,
+      ),
+    )
+    val store = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
+    val loaded = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
+    assertEquals(repoRoot, loaded.repoRoot)
+
+    val expectedWritePath = repoRoot.resolve(
+      ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/decomposition-manifest.yaml",
+    )
+    Files.deleteIfExists(manifestPath)
+    check(Files.notExists(expectedWritePath)) { "Fixture must not pre-create the writer's derived path." }
+
+    store.save(loaded.copy(manifest = loaded.manifest.copy(status = "in_progress")), dbPathOverride = null)
+
+    assertTrue(
+      Files.exists(expectedWritePath),
+      "save() must write the manifest projection under the bound repoRoot, not under an unrelated directory.",
+    )
+    val processCwdEquivalent = Path.of("").toAbsolutePath().resolve(
+      ".feature-specs/SKILL-52.1-hexagonal-runtime-hardening/install-policy/decomposition-manifest.yaml",
+    )
+    assertFalse(
+      Files.exists(processCwdEquivalent),
+      "save() must never write the manifest projection relative to the process working directory.",
+    )
+  }
+
+  @Test
   fun `goal completion boundary persists terminal child state into the parent workflow`() {
     val workflows = InMemoryWorkflowStates()
     val pending = decompositionRuntime(status = "in_progress").copy(

@@ -14,6 +14,9 @@ data class GoalRunnerManifestState(
   val dbPath: String,
   val manifest: DecompositionManifest,
   val controlState: GoalRunnerControlState = GoalRunnerControlState(),
+  // The repo root this state was loaded against; save() writes the on-disk manifest projection
+  // under this root instead of the process's OS cwd.
+  val repoRoot: Path? = null,
 )
 
 data class GoalRunnerCompletionPersistenceResult(

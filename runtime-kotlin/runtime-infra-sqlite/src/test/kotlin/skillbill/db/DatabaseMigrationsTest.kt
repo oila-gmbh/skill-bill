@@ -81,6 +81,7 @@ class DatabaseMigrationsTest {
         22 to "drop-delegated-review-lifecycle-tables",
         23 to "add-feature-task-runtime-audit-generations",
         24 to "backfill-review-attribution-canonicals",
+        25 to "add-review-run-lane-attribution",
       ),
       migrationDefinitions,
     )
@@ -966,6 +967,55 @@ class DatabaseMigrationsTest {
 
       assertTrue("issue_category" in columns)
       assertEquals("other", findingIssueCategory(connection, "rvw-legacy-002", "F-001"))
+    }
+  }
+
+  // SKILL-136 subtask 5 AC-007: lane attribution is additive. A store that predates it gains the
+  // table and the finding columns without losing a single recorded review row.
+  @Test
+  fun `ensureDatabase adds review run lane attribution to a legacy store without losing rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-review-lanes.db")
+    createLegacyFeedbackEventsDatabase(dbPath)
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      Triple(rowCount(connection, "review_runs"), rowCount(connection, "findings"), findingRows(connection))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_run_lanes" in tableNames(connection))
+      assertTrue(
+        tableColumns(connection, "findings").containsAll(setOf("lane_skill_name", "lane_area", "lane_pack_slug")),
+      )
+      assertEquals(before.first, rowCount(connection, "review_runs"))
+      assertEquals(before.second, rowCount(connection, "findings"))
+      assertEquals(before.third, findingRows(connection), "Existing finding rows must survive unchanged.")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(before.first, rowCount(connection, "review_runs"), "Re-applying migrations must be a no-op.")
+      assertEquals(before.second, rowCount(connection, "findings"))
+      assertEquals(before.third, findingRows(connection))
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  /**
+   * AC-007's real-store check. It needs a real ~91.5 MB review-metrics store, which is far too large
+   * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and skips cleanly when unset. The
+   * store is copied first: migrations never run against the operator's live database.
+   */
+  @Test
+  fun `migrating a copy of a real review metrics store preserves every table row count`() {
+    val realStore = System.getenv("SKILL_BILL_REAL_STORE_DB")?.takeIf { it.isNotBlank() }?.let { Path.of(it) } ?: return
+    check(Files.isRegularFile(realStore)) { "SKILL_BILL_REAL_STORE_DB must point at an existing database file." }
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store").resolve("metrics.db")
+    Files.copy(realStore, copy)
+
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
+    DatabaseRuntime.ensureDatabase(copy).close()
+    val after = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
+
+    before.forEach { (table, count) ->
+      assertEquals(count, after[table], "Migration must preserve every row of '$table'.")
     }
   }
 
@@ -1931,6 +1981,36 @@ class DatabaseMigrationsTest {
         requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
       }
     }
+
+  private fun tableNames(connection: Connection): Set<String> = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT name FROM sqlite_master WHERE type = 'table'").use { resultSet ->
+      buildSet {
+        while (resultSet.next()) {
+          add(resultSet.getString("name"))
+        }
+      }
+    }
+  }
+
+  private fun allTableRowCounts(connection: Connection): Map<String, Int> = tableNames(connection)
+    .filterNot { it.startsWith("sqlite_") }
+    .associateWith { table -> rowCount(connection, table) }
+
+  private fun findingRows(connection: Connection): List<List<Any?>> = connection.createStatement().use { statement ->
+    statement.executeQuery(
+      """
+      SELECT review_run_id, finding_id, severity, confidence, location, description, finding_text
+      FROM findings
+      ORDER BY review_run_id, finding_id
+      """.trimIndent(),
+    ).use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add((1..resultSet.metaData.columnCount).map(resultSet::getObject))
+        }
+      }
+    }
+  }
 
   private fun rowCount(connection: Connection, tableName: String): Int = connection.createStatement().use { statement ->
     statement.executeQuery("SELECT COUNT(*) FROM $tableName").use { resultSet ->

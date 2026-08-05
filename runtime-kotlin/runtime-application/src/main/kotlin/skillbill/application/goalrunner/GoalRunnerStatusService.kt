@@ -306,7 +306,7 @@ class GoalRunnerStatusService(
 
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
     val loaded = if (request.deleteChildWorkflow) {
-      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)?.copy(repoRoot = request.repoRoot)
     } else {
       manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
     }
@@ -368,6 +368,7 @@ class GoalRunnerStatusService(
     }
     val retargeted = loaded.copy(
       manifest = loaded.manifest.copy(currentSubtaskIntent = replanIntent(selected)),
+      repoRoot = request.repoRoot,
     )
     val written = manifestStore.saveScopedReplan(
       state = retargeted,
