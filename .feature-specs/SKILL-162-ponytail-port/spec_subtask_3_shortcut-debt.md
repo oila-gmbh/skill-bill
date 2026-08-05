@@ -1,6 +1,6 @@
 # Subtask 3: bill-shortcut-debt ledger skill
 
-Part of SKILL-159 (`spec.md`). Port `ponytail-debt` as the harvester for the `shortcut:`
+Part of SKILL-162 (`spec.md`). Port `ponytail-debt` as the harvester for the `shortcut:`
 marker convention defined in subtask 1.
 
 ## Scope
@@ -62,4 +62,4 @@ ledger shows both rows and exactly one `no-trigger` tag.
 ## Next Path
 
 When subtasks 1–3 are complete, reconcile the parent `spec.md` to its terminal state and
-close SKILL-159.
+close SKILL-162.

@@ -1,3 +1,13 @@
+## [2026-08-05] SKILL-162 subtask 1 — ponytail minimalism discipline in implementation prompts
+Areas: skills/bill-feature-task-prose, runtime-application/featuretask, runtime-infra-fs/launcher/agentrun, runtime-domain/install/model, runtime-cli, runtime-ports/agentrun
+- Ported ponytail's seven-rung reuse-before-write ladder, anti-abstraction rules, root-cause bug-fix rule, never-simplify carve-outs (including skill-bill governed contracts), and `shortcut: <ceiling>, <upgrade trigger>` marker into both implementation-phase briefings.
+- Dual-surface lockstep: identical block in `native-agents/agents.yaml` + `content.md` and in runtime `minimalismDisciplineDirective` for mutating phases (runtime uses a separate source). reusable PATTERN: keep prose agent briefings and FeatureTaskRuntimePhasePromptDirectives in lockstep when guidance must hold in both modes.
+- Single MIT attribution home under bill-feature-task-prose; no benchmark or savings claims in the added content.
+- Collateral on the same branch: `AGENT_LAUNCHER_CLIS` + `ExecutableLookup` preflight refuses agents whose headless CLI is missing before spawn, with legacy-name substitution and stderr-preserving failure renderers. reusable
+- Known limitation: `./install.sh` staging refresh deferred to the goal boundary per the goal-continuation installer prohibition.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (AC#5 install.sh refresh deferred to the goal boundary)
+
 ## [2026-08-03] SKILL-157 subtask 3 — governed prose and validation parity for unbounded remediation
 Areas: skills/bill-feature-task-runtime, skills/bill-feature-task-prose, skills/bill-feature-goal, skills/bill-feature-task-subtask-runner, runtime-kotlin/runtime-domain
 - Removed every governed claim that review is capped at two passes; review and audit remediation now loop until Blocker and Major findings are cleared, with crossing iteration 3 into 4 printing an advisory warning rather than terminating the loop.

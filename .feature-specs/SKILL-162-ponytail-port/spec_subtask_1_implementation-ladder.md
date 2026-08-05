@@ -1,6 +1,6 @@
 # Subtask 1: Decision ladder in implementation-phase prompts
 
-Part of SKILL-159 (`spec.md`). Port ponytail's core discipline into the feature-task
+Part of SKILL-162 (`spec.md`). Port ponytail's core discipline into the feature-task
 implementation and implementation-fix subagent prompts.
 
 ## Scope

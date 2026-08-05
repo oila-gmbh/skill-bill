@@ -1,6 +1,6 @@
 # Subtask 2: bill-over-engineering-review horizontal skill
 
-Part of SKILL-159 (`spec.md`). Port `ponytail-review` and `ponytail-audit` as one
+Part of SKILL-162 (`spec.md`). Port `ponytail-review` and `ponytail-audit` as one
 horizontal skill with two scopes.
 
 ## Scope
@@ -67,7 +67,7 @@ skill-bill-specific additions:
 
 Optional dependency on subtask 1: the `shortcut:` marker carve-out references the
 convention subtask 1 defines. If executed before subtask 1, keep the carve-out text and
-note the convention lands with SKILL-159 subtask 1.
+note the convention lands with SKILL-162 subtask 1.
 
 ## Validation Strategy
 
@@ -78,5 +78,5 @@ deliberately over-built scratch diff and confirm tagged one-line output with a n
 
 ## Next Path
 
-Independent of subtask 3. When both complete, SKILL-159 closes with the parent-spec
+Independent of subtask 3. When both complete, SKILL-162 closes with the parent-spec
 reconciliation pass.
