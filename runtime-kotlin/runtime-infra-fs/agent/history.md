@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-05] SKILL-139 drop redundant staged content.md
+Areas: runtime-kotlin/runtime-infra-fs/install/staging, docs, orchestration/shell-content-contract, AGENTS.md
+- Listed-skill staging no longer copies `content.md` into the installed dir; staged layout is `SKILL.md`, `.content-hash`, pointers, optional `native-agents/` only.
+- Install content hash still reads source `content.md`, so authored-body edits still force re-stage; reconcile/intent name sets match the new layout.
+- Internal sidecar staging drops any redundant verbatim `content.md`; rendered `<skill-name>.md` wrappers stay full and self-contained.
+- Pattern: authored source remains the hash/input contract; generated install output must not re-ship source bodies agents already have inlined in `SKILL.md`. reusable
+- Ceremony and docs no longer tell agents to read a sibling staged `content.md` as the body source.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-01] SKILL-153 phase-output structural repair (subtask 2)
 Areas: runtime-kotlin/{runtime-application,runtime-contracts,runtime-domain,runtime-infra-fs,runtime-ports}, .feature-specs/SKILL-153-phase-output-structural-repair
 - Decomposition manifests now use typed construction, canonical schema/coherence validation, YAML read-back, and atomic persistence; reusable.

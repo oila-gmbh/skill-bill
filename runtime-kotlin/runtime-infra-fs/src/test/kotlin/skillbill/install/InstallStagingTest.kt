@@ -39,9 +39,9 @@ import kotlin.test.assertTrue
  *
  * These tests assert that `installSkill`/`stageInstalledSkill` materialize a per-skill staging
  * directory under `~/.skill-bill/installed-skills/<slug>-<hash>/` outside the repo, copy authored
- * material verbatim, render `SKILL.md` and pointer files, and never write back into the source
- * tree. Failure paths (malformed frontmatter, missing pointer target) must fail closed without
- * leaving a partial staging dir.
+ * companions other than `content.md` (which remains a hash input only), render `SKILL.md` and
+ * pointer files, and never write back into the source tree. Failure paths (malformed frontmatter,
+ * missing pointer target) must fail closed without leaving a partial staging dir.
  */
 class InstallStagingTest {
   private val tempDirs = mutableListOf<Path>()
@@ -65,8 +65,12 @@ class InstallStagingTest {
     val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
 
     assertTrue(rendered.copiedAuthoredFiles.isNotEmpty(), "expected authored files to be copied")
+    assertFalse(
+      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
+      "listed-skill staging must not carry a verbatim content.md copy",
+    )
     skillSnapshot.forEach { (rel, entry) ->
-      if (rel == "SKILL.md") {
+      if (rel == "SKILL.md" || rel == "content.md") {
         return@forEach
       }
       if (entry !is TreeEntry.RegularFile) {
@@ -76,6 +80,60 @@ class InstallStagingTest {
       assertTrue(Files.isRegularFile(staged, LinkOption.NOFOLLOW_LINKS), "missing staged authored file: $rel")
       assertContentEquals(entry.bytes, Files.readAllBytes(staged), "byte mismatch for staged authored file $rel")
     }
+  }
+
+  @Test
+  fun `listed skill staging omits content_md while SKILL_md keeps full Execution body`() {
+    val fixture = setupFixture()
+
+    val rendered = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+
+    assertFalse(
+      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
+      "staging must not contain content.md",
+    )
+    assertTrue(
+      Files.isRegularFile(rendered.stagingDir.resolve("SKILL.md"), LinkOption.NOFOLLOW_LINKS),
+      "staging must contain SKILL.md",
+    )
+    assertTrue(
+      Files.isRegularFile(rendered.stagingDir.resolve(".content-hash"), LinkOption.NOFOLLOW_LINKS),
+      "staging must contain .content-hash",
+    )
+    val skillMd = Files.readString(rendered.renderedSkillFile)
+    assertTrue(skillMd.contains("## Execution"), "SKILL.md must retain ## Execution")
+    assertTrue(
+      skillMd.contains("Authored body."),
+      "SKILL.md must inline the authored Execution body",
+    )
+    assertFalse(
+      skillMd.contains("Follow the instructions in content.md"),
+      "SKILL.md must not reintroduce a thin content.md pointer",
+    )
+  }
+
+  @Test
+  fun `content hash incorporates source content_md and mutation forces restage`() {
+    val fixture = setupFixture()
+    val first = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+    assertFalse(Files.exists(first.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS))
+
+    Files.writeString(
+      fixture.skillDir.resolve("content.md"),
+      Files.readString(fixture.skillDir.resolve("content.md")) + "\nEdited body.\n",
+    )
+    val second = stageInstalledSkill(fixture.repoRoot, fixture.skillDir, fixture.home)
+
+    assertTrue(
+      first.contentHash != second.contentHash,
+      "editing source content.md must change the install content hash",
+    )
+    assertTrue(
+      first.stagingDir != second.stagingDir,
+      "hash drift must force a new staging directory",
+    )
+    assertFalse(Files.exists(second.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.readString(second.renderedSkillFile).contains("Edited body."))
   }
 
   @Test

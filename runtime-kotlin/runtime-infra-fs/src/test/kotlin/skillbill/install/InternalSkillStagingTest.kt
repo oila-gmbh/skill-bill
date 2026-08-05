@@ -75,6 +75,20 @@ class InternalSkillStagingTest {
       Files.readString(sidecar),
       "sidecar must carry the governed wrapper",
     )
+    assertFalse(
+      Files.exists(rendered.stagingDir.resolve("content.md"), LinkOption.NOFOLLOW_LINKS),
+      "parent staging must not carry a redundant verbatim content.md",
+    )
+    assertFalse(
+      Files.exists(rendered.stagingDir.resolve("${fixture.childName}/content.md"), LinkOption.NOFOLLOW_LINKS),
+      "internal child must not stage a nested content.md copy",
+    )
+    val sidecarText = Files.readString(sidecar)
+    assertTrue(sidecarText.contains("## Execution"), "rendered sidecar must keep ## Execution")
+    assertTrue(
+      sidecarText.contains("Authored internal body."),
+      "rendered sidecar wrapper must stay full and self-contained",
+    )
   }
 
   @Test

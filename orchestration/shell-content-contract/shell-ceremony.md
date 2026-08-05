@@ -122,8 +122,8 @@ the code it describes.
 ## Inputs
 
 Read the current skill's `SKILL.md` frontmatter before execution so project
-overrides resolve against the correct skill name. When a sibling `content.md`
-exists, treat it as the authored execution body for the current skill.
+overrides resolve against the correct skill name. The rendered `## Execution`
+body in `SKILL.md` is the authored guidance for the current skill.
 
 ## Execution Mode Reporting
 

@@ -402,10 +402,13 @@ Content-managed skills install through staging.
 Install flow:
 
 1. Resolve the source skill directory.
-2. Render `SKILL.md`.
-3. Copy authored source files such as `content.md` and `native-agents/`.
+2. Render `SKILL.md` with the full inlined `## Execution` body from source
+   `content.md`.
+3. Copy other authored companions such as `native-agents/` (source
+   `content.md` stays in the content-hash inputs and is not staged).
 4. Generate platform pointers and static support pointers.
-5. Compute a content hash from authored files and pointer target declarations.
+5. Compute a content hash from authored files (including source `content.md`)
+   and pointer target declarations.
 6. Promote an atomic staging directory under the Skill Bill installed-skills
    cache.
 7. Link each selected agent's skill entry to the staged directory.
@@ -413,7 +416,6 @@ Install flow:
 The installed directory is runtime-complete and may contain:
 
 - `SKILL.md`
-- `content.md`
 - `.content-hash`
 - generated support pointer files
 - generated platform pointer files
@@ -422,6 +424,11 @@ The installed directory is runtime-complete and may contain:
   declare this skill as their parent via `internal-for`; these are rendered
   into the parent's staged directory and folded into the parent's content
   hash, and the internal skills themselves get no `skills_dir` entry
+
+Listed-skill staging does not ship a verbatim `content.md` copy; agents read
+the inlined body from `SKILL.md`. Source-tree `content.md` remains the
+authored surface for show/explain/render/validate/fill/edit and native-agent
+composition.
 
 Agent install directories therefore point to staging, not directly to the repo
 source skill directory.

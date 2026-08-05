@@ -171,7 +171,7 @@ private fun discoverAuthoredCompanions(sourceDir: Path): List<InternalSidecarCom
     stream
       .filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
       .filter { path -> path.fileName.toString().endsWith(".md") }
-      .filter { path -> path.fileName.toString() != "content.md" }
+      .filter { path -> path.fileName.toString() != AUTHORED_SKILL_CONTENT_FILENAME }
       .sorted(Comparator.comparing { path -> path.fileName.toString() })
       .map { path ->
         val normalized = path.toAbsolutePath().normalize()
