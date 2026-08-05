@@ -1,3 +1,12 @@
+## [2026-08-05] SKILL-162 subtask 3 — bill-shortcut-debt ledger skill
+Areas: skills/bill-shortcut-debt, skills (README catalog)
+- Scaffolded and filled `bill-shortcut-debt`: one-shot harvester for comment-prefixed `shortcut:` markers into a grouped ledger (ceiling + upgrade trigger), with `no-trigger` rot tags, summary line, and `No shortcut debt. Clean ledger.` empty verdict.
+- Boundaries are read-only by default (explicit path only for optional ledger write); honesty rule forbids invented per-repo savings; marker convention ownership stays with subtask 1. reusable PATTERN: horizontal ledger/report skill over an existing comment convention, not a new persistence surface.
+- Catalog lists `/bill-shortcut-debt`; no benchmark/savings claims and no marker-convention or runtime-kotlin edits in this subtask.
+- Known limitation: `./install.sh` staging refresh deferred to the goal boundary per the goal-continuation installer prohibition.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (AC#5 install.sh refresh deferred to the goal boundary)
+
 ## [2026-08-05] SKILL-162 subtask 2 — bill-over-engineering-review horizontal skill
 Areas: skills/bill-over-engineering-review, skills (README catalog)
 - Scaffolded and filled `bill-over-engineering-review`: complexity-only review/audit with diff (default) and repo scopes, five tagged finding lines (`delete`/`stdlib`/`native`/`yagni`/`shrink`), net-lines scoring, and `Lean already. Ship.` empty verdict.
