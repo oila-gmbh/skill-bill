@@ -1,3 +1,13 @@
+## [2026-08-05] SKILL-136 Alias Android to the KMP pack
+Areas: KMP platform manifest routing signals and lane conditions, runtime scaffold platform-pack tests
+- The `kmp` pack now owns plain single-module Android diffs: `display_name` widened to "Android & Kotlin Multiplatform" and the self-contradicting tie-breaker that rejected Android signals without multiplatform source sets was removed and replaced with a backend-dominance exclusion.
+- Android markers (`androidx.compose`, `androidx.navigation`, `androidx.lifecycle`, `androidx.room`, `androidx.datastore`, `@Composable`, `dagger.hilt`) were added to `routing_signals.content` only.
+- Reusable: never add `src/main` to `routing_signals.path` — a unique path signal scores 10 points on every backend Kotlin file and flips backend-dominant diffs to this pack. Path-shaped Android layout belongs in `lane_conditions`, where `ui` gained `/src/main/` so Compose lanes fire on non-multiplatform layouts.
+- Slug `kmp` and all `bill-kmp-code-review*` skill names are unchanged; `platform-packs/kotlin` and `platform-packs/generic` are byte-unmodified, so Kotlin backend routing is untouched.
+- Known limitation: `ux-accessibility` remains content-only and does not fire from Android layout paths alone.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-07-12] SKILL-114 KMP pack depth
 Areas: KMP review composition and specialists, KMP add-ons, quality-check routing, telemetry, platform-pack substance audit
 - Effective KMP review coverage composes seven inherited Kotlin areas with three KMP overrides, and production composition plus merger tests verify lane attribution and deduplication.
