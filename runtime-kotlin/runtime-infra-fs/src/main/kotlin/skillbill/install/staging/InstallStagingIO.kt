@@ -25,6 +25,8 @@ import java.util.logging.Logger
 
 internal const val INSTALL_STAGING_SKILL_FILENAME = "SKILL.md"
 internal const val INSTALL_STAGING_CONTENT_HASH_FILENAME = ".content-hash"
+/** Source authored body; stays in hash inputs but is never copied into listed-skill staging. */
+internal const val AUTHORED_SKILL_CONTENT_FILENAME = "content.md"
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStagingIO")
 
@@ -124,6 +126,10 @@ internal fun copyAuthoredIntoStaging(sourceSkillDir: Path, tempDir: Path, author
   val copied = mutableListOf<Path>()
   authored.forEach { file ->
     val rel = sourceSkillDir.relativize(file).toString().replace(File.separatorChar, '/')
+    // SKILL-139: keep source content.md in the hash input set, but do not stage a verbatim copy.
+    if (rel == AUTHORED_SKILL_CONTENT_FILENAME) {
+      return@forEach
+    }
     val dest = tempDir.resolve(rel).normalize()
     require(dest.startsWith(tempDir)) {
       "Authored file '$rel' resolves to '$dest' which escapes staging dir '$tempDir'."

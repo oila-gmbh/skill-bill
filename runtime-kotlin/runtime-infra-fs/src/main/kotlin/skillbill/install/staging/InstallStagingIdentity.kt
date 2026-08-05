@@ -17,7 +17,7 @@ private const val INSTALL_SLUG_MAX_CHARS = 32
  * file. Anything else (legacy ad-hoc dirs used by `link-skill`) takes the source-symlink fallback.
  */
 internal fun isContentManagedSkill(sourceSkillDir: Path): Boolean {
-  val contentMd = sourceSkillDir.resolve("content.md")
+  val contentMd = sourceSkillDir.resolve(AUTHORED_SKILL_CONTENT_FILENAME)
   return Files.exists(contentMd, LinkOption.NOFOLLOW_LINKS) &&
     Files.isRegularFile(contentMd, LinkOption.NOFOLLOW_LINKS)
 }
@@ -61,4 +61,4 @@ internal fun authoredStagingNames(sourceSkillDir: Path, authored: Collection<Pat
       .relativize(path.toAbsolutePath().normalize())
       .toString()
       .replace(File.separatorChar, '/')
-  }
+  }.filter { rel -> rel != AUTHORED_SKILL_CONTENT_FILENAME }

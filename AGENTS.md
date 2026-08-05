@@ -6,7 +6,7 @@ skill-bill governs authoring, routing, validation, installation, and measurement
 
 Non-negotiable contracts:
 
-- Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output.
+- Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output. Listed-skill install staging ships `SKILL.md`, `.content-hash`, generated pointers, and optional `native-agents/` output — not a verbatim `content.md` copy.
 - Skill sources use `skills/<skill>/content.md`, optional `native-agents/`, and contract-authorized sidecars.
 - Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
 - `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.

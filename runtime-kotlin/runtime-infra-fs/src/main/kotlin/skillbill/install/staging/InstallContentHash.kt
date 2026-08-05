@@ -13,7 +13,7 @@ import java.security.MessageDigest
 // This short digest remains the staging-cache key. SkillContentIdentity owns the full SHA-256
 // equality proof so cache-key compatibility and source identity are separate contracts.
 internal const val INSTALL_CACHE_KEY_BYTES = 8
-private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v4-internal-authored-companions"
+private const val INSTALL_STAGING_RECIPE_VERSION = "install-staging-v5-no-staged-content-md"
 
 internal data class InstallContentHashInputs(
   val sourceSkillDir: Path,
