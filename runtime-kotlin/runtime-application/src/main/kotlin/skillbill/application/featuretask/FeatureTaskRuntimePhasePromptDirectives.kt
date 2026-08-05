@@ -30,6 +30,41 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   """.trimIndent()
 }
 
+// Identical Minimalism discipline block shared by implement and implement_fix (AC-004 separate-source
+// branch). Keep in lockstep with skills/bill-feature-task-prose native-agent and content.md briefings.
+internal fun minimalismDisciplineDirective(phaseId: String): String {
+  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+    return ""
+  }
+  return """
+    ## Minimalism discipline (reuse before write)
+    Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+
+    The ladder — stop at the first rung that holds:
+    1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+    2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+    3. Stdlib does it? Use it.
+    4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+    5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+    6. Can it be one line? One line.
+    7. Only then: the minimum code that works.
+    Two equal rungs both work → take the higher one and move on.
+
+    Rules:
+    - No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+    - No scaffolding "for later"; later can scaffold for itself.
+    - Deletion over addition. Boring over clever.
+    - Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+    - Between two equal-size options, take the one correct on edge cases.
+
+    Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+
+    Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+
+    Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
+  """.trimIndent()
+}
+
 /**
  * Emitted when a prior segment of THIS implementation left obligations open.
  *
