@@ -22,6 +22,7 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
+import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
 import skillbill.review.withCanonicalAttribution
 import skillbill.review.model.FeatureImplementWorkflowStats
@@ -55,7 +56,7 @@ class ReviewService(
   ): ImportedReviewResult {
     val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
     val review = ReviewParser.parseReview(text).withCanonicalAttribution(
-      knownPackSkillNames = reviewAttributionPort.knownPackSkillNames(),
+      knownPackSkillNames = reviewAttributionPort.knownPackSkillNames() + canonicalPackSkillNames,
       knownPlatformSlugs = reviewAttributionPort.knownPlatformSlugs() + canonicalPlatformSlugs,
     )
     return database.transaction(dbOverride) { unitOfWork ->

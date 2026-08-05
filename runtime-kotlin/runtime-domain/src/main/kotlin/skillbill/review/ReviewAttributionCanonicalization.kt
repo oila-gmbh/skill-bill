@@ -51,6 +51,11 @@ val canonicalPlatformSlugs: Set<String> = setOf(
   "generic",
 )
 
+// Canonical pack-skill vocabulary, derived from the canonical slugs so the migration backfill (which
+// runs below the port layer) checks membership against the same names ingestion accepts. Ingestion
+// unions this with the discovered pack skill names.
+val canonicalPackSkillNames: Set<String> = canonicalPlatformSlugs.map { slug -> "bill-$slug-code-review" }.toSet()
+
 private val packSkillPattern = Regex("bill-(?:[a-z0-9]+-)*code-review")
 
 private val vocabularyEntryPattern = Regex("^[a-z0-9][a-z0-9-]*$")

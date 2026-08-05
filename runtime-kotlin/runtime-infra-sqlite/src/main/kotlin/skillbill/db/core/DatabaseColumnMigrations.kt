@@ -2,6 +2,8 @@ package skillbill.db.core
 
 import skillbill.review.EXECUTION_MODE_DELEGATED
 import skillbill.review.UNRESOLVED_ATTRIBUTION
+import skillbill.review.canonicalPackSkillNames
+import skillbill.review.canonicalPlatformSlugs
 import skillbill.review.resolveCanonicalRoutedSkill
 import skillbill.review.resolveCanonicalScope
 import skillbill.review.resolveCanonicalStack
@@ -17,7 +19,6 @@ internal object DatabaseColumnMigrations {
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
     backfillReviewSessionIds(connection)
-    backfillReviewAttributionCanonicals(connection)
     backfillReviewExecutionModes(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
@@ -436,13 +437,23 @@ internal object DatabaseColumnMigrations {
     }
   }
 
-  // Unambiguous-only backfill: rows whose retained raw text does not resolve keep the explicit
-  // 'unresolved' marker. The raw columns are never written. Re-running is a no-op because only rows
-  // still marked unresolved are considered and only changed values are written back.
-  private fun backfillReviewAttributionCanonicals(connection: Connection) {
-    val pending = connection.prepareStatement(
+  // One-shot backfill, run once via the numbered migration ledger rather than on every open. It is
+  // unambiguous-only: rows whose retained raw text does not resolve keep the explicit 'unresolved'
+  // marker, the raw columns are never written, and a canonical value already computed at ingestion is
+  // never overwritten (only columns still holding the marker are touched). Rows whose recomputed
+  // values equal the stored ones are skipped, so re-running writes nothing.
+  internal fun applyReviewAttributionCanonicalBackfill(connection: Connection) {
+    if (!tableExists(connection, "review_runs")) return
+    ensureReviewRunColumns(connection)
+    backfillReviewAttributionCanonicals(connection)
+  }
+
+  private fun pendingReviewAttributionRows(connection: Connection): List<ReviewAttributionBackfillRow> =
+    connection.prepareStatement(
       """
-      SELECT review_run_id, routed_skill, detected_stack, detected_scope
+      SELECT review_run_id, routed_skill, detected_stack, detected_scope,
+             routed_skill_canonical, detected_stack_canonical, detected_scope_canonical,
+             detected_scope_detail
       FROM review_runs
       WHERE routed_skill_canonical = '$UNRESOLVED_ATTRIBUTION'
          OR detected_stack_canonical = '$UNRESOLVED_ATTRIBUTION'
@@ -458,12 +469,19 @@ internal object DatabaseColumnMigrations {
                 routedSkill = rows.getString("routed_skill"),
                 detectedStack = rows.getString("detected_stack"),
                 detectedScope = rows.getString("detected_scope"),
+                routedSkillCanonical = rows.getString("routed_skill_canonical"),
+                detectedStackCanonical = rows.getString("detected_stack_canonical"),
+                detectedScopeCanonical = rows.getString("detected_scope_canonical"),
+                detectedScopeDetail = rows.getString("detected_scope_detail"),
               ),
             )
           }
         }
       }
     }
+
+  private fun backfillReviewAttributionCanonicals(connection: Connection) {
+    val pending = pendingReviewAttributionRows(connection)
     if (pending.isEmpty()) return
     connection.prepareStatement(
       """
@@ -475,16 +493,30 @@ internal object DatabaseColumnMigrations {
       WHERE review_run_id = ?
       """.trimIndent(),
     ).use { statement ->
+      var batched = 0
       pending.forEach { row ->
         val scope = resolveCanonicalScope(row.detectedScope)
-        statement.setString(1, resolveCanonicalRoutedSkill(row.routedSkill, emptySet()).canonical)
-        statement.setString(2, resolveCanonicalStack(row.detectedStack).canonical)
-        statement.setString(3, scope.canonical)
-        statement.setString(4, scope.detail)
+        val unresolvedScope = row.detectedScopeCanonical == UNRESOLVED_ATTRIBUTION
+        val routedSkill = row.routedSkillCanonical.takeUnless { it == UNRESOLVED_ATTRIBUTION }
+          ?: resolveCanonicalRoutedSkill(row.routedSkill, canonicalPackSkillNames).canonical
+        val stack = row.detectedStackCanonical.takeUnless { it == UNRESOLVED_ATTRIBUTION }
+          ?: resolveCanonicalStack(row.detectedStack, canonicalPlatformSlugs).canonical
+        val scopeCanonical = if (unresolvedScope) scope.canonical else row.detectedScopeCanonical
+        val scopeDetail = if (unresolvedScope) scope.detail else row.detectedScopeDetail
+        val unchanged = routedSkill == row.routedSkillCanonical &&
+          stack == row.detectedStackCanonical &&
+          scopeCanonical == row.detectedScopeCanonical &&
+          scopeDetail == row.detectedScopeDetail
+        if (unchanged) return@forEach
+        statement.setString(1, routedSkill)
+        statement.setString(2, stack)
+        statement.setString(3, scopeCanonical)
+        statement.setString(4, scopeDetail)
         statement.setString(5, row.reviewRunId)
         statement.addBatch()
+        batched += 1
       }
-      statement.executeBatch()
+      if (batched > 0) statement.executeBatch()
     }
   }
 
@@ -515,6 +547,10 @@ internal object DatabaseColumnMigrations {
     val routedSkill: String?,
     val detectedStack: String?,
     val detectedScope: String?,
+    val routedSkillCanonical: String?,
+    val detectedStackCanonical: String?,
+    val detectedScopeCanonical: String?,
+    val detectedScopeDetail: String?,
   )
 
   private fun ensureFeatureImplementSessionColumns(connection: Connection) {

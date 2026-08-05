@@ -1604,6 +1604,63 @@ class DatabaseMigrationsTest {
     }
   }
 
+  // SKILL-136 subtask 4 AC-002/AC-006: the backfill is a one-shot ledger migration that never
+  // overwrites an ingestion-computed canonical and converges instead of rewriting rows on every open.
+  @Test
+  fun `review attribution backfill runs once and never overwrites ingestion canonicals`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-converge").resolve("metrics.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_runs (
+            review_run_id TEXT PRIMARY KEY,
+            routed_skill TEXT,
+            detected_scope TEXT,
+            detected_stack TEXT,
+            execution_mode TEXT,
+            raw_text TEXT NOT NULL
+          )
+          """.trimIndent(),
+        )
+        statement.execute(
+          "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
+            "VALUES ('rvw-unresolvable', 'bill-kmp-code-review, bill-ios-code-review', " +
+            "'whatever the agent felt like', 'kotlin, ios', 'raw')",
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals("unresolved", reviewRunColumn(connection, "rvw-unresolvable", "routed_skill_canonical"))
+      // Stand in for a value ingestion resolved against the discovered pack catalog: the backfill's own
+      // vocabulary would not produce it, so re-running must leave it alone.
+      connection.createStatement().use { statement ->
+        statement.execute(
+          "UPDATE review_runs SET routed_skill_canonical = 'bill-acme-code-review' " +
+            "WHERE review_run_id = 'rvw-unresolvable'",
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals("bill-acme-code-review", reviewRunColumn(connection, "rvw-unresolvable", "routed_skill_canonical"))
+      assertEquals(
+        1,
+        connection.createStatement().use { statement ->
+          statement.executeQuery(
+            "SELECT COUNT(*) FROM schema_migrations WHERE name = 'backfill-review-attribution-canonicals'",
+          ).use { resultSet ->
+            resultSet.next()
+            resultSet.getInt(1)
+          }
+        },
+        "The canonical backfill must be recorded once as a one-shot ledger migration.",
+      )
+    }
+  }
+
   // SKILL-136 subtask 4 AC-006: run against a COPY of a real review-metrics store by exporting
   // SKILL_BILL_MIGRATION_FIXTURE_DB. Unset (the CI default) the test skips so the suite stays hermetic.
   @Test

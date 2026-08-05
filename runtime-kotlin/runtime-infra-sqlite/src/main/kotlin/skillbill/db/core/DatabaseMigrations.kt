@@ -431,6 +431,11 @@ internal object DatabaseMigrations {
         name = "add-feature-task-runtime-audit-generations",
         operation = FeatureTaskRuntimeAuditGenerationMigration::apply,
       ),
+      DatabaseMigration(
+        version = 24,
+        name = "backfill-review-attribution-canonicals",
+        operation = DatabaseColumnMigrations::applyReviewAttributionCanonicalBackfill,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
