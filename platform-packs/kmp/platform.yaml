@@ -1,6 +1,6 @@
 platform: kmp
 contract_version: "1.2"
-display_name: KMP
+display_name: "Android & Kotlin Multiplatform"
 
 routing_signals:
   strong:
@@ -18,10 +18,23 @@ routing_signals:
     - "actual"
   tie_breakers:
     - "If KMP or Android markers dominate, prefer this pack over generic Kotlin."
-    - "Do not prefer this pack when adjacent Kotlin or Android signals dominate without multiplatform source sets."
+    - "Do not prefer this pack when an adjacent backend Kotlin/JVM service surface (Spring, Exposed, Hibernate, server Ktor) dominates the changed product surface and Android modules are incidental."
     - "Exclude generated and vendored files when deciding routing dominance."
   path: [".kt", "*.kt", ".kts", "*.kts", "AndroidManifest.xml", "androidMain", "iosMain", "commonMain"]
-  content: ['kotlin("multiplatform")', "org.jetbrains.kotlin.multiplatform", "expect", "actual"]
+  # Android markers stay content-only: routing_signals.path must not gain src/main, which scores as a
+  # unique 10-point path signal on every backend Kotlin file and would break backend-dominant routing.
+  content:
+    - 'kotlin("multiplatform")'
+    - "org.jetbrains.kotlin.multiplatform"
+    - "expect"
+    - "actual"
+    - "androidx.compose"
+    - "androidx.navigation"
+    - "androidx.lifecycle"
+    - "androidx.room"
+    - "androidx.datastore"
+    - "@Composable"
+    - "dagger.hilt"
 
 declared_code_review_areas:
   - platform-correctness
@@ -49,7 +62,7 @@ lane_conditions:
   platform-correctness:
     required: true
   ui:
-    path: ["androidMain", "iosMain"]
+    path: ["androidMain", "iosMain", "/src/main/"]
     content: ["compose", "@Composable", "navigation"]
   ux-accessibility:
     content: ["semantics", "contentDescription", "accessibility", "focusRequester"]

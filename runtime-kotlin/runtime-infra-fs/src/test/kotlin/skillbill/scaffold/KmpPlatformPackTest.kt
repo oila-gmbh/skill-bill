@@ -1,5 +1,10 @@
 package skillbill.scaffold
 
+import skillbill.review.plan.ReviewLaneInclusionPolicy
+import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.ReviewPathMatcher
+import skillbill.review.plan.ReviewStackRouting
+import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.substance.PlatformPackSubstanceAudit
@@ -13,6 +18,146 @@ import kotlin.test.assertTrue
 
 private val KMP_CODE_REVIEW_AREAS = setOf("platform-correctness", "ui", "ux-accessibility")
 
+private const val COMPOSE_NAV_PATH = "app/src/main/java/com/acme/nav/NavGraph.kt"
+
+private val COMPOSE_NAV_CONTENT = """
+  package com.acme.nav
+
+  import androidx.compose.runtime.Composable
+  import androidx.compose.runtime.collectAsState
+  import androidx.navigation.compose.NavHost
+  import androidx.navigation.compose.composable
+  import androidx.navigation.compose.rememberNavController
+  import androidx.lifecycle.ViewModel
+  import kotlinx.coroutines.flow.MutableStateFlow
+  import kotlinx.coroutines.flow.StateFlow
+
+  class HomeViewModel : ViewModel() {
+    private val _state = MutableStateFlow(HomeState())
+    val state: StateFlow<HomeState> = _state
+  }
+
+  @Composable
+  fun AppNavGraph(viewModel: HomeViewModel) {
+    val navController = rememberNavController()
+    NavHost(navController, startDestination = "home") {
+      composable("home") { HomeScreen(viewModel.state.collectAsState().value) }
+    }
+  }
+""".trimIndent()
+
+private val PLAIN_ANDROID_DIFF = listOf(
+  ReviewRoutingChangedFile(
+    "app/build.gradle.kts",
+    """
+      plugins {
+        id("com.android.application")
+        id("dagger.hilt.android.plugin")
+      }
+      android { namespace = "com.acme" }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "app/src/main/AndroidManifest.xml",
+    "<manifest><application android:name=\".AcmeApp\" /></manifest>",
+  ),
+  ReviewRoutingChangedFile(
+    "app/src/main/java/com/acme/data/AppDatabase.kt",
+    """
+      package com.acme.data
+
+      import androidx.room.Database
+      import androidx.room.RoomDatabase
+
+      @Database(entities = [SiteEntity::class], version = 3)
+      abstract class AppDatabase : RoomDatabase() {
+        abstract fun siteDao(): SiteDao
+      }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "app/src/main/java/com/acme/data/SettingsStore.kt",
+    """
+      package com.acme.data
+
+      import androidx.datastore.preferences.core.booleanPreferencesKey
+      import androidx.datastore.preferences.core.edit
+
+      class SettingsStore(private val store: DataStore<Preferences>) {
+        suspend fun setSyncEnabled(enabled: Boolean) {
+          store.edit { it[booleanPreferencesKey("sync")] = enabled }
+        }
+      }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "app/src/main/java/com/acme/di/DataModule.kt",
+    """
+      package com.acme.di
+
+      import dagger.hilt.InstallIn
+      import dagger.hilt.components.SingletonComponent
+
+      @InstallIn(SingletonComponent::class)
+      object DataModule
+    """.trimIndent(),
+  ),
+)
+
+private val BACKEND_DOMINANT_DIFF = listOf(
+  ReviewRoutingChangedFile(
+    "service/src/main/kotlin/com/acme/billing/InvoiceTable.kt",
+    """
+      package com.acme.billing
+
+      import org.jetbrains.exposed.sql.Table
+      import org.jetbrains.exposed.sql.transactions.transaction
+
+      object InvoiceTable : Table("invoice") {
+        val id = long("id").autoIncrement()
+      }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "service/src/main/kotlin/com/acme/billing/InvoiceRepository.kt",
+    """
+      package com.acme.billing
+
+      import kotlinx.coroutines.flow.Flow
+      import org.jetbrains.exposed.sql.selectAll
+
+      class InvoiceRepository {
+        suspend fun all(): List<Invoice> = InvoiceTable.selectAll().map(::toInvoice)
+      }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "service/src/main/kotlin/com/acme/billing/InvoiceRoutes.kt",
+    """
+      package com.acme.billing
+
+      import io.ktor.server.routing.Route
+      import io.ktor.server.routing.get
+      import kotlinx.coroutines.withContext
+
+      fun Route.invoiceRoutes(repository: InvoiceRepository) {
+        get("/invoices") { call.respond(repository.all()) }
+      }
+    """.trimIndent(),
+  ),
+  ReviewRoutingChangedFile(
+    "android-lib/src/main/java/com/acme/widget/BadgeView.kt",
+    """
+      package com.acme.widget
+
+      import androidx.compose.runtime.Composable
+
+      @Composable
+      fun Badge(label: String) = Text(label)
+    """.trimIndent(),
+  ),
+)
+
 class KmpPlatformPackTest {
   @Test
   fun `kmp manifest registers elevated specialists and routing contract`() {
@@ -20,7 +165,7 @@ class KmpPlatformPackTest {
     val pack = loadPlatformPack(packRoot)
 
     assertEquals("kmp", pack.slug)
-    assertEquals("KMP", pack.displayName)
+    assertEquals("Android & Kotlin Multiplatform", pack.displayName)
     assertEquals("1.2", pack.contractVersion)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredCodeReviewAreas.toSet())
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
@@ -207,6 +352,77 @@ class KmpPlatformPackTest {
     assertTrue(ui.trimEnd().endsWith("user-visible interaction or rendering failure scenario."))
     assertTrue(ux.trimEnd().endsWith("accessibility or task-completion failure scenario."))
     assertTrue(correctness.trimEnd().endsWith("invalid-state or ordering failure scenario."))
+  }
+
+  @Test
+  fun `plain single-module Android diff routes to kmp`() {
+    val result = ReviewStackRouting.route(routingManifests(), PLAIN_ANDROID_DIFF)
+
+    assertContains(result.routedSlugs, "kmp")
+    assertContains(result.ownedPathsBySlug.getValue("kmp"), "app/src/main/java/com/acme/data/AppDatabase.kt")
+    assertContains(result.ownedPathsBySlug.getValue("kmp"), "app/src/main/AndroidManifest.xml")
+  }
+
+  @Test
+  fun `commonMain and androidMain diff routes to kmp`() {
+    val result = ReviewStackRouting.route(
+      routingManifests(),
+      listOf(
+        ReviewRoutingChangedFile(
+          "shared/src/commonMain/kotlin/com/acme/SessionStore.kt",
+          "expect class SessionStore { fun load(): String }",
+        ),
+        ReviewRoutingChangedFile(
+          "shared/src/androidMain/kotlin/com/acme/SessionStore.android.kt",
+          "actual class SessionStore { actual fun load(): String = \"\" }",
+        ),
+      ),
+    )
+
+    assertContains(result.routedSlugs, "kmp")
+  }
+
+  @Test
+  fun `backend dominant Kotlin monorepo with an incidental Android module still routes to kotlin`() {
+    val result = ReviewStackRouting.route(routingManifests(), BACKEND_DOMINANT_DIFF)
+
+    val kotlinOwned = result.ownedPathsBySlug.getValue("kotlin")
+    BACKEND_DOMINANT_DIFF.map { it.path }.filter { it.startsWith("service/") }
+      .forEach { assertContains(kotlinOwned, it) }
+    assertEquals(setOf("android-lib/src/main/java/com/acme/widget/BadgeView.kt"), result.ownedPathsBySlug["kmp"])
+  }
+
+  @Test
+  fun `composed kmp plan resolves ui to the kmp ui specialist`() {
+    val plan = ReviewLaunchPlanPolicy.flatten("kmp", routingManifests(), setOf("ui"))
+
+    val ui = plan.lanes.single { it.area == "ui" }
+    assertEquals("bill-kmp-code-review-ui", ui.skillName)
+    assertEquals("kmp", ui.packSlug)
+    assertEquals(0, ui.depth)
+  }
+
+  @Test
+  fun `ui lane fires on a src main layout with no androidMain directory`() {
+    val ui = ReviewLaunchPlanPolicy.flatten("kmp", routingManifests(), setOf("ui")).lanes.single { it.area == "ui" }
+
+    assertTrue(ReviewLaneInclusionPolicy.ownsChangedFile(ui, COMPOSE_NAV_PATH, COMPOSE_NAV_CONTENT))
+    assertFalse("androidMain" in COMPOSE_NAV_PATH)
+    assertTrue(ui.pathSignals.any { ReviewPathMatcher.matches(COMPOSE_NAV_PATH, it) })
+  }
+
+  @Test
+  fun `Compose navigation file under plain Android routing is owned by kmp`() {
+    val result = ReviewStackRouting.route(
+      routingManifests(),
+      listOf(ReviewRoutingChangedFile(COMPOSE_NAV_PATH, COMPOSE_NAV_CONTENT)),
+    )
+
+    assertContains(result.ownedPathsBySlug.getValue("kmp"), COMPOSE_NAV_PATH)
+  }
+
+  private fun routingManifests() = listOf("kmp", "kotlin", "generic").map { slug ->
+    loadPlatformPack(repoRootFromTest().resolve("platform-packs/$slug"))
   }
 
   @Test
