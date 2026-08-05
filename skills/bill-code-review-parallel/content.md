@@ -1,6 +1,6 @@
 ---
 name: bill-code-review-parallel
-description: Use when running two review agents in parallel on the same diff and merging their findings. Both agents receive the same diff; findings are coalesced where both agents agree and labeled with provenance ([agentId]). Use when user mentions parallel review, dual review, two-agent review, or asks to run code-review-parallel.
+description: Run two review agents on the same diff and merge findings. Use when asking for parallel, dual, or two-agent review.
 ---
 
 # Parallel Code Review

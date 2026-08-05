@@ -1,42 +1,42 @@
 contract_version: "0.1"
 agents:
   - name: bill-go-code-review-api-contracts
-    description: "Go api contracts specialist code reviewer. Runs against net/http and applicable RPC validation, cancellation, JSON/protobuf evolution, response ordering, idempotency, and compatibility. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go api contracts specialist — net/http and applicable RPC validation, cancellation, JSON/protobuf evolution, response ordering, idempotency, and compatibility."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-architecture
-    description: "Go architecture specialist code reviewer. Runs against Package and module dependency direction, interface ownership, composition roots, component lifecycles, and goroutine scope ownership. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go architecture specialist — Package and module dependency direction, interface ownership, composition roots, component lifecycles, and goroutine scope ownership."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-performance
-    description: "Go performance specialist code reviewer. Runs against Measured pprof and benchmark evidence, allocations, retention, lock contention, scheduler pressure, batching, and bounded resources. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go performance specialist — Measured pprof and benchmark evidence, allocations, retention, lock contention, scheduler pressure, batching, and bounded resources."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-persistence
-    description: "Go persistence specialist code reviewer. Runs against database/sql row and transaction lifecycles, isolation, locking, pools, migrations, mapping, and applicable data libraries. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go persistence specialist — database/sql row and transaction lifecycles, isolation, locking, pools, migrations, mapping, and applicable data libraries."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-platform-correctness
-    description: "Go platform correctness specialist code reviewer. Runs against Goroutine exits, protocol-specific channel ownership, context cancellation, wrapped errors, typed nils, aliasing, synchronization, races, and deadlocks. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go platform correctness specialist — Goroutine exits, protocol-specific channel ownership, context cancellation, wrapped errors, typed nils, aliasing, synchronization, races, and deadlocks."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-reliability
-    description: "Go reliability specialist code reviewer. Runs against Graceful server, hijacked-connection, worker, and queue shutdown; delivery semantics, deadlines, retries, backpressure, and partial failure. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go reliability specialist — Graceful server, hijacked-connection, worker, and queue shutdown; delivery semantics, deadlines, retries, backpressure, and partial failure."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-security
-    description: "Go security specialist code reviewer. Runs against Sessions, OAuth/OIDC, authorization, template trust, bounded parsing, symlink-safe paths, process options, connection-time SSRF, and dependencies. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go security specialist — Sessions, OAuth/OIDC, authorization, template trust, bounded parsing, symlink-safe paths, process options, connection-time SSRF, and dependencies."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-testing
-    description: "Go testing specialist code reviewer. Runs against Behavioral regression proof, subtests, parallel capture, deterministic concurrency and time, race tests, fuzzing, and weak assertions. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go testing specialist — Behavioral regression proof, subtests, parallel capture, deterministic concurrency and time, race tests, fuzzing, and weak assertions."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-ui
-    description: "Go ui specialist code reviewer. Runs against Go-owned HTML templates and components, forms, htmx fragment ownership, repository-defined view states, interactive CLI and TUI output. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go ui specialist — Go-owned HTML templates and components, forms, htmx fragment ownership, repository-defined view states, interactive CLI and TUI output."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-go-code-review-ux-accessibility
-    description: "Go ux accessibility specialist code reviewer. Runs against Accessible names, error association, conditional focus restoration, keyboard flow, semantics, live feedback, localization, and terminal interaction. Returns a Risk Register in the F-XXX bullet format."
+    description: "Go ux accessibility specialist — Accessible names, error association, conditional focus restoration, keyboard flow, semantics, live feedback, localization, and terminal interaction."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]

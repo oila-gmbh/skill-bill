@@ -1,6 +1,6 @@
 ---
 name: bill-over-engineering-review
-description: "Use when reviewing or auditing code for unnecessary complexity: over-engineered abstractions, reinvented stdlib, unneeded deps, dead flexibility. Use when user mentions over-engineered, what can we delete, find bloat, simplify review, audit for over-engineering, or asks for an over-engineering review."
+description: Review code for unnecessary complexity and bloat. Use when asking for an over-engineering review, finding bloat, or simplifying.
 ---
 
 # Over-Engineering Review Content

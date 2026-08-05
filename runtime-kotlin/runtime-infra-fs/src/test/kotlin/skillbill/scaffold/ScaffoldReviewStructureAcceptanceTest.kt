@@ -120,9 +120,8 @@ class ScaffoldReviewStructureAcceptanceTest {
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       val description = descriptions["bill-java-code-review-$area"] as String
       assertEquals(
-        "Java ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
-          "Returns a Risk Register in the F-XXX bullet format.",
+        "Java ${area.replace('-', ' ')} specialist — " +
+          "Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals.",
         description,
       )
     }

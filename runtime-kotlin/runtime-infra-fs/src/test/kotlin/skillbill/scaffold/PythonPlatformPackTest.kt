@@ -147,9 +147,8 @@ class PythonPlatformPackTest {
     assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
     agents.forEach { (area, agent) ->
       assertEquals(
-        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against ${pack.areaMetadata.getValue(area)}. " +
-          "Returns a Risk Register in the F-XXX bullet format.",
+        "${pack.displayName} ${area.replace('-', ' ')} specialist — " +
+          "${pack.areaMetadata.getValue(area)}.",
         agent.description,
       )
     }

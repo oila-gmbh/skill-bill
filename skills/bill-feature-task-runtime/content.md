@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-runtime
-description: Use when running a single governed feature spec through the runtime-driven feature-task phase loop via the foreground `skill-bill feature-task` runtime. This is the runtime-backed mode of bill-feature-task. Consumes the router-confirmed run and launches the runtime. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc, and the runtime-driven phase loop is preferred over prose in-session orchestration.
+description: "Runtime-backed bill-feature-task via foreground `skill-bill feature-task`. Use when implementing a feature/spec with the runtime phase loop."
 ---
 
 # Feature Task Content

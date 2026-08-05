@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-goal
-description: Use when a manifest-backed feature goal with one or more subtasks is ready to run through one confirmation gate.
+description: Run a manifest-backed feature goal through one confirmation gate.
 ---
 
 # Feature Goal Content

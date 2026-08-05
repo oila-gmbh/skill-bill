@@ -1,6 +1,6 @@
 ---
 name: bill-release
-description: Cut a release for any tag-driven repo: generate a user-facing changelog from commits since the last tag, confirm with the user, then create and push an annotated semver tag. Requires bump:patch, bump:minor, or bump:major. Use when user mentions cut a release, new release, create release tag, or bump version.
+description: "Cut a semver release (changelog, confirm, annotated tag). Requires bump:patch|minor|major. Use when cutting a release or bumping version."
 ---
 
 # Release Skill Content

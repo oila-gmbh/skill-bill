@@ -1,6 +1,6 @@
 ---
 name: bill-feature
-description: "Use as the primary feature entry point: prepare governed manifest-backed feature specs, then dispatch them through bill-feature-goal. Use when user mentions implement feature, build feature, implement spec, run feature-task, feature from design doc, goal status, or resume goal."
+description: "Primary feature entry: prepare governed specs, then dispatch via bill-feature-goal. Use when implementing a feature, running feature-task, checking goal status, or resuming a goal."
 ---
 
 # Feature Content

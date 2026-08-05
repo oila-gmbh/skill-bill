@@ -941,7 +941,7 @@ private fun cliNativeAgents(slug: String): String = """
   contract_version: "0.1"
   agents:
     - name: bill-$slug-code-review-architecture
-      description: "$slug architecture specialist code reviewer. Runs against $slug architecture boundary APIs and failure modes. Returns a Risk Register in the F-XXX bullet format."
+      description: "$slug architecture specialist — $slug architecture boundary APIs and failure modes."
       compose: governed-content
 """.trimIndent()
 

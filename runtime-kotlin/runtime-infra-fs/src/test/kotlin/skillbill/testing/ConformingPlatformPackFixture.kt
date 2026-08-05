@@ -129,8 +129,7 @@ private fun conformingNativeAgents(slug: String, areaNames: List<String>, focuse
     areaNames.forEach { area ->
       appendLine("  - name: bill-$slug-code-review-$area")
       appendLine(
-        "    description: \"$slug ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against ${focuses.getValue(area)}. Returns a Risk Register in the F-XXX bullet format.\"",
+        "    description: \"$slug ${area.replace('-', ' ')} specialist — ${focuses.getValue(area)}.\"",
       )
       appendLine("    compose: governed-content")
     }

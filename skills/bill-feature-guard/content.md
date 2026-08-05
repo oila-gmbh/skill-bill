@@ -1,6 +1,6 @@
 ---
 name: bill-feature-guard
-description: Enable feature flag mode - all code changes will be guarded by feature flags for safe rollback. Use when implementing new features that need gradual rollout, A/B testing, or safe rollback capability. Applies the Legacy pattern for large changes, factory/DI switching for medium changes, and simple conditionals for small changes. Use when user mentions feature flag, feature toggle, gradual rollout, safe rollback, or guard with flag.
+description: Guard new code behind feature flags for gradual rollout or safe rollback. Use when mentioning feature flag, feature toggle, or guard with flag.
 ---
 
 # Feature Guard Mode Content

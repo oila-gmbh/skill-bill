@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-subtask-runner
-description: Level-1 subtask-agent for bill-feature-goal mode:prose. Runs exactly one subtask's full phase loop (preplan → plan → implement → audit → review → validate → history → commit_push) in a fresh context and returns a bounded terminal outcome. Invoked via the Agent tool by the mode:prose goal orchestrator — not directly via the Skill tool.
+description: "Level-1 subtask agent for bill-feature-goal mode:prose — one subtask phase loop in a fresh context. Invoked by the goal orchestrator, not directly."
 ---
 
 # Feature Task Subtask Runner

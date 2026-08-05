@@ -1,6 +1,6 @@
 ---
 name: bill-unit-test-value-check
-description: Use when reviewing unit tests in a file, current changes, or a commit to flag low-value, tautological, or coverage-only tests that do not validate real behavior. Use when user mentions check test quality, review tests, tautological tests, weak tests, or coverage-padding.
+description: Flag low-value or tautological unit tests. Use when checking test quality, weak tests, or coverage-padding.
 ---
 
 # Unit Test Value Check Content

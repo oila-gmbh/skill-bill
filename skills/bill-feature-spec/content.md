@@ -1,6 +1,6 @@
 ---
 name: bill-feature-spec
-description: Prepare manifest-backed governed feature-spec artifacts with one or more executable subtasks through the shared preparation path.
+description: Prepare manifest-backed feature-spec artifacts with executable subtasks.
 ---
 
 # Feature Spec Preparation

@@ -208,9 +208,8 @@ class PlatformPackScaffoldParityTest {
       repo.resolve("platform-packs/java/code-review/bill-java-code-review/native-agents/agents.yaml"),
       APPROVED_CODE_REVIEW_AREAS.associate { area ->
         "bill-java-code-review-$area" to
-          "Java ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals. " +
-          "Returns a Risk Register in the F-XXX bullet format."
+          "Java ${area.replace('-', ' ')} specialist — " +
+          "Java ${defaultAreaFocus(area)} across pom.xml, build.gradle, src/main/java signals."
       },
     )
     assertDistinctProviderAgents(repo)

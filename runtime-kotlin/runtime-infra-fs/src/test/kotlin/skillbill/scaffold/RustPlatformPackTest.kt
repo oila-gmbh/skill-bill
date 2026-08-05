@@ -131,9 +131,8 @@ class RustPlatformPackTest {
     assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
     agents.forEach { (area, agent) ->
       assertEquals(
-        "${pack.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against ${pack.areaMetadata.getValue(area)}. " +
-          "Returns a Risk Register in the F-XXX bullet format.",
+        "${pack.displayName} ${area.replace('-', ' ')} specialist — " +
+          "${pack.areaMetadata.getValue(area)}.",
         agent.description,
       )
     }
@@ -319,11 +318,13 @@ class RustPlatformPackTest {
     val bundle = packRoot.resolve("code-review/bill-rust-code-review/native-agents/agents.yaml")
     Files.writeString(
       bundle,
-      Files.readString(bundle).replace(
-        "Rust baseline code reviewer. Runs the governed baseline review across the full owned diff before " +
-          "specialist findings are merged. Returns a Risk Register in the F-XXX bullet format.",
-        "Team-owned Rust baseline reviewer.",
-      ),
+      Files.readString(bundle).trimEnd() + "\n" +
+        """
+        |  - name: bill-rust-code-review
+        |    description: "Team-owned Rust baseline reviewer."
+        |    compose: governed-content
+        |    tools: [Read, Grep, Glob, Bash]
+        """.trimMargin() + "\n",
     )
 
     assertEquals("rust", loadPlatformPack(packRoot).slug)

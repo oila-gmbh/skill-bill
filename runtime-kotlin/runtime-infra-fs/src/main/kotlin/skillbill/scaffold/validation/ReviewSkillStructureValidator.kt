@@ -229,8 +229,7 @@ internal object ReviewSkillStructureValidator {
       val area = rawArea as? String ?: return@mapNotNull null
       val focus = (rawMetadata as? Map<*, *>)?.get("focus") as? String ?: return@mapNotNull null
       "bill-${pack.name}-code-review-$area" to
-        "$displayName ${area.replace('-', ' ')} specialist code reviewer. " +
-        "Runs against $focus. Returns a Risk Register in the F-XXX bullet format."
+        "$displayName ${area.replace('-', ' ')} specialist — $focus."
     }.toMap()
     return buildList {
       if (agents.any { agent -> expectedDescriptions[agent.name] != agent.description }) {

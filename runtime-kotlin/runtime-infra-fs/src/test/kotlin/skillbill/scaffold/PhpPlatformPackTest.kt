@@ -120,8 +120,7 @@ class PhpPlatformPackTest {
     assertEquals(APPROVED_CODE_REVIEW_AREAS.size, agents.size)
     pack.areaMetadata.forEach { (area, focus) ->
       assertEquals(
-        "PHP ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against $focus. Returns a Risk Register in the F-XXX bullet format.",
+        "PHP ${area.replace('-', ' ')} specialist — $focus.",
         agents["bill-php-code-review-$area"],
       )
     }

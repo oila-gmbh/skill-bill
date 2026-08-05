@@ -1,6 +1,6 @@
 ---
 name: bill-boundary-decisions
-description: Use when recording architectural or implementation decisions in a module/package/area agent/decisions.md file. Use when user mentions record decision, boundary decision, why we chose, decision log, or remember this decision.
+description: Record decisions in area agent/decisions.md. Use when recording a boundary decision or decision log entry.
 ---
 
 # Boundary Decisions Content

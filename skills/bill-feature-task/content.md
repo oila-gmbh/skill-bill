@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task
-description: Router skill for feature-task implementation. Accepts `mode:runtime` (default) or `mode:prose` in args and delegates to the appropriate skill. Use when user mentions implement feature, build feature, implement spec, run feature-task, or feature from design doc.
+description: "Router for a single feature-task run (`mode:runtime` default or `mode:prose`). Use when implementing a feature/spec or running feature-task; not for multi-subtask goals (use bill-feature / bill-feature-goal)."
 ---
 
 # Feature Task Router

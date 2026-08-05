@@ -1,6 +1,6 @@
 contract_version: "0.1"
 agents:
   - name: bill-code-review-inline
-    description: "Inline review worker for bill-code-review mode:inline: performs one whole review at reduced depth over the rubrics the parent named, and returns a Risk Register in the F-XXX bullet format."
+    description: "bill-code-review mode:inline worker: one whole review at reduced depth over parent-named rubrics; return F-XXX Risk Register."
     tools: [Read, Grep, Glob, Bash]
     compose: governed-content

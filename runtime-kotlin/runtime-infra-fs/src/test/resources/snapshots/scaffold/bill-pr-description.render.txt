@@ -1,7 +1,7 @@
 ===== SKILL.md: skills/bill-pr-description/SKILL.md =====
 ---
 name: bill-pr-description
-description: Use when generating a PR title, description, and QA steps from the current branch changes. Works standalone or as part of bill-feature-task. Use when user mentions write PR description, generate PR, PR title, or create pull request.
+description: Generate PR title, description, and QA steps. Use when writing a PR description or creating a pull request.
 ---
 
 ## Descriptor

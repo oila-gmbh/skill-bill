@@ -535,7 +535,7 @@ private val fixtureSpecialist = """
 private val fixtureAgents = """
       agents:
         - name: bill-fixture-code-review-security
-          description: "Fixture security specialist code reviewer. Runs against Fixture security boundaries for .fixture sources. Returns a Risk Register in the F-XXX bullet format."
+          description: "Fixture security specialist — Fixture security boundaries for .fixture sources."
           compose: governed-content
 """.trimIndent()
 private val fixtureQualityCheck = """

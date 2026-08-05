@@ -1,7 +1,7 @@
 ---
 internal-for: bill-feature
 name: bill-feature-task-prose
-description: First-class prose orchestrator for end-to-end feature implementation, running entirely within the invoking agent session. Handles the full phase loop (assess, branch, preplan, plan, implement, audit, review, validate, history, commit, PR) without delegating to an external runtime. Use when user mentions implement feature, build feature, or feature from design doc, and prose in-session orchestration is preferred over the runtime-backed mode.
+description: In-session prose orchestrator for the full feature-task phase loop. Use when implementing a feature/spec without the external runtime.
 ---
 
 # Feature Task Prose Content

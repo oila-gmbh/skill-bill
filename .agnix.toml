@@ -11,7 +11,6 @@ tools = []
 max_files_to_validate = 10000
 
 exclude = [
-  "CLAUDE.md",
   "node_modules/**",
   ".git/**",
   "target/**",

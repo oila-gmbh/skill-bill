@@ -1,6 +1,6 @@
 ---
 name: bill-update-check
-description: Check whether the installed Skill Bill runtime is behind the latest GitHub release.
+description: Check whether the installed Skill Bill runtime is behind the latest GitHub release. Use when checking for updates or asking if Skill Bill is outdated.
 ---
 
 # Update Check Content

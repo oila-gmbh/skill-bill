@@ -1,7 +1,7 @@
 ---
 internal-for: bill-code-review
 name: bill-code-review-inline
-description: Inline review worker for bill-code-review mode:inline. Performs one whole review at the light depth tier over the rubrics the parent named and returns a Risk Register. Invoked via the Agent tool by the inline review parent — not directly via the Skill tool.
+description: "Inline review worker for bill-code-review mode:inline. Parent-launched via Agent tool, not Skill tool."
 ---
 
 ## Role

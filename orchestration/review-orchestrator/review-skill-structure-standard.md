@@ -93,9 +93,9 @@ the display label. Concrete bespoke metadata need not repeat the display label.
 ## Native-Agent Description Pattern
 
 Each provider-neutral specialist description is derived from `platform.yaml`:
-`{display_name-or-platform} {declared area} specialist code reviewer. Runs
-against {area_metadata.focus}. Returns a Risk Register in the F-XXX bullet
-format.` Every declared specialist has exactly one matching entry. Generated
+`{display_name-or-platform} {declared area} specialist — {area_metadata.focus}.`
+The separator is an em dash surrounded by single spaces, and the description ends
+with a period. Every declared specialist has exactly one matching entry. Generated
 provider outputs are never authored or committed. The baseline owns a required
 `native-agents/agents.yaml` source bundle; omission is a conformance failure.
 

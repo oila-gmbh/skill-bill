@@ -6,14 +6,14 @@ skill-bill governs authoring, routing, validation, installation, and measurement
 
 Non-negotiable contracts:
 
-- Authored source is `content.md` (plus governed sidecars); generated `SKILL.md` is install output. Listed-skill staging: `SKILL.md`, `.content-hash`, pointers, optional `native-agents/` - no `content.md` copy.
-- Skill sources use `skills/<skill>/content.md`, optional `native-agents/`, and contract-authorized sidecars.
-- Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
+- Authored source is `content.md` (plus governed sidecars); generated `SKILL.md` is install output. Listed-skill staging: `SKILL.md`, `.content-hash`, pointers, optional `native-agents/` — no `content.md` copy.
+- Skill sources: `skills/<skill>/content.md`, optional `native-agents/`, contract-authorized sidecars.
+- Platform behavior lives in manifest-declared packs under `platform-packs/<slug>/`.
 - `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.
 - `agent-addons/<slug>/` contains only user-owned `agent-addon.yaml` and `content.md`.
-- Generated support pointer files, provider-specific native-agent outputs, and installed staging artifacts are not committed.
-- Discovery, install, routing, and validation surfaces stay dynamic and manifest-driven.
-- Missing manifests, wrong contract versions, missing content files, and missing required sections fail loudly with typed errors.
+- Generated support pointers, provider-specific native-agent outputs, and install staging artifacts are not committed.
+- Discovery, install, routing, and validation stay dynamic and manifest-driven.
+- Missing manifests, wrong contract versions, missing content, and missing required sections fail loudly with typed errors.
 - Every fallback, degradation, or swallowed failure emits a record; see `docs/observability-policy.md`.
 
 ## Product Intent
@@ -24,159 +24,67 @@ Bundled skills and packs are defaults, not the framework boundary. Teams may rep
 
 ## Taxonomy
 
-- `skills/`: canonical user-facing skill sources.
-- `platform-packs/<platform>/addons/`: flat pack-owned add-ons applied after routing.
-- `platform-packs/<platform>/`: user-owned pack roots for code review and quality-check behavior.
-- `platform-packs/<platform>/agent/`: pack-owned boundary memory; `history.md` and `decisions.md` are tracked in the repo but excluded from installs and generated runtime output.
-- `orchestration/contracts/`: runtime contract schemas.
+- `skills/` — canonical user-facing skill sources
+- `platform-packs/<platform>/` — pack roots for review and quality-check; `addons/` flat pack-owned add-ons; `agent/` boundary memory (`history.md`, `decisions.md` tracked, excluded from install/runtime output)
+- `orchestration/contracts/` — runtime contract schemas
 
-Naming:
-
-- Base skills: `bill-<capability>`
-- Platform overrides: `bill-<platform>-<base-capability>`
-- Platform review areas: `bill-<platform>-code-review-<area>`
-- Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`
+Naming: `bill-<capability>`; overrides `bill-<platform>-<base-capability>`; review areas `bill-<platform>-code-review-<area>`. Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
 
 ## Source And Generated Files
 
-Read `docs/skill-source-generation.md` before changing skills, scaffolding, rendering, install staging, native-agent generation, or support pointer behavior.
+Read `docs/skill-source-generation.md` before changing skills, scaffolding, rendering, install staging, native-agent generation, or support pointers.
 
-Generated files forbidden in source:
+Forbidden in source: governed `SKILL.md` wrappers; generated support pointers (`shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation/add-on pointers); provider-specific `*-agents/` outputs (`claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, `cursor-agents/`).
 
-- governed `SKILL.md` wrappers under `skills/` or platform-pack skill directories
-- generated support pointers such as `shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation pointers, and add-on pointers
-- provider-specific `claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, and
-  `cursor-agents/` outputs
+Native-agent source is provider-neutral under `native-agents/agents.yaml` or `native-agents/<name>.md` with `contract_version` on new/rendered sources (older sources still parse for fixture migration). Extra authored guidance goes in `content.md` H2 sections — not sibling org files like `patterns.md` under `skills/<skill>/`.
 
-Native-agent source is provider-neutral and lives under `native-agents/agents.yaml` or `native-agents/<name>.md`. New and rendered sources include `contract_version`; the parser still accepts older sources for fixture migration.
-
-If a skill needs more authored guidance, add H2 sections to `content.md`. Do not add extra organization files such as `patterns.md`, `reference.md`, or `audit-rubrics.md` under `skills/<skill>/`.
-
-Run `./install.sh` after changing source skills, renderer behavior, or support pointer generation so local agent installs use the new staging hash.
+Run `./install.sh` after changing source skills, renderer behavior, or support pointer generation.
 
 ## Platform Packs
 
-Platform packs are the extension surface. Any maintained pack is valid when it follows the governed contract. Routing and install flows read pack manifests, not hard-coded platform lists.
+Packs are the extension surface; routing and install read manifests, not hard-coded platform lists. Canonical shape: `orchestration/contracts/platform-pack-schema.yaml`. Schema changes land there first; `ShellContentLoader.buildPack` rejects malformed manifests via `InvalidManifestSchemaError`. Shell contract version `1.2` is pinned by `PlatformPackSchemaContractVersionTest`. Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
 
-The canonical shape for `platform-packs/<slug>/platform.yaml` is `orchestration/contracts/platform-pack-schema.yaml` (Draft 2020-12 YAML-authored JSON Schema). Field additions, type changes, constraints, and enums land there first. `ShellContentLoader.buildPack` rejects malformed manifests through `InvalidManifestSchemaError`.
+Per-repo customization: top-level custom fields allowed; runtime-consumed fields use `x-runtime-anchored: true` (schema-to-Kotlin parity enforced by `PlatformPackSchemaAnchoredBijectionTest`); non-anchored fields flow to `PlatformManifest.customFields`; nested objects stay `additionalProperties: false`.
 
-The shell contract version is `1.2`. `SHELL_CONTRACT_VERSION` and the schema `contract_version.const` are pinned by `PlatformPackSchemaContractVersionTest`.
+Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees; shipped removals use CLI `--allow-shipped` only.
 
-Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
-
-Per-repo customization:
-
-- top-level custom fields are allowed in `platform-pack-schema.yaml`
-- runtime-consumed top-level fields carry `x-runtime-anchored: true`
-- `PlatformPackSchemaAnchoredBijectionTest` enforces schema-to-Kotlin parity
-- non-anchored top-level fields flow into `PlatformManifest.customFields`
-- nested objects remain strict with `additionalProperties: false`
-
-Product versus extension surface:
-
-- horizontal `bill-*` skills under `skills/bill-*/` are protected product surfaces
-- packs under `platform-packs/<slug>/` are user-removable extension surfaces, including shipped `kotlin` and `kmp`; no paired `skills/<platform>/` pre-shell trees exist
-- `.bill-shared` is protected on every axis
-- maintainers remove deprecated shipped surfaces only through the CLI `--allow-shipped` path in this repo
-
-`kmp` adds platform-correctness, UI, and UX/accessibility to Kotlin's seven review areas. Quality checks route to `bill-kmp-code-check` without Kotlin fallback. `bill-feature-verify` remains pre-shell.
+`kmp` adds platform-correctness, UI, and UX/accessibility on Kotlin's areas and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 
-Every YAML under `orchestration/contracts/` is a runtime contract. New contract YAML follows this recipe:
+Every YAML under `orchestration/contracts/` is a runtime contract. New contracts: Draft 2020-12 schema in YAML → Kotlin `*_CONTRACT_VERSION` → parity test (pattern: `PlatformPackSchemaContractVersionTest`) → typed `Invalid<Contract>SchemaError` → loud-fail at every parse seam → classpath `Copy` with `inputs.file` + `doFirst {}` existence guard. Detail: `runtime-kotlin/ARCHITECTURE.md`.
 
-1. Author Draft 2020-12 JSON Schema in YAML, mirroring `$schema`, `$id`, `title`, `description`, strict `additionalProperties` where applicable, `contract_version` const, and `x-coherence-checks` where applicable.
-2. Add a Kotlin `<contract>_CONTRACT_VERSION` constant equal to the schema const.
-3. Add a parity test using `PlatformPackSchemaContractVersionTest` as the pattern.
-4. Add a typed `Invalid<Contract>SchemaError` extending `ShellContentContractException`.
-5. Loud-fail at every parse seam.
-6. Bundle the YAML onto the JVM classpath with a configuration-cache-friendly Gradle `Copy` task using `inputs.file` and an execution-time `doFirst {}` existence guard.
+Schema bumps loud-fail legacy records; runtime quarantines and regenerates in-band. `WorkflowRecordMapping.toSnapshot` does not validate — the next `WorkflowEngine` read rejects drift via `InvalidWorkflowStateSchemaError`.
 
-Schema introductions and version bumps loud-fail legacy records; the runtime quarantines and regenerates them in-band, out-of-band surgery the fallback. `WorkflowRecordMapping.toSnapshot` does not validate; the next `WorkflowEngine` read seam rejects drift through `InvalidWorkflowStateSchemaError`.
-
-A feature-task-runtime phase owning a bounded planning projection (`preplan`, `plan`, `implement`) is gated producer-side: a completed output failing its projection contract re-enters that phase's own bounded fix loop instead of blocking a consumer that cannot repair it. The gate and the consumer launch seam share one validation function and validator port; blocked/failed outputs and decompose plans bypass it.
+Producer-side gate: feature-task phases owning a bounded planning projection (`preplan`, `plan`, `implement`) re-enter their own fix loop when completed output fails the projection contract; gate and consumer launch share one validator; blocked/failed outputs and decompose plans bypass it.
 
 ## Add-ons
 
-Add-ons are pack-owned files, not standalone skills. Keep them flat in `platform-packs/<slug>/addons/`, use lowercase kebab-case names, and resolve them only after dominant-stack routing.
-
-Declare review/check add-on consumers in the owning pack manifest under `addon_usage`, feature-task consumers under `feature_addon_usage`. Do not hand-author per-skill add-on selection tables in `content.md`; renderers emit governed add-on usage from manifest declarations. Add-on changes need validator and routing-contract coverage.
+Pack-owned files (not skills): flat under `platform-packs/<slug>/addons/`, lowercase kebab-case, resolved only after dominant-stack routing. Declare consumers in the pack manifest (`addon_usage` / `feature_addon_usage`); do not hand-author selection tables in `content.md`. Changes need validator and routing-contract coverage.
 
 ## Internal Skills
 
-A base or platform-pack skill declaring `internal-for: <parent>` in `content.md` frontmatter installs as a `<skill-name>.md` sidecar in the parent's installed directory instead of being listed; the parent reads that sibling file in-session. Full contract and worked examples: `docs/skill-source-generation.md`.
+`internal-for: <parent>` in `content.md` frontmatter installs as `<skill-name>.md` sidecar in the parent directory (not listed); parent reads the sibling in-session. Contract: `docs/skill-source-generation.md`.
 
 ## Skill Authoring
 
-Use the scaffolder for new skills:
-
-- `skill-bill new`
-- `skill-bill new --payload <file>` for scripted automation
-
-For normal authoring use CLI reads and writes:
-
-- inspect: `skill-bill show <skill-name>` or `skill-bill explain [<skill-name>]`
-- write: `skill-bill fill <skill-name> --body-file <file>` or `--section <heading>`
-- edit interactively: `skill-bill edit <skill-name> --section <heading>`
-- validate: `skill-bill validate --skill-name <skill-name>`
-- render preview: `skill-bill render --skill-name <skill-name>`
-
-`create-and-fill` is for one content-managed skill at a time, not horizontal skills, pre-shell overrides, or platform-pack bootstrap flows.
-
-Supported scaffold `kind` values:
-
-- `horizontal`: canonical skill under `skills/`
-- `platform-pack`: pack root plus baseline code-review, default quality-check, and approved specialists
-- `add-on`: flat add-on file in the selected pack
-
-Keep payload schema and exception catalog aligned with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`.
-
-The scaffolder is atomic: validator, manifest-write, install, or generated-link failures roll the repo back byte-for-byte.
+Scaffold with `skill-bill new` (or `--payload <file>`). Author via `skill-bill show <skill-name>` / `explain [<skill-name>]`, `fill <skill-name> --body-file <file>` or `--section <heading>`, `edit <skill-name> --section <heading>`, `validate --skill-name <skill-name>`, `render --skill-name <skill-name>`. `create-and-fill` is one content-managed skill at a time — not horizontal, pre-shell, or pack bootstrap. Kinds: `horizontal`, `platform-pack`, `add-on`. Align payloads with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`. Scaffolding is atomic (validator/manifest/install/link failures roll back).
 
 ## Adding Platforms
 
-For code review: create the pack root, add a conforming manifest and `content.md` files, register generated pointers through the manifest, update the README catalog, extend pack tests, and run validation.
-
-For quality-check: register the manifest entry and ship the governed `content.md`. Every maintained pack, including `kmp`, routes directly to its own manifest-declared checker.
-
-For feature-task and feature-verify: keep platform-specific behavior on current horizontal and manifest-driven surfaces; do not add legacy `skills/<platform>/` overrides.
+Code review: pack root + conforming manifest/`content.md`, manifest-registered pointers, README catalog, pack tests, validate. Quality-check: manifest entry + governed `content.md`; every pack routes to its own checker. Feature-task/verify: stay on horizontal + manifest surfaces — no legacy `skills/<platform>/` overrides.
 
 ## Runtime Agent Behavior
 
-Agent-specific runtime behavior is expressed through injectable strategies, not conditional branching inside the process runner.
+Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`), `usePtyStdio`. `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
 
-`AgentRunProcessRequest` carries named strategy objects that the process runner calls without knowing which agent is active:
+## Writing And Comments
 
-- `progressProbe` — how to read workflow DB token changes
-- `declaredProgressProbe` — how to read declared progress events
-- `activityProbe` — how to detect file-system activity
-- `progressEmitter` — how to write lifecycle events
-- `idlePolicy` — whether a confirmed-alive process heartbeat extends the idle window (`HEARTBEAT_EXTENDED`) or only DB token changes count (`DB_PROGRESS_ONLY`)
-- `usePtyStdio` — whether to use a PTY pair instead of separate stdout/stderr streams
-
-`ProcessWaitLoop` calls injected strategies with no agent-identity branching; new behavior adds a strategy constant in the command builder. Crash reconciliation uses the injectable `FeatureTaskRuntimeWorkerSupervisor`: a killed child's expired-lease row self-heals to resumable at startup.
-
-## Writing Policy
-
-Write direct, active prose. Remove filler, stale phrases, praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or phrasing.
-
-In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
-
-## Comments Policy
-
-Prefer clear names, small functions, and refactoring over comments. Comment only a non-obvious *why* code cannot express — an external constraint, subtle invariant, or workaround. Never explain *what* code does.
+Write direct, active prose; drop filler, stale phrases, praise, and repetition, but preserve names, numbers, and qualifications. Commits/PRs/docs: lead with the outcome, state what changed and why, and avoid unsupported terms such as "successfully", "perfect", "comprehensive", and "robust". Prefer clear names and small functions over comments; comment only a non-obvious *why* code cannot express — never explain *what* code does.
 
 ## Quality Checks
 
-Prefer routing through `bill-code-check`. If no platform checker exists, document the fallback.
-
-Design bias:
-
-- stable base commands
-- platform depth behind routers
-- explicit overrides
-- validator-backed rules
-- acceptance and rejection tests
+Prefer `bill-code-check`; document fallback if no platform checker. Bias: stable base commands, platform depth behind routers, explicit overrides, validator-backed rules, acceptance and rejection tests.
 
 ## Validation Commands
 

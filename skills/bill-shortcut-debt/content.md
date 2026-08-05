@@ -1,6 +1,6 @@
 ---
 name: bill-shortcut-debt
-description: "Use when harvesting shortcut: comment markers into a debt ledger so deliberate deferrals stay visible. Use when user mentions shortcut debt, list the shortcuts, what did we defer, or debt ledger."
+description: "Harvest shortcut: markers into a debt ledger. Use when listing shortcuts or reviewing deferred debt."
 ---
 
 # Shortcut Debt Content

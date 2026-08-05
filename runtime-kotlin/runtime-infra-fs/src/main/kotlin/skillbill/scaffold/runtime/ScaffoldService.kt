@@ -390,9 +390,8 @@ private fun planPlatformPack(
   val platformPackSubagentDescriptions = selectedAreas.associate { area ->
     val name = specialistNames.getValue(area)
     val description =
-      "${defaults.displayName} ${area.replace('-', ' ')} specialist code reviewer. " +
-        "Runs against ${specialistMetadata.getValue(area)}. " +
-        "Returns a Risk Register in the F-XXX bullet format."
+      "${defaults.displayName} ${area.replace('-', ' ')} specialist — " +
+        "${specialistMetadata.getValue(area)}."
     name to description
   }
   val notes = policyPlatformPackNotes(platform, defaults.presetUsed, selectedAreas)

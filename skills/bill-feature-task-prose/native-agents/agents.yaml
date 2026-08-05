@@ -1,7 +1,7 @@
 contract_version: "0.1"
 agents:
   - name: bill-feature-task-pre-planning
-    description: "Pre-planning subagent for bill-feature-task: produce a digest the planning subagent will consume."
+    description: "bill-feature-task pre-planning: produce the digest planning consumes."
     body: |-
       You are the pre-planning subagent for feature implementation. Do not re-read the raw spec; operate only on the briefing below and on the files you explore in the repo.
       
@@ -58,7 +58,7 @@ agents:
         "standards_notes": "<anything from CLAUDE.md/AGENTS.md/skill-overrides.md the planner must honor>"
       }
   - name: bill-feature-task-planning
-    description: "Planning subagent for bill-feature-task: emit an ordered implementation plan or a decomposition package."
+    description: "bill-feature-task planning: emit an ordered plan or a decomposition package."
     body: |-
       You are the planning subagent for feature implementation. Do not re-read the raw spec; operate on the briefing below.
       
@@ -155,7 +155,7 @@ agents:
         "presentation_summary": "I split this into N subtasks. We should work on subtask <id> first because <dependency reason>."
       }
   - name: bill-feature-task-implementation
-    description: "Implementation subagent for bill-feature-task: execute an ordered plan atomically and return a structured summary."
+    description: "bill-feature-task implementation: execute the plan atomically; return a structured summary."
     body: |-
       You are the implementation subagent for feature implementation. Do not re-read the raw spec; operate on the briefing below and on the files in the repo.
       
@@ -233,7 +233,7 @@ agents:
         "stopped_reason": "<empty if stopped_early is false>"
       }
   - name: bill-feature-task-implementation-fix
-    description: "Implementation fix-loop variant for bill-feature-task: respawned by the code-review step to address Blocker findings."
+    description: "bill-feature-task implementation-fix: fix Blocker findings from code-review."
     body: |-
       You are the implementation subagent, invoked to fix findings from the code-review step. Scope: fix only the findings listed below; do not add unrelated changes.
       
@@ -279,7 +279,7 @@ agents:
 
       Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
   - name: bill-feature-task-completeness-audit
-    description: "Completeness audit subagent for bill-feature-task: verify every acceptance criterion is satisfied."
+    description: "bill-feature-task completeness-audit: verify every acceptance criterion is satisfied."
     body: |-
       You are the completeness audit subagent. Do not re-read the raw spec unless you need to resolve ambiguity in a criterion; prefer the briefing.
       
@@ -329,7 +329,7 @@ agents:
         ]
       }
   - name: bill-feature-task-quality-check
-    description: "Quality-check subagent for bill-feature-task: run the final validation gate and return a structured result."
+    description: "bill-feature-task quality-check: run the final validation gate; return a structured result."
     body: |-
       You are the quality-check subagent. Your job is to run the final validation gate and return a structured result.
       
@@ -359,7 +359,7 @@ agents:
         "telemetry_payload": { ... verbatim from quality_check_finished ... }
       }
   - name: bill-feature-task-pr-description
-    description: "PR-description subagent for bill-feature-task: create the pull request and return its URL."
+    description: "bill-feature-task pr-description: create the PR and return its URL."
     body: |-
       You are the PR-description subagent. Your job is to create the pull request and return its URL.
 
@@ -392,7 +392,7 @@ agents:
         "telemetry_payload": { ... verbatim from pr_description_generated ... }
       }
   - name: bill-feature-task-subtask-runner
-    description: "Level-1 subtask-agent for bill-feature-goal mode:prose: runs exactly one subtask's full phase loop in a fresh context and returns a bounded terminal outcome."
+    description: "bill-feature-goal mode:prose subtask-runner: one subtask phase loop in a fresh context; return a bounded terminal outcome."
     body: |-
       You are the Level-1 subtask-agent for a decomposed prose goal. You run exactly one subtask's full phase loop in a fresh session context and return a bounded terminal outcome only.
 

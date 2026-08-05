@@ -1,6 +1,6 @@
 ---
 name: bill-pr-review-fix
-description: Use when resolving GitHub PR review comments end-to-end. Fetches unresolved threads, produces an analysis matrix with verdict/options/reply per thread, pauses for user selection, applies the chosen fixes with thread-ID traceability, posts replies, records learnings, optionally drafts follow-up specs for deferred work, and runs quality gate + safe push. Use when user mentions address review comments, resolve PR threads, handle reviewer feedback, fix PR comments, or reply to review threads.
+description: Resolve GitHub PR review comments end-to-end (triage, fix, reply, learnings). Use when addressing review comments, resolving PR threads, or handling reviewer feedback.
 ---
 
 # PR Review Fix Content

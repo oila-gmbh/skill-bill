@@ -1,6 +1,6 @@
 ---
 name: bill-monitor
-description: Inspect one decomposed goal with a bounded, read-only status snapshot and keep same-thread follow-ups in monitor mode.
+description: Read-only status snapshot for one decomposed goal; keep follow-ups in monitor mode.
 ---
 
 # Monitor

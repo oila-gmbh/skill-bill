@@ -84,8 +84,7 @@ class IosPlatformPackTest {
     assertEquals(APPROVED_CODE_REVIEW_AREAS.size, agents.size)
     pack.areaMetadata.forEach { (area, focus) ->
       assertEquals(
-        "iOS ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against $focus. Returns a Risk Register in the F-XXX bullet format.",
+        "iOS ${area.replace('-', ' ')} specialist — $focus.",
         agents["bill-ios-code-review-$area"],
       )
     }

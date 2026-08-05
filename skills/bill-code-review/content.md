@@ -1,6 +1,6 @@
 ---
 name: bill-code-review
-description: Use when you want a generic code-review entry point that detects the dominant stack in scope and delegates to the matching stack-specific review skill. Use when user mentions code review, review my changes, review this PR, review staged changes, or asks to review code.
+description: Dominant-stack code-review entry point. Use when reviewing code, reviewing a PR, reviewing staged changes, or when the user asks for a code review.
 ---
 
 # Parallel Review Argument

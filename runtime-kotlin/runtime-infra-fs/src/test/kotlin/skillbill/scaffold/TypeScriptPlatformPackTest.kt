@@ -177,9 +177,8 @@ class TypeScriptPlatformPackTest {
     assertEquals(APPROVED_CODE_REVIEW_AREAS, agents.keys)
     agents.forEach { (area, agent) ->
       assertEquals(
-        "TypeScript ${area.replace('-', ' ')} specialist code reviewer. " +
-          "Runs against ${TYPESCRIPT_EXPECTED_FOCUS.getValue(area)}. " +
-          "Returns a Risk Register in the F-XXX bullet format.",
+        "TypeScript ${area.replace('-', ' ')} specialist — " +
+          "${TYPESCRIPT_EXPECTED_FOCUS.getValue(area)}.",
         agent.description,
       )
     }
@@ -344,11 +343,13 @@ class TypeScriptPlatformPackTest {
     val bundle = packRoot.resolve("code-review/bill-typescript-code-review/native-agents/agents.yaml")
     Files.writeString(
       bundle,
-      Files.readString(bundle).replace(
-        "TypeScript baseline code reviewer. Reviews the full owned diff before specialist findings are merged. " +
-          "Returns an F-XXX Risk Register.",
-        "Team-owned TypeScript baseline reviewer.",
-      ),
+      Files.readString(bundle).trimEnd() + "\n" +
+        """
+        |  - name: bill-typescript-code-review
+        |    description: "Team-owned TypeScript baseline reviewer."
+        |    compose: governed-content
+        |    tools: [Read, Grep, Glob, Bash]
+        """.trimMargin() + "\n",
     )
 
     assertEquals("typescript", loadPlatformPack(packRoot).slug)
