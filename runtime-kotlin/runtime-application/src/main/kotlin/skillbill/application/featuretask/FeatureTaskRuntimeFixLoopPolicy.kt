@@ -98,13 +98,6 @@ object FeatureTaskRuntimeFixLoopPolicy {
     )
   }
 
-  /**
-   * Resume entry for incomplete-work continuation. Always null: implementation continuation is
-   * uncapped, so a prior segment count never re-blocks on its own.
-   */
-  @Suppress("UNUSED_PARAMETER")
-  fun incompleteWorkBlockReasonIfBudgetExhausted(phaseId: String, segmentCount: Int): String? = null
-
   private fun blockedReason(phaseId: String, currentIteration: Int): String = if (participatesInFixLoop(phaseId)) {
     "Phase '$phaseId' exhausted the bounded fix loop after $currentIteration attempts " +
       "(cap=$MAX_FIX_LOOP_ITERATIONS); the run blocks rather than advancing on invalid output."

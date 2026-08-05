@@ -314,32 +314,6 @@ class GoalRunnerTest {
   }
 
   @Test
-  fun `operator resume of a blocked subtask reopens the child phase before launch`() {
-    val store = InMemoryGoalManifestStore(
-      manifest = manifest(subtaskCount = 1)
-        .withBlockedSubtask(1, workflowId = "wfl-1", reason = "implement needs user action"),
-    )
-    val outcomes = RecordingOutcomeStore()
-    outcomes.seedReviewState("wfl-1")
-    val launcher = RecordingSubtaskLauncher {
-      outcomes["wfl-1"] = completeOutcome(1)
-      launchFacts()
-    }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
-
-    val report = runner.run(runRequest())
-
-    assertIs<GoalRunnerRunReport.Completed>(report)
-    assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
-    assertEquals(listOf("wfl-1"), outcomes.reopenBlockedPhaseCalls.map { it.workflowId })
-    assertEquals(listOf("validate"), outcomes.reopenBlockedPhaseCalls.map { it.preferredPhaseId })
-    assertTrue(
-      outcomes.reopenBlockedPhaseCalls.single().reason.contains("Operator resumed the goal"),
-      outcomes.reopenBlockedPhaseCalls.single().reason,
-    )
-  }
-
-  @Test
   fun `resume after stop reconciles a terminal child before continuing`() {
     val initial = manifest(subtaskCount = 3)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
@@ -3959,4 +3933,40 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
     )
     assertEquals(emptyMap(), completed.unaddressedSeverityBreakdown)
   }
+}
+
+// Operator blocked-subtask resume: kept outside [GoalRunnerTest] so that suite stays under detekt LargeClass.
+class GoalRunnerOperatorBlockedResumeTest {
+  @Test
+  fun `operator resume of a blocked subtask reopens the child phase before launch`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withBlockedSubtask(1, workflowId = "wfl-1", reason = "implement needs user action"),
+    )
+    val outcomes = RecordingOutcomeStore()
+    outcomes.seedReviewState("wfl-1")
+    val launcher = RecordingSubtaskLauncher {
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf("wfl-1"), outcomes.reopenBlockedPhaseCalls.map { it.workflowId })
+    assertEquals(listOf("validate"), outcomes.reopenBlockedPhaseCalls.map { it.preferredPhaseId })
+    assertTrue(
+      outcomes.reopenBlockedPhaseCalls.single().reason.contains("Operator resumed the goal"),
+      outcomes.reopenBlockedPhaseCalls.single().reason,
+    )
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
 }

@@ -35,6 +35,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
@@ -1700,20 +1701,25 @@ class WorkflowGoalRunnerOutcomeStore(
     val blockedRecord = phaseRecords[preferredPhaseId]?.takeIf { it.status == "blocked" }
       ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
       ?: return@transaction true
-    val ledger = phaseLedgerFrom(artifacts)
+    family.save(
+      unitOfWork.workflowStates,
+      engine.updateRecord(
+        family.definition,
+        existing,
+        operatorBlockedPhaseReopenUpdate(blockedRecord, phaseRecords, phaseLedgerFrom(artifacts), reason),
+      ),
+    )
+    true
+  }
+
+  private fun operatorBlockedPhaseReopenUpdate(
+    blockedRecord: FeatureTaskRuntimePhaseRecord,
+    phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+    reason: String,
+  ): WorkflowUpdateInput {
     val reopened = LinkedHashMap(phaseRecords).apply {
-      this[blockedRecord.phaseId] = blockedRecord.copy(
-        status = "pending",
-        finishedAt = null,
-        durationMillis = null,
-        outputArtifact = null,
-        rejectedOutput = null,
-        blockedReason = null,
-        failureDisposition = null,
-        fileManifestBefore = emptyList(),
-        fileManifestAfter = emptyList(),
-        fileManifestIntroduced = emptyList(),
-      )
+      this[blockedRecord.phaseId] = blockedRecord.asPendingForOperatorResume()
     }
     val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
       action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
@@ -1723,39 +1729,33 @@ class WorkflowGoalRunnerOutcomeStore(
       attemptCount = blockedRecord.attemptCount,
       resolvedAgentId = blockedRecord.resolvedAgentId,
     )
-    val updated = engine.updateRecord(
-      family.definition,
-      existing,
-      WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = blockedRecord.phaseId,
-        stepUpdates = listOf(
-          mapOf(
-            "step_id" to blockedRecord.phaseId,
-            "status" to "pending",
-            "attempt_count" to 0,
-          ),
+    return WorkflowUpdateInput(
+      workflowStatus = "running",
+      currentStepId = blockedRecord.phaseId,
+      stepUpdates = listOf(
+        mapOf(
+          "step_id" to blockedRecord.phaseId,
+          "status" to "pending",
+          "attempt_count" to 0,
         ),
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-            reopened.mapValues { (_, record) -> record.toArtifactMap() },
-          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
-            (ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
-              FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-            ),
-          FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-            "phase_id" to blockedRecord.phaseId,
-            "reason" to reason,
-            "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-            "previous_blocked_reason" to blockedRecord.blockedReason,
-            "previous_blocked_record" to blockedRecord.toArtifactMap(),
-          ),
-        ),
-        sessionId = "",
       ),
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          reopened.mapValues { (_, record) -> record.toArtifactMap() },
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
+          (ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
+            FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+          ),
+        FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
+          "phase_id" to blockedRecord.phaseId,
+          "reason" to reason,
+          "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+          "previous_blocked_reason" to blockedRecord.blockedReason,
+          "previous_blocked_record" to blockedRecord.toArtifactMap(),
+        ),
+      ),
+      sessionId = "",
     )
-    family.save(unitOfWork.workflowStates, updated)
-    true
   }
 
   override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
@@ -2741,3 +2741,16 @@ private fun Any?.asGoalRunnerIntOrNull(): Int? = when (this) {
   is String -> toIntOrNull()
   else -> null
 }
+
+private fun FeatureTaskRuntimePhaseRecord.asPendingForOperatorResume(): FeatureTaskRuntimePhaseRecord = copy(
+  status = "pending",
+  finishedAt = null,
+  durationMillis = null,
+  outputArtifact = null,
+  rejectedOutput = null,
+  blockedReason = null,
+  failureDisposition = null,
+  fileManifestBefore = emptyList(),
+  fileManifestAfter = emptyList(),
+  fileManifestIntroduced = emptyList(),
+)

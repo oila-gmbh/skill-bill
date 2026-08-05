@@ -4,7 +4,6 @@ import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 class FeatureTaskRuntimeImplementationContinuationBudgetTest {
   @Test
@@ -26,13 +25,6 @@ class FeatureTaskRuntimeImplementationContinuationBudgetTest {
     )
 
     assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(decision)
-  }
-
-  @Test
-  fun `a resume never re-blocks on continuation segment count alone`() {
-    assertNull(FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted("implement", 1))
-    assertNull(FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted("implement", 5))
-    assertNull(FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted("implement", 8))
   }
 
   @Test

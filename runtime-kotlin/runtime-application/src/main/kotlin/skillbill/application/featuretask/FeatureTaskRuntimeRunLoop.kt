@@ -2278,17 +2278,6 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
     )
     var outcome: PhaseOutcome? = null
-    FeatureTaskRuntimeFixLoopPolicy
-      .incompleteWorkBlockReasonIfBudgetExhausted(run.phaseId, continuationSegmentCount)
-      ?.let { reason ->
-        return blockAndPersistInPhase(
-          run,
-          iteration,
-          reason,
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        )
-      }
     val loop = PhaseAttemptLoopState(
       iteration = iteration,
       malformedAttemptCount = 0,
