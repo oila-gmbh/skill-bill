@@ -197,6 +197,20 @@ class KmpPlatformPackTest {
   }
 
   @Test
+  fun `kmp persistence and reliability area focus names Android native frameworks only`() {
+    val pack = loadPlatformPack(repoRootFromTest().resolve("platform-packs/kmp"))
+    val persistence = pack.areaMetadata.getValue("persistence")
+    val reliability = pack.areaMetadata.getValue("reliability")
+
+    listOf("Room", "SQLDelight", "DataStore").forEach { assertContains(persistence, it) }
+    assertContains(reliability, "WorkManager")
+    listOf(persistence, reliability).forEach { focus ->
+      listOf("Exposed", "Hibernate", "JDBC", "R2DBC", "Spring", "resilience4j")
+        .forEach { assertFalse(it in focus, "Backend framework $it leaked into kmp area focus: $focus") }
+    }
+  }
+
+  @Test
   fun `kmp effective review coverage is Kotlin baseline with five overriding lanes`() {
     val repoRoot = repoRootFromTest()
     val report = PlatformPackSubstanceAudit.audit(repoRoot)
@@ -306,6 +320,13 @@ class KmpPlatformPackTest {
     )
     KMP_CODE_REVIEW_AREAS.forEach { area ->
       assertTrue(Regex("(?m)^- .+ -> `$area` specialist\\.").containsMatchIn(baseline))
+    }
+    mapOf(
+      "persistence" to listOf("Room", "SQLDelight", "DataStore"),
+      "reliability" to listOf("WorkManager", "CoroutineWorker"),
+    ).forEach { (area, symbols) ->
+      val row = Regex("(?m)^- (.+) -> `$area` specialist\\.").find(baseline)!!.groupValues[1]
+      symbols.forEach { assertTrue(it in row, "Missing $it in the $area routing row") }
     }
   }
 
