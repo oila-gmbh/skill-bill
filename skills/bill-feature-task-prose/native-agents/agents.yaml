@@ -180,6 +180,33 @@ agents:
       - Follow standards in `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` section.
       - Write production-grade code. Do not introduce deprecated components, APIs, or patterns when a supported alternative exists.
       - Comments are a last resort, not a habit. Prefer code that explains itself — precise names, smaller functions, better types — over any comment. Never add an inline comment that restates what the code already says; refactor instead. Reserve a KDoc/docstring for genuinely non-obvious intent or contract the code cannot express, and keep it rare. The best comment is the one made unnecessary.
+      
+      Minimalism discipline (reuse before write):
+      Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+      
+      The ladder — stop at the first rung that holds:
+      1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+      2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+      3. Stdlib does it? Use it.
+      4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+      5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+      6. Can it be one line? One line.
+      7. Only then: the minimum code that works.
+      Two equal rungs both work → take the higher one and move on.
+      
+      Rules:
+      - No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+      - No scaffolding "for later"; later can scaffold for itself.
+      - Deletion over addition. Boring over clever.
+      - Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+      - Between two equal-size options, take the one correct on edge cases.
+      
+      Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+      
+      Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+      
+      Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
+      
       - Write tests exactly as specified in each task's `tests` field.
       - If a task reveals the plan is wrong, STOP and return with `plan_deviation_notes` populated describing what changed and why; do not try to silently re-plan.
       - Do not skip or combine tasks.
@@ -223,6 +250,32 @@ agents:
       Do NOT build, compile, or run tests. No Gradle, Maven, npm, cargo, go, or equivalent build/test invocation, and no IDE or language-server build. Compilation and test execution belong exclusively to the validate phase. This is a prohibition on running tests, not on writing them: when a finding calls for regression coverage, still write the test — just leave executing it to validate. Verify each fix by reading the code, and record any residual doubt in `notes_for_review`.
 
       Comments are a last resort, not a habit: make each fix self-evident through naming and structure rather than an explanatory inline comment, and reserve sparse KDoc for genuinely non-obvious intent only.
+      
+      Minimalism discipline (reuse before write):
+      Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+      
+      The ladder — stop at the first rung that holds:
+      1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+      2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+      3. Stdlib does it? Use it.
+      4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+      5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+      6. Can it be one line? One line.
+      7. Only then: the minimum code that works.
+      Two equal rungs both work → take the higher one and move on.
+      
+      Rules:
+      - No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+      - No scaffolding "for later"; later can scaffold for itself.
+      - Deletion over addition. Boring over clever.
+      - Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+      - Between two equal-size options, take the one correct on edge cases.
+      
+      Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+      
+      Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+      
+      Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
 
       Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
   - name: bill-feature-task-completeness-audit
