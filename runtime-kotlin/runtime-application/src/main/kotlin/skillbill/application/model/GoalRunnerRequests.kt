@@ -263,6 +263,7 @@ data class GoalRunnerReplanRequest(
   val subtaskId: Int,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
+  val includeSharedPreplan: Boolean = false,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
@@ -275,6 +276,8 @@ data class GoalRunnerReplanResult(
   val parentWorkflowId: String,
   val subtaskId: Int,
   val discardedPlan: Boolean,
+  val discardedSharedPreplan: Boolean = false,
+  val cascadedPlanSubtaskIds: List<Int> = emptyList(),
   val before: GoalRunnerReplanSnapshot,
   val after: GoalRunnerReplanSnapshot,
 )

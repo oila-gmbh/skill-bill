@@ -2564,17 +2564,88 @@ internal class InMemoryGoalManifestStore(
 
   var plannedSubtaskIds: MutableSet<Int> = mutableSetOf()
   var sharedPreplanPrepared: Boolean = true
+  var sharedPreplanPayloadSha256ForTest: String? = "c".repeat(64)
   var scopedReplanCount: Int = 0
     private set
+  var lastIncludeSharedPreplan: Boolean? = null
+    private set
+  var forceSharedDigestMismatchOnReplan: Boolean = false
+
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
+    dbPathOverride: String?,
+  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot {
+    val plannedIds = plannedSubtaskIds.sorted()
+    val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
+    val state = when {
+      blockedReason != null -> skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+      !sharedPreplanPrepared -> skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
+      firstMissing == null -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
+      plannedIds.isEmpty() -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
+      else -> skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
+    }
+    val reason = when (state) {
+      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
+      skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
+        "Shared preplan is saved; planning can resume at subtask $firstMissing."
+      skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->
+        "Saved plans will be reused; planning can resume at subtask $firstMissing."
+      skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED -> blockedReason
+      skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED -> null
+    }
+    return skillbill.goalrunner.model.GoalPlanningStatusSnapshot(
+      state,
+      sharedPreplanPrepared,
+      plannedIds.size,
+      orderedSubtaskIds.size,
+      blockedSubtaskId ?: firstMissing,
+      reason,
+    )
+  }
+
+  override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =
+    sharedPreplanPayloadSha256ForTest.takeIf { sharedPreplanPrepared }
 
   override fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
+    includeSharedPreplan: Boolean,
+    expectedSharedPayloadSha256: String?,
+    planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity?,
   ): skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult {
     scopedReplanCount += 1
+    lastIncludeSharedPreplan = includeSharedPreplan
     val before = plannedSubtaskIds.sorted()
-    val deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
+    val sharedBefore = sharedPreplanPrepared
+    val cascadedIds: List<Int>
+    val deleted: Int
+    if (includeSharedPreplan) {
+      cascadedIds = before.filter { it != subtaskId }
+      if (expectedSharedPayloadSha256 != null) {
+        if (forceSharedDigestMismatchOnReplan ||
+          expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
+        ) {
+          throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+            state.parentWorkflowId,
+            0,
+            "shared preplan changed after it was observed for discard",
+          )
+        }
+        plannedSubtaskIds.clear()
+        sharedPreplanPrepared = false
+        sharedPreplanPayloadSha256ForTest = null
+      } else {
+        plannedSubtaskIds.clear()
+      }
+      deleted = if (subtaskId in before) 1 else 0
+    } else {
+      cascadedIds = emptyList()
+      deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
+    }
     val saved = save(state, dbPathOverride)
     return skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult(
       state = saved,
@@ -2582,6 +2653,9 @@ internal class InMemoryGoalManifestStore(
       plannedSubtaskIdsBefore = before,
       plannedSubtaskIdsAfter = plannedSubtaskIds.sorted(),
       sharedPreplanPrepared = sharedPreplanPrepared,
+      sharedPreplanPreparedBefore = sharedBefore,
+      discardedSharedPreplan = sharedBefore && !sharedPreplanPrepared,
+      cascadedPlanSubtaskIds = cascadedIds,
     )
   }
 

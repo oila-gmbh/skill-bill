@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @Suppress("LargeClass")
 class GoalPlanningPreparationStoreTest {
@@ -558,6 +559,54 @@ class GoalPlanningPreparationStoreTest {
         store.boundedStatus("goal-1", listOf(1, 2, 3)).reason,
       )
       assertEquals(0, store.deleteSubtaskPlan("goal-1", 3))
+    }
+  }
+
+  @Test
+  fun `deleting a shared preplan on digest match removes shared and cascades every plan`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+      store.checkpointSubtaskPlan(planCheckpoint(3, 2))
+      val descriptors = listOf(descriptor(1, 0), descriptor(2, 1), descriptor(3, 2))
+
+      assertEquals(1, store.deleteSharedPreplan(identity(), sharedCheckpoint().payloadSha256))
+      assertNull(store.findSharedPreplan(identity()))
+      assertNull(store.sharedPreplanPayloadSha256("goal-1"))
+      assertEquals(emptyList(), store.listSubtaskPlansOrdered(identity(), descriptors))
+      assertEquals(GoalPlanningStatusState.NOT_STARTED, store.boundedStatus("goal-1", listOf(1, 2, 3)).state)
+      assertTrue(!store.boundedStatus("goal-1", listOf(1, 2, 3)).sharedPreplanPrepared)
+      assertEquals(
+        "Goal planning has not started.",
+        store.boundedStatus("goal-1", listOf(1, 2, 3)).reason,
+      )
+    }
+  }
+
+  @Test
+  fun `deleting a shared preplan on digest mismatch refuses with zero mutation`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+
+      assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
+        store.deleteSharedPreplan(identity(), "8".repeat(64))
+      }
+
+      assertEquals("preplan-payload", store.findSharedPreplan(identity())?.preplanPayload)
+      assertEquals(sharedCheckpoint().payloadSha256, store.sharedPreplanPayloadSha256("goal-1"))
+      assertEquals(
+        "plan-1",
+        store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.planPayload,
+      )
+      assertEquals(
+        "plan-2",
+        store.findSubtaskPlan(identity(), 2, descriptor(2, 1).governedSubSpecPath)?.planPayload,
+      )
     }
   }
 

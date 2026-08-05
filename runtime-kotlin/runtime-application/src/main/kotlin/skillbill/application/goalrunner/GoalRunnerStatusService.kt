@@ -347,10 +347,33 @@ class GoalRunnerStatusService(
     val selected = requireReplanTarget(loaded.manifest, request)
     requireIdleForScopedReplan(loaded, request)
     val beforeSubtasks = loaded.manifest.toResetSnapshot().subtasks
+    val expectedSharedDigest = if (request.includeSharedPreplan) {
+      manifestStore.sharedPreplanPayloadSha256(loaded.parentWorkflowId, request.dbPathOverride)
+    } else {
+      null
+    }
+    val planningIdentity = if (request.includeSharedPreplan && expectedSharedDigest != null) {
+      skillbill.ports.persistence.model.GoalPlanningIdentity(
+        parentGoalWorkflowId = loaded.parentWorkflowId,
+        normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
+        repositoryIdentity = goalRepositoryIdentity(
+          request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
+        ),
+      )
+    } else {
+      null
+    }
     val retargeted = loaded.copy(
       manifest = loaded.manifest.copy(currentSubtaskIntent = replanIntent(selected)),
     )
-    val written = manifestStore.saveScopedReplan(retargeted, request.subtaskId, request.dbPathOverride)
+    val written = manifestStore.saveScopedReplan(
+      state = retargeted,
+      subtaskId = request.subtaskId,
+      dbPathOverride = request.dbPathOverride,
+      includeSharedPreplan = request.includeSharedPreplan,
+      expectedSharedPayloadSha256 = expectedSharedDigest,
+      planningIdentity = planningIdentity,
+    )
     return toReplanResult(request, loaded, written, beforeSubtasks)
   }
 
@@ -398,11 +421,13 @@ class GoalRunnerStatusService(
     parentWorkflowId = written.state.parentWorkflowId,
     subtaskId = request.subtaskId,
     discardedPlan = written.deletedPlanCount > 0,
+    discardedSharedPreplan = written.discardedSharedPreplan,
+    cascadedPlanSubtaskIds = written.cascadedPlanSubtaskIds,
     before = GoalRunnerReplanSnapshot(
       status = before.manifest.status,
       currentSubtaskId = before.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
       currentAction = before.manifest.currentSubtaskIntent.action,
-      sharedPreplanPrepared = written.sharedPreplanPrepared,
+      sharedPreplanPrepared = written.sharedPreplanPreparedBefore,
       plannedSubtaskIds = written.plannedSubtaskIdsBefore,
       subtasks = beforeSubtasks,
     ),

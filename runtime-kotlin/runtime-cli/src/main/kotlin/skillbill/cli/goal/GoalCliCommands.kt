@@ -608,13 +608,19 @@ class GoalReplanCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand(
   "replan",
-  "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state.",
+  "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state; " +
+    "pass --include-shared-preplan to also discard the shared preplan and every sibling plan.",
 ) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val subtaskId by option(
     "--subtask",
     help = "Subtask whose stored plan should be discarded and regenerated on the next goal run.",
   ).int().required()
+  private val includeSharedPreplan by option(
+    "--include-shared-preplan",
+    help = "Also discard the goal-wide shared preplan and every sibling subtask plan " +
+      "(planning rows only; runtime state is untouched).",
+  ).flag(default = false)
   private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
 
   override fun run() {
@@ -627,6 +633,7 @@ class GoalReplanCommand(
         subtaskId = subtaskId,
         dbPathOverride = state.dbOverride,
         repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        includeSharedPreplan = includeSharedPreplan,
       ),
     )
     val payload = result.toGoalReplanCliMap(issueKey)
@@ -1163,6 +1170,8 @@ private fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<St
     "parent_workflow_id" to it.parentWorkflowId,
     "subtask_id" to it.subtaskId,
     "discarded_plan" to it.discardedPlan,
+    "discarded_shared_preplan" to it.discardedSharedPreplan,
+    "cascaded_plan_subtask_ids" to it.cascadedPlanSubtaskIds,
     "before" to replanSnapshotMap(it.before),
     "after" to replanSnapshotMap(it.after),
   )
@@ -1302,6 +1311,14 @@ private fun goalReplanText(payload: Map<String, Any?>): String = buildString {
   appendLine("mode: ${payload["mode"]}")
   payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
   payload["subtask_id"]?.let { appendLine("discarded_plan: subtask=$it; existed=${payload["discarded_plan"]}") }
+  val discardedShared = payload["discarded_shared_preplan"] as? Boolean == true
+  val cascaded = (payload["cascaded_plan_subtask_ids"] as? List<*>).orEmpty().filterNotNull()
+  if (discardedShared || cascaded.isNotEmpty()) {
+    appendLine(
+      "discarded_shared_preplan: $discardedShared; " +
+        "cascaded_plans=${cascaded.joinToString(",").ifEmpty { "none" }}",
+    )
+  }
   val before = payload["before"] as? Map<*, *>
   val after = payload["after"] as? Map<*, *>
   if (before != null && after != null) {

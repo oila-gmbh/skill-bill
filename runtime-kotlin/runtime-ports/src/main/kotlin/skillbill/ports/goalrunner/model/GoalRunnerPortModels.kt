@@ -27,6 +27,9 @@ data class GoalRunnerScopedReplanWriteResult(
   val plannedSubtaskIdsBefore: List<Int>,
   val plannedSubtaskIdsAfter: List<Int>,
   val sharedPreplanPrepared: Boolean,
+  val sharedPreplanPreparedBefore: Boolean = sharedPreplanPrepared,
+  val discardedSharedPreplan: Boolean = false,
+  val cascadedPlanSubtaskIds: List<Int> = emptyList(),
 )
 
 data class GoalRunnerPausePersistenceResult(

@@ -194,6 +194,159 @@ class GoalRunnerReplanTest {
     assertEquals("abc1234", store.manifest.subtasks.first().commitSha)
   }
 
+  @Test
+  fun `include-shared-preplan cascades every sibling plan and discards shared`() {
+    val original = manifest(subtaskCount = 3).copy(
+      status = "in_progress",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
+      subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+        when (subtask.id) {
+          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+          else -> subtask.copy(status = "pending")
+        }
+      },
+    )
+    val store = InMemoryGoalManifestStore(original).apply {
+      plannedSubtaskIds = mutableSetOf(1, 2, 3)
+      sharedPreplanPrepared = true
+      persistOutOfBandAcceptance(
+        "wfl-parent",
+        GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z"),
+        null,
+      )
+      seedIdleLease()
+    }
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+
+    val result = requireNotNull(
+      service.replan(
+        GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 3, includeSharedPreplan = true),
+      ),
+    )
+
+    assertTrue(result.discardedPlan)
+    assertTrue(result.discardedSharedPreplan)
+    assertEquals(listOf(1, 2), result.cascadedPlanSubtaskIds)
+    assertEquals(listOf(1, 2, 3), result.before.plannedSubtaskIds)
+    assertEquals(emptyList(), result.after.plannedSubtaskIds)
+    assertTrue(result.before.sharedPreplanPrepared)
+    assertTrue(!result.after.sharedPreplanPrepared)
+    assertEquals(emptySet(), store.plannedSubtaskIds.toSet())
+    assertTrue(!store.sharedPreplanPrepared)
+    assertEquals(true, store.lastIncludeSharedPreplan)
+    assertEquals(original.subtasks, store.manifest.subtasks)
+    assertEquals(
+      mapOf(1 to GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z")),
+      store.acceptances,
+    )
+  }
+
+  @Test
+  fun `omitting include-shared-preplan leaves shared preplan and sibling plans`() {
+    val store = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 3).copy(
+        status = "in_progress",
+        currentSubtaskIntent = CurrentSubtaskIntent(3, "start"),
+        subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+          when (subtask.id) {
+            1 -> subtask.copy(status = "complete", commitSha = "sha-1")
+            2 -> subtask.copy(status = "complete", commitSha = "sha-2")
+            else -> subtask.copy(status = "pending")
+          }
+        },
+      ),
+    ).apply {
+      plannedSubtaskIds = mutableSetOf(1, 2, 3)
+      sharedPreplanPrepared = true
+      seedIdleLease()
+    }
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+
+    val result = requireNotNull(service.replan(GoalRunnerReplanRequest("SKILL-56", 3)))
+
+    assertEquals(false, store.lastIncludeSharedPreplan)
+    assertTrue(result.after.sharedPreplanPrepared)
+    assertEquals(listOf(1, 2), result.after.plannedSubtaskIds)
+    assertEquals(emptyList(), result.cascadedPlanSubtaskIds)
+    assertTrue(!result.discardedSharedPreplan)
+    assertEquals(setOf(1, 2), store.plannedSubtaskIds.toSet())
+  }
+
+  @Test
+  fun `include-shared-preplan refuses when shared digest moved with zero mutation`() {
+    val store = refusalBaseStore(
+      base = manifest(subtaskCount = 3).copy(
+        status = "in_progress",
+        currentSubtaskIntent = CurrentSubtaskIntent(3, "start"),
+        subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+          when (subtask.id) {
+            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+            else -> subtask.copy(status = "pending")
+          }
+        },
+      ),
+    ).apply {
+      plannedSubtaskIds = mutableSetOf(1, 2, 3)
+      sharedPreplanPrepared = true
+      forceSharedDigestMismatchOnReplan = true
+      seedIdleLease()
+    }
+    val failure = assertFailsWith<skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError> {
+      GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+        .replan(GoalRunnerReplanRequest("SKILL-56", 3, includeSharedPreplan = true))
+    }
+    assertTrue(failure.message!!.contains("shared preplan changed"), failure.message)
+    assertEquals(1, store.scopedReplanCount)
+    assertEquals(setOf(1, 2, 3), store.plannedSubtaskIds.toSet())
+    assertTrue(store.sharedPreplanPrepared)
+  }
+
+  @Test
+  fun `status after include-shared-preplan reports shared_preplan false with regeneration pending`() {
+    val store = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 3).copy(
+        status = "in_progress",
+        currentSubtaskIntent = CurrentSubtaskIntent(3, "start"),
+        subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+          when (subtask.id) {
+            1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+            2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+            else -> subtask.copy(status = "pending")
+          }
+        },
+      ),
+    ).apply {
+      plannedSubtaskIds = mutableSetOf(1, 2, 3)
+      sharedPreplanPrepared = true
+      seedIdleLease()
+    }
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+    service.replan(GoalRunnerReplanRequest("SKILL-56", 3, includeSharedPreplan = true))
+
+    val status = requireNotNull(
+      service.status(
+        skillbill.application.model.GoalRunnerStatusRequest(
+          issueKey = "SKILL-56",
+          invokedAgentId = "codex",
+        ),
+      ),
+    )
+    val planning = requireNotNull(status.planning)
+    assertTrue(!planning.sharedPreplanPrepared)
+    assertEquals(skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED, planning.state)
+    assertTrue(
+      planning.reason!!.contains("not started") || planning.reason!!.contains("preplan"),
+      planning.reason,
+    )
+    assertEquals("complete", store.manifest.subtasks[0].status)
+    assertEquals("sha-1", store.manifest.subtasks[0].commitSha)
+    assertEquals("wfl-1", store.manifest.subtasks[0].workflowId)
+    assertEquals("complete", store.manifest.subtasks[1].status)
+    assertEquals("pending", store.manifest.subtasks[2].status)
+  }
+
   private fun refusalBaseManifest() = manifest(subtaskCount = 2).copy(
     status = "in_progress",
     currentSubtaskIntent = CurrentSubtaskIntent(2, "start"),

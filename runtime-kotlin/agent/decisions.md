@@ -4,6 +4,43 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-05 — `--include-shared-preplan` cascades every sibling plan row (SKILL-160)
+
+Context: Discarding the goal-wide shared preplan while leaving sibling
+`goal_subtask_plans` rows would provenance-mismatch those survivors against the
+regenerated preplan. The subtask asked for either cascade of non-terminal
+plans or an explicit reject naming blockers.
+
+Decision: Cascade **every** stored sibling plan row for the goal (terminal and
+non-terminal), while leaving runtime fields (`status`, `commit_sha`,
+`workflow_id`, out-of-band acceptances) untouched. Non-terminal-only cascade
+was rejected.
+
+Evidence that decided it:
+- `GoalPlanningPreparationCheckpoint.recoveryProgress` re-validates all ordered
+  plans against `expectedProvenance` with no status filter; a leftover complete
+  plan whose provenance no longer matches throws
+  `IncompatibleGoalPlanningPreparationRecoveryError` and wedges resume.
+- `GoalPlanningSweep.descriptor` still reads complete plans via
+  `findStoredSubtaskPlan` (hash recovery for completed sub-specs), so terminal
+  plans are not inert bytes after completion.
+- `GoalPlanningPreparationStore.replaceSharedPreplan` already
+  `DELETE FROM goal_subtask_plans` for the same reason — leaving survivors
+  strands rows whose provenance can never match.
+- A non-terminal-only cascade would leave complete siblings mismatched and
+  wedge; a reject-when-complete-siblings-exist path would break the ST2 e2e
+  (subtask 3 with 1–2 complete).
+
+Alternatives considered: (1) Reject when any surviving plan would mismatch —
+rejected because the operator path for goal-wide amendments is exactly the
+mid-goal case with complete siblings. (2) Leave mismatch for runtime discovery —
+forbidden by the subtask. (3) Non-terminal-only cascade — rejected by the
+evidence above.
+
+Revisit when: recovery or hydration gains a status filter that permanently
+ignores terminal plan provenance, with tests proving complete plans are never
+read after completion.
+
 ## 2026-07-04 — internal skills are file-read sidecars; repo paths did not move (SKILL-102)
 
 Context: Five feature-execution skills (`bill-feature-task`, `-runtime`, `-prose`,

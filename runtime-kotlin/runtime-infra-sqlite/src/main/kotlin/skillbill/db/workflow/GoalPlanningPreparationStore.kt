@@ -322,6 +322,45 @@ class GoalPlanningPreparationStore(
     }
   }
 
+  override fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int {
+    // No nested BEGIN: must participate in saveScopedReplan's outer transaction.
+    require(expectedPayloadSha256.isNotBlank()) { "expectedPayloadSha256 is required." }
+    normalizedIdentityFailure(identity)?.let { (field, reason) ->
+      throw InvalidGoalPlanningPreparationSchemaError(identity.parentGoalWorkflowId, field, reason)
+    }
+    return translateSqlFailure(identity.parentGoalWorkflowId, 0) {
+      val deleted = connection.prepareStatement(
+        "DELETE FROM goal_shared_preplans WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?",
+      ).use { statement ->
+        statement.setString(1, identity.parentGoalWorkflowId)
+        statement.setString(2, expectedPayloadSha256)
+        statement.executeUpdate()
+      }
+      if (deleted == 0) {
+        throw IncompatibleGoalPlanningPreparationRecoveryError(
+          identity.parentGoalWorkflowId,
+          0,
+          "shared preplan changed after it was observed for discard",
+        )
+      }
+      deleted
+    }
+  }
+
+  override fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? {
+    requireParentGoalWorkflowId(parentGoalWorkflowId)
+    return translateSqlFailure(parentGoalWorkflowId, 0) {
+      connection.prepareStatement(
+        "SELECT payload_sha256 FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
+      ).use { statement ->
+        statement.setString(1, parentGoalWorkflowId)
+        statement.executeQuery().use { result ->
+          if (!result.next()) null else result.getString(1)
+        }
+      }
+    }
+  }
+
   private fun requireParentGoalWorkflowId(parentGoalWorkflowId: String) {
     if (parentGoalWorkflowId.isBlank()) {
       throw InvalidGoalPlanningPreparationSchemaError(

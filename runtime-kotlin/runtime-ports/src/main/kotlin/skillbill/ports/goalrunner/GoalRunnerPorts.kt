@@ -165,13 +165,21 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   /**
    * Atomically deletes one `goal_subtask_plans` row and persists the retargeted parent manifest.
    * Does not delete child workflow rows or mutate subtask runtime fields.
+   * When [includeSharedPreplan] is true, also digest-conditionally discards the shared preplan and
+   * every sibling plan row in the same transaction (cascade-all provenance resolution).
    */
   fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String? = null,
+    includeSharedPreplan: Boolean = false,
+    expectedSharedPayloadSha256: String? = null,
+    planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity? = null,
   ): GoalRunnerScopedReplanWriteResult =
     error("Goal runner manifest store must atomically persist a scoped subtask replan.")
+
+  /** Stored shared-preplan payload digest, or null when absent. */
+  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String? = null
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

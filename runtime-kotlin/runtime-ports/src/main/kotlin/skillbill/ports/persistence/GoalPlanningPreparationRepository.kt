@@ -58,9 +58,20 @@ interface NormalizedGoalPlanningPreparationRepository {
   fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int =
     error("Goal subtask plan deletion is not implemented by this repository.")
 
+  /**
+   * Digest-conditional shared-preplan delete. Removes the shared row only when [expectedPayloadSha256]
+   * still matches the stored payload; refuses with zero mutation on mismatch. Subtask plan rows for the
+   * same parent cascade via the FK. Does not replace or reuse [replaceSharedPreplan].
+   */
+  fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
+    error("Shared goal preplan deletion is not implemented by this repository.")
+
   fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
 
   fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
+
+  /** Payload digest of the stored shared preplan, or null when absent. */
+  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = null
 
   fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,

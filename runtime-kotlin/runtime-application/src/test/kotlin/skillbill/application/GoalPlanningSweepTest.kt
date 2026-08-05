@@ -1331,6 +1331,27 @@ private class InMemoryPreparationRepository(
     return if (removed) 1 else 0
   }
 
+  override fun deleteSharedPreplan(
+    identity: skillbill.ports.persistence.model.GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+  ): Int {
+    val shared = sharedPreplan
+    if (shared == null ||
+      shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
+      shared.payloadSha256 != expectedPayloadSha256
+    ) {
+      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+        identity.parentGoalWorkflowId,
+        0,
+        "shared preplan changed after it was observed for discard",
+      )
+    }
+    sharedPreplan = null
+    plans.clear()
+    records.clear()
+    return 1
+  }
+
   fun corruptPlanProvenance(subtaskId: Int) {
     val plan = requireNotNull(plans[subtaskId])
     plans[subtaskId] = plan.copy(provenance = plan.provenance.copy(parentSpecHash = "stale-parent-spec-hash"))
