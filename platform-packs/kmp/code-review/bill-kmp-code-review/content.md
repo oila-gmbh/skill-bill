@@ -19,6 +19,8 @@ Treat the generated flattened Review Composition plan as authoritative. Launch i
 
 - `expect`/`actual`, `commonMain`, `androidMain`, `iosMain`, source-set dependencies, or target-boundary declarations -> `platform-correctness` specialist.
 - `kotlinx.serialization`, polymorphic registration, `kotlinx-datetime`, timezone behavior, `Dispatchers.Main`, iOS dispatchers, ObjC exports, Skie `Flow`, or suspend cancellation -> `platform-correctness` specialist.
+- Room entities, DAOs, `@Transaction`, `.sq` files, SQLDelight drivers, `DataStore` edits, schema migrations, or offline sync cursors and idempotency keys -> `persistence` specialist.
+- `WorkManager` enqueue, `CoroutineWorker`, backoff policy, work constraints, foreground services, process-death recovery, or long-lived collector supervision -> `reliability` specialist.
 - `@Composable`, UI state, `Modifier`, `remember`, `LaunchedEffect`, navigation, previews, or loading/content/error/empty states -> `ui` specialist.
 - Compose semantics, labels, focus, TalkBack, keyboard behavior, localization, or touch targets -> `ux-accessibility` specialist.
 - `proguard-rules.pro`, `consumer-rules.pro`, `isMinifyEnabled`, `minifyEnabled`, or R8 configuration -> `platform-correctness` specialist; include the baseline `android-r8` add-on.

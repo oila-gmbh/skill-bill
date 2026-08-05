@@ -38,6 +38,8 @@ routing_signals:
 
 declared_code_review_areas:
   - platform-correctness
+  - persistence
+  - reliability
   - ui
   - ux-accessibility
 
@@ -45,6 +47,8 @@ declared_files:
   baseline: code-review/bill-kmp-code-review/content.md
   areas:
     platform-correctness: code-review/bill-kmp-code-review-platform-correctness/content.md
+    persistence: code-review/bill-kmp-code-review-persistence/content.md
+    reliability: code-review/bill-kmp-code-review-reliability/content.md
     ui: code-review/bill-kmp-code-review-ui/content.md
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
@@ -53,6 +57,10 @@ declared_quality_check_file: quality-check/bill-kmp-code-check/content.md
 area_metadata:
   platform-correctness:
     focus: "KMP expect/actual, source-set, target-runtime, and native-boundary correctness"
+  persistence:
+    focus: "Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness"
+  reliability:
+    focus: "WorkManager and CoroutineWorker retry, process-death recovery, and collector supervision"
   ui:
     focus: "KMP Compose UI correctness and framework usage"
   ux-accessibility:
@@ -61,6 +69,10 @@ area_metadata:
 lane_conditions:
   platform-correctness:
     required: true
+  persistence:
+    content: ["room", "sqldelight", "datastore", "migration", "dao"]
+  reliability:
+    content: ["workmanager", "coroutineworker", "foregroundservice", "backoffpolicy", "retry"]
   ui:
     path: ["androidMain", "iosMain", "/src/main/"]
     content: ["compose", "@Composable", "navigation"]
@@ -227,6 +239,12 @@ pointers:
     - name: android-navigation-review.md
       target: platform-packs/kmp/addons/android-navigation-review.md
   code-review/bill-kmp-code-review-platform-correctness:
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+  code-review/bill-kmp-code-review-persistence:
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+  code-review/bill-kmp-code-review-reliability:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-kmp-code-review-ux-accessibility:

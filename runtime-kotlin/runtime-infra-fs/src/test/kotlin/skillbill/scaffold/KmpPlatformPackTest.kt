@@ -16,7 +16,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-private val KMP_CODE_REVIEW_AREAS = setOf("platform-correctness", "ui", "ux-accessibility")
+private val KMP_CODE_REVIEW_AREAS =
+  setOf("platform-correctness", "persistence", "reliability", "ui", "ux-accessibility")
+
+private val BACKEND_RUBRIC_TERMS = listOf(
+  "Exposed",
+  "@Transactional",
+  "Hibernate",
+  "JDBC",
+  "R2DBC",
+  "resilience4j",
+  "offset",
+  "broker",
+)
 
 private const val COMPOSE_NAV_PATH = "app/src/main/java/com/acme/nav/NavGraph.kt"
 
@@ -185,7 +197,7 @@ class KmpPlatformPackTest {
   }
 
   @Test
-  fun `kmp effective review coverage is Kotlin baseline with three overriding lanes`() {
+  fun `kmp effective review coverage is Kotlin baseline with five overriding lanes`() {
     val repoRoot = repoRootFromTest()
     val report = PlatformPackSubstanceAudit.audit(repoRoot)
     val kmp = report.packs.single { it.pack == "kmp" }
@@ -419,6 +431,28 @@ class KmpPlatformPackTest {
     )
 
     assertContains(result.ownedPathsBySlug.getValue("kmp"), COMPOSE_NAV_PATH)
+  }
+
+  @Test
+  fun `kmp persistence and reliability rubrics stay Android native and never drift to backend rubric`() {
+    val reviewRoot = repoRootFromTest().resolve("platform-packs/kmp/code-review")
+    val persistence = Files.readString(reviewRoot.resolve("bill-kmp-code-review-persistence/content.md"))
+    val reliability = Files.readString(reviewRoot.resolve("bill-kmp-code-review-reliability/content.md"))
+
+    listOf("Room", "SQLDelight", "DataStore", "Migration", "idempotency", "cursor", "transaction")
+      .forEach { term -> assertContains(persistence, term, message = "Missing persistence rubric term $term") }
+    listOf("WorkManager", "CoroutineWorker", "BackoffPolicy", "Constraints", "process death", "collector")
+      .forEach { term -> assertContains(reliability, term, message = "Missing reliability rubric term $term") }
+
+    mapOf("persistence" to persistence, "reliability" to reliability).forEach { (area, rubric) ->
+      BACKEND_RUBRIC_TERMS.forEach { term ->
+        assertFalse(term in rubric, "Backend rubric term $term leaked into the kmp $area specialist")
+      }
+      assertFalse(
+        Regex("(?i)\\back\\b").containsMatchIn(rubric),
+        "Broker acknowledgement semantics leaked into the kmp $area specialist",
+      )
+    }
   }
 
   private fun routingManifests() = listOf("kmp", "kotlin", "generic").map { slug ->
