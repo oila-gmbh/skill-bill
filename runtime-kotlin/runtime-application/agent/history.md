@@ -1,3 +1,12 @@
+## [2026-08-05] SKILL-160 subtask 1 — Scoped per-subtask replan
+Areas: runtime-application/{goalrunner,model}, runtime-cli/goal, runtime-infra-sqlite/workflow, runtime-ports/{goalrunner,persistence}, .feature-specs/SKILL-160
+- Added `goal replan <key> --subtask <id>`: delete-only `deleteSubtaskPlan` discards one `goal_subtask_plans` row, retargets current-subtask intent, and leaves sibling plans, shared preplan, runtime fields, and acceptances untouched.
+- Reuses `firstMissingPlan` so the next goal launch regenerates only the discarded plan; `PARTIALLY_PLANNED` status names the replanned subtask. reusable
+- Pattern: new request type beside reset (never widen `GoalRunnerResetRequest`); refuse LIVE/UNKNOWN liveness, terminal targets (name `reset`), unknown key, absent/non-positive id before any durable write. reusable
+- Breaking changes/limitations: does not delete the child workflow row or shared preplan (`--include-shared-preplan` is subtask 2); operator must name the subtask — no automatic staleness detection.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-01] SKILL-154 subtask 3 — Monitor-only bill-monitor skill and status integration
 Areas: runtime-cli/goal, runtime-infra-fs/scaffold, governed skills, docs, .feature-specs/SKILL-154
 - Added `bill-monitor` as a governed read-only entry point with dynamic catalog/install coverage and same-thread monitor-mode guidance.

@@ -8,6 +8,7 @@ import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 
+@Suppress("TooManyFunctions") // single cohesive boundary: shared preplan, subtask plans, and planning status
 interface NormalizedGoalPlanningPreparationRepository {
   fun boundedStatus(
     parentGoalWorkflowId: String,

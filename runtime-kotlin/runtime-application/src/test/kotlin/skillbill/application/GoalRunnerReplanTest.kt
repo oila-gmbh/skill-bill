@@ -90,71 +90,64 @@ class GoalRunnerReplanTest {
   }
 
   @Test
-  fun `scoped replan refuses live unknown terminal absent and unknown-key without mutation`() {
-    val base = manifest(subtaskCount = 2).copy(
-      status = "in_progress",
-      currentSubtaskIntent = CurrentSubtaskIntent(2, "start"),
-      subtasks = listOf(
-        manifest(subtaskCount = 2).subtasks[0].copy(status = "complete", commitSha = "sha-1"),
-        manifest(subtaskCount = 2).subtasks[1].copy(status = "pending"),
-      ),
-    )
-
-    val liveStore = InMemoryGoalManifestStore(base).apply {
-      plannedSubtaskIds = mutableSetOf(1, 2)
+  fun `scoped replan refuses live goals without mutation`() {
+    val store = refusalBaseStore().apply {
       executionLeaseForTest = idleLease().copy(expiresAt = "2026-07-27T12:00:01Z")
     }
-    val liveFailure = assertFailsWith<IllegalArgumentException> {
-      GoalRunnerStatusService(liveStore, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+    val failure = assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 2))
     }
-    assertTrue(liveFailure.message!!.contains("live"), liveFailure.message)
-    assertEquals(0, liveStore.scopedReplanCount)
-    assertEquals(setOf(1, 2), liveStore.plannedSubtaskIds)
+    assertTrue(failure.message!!.contains("live"), failure.message)
+    assertEquals(0, store.scopedReplanCount)
+    assertEquals(setOf(1, 2), store.plannedSubtaskIds)
+  }
 
-    val unknownStore = InMemoryGoalManifestStore(base).apply {
-      plannedSubtaskIds = mutableSetOf(1, 2)
-      executionLeaseForTest = null
-    }
-    val unknownFailure = assertFailsWith<IllegalArgumentException> {
-      GoalRunnerStatusService(unknownStore, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+  @Test
+  fun `scoped replan refuses unknown liveness without mutation`() {
+    val store = refusalBaseStore().apply { executionLeaseForTest = null }
+    val failure = assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 2))
     }
-    assertTrue(unknownFailure.message!!.contains("unknown execution liveness"), unknownFailure.message)
-    assertEquals(0, unknownStore.scopedReplanCount)
+    assertTrue(failure.message!!.contains("unknown execution liveness"), failure.message)
+    assertEquals(0, store.scopedReplanCount)
+  }
 
-    val terminalStore = InMemoryGoalManifestStore(
-      base.copy(
+  @Test
+  fun `scoped replan refuses terminal targets naming reset without mutation`() {
+    val store = refusalBaseStore(
+      base = refusalBaseManifest().copy(
         subtasks = listOf(
-          base.subtasks[0],
-          base.subtasks[1].copy(status = "complete", commitSha = "sha-2"),
+          refusalBaseManifest().subtasks[0],
+          refusalBaseManifest().subtasks[1].copy(status = "complete", commitSha = "sha-2"),
         ),
       ),
-    ).apply {
-      plannedSubtaskIds = mutableSetOf(1, 2)
-      seedIdleLease()
-    }
-    val terminalFailure = assertFailsWith<IllegalArgumentException> {
-      GoalRunnerStatusService(terminalStore, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+    ).apply { seedIdleLease() }
+    val failure = assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 2))
     }
-    assertTrue(terminalFailure.message!!.contains("reset"), terminalFailure.message)
-    assertEquals(0, terminalStore.scopedReplanCount)
+    assertTrue(failure.message!!.contains("reset"), failure.message)
+    assertEquals(0, store.scopedReplanCount)
+  }
 
-    val absentStore = InMemoryGoalManifestStore(base).apply {
-      plannedSubtaskIds = mutableSetOf(1, 2)
-      seedIdleLease()
-    }
-    val absentFailure = assertFailsWith<IllegalArgumentException> {
-      GoalRunnerStatusService(absentStore, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+  @Test
+  fun `scoped replan refuses absent subtask without mutation`() {
+    val store = refusalBaseStore().apply { seedIdleLease() }
+    val failure = assertFailsWith<IllegalArgumentException> {
+      GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 9))
     }
-    assertTrue(absentFailure.message!!.contains("not part of goal"), absentFailure.message)
-    assertEquals(0, absentStore.scopedReplanCount)
+    assertTrue(failure.message!!.contains("not part of goal"), failure.message)
+    assertEquals(0, store.scopedReplanCount)
+  }
 
+  @Test
+  fun `scoped replan returns null for unknown issue key without mutation`() {
     assertNull(
       GoalRunnerStatusService(
-        InMemoryGoalManifestStore(base).apply { seedIdleLease() },
+        refusalBaseStore().apply { seedIdleLease() },
         RecordingOutcomeStore(),
         goalTestPhaseRecorder(),
         clock = idleClock,
@@ -199,6 +192,21 @@ class GoalRunnerReplanTest {
     )
     assertEquals("complete", store.manifest.subtasks.first().status)
     assertEquals("abc1234", store.manifest.subtasks.first().commitSha)
+  }
+
+  private fun refusalBaseManifest() = manifest(subtaskCount = 2).copy(
+    status = "in_progress",
+    currentSubtaskIntent = CurrentSubtaskIntent(2, "start"),
+    subtasks = listOf(
+      manifest(subtaskCount = 2).subtasks[0].copy(status = "complete", commitSha = "sha-1"),
+      manifest(subtaskCount = 2).subtasks[1].copy(status = "pending"),
+    ),
+  )
+
+  private fun refusalBaseStore(
+    base: skillbill.workflow.model.DecompositionManifest = refusalBaseManifest(),
+  ): InMemoryGoalManifestStore = InMemoryGoalManifestStore(base).apply {
+    plannedSubtaskIds = mutableSetOf(1, 2)
   }
 
   private fun InMemoryGoalManifestStore.seedIdleLease() {
