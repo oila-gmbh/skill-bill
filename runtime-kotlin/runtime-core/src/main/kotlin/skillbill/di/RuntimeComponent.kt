@@ -87,6 +87,7 @@ import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
+import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
@@ -175,6 +176,7 @@ import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
+import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -514,6 +516,10 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
     gateway
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway): ReviewSnapshotGateway = gateway
 
   @Provides
   @JvmSynthetic

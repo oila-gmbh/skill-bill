@@ -31,6 +31,7 @@ internal object DatabaseSchema {
       "goal_runner_controls",
       "telemetry_reconciliation_state",
       "unaddressed_findings",
+      "review_finding_outcomes",
       "rejected_output_diagnostics",
       "producer_output_evidence",
     )
@@ -53,6 +54,8 @@ internal object DatabaseSchema {
       "idx_goal_subtask_plans_ordered",
       "idx_telemetry_reconciliation_completed",
       "idx_unaddressed_findings_issue",
+      "idx_unaddressed_findings_run",
+      "idx_review_finding_outcomes_run",
       "idx_rejected_output_diagnostics_selector",
       "idx_review_run_lanes_pack_area",
       "idx_review_runs_routed_skill_canonical",
@@ -96,6 +99,44 @@ internal object DatabaseSchema {
         PRIMARY KEY (review_run_id, finding_id),
         FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
       )
+      """.trimIndent(),
+    )
+
+  /**
+   * The shared finding key joining the workflow review loop to review-run import. It is a table of
+   * its own rather than columns on `unaddressed_findings` because that ledger is retracted
+   * (`replaceLedgerForPass`, `clearWorkflowLedger` both DELETE), so an outcome recorded on it would
+   * be destroyed by the next pass. There is deliberately no foreign key to `findings`:
+   * workflow-loop findings need not have been imported as a review run, and `review_run_id` stays
+   * NULL (`key_state = 'unresolved'`) in exactly that case rather than being guessed.
+   *
+   * Shared verbatim between the base schema and the named ledger migration so an existing store and
+   * a fresh one converge on one definition.
+   */
+  internal val reviewFindingOutcomeStatements: List<String> =
+    listOf(
+      """
+      CREATE TABLE IF NOT EXISTS review_finding_outcomes (
+        workflow_id TEXT NOT NULL,
+        review_pass_number INTEGER NOT NULL,
+        finding_ordinal INTEGER NOT NULL,
+        review_run_id TEXT,
+        finding_id TEXT,
+        key_state TEXT NOT NULL DEFAULT 'unresolved'
+          CHECK (key_state IN ('resolved', 'unresolved')),
+        outcome TEXT NOT NULL CHECK (outcome IN ('addressed', 'carried', 'rejected')),
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal),
+        CHECK ((key_state = 'resolved') = (review_run_id IS NOT NULL AND finding_id IS NOT NULL))
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_finding_outcomes_run
+        ON review_finding_outcomes(review_run_id, finding_id)
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run
+        ON unaddressed_findings(review_run_id, finding_id)
       """.trimIndent(),
     )
 
@@ -206,6 +247,8 @@ internal object DatabaseSchema {
         location TEXT NOT NULL,
         summary TEXT NOT NULL,
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        review_run_id TEXT,
+        finding_id TEXT,
         PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
       """.trimIndent(),
@@ -256,7 +299,10 @@ internal object DatabaseSchema {
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         synced_at TEXT,
-        last_error TEXT NOT NULL DEFAULT ''
+        -- NULL means healthy: no delivery has failed. Non-null is a real delivery failure. The
+        -- legacy shape was NOT NULL DEFAULT '', which made "no error" and "error" indistinguishable
+        -- from the column type alone; relax-telemetry-outbox-last-error backfills '' to NULL.
+        last_error TEXT
       )
       """.trimIndent(),
       """
@@ -592,5 +638,5 @@ internal object DatabaseSchema {
       CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_updated
         ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
-    ) + reviewRunLaneStatements
+    ) + reviewRunLaneStatements + reviewFindingOutcomeStatements
 }

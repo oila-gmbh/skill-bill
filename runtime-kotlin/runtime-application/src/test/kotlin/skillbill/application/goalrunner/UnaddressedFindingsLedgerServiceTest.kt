@@ -2,6 +2,7 @@ package skillbill.application.goalrunner
 
 import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
@@ -127,7 +128,15 @@ private class InMemoryUnaddressedFindings(
 
   override fun clearWorkflowLedger(workflowId: String) = error("The retrieval surface does not write.")
 
+  override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) =
+    error("The retrieval surface does not write.")
+
+  override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = emptyList()
+
   override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = rows.filter { it.issueKey == issueKey }
+
+  override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
+    rows.filter { it.workflowId == workflowId }
 
   override fun issueExists(issueKey: String): Boolean = issueKey in durableIssueKeys
 }

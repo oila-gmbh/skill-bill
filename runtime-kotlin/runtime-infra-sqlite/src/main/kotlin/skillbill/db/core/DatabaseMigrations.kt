@@ -2,6 +2,7 @@ package skillbill.db.core
 
 import skillbill.db.telemetry.FeedbackEventMigration
 import skillbill.db.telemetry.GoalTelemetryMigration
+import skillbill.db.telemetry.TelemetryOutboxLastErrorMigration
 import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
 import java.sql.Connection
 
@@ -440,6 +441,16 @@ internal object DatabaseMigrations {
         name = "add-review-run-lane-attribution",
         operation = ::addReviewRunLaneAttribution,
       ),
+      DatabaseMigration(
+        version = 26,
+        name = "relax-telemetry-outbox-last-error",
+        operation = TelemetryOutboxLastErrorMigration::apply,
+      ),
+      DatabaseMigration(
+        version = 27,
+        name = "add-review-finding-outcome-key",
+        operation = ::addReviewFindingOutcomeKey,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -549,6 +560,16 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
   DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
+}
+
+// The unaddressed_findings key columns go through ensureColumn (which also runs unconditionally on
+// every startup) rather than being appended to an already-applied CREATE body, which would be a
+// silent no-op for every existing store.
+private fun addReviewFindingOutcomeKey(connection: Connection) {
+  DatabaseColumnMigrations.ensureReviewFindingOutcomeKeyColumns(connection)
+  DatabaseSchema.reviewFindingOutcomeStatements.forEach { sql ->
+    connection.createStatement().use { statement -> statement.execute(sql) }
+  }
 }
 
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {

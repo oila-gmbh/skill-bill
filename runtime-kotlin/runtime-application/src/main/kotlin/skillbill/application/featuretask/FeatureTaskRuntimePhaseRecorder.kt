@@ -689,7 +689,7 @@ class FeatureTaskRuntimePhaseRecorder(
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
       val continuation = reviewArtifacts.continuation
-      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt())
+      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt(), completion.blockerDispositions)
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -716,6 +716,7 @@ class FeatureTaskRuntimePhaseRecorder(
     request: FeatureTaskRuntimePhaseStateRequest,
     continuation: FeatureTaskRuntimeGoalContinuationArtifact,
     passNumber: Int,
+    blockerDispositions: List<GoalSubtaskBlockerDisposition>,
   ) {
     val output = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
@@ -727,7 +728,15 @@ class FeatureTaskRuntimePhaseRecorder(
       workflowId = request.workflowId,
       reviewPassNumber = passNumber,
     )
+    val superseded = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
     unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber, findings)
+    unitOfWork.unaddressedFindings.recordOutcomes(
+      GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+        supersededFindings = superseded,
+        currentFindings = findings,
+        blockerDispositions = blockerDispositions,
+      ),
+    )
   }
 
   private fun validatedGoalReviewPhaseState(

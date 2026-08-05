@@ -5,9 +5,12 @@ import skillbill.db.core.DatabaseSchema
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DatabaseSchemaTest {
@@ -48,6 +51,81 @@ class DatabaseSchemaTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertTrue("unaddressed_findings" in sqliteObjects(connection, "table"))
       assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
+    }
+  }
+
+  // SKILL-136 subtask 6 AC-001: a fresh database must agree with the migrated shape, or every new
+  // store would keep writing '' and re-open the healthy-vs-failed ambiguity the migration closed.
+  @Test
+  fun `a freshly created telemetry outbox declares last_error nullable`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val lastError = tableInfo(connection, "telemetry_outbox").single { it.name == "last_error" }
+      assertFalse(lastError.notNull, "last_error must be nullable so NULL can mean 'no delivery failure'.")
+      assertEquals(null, lastError.defaultValue, "last_error must not default to '' on a fresh database.")
+    }
+  }
+
+  // SKILL-136 subtask 6 AC-003: the shared key joining the workflow review loop to review-run import.
+  @Test
+  fun `ensureDatabase creates the review finding outcome key on a fresh database`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_finding_outcomes" in DatabaseSchema.tableNames)
+      assertTrue("review_finding_outcomes" in sqliteObjects(connection, "table"))
+      assertTrue("idx_review_finding_outcomes_run" in DatabaseSchema.indexNames)
+      assertTrue("idx_review_finding_outcomes_run" in sqliteObjects(connection, "index"))
+      assertTrue("idx_unaddressed_findings_run" in DatabaseSchema.indexNames)
+      assertTrue("idx_unaddressed_findings_run" in sqliteObjects(connection, "index"))
+
+      val ledgerColumns = tableInfo(connection, "unaddressed_findings").associateBy { it.name }
+      setOf("review_run_id", "finding_id").forEach { column ->
+        val info = assertNotNull(ledgerColumns[column], "unaddressed_findings must carry '$column'.")
+        assertFalse(info.notNull, "$column must be nullable: an unimported pass has no key to record.")
+      }
+    }
+  }
+
+  // AC-003: an unresolvable key is retained as NULL, never bucketed to a guessed review run. The
+  // paired-null CHECK is what makes "half a key" unrepresentable.
+  @Test
+  fun `review finding outcomes reject a half-populated key`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-check").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO review_finding_outcomes
+            (workflow_id, review_pass_number, finding_ordinal, key_state, outcome)
+          VALUES ('wf-1', 1, 1, 'unresolved', 'carried')
+          """.trimIndent(),
+        )
+      }
+      assertFailsWith<SQLException>("A resolved key state without both key columns must be rejected.") {
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            """
+            INSERT INTO review_finding_outcomes
+              (workflow_id, review_pass_number, finding_ordinal, review_run_id, key_state, outcome)
+            VALUES ('wf-1', 1, 2, 'rvw-1', 'resolved', 'carried')
+            """.trimIndent(),
+          )
+        }
+      }
+      assertFailsWith<SQLException>("An unknown outcome must be rejected rather than silently stored.") {
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            """
+            INSERT INTO review_finding_outcomes
+              (workflow_id, review_pass_number, finding_ordinal, key_state, outcome)
+            VALUES ('wf-1', 1, 3, 'unresolved', 'invented')
+            """.trimIndent(),
+          )
+        }
+      }
     }
   }
 

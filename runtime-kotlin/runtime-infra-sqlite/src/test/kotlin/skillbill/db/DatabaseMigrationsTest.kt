@@ -8,8 +8,10 @@ import skillbill.db.core.DatabaseSchema
 import skillbill.db.core.inImmediateTransaction
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
@@ -999,6 +1001,106 @@ class DatabaseMigrationsTest {
     }
   }
 
+  // SKILL-136 subtask 6 AC-001/AC-008: the outbox rebuild backfills '' to NULL, preserves genuine
+  // error text verbatim, and never drops a row.
+  @Test
+  fun `relaxing telemetry outbox last_error backfills empty strings and preserves error text`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-migration").resolve("legacy-outbox.db")
+    createLegacyTelemetryOutboxDatabase(dbPath)
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      rowCount(connection, "telemetry_outbox")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(before, rowCount(connection, "telemetry_outbox"), "The rebuild must not drop a row.")
+      assertEquals(
+        0,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error = ''"),
+        "Every legacy empty-string last_error must be backfilled to NULL.",
+      )
+      assertEquals(
+        2,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error IS NULL"),
+        "Both healthy rows must read as NULL.",
+      )
+      assertEquals(
+        "boom",
+        scalarString(connection, "SELECT last_error FROM telemetry_outbox WHERE id = 2"),
+        "A genuine delivery failure must survive verbatim.",
+      )
+      assertFalse(
+        tableInfo(connection, "telemetry_outbox").single { it.name == "last_error" }.notNull,
+        "last_error must be nullable after the rebuild.",
+      )
+      assertTrue("idx_telemetry_outbox_pending" in tableIndexNames(connection))
+    }
+  }
+
+  @Test
+  fun `re-applying the telemetry outbox relaxation is a no-op with a single ledger entry`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-idempotent").resolve("legacy-outbox.db")
+    createLegacyTelemetryOutboxDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+    val afterFirst = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      telemetryOutboxRows(connection)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(afterFirst, telemetryOutboxRows(connection), "Re-application must not alter a single row.")
+      assertEquals(
+        1,
+        migrationRows(connection).count { it.name == "relax-telemetry-outbox-last-error" },
+        "The ledger must record the relaxation exactly once.",
+      )
+    }
+  }
+
+  // AC-003/AC-008: the key columns arrive through ensureColumn, so pre-existing ledger rows survive
+  // and are marked unresolved rather than being defaulted to a guessed review run.
+  @Test
+  fun `adding the review finding outcome key preserves existing ledger rows as unresolved`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-migration").resolve("legacy-ledger.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE unaddressed_findings (
+            issue_key TEXT NOT NULL, workflow_id TEXT NOT NULL, subtask_id INTEGER NOT NULL,
+            review_pass_number INTEGER NOT NULL, finding_ordinal INTEGER NOT NULL,
+            severity TEXT NOT NULL, issue_category TEXT NOT NULL DEFAULT 'other',
+            location TEXT NOT NULL, summary TEXT NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO unaddressed_findings
+            (issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
+             severity, location, summary)
+          VALUES ('SKILL-1', 'wf-legacy', 1, 1, 1, 'blocker', 'a.kt:1', 'pre-existing')
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(1, rowCount(connection, "unaddressed_findings"), "The pre-existing row must survive.")
+      assertTrue(tableColumns(connection, "unaddressed_findings").containsAll(setOf("review_run_id", "finding_id")))
+      assertEquals(
+        1,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM unaddressed_findings WHERE review_run_id IS NULL AND finding_id IS NULL",
+        ),
+        "A row that predates the key must stay unresolved, never bucketed to a guessed review run.",
+      )
+      assertTrue("review_finding_outcomes" in tableNames(connection))
+    }
+  }
+
   /**
    * AC-007's real-store check. It needs a real ~91.5 MB review-metrics store, which is far too large
    * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and skips cleanly when unset. The
@@ -1024,6 +1126,60 @@ class DatabaseMigrationsTest {
       (after[SCHEMA_MIGRATIONS_TABLE] ?: 0) >= (before[SCHEMA_MIGRATIONS_TABLE] ?: 0),
       "Migration must never drop an applied-migration record.",
     )
+  }
+
+  /**
+   * SKILL-136 subtask 6 AC-008/AC-009. The row-count harness above proves nothing is lost; this one
+   * proves the migrated data is *correct* at real volume — the outbox backfill actually landed, no
+   * finding was orphaned, and the outbox still drains. Same env gate and same copy-first discipline:
+   * the operator's live store is never migrated, mutated, or deleted.
+   */
+  @Test
+  fun `migrating a copy of a real review metrics store leaves referential integrity sound`() {
+    val realStore = System.getenv(REAL_STORE_ENV)?.takeIf { it.isNotBlank() }?.let { Path.of(it) }
+    if (realStore == null) {
+      println("Skipping real-store integrity harness: set $REAL_STORE_ENV to a review-metrics.db copy to run it.")
+      return
+    }
+    check(Files.isRegularFile(realStore)) { "$REAL_STORE_ENV must point at an existing database file." }
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store-integrity").resolve("metrics.db")
+    Files.copy(realStore, copy)
+
+    val trackedTables = listOf(
+      "telemetry_outbox", "review_runs", "findings", "feedback_events",
+      "learnings", "session_learnings", "unaddressed_findings",
+    )
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use { connection ->
+      val present = tableNames(connection)
+      trackedTables.filter(present::contains).associateWith { table -> rowCount(connection, table) }
+    }
+
+    DatabaseRuntime.ensureDatabase(copy).use { connection ->
+      before.forEach { (table, count) ->
+        assertEquals(count, rowCount(connection, table), "Migration must preserve every row of '$table'.")
+      }
+      assertEquals(
+        0,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error = ''"),
+        "AC-001: no empty-string last_error may survive the backfill.",
+      )
+      assertEquals(
+        0,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM findings f " +
+            "WHERE NOT EXISTS (SELECT 1 FROM review_runs r WHERE r.review_run_id = f.review_run_id)",
+        ),
+        "AC-009: no finding may be left without its review_runs parent.",
+      )
+
+      // AC-009: the outbox still drains fully with the nullable column in place.
+      val store = TelemetryOutboxStore(connection)
+      val pendingIds = store.listPending(null).map(TelemetryOutboxRecord::id)
+      store.markSynced(pendingIds)
+      assertTrue(store.listPending(null).isEmpty(), "The outbox must drain fully after marking every row synced.")
+      assertEquals(null, store.latestError(), "A fully drained outbox must report no delivery error.")
+    }
   }
 
   @Test
@@ -2026,6 +2182,86 @@ class DatabaseMigrationsTest {
     }
   }
 
+  private fun scalarInt(connection: Connection, sql: String): Int = connection.createStatement().use { statement ->
+    statement.executeQuery(sql).use { resultSet ->
+      check(resultSet.next())
+      resultSet.getInt(1)
+    }
+  }
+
+  private fun scalarString(connection: Connection, sql: String): String? =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(sql).use { resultSet ->
+        if (resultSet.next()) resultSet.getString(1) else null
+      }
+    }
+
+  private fun tableIndexNames(connection: Connection): Set<String> = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT name FROM sqlite_master WHERE type = 'index'").use { resultSet ->
+      buildSet {
+        while (resultSet.next()) {
+          add(resultSet.getString("name"))
+        }
+      }
+    }
+  }
+
+  private fun tableInfo(connection: Connection, tableName: String): List<TableColumnInfo> =
+    connection.prepareStatement("PRAGMA table_info($tableName)").use { statement ->
+      statement.executeQuery().use { resultSet ->
+        buildList {
+          while (resultSet.next()) {
+            add(
+              TableColumnInfo(
+                name = resultSet.getString("name"),
+                notNull = resultSet.getInt("notnull") == 1,
+              ),
+            )
+          }
+        }
+      }
+    }
+
+  private fun telemetryOutboxRows(connection: Connection): List<List<Any?>> = connection.createStatement().use {
+    it.executeQuery("SELECT id, event_name, synced_at, last_error FROM telemetry_outbox ORDER BY id").use { rows ->
+      buildList {
+        while (rows.next()) {
+          add((1..rows.metaData.columnCount).map(rows::getObject))
+        }
+      }
+    }
+  }
+
+  /** A pre-migration outbox: two healthy rows carrying '' and one real delivery failure. */
+  private fun createLegacyTelemetryOutboxDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE telemetry_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_name TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            synced_at TEXT,
+            last_error TEXT NOT NULL DEFAULT ''
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO telemetry_outbox (id, event_name, payload_json, synced_at, last_error) VALUES
+            (1, 'review_finished', '{}', '2026-01-01T00:00:00Z', ''),
+            (2, 'review_finished', '{}', NULL, 'boom'),
+            (3, 'goal_finished', '{}', NULL, '')
+          """.trimIndent(),
+        )
+      }
+    }
+  }
+
+  private data class TableColumnInfo(val name: String, val notNull: Boolean)
+
   private data class MigrationRow(
     val version: Int,
     val name: String,
@@ -2042,6 +2278,7 @@ class DatabaseMigrationsTest {
 
   private companion object {
     const val SCHEMA_MIGRATIONS_TABLE: String = "schema_migrations"
+    const val REAL_STORE_ENV: String = "SKILL_BILL_REAL_STORE_DB"
 
     // The routed_skill and detected_stack prose variants actually observed in the real store.
     val LEGACY_ROUTED_SKILL_VARIANTS: List<String> = listOf(

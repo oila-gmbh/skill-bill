@@ -5,6 +5,7 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
@@ -83,7 +84,14 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
 
   override fun clearWorkflowLedger(workflowId: String) = runtime.clearWorkflowLedger(workflowId)
 
+  override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) = runtime.recordOutcomes(outcomes)
+
+  override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = runtime.fetchOutcomes(workflowId)
+
   override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = runtime.fetchLedger(issueKey)
+
+  override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
+    runtime.fetchWorkflowLedger(workflowId)
 
   override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)
 }

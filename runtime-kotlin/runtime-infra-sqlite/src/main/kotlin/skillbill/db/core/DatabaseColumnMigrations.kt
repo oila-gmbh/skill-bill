@@ -60,12 +60,24 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "unaddressed_findings", "location", "TEXT NOT NULL DEFAULT '<unknown>'")
     ensureColumn(connection, "unaddressed_findings", "summary", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(connection, "unaddressed_findings", "recorded_at", "TEXT NOT NULL DEFAULT ''")
+    ensureReviewFindingOutcomeKeyColumns(connection)
     connection.createStatement().use { statement ->
       statement.execute(
         "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_issue " +
           "ON unaddressed_findings(issue_key, subtask_id, review_pass_number)",
       )
     }
+  }
+
+  /**
+   * The shared review-run/finding key on the workflow-loop ledger. Both columns are nullable with no
+   * default: a pass for which no review run was imported keeps them NULL and is read as unresolved,
+   * rather than being bucketed to a guessed review run.
+   */
+  fun ensureReviewFindingOutcomeKeyColumns(connection: Connection) {
+    if (!tableExists(connection, "unaddressed_findings")) return
+    ensureColumn(connection, "unaddressed_findings", "review_run_id", "TEXT")
+    ensureColumn(connection, "unaddressed_findings", "finding_id", "TEXT")
   }
 
   fun applyWorkListMetadata(connection: Connection) {

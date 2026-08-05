@@ -5,6 +5,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
+import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningPayload
 import skillbill.learnings.learningSummaryPayload
 import skillbill.learnings.model.CreateLearningRequest
@@ -20,6 +21,7 @@ import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -78,6 +80,83 @@ class TriageAndLearningsRuntimeTest {
       assertEquals(3, (cached["applied_learning_count"] as Number).toInt())
     }
   }
+}
+
+/**
+ * SKILL-136 subtask 6 AC-002. The resolution recorded in the change is that `learnings` is live
+ * schema with a working promotion path, not dead schema and not a broken promotion from
+ * `session_learnings` (which is a downstream cache of already-resolved learnings, not an upstream
+ * source). These tests are the coverage for that resolution: they pin that promotion actually
+ * populates the source columns, that it fails loudly on an unknown pair, and that the existing
+ * ON DELETE SET NULL and paired-null contracts still hold.
+ */
+class LearningPromotionTest {
+  @Test
+  fun `promoting a rejected finding records the originating review run and finding`() {
+    val (_, connection) = tempDbConnection("learning-promotion")
+    connection.use {
+      val review = importSampleReview(connection)
+      rejectFinding(connection, review.reviewRunId, "F-002", "Keep the current prompt wording.")
+
+      val learningId =
+        addLearning(connection, review.reviewRunId, LearningScope.GLOBAL, "", "Prefer explicit wording")
+
+      val record = SQLiteLearningStore.getLearning(connection, learningId)
+      assertEquals(review.reviewRunId, record.sourceReviewRunId, "Promotion must carry the source review run.")
+      assertEquals("F-002", record.sourceFindingId, "Promotion must carry the source finding.")
+    }
+  }
+
+  @Test
+  fun `promoting an unknown review run and finding pair fails loudly`() {
+    val (_, connection) = tempDbConnection("learning-promotion-unknown")
+    connection.use {
+      val review = importSampleReview(connection)
+      rejectFinding(connection, review.reviewRunId, "F-002", "Keep the current prompt wording.")
+
+      val failure = assertFailsWith<IllegalArgumentException> {
+        LearningsRuntime.validateLearningSource(
+          sourceReviewRunId = review.reviewRunId,
+          sourceFindingId = "F-does-not-exist",
+          sourceFindingExists = ReviewRuntime.findingExists(connection, review.reviewRunId, "F-does-not-exist"),
+          latestRejectedOutcome = null,
+        )
+      }
+      assertTrue("F-does-not-exist" in failure.message.orEmpty(), "The failure must name the unresolvable finding.")
+      assertEquals(
+        0,
+        learningCount(connection),
+        "An unresolvable pair must insert no orphan learning row.",
+      )
+    }
+  }
+
+  @Test
+  fun `deleting the source review run leaves the learning with both source columns null`() {
+    val (_, connection) = tempDbConnection("learning-promotion-cascade")
+    connection.use {
+      val review = importSampleReview(connection)
+      rejectFinding(connection, review.reviewRunId, "F-002", "Keep the current prompt wording.")
+      val learningId =
+        addLearning(connection, review.reviewRunId, LearningScope.GLOBAL, "", "Prefer explicit wording")
+
+      connection.createStatement().use { statement ->
+        statement.execute("PRAGMA foreign_keys = ON")
+        statement.executeUpdate("DELETE FROM review_runs WHERE review_run_id = '${review.reviewRunId}'")
+      }
+
+      val record = SQLiteLearningStore.getLearning(connection, learningId)
+      assertEquals(null, record.sourceReviewRunId, "ON DELETE SET NULL must clear the run reference.")
+      assertEquals(
+        null,
+        record.sourceFindingId,
+        "Both source columns must clear together, or the paired-null CHECK would be violated.",
+      )
+    }
+  }
+
+  private fun learningCount(connection: java.sql.Connection): Int =
+    SQLiteLearningStore.countLearnings(connection)
 }
 
 private fun importSampleReview(connection: java.sql.Connection): ImportedReview {

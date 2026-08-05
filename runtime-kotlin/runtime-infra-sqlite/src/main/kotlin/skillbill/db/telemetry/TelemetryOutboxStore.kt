@@ -75,11 +75,13 @@ class TelemetryOutboxStore(
     }
   }
 
+  // Healthy rows are NULL after the migration and '' on a store the migration has not reached yet;
+  // both are excluded so neither is reclassified as a delivery failure.
   override fun latestError(): String? = connection.prepareStatement(
     """
       SELECT last_error
       FROM telemetry_outbox
-      WHERE synced_at IS NULL AND last_error != ''
+      WHERE synced_at IS NULL AND last_error IS NOT NULL AND last_error != ''
       ORDER BY id DESC
       LIMIT 1
     """.trimIndent(),
@@ -96,7 +98,7 @@ class TelemetryOutboxStore(
     connection.prepareStatement(
       """
       UPDATE telemetry_outbox
-      SET synced_at = ?, last_error = ''
+      SET synced_at = ?, last_error = NULL
       WHERE id = ?
       """.trimIndent(),
     ).use { statement ->
@@ -114,7 +116,7 @@ class TelemetryOutboxStore(
     connection.prepareStatement(
       """
       UPDATE telemetry_outbox
-      SET synced_at = CURRENT_TIMESTAMP, last_error = ''
+      SET synced_at = CURRENT_TIMESTAMP, last_error = NULL
       WHERE id IN ($placeholders)
       """.trimIndent(),
     ).use { statement ->

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.goal
 
+import skillbill.goalrunner.model.ReviewFindingOutcome
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import java.sql.Connection
 
@@ -10,8 +12,8 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
       """
       INSERT INTO unaddressed_findings (
         issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
-        severity, issue_category, location, summary
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        severity, issue_category, location, summary, review_run_id, finding_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       findings.forEach { finding ->
@@ -24,10 +26,73 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         statement.setString(parameterIndex++, finding.severity)
         statement.setString(parameterIndex++, finding.issueCategory)
         statement.setString(parameterIndex++, finding.location)
-        statement.setString(parameterIndex, finding.summary)
+        statement.setString(parameterIndex++, finding.summary)
+        statement.setString(parameterIndex++, finding.reviewRunId)
+        statement.setString(parameterIndex, finding.findingId)
         statement.addBatch()
       }
       statement.executeBatch()
+    }
+  }
+
+  /**
+   * Outcomes live in their own table because the ledger above is retracted on every pass and on
+   * review-generation invalidation, which would destroy an outcome recorded alongside it.
+   */
+  fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) {
+    if (outcomes.isEmpty()) return
+    connection.prepareStatement(
+      """
+      INSERT INTO review_finding_outcomes (
+        workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, key_state, outcome
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workflow_id, review_pass_number, finding_ordinal) DO UPDATE SET
+        review_run_id = excluded.review_run_id,
+        finding_id = excluded.finding_id,
+        key_state = excluded.key_state,
+        outcome = excluded.outcome,
+        recorded_at = CURRENT_TIMESTAMP
+      """.trimIndent(),
+    ).use { statement ->
+      outcomes.forEach { outcome ->
+        var parameterIndex = 1
+        statement.setString(parameterIndex++, outcome.workflowId)
+        statement.setInt(parameterIndex++, outcome.reviewPassNumber)
+        statement.setInt(parameterIndex++, outcome.findingOrdinal)
+        statement.setString(parameterIndex++, outcome.reviewRunId)
+        statement.setString(parameterIndex++, outcome.findingId)
+        statement.setString(parameterIndex++, outcome.keyState)
+        statement.setString(parameterIndex, outcome.outcome.wireValue)
+        statement.addBatch()
+      }
+      statement.executeBatch()
+    }
+  }
+
+  fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = connection.prepareStatement(
+    """
+    SELECT workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, outcome
+    FROM review_finding_outcomes
+    WHERE workflow_id = ?
+    ORDER BY review_pass_number, finding_ordinal
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, workflowId)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) {
+          add(
+            ReviewFindingOutcomeRecord(
+              workflowId = rows.getString("workflow_id"),
+              reviewPassNumber = rows.getInt("review_pass_number"),
+              findingOrdinal = rows.getInt("finding_ordinal"),
+              outcome = ReviewFindingOutcome.fromWireValue(rows.getString("outcome")),
+              reviewRunId = rows.getString("review_run_id"),
+              findingId = rows.getString("finding_id"),
+            ),
+          )
+        }
+      }
     }
   }
 
@@ -55,16 +120,22 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     }
   }
 
-  fun fetchLedger(issueKey: String): List<UnaddressedFinding> = connection.prepareStatement(
+  fun fetchLedger(issueKey: String): List<UnaddressedFinding> =
+    fetchLedgerBy("issue_key", issueKey)
+
+  fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
+    fetchLedgerBy("workflow_id", workflowId)
+
+  private fun fetchLedgerBy(column: String, value: String): List<UnaddressedFinding> = connection.prepareStatement(
     """
     SELECT issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
-           severity, issue_category, location, summary
+           severity, issue_category, location, summary, review_run_id, finding_id
     FROM unaddressed_findings
-    WHERE issue_key = ?
+    WHERE $column = ?
     ORDER BY subtask_id, review_pass_number, finding_ordinal
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(1, issueKey)
+    statement.setString(1, value)
     statement.executeQuery().use { rows ->
       buildList {
         while (rows.next()) {
@@ -79,6 +150,8 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
               issueCategory = rows.getString("issue_category"),
               location = rows.getString("location"),
               summary = rows.getString("summary"),
+              reviewRunId = rows.getString("review_run_id"),
+              findingId = rows.getString("finding_id"),
             ),
           )
         }

@@ -1,9 +1,12 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.ReviewFindingOutcome
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
+import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -99,7 +102,47 @@ internal object GoalSubtaskReviewSummaryReducer {
       issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
       location = finding.location,
       summary = finding.message,
+      // reviewRunId stays null: the workflow review loop reviews a working delta in place and never
+      // imports a review run, so there is no key to resolve. It is left unresolved rather than
+      // guessed; review-run import is what fills it in when the same finding arrives that way.
+      findingId = finding.findingId,
     )
+  }
+
+  /**
+   * Derives one accepted/rejected/carried outcome per finding the run produced, entirely from loop
+   * state — never inferred from agent prose. Every pass re-reviews the same delta, so a finding an
+   * earlier pass reported and this pass no longer reports was addressed by the fix loop; a finding
+   * this pass still reports is carried until a later pass retires it, and the final pass's survivors
+   * stay carried into the terminal state. A Blocker the reserved remediation pass explicitly
+   * dispositioned overrides that inference with the verdict the loop actually recorded.
+   *
+   * This is what closes the coverage gap that left only 13% of runs with `feedback_events`: coverage
+   * is now driven by the loop rather than by optional manual triage. The records outlive the ledger
+   * rows they were derived from, which is why they are written to their own table.
+   */
+  fun reviewFindingOutcomes(
+    supersededFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+    blockerDispositions: List<GoalSubtaskBlockerDisposition>,
+  ): List<ReviewFindingOutcomeRecord> {
+    val dispositionsByFindingId = blockerDispositions.associateBy(GoalSubtaskBlockerDisposition::findingId)
+    val stillReported = currentFindings.mapNotNullTo(mutableSetOf(), UnaddressedFinding::findingId)
+    fun outcomeFor(finding: UnaddressedFinding, carriedByDefault: Boolean): ReviewFindingOutcome =
+      when (dispositionsByFindingId[finding.findingId]?.verdict) {
+        GoalSubtaskBlockerDispositionVerdict.RESOLVED -> ReviewFindingOutcome.ADDRESSED
+        GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> ReviewFindingOutcome.REJECTED
+        GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> ReviewFindingOutcome.CARRIED
+        null -> if (carriedByDefault) ReviewFindingOutcome.CARRIED else ReviewFindingOutcome.ADDRESSED
+      }
+    val supersededOutcomes = supersededFindings
+      // A finding carrying no id cannot be matched across passes, so it keeps its own pass's carried
+      // outcome rather than being declared addressed on no evidence.
+      .filter { finding -> finding.findingId != null && finding.findingId !in stillReported }
+      .map { finding -> finding.toOutcomeRecord(outcomeFor(finding, carriedByDefault = false)) }
+    val currentOutcomes = currentFindings
+      .map { finding -> finding.toOutcomeRecord(outcomeFor(finding, carriedByDefault = true)) }
+    return supersededOutcomes + currentOutcomes
   }
 
   /**
