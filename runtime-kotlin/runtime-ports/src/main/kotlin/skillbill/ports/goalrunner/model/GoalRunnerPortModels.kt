@@ -21,6 +21,14 @@ data class GoalRunnerCompletionPersistenceResult(
   val paused: Boolean,
 )
 
+data class GoalRunnerScopedReplanWriteResult(
+  val state: GoalRunnerManifestState,
+  val deletedPlanCount: Int,
+  val plannedSubtaskIdsBefore: List<Int>,
+  val plannedSubtaskIdsAfter: List<Int>,
+  val sharedPreplanPrepared: Boolean,
+)
+
 data class GoalRunnerPausePersistenceResult(
   val parentWorkflowId: String,
   val controlState: GoalRunnerControlState,

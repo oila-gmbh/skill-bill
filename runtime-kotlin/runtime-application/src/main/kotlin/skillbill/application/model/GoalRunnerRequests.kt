@@ -257,3 +257,33 @@ data class GoalRunnerResetSubtaskSnapshot(
   val blockedReason: String?,
   val lastResumableStep: String?,
 )
+
+data class GoalRunnerReplanRequest(
+  val issueKey: String,
+  val subtaskId: Int,
+  val dbPathOverride: String? = null,
+  val repoRoot: Path? = null,
+) {
+  init {
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
+  }
+}
+
+data class GoalRunnerReplanResult(
+  val issueKey: String,
+  val parentWorkflowId: String,
+  val subtaskId: Int,
+  val discardedPlan: Boolean,
+  val before: GoalRunnerReplanSnapshot,
+  val after: GoalRunnerReplanSnapshot,
+)
+
+data class GoalRunnerReplanSnapshot(
+  val status: String,
+  val currentSubtaskId: Int?,
+  val currentAction: String,
+  val sharedPreplanPrepared: Boolean,
+  val plannedSubtaskIds: List<Int>,
+  val subtasks: List<GoalRunnerResetSubtaskSnapshot>,
+)

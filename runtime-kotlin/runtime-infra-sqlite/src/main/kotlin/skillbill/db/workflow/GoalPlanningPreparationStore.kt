@@ -39,7 +39,7 @@ class GoalPlanningPreparationStore(
   ): GoalPlanningStatusSnapshot = translateSqlFailure(parentGoalWorkflowId, blockedSubtaskId ?: 0) {
     validateStatusRequest(parentGoalWorkflowId, orderedSubtaskIds, blockedSubtaskId, blockedReason)
     connection.inReadTransaction {
-      val shared = hasPreparedSharedPreplan(parentGoalWorkflowId)
+      val shared = readSharedPreplanPrepared(parentGoalWorkflowId)
       val plannedIds = preparedPlanIds(parentGoalWorkflowId)
       validatePreparedPlanIds(parentGoalWorkflowId, orderedSubtaskIds, plannedIds)
       planningStatusSnapshot(orderedSubtaskIds, plannedIds, shared, blockedSubtaskId, blockedReason)
@@ -84,7 +84,23 @@ class GoalPlanningPreparationStore(
     }
   }
 
-  private fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = connection.prepareStatement(
+  override fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = translateSqlFailure(
+    parentGoalWorkflowId,
+    0,
+  ) {
+    requireParentGoalWorkflowId(parentGoalWorkflowId)
+    readSharedPreplanPrepared(parentGoalWorkflowId)
+  }
+
+  override fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = translateSqlFailure(
+    parentGoalWorkflowId,
+    0,
+  ) {
+    requireParentGoalWorkflowId(parentGoalWorkflowId)
+    preparedPlanIds(parentGoalWorkflowId)
+  }
+
+  private fun readSharedPreplanPrepared(parentGoalWorkflowId: String): Boolean = connection.prepareStatement(
     "SELECT preparation_status FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
   ).use { statement ->
     statement.setString(1, parentGoalWorkflowId)
@@ -288,6 +304,41 @@ class GoalPlanningPreparationStore(
         }
         insertSubtaskPlanRow(checkpoint)
       }
+    }
+  }
+
+  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int {
+    // No nested BEGIN: must participate in saveScopedReplan's outer transaction (same as deleteByGoal).
+    requireParentGoalWorkflowId(parentGoalWorkflowId)
+    requirePositiveSubtaskId(parentGoalWorkflowId, subtaskId)
+    return translateSqlFailure(parentGoalWorkflowId, subtaskId) {
+      connection.prepareStatement(
+        "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
+      ).use { statement ->
+        statement.setString(1, parentGoalWorkflowId)
+        statement.setInt(2, subtaskId)
+        statement.executeUpdate()
+      }
+    }
+  }
+
+  private fun requireParentGoalWorkflowId(parentGoalWorkflowId: String) {
+    if (parentGoalWorkflowId.isBlank()) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        parentGoalWorkflowId,
+        "parent_goal_workflow_id",
+        "parent_goal_workflow_id is required",
+      )
+    }
+  }
+
+  private fun requirePositiveSubtaskId(parentGoalWorkflowId: String, subtaskId: Int) {
+    if (subtaskId < 1) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        "$parentGoalWorkflowId#$subtaskId",
+        "subtask_id",
+        "subtask_id must be a positive integer",
+      )
     }
   }
 

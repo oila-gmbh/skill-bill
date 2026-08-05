@@ -537,6 +537,31 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
+  fun `deleting a subtask plan removes only that row and leaves siblings and shared preplan`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+      store.checkpointSubtaskPlan(planCheckpoint(3, 2))
+      val descriptors = listOf(descriptor(1, 0), descriptor(2, 1), descriptor(3, 2))
+
+      assertEquals(1, store.deleteSubtaskPlan("goal-1", 3))
+      assertNull(store.findSubtaskPlan(identity(), 3, descriptor(3, 2).governedSubSpecPath))
+      assertEquals(listOf(1, 2), store.listSubtaskPlansOrdered(identity(), descriptors).map { it.subtaskId })
+      assertNotNull(store.findSharedPreplan(identity()))
+      assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, store.boundedStatus("goal-1", listOf(1, 2, 3)).state)
+      assertEquals(2, store.boundedStatus("goal-1", listOf(1, 2, 3)).plannedSubtaskCount)
+      assertEquals(3, store.boundedStatus("goal-1", listOf(1, 2, 3)).currentPlanningSubtaskId)
+      assertEquals(
+        "Saved plans will be reused; planning can resume at subtask 3.",
+        store.boundedStatus("goal-1", listOf(1, 2, 3)).reason,
+      )
+      assertEquals(0, store.deleteSubtaskPlan("goal-1", 3))
+    }
+  }
+
+  @Test
   fun `replacing a subtask plan overwrites the payload and leaves its siblings alone`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)

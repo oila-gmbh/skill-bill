@@ -2562,6 +2562,29 @@ internal class InMemoryGoalManifestStore(
     return save(recovered, dbPathOverride)
   }
 
+  var plannedSubtaskIds: MutableSet<Int> = mutableSetOf()
+  var sharedPreplanPrepared: Boolean = true
+  var scopedReplanCount: Int = 0
+    private set
+
+  override fun saveScopedReplan(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult {
+    scopedReplanCount += 1
+    val before = plannedSubtaskIds.sorted()
+    val deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
+    val saved = save(state, dbPathOverride)
+    return skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult(
+      state = saved,
+      deletedPlanCount = deleted,
+      plannedSubtaskIdsBefore = before,
+      plannedSubtaskIdsAfter = plannedSubtaskIds.sorted(),
+      sharedPreplanPrepared = sharedPreplanPrepared,
+    )
+  }
+
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
@@ -3217,7 +3240,7 @@ private class FixedBranchGitOperations(
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
-private class AcceptGitOperations(
+internal class AcceptGitOperations(
   private val resolvable: Map<String, String> = mapOf(
     "abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd",
     "abc1234abc1234abc1234abc1234abc1234abcd" to "abc1234abc1234abc1234abc1234abc1234abcd",
@@ -3573,7 +3596,7 @@ class GoalRunnerStatusAttributionTest {
 // recorder runs over an empty repository (every read returns null) and attribution falls through to
 // the subtask's recorded finalizing/participating agent — letting status attribution tests assert
 // source 2 without a database.
-private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
+internal fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
   GoalTestEmptyDatabase,
   GoalTestNoopSnapshotValidator,
   AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

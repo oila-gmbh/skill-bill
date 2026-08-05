@@ -1325,6 +1325,12 @@ private class InMemoryPreparationRepository(
     plans[checkpoint.subtaskId] = checkpoint
   }
 
+  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int {
+    val removed = plans.remove(subtaskId) != null
+    records.remove(subtaskId)
+    return if (removed) 1 else 0
+  }
+
   fun corruptPlanProvenance(subtaskId: Int) {
     val plan = requireNotNull(plans[subtaskId])
     plans[subtaskId] = plan.copy(provenance = plan.provenance.copy(parentSpecHash = "stale-parent-spec-hash"))

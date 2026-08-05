@@ -59,6 +59,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -355,6 +356,39 @@ class WorkflowGoalRunnerManifestStore(
       decompositionManifestFileStore,
     )
     return saved.state
+  }
+
+  override fun saveScopedReplan(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerScopedReplanWriteResult {
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      val preparations = unitOfWork.goalPlanningPreparations
+      val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+      val deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+      val plannedAfter = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+      val shared = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+      val projection = saveWorkflowProjectionInTransaction(
+        unitOfWork,
+        state,
+        mergeConcurrentProgress = false,
+      )
+      GoalRunnerScopedReplanWriteResult(
+        state = projection.state,
+        deletedPlanCount = deleted,
+        plannedSubtaskIdsBefore = plannedBefore,
+        plannedSubtaskIdsAfter = plannedAfter,
+        sharedPreplanPrepared = shared,
+      ) to projection.projectionArtifactsJson
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.second,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.first
   }
 
   override fun saveNewChildWorkflow(

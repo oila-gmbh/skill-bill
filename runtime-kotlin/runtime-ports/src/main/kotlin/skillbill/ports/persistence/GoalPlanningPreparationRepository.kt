@@ -50,6 +50,17 @@ interface NormalizedGoalPlanningPreparationRepository {
   fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan replacement is not implemented by this repository.")
 
+  /**
+   * Deletes exactly one stored subtask plan row. Returns the deleted row count (0 or 1) so callers can
+   * distinguish discard from a no-op. Does not touch the shared preplan or sibling plans.
+   */
+  fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int =
+    error("Goal subtask plan deletion is not implemented by this repository.")
+
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
+
+  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
+
   fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
     subtaskId: Int,

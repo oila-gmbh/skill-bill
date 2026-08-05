@@ -23,6 +23,8 @@ import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerPauseResult
+import skillbill.application.model.GoalRunnerReplanRequest
+import skillbill.application.model.GoalRunnerReplanResult
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResumeResult
@@ -59,6 +61,7 @@ class GoalControlSubcommands(
   val pause: GoalPauseCommand,
   val resume: GoalResumeCommand,
   val reset: GoalResetCommand,
+  val replan: GoalReplanCommand,
   val accept: GoalAcceptCommand,
 )
 
@@ -145,6 +148,7 @@ class GoalRunCommand(
       goalRunSubcommands.controls.pause,
       goalRunSubcommands.controls.resume,
       goalRunSubcommands.controls.reset,
+      goalRunSubcommands.controls.replan,
       goalRunSubcommands.controls.accept,
       goalRunSubcommands.findings,
     )
@@ -595,6 +599,38 @@ class GoalResetCommand(
     if (discardedAcceptances.isNotEmpty()) {
       state.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
     }
+  }
+}
+
+@Inject
+class GoalReplanCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "replan",
+  "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val subtaskId by option(
+    "--subtask",
+    help = "Subtask whose stored plan should be discarded and regenerated on the next goal run.",
+  ).int().required()
+  private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
+
+  override fun run() {
+    if (subtaskId <= 0) {
+      throw UsageError("--subtask must be a positive integer.")
+    }
+    val result = goalRunnerStatusService.replan(
+      GoalRunnerReplanRequest(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    val payload = result.toGoalReplanCliMap(issueKey)
+    state.completeText(goalReplanText(payload), payload, exitCode = payload.goalResetExitCode())
   }
 }
 
@@ -1119,11 +1155,48 @@ private fun GoalRunnerResetResult?.toGoalResetCliMap(issueKey: String, hard: Boo
   "mode" to if (hard) "hard" else "soft",
 )
 
+private fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<String, Any?> = this?.let {
+  linkedMapOf(
+    "status" to "ok",
+    "issue_key" to it.issueKey,
+    "mode" to "scoped_replan",
+    "parent_workflow_id" to it.parentWorkflowId,
+    "subtask_id" to it.subtaskId,
+    "discarded_plan" to it.discardedPlan,
+    "before" to replanSnapshotMap(it.before),
+    "after" to replanSnapshotMap(it.after),
+  )
+} ?: linkedMapOf(
+  "status" to "not_found",
+  "issue_key" to issueKey,
+  "mode" to "scoped_replan",
+)
+
 private fun resetSnapshotMap(snapshot: skillbill.application.model.GoalRunnerResetSnapshot): Map<String, Any?> =
   linkedMapOf(
     "status" to snapshot.status,
     "current_subtask" to snapshot.currentSubtaskId,
     "current_action" to snapshot.currentAction,
+    "subtasks" to snapshot.subtasks.map { subtask ->
+      linkedMapOf(
+        "id" to subtask.id,
+        "status" to subtask.status,
+        "branch" to subtask.branch,
+        "workflow_id" to subtask.workflowId,
+        "commit_sha" to subtask.commitSha,
+        "blocked_reason" to subtask.blockedReason,
+        "last_resumable_step" to subtask.lastResumableStep,
+      )
+    },
+  )
+
+private fun replanSnapshotMap(snapshot: skillbill.application.model.GoalRunnerReplanSnapshot): Map<String, Any?> =
+  linkedMapOf(
+    "status" to snapshot.status,
+    "current_subtask" to snapshot.currentSubtaskId,
+    "current_action" to snapshot.currentAction,
+    "shared_preplan_prepared" to snapshot.sharedPreplanPrepared,
+    "planned_subtask_ids" to snapshot.plannedSubtaskIds,
     "subtasks" to snapshot.subtasks.map { subtask ->
       linkedMapOf(
         "id" to subtask.id,
@@ -1220,6 +1293,29 @@ private fun goalResetText(payload: Map<String, Any?>): String = buildString {
         "classification=${recovery["classification"]}",
     )
     recovery["command"]?.let { appendLine("recovery_command: $it") }
+  }
+}
+
+private fun goalReplanText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  appendLine("mode: ${payload["mode"]}")
+  payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
+  payload["subtask_id"]?.let { appendLine("discarded_plan: subtask=$it; existed=${payload["discarded_plan"]}") }
+  val before = payload["before"] as? Map<*, *>
+  val after = payload["after"] as? Map<*, *>
+  if (before != null && after != null) {
+    appendLine(
+      "preserved: shared_preplan=${after["shared_preplan_prepared"]}; " +
+        "planned_before=${(before["planned_subtask_ids"] as? List<*>)?.joinToString(",") ?: "none"}; " +
+        "planned_after=${(after["planned_subtask_ids"] as? List<*>)?.joinToString(",") ?: "none"}",
+    )
+    appendLine("before: status=${before["status"]}; current_subtask=${before["current_subtask"] ?: "none"}")
+    appendLine("after: status=${after["status"]}; current_subtask=${after["current_subtask"] ?: "none"}")
+    appendLine("before_subtasks:")
+    appendGoalResetSubtaskLines(this, before["subtasks"] as? List<*>)
+    appendLine("after_subtasks:")
+    appendGoalResetSubtaskLines(this, after["subtasks"] as? List<*>)
   }
 }
 

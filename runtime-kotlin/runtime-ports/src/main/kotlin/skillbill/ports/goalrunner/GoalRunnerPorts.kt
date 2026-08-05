@@ -23,6 +23,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
@@ -160,6 +161,17 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     dbPathOverride: String? = null,
   ): GoalRunnerManifestState =
     error("Goal runner manifest store must atomically delete a selected incompatible child workflow.")
+
+  /**
+   * Atomically deletes one `goal_subtask_plans` row and persists the retargeted parent manifest.
+   * Does not delete child workflow rows or mutate subtask runtime fields.
+   */
+  fun saveScopedReplan(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String? = null,
+  ): GoalRunnerScopedReplanWriteResult =
+    error("Goal runner manifest store must atomically persist a scoped subtask replan.")
 
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

@@ -13,6 +13,7 @@ private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoal
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
+  override fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int = 0
   override fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
     subtaskId: Int,
