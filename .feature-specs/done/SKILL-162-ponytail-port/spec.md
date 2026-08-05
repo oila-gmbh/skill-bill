@@ -1,4 +1,4 @@
-# SKILL-159: Port ponytail's minimalism discipline into skill-bill
+# SKILL-162: Port ponytail's minimalism discipline into skill-bill
 
 **Status:** Prepared
 **Mode:** decomposed (3 subtasks)

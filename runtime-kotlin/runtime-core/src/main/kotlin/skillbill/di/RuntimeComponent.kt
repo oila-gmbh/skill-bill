@@ -118,6 +118,7 @@ import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
+import skillbill.launcher.agentrun.PathExecutableLookup
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
@@ -126,6 +127,7 @@ import skillbill.model.WorkflowOpsContext
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
@@ -350,6 +352,11 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun agentRunLauncher(callbacks: OptionalCallbacks, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
     callbacks.agentRunLauncher ?: adapter
+
+  @Provides
+  @JvmSynthetic
+  fun executableLookup(callbacks: OptionalCallbacks): ExecutableLookup =
+    callbacks.executableLookup ?: PathExecutableLookup()
 
   @Provides
   @JvmSynthetic

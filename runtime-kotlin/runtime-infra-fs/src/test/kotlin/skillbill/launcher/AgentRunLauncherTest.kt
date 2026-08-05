@@ -53,7 +53,7 @@ class AgentRunLauncherTest {
     val runner = RecordingAgentRunProcessRunner()
     val request = skillRunRequest(goalContinuation = null).copy(promptOverride = PHASE_PROMPT)
 
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(request)
+    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE]).launch(request)
 
     val captured = runner.requests.single()
     assertEquals("claude", captured.command[0])
@@ -69,7 +69,7 @@ class AgentRunLauncherTest {
 
     // SKILL-95: opencode is no longer a runtime adapter; junie is the other argv-delivered agent
     // (the prompt rides as a trailing argv token, never via stdin).
-    requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.JUNIE]).launch(request)
+    requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.JUNIE]).launch(request)
 
     val captured = runner.requests.single()
     assertEquals("junie", captured.command.first())
@@ -78,7 +78,7 @@ class AgentRunLauncherTest {
 
   @Test
   fun `supported agent without headless path returns unsupported outcome`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
 
     val outcome = launcher.launch(
       AgentRunLaunchRequest(
@@ -94,7 +94,7 @@ class AgentRunLauncherTest {
 
   @Test
   fun `opencode returns the unsupported headless launch outcome with the actionable prose message`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
 
     val outcome = launcher.launch(
       AgentRunLaunchRequest(
@@ -111,7 +111,7 @@ class AgentRunLauncherTest {
 
   @Test
   fun `zcode returns the unsupported headless launch outcome with the actionable prose message`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
 
     val outcome = launcher.launch(
       AgentRunLaunchRequest(
@@ -141,7 +141,7 @@ class AgentRunLauncherTest {
       ),
     )
     val timeout = requireNotNull(
-      headlessAgentRunAdapters(timeoutRunner)[InstallAgent.CODEX],
+      headlessAgentRunAdapters(timeoutRunner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX],
     ).launch(skillRunRequest())
     assertTrue(timeout.timedOut)
     assertFalse(timeout.spawnFailed)
@@ -158,7 +158,7 @@ class AgentRunLauncherTest {
       ),
     )
     val spawnFailure = requireNotNull(
-      headlessAgentRunAdapters(spawnRunner)[InstallAgent.CODEX],
+      headlessAgentRunAdapters(spawnRunner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX],
     ).launch(skillRunRequest())
     assertFalse(spawnFailure.timedOut)
     assertTrue(spawnFailure.spawnFailed)
@@ -180,7 +180,8 @@ class AgentRunLauncherTest {
       ),
     )
 
-    val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX]).launch(skillRunRequest())
+    val facts = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX])
+      .launch(skillRunRequest())
 
     assertContentEquals(rawBytes, facts.stdoutBytes)
   }
@@ -199,7 +200,8 @@ class AgentRunLauncherTest {
       ),
     )
 
-    val facts = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CLAUDE]).launch(skillRunRequest())
+    val facts = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE])
+      .launch(skillRunRequest())
 
     assertEquals("""{"status":"blocked"}""", facts.stdout)
     assertContentEquals(facts.stdout.encodeToByteArray(), facts.stdoutBytes)
@@ -208,7 +210,7 @@ class AgentRunLauncherTest {
   @Test
   fun `adapter invokes process runner once per launch`() {
     val runner = RecordingAgentRunProcessRunner()
-    val adapter = requireNotNull(headlessAgentRunAdapters(runner)[InstallAgent.CODEX])
+    val adapter = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX])
 
     adapter.launch(
       skillRunRequest(issueKey = "SKILL-56", goalContinuation = null)
@@ -764,7 +766,7 @@ class AgentRunLauncherTest {
     // deterministic, non-secret session id, with no provider-private token log
     // consulted.
     val runner = RecordingAgentRunProcessRunner()
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
     // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters.
     listOf(InstallAgent.CODEX, InstallAgent.CLAUDE, InstallAgent.JUNIE).forEach { agent ->
       val facts = requireNotNull(adapters[agent]).launch(skillRunRequest())
@@ -1010,7 +1012,7 @@ class HeadlessAgentRunAdapterTest {
       )
     }
 
-    ProcessAgentRunAdapter(InstallAgent.CLAUDE, ptyBuilder, runner).launch(phaseRunRequest())
+    ProcessAgentRunAdapter(InstallAgent.CLAUDE, ptyBuilder, runner, ALL_EXECUTABLES_AVAILABLE).launch(phaseRunRequest())
 
     assertEquals(1, runner.requests.size)
     assertTrue(runner.requests.single().usePtyStdio, "adapter must thread usePtyStdio=true from the builder")
@@ -1022,7 +1024,7 @@ class HeadlessAgentRunAdapterTest {
     val request = phaseRunRequest().copy(conversationIsolation = ConversationIsolation.NONE)
     val builder = CodexAgentRunCommandBuilder()
 
-    ProcessAgentRunAdapter(InstallAgent.CODEX, builder, runner).launch(request)
+    ProcessAgentRunAdapter(InstallAgent.CODEX, builder, runner, ALL_EXECUTABLES_AVAILABLE).launch(request)
 
     assertEquals(ConversationIsolation.NONE, runner.requests.single().conversationIsolation)
     assertEquals("none", runner.requests.single().conversationIsolation?.forkTurns)
@@ -1032,7 +1034,7 @@ class HeadlessAgentRunAdapterTest {
   fun `claude codex and junie builders emit usePtyStdio=false`() {
     val runner = RecordingAgentRunProcessRunner()
     val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
 
     listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
       requireNotNull(adapters[agent]).launch(request)
@@ -1049,7 +1051,7 @@ class HeadlessAgentRunAdapterTest {
   fun `process adapter threads usePtyStdio=false into the process request for supported agents`() {
     val runner = RecordingAgentRunProcessRunner()
     val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
 
     requireNotNull(adapters[InstallAgent.CLAUDE]).launch(request)
     requireNotNull(adapters[InstallAgent.CODEX]).launch(request)
@@ -1062,7 +1064,7 @@ class HeadlessAgentRunAdapterTest {
   @Test
   fun `cursor is registered as a headless adapter with correct builder and decoder`() {
     val runner = RecordingAgentRunProcessRunner()
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
 
     val cursorAdapter = adapters[InstallAgent.CURSOR]
     assertNotNull(cursorAdapter, "cursor must be registered as a headless adapter")
@@ -1079,7 +1081,7 @@ class HeadlessAgentRunAdapterTest {
 
   @Test
   fun `cursor launch is not refused and succeeds`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner())
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
 
     val outcome = launcher.launch(
       AgentRunLaunchRequest(
@@ -1103,7 +1105,7 @@ class HeadlessAgentRunAdapterTest {
         spawnFailed = false,
       ),
     )
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
     val request = skillRunRequest().copy(
       promptOverride = "Run timeout test",
       timeout = 100.milliseconds,
@@ -1128,7 +1130,7 @@ class HeadlessAgentRunAdapterTest {
         spawnFailed = false,
       ),
     )
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
 
     val outcome = requireNotNull(adapters[InstallAgent.CURSOR]).launch(skillRunRequest())
 
@@ -1140,7 +1142,7 @@ class HeadlessAgentRunAdapterTest {
   @Test
   fun `cursor durable-progress policies remain in force with streamed output`() {
     val runner = RecordingAgentRunProcessRunner()
-    val adapters = headlessAgentRunAdapters(runner)
+    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
     val request = skillRunRequest().copy(
       promptOverride = "Test progress policies",
       streamOutputForLiveness = true,

@@ -921,10 +921,16 @@ class GoalRunner(
     planning: GoalPlanningSweepOutcome.PreparedAll,
   ): PreparedLaunch {
     val priorWorkflowId = state.manifest.workflowIdFor(subtaskId)
+    val subtask = requireNotNull(state.manifest.subtasks.firstOrNull { it.id == subtaskId }) {
+      "Goal subtask '$subtaskId' is missing from the decomposition manifest."
+    }
+    if (subtask.status == "blocked" && priorWorkflowId != null) {
+      reopenBlockedChildForOperatorResume(subtaskId, priorWorkflowId, subtask, request)
+    }
     val firstRun = priorWorkflowId == null
     val assignedWorkflowId = priorWorkflowId ?: generateWorkflowId(RUNTIME_WORKFLOW_ID_PREFIX)
     val rawSpecPath = requireNotNull(
-      state.manifest.subtasks.firstOrNull { it.id == subtaskId }?.specPath?.takeIf(String::isNotBlank),
+      subtask.specPath.takeIf(String::isNotBlank),
     ) { "Goal subtask '$subtaskId' has no governed spec path." }
     val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
       .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
@@ -963,6 +969,26 @@ class GoalRunner(
       )
     }
     return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
+  }
+
+  private fun reopenBlockedChildForOperatorResume(
+    subtaskId: Int,
+    workflowId: String,
+    subtask: DecompositionSubtask,
+    request: GoalRunnerRunRequest,
+  ) {
+    val phaseId = subtask.lastResumableStep?.takeIf(String::isNotBlank)
+      ?: FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    check(
+      outcomeStore.reopenBlockedPhaseForOperatorResume(
+        workflowId = workflowId,
+        preferredPhaseId = phaseId,
+        reason = "Operator resumed the goal after a blocked stop at subtask $subtaskId.",
+        dbPathOverride = request.dbPathOverride,
+      ),
+    ) {
+      "Goal subtask '$subtaskId' is blocked but child workflow '$workflowId' could not be reopened for resume."
+    }
   }
 
   private fun emitSubtaskStarted(

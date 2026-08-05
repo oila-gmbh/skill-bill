@@ -4,13 +4,10 @@ import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeImplementationContinuationBudgetTest {
   @Test
-  fun `a segment below the cap retries and advances the segment counter`() {
+  fun `a segment retries and advances the segment counter`() {
     val decision = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision("implement", segmentCount = 1)
 
     val retry = assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(decision)
@@ -19,40 +16,19 @@ class FeatureTaskRuntimeImplementationContinuationBudgetTest {
   }
 
   @Test
-  fun `the segment at the cap blocks and the reason names the cap`() {
+  fun `continuation keeps retrying past the former segment cap`() {
+    // Honest partial work is uncapped: a segment count that used to exhaust the budget must still
+    // continue rather than block for an operator.
     val decision = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision(
       "implement",
-      segmentCount = FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS,
+      segmentCount = 5,
     )
 
-    val block = assertIs<FeatureTaskRuntimeFixLoopDecision.Block>(decision)
-    assertTrue(
-      block.blockedReason.contains(
-        FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS.toString(),
-      ),
-      block.blockedReason,
-    )
+    assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(decision)
   }
 
   @Test
-  fun `a resume at or beyond the cap re-blocks without relaunching`() {
-    assertNull(FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted("implement", 1))
-    assertNotNull(
-      FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted(
-        "implement",
-        FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS,
-      ),
-    )
-    assertNotNull(
-      FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockReasonIfBudgetExhausted(
-        "implement",
-        FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS + 3,
-      ),
-    )
-  }
-
-  @Test
-  fun `the continuation budget is independent of the semantic fix-loop budget`() {
+  fun `continuation stays independent of the semantic fix-loop budget`() {
     // Independence is what keeps an honest partial implementation from consuming the budget reserved
     // for repairing invalid output, and vice versa.
     val atSemanticCap = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision(
@@ -62,18 +38,7 @@ class FeatureTaskRuntimeImplementationContinuationBudgetTest {
 
     assertIs<FeatureTaskRuntimeFixLoopDecision.Retry>(
       atSemanticCap,
-      "a segment count at the semantic cap must still continue while the continuation budget remains",
+      "a segment count at the semantic cap must still continue on the continuation axis",
     )
-    assertTrue(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS >
-        FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-    )
-  }
-
-  @Test
-  fun `the exhaustion reason states the other budgets were not consumed`() {
-    val reason = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkBlockedReason("implement", 5)
-
-    assertTrue(reason.contains("not consumed"), reason)
   }
 }

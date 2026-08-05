@@ -124,10 +124,12 @@ Omit `mode:` to use delegated review, the default specialist subagent fan-out; `
 | `/bill-feature-spec` | Standalone manifest-backed feature-spec preparation reused by feature and goal workflows |
 | `/bill-feature-verify` | Verify a PR against a task spec or design doc |
 | `/bill-monitor` | Inspect one decomposed goal with a bounded read-only status snapshot |
+| `/bill-over-engineering-review` | Complexity-only over-engineering review for diffs (default) or whole-repo audits |
 | `/bill-pr-description` | Generate a PR title, description, and QA steps |
 | `/bill-pr-review-fix` | Resolve PR review comments end-to-end with an approval gate and reply automation |
 | `/bill-unit-test-value-check` | Review unit tests for low-value or tautological coverage |
 | `/bill-release` | Cut a Skill Bill release: generate a curated changelog, confirm the semver bump, create and push the annotated tag |
+| `/bill-shortcut-debt` | Harvest shortcut: markers into a debt ledger |
 | `/bill-update-check` | Check the installed Skill Bill version against GitHub releases |
 
 ## Learn more

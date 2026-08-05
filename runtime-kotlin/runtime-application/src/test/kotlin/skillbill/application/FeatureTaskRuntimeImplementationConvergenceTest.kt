@@ -1,12 +1,11 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -27,8 +26,12 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
   }
 
   @Test
-  fun `a semantically false completed receipt cannot advance and the block names the missing task id`() {
-    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE))
+  fun `a semantically false completed receipt cannot advance and the continuation names the missing task id`() {
+    // Never closes task-3; the agent eventually reports blocked so the harness can terminate without
+    // a continuation-segment cap.
+    val harness = runnerHarness(
+      launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE, agentBlockAfterSegments = 4),
+    )
 
     val report = harness.runner.run(harness.request())
 
@@ -37,14 +40,16 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "implement" }
     assertTrue(implementBriefings.size > 1, "the runtime must re-enter implement rather than advance")
-    assertContains(implementBriefings.last(), "task-3")
+    assertTrue(implementBriefings.any { it.contains("task-3") }, "continuation must name the still-open task")
   }
 
   @Test
   fun `flipping only the top-level status to completed does not escape the gate`() {
     // The receipt is structurally valid and says `completed`; only the receipt body is honest about
     // what is still open. Structural validity must not buy a forward transition.
-    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE))
+    val harness = runnerHarness(
+      launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE, agentBlockAfterSegments = 4),
+    )
 
     harness.runner.run(harness.request())
 
@@ -54,18 +59,40 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
   }
 
   @Test
-  fun `the continuation loop is bounded and blocks naming the still-open obligations`() {
-    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE))
+  fun `continuation continues past the former segment cap when work eventually closes`() {
+    // Former hard cap was 5 segments. Closing on segment 6 proves continuation is uncapped.
+    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = 6))
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS,
-      harness.launchedPromptPhaseOrder().count { it == "implement" },
-      "the runtime must stop at the declared continuation cap, not loop indefinitely",
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(6, harness.launchedPromptPhaseOrder().count { it == "implement" })
+  }
+
+  @Test
+  fun `a legacy continuation-budget block is re-entered on resume`() {
+    // The removed 5-segment cap persisted needs_user_action. That block is stale: resume must relaunch
+    // implement rather than re-surface the old reason.
+    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = 1))
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), threeTaskPlanOutput())
+    harness.seedBlockedPhase(
+      "implement",
+      5,
+      phaseAgent("implement"),
+      "Phase 'implement' exhausted the bounded implementation-continuation budget after 5 segments " +
+        "(cap=5) with obligations still open; the run blocks for an operator decision rather than " +
+        "continuing indefinitely. The malformed-output and semantic fix-loop budgets were not consumed.",
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     )
-    assertEquals("implement", blocked.lastIncompletePhase)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(
+      harness.launchedPromptPhaseOrder().any { it == "implement" },
+      "the stale continuation-budget block must relaunch implement",
+    )
   }
 
   @Test
@@ -282,22 +309,31 @@ private fun terminalImplementOutput(status: String): String = """
 """.trimIndent()
 
 // implement closes one more task per segment and closes all three at [closeAllOnSegment]; every other
-// phase returns the shared default output.
-internal fun convergingImplementLauncher(closeAllOnSegment: Int): RuntimeRecordingLauncher {
+// phase returns the shared default output. When [agentBlockAfterSegments] is set, that many incomplete
+// segments are followed by a retryable agent `blocked` envelope so tests that never close work can
+// still terminate without a continuation-segment cap.
+internal fun convergingImplementLauncher(
+  closeAllOnSegment: Int,
+  agentBlockAfterSegments: Int? = null,
+): RuntimeRecordingLauncher {
   var implementSegment = 0
   return RuntimeRecordingLauncher { request ->
     when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
       "plan" -> facts(threeTaskPlanOutput())
       "implement" -> {
         implementSegment += 1
-        // A non-closing segment is capped BELOW the plan's task count: coercing to the count itself
-        // let segment three close every task even when the fixture was asked never to close.
-        val closed = if (implementSegment >= closeAllOnSegment) {
-          CONVERGENCE_PLAN_TASK_COUNT
+        if (agentBlockAfterSegments != null && implementSegment > agentBlockAfterSegments) {
+          facts(terminalImplementOutput("blocked"))
         } else {
-          implementSegment.coerceAtMost(CONVERGENCE_PLAN_TASK_COUNT - 1)
+          // A non-closing segment is capped BELOW the plan's task count: coercing to the count itself
+          // let segment three close every task even when the fixture was asked never to close.
+          val closed = if (implementSegment >= closeAllOnSegment) {
+            CONVERGENCE_PLAN_TASK_COUNT
+          } else {
+            implementSegment.coerceAtMost(CONVERGENCE_PLAN_TASK_COUNT - 1)
+          }
+          facts(partialImplementOutput(closed))
         }
-        facts(partialImplementOutput(closed))
       }
       else -> facts(defaultPhaseOutput(request))
     }

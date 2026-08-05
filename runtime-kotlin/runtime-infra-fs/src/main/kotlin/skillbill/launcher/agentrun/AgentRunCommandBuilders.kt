@@ -1,6 +1,8 @@
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.install.model.AGENT_LAUNCHER_CLIS
+import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
@@ -35,6 +37,12 @@ interface AgentRunCommandBuilder {
   val agent: InstallAgent
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
+
+  /** The headless CLI this builder's command execs, resolved against PATH before every spawn. */
+  val launcherCli: AgentLauncherCli get() = requireNotNull(AGENT_LAUNCHER_CLIS[agent]) {
+    "Agent '${agent.id}' has a headless command builder but no declared launcher CLI."
+  }
+
   fun build(request: SkillRunRequest): AgentRunCommand
 }
 

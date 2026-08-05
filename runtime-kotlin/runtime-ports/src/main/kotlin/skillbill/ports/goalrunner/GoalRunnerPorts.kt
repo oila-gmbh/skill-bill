@@ -73,20 +73,20 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String? = null,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun heartbeatExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun releaseExecutionLease(
     parentWorkflowId: String,
     ownerToken: String,
     generation: Long,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun bindRepositoryIdentity(
     parentWorkflowId: String,
@@ -308,6 +308,18 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
   // completed and edges still in progress within a single child run, beyond the stop-position
   // inference that only catches loop-only-phase stops.
   fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int> = emptyMap()
+
+  /**
+   * Operator goal resume: reopen a durably blocked child phase so the next launch continues instead
+   * of re-surfacing `needs_user_action`. Idempotent when the preferred (or any) phase is not blocked.
+   * Returns false only when the child workflow is missing or already terminal.
+   */
+  fun reopenBlockedPhaseForOperatorResume(
+    workflowId: String,
+    preferredPhaseId: String,
+    reason: String,
+    dbPathOverride: String? = null,
+  ): Boolean
 }
 
 // SKILL-142 (AC-011): narrow read-only port for aggregated operator metrics from the attempt ledger.

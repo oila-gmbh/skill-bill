@@ -13,6 +13,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -1588,6 +1589,26 @@ private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {
     null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = true
 }
 
 private class TrackingPlanningAuthorization : AgentRunSpawnAuthorization {
@@ -1614,6 +1635,26 @@ private class AuthorizingGoalPlanningManifestStore(
     null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = true
 
   override fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String?): AgentRunSpawnAuthorization =
     authorization

@@ -4,6 +4,7 @@ import skillbill.cli.core.ExternalCommandRunner
 import skillbill.cli.core.ProcessExternalCommandRunner
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
@@ -21,6 +22,7 @@ data class CliRuntimeContext(
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
+  val executableLookup: ExecutableLookup? = null,
   val liveStdout: (String) -> Unit = {},
   val liveStderr: (String) -> Unit = {},
 ) {
@@ -33,5 +35,6 @@ data class CliRuntimeContext(
     workflowGitOperations = workflowGitOperations,
     agentRunLauncher = agentRunLauncher,
     goalPullRequestPort = goalPullRequestPort,
+    executableLookup = executableLookup,
   )
 }

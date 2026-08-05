@@ -9,6 +9,7 @@ import skillbill.di.create
 import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
@@ -18,6 +19,8 @@ import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.ScopedStagingGitOperations
+import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -1804,6 +1807,8 @@ private data class FeatureTaskRuntimeCliFixture(
     liveStdout = liveStdout,
     liveStderr = liveStderr,
     workflowGitOperations = workflowGitOperations,
+    // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
+    executableLookup = ExecutableLookup { true },
   )
 
   fun runCommand(extra: List<String> = emptyList()): List<String> = buildList {
@@ -2148,10 +2153,31 @@ private class FakeRuntimeGitOperations(
 ) : WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider {
+  RepositoryOwnedPathsGitOperationsProvider,
+  ScopedStagingGitOperationsProvider {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
+
+  override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
+    override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(
+        status = "ok",
+        value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
+      )
+  }
 
   val checkoutBranches: MutableList<String> = mutableListOf()
 

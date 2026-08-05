@@ -51,6 +51,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       header(issueKey, briefing.phaseId),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
+      minimalismDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       reviewExecutionDirective(
         briefing.phaseId,

@@ -443,6 +443,10 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
@@ -1171,6 +1175,10 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`

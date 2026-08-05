@@ -1000,6 +1000,33 @@ Execution rules:
 - Follow standards in `CLAUDE.md`, `AGENTS.md`, and any matching `.agents/skill-overrides.md` section.
 - If this briefing or recovered context says `goal_continuation.enabled=true`, never run installer or uninstall flows: do not call `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any equivalent install-sync command. This overrides `AGENTS.md` install-refresh guidance for the duration of goal-continuation because install sync can reset local workflow state. If source skill changes would normally require install refresh, leave it for after the goal run, mention it in `notes_for_review`, and never block subtask completion solely because install sync is deferred.
 - Write production-grade code. Do not introduce deprecated components, APIs, or patterns when a supported alternative exists.
+
+Minimalism discipline (reuse before write):
+Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+
+The ladder — stop at the first rung that holds:
+1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+3. Stdlib does it? Use it.
+4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+6. Can it be one line? One line.
+7. Only then: the minimum code that works.
+Two equal rungs both work → take the higher one and move on.
+
+Rules:
+- No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+- No scaffolding "for later"; later can scaffold for itself.
+- Deletion over addition. Boring over clever.
+- Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+- Between two equal-size options, take the one correct on edge cases.
+
+Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+
+Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+
+Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
+
 - Write tests exactly as specified in each task's `tests` field.
 - If a task reveals the plan is wrong, STOP and return with `plan_deviation_notes` populated describing what changed and why; do not try to silently re-plan.
 - Do not skip or combine tasks.
@@ -1043,6 +1070,32 @@ Findings to fix:
 Current branch diff pointer: {branch_or_commit_range}
 
 Test gate is relaxed: write tests only when the finding being fixed requires them (for example, a finding about missing regression coverage or a broken test). Do not treat the standard "write tests if the plan included testable logic" gate as mandatory in fix mode — the plan is not being re-executed here.
+
+Minimalism discipline (reuse before write):
+Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+
+The ladder — stop at the first rung that holds:
+1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+3. Stdlib does it? Use it.
+4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+6. Can it be one line? One line.
+7. Only then: the minimum code that works.
+Two equal rungs both work → take the higher one and move on.
+
+Rules:
+- No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+- No scaffolding "for later"; later can scaffold for itself.
+- Deletion over addition. Boring over clever.
+- Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+- Between two equal-size options, take the one correct on edge cases.
+
+Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+
+Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+
+Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
 
 Return the standard implementation return contract, with `notes_for_review` describing which finding each change addresses.
 ```
@@ -1268,6 +1321,10 @@ When parsing escalates to the user:
 ## Audit-first review and findings ledger
 
 Run `implement -> audit -> review -> validate`; do not begin review until audit is satisfied. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blockers stop advancement, while non-blockers advance and are recorded in the goal-wide unaddressed-findings ledger. Retrieve location-bearing detail during or after the goal with `skill-bill goal findings --issue-key <KEY>`.
+
+## Attribution
+
+Minimalism-discipline guidance in the implementation briefings is adapted from DietrichGebert/ponytail (MIT License), https://github.com/DietrichGebert/ponytail.
 
 ## Non-Goals
 

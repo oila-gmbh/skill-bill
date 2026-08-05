@@ -4,6 +4,8 @@
 
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
@@ -2167,6 +2169,13 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
 
+  // Continuation used to hard-cap at five segments and persist needs_user_action. That cap is gone, so a
+  // durable block naming the old budget is stale rather than terminal: resume must relaunch implement and
+  // keep continuing until obligations close.
+  private fun isRemovedImplementationContinuationBudgetBlock(phaseId: String, reason: String): Boolean =
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      "exhausted the bounded implementation-continuation budget" in reason
+
   // A pre-quarantine build blocked a launch-seam planning-projection rejection with a terminal
   // needs_user_action disposition; the current seam instead quarantines the upstream record and
   // regenerates its producer. Such a legacy row is stale, not terminal: re-enter the phase so the live
@@ -2188,8 +2197,9 @@ internal class FeatureTaskRuntimeRunLoop(
     state.legacyLaunchSeamRejectionConsumedBudget(phaseId, reason)
 
   // Decides whether a phase with a persisted block relaunches instead of re-surfacing it, restarting the
-  // fix-loop budget for the re-enterable stale-block classes whose prior attempts were not real output
-  // attempts (goal-review preparation retries, launch-seam record rejections).
+  // fix-loop budget for the re-enterable stale-block classes whose prior attempts were not real semantic
+  // output failures (goal-review preparation retries, launch-seam record rejections, and the removed
+  // implementation-continuation segment cap).
   private fun shouldRelaunchPersistedBlock(
     state: FeatureTaskRuntimeRunState,
     phaseId: String,
@@ -2199,7 +2209,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val retryReviewPreparation = isRetryableGoalReviewPreparation(phaseId, persistedReason) ||
       state.legacyReviewPreparationRetryConsumedBudget(phaseId, persistedReason)
     val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
-    if (retryReviewPreparation || reenterableRecordRejection) {
+    val removedContinuationBudget =
+      isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason)
+    if (retryReviewPreparation || reenterableRecordRejection || removedContinuationBudget) {
       state.restartAttemptBudget(phaseId)
     }
     return shouldRetryPersistedBlock(
@@ -2223,6 +2235,7 @@ internal class FeatureTaskRuntimeRunLoop(
       retryReviewPreparation -> true
       reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
+      isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason) -> true
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
     }
@@ -2237,11 +2250,11 @@ internal class FeatureTaskRuntimeRunLoop(
     val agentId = run.resolvedAgent.resolvedAgentId
     var iteration = state.nextIteration(run.phaseId)
     // Continuation segments advance the persisted attempt watermark like any other attempt, but they
-    // are budgeted on their own axis (MAX_IMPLEMENTATION_CONTINUATION_SEGMENTS). In-process the two
-    // stay separate because settleIncompleteWork never advances semanticIteration; across a process
-    // boundary only the watermark survives, so without discounting the durable segments a resume
-    // would charge honest continuation work to the semantic fix loop and block a run that never
-    // emitted invalid output. Read before the entry check for exactly that reason.
+    // stay on their own uncapped axis. In-process the two stay separate because settleIncompleteWork
+    // never advances semanticIteration; across a process boundary only the watermark survives, so
+    // without discounting the durable segments a resume would charge honest continuation work to the
+    // semantic fix loop and block a run that never emitted invalid output. Read before the entry
+    // check for exactly that reason.
     val continuationSegmentCount = durableContinuationSegmentCount(run)
     // Clamped because a re-entry baseline may already have absorbed the same watermark the segment
     // count discounts; double-discounting must not drive the semantic index below its first attempt.
@@ -2267,17 +2280,6 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
     )
     var outcome: PhaseOutcome? = null
-    FeatureTaskRuntimeFixLoopPolicy
-      .incompleteWorkBlockReasonIfBudgetExhausted(run.phaseId, continuationSegmentCount)
-      ?.let { reason ->
-        return blockAndPersistInPhase(
-          run,
-          iteration,
-          reason,
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        )
-      }
     val loop = PhaseAttemptLoopState(
       iteration = iteration,
       malformedAttemptCount = 0,
@@ -2327,8 +2329,8 @@ internal class FeatureTaskRuntimeRunLoop(
         loop.iteration,
         "Feature-task-runtime phase '${run.phaseId}' could not durably append its incomplete " +
           "implementation attempt (segment ${loop.continuationSegmentCount}). Continuing would lose the " +
-          "continuation projection and the durable segment budget, so the run stops here rather than " +
-          "retrying against state that was never persisted.",
+          "continuation projection, so the run stops here rather than retrying against state that was " +
+          "never persisted.",
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
         fileManifest = attempt.fileManifest,
