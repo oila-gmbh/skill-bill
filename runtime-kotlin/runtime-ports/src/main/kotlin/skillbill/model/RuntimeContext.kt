@@ -1,6 +1,7 @@
 package skillbill.model
 
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
@@ -29,6 +30,7 @@ data class WorkflowOpsContext(val workflowGitOperations: WorkflowGitOperations =
 data class OptionalCallbacks(
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
+  val executableLookup: ExecutableLookup? = null,
 )
 
 data class RuntimeContext(
@@ -46,11 +48,12 @@ data class RuntimeContext(
     workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
     agentRunLauncher: AgentRunLauncher? = null,
     goalPullRequestPort: GoalPullRequestPort? = null,
+    executableLookup: ExecutableLookup? = null,
   ) : this(
     EnvironmentContext(dbPathOverride, stdinText, environment, userHome),
     TransportContext(requester),
     WorkflowOpsContext(workflowGitOperations),
-    OptionalCallbacks(agentRunLauncher, goalPullRequestPort),
+    OptionalCallbacks(agentRunLauncher, goalPullRequestPort, executableLookup),
   )
 
   companion object {

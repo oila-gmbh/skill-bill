@@ -3,24 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-162"
 feature_name: "ponytail-port"
 parent_spec_path: ".feature-specs/SKILL-162-ponytail-port/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-162-ponytail-port"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Decision ladder in implementation-phase prompts"
   spec_path: ".feature-specs/SKILL-162-ponytail-port/spec_subtask_1_implementation-ladder.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260805-050542-3tbz"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "bill-over-engineering-review horizontal skill"
   spec_path: ".feature-specs/SKILL-162-ponytail-port/spec_subtask_2_over-engineering-review.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260805-053409-1cr3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -44,12 +44,12 @@ subtasks:
 - id: 3
   name: "bill-shortcut-debt ledger skill"
   spec_path: ".feature-specs/SKILL-162-ponytail-port/spec_subtask_3_shortcut-debt.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260805-065439-xfer"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

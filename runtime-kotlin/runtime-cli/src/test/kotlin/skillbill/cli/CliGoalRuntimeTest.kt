@@ -14,6 +14,7 @@ import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
@@ -27,6 +28,8 @@ import skillbill.ports.workflow.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
 import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.ScopedStagingGitOperations
+import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -488,6 +491,7 @@ class CliGoalRuntimeTest {
         goalPullRequestPort = fixture.pullRequests,
         // No --agent and no SKILL_BILL_AGENT: detection must resolve claude.
         environment = mapOf("CLAUDECODE" to "1"),
+        executableLookup = ExecutableLookup { true },
       ),
     )
 
@@ -508,6 +512,7 @@ class CliGoalRuntimeTest {
         agentRunLauncher = launcher,
         goalPullRequestPort = fixture.pullRequests,
         environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "opencode"),
+        executableLookup = ExecutableLookup { true },
       ),
     )
 
@@ -1381,6 +1386,7 @@ class CliGoalOpencodeRefusalTest {
         agentRunLauncher = launcher,
         goalPullRequestPort = fixture.pullRequests,
         environment = mapOf("OPENCODE" to "1"),
+        executableLookup = ExecutableLookup { true },
       ),
     )
 
@@ -1458,6 +1464,7 @@ class CliGoalZcodeRefusalTest {
         agentRunLauncher = launcher,
         goalPullRequestPort = fixture.pullRequests,
         environment = mapOf("ZCODE_APP_VERSION" to "1.0.0", "ZCODE_BASE_URL" to "https://zcode.example"),
+        executableLookup = ExecutableLookup { true },
       ),
     )
 
@@ -1487,6 +1494,7 @@ class CliGoalZcodeRefusalTest {
         agentRunLauncher = launcher,
         goalPullRequestPort = fixture.pullRequests,
         environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "zcode"),
+        executableLookup = ExecutableLookup { true },
       ),
     )
 
@@ -1701,6 +1709,8 @@ internal data class GoalCliFixture(
     goalPullRequestPort = pullRequests,
     liveStdout = liveStdout,
     liveStderr = liveStderr,
+    // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
+    executableLookup = ExecutableLookup { true },
   )
 
   fun goalCommand(dbPath: Path = this@GoalCliFixture.dbPath, extra: List<String> = emptyList()): List<String> =
@@ -2023,10 +2033,31 @@ private object GoalTestWorkflowGitOperations :
   WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider {
+  RepositoryOwnedPathsGitOperationsProvider,
+  ScopedStagingGitOperationsProvider {
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = TestRepositoryOwnedPathsOperations
 
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = TestRepositoryFingerprintOperations
+
+  override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
+    override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(
+        status = "ok",
+        value = paths.joinToString(separator = "\u0000") { path -> "identity\t$path" },
+      )
+  }
 
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
