@@ -4,6 +4,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
@@ -386,6 +387,7 @@ private fun parallelReviewContext(
   environment = environment,
   userHome = Files.createTempDirectory("cli-parallel-review-home"),
   agentRunLauncher = agentRunLauncher,
+  executableLookup = ExecutableLookup { true },
 )
 
 private fun createGitRepo(): Path {

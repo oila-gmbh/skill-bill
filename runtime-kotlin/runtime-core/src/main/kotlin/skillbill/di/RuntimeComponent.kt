@@ -355,7 +355,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  fun executableLookup(): ExecutableLookup = PathExecutableLookup()
+  fun executableLookup(callbacks: OptionalCallbacks): ExecutableLookup =
+    callbacks.executableLookup ?: PathExecutableLookup()
 
   @Provides
   @JvmSynthetic

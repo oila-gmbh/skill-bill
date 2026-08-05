@@ -141,7 +141,7 @@ class AgentRunLauncherTest {
       ),
     )
     val timeout = requireNotNull(
-      headlessAgentRunAdapters(timeoutRunner)[InstallAgent.CODEX],
+      headlessAgentRunAdapters(timeoutRunner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX],
     ).launch(skillRunRequest())
     assertTrue(timeout.timedOut)
     assertFalse(timeout.spawnFailed)
@@ -158,7 +158,7 @@ class AgentRunLauncherTest {
       ),
     )
     val spawnFailure = requireNotNull(
-      headlessAgentRunAdapters(spawnRunner)[InstallAgent.CODEX],
+      headlessAgentRunAdapters(spawnRunner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CODEX],
     ).launch(skillRunRequest())
     assertFalse(spawnFailure.timedOut)
     assertTrue(spawnFailure.spawnFailed)

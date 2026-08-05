@@ -1969,6 +1969,12 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire",
+      // SKILL-150: durable append-only scoped-checkpoint identity history (structurally separate from
+      // phase records so a commit stays attributable after later phases replace their outputs).
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",
