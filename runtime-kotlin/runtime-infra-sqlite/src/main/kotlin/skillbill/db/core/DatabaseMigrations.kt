@@ -434,7 +434,7 @@ internal object DatabaseMigrations {
       DatabaseMigration(
         version = 24,
         name = "backfill-review-attribution-canonicals",
-        operation = DatabaseColumnMigrations::applyReviewAttributionCanonicalBackfill,
+        operation = ReviewAttributionBackfillMigration::apply,
       ),
     ).also(::requireDeterministicMigrations)
 

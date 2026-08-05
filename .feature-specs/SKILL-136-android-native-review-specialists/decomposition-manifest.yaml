@@ -64,11 +64,9 @@ subtasks:
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260805-161816-hxd2"
-  blocked_reason: "Phase 'implement' exhausted the bounded fix loop after 3 attempts\
-    \ (cap=3); the run blocks rather than advancing on invalid output. Last schema-gate\
-    \ failure: Rejected output violated 'producer-projection' at '/unresolved_items/0'.\
-    \ Inspect the private diagnostic for the exact response."
-  last_resumable_step: "implement"
+  blocked_reason: "Phase 'validate' exhausted the bounded fix loop after 3 attempts\
+    \ (cap=3); the run blocks rather than advancing on invalid output."
+  last_resumable_step: "validate"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

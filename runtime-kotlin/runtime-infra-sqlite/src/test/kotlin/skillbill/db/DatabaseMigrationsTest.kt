@@ -80,6 +80,7 @@ class DatabaseMigrationsTest {
         21 to "add-delegated-review-lifecycle-projection",
         22 to "drop-delegated-review-lifecycle-tables",
         23 to "add-feature-task-runtime-audit-generations",
+        24 to "backfill-review-attribution-canonicals",
       ),
       migrationDefinitions,
     )
@@ -1505,60 +1506,7 @@ class DatabaseMigrationsTest {
   @Test
   fun `legacy review runs gain canonical attribution columns and an unambiguous backfill`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-backfill").resolve("metrics.db")
-    val routedSkillVariants = listOf(
-      "bill-kmp-code-review",
-      "bill-kmp-code-review (parallel)",
-      "bill-kmp-code-review-persistence",
-      "skillbill:bill-kmp-code-review",
-      "`bill-kmp-code-review`",
-      "Routed to bill-kmp-code-review for the KMP pack",
-    )
-    val stackVariants = listOf("kotlin", "Kotlin", "Kotlin/JVM", "kotlin (jvm backend)", "  KOTLIN  ")
-    val ambiguousRoutedSkill = "bill-kmp-code-review, bill-ios-code-review"
-
-    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
-      connection.createStatement().use { statement ->
-        statement.execute(
-          """
-          CREATE TABLE review_runs (
-            review_run_id TEXT PRIMARY KEY,
-            routed_skill TEXT,
-            detected_scope TEXT,
-            detected_stack TEXT,
-            execution_mode TEXT,
-            raw_text TEXT NOT NULL
-          )
-          """.trimIndent(),
-        )
-      }
-      connection.prepareStatement(
-        "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
-          "VALUES (?, ?, ?, ?, 'raw')",
-      ).use { statement ->
-        routedSkillVariants.forEachIndexed { index, routedSkill ->
-          statement.setString(1, "rvw-skill-$index")
-          statement.setString(2, routedSkill)
-          statement.setString(3, "commit range (main..HEAD)")
-          statement.setString(4, "kotlin")
-          statement.addBatch()
-        }
-        stackVariants.forEachIndexed { index, stack ->
-          statement.setString(1, "rvw-stack-$index")
-          statement.setString(2, "bill-kmp-code-review")
-          statement.setString(3, "pull request (#204)")
-          statement.setString(4, stack)
-          statement.addBatch()
-        }
-        statement.setString(1, "rvw-ambiguous")
-        statement.setString(2, ambiguousRoutedSkill)
-        statement.setString(3, "whatever the agent felt like")
-        statement.setString(4, "kotlin, ios")
-        statement.addBatch()
-        statement.executeBatch()
-      }
-    }
-
-    val expectedRowCount = routedSkillVariants.size + stackVariants.size + 1
+    val expectedRowCount = seedLegacyReviewRunAttributionVariants(dbPath)
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertTrue(
@@ -1587,12 +1535,22 @@ class DatabaseMigrationsTest {
       assertEquals("main..HEAD", reviewRunColumn(connection, "rvw-skill-0", "detected_scope_detail"))
 
       // Raw text is never rewritten by the backfill.
-      routedSkillVariants.forEachIndexed { index, routedSkill ->
+      LEGACY_ROUTED_SKILL_VARIANTS.forEachIndexed { index, routedSkill ->
         assertEquals(routedSkill, reviewRunColumn(connection, "rvw-skill-$index", "routed_skill"))
       }
-      assertEquals(ambiguousRoutedSkill, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+      assertEquals(AMBIGUOUS_ROUTED_SKILL, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
       assertEquals("unresolved", reviewRunColumn(connection, "rvw-ambiguous", "execution_mode"))
     }
+  }
+
+  // SKILL-136 subtask 4 AC-004: re-opening the store re-runs nothing — the collapsed cardinality and
+  // the retained raw text stay exactly as the first open left them.
+  @Test
+  fun `the review attribution backfill is idempotent across repeated opens`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-reopen").resolve("metrics.db")
+    val expectedRowCount = seedLegacyReviewRunAttributionVariants(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
@@ -1600,8 +1558,55 @@ class DatabaseMigrationsTest {
         mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
         groupCount(connection, "routed_skill_canonical"),
       )
-      assertEquals(ambiguousRoutedSkill, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+      assertEquals(mapOf("kotlin" to 11, "unresolved" to 1), groupCount(connection, "detected_stack_canonical"))
+      assertEquals(AMBIGUOUS_ROUTED_SKILL, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
     }
+  }
+
+  // Seeds a legacy review_runs table carrying the observed prose variants and returns the row count.
+  private fun seedLegacyReviewRunAttributionVariants(dbPath: Path): Int {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_runs (
+            review_run_id TEXT PRIMARY KEY,
+            routed_skill TEXT,
+            detected_scope TEXT,
+            detected_stack TEXT,
+            execution_mode TEXT,
+            raw_text TEXT NOT NULL
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
+          "VALUES (?, ?, ?, ?, 'raw')",
+      ).use { statement ->
+        LEGACY_ROUTED_SKILL_VARIANTS.forEachIndexed { index, routedSkill ->
+          statement.setString(1, "rvw-skill-$index")
+          statement.setString(2, routedSkill)
+          statement.setString(3, "commit range (main..HEAD)")
+          statement.setString(4, "kotlin")
+          statement.addBatch()
+        }
+        LEGACY_STACK_VARIANTS.forEachIndexed { index, stack ->
+          statement.setString(1, "rvw-stack-$index")
+          statement.setString(2, "bill-kmp-code-review")
+          statement.setString(3, "pull request (#204)")
+          statement.setString(4, stack)
+          statement.addBatch()
+        }
+        statement.setString(1, "rvw-ambiguous")
+        statement.setString(2, AMBIGUOUS_ROUTED_SKILL)
+        statement.setString(3, "whatever the agent felt like")
+        statement.setString(4, "kotlin, ios")
+        statement.addBatch()
+        statement.executeBatch()
+      }
+    }
+    return LEGACY_ROUTED_SKILL_VARIANTS.size + LEGACY_STACK_VARIANTS.size + 1
   }
 
   // SKILL-136 subtask 4 AC-002/AC-006: the backfill is a one-shot ledger migration that never
@@ -1949,6 +1954,19 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    // The routed_skill and detected_stack prose variants actually observed in the real store.
+    val LEGACY_ROUTED_SKILL_VARIANTS: List<String> = listOf(
+      "bill-kmp-code-review",
+      "bill-kmp-code-review (parallel)",
+      "bill-kmp-code-review-persistence",
+      "skillbill:bill-kmp-code-review",
+      "`bill-kmp-code-review`",
+      "Routed to bill-kmp-code-review for the KMP pack",
+    )
+    val LEGACY_STACK_VARIANTS: List<String> =
+      listOf("kotlin", "Kotlin", "Kotlin/JVM", "kotlin (jvm backend)", "  KOTLIN  ")
+    const val AMBIGUOUS_ROUTED_SKILL: String = "bill-kmp-code-review, bill-ios-code-review"
+
     const val VERSION_KEYED_SCHEMA_MIGRATIONS_SQL: String =
       """
       CREATE TABLE schema_migrations (

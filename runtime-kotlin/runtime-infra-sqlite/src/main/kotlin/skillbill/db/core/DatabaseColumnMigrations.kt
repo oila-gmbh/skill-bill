@@ -1,12 +1,5 @@
 package skillbill.db.core
 
-import skillbill.review.EXECUTION_MODE_DELEGATED
-import skillbill.review.UNRESOLVED_ATTRIBUTION
-import skillbill.review.canonicalPackSkillNames
-import skillbill.review.canonicalPlatformSlugs
-import skillbill.review.resolveCanonicalRoutedSkill
-import skillbill.review.resolveCanonicalScope
-import skillbill.review.resolveCanonicalStack
 import java.sql.Connection
 
 @Suppress("TooManyFunctions")
@@ -19,7 +12,7 @@ internal object DatabaseColumnMigrations {
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
     backfillReviewSessionIds(connection)
-    backfillReviewExecutionModes(connection)
+    ReviewAttributionBackfillMigration.backfillExecutionModes(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
     ensureQualityCheckSessionColumns(connection)
@@ -255,6 +248,10 @@ internal object DatabaseColumnMigrations {
     }
   }
 
+  internal fun reviewRunsTableExists(connection: Connection): Boolean = tableExists(connection, "review_runs")
+
+  internal fun reviewRunColumnNames(connection: Connection): Set<String> = tableColumnNames(connection, "review_runs")
+
   private fun tableExists(connection: Connection, tableName: String): Boolean = connection.prepareStatement(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
   ).use { statement ->
@@ -379,7 +376,7 @@ internal object DatabaseColumnMigrations {
     )
   }
 
-  private fun ensureReviewRunColumns(connection: Connection) {
+  internal fun ensureReviewRunColumns(connection: Connection) {
     ensureColumn(
       connection = connection,
       tableName = "review_runs",
@@ -410,6 +407,9 @@ internal object DatabaseColumnMigrations {
       columnName = "orchestrated_run",
       definition = "INTEGER NOT NULL DEFAULT 0",
     )
+    // execution_mode ships in the fresh schema, but legacy stores predate it and backfillReviewExecutionModes
+    // below updates it on every open. Heal the column first so opening a legacy store cannot fail on it.
+    ensureColumn(connection, "review_runs", "execution_mode", "TEXT")
     ensureColumn(connection, "review_runs", "routed_skill_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_stack_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
@@ -436,122 +436,6 @@ internal object DatabaseColumnMigrations {
       statement.executeUpdate()
     }
   }
-
-  // One-shot backfill, run once via the numbered migration ledger rather than on every open. It is
-  // unambiguous-only: rows whose retained raw text does not resolve keep the explicit 'unresolved'
-  // marker, the raw columns are never written, and a canonical value already computed at ingestion is
-  // never overwritten (only columns still holding the marker are touched). Rows whose recomputed
-  // values equal the stored ones are skipped, so re-running writes nothing.
-  internal fun applyReviewAttributionCanonicalBackfill(connection: Connection) {
-    if (!tableExists(connection, "review_runs")) return
-    ensureReviewRunColumns(connection)
-    backfillReviewAttributionCanonicals(connection)
-  }
-
-  private fun pendingReviewAttributionRows(connection: Connection): List<ReviewAttributionBackfillRow> =
-    connection.prepareStatement(
-      """
-      SELECT review_run_id, routed_skill, detected_stack, detected_scope,
-             routed_skill_canonical, detected_stack_canonical, detected_scope_canonical,
-             detected_scope_detail
-      FROM review_runs
-      WHERE routed_skill_canonical = '$UNRESOLVED_ATTRIBUTION'
-         OR detected_stack_canonical = '$UNRESOLVED_ATTRIBUTION'
-         OR detected_scope_canonical = '$UNRESOLVED_ATTRIBUTION'
-      """.trimIndent(),
-    ).use { statement ->
-      statement.executeQuery().use { rows ->
-        buildList {
-          while (rows.next()) {
-            add(
-              ReviewAttributionBackfillRow(
-                reviewRunId = rows.getString("review_run_id"),
-                routedSkill = rows.getString("routed_skill"),
-                detectedStack = rows.getString("detected_stack"),
-                detectedScope = rows.getString("detected_scope"),
-                routedSkillCanonical = rows.getString("routed_skill_canonical"),
-                detectedStackCanonical = rows.getString("detected_stack_canonical"),
-                detectedScopeCanonical = rows.getString("detected_scope_canonical"),
-                detectedScopeDetail = rows.getString("detected_scope_detail"),
-              ),
-            )
-          }
-        }
-      }
-    }
-
-  private fun backfillReviewAttributionCanonicals(connection: Connection) {
-    val pending = pendingReviewAttributionRows(connection)
-    if (pending.isEmpty()) return
-    connection.prepareStatement(
-      """
-      UPDATE review_runs
-      SET routed_skill_canonical = ?,
-          detected_stack_canonical = ?,
-          detected_scope_canonical = ?,
-          detected_scope_detail = ?
-      WHERE review_run_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      var batched = 0
-      pending.forEach { row ->
-        val scope = resolveCanonicalScope(row.detectedScope)
-        val unresolvedScope = row.detectedScopeCanonical == UNRESOLVED_ATTRIBUTION
-        val routedSkill = row.routedSkillCanonical.takeUnless { it == UNRESOLVED_ATTRIBUTION }
-          ?: resolveCanonicalRoutedSkill(row.routedSkill, canonicalPackSkillNames).canonical
-        val stack = row.detectedStackCanonical.takeUnless { it == UNRESOLVED_ATTRIBUTION }
-          ?: resolveCanonicalStack(row.detectedStack, canonicalPlatformSlugs).canonical
-        val scopeCanonical = if (unresolvedScope) scope.canonical else row.detectedScopeCanonical
-        val scopeDetail = if (unresolvedScope) scope.detail else row.detectedScopeDetail
-        val unchanged = routedSkill == row.routedSkillCanonical &&
-          stack == row.detectedStackCanonical &&
-          scopeCanonical == row.detectedScopeCanonical &&
-          scopeDetail == row.detectedScopeDetail
-        if (unchanged) return@forEach
-        statement.setString(1, routedSkill)
-        statement.setString(2, stack)
-        statement.setString(3, scopeCanonical)
-        statement.setString(4, scopeDetail)
-        statement.setString(5, row.reviewRunId)
-        statement.addBatch()
-        batched += 1
-      }
-      if (batched > 0) statement.executeBatch()
-    }
-  }
-
-  // execution_mode is only inferred from the run's own evidence: recorded specialist reviews prove a
-  // delegated run. Everything else is explicitly unresolved rather than defaulted to inline.
-  private fun backfillReviewExecutionModes(connection: Connection) {
-    connection.createStatement().use { statement ->
-      statement.execute(
-        """
-        UPDATE review_runs
-        SET execution_mode = '$EXECUTION_MODE_DELEGATED'
-        WHERE (execution_mode IS NULL OR execution_mode = '')
-          AND specialist_reviews IS NOT NULL AND specialist_reviews != ''
-        """.trimIndent(),
-      )
-      statement.execute(
-        """
-        UPDATE review_runs
-        SET execution_mode = '$UNRESOLVED_ATTRIBUTION'
-        WHERE execution_mode IS NULL OR execution_mode = ''
-        """.trimIndent(),
-      )
-    }
-  }
-
-  private class ReviewAttributionBackfillRow(
-    val reviewRunId: String,
-    val routedSkill: String?,
-    val detectedStack: String?,
-    val detectedScope: String?,
-    val routedSkillCanonical: String?,
-    val detectedStackCanonical: String?,
-    val detectedScopeCanonical: String?,
-    val detectedScopeDetail: String?,
-  )
 
   private fun ensureFeatureImplementSessionColumns(connection: Connection) {
     ensureColumn(connection, "feature_implement_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")

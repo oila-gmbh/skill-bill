@@ -1,5 +1,7 @@
 package skillbill.review
 
+import skillbill.review.model.CanonicalScope
+import skillbill.review.model.ReviewAttributionResolutionError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -134,6 +136,25 @@ class ReviewAttributionCanonicalizationTest {
 
     assertEquals("main..HEAD", resolveCanonicalScope("commit range (main..HEAD)").detail)
     assertNull(resolveCanonicalScope("working tree").detail)
+  }
+
+  @Test
+  fun `every governed review-scope label from code-review-shell resolves`() {
+    val cases = mapOf(
+      "staged changes" to CanonicalScope.STAGED,
+      "unstaged changes" to CanonicalScope.WORKING_TREE,
+      "working tree" to CanonicalScope.WORKING_TREE,
+      "commit range" to CanonicalScope.COMMIT_RANGE,
+      "PR diff" to CanonicalScope.PULL_REQUEST,
+      "files" to CanonicalScope.OTHER,
+      "PR diff (origin/main...HEAD)" to CanonicalScope.PULL_REQUEST,
+      "PR diff (acme/acme-android#2981)" to CanonicalScope.PULL_REQUEST,
+      "PR diff #237 (main...a5db414a)" to CanonicalScope.PULL_REQUEST,
+    )
+
+    cases.forEach { (raw, expected) ->
+      assertEquals(expected.wireValue, resolveCanonicalScope(raw).canonical, "raw='$raw'")
+    }
   }
 
   @Test

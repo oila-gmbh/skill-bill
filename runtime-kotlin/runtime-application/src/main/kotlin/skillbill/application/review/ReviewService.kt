@@ -24,7 +24,6 @@ import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
 import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
-import skillbill.review.withCanonicalAttribution
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -33,6 +32,7 @@ import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.TriageDecision
+import skillbill.review.withCanonicalAttribution
 
 @Suppress("TooManyFunctions")
 @Inject

@@ -29,9 +29,9 @@ class ReviewExecutionModeReportingTest {
     }
   }
 
-  @Test
   // SKILL-136 subtask 4 AC-005: a run that omits the line still records a value; with no delegation
   // evidence that value is the explicit unresolved marker, never a silent drop to inline.
+  @Test
   fun `an absent execution mode line records the explicit unresolved marker`() {
     assertEquals(UNRESOLVED_ATTRIBUTION, review(null).executionMode)
   }

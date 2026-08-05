@@ -1,37 +1,13 @@
 package skillbill.review
 
+import skillbill.review.model.CanonicalAttribution
+import skillbill.review.model.CanonicalScope
 import skillbill.review.model.ImportedReview
+import skillbill.review.model.ReviewAttributionResolutionError
 
 const val UNRESOLVED_ATTRIBUTION: String = "unresolved"
 
 const val EXECUTION_MODE_DELEGATED: String = "delegated"
-
-enum class CanonicalScope(val wireValue: String) {
-  WORKING_TREE("working_tree"),
-  STAGED("staged"),
-  COMMIT_RANGE("commit_range"),
-  PULL_REQUEST("pull_request"),
-  OTHER("other"),
-}
-
-data class CanonicalAttribution(
-  val canonical: String,
-  val raw: String?,
-  val detail: String? = null,
-) {
-  val resolved: Boolean get() = canonical != UNRESOLVED_ATTRIBUTION
-}
-
-sealed class ReviewAttributionResolutionError(message: String) : IllegalArgumentException(message) {
-  class MalformedVocabulary(
-    val rawValue: String?,
-    val vocabulary: String,
-    val offendingEntry: String,
-  ) : ReviewAttributionResolutionError(
-    "Review attribution vocabulary '$vocabulary' contains the malformed entry '$offendingEntry' " +
-      "while resolving '${rawValue.orEmpty()}'.",
-  )
-}
 
 // Canonical stack vocabulary used when no catalog-derived slug set is available (the migration
 // backfill runs below the port layer). Ingestion passes the discovered pack slugs unioned with this.
@@ -118,24 +94,48 @@ fun ImportedReview.withCanonicalAttribution(
   )
 }
 
-@Suppress("ReturnCount")
-private fun matchCanonicalScope(slug: String): CanonicalScope? {
-  if (slug.isEmpty()) return null
-  // "unstaged" is checked before "staged" because it contains it.
-  if ("unstaged" in slug || "working-tree" in slug || "working-dir" in slug || slug == "worktree") {
-    return CanonicalScope.WORKING_TREE
+private class ScopeMatchRule(
+  val scope: CanonicalScope,
+  val exact: Set<String> = emptySet(),
+  val contains: Set<String> = emptySet(),
+  val prefixes: Set<String> = emptySet(),
+  val containsAll: Set<String> = emptySet(),
+) {
+  fun matches(slug: String): Boolean = when {
+    slug in exact -> true
+    contains.any { term -> term in slug } -> true
+    prefixes.any { prefix -> slug.startsWith(prefix) } -> true
+    else -> containsAll.isNotEmpty() && containsAll.all { term -> term in slug }
   }
-  if ("staged" in slug || "index" == slug) return CanonicalScope.STAGED
-  if ("pull-request" in slug || slug == "pr" || "pull-req" in slug) return CanonicalScope.PULL_REQUEST
-  if ("commit-range" in slug || "branch-diff" in slug || ("commit" in slug && "range" in slug)) {
-    return CanonicalScope.COMMIT_RANGE
-  }
-  // Positive other-scope rule: a recognized scope kind that is deliberately none of the four above.
-  if (slug == "other" || "repo" in slug || "repository" in slug || slug == "file" || slug == "files") {
-    return CanonicalScope.OTHER
-  }
-  return null
 }
+
+// Ordered scope vocabulary: the first matching rule wins, so narrower terms must come first —
+// "unstaged" contains "staged", and "pr-diff" must not fall through to the commit-range rule.
+private val scopeMatchRules: List<ScopeMatchRule> = listOf(
+  ScopeMatchRule(
+    scope = CanonicalScope.WORKING_TREE,
+    exact = setOf("worktree"),
+    contains = setOf("unstaged", "working-tree", "working-dir"),
+  ),
+  ScopeMatchRule(scope = CanonicalScope.STAGED, exact = setOf("index"), contains = setOf("staged")),
+  // "pr-diff" is the governed pull-request label emitted by code-review-shell.yaml.
+  ScopeMatchRule(
+    scope = CanonicalScope.PULL_REQUEST,
+    exact = setOf("pr"),
+    contains = setOf("pull-req"),
+    prefixes = setOf("pr-"),
+  ),
+  ScopeMatchRule(
+    scope = CanonicalScope.COMMIT_RANGE,
+    contains = setOf("commit-range", "branch-diff"),
+    containsAll = setOf("commit", "range"),
+  ),
+  // Positive other-scope rule: a recognized scope kind that is deliberately none of the four above.
+  ScopeMatchRule(scope = CanonicalScope.OTHER, exact = setOf("other", "file", "files"), contains = setOf("repo")),
+)
+
+private fun matchCanonicalScope(slug: String): CanonicalScope? =
+  if (slug.isEmpty()) null else scopeMatchRules.firstOrNull { rule -> rule.matches(slug) }?.scope
 
 private fun requireWellFormedVocabulary(rawValue: String?, vocabulary: String, entries: Set<String>) {
   entries.forEach { entry ->

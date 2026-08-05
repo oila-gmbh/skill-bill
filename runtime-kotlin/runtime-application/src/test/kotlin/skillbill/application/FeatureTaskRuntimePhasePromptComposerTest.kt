@@ -12,7 +12,6 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -881,17 +880,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         "Must be [] in implement: the phase contract forbids running tests here and validate owns outcomes.",
       "implementation_receipt.unresolved_items" to
         "Must be [] on a 'completed' receipt: the completion gate refuses a receipt that claims completion " +
-          "while carrying open work, so a populated example would teach output the gate rejects.",
+        "while carrying open work, so a populated example would teach output the gate rejects.",
       "preplanning_digest.patterns_and_decisions" to
         "Optional narrative list with no element shape to pin: items are plain strings like the populated " +
-          "`risks` and `validation_strategy` siblings in the same example.",
+        "`risks` and `validation_strategy` siblings in the same example.",
       "preplanning_digest.unresolved_questions" to
         "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
       "preplanning_digest.evidence_refs" to
         "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
       "implementation_receipt.deferred_repair_item_ids" to
         "Deferring a carried repair item is the exception, so [] is the correct default to show; the id " +
-          "strings are pinned by the populated repair_item_results[].repair_item_id in the same example.",
+        "strings are pinned by the populated repair_item_results[].repair_item_id in the same example.",
       "implementation_receipt.tests_added" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
       "implementation_receipt.tests_updated" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
     )

@@ -4,8 +4,8 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
-import skillbill.review.ReviewAttributionResolutionError
 import skillbill.review.canonicalPlatformSlugs
+import skillbill.review.model.ReviewAttributionResolutionError
 import skillbill.review.resolveCanonicalRoutedSkill
 import skillbill.review.resolveCanonicalStack
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY

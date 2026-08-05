@@ -23,9 +23,11 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
   @Test
   fun `the appended migration is name-keyed after dropping the delegated review lifecycle tables`() {
     val names = DatabaseMigrations.migrations.map { it.name }
+    // Pin the version rather than the tail position: later features may append their own migrations
+    // behind this one, but this migration must never be renumbered or moved ahead of the drop.
     assertEquals(
-      "add-feature-task-runtime-audit-generations",
-      names.last(),
+      23,
+      DatabaseMigrations.migrations.single { it.name == "add-feature-task-runtime-audit-generations" }.version,
       "the audit-generation migration is appended, never inserted or renumbered",
     )
     assertTrue(
