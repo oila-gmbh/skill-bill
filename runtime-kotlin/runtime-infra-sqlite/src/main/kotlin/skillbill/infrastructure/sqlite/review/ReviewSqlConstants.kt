@@ -9,6 +9,10 @@ const val PARAM_SIX: Int = 6
 const val PARAM_SEVEN: Int = 7
 const val PARAM_EIGHT: Int = 8
 const val PARAM_NINE: Int = 9
+const val PARAM_TEN: Int = 10
+const val PARAM_ELEVEN: Int = 11
+const val PARAM_TWELVE: Int = 12
+const val PARAM_THIRTEEN: Int = 13
 
 val reviewSummarySql =
   """
@@ -19,6 +23,10 @@ val reviewSummarySql =
     detected_scope,
     detected_stack,
     execution_mode,
+    routed_skill_canonical,
+    detected_stack_canonical,
+    detected_scope_canonical,
+    detected_scope_detail,
     specialist_reviews,
     review_finished_at,
     review_finished_event_emitted_at,

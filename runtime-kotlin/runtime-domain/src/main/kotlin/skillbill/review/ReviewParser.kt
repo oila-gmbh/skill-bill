@@ -17,23 +17,23 @@ object ReviewParser {
         text,
         "Review output is missing 'Review session ID: <review-session-id>'.",
       )
-    val routedSkill = normalizeRoutedSkill(extractSummaryValue(text, "routed_skill"))
+    val rawRoutedSkill = extractSummaryValue(text, "routed_skill")
     val specialistReviews = extractSpecialistReviews(text)
     return ImportedReview(
       reviewRunId = reviewRunId,
       reviewSessionId = reviewSessionId,
       rawText = text,
-      routedSkill = routedSkill,
+      routedSkill = rawRoutedSkill,
       detectedScope = extractSummaryValue(text, "detected_scope"),
       detectedStack = extractSummaryValue(text, "detected_stack"),
-      executionMode = parseExecutionMode(text),
+      executionMode = resolveExecutionMode(parseExecutionMode(text), specialistReviews),
       specialistReviews = specialistReviews,
       findings = parseReviewFindings(text).map { finding ->
         finding.copy(
           issueCategory =
           resolveReviewIssueCategory(
             explicitCategory = finding.issueCategory.takeUnless { it == ReviewIssueCategory.OTHER.wireValue },
-            routedSkill = routedSkill,
+            routedSkill = normalizeRoutedSkill(rawRoutedSkill),
             specialistReviews = specialistReviews,
             finding = finding,
           ),

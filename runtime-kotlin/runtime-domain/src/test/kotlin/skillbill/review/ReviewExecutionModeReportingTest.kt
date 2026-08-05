@@ -3,7 +3,6 @@ package skillbill.review
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -31,8 +30,10 @@ class ReviewExecutionModeReportingTest {
   }
 
   @Test
-  fun `an absent execution mode line stays absent`() {
-    assertNull(review(null).executionMode)
+  // SKILL-136 subtask 4 AC-005: a run that omits the line still records a value; with no delegation
+  // evidence that value is the explicit unresolved marker, never a silent drop to inline.
+  fun `an absent execution mode line records the explicit unresolved marker`() {
+    assertEquals(UNRESOLVED_ATTRIBUTION, review(null).executionMode)
   }
 
   @Test

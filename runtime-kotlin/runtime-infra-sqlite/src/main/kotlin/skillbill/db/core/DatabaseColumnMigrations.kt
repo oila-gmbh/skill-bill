@@ -1,5 +1,10 @@
 package skillbill.db.core
 
+import skillbill.review.EXECUTION_MODE_DELEGATED
+import skillbill.review.UNRESOLVED_ATTRIBUTION
+import skillbill.review.resolveCanonicalRoutedSkill
+import skillbill.review.resolveCanonicalScope
+import skillbill.review.resolveCanonicalStack
 import java.sql.Connection
 
 @Suppress("TooManyFunctions")
@@ -12,6 +17,8 @@ internal object DatabaseColumnMigrations {
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
     backfillReviewSessionIds(connection)
+    backfillReviewAttributionCanonicals(connection)
+    backfillReviewExecutionModes(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
     ensureQualityCheckSessionColumns(connection)
@@ -402,6 +409,10 @@ internal object DatabaseColumnMigrations {
       columnName = "orchestrated_run",
       definition = "INTEGER NOT NULL DEFAULT 0",
     )
+    ensureColumn(connection, "review_runs", "routed_skill_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
+    ensureColumn(connection, "review_runs", "detected_stack_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
+    ensureColumn(connection, "review_runs", "detected_scope_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
+    ensureColumn(connection, "review_runs", "detected_scope_detail", "TEXT")
   }
 
   private fun ensureFindingColumns(connection: Connection) {
@@ -424,6 +435,87 @@ internal object DatabaseColumnMigrations {
       statement.executeUpdate()
     }
   }
+
+  // Unambiguous-only backfill: rows whose retained raw text does not resolve keep the explicit
+  // 'unresolved' marker. The raw columns are never written. Re-running is a no-op because only rows
+  // still marked unresolved are considered and only changed values are written back.
+  private fun backfillReviewAttributionCanonicals(connection: Connection) {
+    val pending = connection.prepareStatement(
+      """
+      SELECT review_run_id, routed_skill, detected_stack, detected_scope
+      FROM review_runs
+      WHERE routed_skill_canonical = '$UNRESOLVED_ATTRIBUTION'
+         OR detected_stack_canonical = '$UNRESOLVED_ATTRIBUTION'
+         OR detected_scope_canonical = '$UNRESOLVED_ATTRIBUTION'
+      """.trimIndent(),
+    ).use { statement ->
+      statement.executeQuery().use { rows ->
+        buildList {
+          while (rows.next()) {
+            add(
+              ReviewAttributionBackfillRow(
+                reviewRunId = rows.getString("review_run_id"),
+                routedSkill = rows.getString("routed_skill"),
+                detectedStack = rows.getString("detected_stack"),
+                detectedScope = rows.getString("detected_scope"),
+              ),
+            )
+          }
+        }
+      }
+    }
+    if (pending.isEmpty()) return
+    connection.prepareStatement(
+      """
+      UPDATE review_runs
+      SET routed_skill_canonical = ?,
+          detected_stack_canonical = ?,
+          detected_scope_canonical = ?,
+          detected_scope_detail = ?
+      WHERE review_run_id = ?
+      """.trimIndent(),
+    ).use { statement ->
+      pending.forEach { row ->
+        val scope = resolveCanonicalScope(row.detectedScope)
+        statement.setString(1, resolveCanonicalRoutedSkill(row.routedSkill, emptySet()).canonical)
+        statement.setString(2, resolveCanonicalStack(row.detectedStack).canonical)
+        statement.setString(3, scope.canonical)
+        statement.setString(4, scope.detail)
+        statement.setString(5, row.reviewRunId)
+        statement.addBatch()
+      }
+      statement.executeBatch()
+    }
+  }
+
+  // execution_mode is only inferred from the run's own evidence: recorded specialist reviews prove a
+  // delegated run. Everything else is explicitly unresolved rather than defaulted to inline.
+  private fun backfillReviewExecutionModes(connection: Connection) {
+    connection.createStatement().use { statement ->
+      statement.execute(
+        """
+        UPDATE review_runs
+        SET execution_mode = '$EXECUTION_MODE_DELEGATED'
+        WHERE (execution_mode IS NULL OR execution_mode = '')
+          AND specialist_reviews IS NOT NULL AND specialist_reviews != ''
+        """.trimIndent(),
+      )
+      statement.execute(
+        """
+        UPDATE review_runs
+        SET execution_mode = '$UNRESOLVED_ATTRIBUTION'
+        WHERE execution_mode IS NULL OR execution_mode = ''
+        """.trimIndent(),
+      )
+    }
+  }
+
+  private class ReviewAttributionBackfillRow(
+    val reviewRunId: String,
+    val routedSkill: String?,
+    val detectedStack: String?,
+    val detectedScope: String?,
+  )
 
   private fun ensureFeatureImplementSessionColumns(connection: Connection) {
     ensureColumn(connection, "feature_implement_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")

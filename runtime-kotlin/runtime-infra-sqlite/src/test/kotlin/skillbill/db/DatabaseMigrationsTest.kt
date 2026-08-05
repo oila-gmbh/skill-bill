@@ -1499,6 +1499,170 @@ class DatabaseMigrationsTest {
       }
     }
 
+  // SKILL-136 subtask 4 AC-004/AC-006: a legacy review_runs table gains the canonical columns on
+  // open, existing raw values are preserved untouched, and the unambiguous-only backfill collapses
+  // the observed prose variants to one row per pack and one row per stack.
+  @Test
+  fun `legacy review runs gain canonical attribution columns and an unambiguous backfill`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-backfill").resolve("metrics.db")
+    val routedSkillVariants = listOf(
+      "bill-kmp-code-review",
+      "bill-kmp-code-review (parallel)",
+      "bill-kmp-code-review-persistence",
+      "skillbill:bill-kmp-code-review",
+      "`bill-kmp-code-review`",
+      "Routed to bill-kmp-code-review for the KMP pack",
+    )
+    val stackVariants = listOf("kotlin", "Kotlin", "Kotlin/JVM", "kotlin (jvm backend)", "  KOTLIN  ")
+    val ambiguousRoutedSkill = "bill-kmp-code-review, bill-ios-code-review"
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_runs (
+            review_run_id TEXT PRIMARY KEY,
+            routed_skill TEXT,
+            detected_scope TEXT,
+            detected_stack TEXT,
+            execution_mode TEXT,
+            raw_text TEXT NOT NULL
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
+          "VALUES (?, ?, ?, ?, 'raw')",
+      ).use { statement ->
+        routedSkillVariants.forEachIndexed { index, routedSkill ->
+          statement.setString(1, "rvw-skill-$index")
+          statement.setString(2, routedSkill)
+          statement.setString(3, "commit range (main..HEAD)")
+          statement.setString(4, "kotlin")
+          statement.addBatch()
+        }
+        stackVariants.forEachIndexed { index, stack ->
+          statement.setString(1, "rvw-stack-$index")
+          statement.setString(2, "bill-kmp-code-review")
+          statement.setString(3, "pull request (#204)")
+          statement.setString(4, stack)
+          statement.addBatch()
+        }
+        statement.setString(1, "rvw-ambiguous")
+        statement.setString(2, ambiguousRoutedSkill)
+        statement.setString(3, "whatever the agent felt like")
+        statement.setString(4, "kotlin, ios")
+        statement.addBatch()
+        statement.executeBatch()
+      }
+    }
+
+    val expectedRowCount = routedSkillVariants.size + stackVariants.size + 1
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue(
+        columnNames(connection, "review_runs").containsAll(
+          setOf(
+            "routed_skill_canonical",
+            "detected_stack_canonical",
+            "detected_scope_canonical",
+            "detected_scope_detail",
+          ),
+        ),
+      )
+      assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
+
+      // The 6 routed-skill and 5 stack prose variants collapse; only the deliberately ambiguous row
+      // stays behind, and it stays as the explicit unresolved marker rather than being bucketed.
+      assertEquals(
+        mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
+        groupCount(connection, "routed_skill_canonical"),
+      )
+      assertEquals(mapOf("kotlin" to 11, "unresolved" to 1), groupCount(connection, "detected_stack_canonical"))
+      assertEquals(
+        mapOf("commit_range" to 6, "pull_request" to 5, "unresolved" to 1),
+        groupCount(connection, "detected_scope_canonical"),
+      )
+      assertEquals("main..HEAD", reviewRunColumn(connection, "rvw-skill-0", "detected_scope_detail"))
+
+      // Raw text is never rewritten by the backfill.
+      routedSkillVariants.forEachIndexed { index, routedSkill ->
+        assertEquals(routedSkill, reviewRunColumn(connection, "rvw-skill-$index", "routed_skill"))
+      }
+      assertEquals(ambiguousRoutedSkill, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+      assertEquals("unresolved", reviewRunColumn(connection, "rvw-ambiguous", "execution_mode"))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
+      assertEquals(
+        mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
+        groupCount(connection, "routed_skill_canonical"),
+      )
+      assertEquals(ambiguousRoutedSkill, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-006: run against a COPY of a real review-metrics store by exporting
+  // SKILL_BILL_MIGRATION_FIXTURE_DB. Unset (the CI default) the test skips so the suite stays hermetic.
+  @Test
+  fun `migrating a copy of a real review metrics store preserves every row`() {
+    val fixture = System.getenv("SKILL_BILL_MIGRATION_FIXTURE_DB")
+    if (fixture.isNullOrBlank()) {
+      assertTrue(true, "SKILL_BILL_MIGRATION_FIXTURE_DB is unset; the real-store harness is skipped.")
+      return
+    }
+
+    val source = Path.of(fixture)
+    assertTrue(Files.isRegularFile(source), "SKILL_BILL_MIGRATION_FIXTURE_DB must point at a store file.")
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store-migration").resolve("metrics.db")
+    Files.copy(source, copy)
+
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use { connection ->
+      rowCount(connection, "review_runs") to rowCount(connection, "findings")
+    }
+
+    DatabaseRuntime.ensureDatabase(copy).use { connection ->
+      assertEquals(before.first, rowCount(connection, "review_runs"), "review_runs lost rows during migration.")
+      assertEquals(before.second, rowCount(connection, "findings"), "findings lost rows during migration.")
+
+      val routedSkills = groupCount(connection, "routed_skill_canonical")
+      val stacks = groupCount(connection, "detected_stack_canonical")
+      assertTrue(routedSkills.size < before.first, "Canonical routed skills must collapse the raw variants.")
+      assertTrue(stacks.size < before.first, "Canonical stacks must collapse the raw variants.")
+      assertEquals(0, executionModeGaps(connection), "Every run must carry an execution_mode after migration.")
+    }
+  }
+
+  private fun groupCount(connection: Connection, column: String): Map<String, Int> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT $column, COUNT(*) FROM review_runs GROUP BY $column").use { resultSet ->
+        buildMap {
+          while (resultSet.next()) {
+            put(resultSet.getString(1), resultSet.getInt(2))
+          }
+        }
+      }
+    }
+
+  private fun reviewRunColumn(connection: Connection, reviewRunId: String, column: String): String? =
+    connection.prepareStatement("SELECT $column FROM review_runs WHERE review_run_id = ?").use { statement ->
+      statement.setString(1, reviewRunId)
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next())
+        resultSet.getString(1)
+      }
+    }
+
+  private fun executionModeGaps(connection: Connection): Int = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT COUNT(*) FROM review_runs WHERE execution_mode IS NULL OR execution_mode = ''")
+      .use { resultSet ->
+        check(resultSet.next())
+        resultSet.getInt(1)
+      }
+  }
+
   private fun featureImplementColumnValue(connection: java.sql.Connection, columnName: String): Any =
     connection.prepareStatement(
       """

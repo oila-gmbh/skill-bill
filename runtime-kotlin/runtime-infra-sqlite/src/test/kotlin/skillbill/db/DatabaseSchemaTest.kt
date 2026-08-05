@@ -7,6 +7,7 @@ import java.sql.Connection
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DatabaseSchemaTest {
@@ -74,6 +75,28 @@ class DatabaseSchemaTest {
         ),
       )
       assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-001/AC-006: a fresh database carries the canonical attribution columns
+  // with the documented types and explicit 'unresolved' default.
+  @Test
+  fun `ensureDatabase creates review run canonical attribution columns`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableInfo(connection, "review_runs").associateBy { it.name }
+
+      setOf("routed_skill_canonical", "detected_stack_canonical", "detected_scope_canonical").forEach { name ->
+        val column = requireNotNull(columns[name]) { "review_runs is missing '$name'." }
+        assertEquals("TEXT", column.type.uppercase())
+        assertTrue(column.notNull, "'$name' must be NOT NULL.")
+        assertEquals("'unresolved'", column.defaultValue)
+      }
+
+      val detail = requireNotNull(columns["detected_scope_detail"]) { "review_runs is missing scope detail." }
+      assertEquals("TEXT", detail.type.uppercase())
+      assertFalse(detail.notNull, "detected_scope_detail holds free-form text and stays nullable.")
     }
   }
 
@@ -179,6 +202,9 @@ class DatabaseSchemaTest {
               TableColumn(
                 name = resultSet.getString("name"),
                 primaryKeyPosition = resultSet.getInt("pk"),
+                type = resultSet.getString("type"),
+                notNull = resultSet.getInt("notnull") == 1,
+                defaultValue = resultSet.getString("dflt_value"),
               ),
             )
           }
@@ -189,5 +215,8 @@ class DatabaseSchemaTest {
   private data class TableColumn(
     val name: String,
     val primaryKeyPosition: Int,
+    val type: String = "",
+    val notNull: Boolean = false,
+    val defaultValue: String? = null,
   )
 }

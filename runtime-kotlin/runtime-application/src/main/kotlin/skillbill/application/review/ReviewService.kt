@@ -22,6 +22,8 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.ReviewParser
 import skillbill.review.TriageDecisionParser
+import skillbill.review.canonicalPlatformSlugs
+import skillbill.review.withCanonicalAttribution
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -52,7 +54,10 @@ class ReviewService(
     finishZeroFindingTelemetry: Boolean = true,
   ): ImportedReviewResult {
     val (text, sourcePath) = reviewInputSource.readInput(input, context.stdinText)
-    val review = ReviewParser.parseReview(text)
+    val review = ReviewParser.parseReview(text).withCanonicalAttribution(
+      knownPackSkillNames = reviewAttributionPort.knownPackSkillNames(),
+      knownPlatformSlugs = reviewAttributionPort.knownPlatformSlugs() + canonicalPlatformSlugs,
+    )
     return database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.reviews.saveImportedReview(review, sourcePath)
       if (finishZeroFindingTelemetry && review.findings.isEmpty()) {

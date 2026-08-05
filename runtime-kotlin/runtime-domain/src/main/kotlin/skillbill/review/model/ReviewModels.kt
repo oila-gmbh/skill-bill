@@ -20,6 +20,10 @@ data class ImportedReview(
   val executionMode: String?,
   val specialistReviews: List<String>,
   val findings: List<ImportedFinding>,
+  val routedSkillCanonical: String = "unresolved",
+  val detectedStackCanonical: String = "unresolved",
+  val detectedScopeCanonical: String = "unresolved",
+  val detectedScopeDetail: String? = null,
 )
 
 data class ReviewSummary(
@@ -33,6 +37,10 @@ data class ReviewSummary(
   val reviewFinishedAt: String?,
   val reviewFinishedEventEmittedAt: String?,
   val orchestratedRun: Boolean,
+  val routedSkillCanonical: String = "unresolved",
+  val detectedStackCanonical: String = "unresolved",
+  val detectedScopeCanonical: String = "unresolved",
+  val detectedScopeDetail: String? = null,
 )
 
 data class NormalizedStackLabel(

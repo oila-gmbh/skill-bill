@@ -67,6 +67,10 @@ fun reviewSummaryChanged(
   existingReviewSummary.detectedScope != review.detectedScope ||
   existingReviewSummary.detectedStack != review.detectedStack ||
   existingReviewSummary.executionMode != review.executionMode ||
+  existingReviewSummary.routedSkillCanonical != review.routedSkillCanonical ||
+  existingReviewSummary.detectedStackCanonical != review.detectedStackCanonical ||
+  existingReviewSummary.detectedScopeCanonical != review.detectedScopeCanonical ||
+  existingReviewSummary.detectedScopeDetail != review.detectedScopeDetail ||
   existingReviewSummary.specialistReviewsRaw != review.specialistReviews.joinToString(",") ||
   existingFindings != review.findings
 
@@ -80,16 +84,24 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
       detected_scope,
       detected_stack,
       execution_mode,
+      routed_skill_canonical,
+      detected_stack_canonical,
+      detected_scope_canonical,
+      detected_scope_detail,
       specialist_reviews,
       source_path,
       raw_text
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(review_run_id) DO UPDATE SET
       review_session_id = excluded.review_session_id,
       routed_skill = excluded.routed_skill,
       detected_scope = excluded.detected_scope,
       detected_stack = excluded.detected_stack,
       execution_mode = excluded.execution_mode,
+      routed_skill_canonical = excluded.routed_skill_canonical,
+      detected_stack_canonical = excluded.detected_stack_canonical,
+      detected_scope_canonical = excluded.detected_scope_canonical,
+      detected_scope_detail = excluded.detected_scope_detail,
       specialist_reviews = excluded.specialist_reviews,
       source_path = excluded.source_path,
       raw_text = excluded.raw_text
@@ -101,9 +113,13 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
     statement.setString(PARAM_FOUR, review.detectedScope)
     statement.setString(PARAM_FIVE, review.detectedStack)
     statement.setString(PARAM_SIX, review.executionMode)
-    statement.setString(PARAM_SEVEN, review.specialistReviews.joinToString(","))
-    statement.setString(PARAM_EIGHT, sourcePath)
-    statement.setString(PARAM_NINE, review.rawText)
+    statement.setString(PARAM_SEVEN, review.routedSkillCanonical)
+    statement.setString(PARAM_EIGHT, review.detectedStackCanonical)
+    statement.setString(PARAM_NINE, review.detectedScopeCanonical)
+    statement.setString(PARAM_TEN, review.detectedScopeDetail)
+    statement.setString(PARAM_ELEVEN, review.specialistReviews.joinToString(","))
+    statement.setString(PARAM_TWELVE, sourcePath)
+    statement.setString(PARAM_THIRTEEN, review.rawText)
     statement.executeUpdate()
   }
 }
@@ -162,6 +178,10 @@ fun java.sql.ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
   reviewFinishedAt = getString("review_finished_at"),
   reviewFinishedEventEmittedAt = getString("review_finished_event_emitted_at"),
   orchestratedRun = getBoolean("orchestrated_run"),
+  routedSkillCanonical = getString("routed_skill_canonical") ?: "unresolved",
+  detectedStackCanonical = getString("detected_stack_canonical") ?: "unresolved",
+  detectedScopeCanonical = getString("detected_scope_canonical") ?: "unresolved",
+  detectedScopeDetail = getString("detected_scope_detail"),
 )
 
 fun java.sql.ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
