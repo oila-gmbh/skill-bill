@@ -30,11 +30,11 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy

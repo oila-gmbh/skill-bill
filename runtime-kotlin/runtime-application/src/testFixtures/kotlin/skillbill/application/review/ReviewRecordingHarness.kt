@@ -185,6 +185,9 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
+      // Lane attribution carries no measured content, so this harness only has to tolerate it;
+      // what the runner actually writes is asserted in ParallelCodeReviewRunnerTest.
+      "replaceReviewRunLanes", "recordFindingLaneAttribution" -> Unit
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

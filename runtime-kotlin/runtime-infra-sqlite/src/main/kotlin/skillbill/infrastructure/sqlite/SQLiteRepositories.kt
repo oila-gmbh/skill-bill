@@ -10,13 +10,8 @@ import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
-import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
-import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.persistImportedReview
-import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
-import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
-import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
@@ -29,6 +24,7 @@ import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.ReviewRunCompletenessRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnaddressedFindingsRepository
@@ -49,8 +45,6 @@ import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
-import skillbill.review.model.ReviewLaneEffectivenessRow
-import skillbill.review.model.ReviewRunLane
 import java.nio.file.Path
 import java.sql.Connection
 
@@ -120,7 +114,8 @@ class SQLiteWorkflowStatsRepository(
 class SQLiteReviewRepository(
   private val connection: Connection,
 ) : ReviewRepository,
-  WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection) {
+  WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection),
+  ReviewRunCompletenessRepository by SQLiteReviewRunCompletenessRepository(connection) {
   private companion object {
     const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
   }
@@ -131,20 +126,6 @@ class SQLiteReviewRepository(
 
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) =
     persistImportedReview(connection, review, sourcePath)
-
-  override fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) =
-    replaceReviewRunLanes(connection, runId, lanes)
-
-  override fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> = fetchReviewRunLanes(connection, runId)
-
-  override fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) =
-    recordFindingLaneAttribution(connection, runId, attribution)
-
-  override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> =
-    queryReviewLaneEffectiveness(connection, runId)
-
-  override fun ensureTerminalReviewState(runId: String, executionMode: String?) =
-    ensureTerminalReviewState(connection, runId, executionMode)
 
   override fun markOrchestrated(runId: String) {
     connection.prepareStatement(

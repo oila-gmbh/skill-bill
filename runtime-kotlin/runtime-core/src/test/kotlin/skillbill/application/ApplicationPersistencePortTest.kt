@@ -29,6 +29,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
@@ -287,7 +288,7 @@ class ApplicationPersistencePortTest {
     val saved = reviewRepository.savedReviews.single()
     assertEquals(emptyList(), saved.findings)
     assertEquals(listOf("bill-kmp-code-review-architecture", "narrated-only"), saved.planLanes.map { it.laneSkillName })
-    assertEquals(listOf("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
   }
 
   @Test
@@ -311,7 +312,33 @@ class ApplicationPersistencePortTest {
     val lanes = reviewRepository.savedReviews.single().planLanes
     assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
     assertTrue(lanes.all { it.resolutionState == "unresolved" })
-    assertEquals(listOf("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+  }
+
+  // A partially staged catalog — the routed pack composes a baseline layer that is not installed —
+  // makes composition throw. Attribution is best-effort: the import must still land the run.
+  @Test
+  fun `a composition failure degrades to unresolved lanes rather than failing the import`() {
+    val reviewRepository = FakeReviewRepository()
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
+    val service = ReviewService(
+      EnvironmentContext(
+        environment = emptyMap(),
+        userHome = Files.createTempDirectory("skillbill-app-lane-broken"),
+        stdinText = reviewText(findings = false),
+      ),
+      database,
+      FakeTelemetrySettingsProvider(enabled = false),
+      FakeReviewInputSource,
+      ThrowingPlanReviewAttributionPort,
+    )
+
+    service.importReview(input = "-", dbOverride = null)
+
+    val lanes = reviewRepository.savedReviews.single().planLanes
+    assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
+    assertTrue(lanes.all { it.resolutionState == "unresolved" })
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
   }
 
   private fun laneReviewService(database: FakeDatabaseSessionFactory, text: String): ReviewService = ReviewService(
@@ -2339,6 +2366,13 @@ private object FakePlanReviewAttributionPort : ReviewAttributionPort {
       ),
     ),
   )
+}
+
+private object ThrowingPlanReviewAttributionPort : ReviewAttributionPort {
+  override fun routedSkillPlatformSlugs(): Map<String, String> = emptyMap()
+
+  override fun composedLaunchPlan(routedPackSlug: String): ReviewLaunchPlan =
+    throw MissingCompositionLayerError("Baseline layer 'kotlin' is not installed.")
 }
 
 private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {

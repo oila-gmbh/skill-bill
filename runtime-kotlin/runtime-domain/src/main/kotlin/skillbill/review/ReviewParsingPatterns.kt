@@ -39,6 +39,7 @@ val findingPattern =
       "(?<description>.+)$",
     RegexOption.MULTILINE,
   )
+
 /**
  * Trailing provenance the runtime itself appends to a merged finding line
  * ("… | specialists=a,b; origins=x->y"). It is runtime bookkeeping, not description text, so the

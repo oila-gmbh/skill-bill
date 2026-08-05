@@ -25,7 +25,6 @@ import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.TriageDecisionParser
 import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
-import skillbill.review.packSlugFromCanonicalPackSkillName
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -36,6 +35,7 @@ import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.TriageDecision
+import skillbill.review.packSlugFromCanonicalPackSkillName
 import skillbill.review.plan.model.ReviewLaunchPlan
 import skillbill.review.withCanonicalAttribution
 
@@ -93,7 +93,14 @@ class ReviewService(
     // map is derived from an in-repo platform-packs directory that only exists in the skill-bill
     // source tree, so depending on it would source lanes from narration in every consumer repository.
     val routedPackSlug = packSlugFromCanonicalPackSkillName(review.routedSkillCanonical)
-    val plan = routedPackSlug?.let(reviewAttributionPort::composedLaunchPlan)
+    // Composition reads the installed pack catalog, which can be partially staged or missing a
+    // composed baseline layer. That is an attribution gap, not an import failure: degrade to an
+    // empty plan so the lanes resolve as unresolved and the review still lands.
+    val plan = routedPackSlug
+      ?.let { slug ->
+        runCatching { reviewAttributionPort.composedLaunchPlan(slug) }
+          .getOrElse { ReviewLaunchPlan(slug, emptyList()) }
+      }
       ?: ReviewLaunchPlan(review.routedSkillCanonical, emptyList())
     return ReviewRunLaneResolver.resolve(plan, review.specialistReviews)
   }

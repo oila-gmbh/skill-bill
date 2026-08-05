@@ -1015,9 +1015,15 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(copy).close()
     val after = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
 
-    before.forEach { (table, count) ->
+    // schema_migrations is the ledger of what has been applied, so it gains one row for every
+    // migration the store was behind on. Every table that carries data must survive untouched.
+    before.filterKeys { it != SCHEMA_MIGRATIONS_TABLE }.forEach { (table, count) ->
       assertEquals(count, after[table], "Migration must preserve every row of '$table'.")
     }
+    assertTrue(
+      (after[SCHEMA_MIGRATIONS_TABLE] ?: 0) >= (before[SCHEMA_MIGRATIONS_TABLE] ?: 0),
+      "Migration must never drop an applied-migration record.",
+    )
   }
 
   @Test
@@ -2035,6 +2041,8 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    const val SCHEMA_MIGRATIONS_TABLE: String = "schema_migrations"
+
     // The routed_skill and detected_stack prose variants actually observed in the real store.
     val LEGACY_ROUTED_SKILL_VARIANTS: List<String> = listOf(
       "bill-kmp-code-review",

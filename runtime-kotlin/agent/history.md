@@ -1,3 +1,15 @@
+## [2026-08-06] SKILL-136 review-run completeness: per-lane attribution (subtask 5)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-infra-sqlite}, .feature-specs/SKILL-136-android-native-review-specialists
+- `specialist_reviews` is now sourced from the composed launch plan (not agent narration) and stored one row per lane in a new `review_run_lanes` table, replacing the comma-joined string. reusable
+- Findings carry three lane columns, so pack-and-area effectiveness is queryable by joining findings plus dispositions to the canonical routed skill from subtask 4; unattributed findings group into an explicit bucket rather than vanishing. reusable
+- `ReviewRunLaneResolver` resolves lanes from the plan and reports unresolved reported lanes instead of guessing; agent-narrated lane names are advisory input only.
+- Terminal path records `review_finished_at` and non-null `execution_mode` for every run, including zero-finding runs and telemetry-disabled runs — previously both were silently skipped.
+- Lane import is replace-not-append: re-importing a run's findings rewrites its lane rows without duplicating.
+- Migration lesson (reconfirmed): the new table plus the finding lane columns ship as both a numbered migration and unconditional column ensures; verified over a copy of the real 95.5 MB store with per-table row counts preserved (329 review_runs, 1463 findings) and the ledger growing 31→32.
+- Limitation: attribution is prospective only — runs recorded before this change stay unattributed by design.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-05] SKILL-160 opt-in shared-preplan invalidation (subtask 2)
 Areas: runtime-kotlin/{runtime-application,runtime-ports,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-160-scoped-subtask-replan
 - `goal replan --include-shared-preplan` discards the shared preplan plus the named subtask plan; omitting the flag leaves shared preplan untouched (subtask 1 path unchanged).

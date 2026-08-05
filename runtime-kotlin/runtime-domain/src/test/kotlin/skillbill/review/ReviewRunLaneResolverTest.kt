@@ -12,14 +12,16 @@ class ReviewRunLaneResolverTest {
       routedPackSlug = "kmp",
       lanes = listOf(
         lane(skillName = "bill-kmp-code-review-architecture", packSlug = "kmp", area = "architecture"),
-        lane(
+        ReviewLaunchLane(
           skillName = "bill-kotlin-code-review-testing",
           packSlug = "kotlin",
           area = "testing",
           depth = 1,
-          orderIndex = 1,
           originLayerChain = listOf("kmp", "kotlin"),
           required = true,
+          addOns = emptyList(),
+          orderIndex = 1,
+          inclusionReason = "routed-pack override",
         ),
       ),
     )
@@ -86,23 +88,15 @@ class ReviewRunLaneResolverTest {
     assertEquals(listOf("resolved"), resolved.map { it.resolutionState })
   }
 
-  private fun lane(
-    skillName: String,
-    packSlug: String,
-    area: String,
-    depth: Int = 0,
-    orderIndex: Int = 0,
-    originLayerChain: List<String> = listOf(packSlug),
-    required: Boolean = false,
-  ) = ReviewLaunchLane(
+  private fun lane(skillName: String, packSlug: String, area: String) = ReviewLaunchLane(
     skillName = skillName,
     packSlug = packSlug,
     area = area,
-    depth = depth,
-    originLayerChain = originLayerChain,
-    required = required,
+    depth = 0,
+    originLayerChain = listOf(packSlug),
+    required = false,
     addOns = emptyList(),
-    orderIndex = orderIndex,
+    orderIndex = 0,
     inclusionReason = "routed-pack override",
   )
 }

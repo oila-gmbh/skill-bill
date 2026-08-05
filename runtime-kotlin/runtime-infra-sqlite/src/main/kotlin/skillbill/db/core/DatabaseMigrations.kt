@@ -4,7 +4,6 @@ import skillbill.db.telemetry.FeedbackEventMigration
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
 import java.sql.Connection
-import java.sql.SQLException
 
 internal object DatabaseMigrations {
   val migrations: List<DatabaseMigration> =
@@ -569,52 +568,4 @@ internal class DatabaseMigration(
   fun apply(connection: Connection) {
     operation(connection)
   }
-}
-
-internal inline fun <T> Connection.inTransaction(block: Connection.() -> T): T {
-  val previousAutoCommit = autoCommit
-  autoCommit = false
-  return try {
-    val result = block()
-    commit()
-    result
-  } catch (error: SQLException) {
-    rollback()
-    throw error
-  } catch (error: IllegalArgumentException) {
-    rollback()
-    throw error
-  } finally {
-    autoCommit = previousAutoCommit
-  }
-}
-
-@Suppress("TooGenericExceptionCaught")
-internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -> T): T {
-  createStatement().use { it.execute("BEGIN IMMEDIATE") }
-  return try {
-    val result = block()
-    createStatement().use { it.execute("COMMIT") }
-    result
-  } catch (error: Exception) {
-    rollbackImmediateTransaction()
-    throw error
-  }
-}
-
-@Suppress("TooGenericExceptionCaught")
-internal inline fun <T> Connection.inReadTransaction(block: Connection.() -> T): T {
-  createStatement().use { it.execute("BEGIN") }
-  return try {
-    val result = block()
-    createStatement().use { it.execute("COMMIT") }
-    result
-  } catch (error: Throwable) {
-    rollbackImmediateTransaction()
-    throw error
-  }
-}
-
-private fun Connection.rollbackImmediateTransaction() {
-  runCatching { createStatement().use { it.execute("ROLLBACK") } }
 }
