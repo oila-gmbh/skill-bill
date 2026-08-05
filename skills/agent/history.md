@@ -1,3 +1,12 @@
+## [2026-08-05] SKILL-160 subtask 3 — scoped-replan operator guidance
+Areas: skills/bill-feature-goal, skills/bill-feature
+- Documented `skill-bill goal replan <key> --subtask <id>` as first-choice for mid-goal subtask-spec amendments; default preserves sibling plans, shared preplan, and runtime rows; `--include-shared-preplan` discards sibling plan rows for provenance safety.
+- Named idle-goal and terminal-subtask refusals (reopen terminal via `reset`); kept hard/soft reset accurate for goal-wide invalidation. reusable PATTERN: when shipping a scoped operator command, update both goal planning prose and parent continuation rules in the same pass so agents do not keep the lossy workaround.
+- Explicit anti-workaround: do not hard-reset then compensate with `accept --restore-after-hard-reset` to replan one subtask.
+- Content-only subtask; quotes match ST1/ST2 shipped CLI/flags/refusal messages; no runtime/persistence edits.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-05] SKILL-162 subtask 3 — bill-shortcut-debt ledger skill
 Areas: skills/bill-shortcut-debt, skills (README catalog)
 - Scaffolded and filled `bill-shortcut-debt`: one-shot harvester for comment-prefixed `shortcut:` markers into a grouped ledger (ceiling + upgrade trigger), with `no-trigger` rot tags, summary line, and `No shortcut debt. Clean ledger.` empty verdict.
