@@ -6,7 +6,7 @@ skill-bill governs authoring, routing, validation, installation, and measurement
 
 Non-negotiable contracts:
 
-- Authored governed skill source is `content.md`, except for documented governed sidecar contracts; generated `SKILL.md` wrappers are runtime/install output. Listed-skill install staging ships `SKILL.md`, `.content-hash`, generated pointers, and optional `native-agents/` output — not a verbatim `content.md` copy.
+- Authored source is `content.md` (plus governed sidecars); generated `SKILL.md` is install output. Listed-skill staging: `SKILL.md`, `.content-hash`, pointers, optional `native-agents/` - no `content.md` copy.
 - Skill sources use `skills/<skill>/content.md`, optional `native-agents/`, and contract-authorized sidecars.
 - Platform behavior lives in manifest-declared platform packs under `platform-packs/<slug>/`.
 - `orchestration/` owns shared routing, review, delegation, telemetry, workflow, and shell contracts.
@@ -18,7 +18,7 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose runs the phase loop in-session; runtime launches the foreground `skill-bill feature-task` driver with durable state, telemetry, packs, add-ons, and native subagents.
+`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose runs the phase loop in-session; runtime launches the foreground driver with durable state, telemetry, packs, add-ons, and native subagents.
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail.
 
@@ -158,9 +158,9 @@ Agent-specific runtime behavior is expressed through injectable strategies, not 
 
 ## Writing Policy
 
-Write direct, active prose. Remove filler, stale phrases, praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or natural phrasing.
+Write direct, active prose. Remove filler, stale phrases, praise, and repetition; preserve names, numbers, and qualifications. Break a rule if it harms accuracy or phrasing.
 
-In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported achievement terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
+In commits, PRs, docs, and progress reports, state what changed and why. Avoid unsupported terms such as "successfully," "perfect," "comprehensive," and "robust." Lead with the outcome.
 
 ## Comments Policy
 

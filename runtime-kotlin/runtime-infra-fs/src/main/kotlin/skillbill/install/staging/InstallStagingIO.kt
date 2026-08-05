@@ -25,6 +25,7 @@ import java.util.logging.Logger
 
 internal const val INSTALL_STAGING_SKILL_FILENAME = "SKILL.md"
 internal const val INSTALL_STAGING_CONTENT_HASH_FILENAME = ".content-hash"
+
 /** Source authored body; stays in hash inputs but is never copied into listed-skill staging. */
 internal const val AUTHORED_SKILL_CONTENT_FILENAME = "content.md"
 
