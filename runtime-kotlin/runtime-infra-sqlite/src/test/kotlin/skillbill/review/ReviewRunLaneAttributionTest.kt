@@ -4,6 +4,7 @@ import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
+import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewRunLane
@@ -41,8 +42,10 @@ class ReviewRunLaneAttributionTest {
     }
   }
 
+  // AC-001: lanes already recorded for a run are the launch plan that actually ran, so a re-import
+  // leaves them intact instead of overwriting them with whatever the imported text composes to.
   @Test
-  fun `re-importing the same run replaces its lane rows rather than duplicating them`() {
+  fun `re-importing a run keeps its recorded lane rows and never duplicates them`() {
     val (_, connection) = tempDbConnection("review-lanes-reimport")
     connection.use {
       ReviewRuntime.saveImportedReview(connection, reviewWithLanes(), sourcePath = null)
@@ -51,10 +54,35 @@ class ReviewRunLaneAttributionTest {
       ReviewRuntime.saveImportedReview(connection, narrowed, sourcePath = null)
 
       assertEquals(
-        listOf("bill-kmp-code-review-architecture"),
+        listOf("bill-kmp-code-review-architecture", "bill-kotlin-code-review-testing"),
         fetchReviewRunLanes(connection, RUN_ID).map { it.laneSkillName },
       )
-      assertEquals(1, rowCount(connection, "review_run_lanes"))
+      assertEquals(2, rowCount(connection, "review_run_lanes"))
+    }
+  }
+
+  // AC-003: the lane recorded from the runtime's own merge result is authoritative; parsed
+  // provenance is only the fallback for review text the runtime did not produce.
+  // AC-004: correcting a finding's lane updates the row in place, so its recorded disposition — the
+  // signal pack-and-area effectiveness is built on — survives the re-import.
+  @Test
+  fun `recorded finding lane attribution wins over parsed provenance and preserves dispositions`() {
+    val (_, connection) = tempDbConnection("review-finding-lane-attribution")
+    connection.use {
+      ReviewRuntime.saveImportedReview(connection, reviewWithLanes(), sourcePath = null)
+      recordFeedback(connection, RUN_ID, "F-002", "fix_applied")
+      recordFindingLaneAttribution(connection, RUN_ID, mapOf("F-002" to "bill-kotlin-code-review-testing"))
+
+      ReviewRuntime.saveImportedReview(connection, reviewWithLanes(), sourcePath = null)
+
+      assertEquals(
+        listOf(
+          Triple("bill-kmp-code-review-architecture", "architecture", "kmp"),
+          Triple("bill-kotlin-code-review-testing", "testing", "kotlin"),
+        ),
+        findingLaneRows(connection),
+      )
+      assertEquals(1, rowCount(connection, "feedback_events"), "A lane correction must not cascade away feedback.")
     }
   }
 

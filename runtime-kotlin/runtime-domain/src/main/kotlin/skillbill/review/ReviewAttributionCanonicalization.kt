@@ -32,6 +32,17 @@ val canonicalPlatformSlugs: Set<String> = setOf(
 // unions this with the discovered pack skill names.
 val canonicalPackSkillNames: Set<String> = canonicalPlatformSlugs.map { slug -> "bill-$slug-code-review" }.toSet()
 
+/**
+ * Inverse of the canonical pack-skill derivation: the pack slug embedded in a canonical
+ * `bill-<slug>-code-review` name. Resolving the slug from the name itself keeps lane composition
+ * working in a consumer repository, where no in-repo platform-packs directory exists to map from.
+ * Returns null for a name that is not a canonical pack skill (including "unresolved").
+ */
+fun packSlugFromCanonicalPackSkillName(canonicalPackSkillName: String): String? =
+  canonicalPackSkillNamePattern.matchEntire(canonicalPackSkillName)?.groups?.get("slug")?.value
+
+private val canonicalPackSkillNamePattern = Regex("^bill-(?<slug>[a-z0-9]+(?:-[a-z0-9]+)*)-code-review$")
+
 private val packSkillPattern = Regex("bill-(?:[a-z0-9]+-)*code-review")
 
 private val vocabularyEntryPattern = Regex("^[a-z0-9][a-z0-9-]*$")

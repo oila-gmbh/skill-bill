@@ -25,6 +25,7 @@ import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.TriageDecisionParser
 import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
+import skillbill.review.packSlugFromCanonicalPackSkillName
 import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
@@ -88,7 +89,10 @@ class ReviewService(
    * and marked unresolved rather than failing the import or being guessed into a pack.
    */
   private fun composedRunLanes(review: ImportedReview): List<ReviewRunLane> {
-    val routedPackSlug = reviewAttributionPort.routedSkillPlatformSlugs()[review.routedSkillCanonical]
+    // The slug comes from the canonical skill name itself, not from routedSkillPlatformSlugs(): that
+    // map is derived from an in-repo platform-packs directory that only exists in the skill-bill
+    // source tree, so depending on it would source lanes from narration in every consumer repository.
+    val routedPackSlug = packSlugFromCanonicalPackSkillName(review.routedSkillCanonical)
     val plan = routedPackSlug?.let(reviewAttributionPort::composedLaunchPlan)
       ?: ReviewLaunchPlan(review.routedSkillCanonical, emptyList())
     return ReviewRunLaneResolver.resolve(plan, review.specialistReviews)

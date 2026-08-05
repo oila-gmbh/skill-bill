@@ -11,16 +11,13 @@ import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
-import skillbill.infrastructure.sqlite.review.existingReviewSummary
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
-import skillbill.infrastructure.sqlite.review.findingLaneAttributionChanged
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
+import skillbill.infrastructure.sqlite.review.persistImportedReview
 import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
-import skillbill.infrastructure.sqlite.review.replaceFindings
+import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
 import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
-import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
-import skillbill.infrastructure.sqlite.review.upsertReviewRun
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
@@ -132,26 +129,16 @@ class SQLiteReviewRepository(
 
   override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = loadReviewAccounting(connection, reviewId)
 
-  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
-    val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
-    val existingFindings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
-    val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
-    val laneAttributionChanged =
-      findingLaneAttributionChanged(fetchReviewRunLanes(connection, review.reviewRunId), review.planLanes)
-    upsertReviewRun(connection, review, sourcePath)
-    replaceReviewRunLanes(connection, review.reviewRunId, review.planLanes)
-    if (summarySnapshotChanged) {
-      ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
-    }
-    if (existingFindings != review.findings || laneAttributionChanged) {
-      replaceFindings(connection, review)
-    }
-  }
+  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) =
+    persistImportedReview(connection, review, sourcePath)
 
   override fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) =
     replaceReviewRunLanes(connection, runId, lanes)
 
   override fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> = fetchReviewRunLanes(connection, runId)
+
+  override fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) =
+    recordFindingLaneAttribution(connection, runId, attribution)
 
   override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> =
     queryReviewLaneEffectiveness(connection, runId)

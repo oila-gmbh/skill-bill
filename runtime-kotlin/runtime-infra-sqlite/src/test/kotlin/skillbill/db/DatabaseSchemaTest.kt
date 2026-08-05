@@ -113,6 +113,12 @@ class DatabaseSchemaTest {
       assertTrue("idx_findings_lane" in sqliteObjects(connection, "index"))
       assertTrue("idx_review_runs_routed_skill_canonical" in sqliteObjects(connection, "index"))
 
+      assertTrue("review_run_finding_lanes" in DatabaseSchema.tableNames)
+      assertEquals(
+        setOf("review_run_id", "finding_id", "lane_skill_name", "recorded_at"),
+        tableInfo(connection, "review_run_finding_lanes").map { it.name }.toSet(),
+      )
+
       val laneColumns = tableInfo(connection, "review_run_lanes").associateBy { it.name }
       assertEquals(
         setOf(

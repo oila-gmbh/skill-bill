@@ -814,6 +814,42 @@ class ParallelCodeReviewRunnerFailureTest {
     assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
   }
 
+  // AC-003: the lane that produced a finding is recorded from the runtime's own merge result, so it
+  // never depends on an agent reproducing a provenance annotation in the review text it emits.
+  @Test
+  fun `runtime launched review records the producing lane of every merged finding`() {
+    val database = RecordingReviewDatabase()
+    val runner = createRunner(
+      ParallelSubtaskLauncher(
+        outcome = AgentRunLaunchFacts(
+          agent = InstallAgent.fromNormalizedId("claude", label = "agentId"),
+          exitStatus = 0,
+          stdout = "[F-001] Major | High | path=\"src/Main.kt\" | line=3 | Transaction is not rolled back.",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        ),
+      ),
+      RunnerFixtureConfig(
+        catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+        diffResolver = RecordingDiffResolver(default = diffFor("src/Main.kt")),
+        database = database,
+      ),
+    )
+    val request = baseRequest(scope = ParallelReviewScope.STAGED)
+
+    runner.run(request)
+
+    val (runId, attribution) = database.findingLaneWrites.single()
+    assertEquals(request.reviewRunId, runId)
+    assertEquals(
+      database.laneWrites.single().second.map { it.laneSkillName }.toSet(),
+      attribution.values.toSet(),
+      "Attribution must name a lane the run actually planned.",
+    )
+    assertEquals(setOf("F-001"), attribution.keys)
+  }
+
   @Test
   fun `stack detection excludes generated dependency and build paths`() {
     val launcher = ParallelSubtaskLauncher()
@@ -900,6 +936,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
 
 private class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
+  val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
 
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -911,6 +948,10 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
       "replaceReviewRunLanes" -> {
         @Suppress("UNCHECKED_CAST")
         laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
+      }
+      "recordFindingLaneAttribution" -> {
+        @Suppress("UNCHECKED_CAST")
+        findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
       }
       else -> error("Unexpected review repository call: ${method.name}")
     }

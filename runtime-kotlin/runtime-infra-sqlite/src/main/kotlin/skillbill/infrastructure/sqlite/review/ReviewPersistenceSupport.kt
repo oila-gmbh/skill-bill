@@ -126,16 +126,59 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
   }
 }
 
-fun replaceFindings(connection: Connection, review: ImportedReview) {
-  // The run's persisted plan lanes are the only source of a finding's pack and area: a finding
-  // reports which lane produced it, never what that lane covers.
-  val lanesByName = review.planLanes.associateBy { it.laneSkillName }
+/**
+ * Persists an imported review. Shared by the transactional runtime entry point and the unit-of-work
+ * repository so both converge on one ordering and one set of write triggers.
+ *
+ * Lanes already recorded for the run are the authoritative launch plan — the runtime writes them
+ * when it launches the lanes — so composed lanes are only written for a run that has none.
+ */
+fun persistImportedReview(connection: Connection, review: ImportedReview, sourcePath: String?) {
+  val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
+  val existingFindings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
+  val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
+  val existingLanes = fetchReviewRunLanes(connection, review.reviewRunId)
+  val lanes = existingLanes.ifEmpty { review.planLanes }
+  upsertReviewRun(connection, review, sourcePath)
+  if (existingLanes.isEmpty()) {
+    replaceReviewRunLanes(connection, review.reviewRunId, review.planLanes)
+  }
+  if (summarySnapshotChanged) {
+    ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
+  }
+  val recordedLanes = fetchFindingLaneAttribution(connection, review.reviewRunId)
+  // Lane attribution alone never triggers the delete-and-reinsert path: deleting a finding row
+  // cascades away its recorded dispositions, so a lane correction is applied in place instead.
+  if (existingFindings.withoutLanes() != review.findings.withoutLanes()) {
+    replaceFindings(connection, review, lanes, recordedLanes)
+  } else {
+    updateFindingLaneAttribution(connection, review, lanes, recordedLanes)
+  }
+}
+
+private fun List<ImportedFinding>.withoutLanes(): List<ImportedFinding> = map { it.copy(laneSkillName = null) }
+
+// A finding's producing lane, preferring what the runtime recorded from its own merge result over
+// provenance parsed out of review text.
+private fun ImportedFinding.effectiveLaneName(recordedLanes: Map<String, String>): String? =
+  recordedLanes[findingId] ?: laneSkillName
+
+fun replaceFindings(
+  connection: Connection,
+  review: ImportedReview,
+  lanes: List<ReviewRunLane>,
+  recordedLanes: Map<String, String> = emptyMap(),
+) {
+  // The run's persisted lanes are the only source of a finding's pack and area: a finding reports
+  // which lane produced it, never what that lane covers.
+  val lanesByName = lanes.associateBy { it.laneSkillName }
   connection.prepareStatement("DELETE FROM findings WHERE review_run_id = ?").use { statement ->
     statement.setString(PARAM_ONE, review.reviewRunId)
     statement.executeUpdate()
   }
   review.findings.forEach { finding ->
-    val lane = finding.laneSkillName?.let(lanesByName::get)
+    val laneName = finding.effectiveLaneName(recordedLanes)
+    val lane = laneName?.let(lanesByName::get)
     connection.prepareStatement(
       """
       INSERT INTO findings (
@@ -161,7 +204,7 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
       statement.setString(PARAM_SIX, finding.location)
       statement.setString(PARAM_SEVEN, finding.description)
       statement.setString(PARAM_EIGHT, finding.findingText)
-      statement.setString(PARAM_NINE, finding.laneSkillName)
+      statement.setString(PARAM_NINE, laneName)
       statement.setString(PARAM_TEN, lane?.area)
       statement.setString(PARAM_ELEVEN, lane?.packSlug)
       statement.executeUpdate()
@@ -277,13 +320,73 @@ fun queryReviewLaneEffectiveness(connection: Connection, reviewRunId: String?): 
 }
 
 /**
- * Whether a run's lane set changed the pack/area a finding resolves to. Findings are only rewritten
- * when something about them actually changed, because deleting a finding row cascades away its
- * recorded dispositions.
+ * Corrects the lane columns of already-persisted finding rows in place, keyed by
+ * (review_run_id, finding_id). An UPDATE rather than a delete-and-reinsert is what makes a lane
+ * correction non-destructive: findings cascade-delete their feedback_events, so re-importing an
+ * already-triaged run after the composed plan shifts would otherwise erase every disposition.
  */
-fun findingLaneAttributionChanged(existingLanes: List<ReviewRunLane>, lanes: List<ReviewRunLane>): Boolean =
-  existingLanes.associate { it.laneSkillName to (it.packSlug to it.area) } !=
-    lanes.associate { it.laneSkillName to (it.packSlug to it.area) }
+fun updateFindingLaneAttribution(
+  connection: Connection,
+  review: ImportedReview,
+  lanes: List<ReviewRunLane>,
+  recordedLanes: Map<String, String>,
+) {
+  val lanesByName = lanes.associateBy { it.laneSkillName }
+  connection.prepareStatement(
+    """
+    UPDATE findings SET lane_skill_name = ?, lane_area = ?, lane_pack_slug = ?
+    WHERE review_run_id = ? AND finding_id = ?
+    """.trimIndent(),
+  ).use { statement ->
+    review.findings.forEach { finding ->
+      val laneName = finding.effectiveLaneName(recordedLanes)
+      val lane = laneName?.let(lanesByName::get)
+      statement.setString(PARAM_ONE, laneName)
+      statement.setString(PARAM_TWO, lane?.area)
+      statement.setString(PARAM_THREE, lane?.packSlug)
+      statement.setString(PARAM_FOUR, review.reviewRunId)
+      statement.setString(PARAM_FIVE, finding.findingId)
+      statement.executeUpdate()
+    }
+  }
+}
+
+/**
+ * Records finding-to-lane attribution straight from the runtime's own merge result, before the
+ * review text exists. Insert-or-replace keyed by (run, finding) keeps a re-run idempotent.
+ */
+fun recordFindingLaneAttribution(connection: Connection, reviewRunId: String, attribution: Map<String, String>) {
+  if (attribution.isEmpty()) return
+  reserveReviewRun(connection, reviewRunId)
+  connection.prepareStatement(
+    """
+    INSERT INTO review_run_finding_lanes (review_run_id, finding_id, lane_skill_name)
+    VALUES (?, ?, ?)
+    ON CONFLICT(review_run_id, finding_id) DO UPDATE SET lane_skill_name = excluded.lane_skill_name
+    """.trimIndent(),
+  ).use { statement ->
+    attribution.forEach { (findingId, laneSkillName) ->
+      statement.setString(PARAM_ONE, reviewRunId)
+      statement.setString(PARAM_TWO, findingId)
+      statement.setString(PARAM_THREE, laneSkillName)
+      statement.executeUpdate()
+    }
+  }
+}
+
+fun fetchFindingLaneAttribution(connection: Connection, reviewRunId: String): Map<String, String> =
+  connection.prepareStatement(
+    "SELECT finding_id, lane_skill_name FROM review_run_finding_lanes WHERE review_run_id = ?",
+  ).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      buildMap {
+        while (resultSet.next()) {
+          put(resultSet.getString("finding_id"), resultSet.getString("lane_skill_name"))
+        }
+      }
+    }
+  }
 
 /** Bucket for a finding whose producing lane was never recorded; never silently dropped. */
 const val UNATTRIBUTED_LANE: String = "unattributed"

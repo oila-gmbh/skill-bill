@@ -94,6 +94,7 @@ class ParallelCodeReviewRunner(
     val initial = prepareInitialRun(originalRequest)
     val outcomes = runLanes(initial)
     val result = parallelResult(initial.agent1Id, initial.agent2Id, outcomes)
+    recordMergedFindingLanes(initial.request.reviewRunId, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -234,6 +235,20 @@ class ParallelCodeReviewRunner(
       )
     }
     database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, lanes) }
+  }
+
+  /**
+   * Records which lane produced each merged finding straight from the merge result, where the
+   * producing specialist is already known. Ingestion reads this rather than re-deriving the lane
+   * from the formatted review text, which no agent is obliged to reproduce faithfully.
+   */
+  private fun recordMergedFindingLanes(reviewRunId: String?, result: ParallelCodeReviewResult) {
+    if (reviewRunId == null) return
+    val attribution = result.mergeResult.findings.mapNotNull { finding ->
+      finding.specialistSkillNames.firstOrNull()?.let { finding.fNumber to it }
+    }.toMap()
+    if (attribution.isEmpty()) return
+    database.transaction { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
   }
 
   private fun resolveReviewRevisions(request: ParallelCodeReviewRequest): Pair<String, String> {

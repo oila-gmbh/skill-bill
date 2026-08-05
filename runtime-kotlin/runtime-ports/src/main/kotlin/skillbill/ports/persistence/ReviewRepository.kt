@@ -24,6 +24,12 @@ interface ReviewRepository : WorkflowStatsRepository {
 
   fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> = emptyList()
 
+  /**
+   * Records finding-to-lane attribution from the runtime's own merge result, keyed by finding id.
+   * Ingestion prefers it over provenance parsed out of review text.
+   */
+  fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) = Unit
+
   /** Pack-and-area effectiveness, grouped by canonical routed skill plus lane pack slug and area. */
   fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> = emptyList()
 

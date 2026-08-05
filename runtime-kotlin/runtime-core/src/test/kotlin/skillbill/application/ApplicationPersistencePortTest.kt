@@ -254,7 +254,9 @@ class ApplicationPersistencePortTest {
   }
 
   // SKILL-136 subtask 5 AC-001/AC-002: lane identity comes from the composed launch plan. Narration
-  // that disagrees with the plan is retained as an unresolved lane, never used as identity.
+  // that disagrees with the plan is retained as an unresolved lane, never used as identity. The
+  // routed pack slug resolves from the canonical skill name, so this holds in a consumer repository
+  // where no platform-packs directory exists and routedSkillPlatformSlugs() is empty.
   @Test
   fun `review import records lanes from the composed plan rather than the narration string`() {
     val reviewRepository = FakeReviewRepository()
@@ -2317,7 +2319,9 @@ private class FakeReviewRepository(
 }
 
 private object FakePlanReviewAttributionPort : ReviewAttributionPort {
-  override fun routedSkillPlatformSlugs(): Map<String, String> = mapOf("bill-kmp-code-review" to "kmp")
+  // Empty on purpose: this map is derived from an in-repo platform-packs directory that only exists
+  // in the skill-bill source tree, so lane composition must not depend on it.
+  override fun routedSkillPlatformSlugs(): Map<String, String> = emptyMap()
 
   override fun composedLaunchPlan(routedPackSlug: String): ReviewLaunchPlan = ReviewLaunchPlan(
     routedPackSlug = routedPackSlug,

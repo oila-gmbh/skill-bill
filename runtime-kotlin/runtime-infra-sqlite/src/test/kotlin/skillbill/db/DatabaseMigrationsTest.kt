@@ -982,6 +982,7 @@ class DatabaseMigrationsTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertTrue("review_run_lanes" in tableNames(connection))
+      assertTrue("review_run_finding_lanes" in tableNames(connection))
       assertTrue(
         tableColumns(connection, "findings").containsAll(setOf("lane_skill_name", "lane_area", "lane_pack_slug")),
       )

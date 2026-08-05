@@ -184,4 +184,15 @@ class ReviewAttributionCanonicalizationTest {
     assertEquals(UNRESOLVED_ATTRIBUTION, resolveExecutionMode("  ", emptyList()))
     assertTrue(UNRESOLVED_ATTRIBUTION !in listOf("inline", EXECUTION_MODE_DELEGATED))
   }
+
+  // SKILL-136 subtask 5 AC-001: the routed pack slug is recoverable from the canonical skill name
+  // itself, so lane composition never depends on an in-repo platform-packs directory.
+  @Test
+  fun `pack slug resolves from a canonical pack skill name and only from one`() {
+    assertEquals("kmp", packSlugFromCanonicalPackSkillName("bill-kmp-code-review"))
+    assertEquals("android-compose", packSlugFromCanonicalPackSkillName("bill-android-compose-code-review"))
+    assertNull(packSlugFromCanonicalPackSkillName(UNRESOLVED_ATTRIBUTION))
+    assertNull(packSlugFromCanonicalPackSkillName("bill-code-review"))
+    assertNull(packSlugFromCanonicalPackSkillName("Routed to: bill-kmp-code-review"))
+  }
 }

@@ -8,6 +8,7 @@ internal object DatabaseSchema {
       "schema_migrations",
       "review_runs",
       "review_run_lanes",
+      "review_run_finding_lanes",
       "findings",
       "feedback_events",
       "learnings",
@@ -82,6 +83,19 @@ internal object DatabaseSchema {
       """
       CREATE INDEX IF NOT EXISTS idx_review_run_lanes_pack_area
         ON review_run_lanes(pack_slug, area, review_run_id)
+      """.trimIndent(),
+      // Finding-to-lane attribution the runtime records from its own merge result, before the
+      // review text is imported. It is the authoritative source for a finding's producing lane;
+      // parsed provenance is only the fallback for externally supplied review text.
+      """
+      CREATE TABLE IF NOT EXISTS review_run_finding_lanes (
+        review_run_id TEXT NOT NULL,
+        finding_id TEXT NOT NULL,
+        lane_skill_name TEXT NOT NULL,
+        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (review_run_id, finding_id),
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
       """.trimIndent(),
     )
 
