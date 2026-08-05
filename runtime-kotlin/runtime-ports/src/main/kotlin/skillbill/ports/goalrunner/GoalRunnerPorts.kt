@@ -73,20 +73,20 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     lease: GoalRunnerExecutionLease,
     expectedOwnerToken: String? = null,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun heartbeatExecutionLease(
     parentWorkflowId: String,
     lease: GoalRunnerExecutionLease,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun releaseExecutionLease(
     parentWorkflowId: String,
     ownerToken: String,
     generation: Long,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 
   fun bindRepositoryIdentity(
     parentWorkflowId: String,
@@ -319,7 +319,7 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
     preferredPhaseId: String,
     reason: String,
     dbPathOverride: String? = null,
-  ): Boolean = true
+  ): Boolean
 }
 
 // SKILL-142 (AC-011): narrow read-only port for aggregated operator metrics from the attempt ledger.

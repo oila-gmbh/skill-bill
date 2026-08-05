@@ -1,3 +1,12 @@
+## [2026-08-05] SKILL-162 subtask 2 — bill-over-engineering-review horizontal skill
+Areas: skills/bill-over-engineering-review, skills (README catalog)
+- Scaffolded and filled `bill-over-engineering-review`: complexity-only review/audit with diff (default) and repo scopes, five tagged finding lines (`delete`/`stdlib`/`native`/`yagni`/`shrink`), net-lines scoring, and `Lean already. Ship.` empty verdict.
+- Boundaries route correctness/security/performance to `bill-code-review`; carve out governed contracts and `shortcut:` markers (subtask 1 convention); never flag minimal smoke tests; report-only (no auto-fix).
+- Attribution points at the single SKILL-162 MIT home in `bill-feature-task-prose`; no benchmark/savings claims. reusable PATTERN: focused horizontal review skill shaped like `bill-unit-test-value-check`.
+- Known limitation: `./install.sh` staging refresh deferred to the goal boundary per the goal-continuation installer prohibition.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented (AC#5 install.sh refresh deferred to the goal boundary)
+
 ## [2026-08-05] SKILL-162 subtask 1 — ponytail minimalism discipline in implementation prompts
 Areas: skills/bill-feature-task-prose, runtime-application/featuretask, runtime-infra-fs/launcher/agentrun, runtime-domain/install/model, runtime-cli, runtime-ports/agentrun
 - Ported ponytail's seven-rung reuse-before-write ladder, anti-abstraction rules, root-cause bug-fix rule, never-simplify carve-outs (including skill-bill governed contracts), and `shortcut: <ceiling>, <upgrade trigger>` marker into both implementation-phase briefings.
