@@ -1,3 +1,13 @@
+## [2026-08-05] SKILL-136 KMP persistence and reliability specialists
+Areas: KMP code-review specialists, KMP platform manifest, runtime scaffold platform-pack tests
+- Added `bill-kmp-code-review-persistence` and `bill-kmp-code-review-reliability` rubrics so both areas are owned by Android/KMP semantics instead of inheriting the Kotlin backend rubrics.
+- Persistence covers Room/SQLDelight/DataStore migration safety, write atomicity, and offline-first cursor/idempotency; reliability covers WorkManager/`CoroutineWorker` retry-backoff-constraints, process-death and foreground-service recovery, and collector death from uncaught exceptions.
+- Reusable: overriding an inherited area means the override must be term-disjoint from the parent pack — every Blocker/Major rule names a concrete data-loss or availability scenario, and backend terms (Exposed, Spring `@Transactional`, Hibernate, JDBC/R2DBC, broker ack/offset, resilience4j) are asserted absent by `KmpPlatformPackTest`.
+- Specialist source directories hold `content.md` only; wrappers, support pointers, and native-agent outputs stay generated, and a test guards against committing them.
+- Known limitation: rubric term parity is enforced by keyword assertions, so renamed APIs in future Jetpack releases need the test updated alongside the rubric.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-05] SKILL-136 Alias Android to the KMP pack
 Areas: KMP platform manifest routing signals and lane conditions, runtime scaffold platform-pack tests
 - The `kmp` pack now owns plain single-module Android diffs: `display_name` widened to "Android & Kotlin Multiplatform" and the self-contradicting tie-breaker that rejected Android signals without multiplatform source sets was removed and replaced with a backend-dominance exclusion.
