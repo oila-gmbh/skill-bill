@@ -44,6 +44,62 @@ fun isRuntimeRefusedAgent(agentId: String?): Boolean {
   return RUNTIME_REFUSED_AGENTS.any { refused -> refused.id == normalized }
 }
 
+/**
+ * The headless CLI a runtime launch execs for an agent, in preference order, plus how an operator
+ * obtains it. Agent detection during install keys off the agent's home directory, which an IDE
+ * creates without ever installing a headless CLI, so availability of the launch binary is a
+ * separate fact that only this catalog answers.
+ */
+data class AgentLauncherCli(
+  val executables: List<String>,
+  val installHint: String,
+) {
+  init {
+    require(executables.isNotEmpty()) { "An agent launcher must declare at least one executable." }
+  }
+}
+
+// Single source of truth for launcher-binary availability. The CLI preflight and the launcher's
+// spawn-boundary backstop both derive from it, so an agent whose CLI is absent is refused by name
+// with an install hint instead of surfacing as an opaque spawn failure several layers up.
+val AGENT_LAUNCHER_CLIS: Map<InstallAgent, AgentLauncherCli> = mapOf(
+  InstallAgent.CLAUDE to AgentLauncherCli(
+    executables = listOf("claude"),
+    installHint = "install Claude Code (https://docs.claude.com/en/docs/claude-code/setup)",
+  ),
+  InstallAgent.CODEX to AgentLauncherCli(
+    executables = listOf("codex"),
+    installHint = "install the Codex CLI (npm install -g @openai/codex)",
+  ),
+  InstallAgent.JUNIE to AgentLauncherCli(
+    executables = listOf("junie"),
+    installHint = "install the Junie CLI from JetBrains",
+  ),
+  // Current Cursor installs symlink both names; older ones ship only cursor-agent.
+  InstallAgent.CURSOR to AgentLauncherCli(
+    executables = listOf("agent", "cursor-agent"),
+    installHint = "install the Cursor Agent CLI (curl https://cursor.com/install -fsS | bash)",
+  ),
+)
+
+/**
+ * Returns an actionable refusal when [agentId] names an agent whose headless CLI cannot be found by
+ * [onPath], or null when the agent is unknown, has no declared launcher, or is available. [onPath]
+ * is supplied by the caller so this stays effect-free and testable.
+ */
+fun unavailableAgentLauncherReason(agentId: String?, onPath: (String) -> Boolean): String? {
+  val normalized = agentId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return null
+  val agent = InstallAgent.entries.firstOrNull { candidate -> candidate.id == normalized }
+  val launcher = agent?.let(AGENT_LAUNCHER_CLIS::get) ?: return null
+  if (launcher.executables.any(onPath)) return null
+  return agentLauncherUnavailableMessage(agent, launcher.executables.first(), launcher.installHint)
+}
+
+fun agentLauncherUnavailableMessage(agent: InstallAgent, executable: String, installHint: String): String =
+  "Agent '${agent.id}' cannot run in runtime mode here: its headless CLI '$executable' is not on PATH. " +
+    "Having the ${agent.id} editor or its home directory installed is not enough — the headless CLI is a " +
+    "separate install. Either $installHint, or relaunch with a different --agent."
+
 val MODEL_DIRECTIVE_CAPABLE_AGENTS: Set<InstallAgent> = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX)
 
 fun supportsModelDirective(agentId: String?): Boolean {

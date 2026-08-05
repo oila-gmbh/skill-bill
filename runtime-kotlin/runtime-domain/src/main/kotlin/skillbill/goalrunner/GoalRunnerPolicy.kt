@@ -146,7 +146,9 @@ object GoalRunnerOutcomeReconciler {
     )
     launchFacts.spawnFailed -> stop(
       reason = GoalRunnerStopReason.BLOCKED,
-      blockedReason = "Subtask $subtaskId could not start a fresh agent process.",
+      blockedReason = launchFacts.stderrExcerpt
+        ?.let { excerpt -> "Subtask $subtaskId could not start a fresh agent process — $excerpt" }
+        ?: "Subtask $subtaskId could not start a fresh agent process.",
       storedOutcome = storedOutcome,
       liveness = launchFacts.liveness,
     )

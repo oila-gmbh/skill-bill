@@ -20,6 +20,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -709,7 +710,11 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun exhaustedCause(facts: AgentRunLaunchFacts, planningBudget: Duration?): String = when {
-    facts.spawnFailed -> "the planning agent failed to spawn"
+    // The launcher explains WHY a spawn failed (missing CLI, unreadable executable); dropping that
+    // text left the operator with an unactionable "failed to spawn" on a blocked goal.
+    facts.spawnFailed -> stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+      ?.let { excerpt -> "the planning agent failed to spawn — $excerpt" }
+      ?: "the planning agent failed to spawn"
     facts.timedOut ->
       "the planning agent exhausted its $planningBudget planning budget; " +
         "raise or disable it with --planning-budget-minutes"

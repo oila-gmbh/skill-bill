@@ -599,7 +599,12 @@ class ParallelCodeReviewRunner(
   // fall through to else->null and silently report an empty-findings lane as succeeded.
   private fun laneFailureReason(facts: AgentRunLaunchFacts): String? = when {
     facts.timedOut -> "agent timed out"
-    facts.spawnFailed -> "agent process failed to spawn"
+    facts.spawnFailed -> buildString {
+      append("agent process failed to spawn")
+      facts.stderr.trim().lineSequence().firstOrNull { it.isNotBlank() }?.let { line ->
+        append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
+      }
+    }
     facts.interrupted -> "agent was interrupted"
     facts.exitStatus == null -> "agent exited with unknown status"
     facts.exitStatus != 0 -> buildString {

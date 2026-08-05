@@ -47,6 +47,7 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseRuntimeRefusedAgents
+import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.CompactionSettings
@@ -55,6 +56,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
@@ -79,6 +81,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val specPathResolver: FeatureSpecPathResolverPort,
   val configResolutionService: ConfigResolutionService,
   val agentAddonSelectionPort: AgentAddonSelectionPort,
+  val executableLookup: ExecutableLookup,
   val state: CliRunState,
 )
 
@@ -285,6 +288,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         .takeUnless { it == "none" }
         ?.let(::add)
     }.distinct()
+    // Checked on resolved agents, and after the model-directive gate so the more specific refusal
+    // still wins: a phase directive naming an agent that cannot honor it is a configuration error
+    // regardless of whether that agent's CLI is installed.
+    refuseUnavailableAgentLaunchers(receivingAgents, deps.executableLookup)
     val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
     val hydratedSelection = if (persistedSelection.entries.isEmpty()) {
       HydratedAgentAddonSelection()

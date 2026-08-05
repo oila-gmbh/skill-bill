@@ -1,10 +1,13 @@
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.RUNTIME_REFUSED_AGENTS
+import skillbill.install.model.agentLauncherUnavailableMessage
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessRunner
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
@@ -14,13 +17,23 @@ interface AgentRunAdapter {
   fun launch(request: SkillRunRequest): AgentRunLaunchFacts
 }
 
+internal sealed interface LauncherResolution {
+  data class Resolved(val command: List<String>) : LauncherResolution
+  data class Missing(val message: String) : LauncherResolution
+}
+
 class ProcessAgentRunAdapter(
   override val agent: InstallAgent,
   private val commandBuilder: AgentRunCommandBuilder,
   private val processRunner: AgentRunProcessRunner,
+  private val executableLookup: ExecutableLookup = PathExecutableLookup(),
 ) : AgentRunAdapter {
   override fun launch(request: SkillRunRequest): AgentRunLaunchFacts {
-    val command = commandBuilder.build(request)
+    val built = commandBuilder.build(request)
+    val command = when (val resolution = resolveLauncherExecutable(built.command, commandBuilder.launcherCli)) {
+      is LauncherResolution.Resolved -> built.copy(command = resolution.command)
+      is LauncherResolution.Missing -> return unavailableLauncherFacts(request, built, resolution.message)
+    }
     val result = processRunner.run(processRequest(command, request))
     val decoded = runCatching {
       (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
@@ -69,6 +82,46 @@ class ProcessAgentRunAdapter(
       providerUsageEnforceable = false,
     )
   }
+
+  /**
+   * Resolves the executable the built command execs. A declared alternate is substituted when the
+   * preferred name is absent, which keeps older agent installs that ship only the legacy binary
+   * working. Anything else — including the skill-bill goal-continuation driver — has no alternate
+   * and is reported by name.
+   */
+  private fun resolveLauncherExecutable(command: List<String>, launcher: AgentLauncherCli): LauncherResolution {
+    val requested = command.firstOrNull()
+    return when {
+      requested == null -> LauncherResolution.Missing("Agent '${agent.id}' produced an empty launch command.")
+      executableLookup.onPath(requested) -> LauncherResolution.Resolved(command)
+      requested !in launcher.executables ->
+        LauncherResolution.Missing("Agent '${agent.id}' cannot be launched: '$requested' is not on PATH.")
+      else -> resolveDeclaredAlternate(requested, command, launcher)
+    }
+  }
+
+  private fun resolveDeclaredAlternate(
+    requested: String,
+    command: List<String>,
+    launcher: AgentLauncherCli,
+  ): LauncherResolution {
+    val alternate = launcher.executables
+      .firstOrNull { candidate -> candidate != requested && executableLookup.onPath(candidate) }
+      ?: return LauncherResolution.Missing(agentLauncherUnavailableMessage(agent, requested, launcher.installHint))
+    return LauncherResolution.Resolved(listOf(alternate) + command.drop(1))
+  }
+
+  private fun unavailableLauncherFacts(request: SkillRunRequest, command: AgentRunCommand, message: String) =
+    AgentRunLaunchFacts(
+      agent = agent,
+      exitStatus = null,
+      stdout = "",
+      stderr = message,
+      timedOut = false,
+      spawnFailed = true,
+      childSessionPath = command.workingDirectory.toString(),
+      childSessionId = childSessionId(agent, request, command.workingDirectory),
+    )
 
   private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
     command = command.command,
@@ -283,7 +336,10 @@ private fun normalizeStdout(agent: InstallAgent, stdout: String): String {
   }.getOrNull() ?: stdout
 }
 
-fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallAgent, AgentRunAdapter> = listOf(
+fun headlessAgentRunAdapters(
+  processRunner: AgentRunProcessRunner,
+  executableLookup: ExecutableLookup = PathExecutableLookup(),
+): Map<InstallAgent, AgentRunAdapter> = listOf(
   ClaudeAgentRunCommandBuilder(),
   CodexAgentRunCommandBuilder(),
   JunieAgentRunCommandBuilder(),
@@ -294,5 +350,6 @@ fun headlessAgentRunAdapters(processRunner: AgentRunProcessRunner): Map<InstallA
       agent = builder.agent,
       commandBuilder = builder,
       processRunner = processRunner,
+      executableLookup = executableLookup,
     )
   }

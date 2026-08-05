@@ -468,8 +468,11 @@ private fun goalContinuationOutcomeFor(
 }
 
 internal fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
-  facts.spawnFailed ->
-    "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
+  facts.spawnFailed -> {
+    val base = "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
+    val excerpt = stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+    if (excerpt != null) "$base\n$excerpt" else base
+  }
   facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
   facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
   facts.exitStatus != null && facts.exitStatus != 0 -> {

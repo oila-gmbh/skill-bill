@@ -642,6 +642,7 @@ class ImplementationOwnershipArchitectureTest {
     val ALLOWED_COMPOSITION_IMPORTS: Set<String> = setOf(
       "skillbill.install.model.InstallPlanWireValidator",
       "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
+      "skillbill.launcher.agentrun.PathExecutableLookup",
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",

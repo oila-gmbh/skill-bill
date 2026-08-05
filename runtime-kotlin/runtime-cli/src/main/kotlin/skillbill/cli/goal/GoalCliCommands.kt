@@ -33,6 +33,7 @@ import skillbill.application.system.RuntimeProvenanceService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
+import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.error.DatabaseAccessError
@@ -43,6 +44,7 @@ import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
@@ -73,6 +75,7 @@ class GoalRunCommand(
   private val goalRunner: GoalRunner,
   private val runtimeProvenanceService: RuntimeProvenanceService,
   private val agentAddonSelectionPort: AgentAddonSelectionPort,
+  private val executableLookup: ExecutableLookup,
   goalRunSubcommands: GoalRunSubcommands,
   private val state: CliRunState,
 ) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
@@ -154,13 +157,15 @@ class GoalRunCommand(
     // opencode is prose-only: refuse before any child subprocess is spawned, and before the
     // issue_key check so the actionable refusal wins over a generic argument error (mirrors
     // feature-task, where the preflight is the first statement in every run body).
-    refuseRuntimeRefusedAgents(
-      listOf(
-        resolveInvokedAgentId(agent, state.environment),
-        agentOverride,
-        parallelReviewAgent?.takeIf(String::isNotBlank),
-      ),
+    val candidateAgentIds = listOf(
+      resolveInvokedAgentId(agent, state.environment),
+      agentOverride,
+      parallelReviewAgent?.takeIf(String::isNotBlank),
     )
+    refuseRuntimeRefusedAgents(candidateAgentIds)
+    // An agent whose headless CLI is absent would otherwise spawn-fail at goal planning, after the
+    // goal record already exists and is blocked at subtask 0.
+    refuseUnavailableAgentLaunchers(candidateAgentIds, executableLookup)
     val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
     if (stopAfterSubtask != null && requireNotNull(stopAfterSubtask) <= 0) {
       throw UsageError("--stop-after-subtask must be a positive integer.")
