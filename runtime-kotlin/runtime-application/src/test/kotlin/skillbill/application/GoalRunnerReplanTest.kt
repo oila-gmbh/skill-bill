@@ -105,7 +105,21 @@ class GoalRunnerReplanTest {
 
   @Test
   fun `scoped replan refuses unknown liveness without mutation`() {
-    val store = refusalBaseStore().apply { executionLeaseForTest = null }
+    // Child workflow id present but mode is not RUNTIME (empty phase ledger) → UNKNOWN.
+    // Absence of a parent lease alone is IDLE after clean exit; do not use that for this refusal.
+    val store = refusalBaseStore(
+      base = refusalBaseManifest().copy(
+        currentSubtaskIntent = CurrentSubtaskIntent(2, "resume"),
+        subtasks = listOf(
+          refusalBaseManifest().subtasks[0],
+          refusalBaseManifest().subtasks[1].copy(
+            status = "in_progress",
+            workflowId = "wfl-prose-unknown",
+            lastResumableStep = "implement",
+          ),
+        ),
+      ),
+    )
     val failure = assertFailsWith<IllegalArgumentException> {
       GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 2))

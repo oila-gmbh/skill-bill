@@ -362,9 +362,7 @@ class WorkflowGoalRunnerManifestStore(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-    includeSharedPreplan: Boolean,
-    expectedSharedPayloadSha256: String?,
-    planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity?,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       val preparations = unitOfWork.goalPlanningPreparations
@@ -373,16 +371,17 @@ class WorkflowGoalRunnerManifestStore(
       val namedExisted = subtaskId in plannedBefore
       val cascadedIds: List<Int>
       val deleted: Int
-      if (includeSharedPreplan) {
+      if (options.includeSharedPreplan) {
         // Cascade every stored sibling plan row (terminal and non-terminal). recoveryProgress
         // re-validates all ordered plans against expectedProvenance with no status filter;
         // leaving any survivor would provenance-mismatch against a regenerated shared preplan.
         cascadedIds = plannedBefore.filter { it != subtaskId }
-        if (expectedSharedPayloadSha256 != null) {
-          val identity = requireNotNull(planningIdentity) {
+        val expectedDigest = options.expectedSharedPayloadSha256
+        if (expectedDigest != null) {
+          val identity = requireNotNull(options.planningIdentity) {
             "planningIdentity is required when discarding a shared preplan by digest."
           }
-          preparations.deleteSharedPreplan(identity, expectedSharedPayloadSha256)
+          preparations.deleteSharedPreplan(identity, expectedDigest)
           // FK ON DELETE CASCADE removes every goal_subtask_plans row for this parent.
         } else {
           plannedBefore.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }

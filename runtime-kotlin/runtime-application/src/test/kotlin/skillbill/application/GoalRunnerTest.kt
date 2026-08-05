@@ -1197,21 +1197,23 @@ class GoalRunnerStatusProjectionTest {
       requireNotNull(statusServiceForLiveness(proseHarness, "wfl-prose").status(goalStatusRequest())).executionLiveness,
     )
 
-    val missingWorkflowStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
+    // No parent lease after clean exit is idle — not unknown — so watch/replan can proceed at boundaries.
+    val missingLeaseStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
     assertEquals(
-      ExecutionLiveness.UNKNOWN,
+      ExecutionLiveness.IDLE,
       requireNotNull(
-        GoalRunnerStatusService(missingWorkflowStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+        GoalRunnerStatusService(missingLeaseStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
           .status(goalStatusRequest()),
       ).executionLiveness,
     )
 
+    // Intent naming a subtask that is not on the manifest still falls through to the parent lease path.
     val missingCurrentSubtaskStore = InMemoryGoalManifestStore(
       manifest(subtaskCount = 1)
         .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "resume")),
     )
     assertEquals(
-      ExecutionLiveness.UNKNOWN,
+      ExecutionLiveness.IDLE,
       requireNotNull(
         GoalRunnerStatusService(missingCurrentSubtaskStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
           .status(goalStatusRequest()),
@@ -2613,21 +2615,19 @@ internal class InMemoryGoalManifestStore(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-    includeSharedPreplan: Boolean,
-    expectedSharedPayloadSha256: String?,
-    planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity?,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
   ): skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult {
     scopedReplanCount += 1
-    lastIncludeSharedPreplan = includeSharedPreplan
+    lastIncludeSharedPreplan = options.includeSharedPreplan
     val before = plannedSubtaskIds.sorted()
     val sharedBefore = sharedPreplanPrepared
     val cascadedIds: List<Int>
     val deleted: Int
-    if (includeSharedPreplan) {
+    if (options.includeSharedPreplan) {
       cascadedIds = before.filter { it != subtaskId }
-      if (expectedSharedPayloadSha256 != null) {
+      if (options.expectedSharedPayloadSha256 != null) {
         if (forceSharedDigestMismatchOnReplan ||
-          expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
+          options.expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
         ) {
           throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
             state.parentWorkflowId,

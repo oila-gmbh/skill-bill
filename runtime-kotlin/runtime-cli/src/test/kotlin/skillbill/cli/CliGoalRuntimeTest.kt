@@ -117,119 +117,6 @@ class CliGoalRuntimeTest {
   }
 
   @Test
-  fun `include-shared-preplan lists cascade then relaunch regenerates without reopening terminals`() {
-    val fixture = goalFixture(subtaskCount = 3)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-
-    val advanced = CliRuntime.run(
-      fixture.goalCommand(extra = listOf("--stop-after-subtask", "2")),
-      fixture.context(launcher = launcher),
-    )
-    assertEquals(1, advanced.exitCode, advanced.stdout)
-    assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
-
-    val statusBefore = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "goal",
-        "status",
-        "SKILL-901",
-        "--agent",
-        "codex",
-        "--repo-root",
-        fixture.tempDir.toString(),
-      ),
-      fixture.context(launcher = launcher),
-    )
-    assertContains(statusBefore.stdout, "shared_preplan=true")
-    assertContains(statusBefore.stdout, "complete: 2")
-
-    CliRuntime.run(goalControlCommand(fixture, "resume"), fixture.context(launcher = launcher))
-
-    val replan = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "goal",
-        "replan",
-        "SKILL-901",
-        "--subtask",
-        "3",
-        "--include-shared-preplan",
-        "--repo-root",
-        fixture.tempDir.toString(),
-      ),
-      fixture.context(launcher = launcher),
-    )
-    assertEquals(0, replan.exitCode, replan.stdout)
-    assertContains(replan.stdout, "discarded_shared_preplan: true")
-    assertContains(replan.stdout, "cascaded_plans=")
-    assertTrue(
-      replan.stdout.contains("cascaded_plans=1,2") || replan.stdout.contains("cascaded_plans=1"),
-      replan.stdout,
-    )
-    assertEquals(true, replan.payload?.get("discarded_shared_preplan"))
-    @Suppress("UNCHECKED_CAST")
-    val cascaded = replan.payload?.get("cascaded_plan_subtask_ids") as? List<*>
-    assertTrue(!cascaded.isNullOrEmpty(), "cascade must name at least one sibling plan")
-    assertFalse(3 in cascaded.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() })
-
-    val statusAfter = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "goal",
-        "status",
-        "SKILL-901",
-        "--agent",
-        "codex",
-        "--repo-root",
-        fixture.tempDir.toString(),
-      ),
-      fixture.context(launcher = launcher),
-    )
-    assertContains(statusAfter.stdout, "shared_preplan=false")
-    assertContains(statusAfter.stdout, "complete: 2")
-    assertTrue(
-      statusAfter.stdout.contains("planning_reason:") &&
-        (statusAfter.stdout.contains("not started") || statusAfter.stdout.contains("preplan")),
-      statusAfter.stdout,
-    )
-
-    val planningRequestsBeforeRelaunch = launcher.requests.count {
-      it.skillRunRequest.goalContinuation == null && it.skillRunRequest.promptOverride != null
-    }
-    launcher.childLaunches.clear()
-    val relaunch = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
-    assertEquals(0, relaunch.exitCode, relaunch.stdout)
-    assertEquals(listOf(3), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
-    val planningRequestsAfterRelaunch = launcher.requests.count {
-      it.skillRunRequest.goalContinuation == null && it.skillRunRequest.promptOverride != null
-    }
-    assertTrue(
-      planningRequestsAfterRelaunch > planningRequestsBeforeRelaunch,
-      "relaunch must regenerate shared preplan/plans after opt-in discard",
-    )
-
-    val statusFinal = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "goal",
-        "status",
-        "SKILL-901",
-        "--agent",
-        "codex",
-        "--repo-root",
-        fixture.tempDir.toString(),
-      ),
-      fixture.context(launcher = launcher),
-    )
-    assertContains(statusFinal.stdout, "complete: 3")
-  }
-
-  @Test
   fun `goal pause is consumed at an unlaunched boundary and remains idempotent`() {
     val fixture = goalFixture(subtaskCount = 1)
     val launcher = GoalFixtureAgentRunLauncher(fixture)
@@ -805,6 +692,98 @@ class CliGoalRuntimeTest {
     assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
+}
+
+/**
+ * SKILL-160 subtask 2: `--include-shared-preplan` cascade + relaunch. Kept in its own class so it
+ * does not push [CliGoalRuntimeTest] over the detekt LargeClass threshold.
+ */
+class CliGoalSharedPreplanReplanTest {
+  @Test
+  fun `include-shared-preplan lists cascade then relaunch regenerates without reopening terminals`() {
+    val fixture = goalFixture(subtaskCount = 3)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    advanceToSubtaskThreeBoundary(fixture, launcher)
+    assertSharedPreplanCascade(fixture, launcher)
+    assertRelaunchRegeneratesIntoSubtaskThree(fixture, launcher)
+  }
+
+  private fun advanceToSubtaskThreeBoundary(fixture: GoalCliFixture, launcher: GoalFixtureAgentRunLauncher) {
+    val advanced = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--stop-after-subtask", "2")),
+      fixture.context(launcher = launcher),
+    )
+    assertEquals(1, advanced.exitCode, advanced.stdout)
+    assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
+    val statusBefore = goalStatus(fixture, launcher)
+    assertContains(statusBefore.stdout, "shared_preplan=true")
+    assertContains(statusBefore.stdout, "complete: 2")
+    CliRuntime.run(goalControlCommand(fixture, "resume"), fixture.context(launcher = launcher))
+  }
+
+  private fun assertSharedPreplanCascade(fixture: GoalCliFixture, launcher: GoalFixtureAgentRunLauncher) {
+    val replan = CliRuntime.run(
+      listOf(
+        "--db", fixture.dbPath.toString(),
+        "goal", "replan", "SKILL-901",
+        "--subtask", "3",
+        "--include-shared-preplan",
+        "--repo-root", fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = launcher),
+    )
+    assertEquals(0, replan.exitCode, replan.stdout)
+    assertContains(replan.stdout, "discarded_shared_preplan: true")
+    assertContains(replan.stdout, "cascaded_plans=")
+    assertTrue(
+      replan.stdout.contains("cascaded_plans=1,2") || replan.stdout.contains("cascaded_plans=1"),
+      replan.stdout,
+    )
+    assertEquals(true, replan.payload?.get("discarded_shared_preplan"))
+    @Suppress("UNCHECKED_CAST")
+    val cascaded = replan.payload?.get("cascaded_plan_subtask_ids") as? List<*>
+    assertTrue(!cascaded.isNullOrEmpty(), "cascade must name at least one sibling plan")
+    assertFalse(3 in cascaded.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() })
+    val statusAfter = goalStatus(fixture, launcher)
+    assertContains(statusAfter.stdout, "shared_preplan=false")
+    assertContains(statusAfter.stdout, "complete: 2")
+    assertTrue(
+      statusAfter.stdout.contains("planning_reason:") &&
+        (statusAfter.stdout.contains("not started") || statusAfter.stdout.contains("preplan")),
+      statusAfter.stdout,
+    )
+  }
+
+  private fun assertRelaunchRegeneratesIntoSubtaskThree(
+    fixture: GoalCliFixture,
+    launcher: GoalFixtureAgentRunLauncher,
+  ) {
+    val planningBefore = launcher.requests.count {
+      it.skillRunRequest.goalContinuation == null && it.skillRunRequest.promptOverride != null
+    }
+    launcher.childLaunches.clear()
+    val relaunch = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
+    assertEquals(0, relaunch.exitCode, relaunch.stdout)
+    assertEquals(listOf(3), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
+    val planningAfter = launcher.requests.count {
+      it.skillRunRequest.goalContinuation == null && it.skillRunRequest.promptOverride != null
+    }
+    assertTrue(
+      planningAfter > planningBefore,
+      "relaunch must regenerate shared preplan/plans after opt-in discard",
+    )
+    assertContains(goalStatus(fixture, launcher).stdout, "complete: 3")
+  }
+
+  private fun goalStatus(fixture: GoalCliFixture, launcher: GoalFixtureAgentRunLauncher) = CliRuntime.run(
+    listOf(
+      "--db", fixture.dbPath.toString(),
+      "goal", "status", "SKILL-901",
+      "--agent", "codex",
+      "--repo-root", fixture.tempDir.toString(),
+    ),
+    fixture.context(launcher = launcher),
+  )
 }
 
 /**

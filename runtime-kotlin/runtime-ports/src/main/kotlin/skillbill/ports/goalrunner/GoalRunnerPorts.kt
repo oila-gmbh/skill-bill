@@ -23,6 +23,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -165,16 +166,14 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
   /**
    * Atomically deletes one `goal_subtask_plans` row and persists the retargeted parent manifest.
    * Does not delete child workflow rows or mutate subtask runtime fields.
-   * When [includeSharedPreplan] is true, also digest-conditionally discards the shared preplan and
-   * every sibling plan row in the same transaction (cascade-all provenance resolution).
+   * When [options.includeSharedPreplan] is true, also digest-conditionally discards the shared
+   * preplan and every sibling plan row in the same transaction (cascade-all provenance resolution).
    */
   fun saveScopedReplan(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String? = null,
-    includeSharedPreplan: Boolean = false,
-    expectedSharedPayloadSha256: String? = null,
-    planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity? = null,
+    options: GoalRunnerScopedReplanOptions = GoalRunnerScopedReplanOptions(),
   ): GoalRunnerScopedReplanWriteResult =
     error("Goal runner manifest store must atomically persist a scoped subtask replan.")
 

@@ -31,6 +31,7 @@ import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -232,8 +233,10 @@ class GoalRunnerStatusService(
 
   private fun resolveParentExecutionLiveness(parentWorkflowId: String, dbPathOverride: String?): ExecutionLiveness =
     runCatching {
+      // A released or never-acquired parent lease means no goal runner holds the goal — idle.
+      // UNKNOWN is reserved for lease-read failure (catch below), not for absence after clean exit.
       val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
-        ?: return@runCatching ExecutionLiveness.UNKNOWN
+        ?: return@runCatching ExecutionLiveness.IDLE
       if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
         ExecutionLiveness.LIVE
       } else {
@@ -370,9 +373,11 @@ class GoalRunnerStatusService(
       state = retargeted,
       subtaskId = request.subtaskId,
       dbPathOverride = request.dbPathOverride,
-      includeSharedPreplan = request.includeSharedPreplan,
-      expectedSharedPayloadSha256 = expectedSharedDigest,
-      planningIdentity = planningIdentity,
+      options = GoalRunnerScopedReplanOptions(
+        includeSharedPreplan = request.includeSharedPreplan,
+        expectedSharedPayloadSha256 = expectedSharedDigest,
+        planningIdentity = planningIdentity,
+      ),
     )
     return toReplanResult(request, loaded, written, beforeSubtasks)
   }

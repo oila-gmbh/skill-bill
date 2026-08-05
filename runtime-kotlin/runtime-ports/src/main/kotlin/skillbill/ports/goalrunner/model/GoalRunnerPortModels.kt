@@ -32,6 +32,16 @@ data class GoalRunnerScopedReplanWriteResult(
   val cascadedPlanSubtaskIds: List<Int> = emptyList(),
 )
 
+/**
+ * Shared-preplan opt-in knobs for [skillbill.ports.goalrunner.GoalRunnerManifestStore.saveScopedReplan].
+ * Bundled so the port stays under detekt LongParameterList without suppressing the seam.
+ */
+data class GoalRunnerScopedReplanOptions(
+  val includeSharedPreplan: Boolean = false,
+  val expectedSharedPayloadSha256: String? = null,
+  val planningIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity? = null,
+)
+
 data class GoalRunnerPausePersistenceResult(
   val parentWorkflowId: String,
   val controlState: GoalRunnerControlState,
