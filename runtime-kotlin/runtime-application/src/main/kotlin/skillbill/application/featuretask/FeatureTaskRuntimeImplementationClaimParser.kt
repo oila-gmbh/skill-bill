@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRenderOpenWorkItem
 
 /**
  * The untrusted-input seam of the SKILL-150 completion gate: turning an agent-authored
@@ -112,14 +113,14 @@ private fun isAttemptRepoPath(value: String): Boolean = value.isNotEmpty() &&
 // arrives as an object or a number is still an open obligation, so it is rendered into a bounded string
 // rather than discarded for not being a Kotlin String. A deviation whose ref renders but whose note does
 // not keeps the entry under a placeholder note, because the ref alone identifies unclosed work.
+// The rendering rule itself is featureTaskRuntimeRenderOpenWorkItem, shared with the receipt model so
+// this seam and the producer-projection seam agree on what an entry means; only the bound is local,
+// because it mirrors the attempt schema rather than the projection schema.
 private const val ATTEMPT_UNREADABLE_NOTE = "note: unreadable deviation note retained as open work"
 private const val ATTEMPT_RENDER_MAX_LENGTH = 8192
 
-private fun renderOpenWorkValue(value: Any?): String? = when (value) {
-  null -> null
-  is String -> value
-  else -> value.toString().take(ATTEMPT_RENDER_MAX_LENGTH)
-}
+private fun renderOpenWorkValue(value: Any?): String? =
+  featureTaskRuntimeRenderOpenWorkItem(value)?.take(ATTEMPT_RENDER_MAX_LENGTH)
 
 private fun Map<String, Any?>.openWorkList(key: String): List<String> =
   (this[key] as? List<*>).orEmpty().mapNotNull(::renderOpenWorkValue)

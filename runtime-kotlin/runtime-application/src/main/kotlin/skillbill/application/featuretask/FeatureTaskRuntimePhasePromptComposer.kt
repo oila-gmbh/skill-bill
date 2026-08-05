@@ -619,7 +619,17 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      compile, or run tests here: write the tests the plan obligates and leave them unexecuted.\n" +
       "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +
       "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
-      "      payloads."
+      "      payloads.\n" +
+      "      Two rules decide whether a 'completed' receipt advances, so satisfy them here rather than\n" +
+      "      learning them from a rejection:\n" +
+      "      - completed_task_ids must close EVERY task id the delivered plan declared. Closing fewer\n" +
+      "        does not advance; report 'blocked' or 'failed' instead of narrowing the obligation.\n" +
+      "      - unresolved_items must be EMPTY on a 'completed' receipt: it means work this phase leaves\n" +
+      "        open, and completion plus an open item cannot both be true. It is NOT a notes field —\n" +
+      "        anything you merely want the next phase to know goes in deviations or the summary, and\n" +
+      "        work the phase contract assigns elsewhere (a build or test run, which belongs to\n" +
+      "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
+      "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
 
   private const val VALIDATION_PROJECTION_SHAPE: String =
     "\n    - Required produced_outputs shape: emit a validation_result OBJECT. Its repository_checkpoint\n" +
@@ -646,7 +656,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
       "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
       "        \"tests_added\": [], \"tests_updated\": [], \"tests_executed\": [],\n" +
-      "        \"deviations\": [], \"unresolved_items\": [],\n" +
+      "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
+      "        \"unresolved_items\": [],\n" +
       "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
       "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
