@@ -1,14 +1,22 @@
 contract_version: "0.1"
 agents:
   - name: bill-kmp-code-review-platform-correctness
-    description: "KMP platform correctness specialist — KMP expect/actual, source-set, target-runtime, and native-boundary correctness."
+    description: "Android & Kotlin Multiplatform platform correctness specialist — KMP expect/actual, source-set, target-runtime, and native-boundary correctness."
+    compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
+  - name: bill-kmp-code-review-persistence
+    description: "Android & Kotlin Multiplatform persistence specialist — Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness."
+    compose: governed-content
+    tools: [Read, Grep, Glob, Bash]
+  - name: bill-kmp-code-review-reliability
+    description: "Android & Kotlin Multiplatform reliability specialist — WorkManager and CoroutineWorker retry, process-death recovery, and collector supervision."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-kmp-code-review-ui
-    description: "KMP ui specialist — KMP Compose UI correctness and framework usage."
+    description: "Android & Kotlin Multiplatform ui specialist — KMP Compose UI correctness and framework usage."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
   - name: bill-kmp-code-review-ux-accessibility
-    description: "KMP ux accessibility specialist — KMP user experience, Compose semantics, and accessibility."
+    description: "Android & Kotlin Multiplatform ux accessibility specialist — KMP user experience, Compose semantics, and accessibility."
     compose: governed-content
     tools: [Read, Grep, Glob, Bash]
