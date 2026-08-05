@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-05] SKILL-136 declare KMP persistence/reliability areas and route to them (subtask 3)
+Areas: runtime-kotlin/runtime-infra-fs (scaffold tests), platform-packs/kmp, .feature-specs/SKILL-136-android-native-review-specialists
+- The `kmp` pack now declares `persistence` and `reliability` itself, so `ReviewLaunchPlanPolicy` resolves them at composition depth 0 and shadows the Kotlin baseline's backend-framework lanes.
+- Area focus text for both lanes names Android-native frameworks (Room, SQLDelight, DataStore, WorkManager) instead of backend-JVM ones; the Diff-Signal Routing Table gained matching rows.
+- `architecture`, `performance`, `security`, `testing`, `api-contracts` still resolve to `bill-kotlin-code-review-*`; `platform-correctness`, `ui`, `ux-accessibility` stay KMP-declared.
+- Added `ComposedReviewLaunchPlanTest` — asserts the full composed KMP resolution map and that a non-kmp pack's composed plan is unchanged. reusable shape for future pack-declaration changes.
+- Known limitation: shadowing is whole-area, not per-lane additive; declaring an area replaces the baseline specialist outright.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-05] SKILL-139 drop redundant staged content.md
 Areas: runtime-kotlin/runtime-infra-fs/install/staging, docs, orchestration/shell-content-contract, AGENTS.md
 - Listed-skill staging no longer copies `content.md` into the installed dir; staged layout is `SKILL.md`, `.content-hash`, pointers, optional `native-agents/` only.
