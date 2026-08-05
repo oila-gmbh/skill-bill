@@ -75,6 +75,8 @@ Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_c
 
 When a subtask's work landed outside the runtime — a child blocked and the implementation was finished by hand on the feature branch — the runtime cannot see it and will keep proposing that subtask again. Record it with `skill-bill goal accept <issue-key> --subtask <id> --commit <sha> --reason <text>`, which validates the commit and writes a durable acceptance the goal reconciles from. Do not edit `decomposition-manifest.yaml` to force progress.
 
+When a subtask spec is amended after that subtask's plan is already checkpointed, handle it with `skill-bill goal replan <issue-key> --subtask <id>` (add `--include-shared-preplan` only when the shared preplan must also be discarded). That is a replan of planning rows, not an acceptance and not a manifest edit. Do not hand-edit `decomposition-manifest.yaml`, and do not hard-reset then compensate with `accept --restore-after-hard-reset`: hard reset discards every completed subtask's `commit_sha` and `workflow_id`, and scoped replan is the supported path that preserves them.
+
 A goal reported as paused carries a durable operator pause. Launching the goal again clears it and continues; `skill-bill goal resume <issue-key>` clears the pause boundary without starting child runs when you want the state cleared first. Do not reset or hand-edit durable state to leave a pause.
 
 For `no_match`, invoke `bill-feature-spec` first in the current session unless the direct-dispatch rules below find existing governed artifacts. Do not write spec artifacts directly and do not fork spec-preparation logic.

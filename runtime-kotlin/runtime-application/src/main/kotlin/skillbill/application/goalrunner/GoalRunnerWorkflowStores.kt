@@ -59,6 +59,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -356,6 +357,71 @@ class WorkflowGoalRunnerManifestStore(
     )
     return saved.state
   }
+
+  override fun saveScopedReplan(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+  ): GoalRunnerScopedReplanWriteResult {
+    val saved = database.transaction(dbPathOverride) { unitOfWork ->
+      val preparations = unitOfWork.goalPlanningPreparations
+      val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+      val sharedBefore = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+      val namedExisted = subtaskId in plannedBefore
+      val cascadedIds: List<Int>
+      val deleted: Int
+      if (options.includeSharedPreplan) {
+        // Cascade every stored sibling plan row (terminal and non-terminal). recoveryProgress
+        // re-validates all ordered plans against expectedProvenance with no status filter;
+        // leaving any survivor would provenance-mismatch against a regenerated shared preplan.
+        cascadedIds = plannedBefore.filter { it != subtaskId }
+        val expectedDigest = options.expectedSharedPayloadSha256
+        if (expectedDigest != null) {
+          val identity = requireNotNull(options.planningIdentity) {
+            "planningIdentity is required when discarding a shared preplan by digest."
+          }
+          preparations.deleteSharedPreplan(identity, expectedDigest)
+          // FK ON DELETE CASCADE removes every goal_subtask_plans row for this parent.
+        } else {
+          plannedBefore.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+        }
+        deleted = if (namedExisted) 1 else 0
+      } else {
+        cascadedIds = emptyList()
+        deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+      }
+      val plannedAfter = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+      val sharedAfter = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+      val projection = saveWorkflowProjectionInTransaction(
+        unitOfWork,
+        state,
+        mergeConcurrentProgress = false,
+      )
+      GoalRunnerScopedReplanWriteResult(
+        state = projection.state,
+        deletedPlanCount = deleted,
+        plannedSubtaskIdsBefore = plannedBefore,
+        plannedSubtaskIdsAfter = plannedAfter,
+        sharedPreplanPrepared = sharedAfter,
+        sharedPreplanPreparedBefore = sharedBefore,
+        discardedSharedPreplan = sharedBefore && !sharedAfter,
+        cascadedPlanSubtaskIds = cascadedIds,
+      ) to projection.projectionArtifactsJson
+    }
+    DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      Path.of("").toAbsolutePath(),
+      saved.second,
+      decompositionManifestValidator,
+      decompositionManifestFileStore,
+    )
+    return saved.first
+  }
+
+  override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =
+    database.read(dbPathOverride) {
+      it.goalPlanningPreparations.sharedPreplanPayloadSha256(parentWorkflowId)
+    }
 
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,

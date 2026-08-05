@@ -9,6 +9,9 @@ import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerAcceptanceEvidence
 import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
 import skillbill.application.model.GoalRunnerPauseResult
+import skillbill.application.model.GoalRunnerReplanRequest
+import skillbill.application.model.GoalRunnerReplanResult
+import skillbill.application.model.GoalRunnerReplanSnapshot
 import skillbill.application.model.GoalRunnerResetRequest
 import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResetSnapshot
@@ -28,6 +31,8 @@ import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -44,8 +49,11 @@ import java.time.ZoneOffset
 private const val NO_CURRENT_SUBTASK_ID = 0
 private const val NO_CURRENT_SUBTASK_ACTION = "none"
 private const val SUBTASK_ACTION_START = "start"
+private const val SUBTASK_ACTION_RESUME = "resume"
 private const val SUBTASK_STATUS_IN_PROGRESS = "in_progress"
 private const val SUBTASK_STATUS_PENDING = "pending"
+private const val SUBTASK_STATUS_COMPLETE = "complete"
+private const val SUBTASK_STATUS_SKIPPED = "skipped"
 
 @Inject
 @Suppress("TooManyFunctions") // single cohesive boundary: status projection, reset, accept, and reconciliation
@@ -225,8 +233,10 @@ class GoalRunnerStatusService(
 
   private fun resolveParentExecutionLiveness(parentWorkflowId: String, dbPathOverride: String?): ExecutionLiveness =
     runCatching {
+      // A released or never-acquired parent lease means no goal runner holds the goal — idle.
+      // UNKNOWN is reserved for lease-read failure (catch below), not for absence after clean exit.
       val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
-        ?: return@runCatching ExecutionLiveness.UNKNOWN
+        ?: return@runCatching ExecutionLiveness.IDLE
       if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
         ExecutionLiveness.LIVE
       } else {
@@ -333,6 +343,108 @@ class GoalRunnerStatusService(
       recovery = staleChild,
     )
   }
+
+  fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? {
+    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
+      ?: return null
+    val selected = requireReplanTarget(loaded.manifest, request)
+    requireIdleForScopedReplan(loaded, request)
+    val beforeSubtasks = loaded.manifest.toResetSnapshot().subtasks
+    val expectedSharedDigest = if (request.includeSharedPreplan) {
+      manifestStore.sharedPreplanPayloadSha256(loaded.parentWorkflowId, request.dbPathOverride)
+    } else {
+      null
+    }
+    val planningIdentity = if (request.includeSharedPreplan && expectedSharedDigest != null) {
+      skillbill.ports.persistence.model.GoalPlanningIdentity(
+        parentGoalWorkflowId = loaded.parentWorkflowId,
+        normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
+        repositoryIdentity = goalRepositoryIdentity(
+          request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
+        ),
+      )
+    } else {
+      null
+    }
+    val retargeted = loaded.copy(
+      manifest = loaded.manifest.copy(currentSubtaskIntent = replanIntent(selected)),
+    )
+    val written = manifestStore.saveScopedReplan(
+      state = retargeted,
+      subtaskId = request.subtaskId,
+      dbPathOverride = request.dbPathOverride,
+      options = GoalRunnerScopedReplanOptions(
+        includeSharedPreplan = request.includeSharedPreplan,
+        expectedSharedPayloadSha256 = expectedSharedDigest,
+        planningIdentity = planningIdentity,
+      ),
+    )
+    return toReplanResult(request, loaded, written, beforeSubtasks)
+  }
+
+  private fun requireReplanTarget(
+    manifest: DecompositionManifest,
+    request: GoalRunnerReplanRequest,
+  ): DecompositionSubtask {
+    val selected = manifest.subtasks.singleOrNull { it.id == request.subtaskId }
+    require(selected != null) {
+      "Subtask '${request.subtaskId}' is not part of goal '${request.issueKey}'."
+    }
+    require(selected.status != SUBTASK_STATUS_COMPLETE && selected.status != SUBTASK_STATUS_SKIPPED) {
+      "Subtask '${request.subtaskId}' is terminal (${selected.status}); use reset to reopen it before replanning."
+    }
+    return selected
+  }
+
+  private fun requireIdleForScopedReplan(loaded: GoalRunnerManifestState, request: GoalRunnerReplanRequest) {
+    val currentSubtask = loaded.manifest.subtasks.firstOrNull { subtask ->
+      subtask.id == loaded.manifest.currentSubtaskIntent.subtaskId
+    }
+    val liveness = resolveExecutionLiveness(
+      parentWorkflowId = loaded.parentWorkflowId,
+      currentSubtask = currentSubtask,
+      dbPathOverride = request.dbPathOverride,
+    )
+    require(liveness == ExecutionLiveness.IDLE) {
+      when (liveness) {
+        ExecutionLiveness.LIVE ->
+          "Goal '${request.issueKey}' is live; refuse scoped replan while a child or parent run is active."
+        ExecutionLiveness.UNKNOWN ->
+          "Goal '${request.issueKey}' has unknown execution liveness; refuse scoped replan."
+        ExecutionLiveness.IDLE -> "Goal '${request.issueKey}' is idle."
+      }
+    }
+  }
+
+  private fun toReplanResult(
+    request: GoalRunnerReplanRequest,
+    before: GoalRunnerManifestState,
+    written: GoalRunnerScopedReplanWriteResult,
+    beforeSubtasks: List<GoalRunnerResetSubtaskSnapshot>,
+  ): GoalRunnerReplanResult = GoalRunnerReplanResult(
+    issueKey = written.state.manifest.issueKey,
+    parentWorkflowId = written.state.parentWorkflowId,
+    subtaskId = request.subtaskId,
+    discardedPlan = written.deletedPlanCount > 0,
+    discardedSharedPreplan = written.discardedSharedPreplan,
+    cascadedPlanSubtaskIds = written.cascadedPlanSubtaskIds,
+    before = GoalRunnerReplanSnapshot(
+      status = before.manifest.status,
+      currentSubtaskId = before.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
+      currentAction = before.manifest.currentSubtaskIntent.action,
+      sharedPreplanPrepared = written.sharedPreplanPreparedBefore,
+      plannedSubtaskIds = written.plannedSubtaskIdsBefore,
+      subtasks = beforeSubtasks,
+    ),
+    after = GoalRunnerReplanSnapshot(
+      status = written.state.manifest.status,
+      currentSubtaskId = written.state.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
+      currentAction = written.state.manifest.currentSubtaskIntent.action,
+      sharedPreplanPrepared = written.sharedPreplanPrepared,
+      plannedSubtaskIds = written.plannedSubtaskIdsAfter,
+      subtasks = written.state.manifest.toResetSnapshot().subtasks,
+    ),
+  )
 
   private fun currentChildRecoveryDiagnostic(
     manifest: DecompositionManifest,
@@ -556,6 +668,14 @@ private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskI
     subtaskId = nextRunnable?.id ?: 0,
     action = if (nextRunnable == null) "complete" else "start",
   )
+}
+
+private fun replanIntent(subtask: DecompositionSubtask): CurrentSubtaskIntent {
+  val action = when {
+    subtask.status == SUBTASK_STATUS_IN_PROGRESS || !subtask.workflowId.isNullOrBlank() -> SUBTASK_ACTION_RESUME
+    else -> SUBTASK_ACTION_START
+  }
+  return CurrentSubtaskIntent(subtaskId = subtask.id, action = action)
 }
 
 private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = GoalRunnerResetSnapshot(

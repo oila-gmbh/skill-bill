@@ -1,3 +1,13 @@
+## [2026-08-05] SKILL-160 opt-in shared-preplan invalidation (subtask 2)
+Areas: runtime-kotlin/{runtime-application,runtime-ports,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-160-scoped-subtask-replan
+- `goal replan --include-shared-preplan` discards the shared preplan plus the named subtask plan; omitting the flag leaves shared preplan untouched (subtask 1 path unchanged).
+- Shared-preplan delete is its own digest-gated primitive (not `replaceSharedPreplan`): refuse without mutate if the stored payload digest moved since pre-flight. reusable
+- Provenance resolution: cascade deletes **every** sibling `goal_subtask_plans` row for the goal (terminal included); runtime fields stay untouched. Non-terminal-only cascade was rejected because recovery and sweep still re-validate/read complete plans against expected provenance. reusable
+- Status reports `shared_preplan=false` with pending regeneration; before/after output names the shared preplan and every cascaded plan so operators see the full discard set in-band.
+- Relaunch regenerates shared preplan and discarded plans from on-disk specs and continues without reopening terminals; `GoalRunnerResetRequest` / `CliGoalResetOptionGateTest` stay unmodified.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-04] SKILL-155 typed bounded DB failure surface (subtask 2)
 Areas: runtime-kotlin/{runtime-contracts,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-155-read-path-db-lock-contention
 - SQLite open/read/transaction failures now convert to a typed `DatabaseAccessError` in `runtime-contracts/skillbill/error`; no `org.sqlite` type crosses the ports boundary from `SQLiteDatabaseSessionFactory` or `DatabaseRuntime`.

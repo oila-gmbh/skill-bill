@@ -1197,21 +1197,23 @@ class GoalRunnerStatusProjectionTest {
       requireNotNull(statusServiceForLiveness(proseHarness, "wfl-prose").status(goalStatusRequest())).executionLiveness,
     )
 
-    val missingWorkflowStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
+    // No parent lease after clean exit is idle — not unknown — so watch/replan can proceed at boundaries.
+    val missingLeaseStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
     assertEquals(
-      ExecutionLiveness.UNKNOWN,
+      ExecutionLiveness.IDLE,
       requireNotNull(
-        GoalRunnerStatusService(missingWorkflowStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+        GoalRunnerStatusService(missingLeaseStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
           .status(goalStatusRequest()),
       ).executionLiveness,
     )
 
+    // Intent naming a subtask that is not on the manifest still falls through to the parent lease path.
     val missingCurrentSubtaskStore = InMemoryGoalManifestStore(
       manifest(subtaskCount = 1)
         .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "resume")),
     )
     assertEquals(
-      ExecutionLiveness.UNKNOWN,
+      ExecutionLiveness.IDLE,
       requireNotNull(
         GoalRunnerStatusService(missingCurrentSubtaskStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
           .status(goalStatusRequest()),
@@ -2562,6 +2564,101 @@ internal class InMemoryGoalManifestStore(
     return save(recovered, dbPathOverride)
   }
 
+  var plannedSubtaskIds: MutableSet<Int> = mutableSetOf()
+  var sharedPreplanPrepared: Boolean = true
+  var sharedPreplanPayloadSha256ForTest: String? = "c".repeat(64)
+  var scopedReplanCount: Int = 0
+    private set
+  var lastIncludeSharedPreplan: Boolean? = null
+    private set
+  var forceSharedDigestMismatchOnReplan: Boolean = false
+
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
+    dbPathOverride: String?,
+  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot {
+    val plannedIds = plannedSubtaskIds.sorted()
+    val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
+    val state = when {
+      blockedReason != null -> skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+      !sharedPreplanPrepared -> skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
+      firstMissing == null -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
+      plannedIds.isEmpty() -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
+      else -> skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
+    }
+    val reason = when (state) {
+      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
+      skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
+        "Shared preplan is saved; planning can resume at subtask $firstMissing."
+      skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->
+        "Saved plans will be reused; planning can resume at subtask $firstMissing."
+      skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED -> blockedReason
+      skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED -> null
+    }
+    return skillbill.goalrunner.model.GoalPlanningStatusSnapshot(
+      state,
+      sharedPreplanPrepared,
+      plannedIds.size,
+      orderedSubtaskIds.size,
+      blockedSubtaskId ?: firstMissing,
+      reason,
+    )
+  }
+
+  override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =
+    sharedPreplanPayloadSha256ForTest.takeIf { sharedPreplanPrepared }
+
+  override fun saveScopedReplan(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    dbPathOverride: String?,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+  ): skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult {
+    scopedReplanCount += 1
+    lastIncludeSharedPreplan = options.includeSharedPreplan
+    val before = plannedSubtaskIds.sorted()
+    val sharedBefore = sharedPreplanPrepared
+    val cascadedIds: List<Int>
+    val deleted: Int
+    if (options.includeSharedPreplan) {
+      cascadedIds = before.filter { it != subtaskId }
+      if (options.expectedSharedPayloadSha256 != null) {
+        if (forceSharedDigestMismatchOnReplan ||
+          options.expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
+        ) {
+          throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+            state.parentWorkflowId,
+            0,
+            "shared preplan changed after it was observed for discard",
+          )
+        }
+        plannedSubtaskIds.clear()
+        sharedPreplanPrepared = false
+        sharedPreplanPayloadSha256ForTest = null
+      } else {
+        plannedSubtaskIds.clear()
+      }
+      deleted = if (subtaskId in before) 1 else 0
+    } else {
+      cascadedIds = emptyList()
+      deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
+    }
+    val saved = save(state, dbPathOverride)
+    return skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult(
+      state = saved,
+      deletedPlanCount = deleted,
+      plannedSubtaskIdsBefore = before,
+      plannedSubtaskIdsAfter = plannedSubtaskIds.sorted(),
+      sharedPreplanPrepared = sharedPreplanPrepared,
+      sharedPreplanPreparedBefore = sharedBefore,
+      discardedSharedPreplan = sharedBefore && !sharedPreplanPrepared,
+      cascadedPlanSubtaskIds = cascadedIds,
+    )
+  }
+
   override fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
@@ -3217,7 +3314,7 @@ private class FixedBranchGitOperations(
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = readyGoalReviewOperations()
 }
 
-private class AcceptGitOperations(
+internal class AcceptGitOperations(
   private val resolvable: Map<String, String> = mapOf(
     "abc1234" to "abc1234abc1234abc1234abc1234abc1234abcd",
     "abc1234abc1234abc1234abc1234abc1234abcd" to "abc1234abc1234abc1234abc1234abc1234abcd",
@@ -3573,7 +3670,7 @@ class GoalRunnerStatusAttributionTest {
 // recorder runs over an empty repository (every read returns null) and attribution falls through to
 // the subtask's recorded finalizing/participating agent — letting status attribution tests assert
 // source 2 without a database.
-private fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
+internal fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
   GoalTestEmptyDatabase,
   GoalTestNoopSnapshotValidator,
   AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
