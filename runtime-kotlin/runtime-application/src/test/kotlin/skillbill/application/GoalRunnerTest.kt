@@ -314,6 +314,32 @@ class GoalRunnerTest {
   }
 
   @Test
+  fun `operator resume of a blocked subtask reopens the child phase before launch`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withBlockedSubtask(1, workflowId = "wfl-1", reason = "implement needs user action"),
+    )
+    val outcomes = RecordingOutcomeStore()
+    outcomes.seedReviewState("wfl-1")
+    val launcher = RecordingSubtaskLauncher {
+      outcomes["wfl-1"] = completeOutcome(1)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    val report = runner.run(runRequest())
+
+    assertIs<GoalRunnerRunReport.Completed>(report)
+    assertEquals(listOf(1), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(listOf("wfl-1"), outcomes.reopenBlockedPhaseCalls.map { it.workflowId })
+    assertEquals(listOf("validate"), outcomes.reopenBlockedPhaseCalls.map { it.preferredPhaseId })
+    assertTrue(
+      outcomes.reopenBlockedPhaseCalls.single().reason.contains("Operator resumed the goal"),
+      outcomes.reopenBlockedPhaseCalls.single().reason,
+    )
+  }
+
+  @Test
   fun `resume after stop reconciles a terminal child before continuing`() {
     val initial = manifest(subtaskCount = 3)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
@@ -2914,6 +2940,7 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   val acknowledgedReviewPasses: MutableList<Pair<String, Int>> = mutableListOf()
   val progresses: MutableMap<String, GoalRunnerWorkflowProgress> = mutableMapOf()
   val blockedWorkflows: MutableList<BlockedWorkflow> = mutableListOf()
+  val reopenBlockedPhaseCalls: MutableList<ReopenBlockedPhaseCall> = mutableListOf()
   val observabilityRecords: MutableList<GoalRunnerObservabilityRecordRequest> = mutableListOf()
   val workerSubtaskRequestOutcomes: MutableList<WorkerSubtaskRequestOutcomeRecord> = mutableListOf()
   val authoritativeOutcomesBySubtask: MutableMap<Int, GoalRunnerStoredOutcome> = mutableMapOf()
@@ -3017,6 +3044,16 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     return "implement"
   }
 
+  override fun reopenBlockedPhaseForOperatorResume(
+    workflowId: String,
+    preferredPhaseId: String,
+    reason: String,
+    dbPathOverride: String?,
+  ): Boolean {
+    reopenBlockedPhaseCalls += ReopenBlockedPhaseCall(workflowId, preferredPhaseId, reason)
+    return true
+  }
+
   override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? {
     if (throwOnProgress) {
       error("progress read failed")
@@ -3096,6 +3133,12 @@ internal data class BlockedWorkflow(
   val blockedReason: String,
   val lastResumableStep: String,
   val supervisionEvent: GoalRunnerSupervisionEvent?,
+)
+
+internal data class ReopenBlockedPhaseCall(
+  val workflowId: String,
+  val preferredPhaseId: String,
+  val reason: String,
 )
 
 internal data class RecoveredMissingResultPrefixOutput(

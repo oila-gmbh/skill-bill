@@ -1,5 +1,25 @@
 # featuretask runtime boundary history
 
+## [2026-08-05] Operator resume reopens blocked goal children
+Areas: runtime-application/goalrunner, runtime-ports/goalrunner
+- `skill-bill goal <key>` resume of a blocked subtask now reopens the child's durable blocked phase before launch (same child-side reopen as `feature-task retry-blocked`)
+- Clears `needs_user_action` / blocked phase records so operator resume continues instead of immediately re-surfacing the prior block
+- Records an `operator_block_retry` artifact with reason `Operator resumed the goal after a blocked stop…`
+- `non_retryable_policy_conflict` remains a distinct disposition; reopen still applies because the operator explicitly resumed the goal
+- Reusable: treat an explicit parent relaunch as the operator decision that unlocks a blocked child
+Feature flag: N/A
+Acceptance criteria: N/A
+
+## [2026-08-05] Uncapped implementation continuation
+Areas: runtime-application/featuretask
+- Removed the hard 5-segment implementation-continuation budget; honest incomplete receipts keep continuing until obligations close, the agent reports a terminal outcome, or an operator stops the run
+- Malformed-output and semantic fix-loop budgets are unchanged and still independent of continuation
+- Resume no longer re-blocks solely because a prior continuation segment count reached the old cap
+- Durable blocks that name the removed continuation budget are treated as stale and relaunch implement on resume (same pattern as other removed terminal gates)
+- Reusable: keep partial-work continuation on its own axis; do not charge honest progress to structural or semantic repair budgets
+Feature flag: N/A
+Acceptance criteria: N/A
+
 ## [2026-08-04] SKILL-150 — Audit repair convergence
 Areas: runtime-application/featuretask, runtime-application/review, runtime-domain/workflow/taskruntime, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-infra-fs, orchestration/contracts, runtime-cli, skills/bill-code-review*
 - Completeness audits now persist append-only generations (repository checkpoint, satisfied criteria, gaps, closure-complete repair batch, bounded evidence) instead of living only in phase output

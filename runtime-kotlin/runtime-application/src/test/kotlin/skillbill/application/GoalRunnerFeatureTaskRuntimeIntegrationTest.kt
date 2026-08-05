@@ -71,7 +71,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   @Test
   fun `goal child cannot advance on a receipt claiming completion while plan tasks remain open`() {
     val parity = goalChildParityRun(
-      launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE),
+      launcher = convergingImplementLauncher(closeAllOnSegment = Int.MAX_VALUE, agentBlockAfterSegments = 4),
       config = GoalChildParityConfig(
         gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
       ),
@@ -81,11 +81,15 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(0, launched.count { it == "audit" }, "audit must never launch from an unclosed receipt")
     assertEquals(0, launched.count { it == "review" }, "review must never launch from an unclosed receipt")
     assertTrue(launched.count { it == "implement" } > 1, "the child must continue implement rather than advance")
+    val incompleteAttempts = parity.runtime.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
+      .count {
+        it.phaseId == "implement" &&
+          it.status == skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
+      }
     assertEquals(
-      launched.count { it == "implement" },
-      parity.runtime.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
-        .count { it.phaseId == "implement" },
-      "every child segment is durably recorded, so a resume carries no lost obligations",
+      4,
+      incompleteAttempts,
+      "every incomplete continuation segment is durably recorded, so a resume carries no lost obligations",
     )
   }
 

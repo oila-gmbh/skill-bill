@@ -11,6 +11,7 @@ import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.featuretask.phaseLedgerFrom
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
@@ -28,6 +29,12 @@ import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
@@ -107,6 +114,7 @@ import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -1674,6 +1682,80 @@ class WorkflowGoalRunnerOutcomeStore(
         supervisionEvent = supervisionEvent,
       ),
     )
+  }
+
+  override fun reopenBlockedPhaseForOperatorResume(
+    workflowId: String,
+    preferredPhaseId: String,
+    reason: String,
+    dbPathOverride: String?,
+  ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    val family = WorkflowFamily.TASK_RUNTIME
+    val existing = family.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+    if (existing.workflowStatus in family.definition.terminalStatuses) {
+      return@transaction false
+    }
+    val artifacts = decodeArtifacts(existing.artifactsJson)
+    val phaseRecords = phaseRecordsFrom(artifacts)
+    val blockedRecord = phaseRecords[preferredPhaseId]?.takeIf { it.status == "blocked" }
+      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
+      ?: return@transaction true
+    val ledger = phaseLedgerFrom(artifacts)
+    val reopened = LinkedHashMap(phaseRecords).apply {
+      this[blockedRecord.phaseId] = blockedRecord.copy(
+        status = "pending",
+        finishedAt = null,
+        durationMillis = null,
+        outputArtifact = null,
+        rejectedOutput = null,
+        blockedReason = null,
+        failureDisposition = null,
+        fileManifestBefore = emptyList(),
+        fileManifestAfter = emptyList(),
+        fileManifestIntroduced = emptyList(),
+      )
+    }
+    val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
+      action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
+      sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      timestamp = OffsetDateTime.now(ZoneOffset.UTC).toString(),
+      phaseId = blockedRecord.phaseId,
+      attemptCount = blockedRecord.attemptCount,
+      resolvedAgentId = blockedRecord.resolvedAgentId,
+    )
+    val updated = engine.updateRecord(
+      family.definition,
+      existing,
+      WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = blockedRecord.phaseId,
+        stepUpdates = listOf(
+          mapOf(
+            "step_id" to blockedRecord.phaseId,
+            "status" to "pending",
+            "attempt_count" to 0,
+          ),
+        ),
+        artifactsPatch = mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+            reopened.mapValues { (_, record) -> record.toArtifactMap() },
+          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
+            (ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
+              FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+            ),
+          FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
+            "phase_id" to blockedRecord.phaseId,
+            "reason" to reason,
+            "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+            "previous_blocked_reason" to blockedRecord.blockedReason,
+            "previous_blocked_record" to blockedRecord.toArtifactMap(),
+          ),
+        ),
+        sessionId = "",
+      ),
+    )
+    family.save(unitOfWork.workflowStates, updated)
+    true
   }
 
   override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
