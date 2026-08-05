@@ -2,6 +2,7 @@ package skillbill.application.goalrunner
 
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import kotlin.test.Test
@@ -103,6 +104,77 @@ class ReviewFindingOutcomeDerivationTest {
       outcomes,
       "An unmatched anonymous finding keeps the carried outcome its own pass already recorded.",
     )
+  }
+
+  @Test
+  fun `the review run id the pass reported resolves the shared key on every ledger row and outcome`() {
+    val output = mapOf(
+      "produced_outputs" to mapOf(
+        "review_run_id" to "run-2026-08-06-a",
+        "findings" to listOf(
+          mapOf(
+            "id" to "F-001",
+            "severity" to "major",
+            "message" to "Outbox error signal is ambiguous",
+            "issue_category" to "data_persistence",
+            "location" to "src/Outbox.kt:12",
+          ),
+        ),
+      ),
+    )
+
+    val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output = output,
+      issueKey = "SKILL-136",
+      subtaskId = 6,
+      workflowId = "wf-1",
+      reviewPassNumber = 1,
+    )
+    val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+      supersededFindings = emptyList(),
+      currentFindings = ledgerFindings,
+      blockerDispositions = emptyList(),
+    )
+
+    assertEquals("run-2026-08-06-a", ledgerFindings.single().reviewRunId)
+    val outcome = outcomes.single()
+    assertEquals("run-2026-08-06-a", outcome.reviewRunId)
+    assertEquals("F-001", outcome.findingId)
+    assertEquals(
+      "resolved",
+      outcome.keyState,
+      "A reported run id plus a finding id is the shared key that joins the loop finding to the routed pack.",
+    )
+  }
+
+  @Test
+  fun `a blank or absent review run id stays unresolved rather than being recorded as a key`() {
+    val findings = listOf(
+      mapOf(
+        "id" to "F-001",
+        "severity" to "major",
+        "message" to "No run id was reported",
+        "issue_category" to "data_persistence",
+        "location" to "src/Outbox.kt:12",
+      ),
+    )
+
+    listOf(
+      mapOf("produced_outputs" to mapOf("findings" to findings)),
+      mapOf("produced_outputs" to mapOf("review_run_id" to "   ", "findings" to findings)),
+    ).forEach { output ->
+      val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+        output = output,
+        issueKey = "SKILL-136",
+        subtaskId = 6,
+        workflowId = "wf-1",
+        reviewPassNumber = 1,
+      )
+
+      val outcome = ledgerFindings.single().toOutcomeRecord(ReviewFindingOutcome.CARRIED)
+      assertEquals(null, outcome.reviewRunId)
+      assertEquals("unresolved", outcome.keyState)
+    }
   }
 
   @Test

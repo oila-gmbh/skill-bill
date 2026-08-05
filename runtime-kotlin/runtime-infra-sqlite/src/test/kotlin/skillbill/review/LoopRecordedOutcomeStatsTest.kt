@@ -1,6 +1,9 @@
 package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.goalrunner.model.ReviewFindingOutcome
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
+import skillbill.infrastructure.sqlite.SQLiteUnaddressedFindingsRepository
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.queryLatestFindingOutcomes
@@ -61,6 +64,41 @@ class LoopRecordedOutcomeStatsTest {
       val stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, review.reviewRunId))
       assertEquals(0, stats.acceptedFindings, "An explicit operator decision must not be overridden by the loop.")
       assertEquals(1, stats.rejectedFindings)
+    }
+  }
+
+  @Test
+  fun `outcomes written through the production writer attach to the imported run's findings`() {
+    val (_, connection) = tempDbConnection("loop-outcome-stats-writer")
+    connection.use {
+      val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
+      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
+
+      // The exact record shape the review reducer now derives once the pass reports its run id.
+      SQLiteUnaddressedFindingsRepository(connection).recordOutcomes(
+        listOf(
+          ReviewFindingOutcomeRecord(
+            workflowId = "wf-1",
+            reviewPassNumber = 1,
+            findingOrdinal = 1,
+            outcome = ReviewFindingOutcome.ADDRESSED,
+            reviewRunId = review.reviewRunId,
+            findingId = "F-001",
+          ),
+          ReviewFindingOutcomeRecord(
+            workflowId = "wf-1",
+            reviewPassNumber = 1,
+            findingOrdinal = 2,
+            outcome = ReviewFindingOutcome.REJECTED,
+            reviewRunId = review.reviewRunId,
+            findingId = "F-002",
+          ),
+        ),
+      )
+
+      val stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, review.reviewRunId))
+      assertEquals(1, stats.acceptedFindings, "The loop-recorded addressed outcome must attach to its finding.")
+      assertEquals(1, stats.rejectedFindings, "The loop-recorded rejected outcome must attach to its finding.")
     }
   }
 

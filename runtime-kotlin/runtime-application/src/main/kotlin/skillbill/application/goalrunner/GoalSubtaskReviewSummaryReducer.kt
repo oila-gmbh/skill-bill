@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
@@ -85,28 +86,43 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
+  /**
+   * The Review run ID the pass's `bill-code-review` invocation reported, read from the review phase's
+   * declared `produced_outputs.review_run_id`. This is the shared key half that resolves a
+   * workflow-loop finding to the findings and review_runs rows produced by the very review that
+   * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
+   * null so the pair reads as unresolved rather than being bucketed to a guessed run.
+   */
+  private fun reviewRunId(output: Map<String, Any?>): String? {
+    val declared = output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID)
+    return (declared as? String)?.trim()?.takeIf(String::isNotBlank)
+  }
+
   fun unaddressedFindings(
     output: Map<String, Any?>,
     issueKey: String,
     subtaskId: Int,
     workflowId: String,
     reviewPassNumber: Int,
-  ): List<UnaddressedFinding> = structuredFindings(output).mapIndexed { index, finding ->
-    UnaddressedFinding(
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      workflowId = workflowId,
-      reviewPassNumber = reviewPassNumber,
-      findingOrdinal = index + 1,
-      severity = normalizedUnaddressedFindingSeverity(finding.severity),
-      issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
-      location = finding.location,
-      summary = finding.message,
-      // reviewRunId stays null: the workflow review loop reviews a working delta in place and never
-      // imports a review run, so there is no key to resolve. It is left unresolved rather than
-      // guessed; review-run import is what fills it in when the same finding arrives that way.
-      findingId = finding.findingId,
-    )
+  ): List<UnaddressedFinding> {
+    val reviewRunId = reviewRunId(output)
+    return structuredFindings(output).mapIndexed { index, finding ->
+      UnaddressedFinding(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        workflowId = workflowId,
+        reviewPassNumber = reviewPassNumber,
+        findingOrdinal = index + 1,
+        severity = normalizedUnaddressedFindingSeverity(finding.severity),
+        issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
+        location = finding.location,
+        summary = finding.message,
+        reviewRunId = reviewRunId,
+        findingId = finding.findingId,
+      )
+    }
   }
 
   /**

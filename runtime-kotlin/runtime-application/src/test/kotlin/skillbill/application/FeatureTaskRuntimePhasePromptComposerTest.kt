@@ -826,6 +826,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
+    assertContains(reviewPrompt, keys.REVIEW_RUN_ID, false, "review names the run-id key that keys loop findings")
     assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
     assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")

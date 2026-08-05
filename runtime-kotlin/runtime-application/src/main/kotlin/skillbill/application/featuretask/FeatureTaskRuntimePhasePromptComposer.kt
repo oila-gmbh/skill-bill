@@ -276,7 +276,9 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": []"
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
+          "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
+          "reported>\""
       else -> if (briefing.auditRepairItemIds.isEmpty()) {
         "\"result\": \"<concrete output for downstream phases>\""
       } else {
@@ -466,7 +468,13 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      Each finding's \"severity\" MUST be exactly one of blocker, major, minor, nit, and its\n" +
           "      \"issue_category\" MUST be exactly one of " +
           ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
-          "      recorded as other."
+          "      recorded as other.\n" +
+          "    - produced_outputs MUST also carry \"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": the " +
+          "Review run ID your\n" +
+          "      `bill-code-review` invocation reported for this pass, verbatim. It is the key that joins each\n" +
+          "      finding here to the imported review run, so a finding's \"id\" plus this run id must be the same\n" +
+          "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
+          "      invent, reuse an older, or guess one."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,

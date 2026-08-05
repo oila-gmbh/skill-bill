@@ -15,6 +15,15 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
   /** produced_outputs key the review gate reads: the findings array (an empty [] affirms no Blocker). */
   const val REVIEW_FINDINGS = "findings"
 
+  /**
+   * produced_outputs key carrying the Review run ID the pass's `bill-code-review` invocation reported.
+   * It is the shared key that joins a workflow-loop finding to the imported review run's findings, so
+   * without it every loop-recorded outcome stays unresolved and can never attach to the routed pack.
+   * Absent or blank means the pass genuinely reported no run id, which stays unresolved rather than
+   * being guessed.
+   */
+  const val REVIEW_RUN_ID = "review_run_id"
+
   /** produced_outputs key the audit gate reads: unmet acceptance criteria (an empty [] affirms all met). */
   const val AUDIT_UNMET_CRITERIA = "unmet_criteria"
 

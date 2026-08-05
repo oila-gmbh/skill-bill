@@ -169,7 +169,9 @@ private fun buildFindingOutcomeFilters(reviewRunId: String?): FindingQueryFilter
  * unresolved. That fallback is what closes the coverage gap where only 13% of runs had any
  * accepted/rejected signal: coverage is driven by the loop, not by an operator remembering to triage.
  * Only a resolved key can contribute — an outcome with a NULL review_run_id belongs to a pass whose
- * findings were never imported and has nothing to attach to here.
+ * findings were never imported and has nothing to attach to here. Resolved rows come from the review
+ * phase reporting its `produced_outputs.review_run_id`, which the goal review reducer threads onto
+ * every ledger row and derived outcome; a pass that reports no run id stays unresolved by design.
  */
 private fun latestFindingOutcomesSql(filter: FindingQueryFilter): String = """
   WITH latest_feedback AS (
