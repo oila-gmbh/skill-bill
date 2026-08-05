@@ -1,304 +1,443 @@
 ---
-status: Draft
+status: Prepared
 issue_key: SKILL-136
-source: inline user request, informed by a live capmo-android WE-4596 delegated review
+feature_name: android-native-review-specialists
+preparation_mode: decomposed
+source: inline user request, informed by a live capmo-android WE-4596 delegated review; scope redesigned 2026-08-05 to pack aliasing plus two declared areas, replacing an earlier four-specialist draft and an interim generic-baseline-sourcing draft
 ---
 
-# SKILL-136: Android-native persistence/reliability/testing/api-contracts specialists for the KMP pack
+# SKILL-136: Treat Android and KMP as one pack, with Android-native persistence and reliability
 
 ## Intended Outcome
 
-An Android or KMP diff gets persistence, reliability, testing, and
-api-contracts review coverage written for the frameworks Android/KMP code
-actually uses — Room, SQLDelight, DataStore, WorkManager/CoroutineWorker,
-foreground services, offline-first sync engines, Retrofit/Ktor client/Apollo
-Kotlin, kotlinx.serialization — instead of coverage borrowed wholesale from
-the generic backend-Kotlin pack, whose entire persistence/reliability rubric
-is written for Exposed, Spring proxy transactions, Hibernate sessions,
-JDBC/R2DBC, message brokers, and resilience4j. A plain, single-module Android
-app with no multiplatform source sets gets this native coverage too, not just
-actual `commonMain`/`androidMain`/`iosMain` multiplatform projects.
+The `kmp` platform pack is the single owner of Android-shaped Kotlin, whether
+or not multiplatform source sets exist. A plain, single-module Android diff
+routes to it and receives Android/Compose-native `ui`, `ux-accessibility`, and
+`platform-correctness` review, plus new `persistence` and `reliability`
+specialists written for Room, SQLDelight, DataStore, WorkManager, and
+offline-first sync — instead of the generic Kotlin pack's Exposed, Spring,
+Hibernate, JDBC/R2DBC, broker-offset, and `resilience4j` rubric.
 
-The generic Kotlin pack, its specialists, and its backend-framework rubric
-text are unchanged and continue to serve real backend/server Kotlin
-repositories exactly as today.
+The pack keeps the `kmp` slug. Kotlin-language areas continue to come from the
+Kotlin baseline unchanged, and the generic Kotlin pack is not modified.
 
 ## Motivation
 
 A delegated `bill-code-review` run against capmo-android commit `5077e9c58`
 (WE-4596, a 24-file/613-line Room + DataStore + DI refactor, no KMP
-multiplatform source sets) was audited end-to-end using the run's own stored
-telemetry (`review_runs` row `rvw-20260721-123352-td8f` in
-`review-metrics.db`). Its self-reported `detected_stack` was `"Kotlin
-(Android app, no KMP/multiplatform markers in scope)"`, and its own reasoning
-field states: *"Kotlin/JVM + Gradle + Android markers dominate the diff
-without any multiplatform source-set evidence, so the Kotlin platform pack
-owns this review per its tie-breaker rules."* That tie-breaker is intentional
-and documented in `platform-packs/kmp/platform.yaml`:
+multiplatform source sets) routed to the generic Kotlin pack. Its two most
+expensive lanes were `persistence` (25 tool calls, ~89.6k tokens) and
+`reliability` (25 tool calls, ~101.7k tokens), both governed by
+backend-framework rubric; `persistence` and `api-contracts` produced no
+standalone findings at all. The findings that did surface — a ViewModel `Flow`
+collector that dies permanently on an uncaught exception, a shared sync-engine
+watermark wiped by an unrelated "Reset and resync" action, missing
+idempotency-retry coverage — are Android and sync-engine concerns that a
+Room/WorkManager-aware rubric targets directly.
+
+Lane selection is the root cause. `platform-packs/kotlin/platform.yaml` gates
+lanes on generic Kotlin keywords that Android satisfies by construction:
+
+```yaml
+persistence:   content: ["transaction", "hibernate", "exposed", "database"]
+reliability:   content: ["retry", "timeout", "shutdown", "supervisor"]
+ui:            content: ["compose", "swing", "javafx", "render"]
+```
+
+Room code contains `@Transaction` and `RoomDatabase`, so `transaction` and
+`database` match with no backend present. WorkManager `Result.retry()` and
+`SupervisorJob` match `retry` and `supervisor`. Jetpack Compose matches
+`compose`, whose intent in that list is Compose Desktop — which is why a
+second capmo-android review selected `bill-kotlin-code-review-ui` for a
+Jetpack Compose Navigation diff, despite that specialist's own `Ignore`
+section reading *"Android and Compose Multiplatform source-set or
+target-specific behavior, which belongs to KMP."*
+
+Retuning the Kotlin pack's keyword gates is rejected: `transaction` and
+`database` are load-bearing for real backend repositories, so narrowing them
+changes routing for every backend Kotlin service to fix an Android problem.
+
+The KMP pack already lists `AndroidManifest.xml` in both
+`routing_signals.strong` and `routing_signals.path`, so it already claims
+Android signals. Exactly one tie-breaker contradicts that claim and pushes
+plain-Android diffs to the Kotlin pack:
 
 > Do not prefer this pack when adjacent Kotlin or Android signals dominate
 > without multiplatform source sets.
 
-The run then launched six generic-Kotlin-pack specialists (architecture,
-platform-correctness, persistence, testing, api-contracts, reliability). The
-two most expensive lanes were `persistence` (25 tool calls, ~89.6k tokens)
-and `reliability` (25 tool calls, ~101.7k tokens) — both governed entirely by
-`platform-packs/kotlin/code-review/bill-kotlin-code-review-persistence` and
-`-reliability`, whose rules reference `newSuspendedTransaction`, Spring
-`@Transactional` proxy boundaries, Hibernate lazy-loading, JDBC/R2DBC
-hand-off, `@Version` optimistic locks, broker offset commits, and
-`resilience4j` — none of which exist anywhere in a Room/DataStore/WorkManager
-Android codebase. The review's own final output confirms the mismatch: the
-`api-contracts` and `persistence` lanes produced no standalone findings and
-were folded into other lanes' narratives, while the real, valuable findings
-that did surface (a ViewModel `Flow` collector that dies permanently on an
-uncaught exception; a shared sync-engine table's watermark getting wiped by
-an unrelated "Reset and resync" action; missing idempotency-retry test
-coverage) are Android/coroutine/sync-engine concerns that a Room- and
-WorkManager-aware rubric would target directly, with far less time spent
-first ruling out inapplicable backend frameworks.
+### Why the pack declares these areas rather than composing them
 
-This is not unique to capmo-android. `platform-packs/kmp/platform.yaml`
-declares only three code-review areas —
-`platform-correctness`/`ui`/`ux-accessibility` — and sources
-`persistence`/`reliability`/`testing`/`api-contracts`/`architecture`
-/`performance`/`security` from the generic Kotlin baseline via
-`code_review_composition.baseline_layers` (`mode: kmp-baseline`). Every real
-multiplatform Android/KMP review hits the same backend-flavored
-persistence/reliability rubric, not just plain-Android diffs that get routed
-around the KMP pack entirely. By contrast, `platform-packs/ios/platform.yaml`
-already declares all ten approved areas with iOS-native rubric
-(`persistence` covers Core Data/SwiftData/GRDB; `reliability` covers
-`BGTaskScheduler` and background `URLSession` relaunch/expiration) — KMP is
-missing the same parity.
+`ReviewLaunchPlanPolicy` resolves area ownership by nearest composition depth
+and builds one lane per area from the winner, so a pack's own declared area
+(depth 0) shadows a baseline layer's (depth 1). Declaring `persistence` and
+`reliability` in the KMP pack is therefore sufficient to stop the
+backend-Kotlin lanes from being selected; no composition-contract change is
+required.
 
-A second, independent delegated-review routing decision on the same
-capmo-android repository confirms this is not limited to
-persistence/reliability. For a diff touching only
-`feature/tickets/.../plan/navigation/nav3/PlansEntries.kt` (Android Jetpack
-Compose Navigation) plus ViewModel/StateFlow/DI/test files, the router's own
-stated reasoning was: *"Not a KMP project (no androidMain/iosMain/commonMain
-source sets exist despite AndroidManifest.xml), so per the KMP pack's own
-tie-breaker this routes to the standalone Kotlin pack... I'll run delegated
-review with architecture + platform-correctness (baseline) + ui + testing
-specialists."* The `ui` lane selected here is
-`bill-kotlin-code-review-ui`, whose own `Applicability` section reads *"Run
-only when the diff contains Compose Desktop, Swing, JavaFX, server-rendered
-Kotlin, CLI, or TUI surfaces"* and whose own `Ignore` section reads *"Android
-and Compose Multiplatform source-set or target-specific behavior, which
-belongs to KMP."* Jetpack Compose Navigation is none of the applicable
-surfaces and is explicitly named as out-of-scope by the specialist's own
-contract — the router matched generically on "Compose" in the diff without
-applying the routing table's actual "Compose **Desktop**" qualifier. The
-correct lane, `bill-kmp-code-review-ui`, is already Android/Compose-native
-(state hoisting, recomposition, navigation-graph integration, previews) and
-sits unused because this plain-Android repo never reaches the KMP pack. This
-is the same routing gap the Plain-Android Routing change below closes; it
-just surfaces through `ui`/`ux-accessibility` instead of
-`persistence`/`reliability`, and is added as an explicit acceptance
-criterion below since it is otherwise easy to overlook as a mere consequence
-of the routing change.
+This also matches the house pattern for a first-class platform pack. The iOS
+pack declares all ten areas, uses no baseline composition, and writes purely
+framework-specific rules (`NSManagedObjectContext` `perform`, SwiftData
+`ModelContext` actor isolation, `NSManagedObjectID` transfers) without
+restating technology-neutral kernel rules. Android/KMP follows the same shape
+for the areas it owns.
+
+KMP keeps inheriting the Kotlin baseline for language-level areas, unlike iOS,
+because Kotlin's `runTest` virtual-time, dispatcher-ordering, Flow-assertion,
+and `explicitNulls`/`encodeDefaults` rubric applies to Android unchanged.
+There is no second Swift pack for iOS to inherit from; there is a Kotlin pack
+for KMP.
 
 ### Related work
 
-SKILL-129 (in progress) fixes a different, complementary problem: repeated
-discovery, double-orchestrator hops, and unbounded token/tool-call cost in
-the delegated-review *runtime*. It does not change which rubric content a
-specialist receives or which pack a diff routes to, so it would make the
-mismatched backend-Kotlin persistence/reliability lanes launch more cheaply
-without resolving the mismatch itself. Cross-lane dedup of a single
-expansion fact (e.g. "who else calls this shared DAO") that multiple
-specialists independently rediscover in the same run — noticed during the
-same audit — belongs to SKILL-129's packet/evidence-broker contract and is
-out of scope here; this spec only adds pack content and routing.
+SKILL-129 addresses delegated-review runtime cost (repeated discovery,
+double-orchestrator hops). It does not change lane selection or rubric
+content, so it is complementary and out of scope here.
 
 ## Decided Behaviour
 
-### New KMP-native specialists
+### Android and KMP are one pack
 
-`platform-packs/kmp/code-review/` gains four new specialist skills, using the
-existing approved area taxonomy (no new area names):
+The pack's identity widens from "Kotlin Multiplatform" to "Android and Kotlin
+Multiplatform". `display_name` changes accordingly; the `platform` slug stays
+`kmp` and no skill is renamed, because `bill-kmp-code-review*` names are
+referenced across the repo, installed agent directories, and user
+configuration.
 
-- `bill-kmp-code-review-persistence` — Room transaction/dispatcher boundaries
-  and migration safety; SQLDelight transaction and driver-thread correctness;
-  DataStore (Preferences and proto) read/write atomicity and concurrent-write
-  races; offline-first sync-engine idempotency keys, delta/watermark cursor
-  advancement, and coupling through shared cross-feature tables.
-- `bill-kmp-code-review-reliability` — WorkManager/CoroutineWorker retry,
-  backoff, and constraint correctness; foreground-service and process-death
-  recovery for long-running sync; `SupervisorJob`/`viewModelScope` collector
-  death from an uncaught exception silently disabling a recurring trigger;
-  connectivity-aware retry and telemetry for offline-first sync.
-- `bill-kmp-code-review-testing` — `runTest`/Turbine `Flow` assertion
-  patterns; Robolectric and instrumented Room/DataStore test realism (e.g. an
-  in-memory database that is never closed); idempotency and retry-path test
-  coverage for sync/cleanup handlers.
-- `bill-kmp-code-review-api-contracts` — Retrofit/Ktor-client/Apollo Kotlin
-  GraphQL request and response contract stability; kotlinx.serialization and
-  protobuf/proto3 schema evolution (field reservation, dangling-reference
-  safety on removal); DTO/domain-model mapping nullability and default-value
-  drift across app versions.
+The contradicting tie-breaker is removed so that a plain, single-module
+Android application — Android Gradle plugin markers plus `AndroidManifest.xml`,
+with Room/DataStore/WorkManager/Compose usage — routes to this pack with no
+multiplatform source sets present. A mixed monorepo where a backend
+Kotlin/Exposed service dominates the changed product surface and an unrelated
+Android module merely coexists continues to route to the generic Kotlin pack;
+the retained tie-breakers still exclude backend-dominant diffs and still
+exclude generated and vendored files from dominance.
 
-Each new specialist's `content.md` follows the existing specialist shape
-(`### Focus`, `### Ignore`, `### Applicability`, `### Project-Specific
-Rules`) used by the Kotlin and iOS packs. None of the four reference Exposed,
-Spring, Hibernate, JDBC, R2DBC, message-broker offset/ack semantics, or
-`resilience4j` — those remain exclusively in the generic Kotlin pack's
-rubric, unchanged.
+### Lane conditions reachable from a plain Android layout
 
-### Routing table and composition
+`lane_conditions.ui` currently gates on `path: ["androidMain", "iosMain"]`. A
+single-module Android app has neither — its sources live under `src/main` — so
+the lane could not fire even once routing selects the pack. The gate widens to
+cover non-multiplatform Android layouts. `ux-accessibility` is content-only
+and needs no change.
 
-`platform-packs/kmp/code-review/bill-kmp-code-review/content.md`'s
-Diff-Signal Routing Table gains rows for the four new areas (Room/SQLDelight/
-DataStore/transaction/migration signals → `persistence`; WorkManager/
-CoroutineWorker/foreground-service/retry/backoff/sync-cursor signals →
-`reliability`; `*Test.kt`/Robolectric/Turbine/instrumented-test signals →
-`testing`; Retrofit/Ktor-client/Apollo/kotlinx.serialization/DTO signals →
-`api-contracts`), in the same format as the existing UI/ux-accessibility
-rows.
+### Two new declared areas
 
-`platform-packs/kmp/platform.yaml`'s `code_review_composition.baseline_layers`
-entry for the Kotlin pack (`mode: kmp-baseline`) stops being the source for
-`persistence`, `reliability`, `testing`, and `api-contracts` once the KMP pack
-declares its own. `architecture` and `platform-correctness` continue to come
-from the Kotlin baseline unchanged — their existing rubric (Gradle module
-boundaries, injected `CoroutineScope` lifecycles, `CancellationException`
-propagation, `StateFlow`/`SharedFlow` invariants) is stack-neutral enough to
-still apply correctly to Android/KMP code, unlike persistence/reliability,
-whose entire existing rubric is backend-framework-specific.
+`platform-packs/kmp/code-review/` gains two specialists, using the existing
+approved area taxonomy:
 
-### Plain-Android routing
+- `bill-kmp-code-review-persistence` — Room transaction and dispatcher
+  boundaries, migration safety, and destructive-migration fallbacks;
+  SQLDelight transaction and driver-thread correctness; DataStore
+  (Preferences and proto) write atomicity and concurrent-write races;
+  offline-first sync idempotency keys, delta/watermark cursor advancement,
+  and coupling through shared cross-feature tables.
+- `bill-kmp-code-review-reliability` — WorkManager and `CoroutineWorker`
+  retry, backoff, and constraint correctness; foreground-service and
+  process-death recovery for long-running sync; `viewModelScope` and
+  `SupervisorJob` collector death from an uncaught exception silently
+  disabling a recurring trigger; connectivity-aware retry and failure
+  telemetry.
 
-`platform-packs/kmp/platform.yaml`'s routing tie-breakers change so a plain,
-single-module Android application — Android Gradle plugin markers plus
-`AndroidManifest.xml`, with Room/DataStore/WorkManager/Compose usage — routes
-to the KMP pack even with no `commonMain`/`androidMain`/`iosMain`/
-`expect`/`actual` multiplatform source sets, *provided* no backend-framework
-markers (Exposed, Spring, Hibernate, Ktor server, JDBC/R2DBC, message-broker
-client libraries) dominate the changed product surface. A mixed monorepo
-where a backend Kotlin/Exposed service dominates the diff and an unrelated
-Android module merely coexists keeps routing to the generic Kotlin pack,
-exactly as today — this only widens the KMP pack's claim over genuinely
-Android-shaped diffs, it does not change backend-service routing.
+Each follows the existing specialist shape (`Focus`, `Ignore`,
+`Applicability`, `Project-Specific Rules`). Neither references Exposed, Spring
+`@Transactional`, Hibernate, JDBC, R2DBC, broker ack/offset semantics, or
+`resilience4j`; those stay exclusively in the Kotlin pack.
+
+### Resulting composition
+
+| Area | Owner |
+| --- | --- |
+| platform-correctness, ui, ux-accessibility | KMP declared (unchanged) |
+| persistence, reliability | KMP declared (new) |
+| architecture, performance, security, testing, api-contracts | kotlin baseline (unchanged) |
+
+## Subtasks
+
+### Subtask 1 — Alias Android to the KMP pack
+
+Remove the contradicting tie-breaker from
+`platform-packs/kmp/platform.yaml`, update `display_name`, and widen
+`lane_conditions.ui` beyond multiplatform-only paths. Extend
+`KmpPlatformPackTest` and `KotlinPlatformPackTest` with fixtures for: a plain
+single-module Android diff (Room/DataStore/DI, no multiplatform markers); a
+Jetpack Compose Navigation plus ViewModel/StateFlow diff; an actual
+multiplatform diff touching `commonMain`/`androidMain`; and a mixed monorepo
+where a backend Kotlin/Exposed service dominates. Assert selected pack, and
+that the Compose fixture resolves `ui` to `bill-kmp-code-review-ui` rather
+than `bill-kotlin-code-review-ui`.
+
+Depends on: nothing.
+
+### Subtask 2 — Author the persistence and reliability specialists
+
+Scaffold `bill-kmp-code-review-persistence` and
+`bill-kmp-code-review-reliability` through the existing scaffolder rather than
+hand-assembling boilerplate, then author `content.md` covering the frameworks
+listed in Decided Behaviour. Rules are framework-specific in the iOS pack's
+style; each Blocker/Major rule names a concrete data-loss, consistency, or
+availability failure scenario.
+
+Depends on: nothing (parallel with Subtask 1).
+
+### Subtask 3 — Declare the areas and route to them
+
+Add `persistence` and `reliability` to `declared_code_review_areas`,
+`declared_files`, `area_metadata`, and `lane_conditions` in
+`platform-packs/kmp/platform.yaml`, and add matching rows to the Diff-Signal
+Routing Table in
+`platform-packs/kmp/code-review/bill-kmp-code-review/content.md`. Assert the
+composed launch plan resolves both areas to the KMP specialists, that the five
+baseline-sourced areas still resolve to `bill-kotlin-code-review-*`, and that
+no other pack's composed plan changes.
+
+Depends on: Subtasks 1 and 2.
+
+### Subtask 4 — Controlled vocabularies for review-run attribution
+
+Agent-authored descriptive columns on `review_runs` are stored as free prose,
+so no routing or stack analysis is possible without hand-normalizing. Measured
+across 329 recorded runs:
+
+| Column | Distinct values | Example pollution |
+| --- | --- | --- |
+| `routed_skill` | 24 (for ~10 packs) | KMP appears 12 ways: `bill-kmp-code-review`, `… (baseline: bill-kotlin-code-review)`, `… (required baseline: …)`, `… (layers … baseline)`, `… (kmp-baseline -> …)`, `… (Kotlin baseline layer + KMP UI/UX-a11y specialists)`; also `` `bill-kotlin-code-review` `` backtick-quoted, a comma-joined `bill-kmp-code-review, bill-ios-code-review`, a full explanatory sentence, plus `unrouted`, `none`, `NULL` |
+| `detected_stack` | 57 (for ~10 stacks) | `Kotlin` (149), `kotlin` (54), `Kotlin/JVM` (35) recorded as distinct |
+| `detected_scope` | 296 (of 329 runs) | effectively unique per run |
+| `execution_mode` | 2 + `NULL` | clean vocabulary; 22 rows null |
+
+Record a canonical identifier alongside the preserved raw text for
+`routed_skill`, `detected_stack`, and `detected_scope`, resolved at ingestion
+against known pack skill names, known platform slugs, and a controlled scope
+vocabulary (working tree, staged, commit range, pull request, other) with the
+free-form detail retained in a separate field. `reviewAttributionPort
+.routedSkillPlatformSlugs()` in `ReviewService.kt` already supplies the
+routed-skill mapping for the analysis side. An unresolvable value is retained
+and marked unresolved rather than silently bucketed. Backfill existing rows
+where the canonical value is unambiguous, and record `execution_mode` for runs
+that currently omit it.
+
+`severity`, `confidence`, `disposition`, and `event_type` are already clean
+controlled vocabularies and are not changed.
+
+Depends on: nothing.
+
+### Subtask 5 — Close review-run completeness gaps
+
+Two fields are recorded so rarely that the analyses depending on them are
+impossible:
+
+- `specialist_reviews` is null or empty for 322 of 329 runs (98%). It is the
+  only record of which lanes ran, so no finding can be attributed to the lane
+  that produced it. Populate it from the composed launch plan at run time
+  rather than from agent narration, and record it per lane so findings can be
+  attributed rather than as one comma-joined string.
+- `review_finished_at` is null for 234 of 329 runs (71%), so run duration and
+  recency cannot be computed. Record it on the terminal path for every run,
+  including runs that end without findings.
+
+Add per-lane finding attribution: a finding carries the lane that produced it,
+so pack and area effectiveness become measurable. This is what makes the
+Open Questions measurable rather than deferred.
+
+Depends on: Subtask 4.
+
+### Subtask 6 — Review store integrity, outbox signal, and lifecycle
+
+- `telemetry_outbox.last_error` is an empty string rather than `NULL` on the
+  success path for all 10,495 rows, so a real delivery error is
+  indistinguishable from a healthy send. Write `NULL` on success and backfill.
+  Delivery itself is healthy (0 unsynced) and is not changed.
+- The `learnings` table holds 0 rows while `session_learnings` holds 250,
+  indicating either dead schema or a broken promotion path. Determine which,
+  then remove the table or repair the promotion.
+- Findings live in two stores that share no key: `review_runs`/`findings`
+  (1463 findings, keyed by `review_run_id`) and the workflow review loop's
+  `review_generation_findings`/`unaddressed_findings`/
+  `review_finding_dispositions` (61/225/122 rows, keyed by
+  `workflow_id`+`generation_id`). Triage outcomes therefore cannot be joined
+  to the routed pack. Introduce a shared key so disposition and feedback data
+  attach to the run that produced the finding. `feedback_events` already
+  joins on `review_run_id` but covers only 43 of 329 runs (13%); widen
+  coverage so accepted/rejected outcomes are recorded for every run that
+  produces findings.
+- No code path creates a `review-metrics.db` without applying migrations.
+  `DbConstants.defaultDbPath` resolves state under `userHome`, yet a
+  zero-byte, schema-less database exists in the working directory; that path
+  is what made an earlier reading of this telemetry conclude the store was
+  empty.
+- Define and document a retention policy for `~/.skill-bill/`
+  `review-metrics.*.db` snapshots. 37 hand-named backups currently occupy
+  2.9 GB. These appear to be deliberate manual snapshots rather than a runtime
+  defect, so the deliverable is a documented policy and an opt-in prune
+  command, not automatic deletion of existing files.
+
+Referential integrity is otherwise sound: no orphaned findings, and the outbox
+drains fully. Neither is changed.
+
+Depends on: Subtask 4.
+
+### Subtask 7 — Documentation and full maintainer gate
+
+Update README and any platform-pack catalog section listing the KMP pack's
+declared areas and its Android coverage. Update `docs/review-telemetry.md`
+for the canonical attribution fields, per-lane finding attribution, the shared
+finding key, and the snapshot retention policy. Run the full gate and
+`./install.sh` so local staged installs refresh.
+
+Depends on: Subtasks 1–6.
 
 ## Scope
 
-- `platform-packs/kmp/platform.yaml`: new `declared_code_review_areas`
-  entries, `declared_files`, `area_metadata`, updated
-  `code_review_composition.baseline_layers`, and updated routing
-  `tie_breakers`.
-- Four new specialist directories under `platform-packs/kmp/code-review/`.
+- `platform-packs/kmp/platform.yaml`: `display_name`, `tie_breakers`,
+  `declared_code_review_areas`, `declared_files`, `area_metadata`,
+  `lane_conditions`.
+- Two new specialist directories under `platform-packs/kmp/code-review/`.
 - `platform-packs/kmp/code-review/bill-kmp-code-review/content.md`: routing
-  table additions.
-- Any platform-pack catalog or README section listing the KMP pack's declared
-  areas.
-- Focused runtime tests for routing (plain Android → KMP; mixed
-  backend-dominant monorepo → generic Kotlin, unchanged) and for the new
-  areas' rubric content (Android-native terms present, backend-only terms
-  absent).
-- Source changes are rendered/installed through the normal staging flow; no
-  generated `SKILL.md` wrappers or support pointers are committed.
+  table rows.
+- `KmpPlatformPackTest`, `KotlinPlatformPackTest`, and launch-plan resolution
+  coverage.
+- Review-telemetry ingestion and schema: canonical attribution fields and
+  their migrations/backfill, per-lane finding attribution, run-completeness
+  fields, outbox error signalling, the `learnings`/`session_learnings`
+  resolution, a shared key across the two finding stores, the
+  working-directory database-initialization path, and snapshot retention.
+- README, platform-pack catalog, and `docs/review-telemetry.md` documentation.
+- Source changes render through the normal staging flow; no generated
+  `SKILL.md` wrappers or support pointers are committed.
 
 ## Acceptance Criteria
 
-1. `platform-packs/kmp/platform.yaml` declares `persistence`, `reliability`,
-   `testing`, and `api-contracts` under `declared_code_review_areas`, each
-   with a `declared_files` entry and an `area_metadata.focus` description
-   naming Android/KMP-native frameworks (Room, SQLDelight, DataStore,
-   WorkManager/CoroutineWorker, Retrofit/Ktor client, Apollo Kotlin,
-   kotlinx.serialization) rather than backend-JVM frameworks, validating
-   against `orchestration/contracts/platform-pack-schema.yaml`.
-2. `platform-packs/kmp/code-review/bill-kmp-code-review-persistence/content.md`,
-   `-reliability/content.md`, `-testing/content.md`, and
-   `-api-contracts/content.md` exist with non-placeholder `Focus`/`Ignore`/
-   `Applicability`/`Project-Specific Rules` sections covering the frameworks
-   listed in Decided Behaviour. None of the four files reference Exposed,
-   Spring `@Transactional`, Hibernate, JDBC, R2DBC, message-broker
-   ack/offset semantics, or `resilience4j`.
-3. `bill-kmp-code-review`'s Diff-Signal Routing Table includes routing rows
-   for all four new areas, matching the existing table's format and
-   specificity.
-4. `code_review_composition.baseline_layers` in `platform-packs/kmp/platform.yaml`
-   no longer supplies `persistence`, `reliability`, `testing`, or
-   `api-contracts` coverage for KMP reviews once the KMP pack declares its
-   own; `architecture` and `platform-correctness` remain sourced from the
-   Kotlin baseline, unchanged.
-5. `platform-packs/kotlin/` specialists, rubric text, and routing signals are
-   unmodified; the generic Kotlin pack continues to serve backend/server
-   Kotlin repositories exactly as before this change.
-6. `platform-packs/kmp/platform.yaml`'s routing `tie_breakers` route a plain
-   single-module Android diff (Android Gradle plugin markers,
+1. A plain single-module Android diff (Android Gradle plugin markers,
    `AndroidManifest.xml`, no multiplatform source sets, no dominant
-   backend-framework markers) to the KMP pack. A fixture where a backend
-   Kotlin/Exposed service dominates the diff and an unrelated Android module
-   is merely present continues to route to the generic Kotlin pack.
-7. Once plain-Android routing selects the KMP pack (AC6), the `ui` and
-   `ux-accessibility` lanes it selects for an Android Jetpack Compose diff
-   are `bill-kmp-code-review-ui`/`-ux-accessibility` (Android/Compose
-   Multiplatform-native), never the generic Kotlin pack's
-   `bill-kotlin-code-review-ui`/`-ux-accessibility` (Compose
-   Desktop/Swing/JavaFX/CLI/TUI-native). A fixture touching only Android
-   Jetpack Compose Navigation, ViewModel/StateFlow, and DI/test files (no
-   multiplatform markers, no backend/persistence signal) selects
-   architecture + platform-correctness (Kotlin baseline) + KMP's
-   ui/ux-accessibility/persistence/reliability/testing/api-contracts as
-   applicable — never a Kotlin-pack specialist whose own `Applicability`
-   gate would self-disqualify it (e.g. `bill-kotlin-code-review-ui` requires
-   "Compose Desktop, Swing, JavaFX, server-rendered Kotlin, CLI, or TUI
-   surfaces," none of which are present).
-8. Focused tests (mirroring the existing per-pack pattern, e.g.
-   `KmpPlatformPackTest`) cover: plain-Android routing selects KMP and its
-   new specialists over the generic Kotlin pack's; an Android Jetpack
-   Compose Navigation-only fixture selects KMP's `ui`/`ux-accessibility`
-   rather than the Kotlin pack's Compose-Desktop-flavored ones; the mixed
-   backend-dominant fixture is unaffected; and each new area's declared
-   focus/rubric text contains Android-native terms and omits the
-   backend-only terms unique to the generic Kotlin pack's persistence and
-   reliability rubrics.
-9. README and any platform-pack catalog documentation listing the KMP pack's
-   declared areas are updated to include the four new areas, mirroring how
-   the iOS pack's ten areas are documented today.
-10. `skill-bill validate` passes, `(cd runtime-kotlin && ./gradlew check)`
+   backend-framework markers) routes to the `kmp` pack. An actual
+   multiplatform diff continues to route there. A fixture where a backend
+   Kotlin/Exposed service dominates alongside an incidental Android module
+   still routes to the generic Kotlin pack.
+2. For a Jetpack Compose Navigation diff under plain-Android routing, `ui` and
+   `ux-accessibility` resolve to `bill-kmp-code-review-ui` and
+   `-ux-accessibility`, never the Kotlin pack's Compose-Desktop-scoped
+   equivalents. The `ui` lane condition fires on a non-multiplatform
+   `src/main` layout.
+3. `platform-packs/kmp/platform.yaml` declares `persistence` and `reliability`
+   with `declared_files`, `area_metadata.focus`, and `lane_conditions`
+   entries, validating against
+   `orchestration/contracts/platform-pack-schema.yaml`. The focus text names
+   Android-native frameworks (Room, SQLDelight, DataStore, WorkManager)
+   rather than backend-JVM frameworks.
+4. `bill-kmp-code-review-persistence/content.md` and
+   `-reliability/content.md` exist with non-placeholder `Focus`, `Ignore`,
+   `Applicability`, and `Project-Specific Rules` sections covering the
+   frameworks in Decided Behaviour. Neither references Exposed, Spring
+   `@Transactional`, Hibernate, JDBC, R2DBC, broker ack/offset semantics, or
+   `resilience4j`.
+5. `bill-kmp-code-review`'s Diff-Signal Routing Table includes rows for both
+   new areas, matching the existing rows' format and specificity.
+6. The composed KMP launch plan resolves `persistence` and `reliability` to
+   the KMP specialists, and `architecture`, `performance`, `security`,
+   `testing`, and `api-contracts` to their `bill-kotlin-code-review-*`
+   equivalents.
+7. `platform-packs/kotlin/` and `platform-packs/generic/` specialists, rubric
+   text, lane conditions, and routing signals are unmodified, and no pack
+   other than `kmp` has a changed composed launch plan.
+8. The `kmp` slug and all `bill-kmp-code-review*` skill names are unchanged.
+9. `routed_skill`, `detected_stack`, and `detected_scope` each record a
+    canonical identifier alongside preserved raw text, resolved at ingestion
+    against known pack skill names, platform slugs, and a controlled scope
+    vocabulary. Unresolvable values are retained and marked unresolved rather
+    than silently bucketed. Existing rows are backfilled where unambiguous:
+    grouping the 329 recorded runs by canonical routed skill yields one row
+    per pack instead of 24 variants, and by canonical stack yields one row per
+    stack instead of 57.
+10. `specialist_reviews` is recorded from the composed launch plan for every
+    run, per lane rather than as one joined string, and every finding carries
+    the lane that produced it. Pack-and-area effectiveness is queryable by
+    joining findings and their dispositions to the canonical routed skill.
+11. `review_finished_at` and `execution_mode` are recorded on the terminal
+    path for every run, including runs that produce no findings.
+12. `telemetry_outbox.last_error` is `NULL` on the success path and non-null
+    only for real delivery failures, with existing rows backfilled.
+13. The `learnings` table is either removed as dead schema or its promotion
+    path from `session_learnings` is repaired, with coverage either way.
+14. Findings recorded through the workflow review loop and through review-run
+    import share a key, so triage dispositions and feedback events join to the
+    routed pack. Accepted/rejected outcomes are recorded for every run that
+    produces findings.
+15. No code path creates a `review-metrics.db` without applying migrations;
+    a database file is either absent or schema-complete.
+16. A snapshot retention policy for `~/.skill-bill/review-metrics.*.db` is
+    documented and an opt-in prune command exists. Existing snapshots are not
+    deleted automatically.
+17. All review-telemetry schema changes ship as migrations that preserve
+    existing rows, verified against a copy of a real 91.5 MB store.
+18. README, platform-pack catalog, and `docs/review-telemetry.md` reflect the
+    pack's Android coverage, its declared areas, the canonical attribution
+    fields, per-lane attribution, the shared finding key, and the retention
+    policy.
+19. `skill-bill validate` passes, `(cd runtime-kotlin && ./gradlew check)`
     passes, `npx --yes agnix --strict .` passes, and
     `scripts/validate_agent_configs` passes. `./install.sh` runs after the
     source/pack changes so local staged installs refresh.
 
 ## Non-Goals
 
-- Renaming the `kmp` platform pack, its display name, or its slug.
-- Adding `architecture`, `performance`, or `security` specialists dedicated
-  to KMP; those remain sourced from the Kotlin baseline, whose existing
-  rubric is stack-neutral enough to still apply.
-- Changing the generic Kotlin pack's specialists, rubric text, routing
-  signals, or its applicability to backend/server Kotlin repositories.
-- Cross-lane expansion/evidence caching within a single review run (tracked
-  under SKILL-129's packet/evidence-broker contract, not here).
-- A brand-new top-level `android` platform pack separate from `kmp`.
-- Changing the approved `declared_code_review_areas` taxonomy itself.
+- Renaming the `kmp` platform slug or any `bill-kmp-code-review*` skill, or
+  creating a separate top-level `android` pack.
+- Declaring KMP-specific `architecture`, `performance`, `security`, `testing`,
+  or `api-contracts` specialists; those stay on the Kotlin baseline.
+- Changing the generic Kotlin pack's specialists, rubric, lane conditions, or
+  routing signals — including retuning its keyword gates.
+- Changing the `generic` pack, or introducing per-area baseline sourcing or
+  additive baseline layering. Both were considered and are unnecessary once
+  the pack declares the areas; additive layering remains available later as a
+  cross-cutting refactor if kernel gaps are observed.
 - Changing iOS, Go, PHP, Python, Rust, or TypeScript pack content.
+- Changing the approved `declared_code_review_areas` taxonomy.
+- Cross-lane expansion/evidence caching within a review run (SKILL-129).
 
 ## Constraints
 
-- Source skill directories under the platform pack contain `content.md` only,
-  except for allowed `native-agents/` sources.
+- Source skill directories contain `content.md` only, except allowed
+  `native-agents/` sources.
 - Generated `SKILL.md` wrappers, support pointers, and provider-specific
   native-agent output are not committed.
-- Use the existing scaffolder/pack patterns where possible rather than
-  hand-assembling new specialist boilerplate.
-- Any schema or routing-contract changes fail loudly through typed errors and
+- Use the existing scaffolder and pack patterns rather than hand-assembling
+  specialist boilerplate.
+- Schema or routing-contract changes fail loudly through typed errors and
   include parity coverage.
+- The spec directory name still reads `android-native-review-specialists` from
+  the original scope; the tracked path is left unchanged deliberately.
+
+## Open Questions
+
+- Neither declared area inherits the generic pack's technology-neutral kernel
+  (atomic unit-of-work, lost-update guards, migration-forward safety), because
+  a declared area shadows the baseline. This matches iOS, which has shipped
+  that way without a reported gap. Whether it costs findings is not directly
+  measurable today: `findings.issue_category` is a clean eight-value
+  vocabulary that only partially maps to areas, and `specialist_reviews` is a
+  comma-joined area list, so no finding is attributable to the lane that
+  produced it. Subtask 5 closes this prospectively by recording per-lane
+  attribution, but it cannot backfill runs already recorded, so the question
+  stays open until enough post-change runs accumulate. If Android runs show
+  missed kernel-level findings,
+  the follow-up is additive baseline layering, not restating kernel rules in
+  this pack.
+- Aggregate telemetry complicates the single-run evidence in Motivation. Over
+  329 recorded runs, KMP-routed reviews produced 344 findings (7.2 per run)
+  against Kotlin's 3.8, and `data_persistence` is the *largest* category on
+  KMP runs (123 findings, 35.8%) even though those runs used the
+  backend-Kotlin persistence rubric. WE-4596's persistence lane produced no
+  standalone findings, but that is one run, not the pattern. The case for this
+  change rests on rubric applicability and wasted tool calls, not on the
+  persistence lane being unproductive in general.
 
 ## Validation Strategy
 
-Add or extend `KmpPlatformPackTest` (or the equivalent per-pack test) with
-fixtures for: a plain single-module Android diff with Room/DataStore/DI
-changes and no multiplatform markers; an actual multiplatform diff touching
-`commonMain`/`androidMain`; and a mixed monorepo where a backend
-Kotlin/Exposed service dominates alongside an incidental Android module.
-Assert selected pack, selected areas, and that persistence/reliability rubric
-text served to Android/KMP diffs contains Room/DataStore/WorkManager terms
-and omits Exposed/Hibernate/resilience4j terms. Then run the full maintainer
-gate:
+Extend the per-pack tests with the four routing fixtures (plain Android,
+Compose Navigation, true multiplatform, backend-dominant monorepo) and assert
+composed area-to-skill resolution for KMP, plus an unchanged plan for at least
+one other pack. Assert the new rubric text contains Room/DataStore/WorkManager
+terms and omits Exposed/Hibernate/JDBC/R2DBC/`resilience4j` terms. Then:
 
 ```bash
 skill-bill validate
@@ -307,11 +446,12 @@ npx --yes agnix --strict .
 scripts/validate_agent_configs
 ```
 
-Render `bill-kmp-code-review` and its new specialists to confirm the
-installed shell exposes the four new areas, and inspect the generated
-staging hash after `./install.sh`.
+Render `bill-kmp-code-review` and its new specialists to confirm the installed
+shell exposes both new areas, and inspect the generated staging hash after
+`./install.sh`.
 
 ## Next Path
 
-Run `bill-feature` on
-`.feature-specs/SKILL-136-android-native-review-specialists/spec.md`.
+```bash
+skill-bill goal SKILL-136
+```
