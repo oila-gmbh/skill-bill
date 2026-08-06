@@ -113,6 +113,41 @@ class TelemetryAnonymousRedactionTest {
   }
 
   @Test
+  fun `correlation ids derived from the issue key are redacted at anonymous and raw at full`() {
+    listOf("anonymous", "full").forEach { level ->
+      withConnection { connection ->
+        val store = LifecycleTelemetryStore(connection)
+        store.goalSubtaskFinished(
+          GoalSubtaskFinishedRecord(
+            issueKey = ISSUE_KEY,
+            workflowId = "$ISSUE_KEY:subtask:2",
+            subtaskId = 2,
+            subtaskName = "skipped-subtask",
+            status = "skipped",
+            startedAt = "2026-06-23T10:00:00Z",
+            finishedAt = "2026-06-23T10:15:00Z",
+            durationMs = 900_000,
+            attemptCount = 1,
+            blockedReason = null,
+          ),
+          level,
+        )
+
+        val payload = requireNotNull(storedPayloads(connection)["skillbill_goal_subtask_finished"])
+        if (level == "full") {
+          assertEquals("$ISSUE_KEY:subtask:2", property(payload, "workflow_id"))
+        } else {
+          assertFalse(payload.contains(ISSUE_KEY), "payload_json must not hold the raw key in any field")
+          assertEquals(
+            "${redactIssueKey(ISSUE_KEY, level, telemetryRedactionSalt(connection))}:subtask:2",
+            property(payload, "workflow_id"),
+          )
+        }
+      }
+    }
+  }
+
+  @Test
   fun `the redaction salt never appears in any payload`() {
     withConnection { connection ->
       driveGoalLifecycle(connection, "anonymous")
@@ -234,11 +269,10 @@ class TelemetryAnonymousRedactionTest {
       }
     }
 
-  private fun property(payloadJson: String, name: String): String? =
-    JsonSupport.parseObjectOrNull(payloadJson)
-      ?.get(name)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.toString()
+  private fun property(payloadJson: String, name: String): String? = JsonSupport.parseObjectOrNull(payloadJson)
+    ?.get(name)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.toString()
 
   private fun withConnection(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("skillbill-anonymous-redaction").resolve("metrics.db")

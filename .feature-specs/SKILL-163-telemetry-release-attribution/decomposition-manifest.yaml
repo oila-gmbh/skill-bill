@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-163-telemetry-release-attribution"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Retain install_id across telemetry disable"
   spec_path: ".feature-specs/SKILL-163-telemetry-release-attribution/spec_subtask_2_durable_install_id.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260806-081019-b8uz"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -41,12 +41,12 @@ subtasks:
 - id: 3
   name: "Redact customer-identifying strings at anonymous level"
   spec_path: ".feature-specs/SKILL-163-telemetry-release-attribution/spec_subtask_3_anonymous_redaction.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260806-091025-6qa8"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

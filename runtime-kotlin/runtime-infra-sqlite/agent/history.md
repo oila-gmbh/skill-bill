@@ -1,3 +1,15 @@
+## [2026-08-06] SKILL-163 Subtask 3 anonymous telemetry redaction
+Areas: runtime-kotlin/runtime-infra-sqlite db/telemetry + db/core, runtime-kotlin/runtime-application telemetry + telemetry/config, runtime-kotlin/runtime-core + runtime-mcp telemetry tests
+- Redaction happens at payload construction, never at upload: `telemetry_outbox.payload_json` itself holds the substituted value, so an already-enqueued anonymous row can never leak the raw key even if the level later changes. reusable
+- `redactIssueKey` is fail-closed by design: only the literal level `full` passes through; unknown, blank, or unresolved levels take the hashing branch. Any new level string is private by default. reusable
+- Substitute is `iss_` + first 16 hex of `SHA-256(salt|issueKey)` — stable across events (so anonymous data stays correlatable by issue) and non-reversible without the salt. `redactIssueKeyReferences` applies the same substitution inside synthetic correlation ids like `SKILL-1:subtask:2`, keeping the id shape intact. reusable
+- New `telemetry_local_secrets` table holds the machine-local salt (`telemetry_redaction_salt`, 32 random bytes, `INSERT OR IGNORE` + re-read so concurrent generation converges on one value). It is never a payload field and must never be added to one; it also survives a telemetry disable/enable cycle, so substitutes stay stable.
+- `enqueueRuntimeException` now takes the level explicitly: at anonymous, `error_message` becomes the `[redacted]` constant and stack frames are filtered to `skillbill.` classes; `error_type` and `workflow_phase` are retained as non-sensitive.
+- Governed `orchestration/contracts/telemetry-event-schema.yaml` is deliberately untouched — redaction changes values, not the event shape (asserted by zero-diff check).
+- Known downstream limit: proxy/dashboard queries keying on raw `issue_key` see `iss_*` for anonymous installs from this release forward; historical raw rows are not rewritten.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-06] SKILL-163 Subtask 1 telemetry release attribution
 Areas: runtime-kotlin/runtime-infra-sqlite db/core + db/telemetry, runtime-kotlin/runtime-infra-http telemetry proxy mappers, runtime-kotlin/runtime-ports persistence model, runtime-kotlin/runtime-core telemetry tests
 - Telemetry events now carry the release that *produced* them: `telemetry_outbox.skill_bill_version` is stamped at enqueue time from `SkillBillVersion.VALUE` (constructor-injectable for tests), not read at upload time. An event enqueued under version A and uploaded under version B reports A. reusable
