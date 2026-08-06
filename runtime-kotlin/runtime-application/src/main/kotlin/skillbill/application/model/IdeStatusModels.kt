@@ -1,0 +1,166 @@
+package skillbill.application.model
+
+import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import java.time.Instant
+
+enum class IdeStatusWorkflowFamily(val wireValue: String) {
+  FEATURE_TASK_PROSE("feature-task-prose"),
+  FEATURE_TASK_RUNTIME("feature-task-runtime"),
+  FEATURE_VERIFY("feature-verify"),
+  FEATURE_GOAL("feature-goal"),
+}
+
+enum class IdeStatusLifecycleState(val wireValue: String) {
+  ACTIVE("active"),
+  PAUSED("paused"),
+  BLOCKED("blocked"),
+  FAILED("failed"),
+  TERMINAL("terminal"),
+  IDLE("idle"),
+}
+
+enum class IdeStatusFreshness(val wireValue: String) {
+  FRESH("fresh"),
+  STALE("stale"),
+  UNKNOWN("unknown"),
+}
+
+enum class IdeStatusProblemCode(val wireValue: String) {
+  MISSING_REPOSITORY_IDENTITY("missing_repository_identity"),
+  ABSENT_DATABASE("absent_database"),
+  NO_MATCHING_WORK("no_matching_work"),
+  INCOMPATIBLE_RECORD("incompatible_record"),
+  INVALID_REPOSITORY_INPUT("invalid_repository_input"),
+  SCHEMA_INCOMPATIBLE("schema_incompatible"),
+}
+
+/** Selection-tier ranking used only inside the application selector (not on the wire). */
+enum class IdeStatusSelectionTier(val rank: Int) {
+  ACTIVE(0),
+  PAUSED(1),
+  BLOCKED(2),
+  FAILED(3),
+  RECENTLY_TERMINAL(4),
+  IDLE(5),
+}
+
+data class IdeStatusStep(
+  val id: String,
+  val label: String,
+)
+
+data class IdeStatusProgress(
+  val completed: Int,
+  val total: Int,
+) {
+  init {
+    require(completed >= 0) { "completed must be non-negative." }
+    require(total >= 0) { "total must be non-negative." }
+  }
+}
+
+data class IdeStatusCurrentSubtask(
+  val id: String,
+  val startedAt: Instant? = null,
+)
+
+data class IdeStatusProblem(
+  val code: IdeStatusProblemCode,
+  val message: String,
+  val details: Map<String, Any?>? = null,
+) {
+  init {
+    require(message.isNotBlank()) { "problem.message must not be blank." }
+  }
+}
+
+/**
+ * Application-layer IDE status snapshot. [toWireMap] is the schema-validated emit shape.
+ */
+data class IdeStatusSnapshot(
+  val repositoryIdentity: String,
+  val lifecycleState: IdeStatusLifecycleState,
+  val currentStep: IdeStatusStep,
+  val updatedAt: Instant,
+  val freshness: IdeStatusFreshness,
+  val summary: String,
+  val issueKey: String? = null,
+  val workflowId: String? = null,
+  val workflowFamily: IdeStatusWorkflowFamily? = null,
+  val progress: IdeStatusProgress? = null,
+  val startedAt: Instant? = null,
+  val currentSubtask: IdeStatusCurrentSubtask? = null,
+  val problem: IdeStatusProblem? = null,
+  val contractVersion: String = IDE_STATUS_CONTRACT_VERSION,
+) {
+  init {
+    require(repositoryIdentity.isNotBlank()) { "repositoryIdentity must not be blank." }
+    require(summary.isNotBlank()) { "summary must not be blank." }
+    require(currentStep.id.isNotBlank() && currentStep.label.isNotBlank()) {
+      "currentStep id/label must not be blank."
+    }
+  }
+
+  fun toWireMap(): Map<String, Any?> = buildMap {
+    put("contract_version", contractVersion)
+    put("repository_identity", repositoryIdentity)
+    issueKey?.takeIf(String::isNotBlank)?.let { put("issue_key", it) }
+    workflowId?.takeIf(String::isNotBlank)?.let { put("workflow_id", it) }
+    workflowFamily?.let { put("workflow_family", it.wireValue) }
+    put("lifecycle_state", lifecycleState.wireValue)
+    put(
+      "current_step",
+      linkedMapOf(
+        "id" to currentStep.id,
+        "label" to currentStep.label,
+      ),
+    )
+    progress?.let {
+      put(
+        "progress",
+        linkedMapOf(
+          "completed" to it.completed,
+          "total" to it.total,
+        ),
+      )
+    }
+    startedAt?.let { put("started_at", it.toString()) }
+    currentSubtask?.let { subtask ->
+      put(
+        "current_subtask",
+        buildMap {
+          put("id", subtask.id)
+          subtask.startedAt?.let { put("started_at", it.toString()) }
+        },
+      )
+    }
+    put("updated_at", updatedAt.toString())
+    put("freshness", freshness.wireValue)
+    put("summary", summary)
+    problem?.let { problem ->
+      put(
+        "problem",
+        buildMap {
+          put("code", problem.code.wireValue)
+          put("message", problem.message)
+          problem.details?.takeIf { it.isNotEmpty() }?.let { put("details", it) }
+        },
+      )
+    }
+  }
+}
+
+data class IdeStatusRequest(
+  val repoRoot: String,
+  val dbOverride: String? = null,
+  val observedAt: Instant? = null,
+) {
+  init {
+    require(repoRoot.isNotBlank()) { "repoRoot is required." }
+  }
+}
+
+data class IdeStatusResult(
+  val snapshot: IdeStatusSnapshot,
+  val exitCode: Int,
+)

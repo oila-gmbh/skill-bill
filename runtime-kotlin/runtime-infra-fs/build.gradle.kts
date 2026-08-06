@@ -228,6 +228,25 @@ val copyGoalProgressEventSchema =
     }
   }
 
+val canonicalIdeStatusSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/ide-status-schema.yaml")
+    .absolutePath
+
+val copyIdeStatusSchema =
+  tasks.register<Copy>("copyIdeStatusSchema") {
+    val schemaPath = canonicalIdeStatusSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-148: canonical IDE status schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
+      }
+    }
+  }
+
 val canonicalGoalSubtaskReviewStateSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/goal-subtask-review-state-schema.yaml")
@@ -570,6 +589,7 @@ tasks.named("processResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyRejectedOutputDiagnosticSchema)
@@ -602,6 +622,7 @@ tasks.named("processTestResources") {
   dependsOn(copyDecompositionManifestSchema)
   dependsOn(copyGoalObservabilityEventSchema)
   dependsOn(copyGoalProgressEventSchema)
+  dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeAuditRepairPlanSchema)

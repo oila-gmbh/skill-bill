@@ -3,11 +3,14 @@ package skillbill.cli.work
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.WorkListItem
 import skillbill.application.model.WorkListResult
+import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -19,10 +22,11 @@ import java.time.format.DateTimeFormatter
 @Inject
 class WorkTopLevelCommands(
   list: WorkListCommand,
+  status: WorkStatusCommand,
 ) {
   val command: DocumentedNoOpCliCommand =
     object : DocumentedNoOpCliCommand("work", "Inspect all persisted feature work.") {}
-      .subcommands(list)
+      .subcommands(list, status)
 }
 
 @Inject
@@ -44,6 +48,32 @@ class WorkListCommand(
     } else {
       state.completeText(result.toTable(), payload)
     }
+  }
+}
+
+@Inject
+class WorkStatusCommand(
+  private val service: IdeStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "status",
+  "Emit one schema-valid IDE status snapshot for an explicit repository root.",
+) {
+  private val repoRoot by option(
+    "--repo-root",
+    help = "Repository root to resolve canonical repo-root-realpath-v1 identity.",
+  ).required()
+  private val format by option("--format", help = "Output format.").default("json")
+
+  override fun run() {
+    require(format == "json") { "--format must be json for work status." }
+    val result = service.status(
+      IdeStatusRequest(
+        repoRoot = repoRoot,
+        dbOverride = state.dbOverride,
+      ),
+    )
+    state.complete(result.snapshot.toWireMap(), CliFormat.JSON, exitCode = result.exitCode)
   }
 }
 

@@ -472,6 +472,7 @@ class RuntimeArchitectureTest {
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/IdeStatusSchemaValidator.kt",
       )
     infraValidatorFiles.forEach { relative ->
       assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing infra-fs-owned validator: $relative")
@@ -481,6 +482,7 @@ class RuntimeArchitectureTest {
         "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaPaths.kt",
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/IdeStatusSchemaPaths.kt",
       )
     contractsPathFiles.forEach { relative ->
       assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing contract-owned paths file: $relative")
@@ -511,12 +513,14 @@ class RuntimeArchitectureTest {
     assertContains(runtimeInfraFsBuild, "copyWorkflowStateSchema")
     assertContains(runtimeInfraFsBuild, "copyInstallPlanSchema")
     assertContains(runtimeInfraFsBuild, "copyDecompositionManifestSchema")
+    assertContains(runtimeInfraFsBuild, "copyIdeStatusSchema")
 
     val runtimeContractsBuild = Files.readString(runtimeRoot.resolve("runtime-contracts/build.gradle.kts"))
     assertTrue(
       "copyWorkflowStateSchema" !in runtimeContractsBuild &&
         "copyInstallPlanSchema" !in runtimeContractsBuild &&
-        "copyDecompositionManifestSchema" !in runtimeContractsBuild,
+        "copyDecompositionManifestSchema" !in runtimeContractsBuild &&
+        "copyIdeStatusSchema" !in runtimeContractsBuild,
       "runtime-contracts must no longer own runtime schema copy tasks.",
     )
 
@@ -524,7 +528,8 @@ class RuntimeArchitectureTest {
     assertTrue(
       "copyWorkflowStateSchema" !in runtimeDomainBuild &&
         "copyInstallPlanSchema" !in runtimeDomainBuild &&
-        "copyDecompositionManifestSchema" !in runtimeDomainBuild,
+        "copyDecompositionManifestSchema" !in runtimeDomainBuild &&
+        "copyIdeStatusSchema" !in runtimeDomainBuild,
       "runtime-domain must not own runtime contract schema copy tasks.",
     )
   }

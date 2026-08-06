@@ -653,6 +653,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.GoalObservabilityEventValidator",
       "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
       "skillbill.workflow.GoalProgressEventValidator",
+      "skillbill.workflow.IdeStatusValidator",
       "skillbill.workflow.WorkflowSnapshotValidator",
     )
 

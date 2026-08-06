@@ -1,0 +1,120 @@
+package skillbill.contracts.workflow
+
+import kotlin.test.Test
+
+/**
+ * SKILL-148 Subtask 1: golden wire snapshots for every workflow family and typed
+ * problem outcome. Each fixture must remain schema-valid.
+ */
+class IdeStatusGoldenFixturesTest {
+  @Test
+  fun `feature-task-prose golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "wfl-prose-1",
+        "workflow_family" to "feature-task-prose",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 2, "total" to 6),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-task-prose SKILL-148 is active on Implement.",
+      ),
+      "golden-prose",
+    )
+  }
+
+  @Test
+  fun `feature-task-runtime golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "wfl-runtime-1",
+        "workflow_family" to "feature-task-runtime",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 3, "total" to 9),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-task-runtime SKILL-148 is active on Implement.",
+      ),
+      "golden-runtime",
+    )
+  }
+
+  @Test
+  fun `feature-verify golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "wfl-verify-1",
+        "workflow_family" to "feature-verify",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "verify", "label" to "Verify"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 4),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-verify SKILL-148 is active on Verify.",
+      ),
+      "golden-verify",
+    )
+  }
+
+  @Test
+  fun `feature-goal golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "goal-1",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "current_subtask" to linkedMapOf("id" to "2", "started_at" to "2026-08-06T09:00:00Z"),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-148 is active on Implement.",
+      ),
+      "golden-goal",
+    )
+  }
+
+  @Test
+  fun `typed problem goldens validate`() {
+    listOf(
+      "missing_repository_identity",
+      "absent_database",
+      "no_matching_work",
+      "incompatible_record",
+      "invalid_repository_input",
+      "schema_incompatible",
+    ).forEach { code ->
+      IdeStatusSchemaValidator.validate(
+        linkedMapOf(
+          "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+          "repository_identity" to "repo-root-realpath-v1:/repo",
+          "lifecycle_state" to "idle",
+          "current_step" to linkedMapOf("id" to "none", "label" to "Unavailable"),
+          "updated_at" to "2026-08-06T10:00:00Z",
+          "freshness" to "unknown",
+          "summary" to "Unavailable: $code",
+          "problem" to linkedMapOf("code" to code, "message" to "Unavailable: $code"),
+        ),
+        "golden-problem-$code",
+      )
+    }
+  }
+}

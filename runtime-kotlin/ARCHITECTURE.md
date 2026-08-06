@@ -687,6 +687,14 @@ skillbill.workflow.verify
   `goal_progress_latest_event` workflow artifacts. The supervisor read seam
   (`WorkflowGoalRunnerOutcomeStore.progress`) decodes the latest declared event
   softly so a malformed stored record cannot disable deterministic liveness.
+- IDE status schema validation
+  (`orchestration/contracts/ide-status-schema.yaml`) is owned by
+  `skillbill.contracts.workflow.IdeStatusSchemaValidator` in
+  `runtime-infra-fs`, reached through the domain-owned port
+  `skillbill.workflow.IdeStatusValidator` (wired in `RuntimeComponent` to
+  `IdeStatusValidatorAdapter`). The owning emit seam is
+  `skillbill.application.work.IdeStatusService`, which validates before CLI
+  JSON emission.
 
 ## Phase Context Boundary (SKILL-137 handoff projections)
 
