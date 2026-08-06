@@ -1,0 +1,33 @@
+<!-- Plugin Configuration File: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>dev.skillbill.intellij</id>
+    <name>Skill Bill</name>
+    <vendor url="https://skill-bill.dev">Skill Bill</vendor>
+
+    <!--
+      Supported products: IntelliJ IDEA Community and Ultimate only.
+      Compatibility range: IDEA 2025.2 (build 252) through 2026.1 (build 261.*) inclusive.
+      since-build / until-build are also patched from gradle.properties.
+    -->
+    <idea-version since-build="252" until-build="261.*"/>
+
+    <description><![CDATA[
+      Shows Skill Bill feature-work status in IntelliJ IDEA. Consumes the
+      versioned read-only <code>skill-bill work status</code> contract; does not
+      mutate workflows or read Skill Bill databases.
+    ]]></description>
+
+    <!-- Platform module only — no Java, Kotlin, Android, or other language-plugin deps. -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService
+            serviceImplementation="dev.skillbill.intellij.composition.SkillBillProjectStatusService"/>
+        <projectService
+            serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillProjectDisplayCache"/>
+        <applicationService
+            serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillApplicationSettings"/>
+    </extensions>
+
+    <!-- Status-bar widget registration is intentionally deferred to subtask 3. -->
+</idea-plugin>
