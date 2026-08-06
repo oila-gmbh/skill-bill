@@ -25,16 +25,17 @@ fun defaultLocalTelemetryConfig(installId: String): TelemetryConfigDocument = Te
 fun TelemetryConfigDocument.withTelemetryLevel(level: String, configPath: String): TelemetryConfigDocument {
   val updatedPayload = payload.toMutableMap()
   val telemetry =
-    (
-      (updatedPayload["telemetry"] as? Map<*, *>)
-        ?.entries
-        ?.filter { it.key is String }
-        ?.associate { it.key as String to it.value }
-        ?.toMutableMap()
-      )
-      ?: throw IllegalArgumentException(
+    when (val telemetryRaw = updatedPayload["telemetry"]) {
+      null -> mutableMapOf<String, Any?>()
+      is Map<*, *> ->
+        telemetryRaw.entries
+          .filter { it.key is String }
+          .associate { it.key as String to it.value }
+          .toMutableMap()
+      else -> throw IllegalArgumentException(
         "Telemetry config at '$configPath' must contain a 'telemetry' object.",
       )
+    }
   telemetry["level"] = level
   telemetry.remove("enabled")
   updatedPayload["telemetry"] = telemetry
