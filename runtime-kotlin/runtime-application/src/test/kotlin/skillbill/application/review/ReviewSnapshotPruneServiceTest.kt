@@ -2,8 +2,8 @@ package skillbill.application.review
 
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.review.ReviewSnapshot
 import skillbill.ports.review.ReviewSnapshotGateway
+import skillbill.ports.review.model.ReviewSnapshot
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals

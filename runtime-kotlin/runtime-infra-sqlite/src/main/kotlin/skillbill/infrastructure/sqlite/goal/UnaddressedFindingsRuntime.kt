@@ -67,6 +67,35 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
       }
       statement.executeBatch()
     }
+    reconcileEarlierPasses(outcomes)
+  }
+
+  /**
+   * The ledger only ever holds the immediately preceding pass, so a finding first reported in pass 1
+   * and retired in pass 3 would leave pass 1's row CARRIED forever and under-report acceptance. The
+   * durable outcome table does keep every pass, so a terminal outcome is propagated back to every
+   * earlier still-carried row of the same workflow sharing the finding id.
+   */
+  private fun reconcileEarlierPasses(outcomes: List<ReviewFindingOutcomeRecord>) {
+    val terminal = outcomes.filter { it.outcome != ReviewFindingOutcome.CARRIED && it.findingId != null }
+    if (terminal.isEmpty()) return
+    connection.prepareStatement(
+      """
+      UPDATE review_finding_outcomes
+      SET outcome = ?, recorded_at = CURRENT_TIMESTAMP
+      WHERE workflow_id = ? AND finding_id = ? AND review_pass_number < ? AND outcome = 'carried'
+      """.trimIndent(),
+    ).use { statement ->
+      terminal.forEach { outcome ->
+        var parameterIndex = 1
+        statement.setString(parameterIndex++, outcome.outcome.wireValue)
+        statement.setString(parameterIndex++, outcome.workflowId)
+        statement.setString(parameterIndex++, outcome.findingId)
+        statement.setInt(parameterIndex, outcome.reviewPassNumber)
+        statement.addBatch()
+      }
+      statement.executeBatch()
+    }
   }
 
   fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = connection.prepareStatement(
@@ -120,11 +149,9 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     }
   }
 
-  fun fetchLedger(issueKey: String): List<UnaddressedFinding> =
-    fetchLedgerBy("issue_key", issueKey)
+  fun fetchLedger(issueKey: String): List<UnaddressedFinding> = fetchLedgerBy("issue_key", issueKey)
 
-  fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
-    fetchLedgerBy("workflow_id", workflowId)
+  fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> = fetchLedgerBy("workflow_id", workflowId)
 
   private fun fetchLedgerBy(column: String, value: String): List<UnaddressedFinding> = connection.prepareStatement(
     """

@@ -173,6 +173,63 @@ class UnaddressedFindingsRuntimeTest {
     }
   }
 
+  // AC-004: the ledger only ever holds the preceding pass, so a finding retired in pass 3 must still
+  // correct its pass-1 outcome — otherwise pass 1 under-reports acceptance forever.
+  @Test
+  fun `a terminal outcome reconciles every earlier carried pass for the same finding`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001")),
+      )
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.CARRIED, "rvw-2", "F-001")),
+      )
+
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 3, 1, ReviewFindingOutcome.ADDRESSED, "rvw-3", "F-001")),
+      )
+
+      assertEquals(
+        listOf(ReviewFindingOutcome.ADDRESSED, ReviewFindingOutcome.ADDRESSED, ReviewFindingOutcome.ADDRESSED),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::outcome),
+      )
+      assertEquals(
+        listOf("rvw-1", "rvw-2", "rvw-3"),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::reviewRunId),
+        "Each pass keeps its own review run; only the outcome is reconciled.",
+      )
+    }
+  }
+
+  @Test
+  fun `reconciliation does not touch another workflow or another finding`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass-scope").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(
+        listOf(
+          ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-002"),
+          ReviewFindingOutcomeRecord("workflow-2", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001"),
+        ),
+      )
+
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.ADDRESSED, "rvw-2", "F-001")),
+      )
+
+      assertEquals(
+        listOf(ReviewFindingOutcome.CARRIED, ReviewFindingOutcome.ADDRESSED),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::outcome),
+      )
+      assertEquals(
+        listOf(ReviewFindingOutcome.CARRIED),
+        repository.fetchOutcomes("workflow-2").map(ReviewFindingOutcomeRecord::outcome),
+      )
+    }
+  }
+
   // AC-003: a workflow-loop finding that does carry a key resolves through review_finding_outcomes
   // to its review_runs row, and therefore to the routed pack.
   @Test
@@ -180,10 +237,11 @@ class UnaddressedFindingsRuntimeTest {
     val dbPath = Files.createTempDirectory("unaddressed-findings-join").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       connection.prepareStatement(
-        "INSERT INTO review_runs (review_run_id, routed_skill) VALUES (?, ?)",
+        "INSERT INTO review_runs (review_run_id, routed_skill, raw_text) VALUES (?, ?, ?)",
       ).use { statement ->
         statement.setString(1, "rvw-1")
         statement.setString(2, "bill-kotlin-code-review")
+        statement.setString(3, "")
         statement.executeUpdate()
       }
       val repository = SQLiteUnaddressedFindingsRepository(connection)

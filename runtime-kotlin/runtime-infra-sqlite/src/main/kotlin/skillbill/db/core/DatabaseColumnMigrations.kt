@@ -78,6 +78,14 @@ internal object DatabaseColumnMigrations {
     if (!tableExists(connection, "unaddressed_findings")) return
     ensureColumn(connection, "unaddressed_findings", "review_run_id", "TEXT")
     ensureColumn(connection, "unaddressed_findings", "finding_id", "TEXT")
+    // The index lives here, not in the shared schema statement list: on a pre-existing store the
+    // CREATE TABLE is a no-op and the index would be created before these columns exist.
+    connection.createStatement().use { statement ->
+      statement.execute(
+        "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run " +
+          "ON unaddressed_findings(review_run_id, finding_id)",
+      )
+    }
   }
 
   fun applyWorkListMetadata(connection: Connection) {

@@ -63,6 +63,7 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
  * typed [FeatureTaskRuntimeRunEvent] to the run's event sink and appends a ledger entry. The
  * recorder mints the timestamp and monotonic sequence, so this class never sources time or order.
  */
+@Suppress("TooManyFunctions") // one emitter per phase-boundary outcome; splitting them scatters the ledger seam
 internal class FeatureTaskRuntimeRunObservability(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val request: FeatureTaskRuntimeRunRequest,
@@ -211,6 +212,28 @@ internal class FeatureTaskRuntimeRunObservability(
         phaseId = phaseId,
         resolvedAgentId = resolvedAgentId,
         attemptCount = attemptCount,
+      ),
+    )
+  }
+
+  fun paused(phaseId: String, resolvedAgentId: String, attemptCount: Int, pauseReason: String) {
+    request.eventSink.emit(
+      FeatureTaskRuntimeRunEvent.PhasePaused(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        resolvedAgentId = resolvedAgentId,
+        attemptCount = attemptCount,
+        pauseReason = pauseReason,
+      ),
+    )
+    appendLedger(
+      FeatureTaskRuntimePhaseLedgerRequest(
+        workflowId = request.workflowId,
+        action = FeatureTaskRuntimePhaseLedgerAction.PAUSED,
+        phaseId = phaseId,
+        attemptCount = attemptCount,
+        resolvedAgentId = resolvedAgentId,
+        blockedReason = pauseReason,
       ),
     )
   }

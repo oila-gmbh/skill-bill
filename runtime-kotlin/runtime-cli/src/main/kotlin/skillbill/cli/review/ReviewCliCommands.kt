@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
+import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -228,3 +229,21 @@ class GoalStatsCommand(
     state.complete(service.goalStats(state.dbOverride).toCliMap(), format)
   }
 }
+
+internal fun ReviewSnapshotPruneResult.toCliMap(): Map<String, Any?> = linkedMapOf(
+  "live_db_path" to liveDbPath,
+  "confirmed" to confirmed,
+  "candidate_count" to candidates.size,
+  "candidate_bytes" to candidateBytes,
+  "deleted_count" to deleted.size,
+  "reclaimed_bytes" to reclaimedBytes,
+  "candidates" to candidates.map { snapshot ->
+    linkedMapOf<String, Any?>(
+      "path" to snapshot.path.toString(),
+      "label" to snapshot.label,
+      "size_bytes" to snapshot.sizeBytes,
+      "last_modified" to snapshot.lastModified,
+      "deleted" to (snapshot in deleted),
+    )
+  },
+)

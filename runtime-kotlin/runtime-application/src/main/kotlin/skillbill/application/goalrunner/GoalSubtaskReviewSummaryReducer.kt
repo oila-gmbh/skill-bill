@@ -93,12 +93,12 @@ internal object GoalSubtaskReviewSummaryReducer {
    * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
    * null so the pair reads as unresolved rather than being bucketed to a guessed run.
    */
-  private fun reviewRunId(output: Map<String, Any?>): String? {
-    val declared = output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID)
-    return (declared as? String)?.trim()?.takeIf(String::isNotBlank)
-  }
+  private val Map<String, Any?>.reviewRunId: String?
+    get() = (
+      this["produced_outputs"]
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
+      )?.trim()?.takeIf(String::isNotBlank)
 
   fun unaddressedFindings(
     output: Map<String, Any?>,
@@ -107,7 +107,7 @@ internal object GoalSubtaskReviewSummaryReducer {
     workflowId: String,
     reviewPassNumber: Int,
   ): List<UnaddressedFinding> {
-    val reviewRunId = reviewRunId(output)
+    val reviewRunId = output.reviewRunId
     return structuredFindings(output).mapIndexed { index, finding ->
       UnaddressedFinding(
         issueKey = issueKey,
@@ -227,19 +227,18 @@ internal object GoalSubtaskReviewSummaryReducer {
   }
 
   private fun labelFor(finding: Map<String, Any?>, message: String): String {
-    explicitLabel(finding)?.let { return it }
+    val explicit = sequenceOf(
+      finding["class_or_symbol"],
+      finding["symbol"],
+      finding["class"],
+    ).filterIsInstance<String>()
+      .map(String::trim)
+      .filter(classOrSymbol::matches)
+      .firstOrNull(String::isNotBlank)
+    explicit?.let { return it }
     return fileStem.find(message)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
       ?: "Review"
   }
-
-  private fun explicitLabel(finding: Map<String, Any?>): String? = sequenceOf(
-    finding["class_or_symbol"],
-    finding["symbol"],
-    finding["class"],
-  ).filterIsInstance<String>()
-    .map(String::trim)
-    .filter(classOrSymbol::matches)
-    .firstOrNull(String::isNotBlank)
 
   private fun sanitize(message: String): String {
     val compact = message

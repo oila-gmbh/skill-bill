@@ -62,84 +62,6 @@ internal object DatabaseSchema {
       "idx_findings_lane",
     )
 
-  // Per-lane review attribution. Shared verbatim between the base schema and the named ledger
-  // migration so an existing store and a fresh one converge on one definition.
-  internal val reviewRunLaneStatements: List<String> =
-    listOf(
-      """
-      CREATE TABLE IF NOT EXISTS review_run_lanes (
-        review_run_id TEXT NOT NULL,
-        lane_skill_name TEXT NOT NULL,
-        pack_slug TEXT NOT NULL,
-        area TEXT NOT NULL,
-        depth INTEGER NOT NULL DEFAULT 0,
-        required INTEGER NOT NULL DEFAULT 0,
-        order_index INTEGER NOT NULL DEFAULT 0,
-        origin_layer_chain TEXT NOT NULL DEFAULT '',
-        resolution_state TEXT NOT NULL DEFAULT 'resolved'
-          CHECK (resolution_state IN ('resolved', 'unresolved')),
-        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (review_run_id, lane_skill_name),
-        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
-      )
-      """.trimIndent(),
-      """
-      CREATE INDEX IF NOT EXISTS idx_review_run_lanes_pack_area
-        ON review_run_lanes(pack_slug, area, review_run_id)
-      """.trimIndent(),
-      // Finding-to-lane attribution the runtime records from its own merge result, before the
-      // review text is imported. It is the authoritative source for a finding's producing lane;
-      // parsed provenance is only the fallback for externally supplied review text.
-      """
-      CREATE TABLE IF NOT EXISTS review_run_finding_lanes (
-        review_run_id TEXT NOT NULL,
-        finding_id TEXT NOT NULL,
-        lane_skill_name TEXT NOT NULL,
-        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (review_run_id, finding_id),
-        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
-      )
-      """.trimIndent(),
-    )
-
-  /**
-   * The shared finding key joining the workflow review loop to review-run import. It is a table of
-   * its own rather than columns on `unaddressed_findings` because that ledger is retracted
-   * (`replaceLedgerForPass`, `clearWorkflowLedger` both DELETE), so an outcome recorded on it would
-   * be destroyed by the next pass. There is deliberately no foreign key to `findings`:
-   * workflow-loop findings need not have been imported as a review run, and `review_run_id` stays
-   * NULL (`key_state = 'unresolved'`) in exactly that case rather than being guessed.
-   *
-   * Shared verbatim between the base schema and the named ledger migration so an existing store and
-   * a fresh one converge on one definition.
-   */
-  internal val reviewFindingOutcomeStatements: List<String> =
-    listOf(
-      """
-      CREATE TABLE IF NOT EXISTS review_finding_outcomes (
-        workflow_id TEXT NOT NULL,
-        review_pass_number INTEGER NOT NULL,
-        finding_ordinal INTEGER NOT NULL,
-        review_run_id TEXT,
-        finding_id TEXT,
-        key_state TEXT NOT NULL DEFAULT 'unresolved'
-          CHECK (key_state IN ('resolved', 'unresolved')),
-        outcome TEXT NOT NULL CHECK (outcome IN ('addressed', 'carried', 'rejected')),
-        recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal),
-        CHECK ((key_state = 'resolved') = (review_run_id IS NOT NULL AND finding_id IS NOT NULL))
-      )
-      """.trimIndent(),
-      """
-      CREATE INDEX IF NOT EXISTS idx_review_finding_outcomes_run
-        ON review_finding_outcomes(review_run_id, finding_id)
-      """.trimIndent(),
-      """
-      CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run
-        ON unaddressed_findings(review_run_id, finding_id)
-      """.trimIndent(),
-    )
-
   fun createBaseSchema(connection: Connection) {
     statements.forEach { statementSql ->
       connection.createStatement().use { statement ->
@@ -638,5 +560,6 @@ internal object DatabaseSchema {
       CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_updated
         ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
-    ) + reviewRunLaneStatements + reviewFindingOutcomeStatements
+    ) + DatabaseReviewLedgerSchema.reviewRunLaneStatements +
+      DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements
 }

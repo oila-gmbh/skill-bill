@@ -5647,6 +5647,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
   val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
+  val outcomeRows = mutableListOf<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>()
   private val diagnosticRecords =
     linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
@@ -5797,6 +5798,23 @@ internal class RuntimeFakeDatabaseSessionFactory(
 
       override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
         ledgerRows.filter { it.issueKey == issueKey }
+
+      override fun fetchWorkflowLedger(workflowId: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
+        ledgerRows.filter { it.workflowId == workflowId }
+
+      override fun recordOutcomes(outcomes: List<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>) {
+        outcomeRows.removeAll { existing ->
+          outcomes.any {
+            it.workflowId == existing.workflowId &&
+              it.reviewPassNumber == existing.reviewPassNumber &&
+              it.findingOrdinal == existing.findingOrdinal
+          }
+        }
+        outcomeRows.addAll(outcomes)
+      }
+
+      override fun fetchOutcomes(workflowId: String): List<skillbill.goalrunner.model.ReviewFindingOutcomeRecord> =
+        outcomeRows.filter { it.workflowId == workflowId }
 
       override fun issueExists(issueKey: String): Boolean = knownIssue
     }
@@ -6165,6 +6183,180 @@ class InfraFailureReasonStderrSurfacingTest {
     assertFalse(
       blocked.blockedReason.contains("\n"),
       "reason must not contain a newline when no output is available: '${blocked.blockedReason}'",
+    )
+  }
+}
+
+/**
+ * The blocked run this suite exists for reported `validate` as having "exhausted the bounded fix
+ * loop ... rather than advancing on invalid output" after three launches eleven seconds apart. The
+ * phase had produced no output at all: the provider had refused every launch at a session limit, and
+ * each crash resume spent one semantic repair attempt. A limit refusal now pauses, a process failure
+ * is charged to its own budget, and an operator reopen outranks both.
+ */
+class ProviderLimitAndProcessFailureBudgetTest {
+  private fun limitFacts() = AgentRunLaunchFacts(
+    agent = InstallAgent.CLAUDE,
+    exitStatus = 1,
+    stdout = "",
+    stderr = "You've hit your session limit · resets 3:40am (Europe/Berlin)",
+    timedOut = false,
+    spawnFailed = false,
+  )
+
+  @Test
+  fun `a provider usage limit pauses the phase instead of spending a repair attempt`() {
+    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { limitFacts() })
+
+    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+
+    assertEquals("preplan", paused.pausedPhase)
+    assertEquals("preplan", paused.resumableStep)
+    assertContains(paused.pauseReason, "refused the request at a usage limit")
+    assertContains(paused.pauseReason, "Access resets 3:40am (Europe/Berlin).")
+    assertContains(paused.pauseReason, "consumed no repair attempt")
+    assertContains(paused.pauseReason, "You've hit your session limit")
+    assertTrue(
+      !paused.pauseReason.contains("invalid output") && !paused.pauseReason.contains("fix loop"),
+      "the limit refusal produced no output to call invalid: '${paused.pauseReason}'",
+    )
+  }
+
+  @Test
+  fun `the paused phase stays resumable and never accumulates a fix-loop block`() {
+    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { limitFacts() })
+
+    repeat(4) { assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request())) }
+
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["preplan"])
+    assertEquals("paused", record.status)
+    assertEquals(FeatureTaskRuntimeFailureDisposition.RETRYABLE, record.failureDisposition)
+    assertEquals(4, harness.launcher.requests.size, "every resume must relaunch, not re-surface a block")
+  }
+
+  @Test
+  fun `repeated process failures block on the process budget with an accurate reason`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "Error: the child process died",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS) {
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+      assertContains(blocked.blockedReason, "exited with non-zero status 1")
+    }
+
+    val exhausted = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(exhausted.blockedReason, "failed to execute")
+    assertContains(exhausted.blockedReason, "No repair attempt was consumed.")
+    assertTrue(
+      !exhausted.blockedReason.contains("bounded fix loop"),
+      "a process that never reached the output gate produced no invalid output: '${exhausted.blockedReason}'",
+    )
+    assertEquals(
+      FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS,
+      harness.launcher.requests.size,
+      "the process budget bounds relaunches; the exhausted run must not launch again",
+    )
+  }
+
+  /**
+   * The stuck state SKILL-136 was left in: `validate` carried a durable attempt count past the cap,
+   * so every resume re-blocked at the budget gate without relaunching anything and the operator's
+   * reopen was a no-op.
+   */
+  @Test
+  fun `an operator reopen relaunches a phase whose durable attempt count is past the cap`() {
+    var launchValidOutput = false
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        if (!launchValidOutput) {
+          return@RuntimeRecordingLauncher AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "Error: the child process died",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        }
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+    )
+
+    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS) { harness.runner.run(harness.request()) }
+    val exhausted = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val stuckPhase = requireNotNull(exhausted.lastIncompletePhase)
+    val launchesBeforeReopen = harness.launcher.requests.size
+
+    reopenPhaseAsOperator(harness, stuckPhase)
+    launchValidOutput = true
+
+    harness.runner.run(harness.request())
+
+    assertTrue(
+      harness.launcher.requests.size > launchesBeforeReopen,
+      "the reopened phase must actually relaunch instead of re-surfacing the block the operator acted on",
+    )
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()[stuckPhase])
+    assertEquals("completed", record.status)
+  }
+
+  // Mirrors what `feature-task-runtime retry-blocked` persists: the phase record reopens to pending
+  // with its attempt count intact, alongside the operator's reason.
+  private fun reopenPhaseAsOperator(harness: RunnerHarness, phaseId: String) {
+    val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    val records = skillbill.contracts.JsonSupport
+      .anyToStringAnyMap(artifacts["feature_task_runtime_phase_records"])
+      .orEmpty()
+      .toMutableMap()
+    val record = requireNotNull(skillbill.contracts.JsonSupport.anyToStringAnyMap(records[phaseId]))
+      .toMutableMap()
+    record["status"] = "pending"
+    record["blocked_reason"] = null
+    records[phaseId] = record
+    artifacts["feature_task_runtime_phase_records"] = records
+    artifacts["operator_block_retry"] = mapOf<String, Any?>(
+      "phase_id" to phaseId,
+      "reason" to "operator applied the fix out of band",
+      "retried_at" to "2026-08-06T00:00:00Z",
+    )
+    // The grant is only live while a RETRY ledger entry stands unsettled, so the fixture appends the
+    // same entry the retry-blocked command writes.
+    val ledger = (artifacts["feature_task_runtime_phase_ledger"] as? List<*>).orEmpty()
+    val nextSequence = ledger
+      .mapNotNull { skillbill.contracts.JsonSupport.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
+      .maxOfOrNull { it.toInt() + 1 } ?: 0
+    artifacts["feature_task_runtime_phase_ledger"] = ledger + mapOf<String, Any?>(
+      "action" to "retry",
+      "sequence_number" to nextSequence,
+      "timestamp" to "2026-08-06T00:00:00Z",
+      "phase_id" to phaseId,
+      "attempt_count" to (record["attempt_count"] ?: 1),
+    )
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+  }
+
+  @Test
+  fun `a phase that does reach its output gate is still bounded by the output budgets`() {
+    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { facts("not json") })
+
+    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1) { harness.runner.run(harness.request()) }
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    // Which output budget catches it is not this test's concern; that the discount never widened one
+    // into an unbounded loop is.
+    assertTrue(
+      !blocked.blockedReason.contains("failed to execute"),
+      "output that reached the gate is not a process failure: '${blocked.blockedReason}'",
     )
   }
 }

@@ -6,7 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import skillbill.application.review.ReviewSnapshotPruneResult
+import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.model.CliFormat
 import skillbill.contracts.JsonSupport
 

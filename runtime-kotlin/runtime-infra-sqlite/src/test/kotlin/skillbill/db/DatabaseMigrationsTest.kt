@@ -1,5 +1,6 @@
 package skillbill.db
 
+import org.junit.jupiter.api.Assumptions
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
@@ -84,6 +85,8 @@ class DatabaseMigrationsTest {
         23 to "add-feature-task-runtime-audit-generations",
         24 to "backfill-review-attribution-canonicals",
         25 to "add-review-run-lane-attribution",
+        26 to "relax-telemetry-outbox-last-error",
+        27 to "add-review-finding-outcome-key",
       ),
       migrationDefinitions,
     )
@@ -1103,13 +1106,12 @@ class DatabaseMigrationsTest {
 
   /**
    * AC-007's real-store check. It needs a real ~91.5 MB review-metrics store, which is far too large
-   * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and skips cleanly when unset. The
+   * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and reports as skipped when unset. The
    * store is copied first: migrations never run against the operator's live database.
    */
   @Test
   fun `migrating a copy of a real review metrics store preserves every table row count`() {
-    val realStore = System.getenv("SKILL_BILL_REAL_STORE_DB")?.takeIf { it.isNotBlank() }?.let { Path.of(it) } ?: return
-    check(Files.isRegularFile(realStore)) { "SKILL_BILL_REAL_STORE_DB must point at an existing database file." }
+    val realStore = requireRealStore()
     val copy = Files.createTempDirectory("runtime-kotlin-real-store").resolve("metrics.db")
     Files.copy(realStore, copy)
 
@@ -1136,18 +1138,18 @@ class DatabaseMigrationsTest {
    */
   @Test
   fun `migrating a copy of a real review metrics store leaves referential integrity sound`() {
-    val realStore = System.getenv(REAL_STORE_ENV)?.takeIf { it.isNotBlank() }?.let { Path.of(it) }
-    if (realStore == null) {
-      println("Skipping real-store integrity harness: set $REAL_STORE_ENV to a review-metrics.db copy to run it.")
-      return
-    }
-    check(Files.isRegularFile(realStore)) { "$REAL_STORE_ENV must point at an existing database file." }
+    val realStore = requireRealStore()
     val copy = Files.createTempDirectory("runtime-kotlin-real-store-integrity").resolve("metrics.db")
     Files.copy(realStore, copy)
 
     val trackedTables = listOf(
-      "telemetry_outbox", "review_runs", "findings", "feedback_events",
-      "learnings", "session_learnings", "unaddressed_findings",
+      "telemetry_outbox",
+      "review_runs",
+      "findings",
+      "feedback_events",
+      "learnings",
+      "session_learnings",
+      "unaddressed_findings",
     )
     val before = DriverManager.getConnection("jdbc:sqlite:$copy").use { connection ->
       val present = tableNames(connection)
@@ -1883,14 +1885,7 @@ class DatabaseMigrationsTest {
   // SKILL_BILL_MIGRATION_FIXTURE_DB. Unset (the CI default) the test skips so the suite stays hermetic.
   @Test
   fun `migrating a copy of a real review metrics store preserves every row`() {
-    val fixture = System.getenv("SKILL_BILL_MIGRATION_FIXTURE_DB")
-    if (fixture.isNullOrBlank()) {
-      assertTrue(true, "SKILL_BILL_MIGRATION_FIXTURE_DB is unset; the real-store harness is skipped.")
-      return
-    }
-
-    val source = Path.of(fixture)
-    assertTrue(Files.isRegularFile(source), "SKILL_BILL_MIGRATION_FIXTURE_DB must point at a store file.")
+    val source = requireGatedStore(MIGRATION_FIXTURE_ENV)
     val copy = Files.createTempDirectory("runtime-kotlin-real-store-migration").resolve("metrics.db")
     Files.copy(source, copy)
 
@@ -1909,6 +1904,24 @@ class DatabaseMigrationsTest {
       assertEquals(0, executionModeGaps(connection), "Every run must carry an execution_mode after migration.")
     }
   }
+
+  /**
+   * Resolves an opt-in real-store gate. An unset gate aborts the test as *skipped* rather than
+   * returning green: a harness that never ran must never look like one that passed. A set gate that
+   * does not resolve to a file is a hard failure, so a typo cannot silently disable the harness.
+   */
+  private fun requireGatedStore(gate: String): Path {
+    val configured = System.getenv(gate)?.takeIf { it.isNotBlank() }
+    Assumptions.assumeTrue(
+      configured != null,
+      "$gate is unset; point it at a review-metrics.db copy to run this harness.",
+    )
+    val source = Path.of(configured)
+    assertTrue(Files.isRegularFile(source), "$gate must point at an existing database file, but was '$configured'.")
+    return source
+  }
+
+  private fun requireRealStore(): Path = requireGatedStore(REAL_STORE_ENV)
 
   private fun groupCount(connection: Connection, column: String): Map<String, Int> =
     connection.createStatement().use { statement ->
@@ -2279,6 +2292,7 @@ class DatabaseMigrationsTest {
   private companion object {
     const val SCHEMA_MIGRATIONS_TABLE: String = "schema_migrations"
     const val REAL_STORE_ENV: String = "SKILL_BILL_REAL_STORE_DB"
+    const val MIGRATION_FIXTURE_ENV: String = "SKILL_BILL_MIGRATION_FIXTURE_DB"
 
     // The routed_skill and detected_stack prose variants actually observed in the real store.
     val LEGACY_ROUTED_SKILL_VARIANTS: List<String> = listOf(

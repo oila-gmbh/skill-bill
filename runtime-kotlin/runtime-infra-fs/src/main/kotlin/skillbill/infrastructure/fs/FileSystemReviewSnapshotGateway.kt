@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.review.ReviewSnapshot
 import skillbill.ports.review.ReviewSnapshotGateway
+import skillbill.ports.review.model.ReviewSnapshot
 import java.nio.file.Files
 import java.nio.file.Path
 

@@ -15,6 +15,18 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclarat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
+/**
+ * One attempt that ended without reaching the output gate: a process that died before producing
+ * anything, or a launch the provider refused at a usage limit. Neither emitted output, so neither
+ * may be charged to the semantic repair budget; only the failures are charged to the process budget.
+ */
+internal data class FeatureTaskRuntimeNonOutputAttempt(val paused: Boolean, val reason: String)
+
+private val NON_OUTPUT_LEDGER_ACTIONS = setOf(
+  FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
+  FeatureTaskRuntimePhaseLedgerAction.PAUSED,
+)
+
 @Suppress("TooManyFunctions")
 internal class FeatureTaskRuntimeRunState(
   private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
@@ -264,6 +276,38 @@ internal class FeatureTaskRuntimeRunState(
 
   fun restartAttemptBudget(phaseId: String) {
     fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
+  }
+
+  /**
+   * The trailing run of consecutive attempts that ended without reaching the output gate for
+   * [phaseId], most recent last, scoped to the current visit's budget baseline.
+   *
+   * Trailing and consecutive, because that is what the caller asks: is this phase failing to execute
+   * *right now*. An attempt that reached the output gate ends the run, and an earlier visit's
+   * attempts belong to that visit.
+   */
+  fun trailingNonOutputAttempts(
+    phaseId: String,
+    isProcessFailure: (String) -> Boolean,
+  ): List<FeatureTaskRuntimeNonOutputAttempt> {
+    val base = fixLoopBudgetBaseByPhase[phaseId] ?: 0
+    return initialLedger
+      .filter { entry ->
+        entry.phaseId == phaseId &&
+          entry.attemptCount > base &&
+          entry.action in NON_OUTPUT_LEDGER_ACTIONS
+      }
+      .sortedBy(FeatureTaskRuntimePhaseLedgerEntry::sequenceNumber)
+      .takeLastWhile { entry ->
+        entry.action == FeatureTaskRuntimePhaseLedgerAction.PAUSED ||
+          isProcessFailure(entry.blockedReason.orEmpty())
+      }
+      .map { entry ->
+        FeatureTaskRuntimeNonOutputAttempt(
+          paused = entry.action == FeatureTaskRuntimePhaseLedgerAction.PAUSED,
+          reason = entry.blockedReason.orEmpty(),
+        )
+      }
   }
 
   fun legacyReviewPreparationRetryConsumedBudget(phaseId: String, currentReason: String): Boolean {

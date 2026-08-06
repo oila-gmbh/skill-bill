@@ -556,7 +556,7 @@ private fun addDelegatedReviewLifecycleProjection(connection: Connection) {
 }
 
 private fun addReviewRunLaneAttribution(connection: Connection) {
-  DatabaseSchema.reviewRunLaneStatements.forEach { sql ->
+  DatabaseReviewLedgerSchema.reviewRunLaneStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
   DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
@@ -567,7 +567,7 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
 // silent no-op for every existing store.
 private fun addReviewFindingOutcomeKey(connection: Connection) {
   DatabaseColumnMigrations.ensureReviewFindingOutcomeKeyColumns(connection)
-  DatabaseSchema.reviewFindingOutcomeStatements.forEach { sql ->
+  DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
 }

@@ -311,6 +311,20 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val blockedReason: String,
   ) : FeatureTaskRuntimeRunEvent
 
+  /**
+   * The phase stopped for a condition that clears without operator repair — today, a provider usage
+   * limit refusing the launch. Deliberately not a [PhaseBlocked] with a different string: a consumer
+   * that counts blocks would otherwise read a self-healing wait as a terminal failure, and the run is
+   * resumable from exactly this phase.
+   */
+  data class PhasePaused(
+    override val workflowId: String,
+    override val phaseId: String,
+    val resolvedAgentId: String,
+    val attemptCount: Int,
+    val pauseReason: String,
+  ) : FeatureTaskRuntimeRunEvent
+
   data class DecomposedAtPlanning(
     override val workflowId: String,
     override val phaseId: String,

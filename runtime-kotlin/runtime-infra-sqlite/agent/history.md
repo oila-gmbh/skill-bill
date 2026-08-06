@@ -1,3 +1,15 @@
+## [2026-08-06] SKILL-136 Subtask 6 review store integrity, outbox signal, and lifecycle
+Areas: runtime-kotlin/runtime-infra-sqlite db/core + db/telemetry + sqlite goal/review, runtime-kotlin/runtime-application review + goalrunner, runtime-kotlin/runtime-infra-fs snapshot gateway, runtime-kotlin/runtime-ports review + persistence, runtime-kotlin/runtime-cli review
+- `telemetry_outbox.last_error` is now nullable-as-healthy: success writes `NULL`, `TelemetryOutboxLastErrorMigration` backfills legacy empty strings, and `latestError` excludes both `NULL` and legacy-empty rows so "has an error" is a real signal. Migration is idempotent on re-application. reusable
+- `learnings` is neither dead schema nor a broken promotion target (AC-002 evidence recorded in `SQLiteLearningStore` header): it is live, user-driven curated memory behind `skill-bill learnings` and `ReviewLearningsPort`; `session_learnings` is a downstream per-session cache, not an upstream source. Promotion stays explicit, never a side effect of accepting a finding. reusable
+- New `review_finding_outcomes` table (keyed `review_run_id` + `finding_id`, indexed) is the shared key joining the workflow review loop's `unaddressed_findings` to imported `review_runs`/`findings`, so triage dispositions and feedback join to the routed pack. Existing ledger rows migrate as unresolved. reusable
+- Accepted/rejected outcomes are now loop-recorded for every run producing findings rather than only the `feedback_events` subset; `ReviewFindingStatsSupport` LEFT JOINs outcomes so runs without them stay visible.
+- `DatabaseRuntime` is the only main-source `jdbc:sqlite` connection site (enforced by `RuntimeArchitectureTest`); every open applies migrations, so a `review-metrics.db` is absent or schema-complete. Regression covers the zero-byte working-directory file. reusable
+- Snapshot retention: `ReviewSnapshotPruneService` + `skill-bill prune-snapshots` are opt-in and dry-run by default; no code path deletes snapshots automatically, and the live `review-metrics.db` is excluded from candidates.
+- Migrations verified row-preserving against a real 107MB store copy and an 82MB legacy snapshot fixture; referential integrity sound, outbox still drains fully.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-03] SKILL-155 read-path write-lock removal
 Areas: runtime-kotlin/runtime-infra-sqlite db/core + sqlite factory, runtime-kotlin/runtime-ports persistence, runtime-kotlin/runtime-application featuretask + workflow, runtime-kotlin/runtime-cli featuretask
 - `DatabaseMigrations.apply` takes an optimistic read-only pre-check (`MigrationLedger.readState`) and returns early when nothing is pending, so a read open no longer grabs the write lock just to learn there is no work. The in-lock re-derivation stays the sole authority, so concurrent applies still run each migration exactly once. reusable

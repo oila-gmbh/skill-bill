@@ -28,6 +28,7 @@ import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
+import skillbill.application.review.ReviewSnapshotPruneService
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
@@ -166,6 +167,7 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
@@ -176,7 +178,6 @@ import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
-import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -735,6 +736,7 @@ abstract class RuntimeComponent(
   abstract val repoValidationService: RepoValidationService
   abstract val repoSourceDiscoveryService: RepoSourceDiscoveryService
   abstract val reviewService: ReviewService
+  abstract val reviewSnapshotPruneService: ReviewSnapshotPruneService
   abstract val scaffoldCatalogService: ScaffoldCatalogService
   abstract val scaffoldService: ScaffoldService
   abstract val skillRemoveService: SkillRemoveService

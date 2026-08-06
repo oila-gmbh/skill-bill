@@ -348,7 +348,10 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)
       }
       reason != null -> {
-        blockAt(phaseId, reason)
+        // A phase that paused already owns the report. Recording a block over it would hand a
+        // terminal blocked reason to every consumer that reads the blocked report directly, which is
+        // exactly the collapse a resumable pause exists to avoid.
+        if (paused == null) blockAt(phaseId, reason)
         PhaseSettlement.stop()
       }
       else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
@@ -1187,6 +1190,10 @@ internal class FeatureTaskRuntimeRunLoop(
       "${request.runInvariants.specReference}. Remediation will continue."
 
   private fun capExhaustedOnResume(phaseId: String): String? {
+    // An operator reopen releases the per-edge cap for this phase too: the reopened record still
+    // carries the loop metadata of the visit that exhausted the cap, so leaving this gate in place
+    // would re-block the phase at entry and never reach the relaunch the operator asked for.
+    if (operatorReopenedPhase(phaseId)) return null
     val record = state.recordFor(phaseId) ?: return null
     return capExhaustionForRecord(phaseId, record)
   }
@@ -1235,6 +1242,7 @@ internal class FeatureTaskRuntimeRunLoop(
       recordRejectionSettlementPending = true
       return null
     }
+    outcome.pausedReason?.let { return it }
     return outcome.blockedReason ?: run {
       val completedOutput = requireNotNull(outcome.completedOutput)
       state.recordCompleted(completedOutput)
@@ -2211,7 +2219,13 @@ internal class FeatureTaskRuntimeRunLoop(
     val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
     val removedContinuationBudget =
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason)
-    if (retryReviewPreparation || reenterableRecordRejection || removedContinuationBudget) {
+    val restartsBudget = listOf(
+      retryReviewPreparation,
+      reenterableRecordRejection,
+      removedContinuationBudget,
+      operatorReopenedPhase(phaseId),
+    ).any { it }
+    if (restartsBudget) {
       state.restartAttemptBudget(phaseId)
     }
     return shouldRetryPersistedBlock(
@@ -2232,6 +2246,9 @@ internal class FeatureTaskRuntimeRunLoop(
   ): Boolean {
     val disposition = durable?.failureDisposition
     return when {
+      // Ahead of every disposition check: an operator reopen is a decision about this exact block,
+      // whatever its class or disposition, so no persisted reason may veto it.
+      operatorReopenedPhase(phaseId) -> true
       retryReviewPreparation -> true
       reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
@@ -2256,13 +2273,39 @@ internal class FeatureTaskRuntimeRunLoop(
     // semantic fix loop and block a run that never emitted invalid output. Read before the entry
     // check for exactly that reason.
     val continuationSegmentCount = durableContinuationSegmentCount(run)
+    // Attempts that ended before the output gate — a dead process, or a launch the provider refused
+    // at a usage limit — are discounted for the same reason continuation segments are: they emitted
+    // nothing to repair, so charging them to the semantic budget both spends repair attempts on
+    // unrepairable failures and reports the eventual block as invalid output. Only the failures are
+    // charged to the process budget; a provider pause is not a failure of this run.
+    val nonOutputAttempts = durableNonOutputAttempts(run)
+    val processFailures = nonOutputAttempts.filterNot(FeatureTaskRuntimeNonOutputAttempt::paused)
+    // An operator who explicitly reopened this phase has replaced every budget with their own
+    // decision. Restart the baseline so the reopened phase actually relaunches instead of
+    // re-surfacing the block the operator just acted on.
+    val operatorReopened = operatorReopenedPhase(run.phaseId)
+    if (operatorReopened) state.restartAttemptBudget(run.phaseId)
     // Clamped because a re-entry baseline may already have absorbed the same watermark the segment
     // count discounts; double-discounting must not drive the semantic index below its first attempt.
-    val semanticIteration =
-      (state.fixLoopIterationFor(run.phaseId, iteration) - continuationSegmentCount).coerceAtLeast(1)
-    FeatureTaskRuntimeFixLoopPolicy
-      .blockReasonIfBudgetExhausted(run.phaseId, semanticIteration)
-      ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
+    val semanticIteration = (
+      state.fixLoopIterationFor(run.phaseId, iteration) - continuationSegmentCount - nonOutputAttempts.size
+      ).coerceAtLeast(1)
+    if (!operatorReopened) {
+      FeatureTaskRuntimeFixLoopPolicy
+        .processFailureBlockReason(run.phaseId, processFailures.size, processFailures.lastOrNull()?.reason)
+        ?.let { reason ->
+          return blockAndPersistInPhase(
+            run,
+            iteration,
+            reason,
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          )
+        }
+      FeatureTaskRuntimeFixLoopPolicy
+        .blockReasonIfBudgetExhausted(run.phaseId, semanticIteration)
+        ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
+    }
     val crashResumed = state.resumedFromPriorProcess(run.phaseId)
     state.recordPhaseLaunched(run.phaseId)
     observability.started(
@@ -2465,6 +2508,23 @@ internal class FeatureTaskRuntimeRunLoop(
    * Counting earlier rounds of the same loop would charge a brand-new repair round for segments spent
    * on work it was never given, and could block it before its first launch.
    */
+  /**
+   * The attempts this phase has spent in a row without reaching its output gate, read from the
+   * durable ledger so the count survives the crash resume that produced it. Without this the outer
+   * resume path charges each relaunch to the semantic repair budget, and a phase that never emitted
+   * a byte gets blocked for "invalid output".
+   */
+  private fun durableNonOutputAttempts(run: PhaseRun): List<FeatureTaskRuntimeNonOutputAttempt> =
+    state.trailingNonOutputAttempts(run.phaseId) { reason -> isProcessFailureBlockReason(run.phaseId, reason) }
+
+  /**
+   * True while an operator-reopened phase has not yet run. An operator who reopened a blocked phase
+   * has substituted their own judgment for every automatic budget, so the reopened phase must
+   * actually relaunch — re-surfacing the block they just acted on makes the reopen a no-op.
+   */
+  private fun operatorReopenedPhase(phaseId: String): Boolean =
+    operatorBlockRetry?.phaseId == phaseId && !operatorBlockRetryCompleted
+
   private fun durableContinuationSegmentCount(run: PhaseRun): Int {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return 0
     val attempts = recorder.loadImplementationAttempts(run.request.workflowId, run.request.dbPathOverride)
@@ -2549,6 +2609,52 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
     return PhaseOutcome.blocked(reason)
+  }
+
+  /**
+   * Settles a phase whose launch was refused by the provider at a usage limit. The durable record is
+   * PAUSED with a RETRYABLE disposition — the condition clears on the provider's clock, so resume
+   * relaunches the phase — and the attempt is charged to the process-failure axis, never to the
+   * semantic repair budget: a refused launch produced no output to repair.
+   */
+  private fun pauseAndPersistInPhase(
+    run: PhaseRun,
+    attemptCount: Int,
+    reason: String,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+  ): PhaseOutcome {
+    val attempt = attemptCount.coerceAtLeast(1)
+    if (isGoalContinuationRun(request)) {
+      goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = request.workflowId,
+          workflowStatus = STATUS_PAUSED,
+        ),
+        dbOverride = request.dbPathOverride,
+      )
+    }
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = run.phaseId,
+        status = STATUS_PAUSED,
+        attemptCount = attempt,
+        resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+        finished = false,
+        blockedReason = reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+        fileManifestBefore = fileManifest?.before.orEmpty(),
+        fileManifestAfter = fileManifest?.after.orEmpty(),
+        fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
+        loopId = run.reentry?.loopId,
+        edgeIteration = run.reentry?.edgeIteration,
+      ),
+      run.request.dbPathOverride,
+    )
+    observability.paused(run.phaseId, run.resolvedAgent.resolvedAgentId, attempt, reason)
+    pauseAt(run.phaseId, reason, run.phaseId)
+    return PhaseOutcome.paused(reason)
   }
 
   private fun blockAndPersistInPhase(
@@ -2770,6 +2876,9 @@ internal class FeatureTaskRuntimeRunLoop(
   ): AttemptResult {
     persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
     val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
+    launch.providerLimitReason?.let { reason ->
+      return AttemptResult.settled(pauseAndPersistInPhase(run, iteration, reason, observability, launch.fileManifest))
+    }
     launch.infraFailureReason?.let { reason ->
       return AttemptResult.settled(
         blockAndPersistInPhase(
@@ -4464,8 +4573,10 @@ internal class FeatureTaskRuntimeRunLoop(
       "Feature-task-runtime phase '$phaseId' could not launch an agent: ${outcome.reason}",
       fileManifest,
     )
-    is AgentRunLaunchFacts -> infraFailureReason(phaseId, outcome)
-      ?.let { LaunchResult.infraFailure(it, fileManifest) }
+    is AgentRunLaunchFacts -> providerLimitSignal(outcome)
+      ?.let { LaunchResult.providerLimited(providerLimitPauseReason(phaseId, it), fileManifest) }
+      ?: infraFailureReason(phaseId, outcome)
+        ?.let { LaunchResult.infraFailure(it, fileManifest) }
       ?: LaunchResult.captured(
         outcome.stdout,
         outcome.stdoutBytes,
@@ -4522,12 +4633,20 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     ) : LaunchResult
 
+    // Not an InfraFailure with a nicer string: this launch settles the phase as PAUSED rather than
+    // BLOCKED, so it must not reach the block seam at all.
+    private data class ProviderLimited(
+      val reason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
+    ) : LaunchResult
+
     val capturedStdout: String? get() = (this as? Captured)?.stdout
     val capturedStdoutBytes: ByteArray? get() = (this as? Captured)?.stdoutBytes
     val capturedStdoutTruncated: Boolean get() = (this as? Captured)?.stdoutTruncated == true
     val capturedStdoutByteSize: Long? get() = (this as? Captured)?.stdoutByteSize
     val capturedStdoutSha256: String? get() = (this as? Captured)?.stdoutSha256
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val providerLimitReason: String? get() = (this as? ProviderLimited)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
       get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
@@ -4551,6 +4670,10 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
         InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+
+      /** The provider refused at a usage limit: resumable on its own clock, so the phase pauses. */
+      fun providerLimited(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
+        ProviderLimited(reason, fileManifest)
 
       /** Static declaration or configuration drift: retrying without operator action reproduces it. */
       fun projectionRejected(reason: String): LaunchResult =
@@ -4695,6 +4818,11 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class Completed(val output: FeatureTaskRuntimePhaseOutput) : PhaseOutcome
     private data class Blocked(val reason: String) : PhaseOutcome
 
+    // Non-terminal and resumable: the phase stopped for a condition that clears without operator
+    // repair (today, a provider usage limit). Distinct from Blocked so no seam can settle the run as
+    // terminally blocked on it.
+    private data class Paused(val reason: String) : PhaseOutcome
+
     // SKILL-140: the consumer rejected an upstream producer's record and quarantined it; the run
     // settles the consumer with the RECORD_REJECTED verdict so the existing transition machinery
     // re-enters this producer under a bounded regeneration cap.
@@ -4704,11 +4832,14 @@ internal class FeatureTaskRuntimeRunLoop(
 
     val blockedReason: String? get() = (this as? Blocked)?.reason
 
+    val pausedReason: String? get() = (this as? Paused)?.reason
+
     val regenerationTargetPhaseId: String? get() = (this as? RegenerateProducer)?.producerPhaseId
 
     companion object {
       fun completed(output: FeatureTaskRuntimePhaseOutput): PhaseOutcome = Completed(output)
       fun blocked(reason: String): PhaseOutcome = Blocked(reason)
+      fun paused(reason: String): PhaseOutcome = Paused(reason)
       fun regenerateProducer(producerPhaseId: String): PhaseOutcome = RegenerateProducer(producerPhaseId)
     }
   }

@@ -336,7 +336,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
   @Test
   fun `ledger action wire values cover the required event set`() {
     assertEquals(
-      listOf("start", "resume", "retry", "fix_loop_iteration", "loop_edge", "blocked", "complete"),
+      listOf("start", "resume", "retry", "fix_loop_iteration", "loop_edge", "blocked", "paused", "complete"),
       FeatureTaskRuntimePhaseLedgerAction.entries.map { it.wireValue },
     )
   }

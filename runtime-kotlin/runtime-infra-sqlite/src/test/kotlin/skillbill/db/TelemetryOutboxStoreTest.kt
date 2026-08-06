@@ -92,7 +92,8 @@ class TelemetryOutboxStoreTest {
   @Test
   fun `the outbox drains fully after every row is marked synced`() {
     withOutbox { _, store ->
-      val ids = List(3) { index -> store.enqueue(eventName = "skillbill_goal_finished", payloadJson = """{"i":$index}""") }
+      val ids =
+        List(3) { index -> store.enqueue(eventName = "skillbill_goal_finished", payloadJson = """{"i":$index}""") }
       store.markFailed(eventIds = ids, lastError = "transient")
 
       store.markSynced(ids)

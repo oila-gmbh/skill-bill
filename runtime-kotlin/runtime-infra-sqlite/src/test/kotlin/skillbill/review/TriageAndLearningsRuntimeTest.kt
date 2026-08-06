@@ -155,8 +155,7 @@ class LearningPromotionTest {
     }
   }
 
-  private fun learningCount(connection: java.sql.Connection): Int =
-    SQLiteLearningStore.countLearnings(connection)
+  private fun learningCount(connection: java.sql.Connection): Int = SQLiteLearningStore.countLearnings(connection)
 }
 
 private fun importSampleReview(connection: java.sql.Connection): ImportedReview {

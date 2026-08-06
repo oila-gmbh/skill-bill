@@ -153,6 +153,11 @@ class DatabaseSchemaTest {
         ),
       )
       assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
+      // The run/finding key index must be created only after its columns are healed onto the legacy
+      // table; creating it from the shared schema list raised 'no such column: review_run_id' and
+      // left every pre-existing store unopenable.
+      assertTrue(columnNames.containsAll(setOf("review_run_id", "finding_id")))
+      assertTrue("idx_unaddressed_findings_run" in sqliteObjects(connection, "index"))
     }
   }
 
