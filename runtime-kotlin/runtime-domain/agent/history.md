@@ -1,5 +1,17 @@
 # Boundary History — runtime-domain
 
+## [2026-08-06] SKILL-158 subtask 3 — Single-pass bundled lane review
+Areas: runtime-domain/review, runtime-domain/review/context/model, runtime-application/review, runtime-infra-sqlite/db/core, runtime-infra-sqlite/review, runtime-ports/review/model, orchestration/contracts, orchestration/review-orchestrator
+- `ReviewLaneBundleAssembly` assembles one bundle per selected lane from the sparse commit-to-lane assignments: assignment-limited hunk bodies only, ordered by commit order then path, with readable commit identity and a stable composition digest. Workers never see the raw complete diff
+- Worker launch count now equals selected lane count and is invariant to commit count (1..20 commits, same launches); a multi-segment lane is still one launch
+- Oversized bundles split into the fewest size-driven segments that fit — mechanical, never on commit boundaries — each carrying commit identity/order and its own byte accounting; an entry larger than the budget is recorded unreviewable rather than dropped
+- Lanes that cannot finish terminate with an explicit incomplete disposition naming unreviewed segments; incomplete stays distinguishable from clean across launch, progress, result, and resume, and prior findings survive. Resume re-runs only incomplete lanes
+- Persistence: new lane disposition, bundle composition digest, and per-segment accounting columns with self-healing column ensures for already-migrated databases
+- `FORBIDDEN_REDISCOVERY` names the anti-patterns this replaced (per-commit stepping, worker-side relevance re-decision, aggregate-diff restart) so future work does not reintroduce them. reusable
+- Finding parsing/merging extended with commit attribution while staying backward compatible with unattributed findings
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-05] SKILL-136 subtask 4 — Controlled vocabularies for review-run attribution
 Areas: runtime-domain/review, runtime-domain/review/model, runtime-domain/workflow/taskruntime/model, runtime-ports/review, runtime-application/review, runtime-application/featuretask, runtime-infra-sqlite/db/core, runtime-infra-sqlite/review, runtime-mcp, platform-packs/kmp native-agents, orchestration/contracts
 - `ReviewAttributionCanonicalization` resolves routed skill, detected stack, and detected scope at ingestion against known pack skill names, platform slugs, and the closed scope vocabulary; raw prose is preserved beside each canonical id

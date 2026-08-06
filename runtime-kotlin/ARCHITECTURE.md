@@ -465,6 +465,8 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
@@ -1197,6 +1199,8 @@ Categories:
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`

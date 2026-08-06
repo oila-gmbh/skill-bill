@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
 
 /**
@@ -474,7 +475,7 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      `bill-code-review` invocation reported for this pass, verbatim. It is the key that joins each\n" +
           "      finding here to the imported review run, so a finding's \"id\" plus this run id must be the same\n" +
           "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
-          "      invent, reuse an older, or guess one."
+          "      invent, reuse an older, or guess one." + commitFocusedAccountingAddendum()
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,
@@ -482,6 +483,31 @@ object FeatureTaskRuntimePhasePromptComposer {
       else -> ""
     }
   }
+
+  /**
+   * The only seam that instructs a review pass to emit `produced_outputs.commit_focused_accounting`.
+   * The lifecycle reducer reads that key and durable review state requires the record for a delegated
+   * pass over a real commit sequence; without this instruction the key is never written and every
+   * delegated pass persists a null accounting record. Inline and non-commit passes omit the key rather
+   * than fabricating a sequence identity, which is why the instruction is conditional on what the pass
+   * actually ran instead of unconditional.
+   */
+  private fun commitFocusedAccountingAddendum(): String =
+    "\n    - If this pass ran a DELEGATED review over a real commit sequence, produced_outputs MUST also\n" +
+      "      carry \"commit_focused_accounting\" exactly as the review reported it: commit_sequence_digest\n" +
+      "      (64-char lowercase hex), commit_count, lane_count, focused_commit_count,\n" +
+      "      skipped_commit_count (focused + skipped == commit_count), and integration_terminal_outcome,\n" +
+      "      one of " + GoalSubtaskCommitFocusedAccounting.INTEGRATION_TERMINAL_OUTCOMES.sorted()
+        .joinToString() + ".\n" +
+      "      Optional when the review reported them: routing_digest, focused_pair_count,\n" +
+      "      skipped_pair_count, lane_bundle_sizes, lane_segment_counts, incomplete_lanes,\n" +
+      "      parent_analysis_pairs, parent_analysis_bytes, integration_finding_count, and\n" +
+      "      integration_skip_reason (REQUIRED when integration_terminal_outcome is\n" +
+      "      ${GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE}). Lanes that ended incomplete\n" +
+      "      are named in incomplete_lanes; that is non-clean coverage and the integration pass never\n" +
+      "      compensates for it. Identities, counts, and lane names ONLY — never a commit subject, a\n" +
+      "      path, or diff text. An INLINE or non-commit-sequence pass OMITS the key entirely rather\n" +
+      "      than fabricating a sequence identity; never invent or guess a digest or a count."
 
   private fun auditProducedOutputsAddendum(verdict: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     "\n    - This is a VERIFYING phase. Set top-level \"$verdict\" to \"satisfied\" or \"gaps_found\" and\n" +

@@ -12,6 +12,11 @@ const val REVIEW_BUDGET_REGRESSION: String = "budget_regression"
 
 const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
 
+/** Budget kinds for the parent-side routing analysis, reported on a loud routing-budget breach. */
+const val REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET: String = "routing_analysis_pairs"
+
+const val REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET: String = "routing_analysis_bytes"
+
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
 /** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
@@ -189,6 +194,102 @@ data class ReviewLaneDecision(
       .let { canonicalFields(*it.toTypedArray()) }
 }
 
+const val REVIEW_ROUTING_REASON_MAX_CHARS: Int = 600
+
+/**
+ * A commit/lane pair has exactly two final states. There is deliberately no deferred `candidate`
+ * state: relevance is decided once, on the parent, and no worker re-decides it downstream.
+ */
+enum class ReviewCommitLaneDisposition { FOCUSED, SKIPPED }
+
+/** One final, auditable routing decision for a single (commit unit, lane) pair. */
+data class ReviewCommitLaneDecision(
+  val commitSha: String,
+  val orderIndex: Int,
+  val lane: String,
+  val disposition: ReviewCommitLaneDisposition,
+  val reason: String,
+  val signals: List<String> = emptyList(),
+) {
+  init {
+    require(commitSha.isNotBlank()) { "Commit/lane decision commit identity must not be blank." }
+    require(orderIndex >= 0) { "Commit/lane decision order index cannot be negative." }
+    require(lane.isNotBlank()) { "Commit/lane decision lane must not be blank." }
+    require(reason.isNotBlank()) {
+      "Commit/lane decision '$commitSha'/'$lane' must carry a non-blank reason; a skip with no reason is unfalsifiable."
+    }
+    require(reason.length <= REVIEW_ROUTING_REASON_MAX_CHARS) {
+      "Commit/lane decision reason exceeds the bounded limit of $REVIEW_ROUTING_REASON_MAX_CHARS characters."
+    }
+    require(signals.distinct().size == signals.size) { "Commit/lane decision signals must be unique." }
+    require(signals.all(String::isNotBlank)) { "Commit/lane decision signals must not be blank." }
+  }
+
+  val focused: Boolean get() = disposition == ReviewCommitLaneDisposition.FOCUSED
+
+  val canonical: String get() = canonicalFields(
+    commitSha,
+    orderIndex,
+    lane,
+    disposition.name,
+    reason.replace("\r\n", "\n"),
+    canonicalFields(*signals.sorted().toTypedArray()),
+  )
+}
+
+/**
+ * The complete commit-by-lane routing result: every analyzed pair carries one final disposition,
+ * so a lane's assignment is derivable from focused commits alone with nothing left to re-decide.
+ */
+data class ReviewCommitLaneRoutingMatrix(
+  val commitShas: List<String>,
+  val lanes: List<String>,
+  val decisions: List<ReviewCommitLaneDecision>,
+) {
+  init {
+    require(commitShas.isNotEmpty()) { "A routing matrix must analyze at least one commit unit." }
+    require(commitShas.distinct().size == commitShas.size) { "Routing matrix commit identities must be unique." }
+    require(lanes.isNotEmpty()) { "A routing matrix must analyze at least one lane." }
+    require(lanes.distinct().size == lanes.size) { "Routing matrix lanes must be unique." }
+    val pairs = decisions.map { it.commitSha to it.lane }
+    require(pairs.distinct().size == pairs.size) { "Routing matrix carries a duplicate commit/lane decision." }
+    val expected = commitShas.flatMap { sha -> lanes.map { sha to it } }.toSet()
+    val missing = expected - pairs.toSet()
+    require(missing.isEmpty()) {
+      "Routing matrix is missing a final decision for ${missing.size} commit/lane pair(s); every pair must be decided."
+    }
+    val unknown = pairs.toSet() - expected
+    require(unknown.isEmpty()) { "Routing matrix decides commit/lane pairs it does not analyze: $unknown." }
+    val orderBySha = commitShas.withIndex().associate { (index, sha) -> sha to index }
+    require(decisions.all { it.orderIndex == orderBySha.getValue(it.commitSha) }) {
+      "Routing matrix decision order index diverges from the analyzed commit order."
+    }
+  }
+
+  /** The lane's focused commit identities in packet commit order. */
+  fun focusedCommits(lane: String): List<String> = decisions
+    .filter { it.lane == lane && it.focused }
+    .sortedBy { it.orderIndex }
+    .map { it.commitSha }
+
+  fun decisionsFor(lane: String): List<ReviewCommitLaneDecision> = decisions
+    .filter { it.lane == lane }
+    .sortedBy { it.orderIndex }
+
+  val focusedPairCount: Int get() = decisions.count { it.focused }
+  val analyzedPairCount: Int get() = decisions.size
+
+  val canonical: String get() = canonicalFields(
+    canonicalFields(*commitShas.toTypedArray()),
+    canonicalFields(*lanes.toTypedArray()),
+    canonicalFields(
+      *decisions.sortedWith(compareBy({ it.orderIndex }, { it.lane })).map { it.canonical }.toTypedArray(),
+    ),
+  )
+
+  val routingDigest: String get() = sha256(canonical)
+}
+
 data class ReviewExpansionRecord(
   val expansionId: String,
   val assignmentDigest: String,
@@ -241,6 +342,8 @@ data class ReviewContextBudgetPolicy(
   val maxAssignmentExpansions: Int = 3,
   val maxSpecialistToolCalls: Int = 40,
   val maxSpecialistModelTurns: Int = 24,
+  val maxRoutingAnalysisPairs: Int = 4_096,
+  val maxRoutingAnalysisBytes: Long = 33_554_432,
   val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
@@ -255,6 +358,8 @@ data class ReviewContextBudgetPolicy(
     require(maxAssignmentExpansions >= 0) { "Assignment expansions cannot be negative." }
     require(maxSpecialistToolCalls > 0) { "Specialist tool-call budget must be positive." }
     require(maxSpecialistModelTurns > 0) { "Specialist model-turn budget must be positive." }
+    require(maxRoutingAnalysisPairs > 0) { "Routing-analysis commit/lane pair budget must be positive." }
+    require(maxRoutingAnalysisBytes > 0) { "Routing-analysis hunk-material byte budget must be positive." }
     require(maxEvidenceResultBytes <= maxLaneEvidenceBytes) {
       "Evidence-result bytes cannot exceed cumulative lane-evidence bytes."
     }
@@ -320,6 +425,9 @@ data class ReviewAssignment(
   val headRevision: String,
   val assignedPaths: List<String>,
   val assignedHunks: List<String>,
+  val assignedBundle: ReviewLaneBundle = ReviewLaneBundle.EMPTY,
+  /** This lane's column of the routing matrix: why each commit was focused into or skipped for it. */
+  val laneRouting: List<ReviewCommitLaneDecision> = emptyList(),
   val criteriaReferences: List<String> = emptyList(),
   val matchedRules: List<ReviewRuleReference> = emptyList(),
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
@@ -335,6 +443,27 @@ data class ReviewAssignment(
     require(assignedPaths.distinct().size == assignedPaths.size) { "Assigned paths must be unique." }
     assignedPaths.forEach(::requireRepositoryRelativePath)
     require(assignedHunks.distinct().size == assignedHunks.size) { "Assigned hunk ids must be unique." }
+    // Full coverage is asserted where the packet is in hand (preparation validation and launch);
+    // here the bundle can only be checked against the assignment's own hunk surface.
+    require(assignedBundle.hunkIds.all { it in assignedHunks }) {
+      "Assignment '$lane' bundle attributes hunks that are not assigned to the lane."
+    }
+    require(laneRouting.all { it.lane == lane }) { "Assignment '$lane' carries routing for a different lane." }
+    require(laneRouting.map { it.commitSha }.distinct().size == laneRouting.size) {
+      "Assignment '$lane' routing repeats a commit."
+    }
+    require(laneRouting.map { it.orderIndex }.zipWithNext().all { (previous, next) -> previous < next }) {
+      "Assignment '$lane' routing must preserve packet commit order."
+    }
+    // A focused commit contributes no bundle entry when it owns no hunk under the lane's paths, so
+    // the bundle is a subset here; exact equality is asserted where the packet's hunks are in hand.
+    // Only the routing column's explicit skips are rejected here; commits absent from the column
+    // (outside the packet) are owned by packet validation so the reason stays specific.
+    val explicitlySkipped = laneRouting.filterNot { it.focused }.map { it.commitSha }.toSet()
+    val fromSkipped = assignedBundle.entries.map { it.commitSha }.filter { it in explicitlySkipped }
+    require(fromSkipped.isEmpty()) {
+      "Assignment '$lane' claims hunks from commits routing skipped for the lane: ${fromSkipped.sorted()}."
+    }
     require(laneDecision.lane == lane) { "Lane decision '${laneDecision.lane}' does not describe lane '$lane'." }
     require(laneDecision.included) { "Assignments exist only for included lanes; '$lane' is excluded." }
     require(matchedRules.map { it.ruleId }.distinct().size == matchedRules.size) { "Matched rules must be unique." }
@@ -377,6 +506,8 @@ data class ReviewAssignment(
         headRevision,
         canonicalFields(*assignedPaths.sorted().toTypedArray()),
         canonicalFields(*assignedHunks.sorted().toTypedArray()),
+        assignedBundle.canonical,
+        canonicalFields(*laneRouting.sortedBy { it.orderIndex }.map { it.canonical }.toTypedArray()),
         canonicalFields(*criteriaReferences.sorted().toTypedArray()),
         canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
         canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
@@ -386,6 +517,184 @@ data class ReviewAssignment(
     )
 }
 
+/** Placeholder identity prefix for a review unit that is not a real commit; never a fabricated SHA. */
+const val REVIEW_SYNTHETIC_COMMIT_PREFIX: String = "synthetic:"
+
+enum class ReviewCommitSource {
+  COMMIT_RANGE,
+  SYNTHETIC_WORKING_TREE,
+  SYNTHETIC_SUPPLIED_DIFF,
+  SYNTHETIC_AGGREGATE_PR_DIFF,
+  ;
+
+  val isSynthetic: Boolean get() = this != COMMIT_RANGE
+}
+
+/** One ordered review unit: a real commit's incremental hunks, or a synthetic whole-delta unit. */
+data class ReviewCommitUnit(
+  val commitSha: String,
+  val parentSha: String,
+  val subject: String,
+  val orderIndex: Int,
+  val hunks: List<ReviewChangedHunk>,
+  val source: ReviewCommitSource,
+) {
+  init {
+    require(commitSha.isNotBlank()) { "Review commit unit identity must not be blank." }
+    require(parentSha.isNotBlank()) { "Review commit unit parent identity must not be blank." }
+    require(orderIndex >= 0) { "Review commit unit order index cannot be negative." }
+    require(hunks.map { it.hunkId }.distinct().size == hunks.size) {
+      "Review commit unit '$commitSha' repeats a hunk id; a commit owns each hunk exactly once."
+    }
+    val ownScope = commitScopeKey(commitSha, orderIndex)
+    require(hunks.all { it.commitScope == null || (!source.isSynthetic && it.commitScope == ownScope) }) {
+      "Review commit unit '$commitSha' owns a hunk scoped to a different commit."
+    }
+    require(
+      hunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == hunks.size,
+    ) { "Review commit unit '$commitSha' carries two hunks at the same position in one file." }
+    if (source.isSynthetic) {
+      require(
+        commitSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX) && parentSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX),
+      ) {
+        "Synthetic review unit from source '$source' must carry a '$REVIEW_SYNTHETIC_COMMIT_PREFIX' placeholder " +
+          "identity, never a fabricated commit SHA."
+      }
+      require(orderIndex == 0) { "A synthetic review unit is the sole unit of its packet and must be first." }
+    } else {
+      require(
+        !commitSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX) && !parentSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX),
+      ) { "A COMMIT_RANGE review unit must carry real Git identities, not synthetic placeholders." }
+    }
+  }
+
+  /**
+   * A commit owns its hunks as a set, so every identity and projection reads this order rather than
+   * the order a fact port or parser happened to enumerate them in. The unit's own uniqueness
+   * invariant makes (path, newStart, oldStart) a total order over its hunks.
+   */
+  val canonicalHunks: List<ReviewChangedHunk>
+    get() = hunks.sortedWith(
+      compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart, ReviewChangedHunk::oldStart),
+    )
+
+  val hunkIds: List<String> get() = canonicalHunks.map { it.hunkId }
+
+  val commitUnitId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
+
+  internal fun canonicalValue(): String = canonicalFields(
+    commitSha,
+    parentSha,
+    subject.replace("\r\n", "\n"),
+    orderIndex,
+    source.name,
+    canonicalFields(*canonicalHunks.map { it.canonicalValue() }.toTypedArray()),
+  )
+
+  companion object {
+    fun commitScopeKey(commitSha: String, orderIndex: Int): String = "$commitSha@$orderIndex"
+
+    /** Builds a COMMIT_RANGE unit, scoping every hunk to this commit so its identity is commit-owned. */
+    fun ofCommit(
+      commitSha: String,
+      parentSha: String,
+      subject: String,
+      orderIndex: Int,
+      hunks: List<ReviewChangedHunk>,
+    ): ReviewCommitUnit {
+      val scope = commitScopeKey(commitSha, orderIndex)
+      return ReviewCommitUnit(
+        commitSha = commitSha,
+        parentSha = parentSha,
+        subject = subject,
+        orderIndex = orderIndex,
+        hunks = hunks.map { if (it.commitScope == scope) it else it.copy(commitScope = scope) },
+        source = ReviewCommitSource.COMMIT_RANGE,
+      )
+    }
+
+    fun synthetic(source: ReviewCommitSource, hunks: List<ReviewChangedHunk>): ReviewCommitUnit {
+      require(source.isSynthetic) { "A synthetic review unit cannot declare the COMMIT_RANGE source." }
+      return ReviewCommitUnit(
+        commitSha = REVIEW_SYNTHETIC_COMMIT_PREFIX + source.name.lowercase(),
+        parentSha = REVIEW_SYNTHETIC_COMMIT_PREFIX + "base",
+        subject = "synthetic review unit for ${source.name.lowercase()}",
+        orderIndex = 0,
+        hunks = hunks,
+        source = source,
+      )
+    }
+  }
+}
+
+/**
+ * The checked base-to-head equivalence fact: the ordered units cover the authoritative delta with
+ * no silent omission or duplication. A unit sequence that cannot assert the chain must say why.
+ */
+data class ReviewCommitCoverageFact(
+  val baseRevision: String,
+  val headRevision: String,
+  val commitCount: Int,
+  val chainVerified: Boolean,
+  val pathCoverageVerified: Boolean,
+  val degradedReason: String? = null,
+) {
+  init {
+    require(baseRevision.isNotBlank() && headRevision.isNotBlank()) {
+      "Commit coverage fact must carry non-blank base and head revisions."
+    }
+    require(commitCount >= 1) { "Commit coverage fact must describe at least one review unit." }
+    require(degradedReason == null || degradedReason.isNotBlank()) {
+      "A commit coverage fact degraded reason must not be blank."
+    }
+    require((chainVerified && pathCoverageVerified) || !degradedReason.isNullOrBlank()) {
+      "An unverified commit coverage fact must name the reason it could not be verified."
+    }
+  }
+
+  val canonical: String get() = canonicalFields(
+    baseRevision,
+    headRevision,
+    commitCount,
+    chainVerified,
+    pathCoverageVerified,
+    degradedReason.orEmpty(),
+  )
+}
+
+/** One lane's assigned hunks grouped by their owning commit, in packet commit order. */
+data class ReviewLaneBundleEntry(val commitSha: String, val orderIndex: Int, val hunkIds: List<String>) {
+  init {
+    require(commitSha.isNotBlank()) { "Lane bundle entry commit identity must not be blank." }
+    require(orderIndex >= 0) { "Lane bundle entry order index cannot be negative." }
+    require(hunkIds.isNotEmpty()) { "Lane bundle entry for '$commitSha' must carry at least one hunk." }
+    require(hunkIds.distinct().size == hunkIds.size) { "Lane bundle entry hunk ids must be unique." }
+  }
+
+  val canonical: String get() = canonicalFields(commitSha, orderIndex, canonicalFields(*hunkIds.toTypedArray()))
+}
+
+data class ReviewLaneBundle(val entries: List<ReviewLaneBundleEntry> = emptyList()) {
+  init {
+    require(entries.map { it.commitSha }.distinct().size == entries.size) {
+      "Lane bundle must carry one entry per commit."
+    }
+    require(entries.map { it.orderIndex }.zipWithNext().all { (previous, next) -> previous < next }) {
+      "Lane bundle entries must preserve packet commit order."
+    }
+    val ids = entries.flatMap { it.hunkIds }
+    require(ids.distinct().size == ids.size) { "Lane bundle claims a hunk id under more than one commit." }
+  }
+
+  val hunkIds: List<String> get() = entries.flatMap { it.hunkIds }
+  val canonical: String get() = canonicalFields(*entries.map { it.canonical }.toTypedArray())
+  val bundleDigest: String get() = sha256(canonical)
+
+  companion object {
+    val EMPTY: ReviewLaneBundle = ReviewLaneBundle()
+  }
+}
+
 data class ReviewChangedHunk(
   val path: String,
   val oldStart: Int,
@@ -393,10 +702,17 @@ data class ReviewChangedHunk(
   val newStart: Int,
   val newCount: Int,
   val content: String,
+  /**
+   * The owning commit's identity, folded into hunk identity so byte-identical hunks in two
+   * different commits stay distinct while a hunk repeated inside one commit still collides.
+   * Null for the single synthetic unit a non-commit scope owns.
+   */
+  val commitScope: String? = null,
 ) {
   init {
     requireRepositoryRelativePath(path)
     require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
+    require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
   }
 
   val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
@@ -408,6 +724,7 @@ data class ReviewChangedHunk(
     newStart,
     newCount,
     content.replace("\r\n", "\n"),
+    commitScope.orEmpty(),
   )
 }
 
@@ -422,6 +739,9 @@ data class ReviewContextPacket(
   val addOns: List<String>,
   val selectedLanes: List<String>,
   val changedHunks: List<ReviewChangedHunk>,
+  val commitUnits: List<ReviewCommitUnit>,
+  val coverageFact: ReviewCommitCoverageFact,
+  val routingMatrix: ReviewCommitLaneRoutingMatrix,
   val reviewRevision: ReviewRevision,
   val laneDecisions: List<ReviewLaneDecision>,
   val matchedRules: List<ReviewRuleReference> = emptyList(),
@@ -439,7 +759,6 @@ data class ReviewContextPacket(
     require(selectedLanes.isNotEmpty() && selectedLanes.distinct().size == selectedLanes.size)
     require(addOns.distinct().size == addOns.size)
     require(composedLayers.all(String::isNotBlank) && composedLayers.distinct().size == composedLayers.size)
-    require(changedHunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == changedHunks.size)
     require(changedHunks.map { it.hunkId }.distinct().size == changedHunks.size) { "Changed hunk ids must be unique." }
     require(laneDecisions.map { it.lane }.distinct().size == laneDecisions.size) {
       "Lane decisions must carry one entry per lane."
@@ -471,6 +790,88 @@ data class ReviewContextPacket(
     require(targetPaths.isEmpty()) { "Evidence targets name paths the packet does not own: ${targetPaths.sorted()}." }
     val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
     require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
+    requireCommitEvidence(ownedHunks)
+    requireRoutingMatrix()
+  }
+
+  /**
+   * Sparse routing decides lane selection: a lane survives exactly when it focused at least one
+   * commit, so a selected lane with no focused commit — or a dropped lane that focused one — is a
+   * routing/selection contradiction rather than a recoverable state.
+   */
+  private fun requireRoutingMatrix() {
+    val orderedShas = commitUnits.sortedBy { it.orderIndex }.map { it.commitSha }
+    require(routingMatrix.commitShas == orderedShas) {
+      "Routing matrix commit order does not match the packet commit sequence."
+    }
+    val unanalyzed = selectedLanes.filterNot { it in routingMatrix.lanes }
+    require(unanalyzed.isEmpty()) { "Selected lanes were never routed: ${unanalyzed.sorted()}." }
+    val unfocused = selectedLanes.filter { routingMatrix.focusedCommits(it).isEmpty() }
+    require(unfocused.isEmpty()) {
+      "Selected lanes focused no commit, so they would review nothing: ${unfocused.sorted()}."
+    }
+  }
+
+  /** The hunks a lane may claim: its owned paths restricted to the commits routing focused for it. */
+  fun focusedHunkIds(laneDecision: ReviewLaneDecision): Set<String> {
+    val focused = routingMatrix.focusedCommits(laneDecision.lane).toSet()
+    val ownedPaths = laneDecision.normalizedOwnedPaths.toSet()
+    return commitUnits.filter { it.commitSha in focused }
+      .flatMap { unit -> unit.canonicalHunks.filter { it.path in ownedPaths }.map { it.hunkId } }
+      .toSet()
+  }
+
+  @Suppress("CyclomaticComplexMethod")
+  private fun requireCommitEvidence(ownedHunks: Set<String>) {
+    require(commitUnits.isNotEmpty()) {
+      "A review packet is missing its commit sequence; at least one unit is required."
+    }
+    require(commitUnits.map { it.commitSha }.distinct().size == commitUnits.size) {
+      "Review packet carries a duplicate commit identity."
+    }
+    require(commitUnits.map { it.orderIndex }.sorted() == commitUnits.indices.toList()) {
+      "Review packet commit units are out of order; order indices must form a contiguous 0..n-1 sequence."
+    }
+    require(coverageFact.commitCount == commitUnits.size) {
+      "Coverage fact counts ${coverageFact.commitCount} commits but the packet carries ${commitUnits.size}."
+    }
+    val ordered = commitUnits.sortedBy { it.orderIndex }
+    if (ordered.any { it.source.isSynthetic }) {
+      require(ordered.size == 1) { "A synthetic review unit must be the only unit in its packet." }
+    } else {
+      require(ordered.first().parentSha == baseRevision) {
+        "Review packet commit chain does not start at the base revision '$baseRevision'."
+      }
+      require(ordered.last().commitSha == headRevision) {
+        "Review packet commit chain does not end at the head revision '$headRevision'."
+      }
+      ordered.zipWithNext().forEach { (previous, next) ->
+        require(next.parentSha == previous.commitSha) {
+          "Review packet commit chain is broken: '${next.commitSha}' does not descend from '${previous.commitSha}'."
+        }
+      }
+    }
+    val unitHunkIds = ordered.flatMap { it.hunkIds }
+    require(unitHunkIds.distinct().size == unitHunkIds.size) {
+      "A changed hunk is claimed by more than one commit unit; commit units must partition the packet hunks."
+    }
+    val absent = unitHunkIds.filterNot { it in ownedHunks }
+    require(absent.isEmpty()) { "A commit unit references a hunk absent from the packet changed hunks." }
+    val unowned = ownedHunks - unitHunkIds.toSet()
+    require(unowned.isEmpty()) { "Packet changed hunks are unowned by any commit unit: ${unowned.size} hunk(s)." }
+  }
+
+  val ownedCommitIds: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    commitUnits.map { it.commitSha }.toSet()
+  }
+
+  /**
+   * Stable identity of the reviewed commit sequence, over the ordered commit unit ids alone. It is
+   * deliberately narrower than [digest]: lane selection or a rule excerpt changing must not change
+   * which sequence a lane or integration result claims to cover, but reordering commits must.
+   */
+  val commitSequenceDigest: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    sha256(canonicalFields(*commitUnits.sortedBy { it.orderIndex }.map { it.commitUnitId }.toTypedArray()))
   }
 
   val ownedPaths: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -508,6 +909,11 @@ data class ReviewContextPacket(
       .map { it.canonical }.let { canonicalFields(*it.toTypedArray()) },
     changedHunks.sortedBy { it.canonicalValue() }
       .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    // Declared order, never sorted by content: reordering commits must stay digest-visible.
+    commitUnits.sortedBy { it.orderIndex }
+      .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    coverageFact.canonical,
+    routingMatrix.canonical,
     canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*learningsReferences.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*buildTestFacts.map { it.canonical }.sorted().toTypedArray()),
@@ -555,12 +961,14 @@ data class GovernedReviewLaunch(
     }
     val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
     require(unownedHunks.isEmpty()) { "Launch claims hunk ids the packet does not own." }
-    val expectedHunks = packet.changedHunks
-      .filter { it.path in packetDecision.normalizedOwnedPaths }
-      .map { it.hunkId }
-      .toSet()
+    // Sparse routing owns the expected surface: a lane sees its owned paths only in the commits it
+    // focused, never every hunk that ever touched those paths.
+    val expectedHunks = packet.focusedHunkIds(packetDecision)
     require(assignment.assignedHunks.toSet() == expectedHunks) {
-      "Launch hunks differ from the packet-owned hunks for the lane."
+      "Launch hunks differ from the focused-commit hunks the packet routed to the lane."
+    }
+    require(assignment.laneRouting == packet.routingMatrix.decisionsFor(assignment.lane)) {
+      "Launch lane routing differs from the packet routing matrix for lane '${assignment.lane}'."
     }
     require(assignment.dependencyAllowlist.normalized.all { it in packet.dependencyAllowlist.normalized }) {
       "Launch dependency allowlist escapes the packet allowlist."
@@ -574,13 +982,117 @@ data class GovernedReviewLaunch(
     require(assignment.evidenceTargets.toSet() == expectedTargets) {
       "Launch evidence targets differ from the packet targets for the lane."
     }
+    requireBundleMatchesPacket()
+  }
+
+  private fun requireBundleMatchesPacket() {
+    val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+    val outside = assignment.assignedBundle.entries.map { it.commitSha }.filterNot { it in unitsBySha }
+    require(outside.isEmpty()) {
+      "Launch assignment claims commit units outside its packet: ${outside.sorted()}."
+    }
+    assignment.assignedBundle.entries.forEach { entry ->
+      val unit = unitsBySha.getValue(entry.commitSha)
+      require(entry.orderIndex == unit.orderIndex) {
+        "Launch bundle entry '${entry.commitSha}' order differs from the packet commit order."
+      }
+      val strayHunks = entry.hunkIds.filterNot { it in unit.hunkIds }
+      require(strayHunks.isEmpty()) {
+        "Launch bundle attributes hunks to commit '${entry.commitSha}' that the commit does not own."
+      }
+    }
+    require(assignment.assignedBundle.hunkIds.toSet() == assignment.assignedHunks.toSet()) {
+      "Launch bundle must cover exactly the assigned hunks so every projected body is commit-attributable."
+    }
+  }
+
+  /** Assigned commit units in packet order (identity metadata for the launch envelope). */
+  private val projectedUnits: List<ReviewCommitUnit>
+    get() {
+      val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+      return assignment.assignedBundle.entries.map { entry -> unitsBySha.getValue(entry.commitSha) }
+    }
+
+  /** Ordered assigned hunk bodies with commit identity; never the aggregate PR diff. */
+  val assembledBundle: ReviewLaneAssembledBundle by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    ReviewLaneAssembledBundle.assemble(assignment, packet)
+  }
+
+  /**
+   * Size-driven segmentation of [assembledBundle]. Segments are consumed inside one lane worker
+   * operation; segmentation never multiplies worker launches.
+   */
+  val segmentation: ReviewLaneBundleSegmentation by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    segmentAssembledBundle(assembledBundle, budget.maxLaneLaunchBytes, ::measureBundleEntries)
+  }
+
+  val completionState: ReviewLaneCompletionState by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    segmentation.toCompletionState(assembledBundle.compositionDigest)
   }
 
   fun requireCodexForkTurns(forkTurns: String?) {
     require(forkTurns == "none") { "Governed Codex review launches require fork_turns none." }
   }
 
-  val canonicalPayload: String get() = buildString {
+  /** Entries the segmentation retained; unreviewable bodies are named, never delivered. */
+  val deliveredEntries: List<ReviewLaneAssembledEntry> get() = segmentation.segments.flatMap { it.entries }
+
+  val canonicalPayload: String get() = renderCanonicalPayload(deliveredEntries, segmentation)
+
+  /**
+   * Returns a typed budget breach when the fixed launch overhead alone exceeds the lane budget
+   * (nothing can be reviewed), or when the rendered payload exceeds the lane allowance. Each
+   * segment is separately accounted against [ReviewContextBudgetPolicy.maxLaneLaunchBytes], so the
+   * allowance for a delivered payload is that budget once per segment; anything beyond it is an
+   * overflow the segmentation did not account for and must surface as a typed breach rather than
+   * ship silently.
+   */
+  fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
+    val overhead = measureBundleEntries(emptyList())
+    val renderedBytes = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
+    val allowance = budget.maxLaneLaunchBytes * maxOf(1, segmentation.segments.size)
+    return if (overhead > budget.maxLaneLaunchBytes || renderedBytes > allowance) {
+      ReviewContextBudgetExceeded(
+        lane = assignment.lane,
+        budgetKind = "lane_launch_bytes",
+        configuredLimit = budget.maxLaneLaunchBytes,
+        observedValue = maxOf(overhead, renderedBytes),
+        packetDigest = assignment.packetDigest,
+        assignmentDigest = assignment.digest,
+        enforceable = true,
+      )
+    } else {
+      null
+    }
+  }
+
+  private fun measureBundleEntries(entries: List<ReviewLaneAssembledEntry>): Long {
+    val synthetic = if (entries.isEmpty()) {
+      ReviewLaneBundleSegmentation(emptyList(), emptyList(), budget.maxLaneLaunchBytes)
+    } else {
+      ReviewLaneBundleSegmentation(
+        segments = listOf(
+          ReviewLaneBundleSegment(segmentId = "measure", entries = entries, measuredBytes = 1),
+        ),
+        unreviewableEntries = emptyList(),
+        budgetLimitBytes = budget.maxLaneLaunchBytes,
+      )
+    }
+    return renderCanonicalPayload(entries, synthetic).toByteArray(StandardCharsets.UTF_8).size.toLong()
+  }
+
+  private fun renderCanonicalPayload(
+    entries: List<ReviewLaneAssembledEntry>,
+    segments: ReviewLaneBundleSegmentation,
+  ): String = buildString {
+    appendLaunchIdentity()
+    appendGovernanceText()
+    appendAssignedSurface()
+    appendBundleSection(entries, segments)
+    appendPolicySurface()
+  }.trimEnd()
+
+  private fun StringBuilder.appendLaunchIdentity() {
     appendLine("contract_version: \"$REVIEW_CONTEXT_CONTRACT_VERSION\"")
     appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
@@ -591,25 +1103,93 @@ data class GovernedReviewLaunch(
     appendLine("base_revision: ${assignment.baseRevision}")
     appendLine("head_revision: ${assignment.headRevision}")
     appendLine("broker_id: $brokerId")
+  }
+
+  private fun StringBuilder.appendGovernanceText() {
     appendLine("specialist_contract: |")
     specialistContract.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("rubric: |")
     rubric.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("consumer_contract: |")
     ReviewPacketConsumerContract.CONSUMER_CONTRACT.lineSequence().forEach { appendLine("  $it") }
+  }
+
+  private fun StringBuilder.appendAssignedSurface() {
     appendLine("assigned_paths:")
     assignment.assignedPaths.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
-    appendLine("assigned_hunk_bodies:")
-    packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
-      .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
-      .forEach { hunk ->
-        appendLine("  - path: ${structuredString(hunk.path)}")
-        appendLine("    hunk_id: ${hunk.hunkId}")
-        appendLine("    content: |")
-        hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
+    appendLine(
+      "coverage_fact: base=${packet.coverageFact.baseRevision}, head=${packet.coverageFact.headRevision}, " +
+        "commits=${packet.coverageFact.commitCount}, chain_verified=${packet.coverageFact.chainVerified}, " +
+        "path_coverage_verified=${packet.coverageFact.pathCoverageVerified}, " +
+        "degraded_reason=${structuredString(packet.coverageFact.degradedReason.orEmpty())}",
+    )
+    appendLine("assigned_commit_units:")
+    projectedUnits.forEach { unit ->
+      appendLine("  - commit_sha: ${structuredString(unit.commitSha)}")
+      appendLine("    parent_sha: ${structuredString(unit.parentSha)}")
+      appendLine("    subject: ${structuredString(unit.subject.replace("\r\n", "\n"))}")
+      appendLine("    order_index: ${unit.orderIndex}")
+      appendLine("    source: ${unit.source.name.lowercase()}")
+    }
+    appendLine("lane_routing:")
+    assignment.laneRouting.forEach { decision ->
+      appendLine("  - commit_sha: ${structuredString(decision.commitSha)}")
+      appendLine("    order_index: ${decision.orderIndex}")
+      appendLine("    disposition: ${decision.disposition.name.lowercase()}")
+      appendLine("    reason: ${structuredString(decision.reason)}")
+    }
+  }
+
+  private fun StringBuilder.appendBundleSection(
+    entries: List<ReviewLaneAssembledEntry>,
+    segments: ReviewLaneBundleSegmentation,
+  ) {
+    val disposition = if (segments.incomplete) {
+      ReviewLaneReviewDisposition.INCOMPLETE
+    } else {
+      ReviewLaneReviewDisposition.COMPLETE
+    }
+    appendLine("bundle:")
+    appendLine("  composition_digest: ${assembledBundle.compositionDigest}")
+    appendLine("  lane_disposition: ${disposition.wireValue}")
+    if (segments.incomplete) {
+      appendLine("  budget_dimension: lane_launch_bytes")
+    }
+    appendLine("  unreviewed_segment_ids:")
+    segments.unreviewedSegmentIds.forEach { appendLine("    - $it") }
+    appendLine("  entries:")
+    entries.forEach { entry ->
+      appendLine("    - commit_sha: ${structuredString(entry.commitSha)}")
+      appendLine("      parent_sha: ${structuredString(entry.parentSha)}")
+      appendLine("      subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
+      appendLine("      order_index: ${entry.orderIndex}")
+      appendLine("      path: ${structuredString(entry.hunk.path)}")
+      appendLine("      hunk_id: ${entry.hunkId}")
+      appendLine("      old_start: ${entry.hunk.oldStart}")
+      appendLine("      old_count: ${entry.hunk.oldCount}")
+      appendLine("      new_start: ${entry.hunk.newStart}")
+      appendLine("      new_count: ${entry.hunk.newCount}")
+      appendLine("      content: |")
+      entry.hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("        $it") }
+    }
+    appendLine("  segments:")
+    segments.segments.forEach { segment ->
+      appendLine("    - segment_id: ${segment.segmentId}")
+      appendLine("      measured_bytes: ${segment.measuredBytes}")
+      appendLine("      composition_digest: ${segment.compositionDigest}")
+      appendLine("      entries:")
+      segment.entries.forEach { entry ->
+        appendLine("        - commit_sha: ${structuredString(entry.commitSha)}")
+        appendLine("          order_index: ${entry.orderIndex}")
+        appendLine("          hunk_id: ${entry.hunkId}")
+        appendLine("          path: ${structuredString(entry.hunk.path)}")
       }
+    }
+  }
+
+  private fun StringBuilder.appendPolicySurface() {
     appendLine("criteria_references:")
     assignment.criteriaReferences.sorted().forEach { appendLine("  - $it") }
     appendLine("matched_rules:")
@@ -642,23 +1222,6 @@ data class GovernedReviewLaunch(
         "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}, " +
         "tool_calls=${budget.maxSpecialistToolCalls}, model_turns=${budget.maxSpecialistModelTurns}",
     )
-  }.trimEnd()
-
-  fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
-    val observed = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    return if (observed > budget.maxLaneLaunchBytes) {
-      ReviewContextBudgetExceeded(
-        lane = assignment.lane,
-        budgetKind = "lane_launch_bytes",
-        configuredLimit = budget.maxLaneLaunchBytes,
-        observedValue = observed,
-        packetDigest = assignment.packetDigest,
-        assignmentDigest = assignment.digest,
-        enforceable = true,
-      )
-    } else {
-      null
-    }
   }
 }
 
@@ -830,7 +1393,10 @@ private fun String.hasWellFormedUtf16(): Boolean {
 }
 
 /** Injective UTF-8 length-prefixed encoding used by every content-addressed review identity. */
-internal fun canonicalFields(vararg values: Any): String = values.joinToString("") { value ->
+internal fun canonicalFields(vararg values: Any): String = canonicalFieldList(values.asList())
+
+/** List form of [canonicalFields] for callers that already hold a collection. */
+internal fun canonicalFieldList(values: List<Any>): String = values.joinToString("") { value ->
   val text = value.toString()
   "${text.toByteArray(StandardCharsets.UTF_8).size}:$text"
 }

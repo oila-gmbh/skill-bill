@@ -50,6 +50,23 @@ class ReviewPacketConsumerContractParityTest {
       ReviewPacketConsumerContract.REPORT_STRUCTURE,
       authoritativeBlock(markdown, "report-structure"),
     )
+    assertEquals(
+      ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
+      authoritativeBlock(markdown, "integration-contract"),
+    )
+  }
+
+  @Test fun `the integration contract forbids rubric re-runs and coverage-gap compensation`() {
+    val contract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT
+    assertTrue("cross-commit behavior" in contract, "The integration pass must be scoped to cross-commit behavior.")
+    assertTrue(
+      "Do not re-run any specialist rubric" in contract,
+      "The integration pass must never re-launch a specialist rubric.",
+    )
+    assertTrue(
+      "must never be described as closing that gap" in contract,
+      "The integration pass must never be presented as compensating for an incomplete lane.",
+    )
   }
 
   @Test fun `delegation surfaces name the specialist contract without restating its marked rules`() {

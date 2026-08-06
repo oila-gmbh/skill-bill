@@ -90,6 +90,32 @@ class ParallelReviewFindingParserTest {
   }
 
   @Test
+  fun `finding naming two commits retains both shas and structured fields`() {
+    val finding = ParallelReviewFindingParser.parse(
+      "[F-001] Major | High | commits=c1,head | path=\"src/Contract.kt\" | line=12 | cross-commit drift",
+    ).single()
+
+    assertEquals("cross-commit drift", finding.description)
+    assertEquals(listOf("c1", "head"), finding.commitShas)
+    assertEquals("src/Contract.kt", finding.repositoryPath)
+    assertEquals(12, finding.line)
+    assertEquals("Major", finding.severity.displayName)
+    assertEquals("High", finding.confidence)
+  }
+
+  @Test
+  fun `finding with no commit attribution still parses`() {
+    val finding = ParallelReviewFindingParser.parse(
+      "[F-002] Minor | Medium | path=\"src/Main.kt\" | line=4 | no commit attribution",
+    ).single()
+
+    assertEquals(emptyList(), finding.commitShas)
+    assertEquals("src/Main.kt", finding.repositoryPath)
+    assertEquals(4, finding.line)
+    assertEquals("no commit attribution", finding.description)
+  }
+
+  @Test
   fun `parser preserves finding order across structured and documented formats`() {
     val findings = ParallelReviewFindingParser.parse(
       """

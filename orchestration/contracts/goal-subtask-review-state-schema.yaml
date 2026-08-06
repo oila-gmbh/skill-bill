@@ -20,7 +20,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.4"
+    const: "0.5"
   review_base_sha:
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
@@ -121,6 +121,82 @@ properties:
         executed_mode:
           type: string
           enum: [inline, delegated]
+        commit_focused_accounting:
+          description: >
+            What a delegated commit-focused pass actually did: which commit sequence it covered, how
+            sparsely it routed, which lanes ended incomplete (budget exhaustion or a failed lane run), what the
+            parent's own relevance analysis consumed, and how the single integration pass ended.
+            Absent for an inline or non-commit pass, which has no commit sequence to describe.
+            Identities, counts, and lane names only — never a commit subject, path, or diff text.
+          type: object
+          additionalProperties: false
+          required: [commit_sequence_digest, commit_count, lane_count, focused_commit_count, skipped_commit_count, integration_terminal_outcome]
+          properties:
+            commit_sequence_digest:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+            routing_digest:
+              type: string
+              pattern: "^[0-9a-f]{64}$"
+            commit_count:
+              type: integer
+              minimum: 0
+            lane_count:
+              type: integer
+              minimum: 0
+            focused_commit_count:
+              type: integer
+              minimum: 0
+            skipped_commit_count:
+              type: integer
+              minimum: 0
+            focused_pair_count:
+              type: integer
+              minimum: 0
+            skipped_pair_count:
+              type: integer
+              minimum: 0
+            lane_bundle_sizes:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+            lane_segment_counts:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+            incomplete_lanes:
+              type: array
+              uniqueItems: true
+              items:
+                type: string
+                minLength: 1
+            parent_analysis_pairs:
+              type: integer
+              minimum: 0
+            parent_analysis_bytes:
+              type: integer
+              minimum: 0
+            integration_terminal_outcome:
+              type: string
+              enum:
+                - completed
+                - skipped_not_applicable
+                - review_context_budget_exceeded
+                - failed
+                - timeout
+                - interrupted
+                - spawn_failure
+                - process_failure
+                - unsupported_provider
+                - no_op_resume
+            integration_skip_reason:
+              type: string
+              minLength: 1
+            integration_finding_count:
+              type: integer
+              minimum: 0
         review_result_artifact:
           type: string
           minLength: 1
@@ -161,4 +237,7 @@ x-coherence-checks:
   - pass_number, reserved_pass_number, completed_pass_count, and emitted_pass_count are unbounded above: the Blocker disposition, not a pass ceiling, terminates the remediation loop.
   - review_cap_reached is never minted by pass accounting; it survives only as a decodable legacy disposition and requires unresolved Blocker findings on the last completed pass.
   - emitted_pass_count is an acknowledgement watermark for compact parent-goal summaries.
+  - commit_focused_accounting is present exactly for a delegated pass over a real commit sequence; an inline or non-commit pass omits it rather than fabricating a sequence identity.
+  - focused_commit_count and skipped_commit_count sum to commit_count, and a lane named in incomplete_lanes is non-clean coverage that the integration pass never compensates for.
+  - integration_terminal_outcome records the integration pass's own boundary, distinct from every lane disposition, so a resume can tell "lanes done, integration pending" from "everything done".
   - reviewed_delta_digest records what the latest pass judged; a review_cap_reached disposition whose digest no longer matches the current delta is stale and the child reopens a fresh review generation rather than replaying it.

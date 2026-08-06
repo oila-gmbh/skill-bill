@@ -4,6 +4,7 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.SpecType
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -139,6 +140,8 @@ class FileSystemRepoLocalConfigTest {
         max_assignment_expansions: 5
         max_specialist_tool_calls: 50
         max_specialist_model_turns: 30
+        max_routing_analysis_pairs: 1024
+        max_routing_analysis_bytes: 2048000
         provider_token_thresholds:
           input_tokens: 41000
           cached_input_tokens: 31000
@@ -158,11 +161,30 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(5, budget.maxAssignmentExpansions)
     assertEquals(50, budget.maxSpecialistToolCalls)
     assertEquals(30, budget.maxSpecialistModelTurns)
+    assertEquals(1_024, budget.maxRoutingAnalysisPairs)
+    assertEquals(2_048_000, budget.maxRoutingAnalysisBytes)
     assertEquals(41_000, budget.providerTokenThresholds.inputTokens)
     assertEquals(31_000, budget.providerTokenThresholds.cachedInputTokens)
     assertEquals(9_000, budget.providerTokenThresholds.outputTokens)
     assertEquals(11_000, budget.providerTokenThresholds.reasoningTokens)
     assertEquals(57_000, budget.providerTokenThresholds.totalTokens)
+  }
+
+  @Test
+  fun `review context budget rejects a non-positive routing analysis override`() {
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_routing_analysis_pairs: 0
+      """.trimIndent(),
+    )
+
+    val error = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+    }
+
+    assertEquals("review_context_budget", error.key)
+    assertContains(error.message.orEmpty(), "must be positive")
   }
 
   @Test
@@ -198,6 +220,8 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(600_000, budget.maxParentPacketBytes)
     assertEquals(60_000, budget.maxLaneLaunchBytes)
     assertEquals(1, budget.maxAssignmentExpansions)
+    assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisPairs, budget.maxRoutingAnalysisPairs)
+    assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisBytes, budget.maxRoutingAnalysisBytes)
     assertEquals(40_000, budget.providerTokenThresholds.inputTokens)
     assertEquals(100_000, budget.providerTokenThresholds.totalTokens)
   }

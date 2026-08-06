@@ -8,10 +8,19 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 
 object ParallelReviewMerger {
-  fun merge(lane1: ParallelReviewLaneResult, lane2: ParallelReviewLaneResult): ParallelReviewMergeResult {
+  /**
+   * [integration] is the single integration pass's cross-commit register, merged through the same
+   * clustering as the specialist lanes so an interaction both a lane and the integration pass
+   * noticed still coalesces into one root-cause finding rather than being reported twice.
+   */
+  fun merge(
+    lane1: ParallelReviewLaneResult,
+    lane2: ParallelReviewLaneResult,
+    integration: ParallelReviewLaneResult? = null,
+  ): ParallelReviewMergeResult {
     // Findings are the single source of truth: callers gate them on lane success, so a failed lane
     // contributes an empty list here and never leaks into the merged register.
-    val candidates = mergeCandidates(lane1, lane2)
+    val candidates = mergeCandidates(lane1, lane2, integration)
 
     val sorted = candidates.sortedWith(
       compareBy<MergedCandidate> { it.severity.ordinal }
@@ -31,6 +40,7 @@ object ParallelReviewMerger {
         originLayerChains = candidate.originLayerChains,
         repositoryPath = candidate.repositoryPath,
         line = candidate.line,
+        commitShas = candidate.commitShas,
       )
     }
 
@@ -45,11 +55,14 @@ object ParallelReviewMerger {
   private fun mergeCandidates(
     lane1: ParallelReviewLaneResult,
     lane2: ParallelReviewLaneResult,
+    integration: ParallelReviewLaneResult?,
   ): List<MergedCandidate> {
     val allEntries = mutableListOf<FindingEntry>()
     var appearanceOrder = 0
     lane1.findings.forEach { f -> allEntries += FindingEntry(f, lane1.agentId, appearanceOrder++) }
     lane2.findings.forEach { f -> allEntries += FindingEntry(f, lane2.agentId, appearanceOrder++) }
+    // Last, so a specialist lane that saw the same root cause stays the cluster representative.
+    integration?.findings?.forEach { f -> allEntries += FindingEntry(f, integration.agentId, appearanceOrder++) }
 
     // Deterministic greedy single pass in insertion order (lane1 entries first, then lane2).
     // Each entry joins the first existing cluster whose first-inserted representative shares the
@@ -89,8 +102,13 @@ object ParallelReviewMerger {
     } else {
       finding.location
     }
+    val commitAttribution = if (finding.commitShas.isNotEmpty()) {
+      "commits=${finding.commitShas.joinToString(",")} | "
+    } else {
+      ""
+    }
     return "- [${finding.fNumber}] [$agentLabel] ${finding.severity.displayName} | ${finding.confidence} | " +
-      "$structuredLocation | ${finding.description}$provenance"
+      "$commitAttribution$structuredLocation | ${finding.description}$provenance"
   }
 
   private fun toCandidate(head: ClusterHead): MergedCandidate {
@@ -115,6 +133,9 @@ object ParallelReviewMerger {
       originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
       repositoryPath = firstEntry.finding.repositoryPath,
       line = firstEntry.finding.line,
+      // Commit attribution is the union across the cluster, in first-appearance order: coalescing
+      // two reports of one root cause must not drop the commits only the later report named.
+      commitShas = entries.sortedBy { it.appearanceOrder }.flatMap { it.finding.commitShas }.distinct(),
     )
   }
 
@@ -169,5 +190,6 @@ object ParallelReviewMerger {
     val originLayerChains: List<List<String>>,
     val repositoryPath: String?,
     val line: Int?,
+    val commitShas: List<String>,
   )
 }

@@ -8,6 +8,7 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -53,6 +54,9 @@ class ReviewAccountingProjectionRedactionTest {
         "packet_digest",
         "parent",
         "lanes",
+        "commit_routing_accounting",
+        "parent_analysis_consumption",
+        "integration",
         "aggregate_counters",
         "aggregate_direct_usage",
         "aggregate_inclusive_usage",
@@ -87,6 +91,38 @@ class ReviewAccountingProjectionRedactionTest {
       setOf("launch_bytes", "evidence_bytes", "result_bytes", "expansions", "tool_calls", "model_turns"),
       counters.keys,
     )
+  }
+
+  @Test fun `lane nodes project bundle composition and segment accounting`() {
+    val digest = "a".repeat(64)
+    val summary = ReviewTreeAccounting.summarize(
+      "review-id",
+      "packet-digest",
+      ReviewAccountingInput(
+        lane = "parent",
+        assignmentDigest = "assignment-digest",
+        children = listOf(
+          ReviewAccountingInput(
+            lane = "architecture",
+            assignmentDigest = "architecture-digest",
+            terminalOutcome = "incomplete",
+            bundleCompositionDigest = digest,
+            segmentAccounting = listOf(ReviewLaneSegmentAccounting("seg-000", 128, 2, digest)),
+            unreviewedSegmentIds = listOf("unreviewable"),
+          ),
+        ),
+      ),
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    val lane = (summary.toBoundedPayload()["lanes"] as List<Map<String, Any?>>).single()
+    assertEquals(digest, lane["bundle_composition_digest"])
+    assertEquals(listOf("unreviewable"), lane["unreviewed_segment_ids"])
+    @Suppress("UNCHECKED_CAST")
+    val segments = lane["segment_accounting"] as List<Map<String, Any?>>
+    assertEquals("seg-000", segments.single()["segment_id"])
+    assertEquals(128L, segments.single()["measured_bytes"])
+    assertEquals(2, segments.single()["entry_count"])
   }
 
   @Test fun `bounded payload survives the durable record contract`() {

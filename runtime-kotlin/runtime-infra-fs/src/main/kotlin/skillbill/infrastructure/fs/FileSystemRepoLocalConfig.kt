@@ -49,43 +49,10 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
 
   private fun parseReviewContextBudget(path: Path, value: Any?): ReviewContextBudgetPolicy {
     val raw = budgetMapping(path, "review_context_budget", value)
-    validateBudgetKeys(
-      path,
-      raw,
-      "review_context_budget",
-      setOf(
-        "max_parent_packet_bytes",
-        "max_lane_launch_bytes",
-        "max_lane_evidence_bytes",
-        "max_evidence_result_bytes",
-        "max_lane_result_bytes",
-        "max_assignment_expansions",
-        "max_specialist_tool_calls",
-        "max_specialist_model_turns",
-        "provider_token_thresholds",
-      ),
-    )
+    validateBudgetKeys(path, raw, "review_context_budget", REVIEW_CONTEXT_BUDGET_KEYS)
     val defaults = ReviewContextBudgetPolicy.DEFAULT
-    val tokenRaw = providerTokenThresholds(path, raw)
-    val tokenDefaults = defaults.providerTokenThresholds
     return try {
-      ReviewContextBudgetPolicy(
-        maxParentPacketBytes = budgetLong(path, raw, "max_parent_packet_bytes", defaults.maxParentPacketBytes),
-        maxLaneLaunchBytes = budgetLong(path, raw, "max_lane_launch_bytes", defaults.maxLaneLaunchBytes),
-        maxLaneEvidenceBytes = budgetLong(path, raw, "max_lane_evidence_bytes", defaults.maxLaneEvidenceBytes),
-        maxEvidenceResultBytes = budgetLong(path, raw, "max_evidence_result_bytes", defaults.maxEvidenceResultBytes),
-        maxLaneResultBytes = budgetLong(path, raw, "max_lane_result_bytes", defaults.maxLaneResultBytes),
-        maxAssignmentExpansions = assignmentExpansions(path, raw, defaults.maxAssignmentExpansions),
-        maxSpecialistToolCalls = budgetInt(path, raw, "max_specialist_tool_calls", defaults.maxSpecialistToolCalls),
-        maxSpecialistModelTurns = budgetInt(path, raw, "max_specialist_model_turns", defaults.maxSpecialistModelTurns),
-        providerTokenThresholds = ProviderTokenThresholds(
-          inputTokens = tokenLong(path, tokenRaw, "input_tokens", tokenDefaults.inputTokens),
-          cachedInputTokens = tokenLong(path, tokenRaw, "cached_input_tokens", tokenDefaults.cachedInputTokens),
-          outputTokens = tokenLong(path, tokenRaw, "output_tokens", tokenDefaults.outputTokens),
-          reasoningTokens = tokenLong(path, tokenRaw, "reasoning_tokens", tokenDefaults.reasoningTokens),
-          totalTokens = tokenLong(path, tokenRaw, "total_tokens", tokenDefaults.totalTokens),
-        ),
-      )
+      buildReviewContextBudget(path, raw, defaults, providerTokenThresholds(path, raw))
     } catch (error: IllegalArgumentException) {
       throw MalformedRepoLocalConfigError(
         path.toString(),
@@ -95,6 +62,34 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         error,
       )
     }
+  }
+
+  private fun buildReviewContextBudget(
+    path: Path,
+    raw: Map<*, *>,
+    defaults: ReviewContextBudgetPolicy,
+    tokenRaw: Map<*, *>,
+  ): ReviewContextBudgetPolicy {
+    val tokenDefaults = defaults.providerTokenThresholds
+    return ReviewContextBudgetPolicy(
+      maxParentPacketBytes = budgetLong(path, raw, "max_parent_packet_bytes", defaults.maxParentPacketBytes),
+      maxLaneLaunchBytes = budgetLong(path, raw, "max_lane_launch_bytes", defaults.maxLaneLaunchBytes),
+      maxLaneEvidenceBytes = budgetLong(path, raw, "max_lane_evidence_bytes", defaults.maxLaneEvidenceBytes),
+      maxEvidenceResultBytes = budgetLong(path, raw, "max_evidence_result_bytes", defaults.maxEvidenceResultBytes),
+      maxLaneResultBytes = budgetLong(path, raw, "max_lane_result_bytes", defaults.maxLaneResultBytes),
+      maxAssignmentExpansions = assignmentExpansions(path, raw, defaults.maxAssignmentExpansions),
+      maxSpecialistToolCalls = budgetInt(path, raw, "max_specialist_tool_calls", defaults.maxSpecialistToolCalls),
+      maxSpecialistModelTurns = budgetInt(path, raw, "max_specialist_model_turns", defaults.maxSpecialistModelTurns),
+      maxRoutingAnalysisPairs = budgetInt(path, raw, "max_routing_analysis_pairs", defaults.maxRoutingAnalysisPairs),
+      maxRoutingAnalysisBytes = budgetLong(path, raw, "max_routing_analysis_bytes", defaults.maxRoutingAnalysisBytes),
+      providerTokenThresholds = ProviderTokenThresholds(
+        inputTokens = tokenLong(path, tokenRaw, "input_tokens", tokenDefaults.inputTokens),
+        cachedInputTokens = tokenLong(path, tokenRaw, "cached_input_tokens", tokenDefaults.cachedInputTokens),
+        outputTokens = tokenLong(path, tokenRaw, "output_tokens", tokenDefaults.outputTokens),
+        reasoningTokens = tokenLong(path, tokenRaw, "reasoning_tokens", tokenDefaults.reasoningTokens),
+        totalTokens = tokenLong(path, tokenRaw, "total_tokens", tokenDefaults.totalTokens),
+      ),
+    )
   }
 
   private fun <T> parseKnownKey(
@@ -208,6 +203,20 @@ internal fun configPath(repoRoot: Path): Path = repoRoot
   .normalize()
 
 internal const val REPO_LOCAL_CONFIG_FILE_NAME: String = "config.yaml"
+
+private val REVIEW_CONTEXT_BUDGET_KEYS = setOf(
+  "max_parent_packet_bytes",
+  "max_lane_launch_bytes",
+  "max_lane_evidence_bytes",
+  "max_evidence_result_bytes",
+  "max_lane_result_bytes",
+  "max_assignment_expansions",
+  "max_specialist_tool_calls",
+  "max_specialist_model_turns",
+  "max_routing_analysis_pairs",
+  "max_routing_analysis_bytes",
+  "provider_token_thresholds",
+)
 
 private fun java.math.BigInteger.longValueExactOrNull(): Long? = try {
   longValueExact()

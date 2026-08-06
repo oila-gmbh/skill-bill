@@ -9,10 +9,7 @@ internal object DatabaseColumnMigrations {
   fun apply(connection: Connection) {
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
-    ensureFindingColumns(connection)
-    ensureUnaddressedFindingColumns(connection)
-    ensureReviewFindingOutcomeColumns(connection)
-    backfillReviewSessionIds(connection)
+    DatabaseReviewColumnMigrations.apply(connection)
     ReviewAttributionBackfillMigration.backfillExecutionModes(connection)
     ensureFeatureImplementSessionColumns(connection)
     ensureFeatureVerifySessionColumns(connection)
@@ -53,62 +50,6 @@ internal object DatabaseColumnMigrations {
       ensureColumn(connection, "goal_issue_progress", "last_blocked_segment_workflow_id", "TEXT")
     }
     ensureReconciliationIndexes(connection)
-  }
-
-  private fun ensureUnaddressedFindingColumns(connection: Connection) {
-    if (!tableExists(connection, "unaddressed_findings")) return
-    ensureColumn(connection, "unaddressed_findings", "issue_key", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "unaddressed_findings", "subtask_id", "INTEGER NOT NULL DEFAULT 0")
-    ensureColumn(connection, "unaddressed_findings", "severity", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "unaddressed_findings", "issue_category", "TEXT NOT NULL DEFAULT 'other'")
-    ensureColumn(connection, "unaddressed_findings", "location", "TEXT NOT NULL DEFAULT '<unknown>'")
-    ensureColumn(connection, "unaddressed_findings", "summary", "TEXT NOT NULL DEFAULT ''")
-    ensureColumn(connection, "unaddressed_findings", "recorded_at", "TEXT NOT NULL DEFAULT ''")
-    ensureReviewFindingOutcomeKeyColumns(connection)
-    connection.createStatement().use { statement ->
-      statement.execute(
-        "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_issue " +
-          "ON unaddressed_findings(issue_key, subtask_id, review_pass_number)",
-      )
-    }
-  }
-
-  /**
-   * The shared review-run/finding key on the workflow-loop ledger. Both columns are nullable with no
-   * default: a pass for which no review run was imported keeps them NULL and is read as unresolved,
-   * rather than being bucketed to a guessed review run.
-   */
-  fun ensureReviewFindingOutcomeKeyColumns(connection: Connection) {
-    if (!tableExists(connection, "unaddressed_findings")) return
-    ensureColumn(connection, "unaddressed_findings", "review_run_id", "TEXT")
-    ensureColumn(connection, "unaddressed_findings", "finding_id", "TEXT")
-    // The index lives here, not in the shared schema statement list: on a pre-existing store the
-    // CREATE TABLE is a no-op and the index would be created before these columns exist.
-    connection.createStatement().use { statement ->
-      statement.execute(
-        "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run " +
-          "ON unaddressed_findings(review_run_id, finding_id)",
-      )
-    }
-  }
-
-  /**
-   * Content-derived cross-pass identity on the durable outcome table. Nullable with no backfill: a
-   * row written before this column existed has no location or summary left to derive a key from —
-   * `unaddressed_findings` is retracted on every pass — so it stays NULL and is excluded from
-   * cross-pass reconciliation rather than being matched on its per-run positional finding id.
-   */
-  fun ensureReviewFindingOutcomeColumns(connection: Connection) {
-    if (!tableExists(connection, "review_finding_outcomes")) return
-    ensureColumn(connection, "review_finding_outcomes", "finding_key", "TEXT")
-    // Declared here rather than in the shared schema list: on an existing store the CREATE TABLE is a
-    // no-op and the index would be created before the column exists.
-    connection.createStatement().use { statement ->
-      statement.execute(
-        "CREATE INDEX IF NOT EXISTS idx_review_finding_outcomes_key " +
-          "ON review_finding_outcomes(workflow_id, finding_key)",
-      )
-    }
   }
 
   fun applyWorkListMetadata(connection: Connection) {
@@ -295,7 +236,7 @@ internal object DatabaseColumnMigrations {
 
   internal fun reviewRunColumnNames(connection: Connection): Set<String> = tableColumnNames(connection, "review_runs")
 
-  private fun tableExists(connection: Connection, tableName: String): Boolean = connection.prepareStatement(
+  internal fun tableExists(connection: Connection, tableName: String): Boolean = connection.prepareStatement(
     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
   ).use { statement ->
     statement.setString(1, tableName)
@@ -457,6 +398,12 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "review_runs", "detected_stack_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_detail", "TEXT")
+    // Specialist completion and integration completion are distinct durable boundaries, so the
+    // integration pass records its own terminal state rather than being inferred from lane rows.
+    // The sequence digest pins which commit sequence that state belongs to: a resume against a
+    // different sequence must re-run the pass instead of trusting a stale terminal state.
+    ensureColumn(connection, "review_runs", "integration_terminal_outcome", "TEXT")
+    ensureColumn(connection, "review_runs", "integration_commit_sequence_digest", "TEXT")
     // Created here rather than in the base schema: a legacy store still lacks routed_skill_canonical
     // when createBaseSchema runs, so the index can only be declared once the column is healed.
     connection.createStatement().use { statement ->
@@ -464,42 +411,6 @@ internal object DatabaseColumnMigrations {
         "CREATE INDEX IF NOT EXISTS idx_review_runs_routed_skill_canonical " +
           "ON review_runs(routed_skill_canonical, review_run_id)",
       )
-    }
-  }
-
-  private fun ensureFindingColumns(connection: Connection) {
-    ensureColumn(
-      connection = connection,
-      tableName = "findings",
-      columnName = "issue_category",
-      definition = "TEXT NOT NULL DEFAULT 'other'",
-    )
-    ensureFindingLaneColumns(connection)
-  }
-
-  // Per-finding lane attribution. Additive and nullable: a finding recorded before lane attribution
-  // existed keeps a NULL lane rather than being guessed into a bucket.
-  internal fun ensureFindingLaneColumns(connection: Connection) {
-    if (!tableExists(connection, "findings")) return
-    ensureColumn(connection, "findings", "lane_skill_name", "TEXT")
-    ensureColumn(connection, "findings", "lane_area", "TEXT")
-    ensureColumn(connection, "findings", "lane_pack_slug", "TEXT")
-    connection.createStatement().use { statement ->
-      statement.execute(
-        "CREATE INDEX IF NOT EXISTS idx_findings_lane ON findings(lane_skill_name, review_run_id)",
-      )
-    }
-  }
-
-  private fun backfillReviewSessionIds(connection: Connection) {
-    connection.prepareStatement(
-      """
-      UPDATE review_runs
-      SET review_session_id = review_run_id
-      WHERE review_session_id IS NULL OR review_session_id = ''
-      """.trimIndent(),
-    ).use { statement ->
-      statement.executeUpdate()
     }
   }
 
@@ -620,7 +531,12 @@ internal object DatabaseColumnMigrations {
     }
   }
 
-  private fun ensureColumn(connection: Connection, tableName: String, columnName: String, definition: String): Boolean {
+  internal fun ensureColumn(
+    connection: Connection,
+    tableName: String,
+    columnName: String,
+    definition: String,
+  ): Boolean {
     require(tableName.matches(safeIdentifierPattern)) { "Unsafe table name: '$tableName'" }
     require(columnName.matches(safeIdentifierPattern)) { "Unsafe column name: '$columnName'" }
     if (tableColumnNames(connection = connection, tableName = tableName).contains(columnName)) {

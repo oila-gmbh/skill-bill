@@ -559,18 +559,19 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
   DatabaseReviewLedgerSchema.reviewRunLaneStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
-  DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
+  DatabaseReviewColumnMigrations.ensureFindingLaneColumns(connection)
+  DatabaseReviewColumnMigrations.ensureReviewRunLaneDispositionColumns(connection)
 }
 
 // The unaddressed_findings key columns go through ensureColumn (which also runs unconditionally on
 // every startup) rather than being appended to an already-applied CREATE body, which would be a
 // silent no-op for every existing store.
 private fun addReviewFindingOutcomeKey(connection: Connection) {
-  DatabaseColumnMigrations.ensureReviewFindingOutcomeKeyColumns(connection)
+  DatabaseReviewColumnMigrations.ensureReviewFindingOutcomeKeyColumns(connection)
   DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
-  DatabaseColumnMigrations.ensureReviewFindingOutcomeColumns(connection)
+  DatabaseReviewColumnMigrations.ensureReviewFindingOutcomeColumns(connection)
 }
 
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {

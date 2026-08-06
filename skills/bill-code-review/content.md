@@ -174,6 +174,44 @@ governed review contract and the selected review mode may do so.
 
 Determine the diff scope from the caller's request using the same labels as the normal flow: `staged`, `unstaged`, `branch` (default), or `pr`. Resolve the diff text for that scope.
 
+## Commit-focused sparse specialist sequencing
+
+At delegated depth over a scope with a real commit sequence — a commit range or a
+`pr` with more than one commit — the parent owns discovery and relevance. It
+resolves the commit sequence once and decides, for every commit and lane pair,
+whether that lane is focused on that commit or skips it, recording a falsifiable
+reason for each skip that names the commit's changed paths and the lane signals
+that failed to match them. Commits irrelevant to every lane are excluded before
+any worker launches. No worker re-decides relevance.
+
+Each selected specialist receives one assembled bundle containing exactly its
+assigned hunks, with commit identity and order as readable metadata, and reviews
+that bundle in a single pass. Commit order is there to relate earlier and later
+commits inside the one pass; it is not an iteration order. Never instruct a
+worker to run broad diff discovery, to re-decide relevance, to step through
+commits one at a time, or to review every commit by default. Specialist worker
+count equals selected lane count and does not grow with commit count.
+
+A lane that could not fit its whole assigned bundle within budget ends
+**incomplete**. That is non-clean coverage: name the units it left unreviewed and
+the budget dimension that stopped it. Nothing later converts it to clean.
+
+After every selected lane reaches a terminal state, run exactly one bounded
+integration pass over the commit sequence. It receives final-state evidence and
+per-lane summaries — never a lane's raw bundle, a sibling lane's hunk bodies, or
+a parent transcript — and reports only cross-commit behavior, citing the involved
+commits. It re-runs no specialist rubric, and its cost does not scale with commit
+count. Specialist completion and integration completion are distinct durable
+boundaries: a resume re-runs only lanes without a durable result, and re-runs the
+integration pass only when it did not itself complete. The integration pass never
+compensates for an incomplete lane and must never be reported as closing that gap.
+
+Every other scope — `staged`, `unstaged`, working tree, an exact supplied diff, or
+a single commit — keeps its existing semantics unchanged and reports that
+commit-focused delegated sequencing is not applicable, naming the resolved scope
+from the existing `detected_scope` vocabulary. Do not invent commit history to
+make the sequencing apply.
+
 ## Lane 2: Routing Capability Table
 
 This table is the single source of truth for lane 2 routing. Update the values here to retune

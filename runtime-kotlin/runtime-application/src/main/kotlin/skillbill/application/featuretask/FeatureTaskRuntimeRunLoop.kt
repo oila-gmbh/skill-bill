@@ -437,6 +437,7 @@ internal class FeatureTaskRuntimeRunLoop(
             outputMap,
             priorBlockerFindingIds(),
           ),
+          commitFocusedAccounting = GoalSubtaskReviewSummaryReducer.commitFocusedAccounting(outputMap),
         ),
         dbOverride = request.dbPathOverride,
       ) == null
@@ -4026,6 +4027,7 @@ internal class FeatureTaskRuntimeRunLoop(
             outputMap,
             priorBlockerFindingIds(),
           ),
+          commitFocusedAccounting = GoalSubtaskReviewSummaryReducer.commitFocusedAccounting(outputMap),
         ),
         dbOverride = run.request.dbPathOverride,
       )

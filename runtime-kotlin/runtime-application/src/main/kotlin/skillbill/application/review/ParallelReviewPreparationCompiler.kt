@@ -12,15 +12,19 @@ import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewFactPorts
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.plan.ReviewCommitLaneRoutingPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.file.Path
 import java.security.MessageDigest
 
@@ -32,8 +36,16 @@ internal object ParallelReviewPreparationCompiler {
     envelopeValidator: ReviewContextEnvelopeValidator,
     specialistContract: String,
   ): List<ReviewSpecialistLaunchRequest> {
-    val hunks = input.evidence.hunks
-    val routes = specialistRoutes(input)
+    // Commit units are the authoritative hunk surface: the packet's flat changedHunks is exactly
+    // their union, so every hunk stays attributable to the commit that introduced it.
+    val hunks = input.commitSequence.units.flatMap { it.hunks }
+    val candidates = specialistRoutes(input)
+    val routingMatrix = ReviewCommitLaneRoutingPolicy.route(
+      input.commitSequence.units,
+      candidates.map { ReviewRoutedLane(it.lane, it.descriptor) },
+      budget,
+    )
+    val routes = narrowToFocusedCommits(input, candidates, routingMatrix)
     val decisions = routes.map { route ->
       ReviewLaneDecision(
         route.lane,
@@ -50,8 +62,38 @@ internal object ParallelReviewPreparationCompiler {
       )
     }
     val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
-    val preparation = prepareReview(input, hunks, routes, decisions, revisionId, budget, envelopeValidator)
+    val selection = ReviewLaneSelection(decisions, routingMatrix)
+    val preparation = prepareReview(input, hunks, routes, selection, revisionId, budget, envelopeValidator)
     return launchRequests(input, preparation, routes, budget, specialistContract)
+  }
+
+  /**
+   * Sparse selection: a lane survives only where routing focused at least one commit, and it then
+   * owns exactly what those commits changed under its previously resolved path ownership. Required
+   * baseline lanes focus every commit, so this can only ever narrow an optional lane.
+   */
+  private fun narrowToFocusedCommits(
+    input: ParallelReviewPreparationInput,
+    candidates: List<SpecialistRoute>,
+    routingMatrix: ReviewCommitLaneRoutingMatrix,
+  ): List<SpecialistRoute> {
+    val routes = candidates.mapNotNull { candidate ->
+      val focused = routingMatrix.focusedCommits(candidate.lane).toSet()
+      val owned = candidate.ownedPaths.toSet()
+      val ownedPaths = input.commitSequence.units
+        .filter { it.commitSha in focused }
+        .flatMap { unit -> unit.hunks.map { it.path }.filter { it in owned } }
+        .distinct()
+        .sorted()
+      candidate.copy(ownedPaths = ownedPaths).takeIf { ownedPaths.isNotEmpty() }
+    }
+    require(routes.isNotEmpty()) { "Commit/lane routing focused no specialist lane onto any commit." }
+    val surviving = routes.map { it.lane }.toSet()
+    val droppedRequired = candidates.filter { it.descriptor.required && it.lane !in surviving }.map { it.lane }
+    require(droppedRequired.isEmpty()) {
+      "Sparse routing dropped required baseline lanes: ${droppedRequired.sorted()}."
+    }
+    return routes
   }
 
   private fun specialistRoutes(input: ParallelReviewPreparationInput): List<SpecialistRoute> {
@@ -80,12 +122,12 @@ internal object ParallelReviewPreparationCompiler {
     input: ParallelReviewPreparationInput,
     hunks: List<ReviewChangedHunk>,
     routes: List<SpecialistRoute>,
-    decisions: List<ReviewLaneDecision>,
+    selection: ReviewLaneSelection,
     revisionId: String,
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
   ) = ReviewPreparationService(
-    reviewFactPorts(input, hunks, decisions),
+    reviewFactPorts(input, hunks, selection),
     envelopeValidator,
     budget,
   ).prepare(
@@ -100,14 +142,17 @@ internal object ParallelReviewPreparationCompiler {
   private fun reviewFactPorts(
     input: ParallelReviewPreparationInput,
     hunks: List<ReviewChangedHunk>,
-    decisions: List<ReviewLaneDecision>,
+    selection: ReviewLaneSelection,
   ): ReviewFactPorts {
+    val decisions = selection.decisions
     val scope = ReviewScopeFacts(
       "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
       input.baseRevision,
       input.headRevision,
       "authoritative supplied parallel-review diff",
       hunks,
+      input.commitSequence.units,
+      input.commitSequence.coverageFact,
     )
     val routing = ReviewStackRoutingFacts(
       input.stack,
@@ -135,7 +180,7 @@ internal object ParallelReviewPreparationCompiler {
           emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
       },
       laneSelection = object : ReviewLaneSelectionPort {
-        override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = decisions
+        override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = selection
       },
     )
   }
@@ -190,6 +235,12 @@ internal object ParallelReviewPreparationCompiler {
           }
           .map { ReviewExpansionAuthorizationRequest(assignment.lane, it.path, it.reachabilityReason) },
       )
+    }.also { launches ->
+      val selectedLaneCount = preparation.packet.selectedLanes.size
+      require(launches.size == selectedLaneCount) {
+        "Review must launch exactly one specialist worker per selected lane ($selectedLaneCount); " +
+          "synthesized ${launches.size} launch(es). Commit or segment count must not multiply worker launches."
+      }
     }
   }
 
@@ -222,6 +273,7 @@ internal data class PlannedReviewRubric(
 internal data class ParallelReviewPreparationInput(
   val diff: String,
   val evidence: ReviewDiffEvidence,
+  val commitSequence: ResolvedCommitSequence,
   val stack: String?,
   val agents: List<String>,
   val repoRoot: Path,

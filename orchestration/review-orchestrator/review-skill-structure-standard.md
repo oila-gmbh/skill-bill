@@ -39,6 +39,16 @@ canonical per-area consequence closer above is the required consequence
 expression; every specialist uses it verbatim without introducing local
 severity definitions, legends, or tables.
 
+Specialist content describes the work a lane does over the bundle it is handed,
+never how that bundle was discovered. The parent owns discovery, relevance, and
+commit-to-lane routing; a specialist receives one assembled bundle of its
+assigned hunks with commit identity as readable metadata and reviews it in a
+single pass. Specialist content therefore must not instruct a worker to run
+broad diff discovery, re-decide which commits or files are relevant, step
+through commits as separate review steps, or restart from a whole-PR or
+aggregate diff. Cross-commit behavior belongs to the single integration pass
+described in `specialist-contract.md`, not to any specialist skeleton.
+
 ### Lane-Specific Consequence Examples
 
 The lanes with the widest observed Major-to-Blocker spread benefit from

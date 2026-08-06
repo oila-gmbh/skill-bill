@@ -233,6 +233,14 @@ internal data class ReviewDiffEvidence(
   }
 }
 
+/** One commit's Git-reported identity paired with its incremental diff against its first parent. */
+internal data class RawCommitDiff(
+  val commitSha: String,
+  val parentSha: String,
+  val subject: String,
+  val diff: String,
+)
+
 private data class RecordPaths(val old: String?, val new: String?, val authoritative: String)
 
 internal data class ReviewChangedFileEvidence(

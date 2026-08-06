@@ -1,5 +1,6 @@
 package skillbill.ports.persistence
 
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
 
@@ -29,6 +30,16 @@ interface ReviewRunCompletenessRepository {
    * every run, including one that produced no findings and one imported with telemetry disabled.
    */
   fun ensureTerminalReviewState(runId: String, executionMode: String?)
+
+  /**
+   * Records the integration pass's own terminal state. It is deliberately separate from lane
+   * dispositions: specialist completion and integration completion are distinct durable boundaries,
+   * so a crash between them must resume into the integration pass alone.
+   */
+  fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord)
+
+  /** The durable integration state, or null when this run has not settled one yet. */
+  fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord?
 }
 
 /**
@@ -54,4 +65,11 @@ object UnavailableReviewRunCompletenessRepository : ReviewRunCompletenessReposit
   override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
     error("Review run completeness persistence is unavailable.")
   }
+
+  override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord? =
+    error("Review run completeness persistence is unavailable.")
 }

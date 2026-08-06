@@ -7,6 +7,10 @@ import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
+import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewLaneDecision
 
 data class ReviewScopeFacts(
   val repositoryIdentity: String,
@@ -14,6 +18,14 @@ data class ReviewScopeFacts(
   val headRevision: String,
   val status: String,
   val changedHunks: List<ReviewChangedHunk>,
+  val commitUnits: List<ReviewCommitUnit>,
+  val coverageFact: ReviewCommitCoverageFact,
+)
+
+/** Lane selection and the commit/lane routing that produced it travel together; one decides the other. */
+data class ReviewLaneSelection(
+  val decisions: List<ReviewLaneDecision>,
+  val routingMatrix: ReviewCommitLaneRoutingMatrix,
 )
 
 data class ReviewStackRoutingFacts(

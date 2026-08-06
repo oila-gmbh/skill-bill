@@ -1,3 +1,16 @@
+## [2026-08-06] SKILL-158 commit-focused sparse specialist review: integration pass, contracts, validation (subtask 4)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-contracts,runtime-application,runtime-cli,runtime-infra-fs,runtime-infra-sqlite}, orchestration/{contracts,review-orchestrator,review-delegation,review-scope}, skills/bill-code-review{,-inline}
+- A delegated review now ends with exactly one bounded integration pass after specialist lanes finish; specialist completion and integration completion are separate durable boundaries, so a crash between them resumes into integration rather than relaunching rubrics. reusable
+- `ReviewSpecialistSummary` is a summary *by construction* — identity, disposition, counts, bounded prose (2000 chars), never hunk bodies/rubric/transcript. That type is the containment mechanism keeping one lane's raw evidence from reaching the integration worker through a sibling. reusable
+- Lane coverage is a tri-state disposition, not a boolean: a lane that ends INCOMPLETE from budget exhaustion must name its unreviewed segments/units (enforced in `init`), aggregation treats it as non-clean coverage, and the integration pass is never reported as compensating for the gap. reusable
+- Retry is lane-granular; aggregation rejects missing, duplicate, or mismatched commit/lane results instead of silently merging, with assignment digests as the identity key.
+- Lifecycle + telemetry schemas gained commit-sequence identity, lane assignment/disposition counts, focused/skipped commits with reasons, per-lane bundle size and segment counts, parent analysis budget consumption, and integration-pass terminal state.
+- Prose/prompt parity is now the governed rule: orchestration playbooks, specialist contract, skill content, and generated native-agent prompts all say parent owns discovery and relevance, specialists get one assembled bundle reviewed in a single pass. Conformance tests (`ReviewSkillStructureConformanceTest`, `ComposedReviewLaunchPlanTest`, `ReviewPacketConsumerContractParityTest`) fail if a prompt drifts back to "run broad diff discovery" or per-commit stepping. reusable
+- Inline and non-commit review paths keep prior semantics and explicitly report when commit-focused delegated sequencing is unavailable/not applicable — absence is stated, not implied by silence.
+- Limitation: integration is a single bounded pass by design; a cross-commit interaction needing more than the assembled summaries plus final state will not be found by adding lanes.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-06] SKILL-163 telemetry release attribution: retain install_id across disable (subtask 2)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-cli}, .feature-specs/SKILL-163-telemetry-release-attribution
 - Disabling telemetry no longer deletes `~/.config/skill-bill/config.json`; it rewrites the file in place with level `off`, so `install_id` survives and a later re-enable reuses it instead of minting a fresh UUID.

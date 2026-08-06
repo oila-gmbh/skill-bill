@@ -9,6 +9,7 @@ import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.ports.review.model.ReviewFactPorts
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -16,9 +17,16 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneDecision
+import skillbill.review.context.model.ReviewCommitLaneDisposition
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
+import skillbill.review.context.model.ReviewCommitSource
+import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
@@ -27,6 +35,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+
+/** Every fixture commit is relevant to every selected lane unless a test says otherwise. */
+private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
+  scope.commitUnits.sortedBy { it.orderIndex }.map { it.commitSha },
+  lanes,
+  scope.commitUnits.sortedBy { it.orderIndex }.flatMap { unit ->
+    lanes.map {
+      ReviewCommitLaneDecision(unit.commitSha, unit.orderIndex, it, ReviewCommitLaneDisposition.FOCUSED, "focused")
+    }
+  },
+)
 
 class ReviewPreparationServiceTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
@@ -70,7 +89,16 @@ class ReviewPreparationServiceTest {
       record("learnings", learnings)
 
     override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = record("facts", facts)
-    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record("lanes", decisions)
+    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record(
+      "lanes",
+      run {
+        val included = decisions.filter { it.included }.map { it.lane }
+        // When every lane is excluded, still analyze the decided lanes so prepare can surface the
+        // typed "no included lane" rejection instead of failing matrix construction first.
+        val analyzed = included.ifEmpty { decisions.map { it.lane } }
+        ReviewLaneSelection(decisions, focusedMatrix(scope, analyzed))
+      },
+    )
   }
 
   private class RecordingValidator : ReviewContextEnvelopeValidator {
@@ -88,7 +116,15 @@ class ReviewPreparationServiceTest {
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
   ) = CountingPorts(
-    scope = ReviewScopeFacts("acme/repo", "base", "head", "clean", hunks),
+    scope = ReviewScopeFacts(
+      "acme/repo",
+      "base",
+      "head",
+      "clean",
+      hunks,
+      listOf(ReviewCommitUnit("head", "base", "one commit", 0, hunks, ReviewCommitSource.COMMIT_RANGE)),
+      ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
+    ),
     routing = ReviewStackRoutingFacts("kotlin", "kotlin", listOf("addon-b", "addon-a"), listOf("kotlin")),
     rules = listOf(
       ReviewRuleReference(
@@ -253,7 +289,14 @@ class ReviewPreparationServiceTest {
 
   @Test fun `assignment claiming an unowned hunk id is rejected`() {
     val prepared = service(ports()).prepare(request())
-    val foreign = prepared.assignments.first().copy(assignedHunks = listOf("f".repeat(64)))
+    val forged = "f".repeat(64)
+    // The bundle is rewritten with the hunk surface: an assignment whose bundle contradicts its own
+    // hunks cannot be constructed at all, so a coherent forgery is what packet validation must catch.
+    val owning = prepared.assignments.first().assignedBundle.entries.first()
+    val foreign = prepared.assignments.first().copy(
+      assignedHunks = listOf(forged),
+      assignedBundle = ReviewLaneBundle(listOf(owning.copy(hunkIds = listOf(forged)))),
+    )
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign) + prepared.assignments.drop(1))
     }
@@ -301,7 +344,8 @@ class ReviewPreparationServiceTest {
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(ports()).validateAgainstPacket(prepared.packet, prepared.assignments.dropLast(1))
     }
-    assertTrue("cover exactly" in failure.message.orEmpty())
+    // A dropped lane trips the one-assignment-per-selected-lane count check before lane-set coverage.
+    assertTrue("exactly one specialist lane per selected lane" in failure.message.orEmpty(), failure.message.orEmpty())
   }
 
   @Test fun `assignment must match its packet lane decision paths and hunks`() {
@@ -314,9 +358,9 @@ class ReviewPreparationServiceTest {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(changedDecision, other))
       }.message.orEmpty(),
     )
-    val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks)
+    val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks, assignedBundle = other.assignedBundle)
     assertTrue(
-      "packet-owned hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
+      "focused-commit hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(crossLaneHunk, other))
       }.message.orEmpty(),
     )

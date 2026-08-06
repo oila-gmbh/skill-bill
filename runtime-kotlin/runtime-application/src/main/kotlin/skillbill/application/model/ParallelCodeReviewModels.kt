@@ -1,11 +1,15 @@
 package skillbill.application.model
 
+import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
+import skillbill.review.model.ReviewCoverageReport
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -90,6 +94,13 @@ data class ParallelCodeReviewResult(
   val lane1: ParallelReviewLaneStatus,
   val lane2: ParallelReviewLaneStatus,
   val accountingSummary: ReviewAccountingSummary? = null,
+  /** Terminal state of the single integration pass; null only for a non-delegated run. */
+  val integration: ReviewIntegrationPassOutcome? = null,
+  /**
+   * Coverage as it actually stands. Reported alongside [integration] precisely so a completed
+   * integration pass is never read as compensating for a lane that ended incomplete.
+   */
+  val coverage: ReviewCoverageReport? = null,
 )
 
 data class ParallelReviewLaneStatus(
@@ -118,3 +129,10 @@ class DiffResolutionException(message: String) : RuntimeException(message)
 class UsageValidationException(message: String) : RuntimeException(message)
 
 class StackDetectionException(message: String, cause: Throwable) : RuntimeException(message, cause)
+
+/** One lane's finished state as the integration pass sees it: coverage plus a finding count. */
+data class ReviewLaneIntegrationInput(
+  val launch: ReviewSpecialistLaunchRequest,
+  val completion: ReviewLaneCompletionState,
+  val findingCount: Int,
+)

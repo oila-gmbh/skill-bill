@@ -45,6 +45,9 @@ object ReviewContextSchemaValidator {
 
   fun validateLaunch(envelope: Map<String, Any?>, sourceLabel: String) = validateKind(envelope, sourceLabel, "launch")
 
+  fun validateIntegrationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
+    validateKind(envelope, sourceLabel, "integration_launch")
+
   fun assertIdentity(yamlNode: JsonNode) {
     val drift = identityDriftOrNull(yamlNode) ?: return
     throw InvalidReviewContextSchemaError(

@@ -29,12 +29,31 @@ object ReviewPacketConsumerContract {
     "contract_rediscovery",
     "rules_rediscovery",
     "repeated_evidence_read",
+    "per_commit_stepping",
+    "worker_relevance_redecision",
+    "aggregate_diff_restart",
   )
 
   const val AUTHORITATIVE_LAUNCH_CONTRACT: String =
     "Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, " +
-      "recompute, or read sibling-lane or parent review context."
+      "recompute, or read sibling-lane or parent review context. Review the whole assembled bundle " +
+      "in one operation; commit order is readable metadata to relate earlier and later commits within " +
+      "that pass. Do not step commit-by-commit, re-decide relevance, or restart from an aggregate diff."
   const val CONSUMER_CONTRACT: String = AUTHORITATIVE_LAUNCH_CONTRACT
+
+  /**
+   * The integration pass runs once, after every specialist lane has finished. It looks only for
+   * behavior that emerges from how the commits combine — no lane rubric is re-run here, and a
+   * defect wholly inside one commit is already the finishing lane's to report.
+   */
+  const val INTEGRATION_CONTRACT: String =
+    "You are the single final integration pass over a commit sequence every specialist lane has " +
+      "already reviewed. Report only cross-commit behavior: an interaction, ordering dependency, " +
+      "or contract drift that no single commit shows on its own. Do not re-run any specialist " +
+      "rubric, do not re-review a single commit in isolation, and do not restate a lane's finding. " +
+      "Cite the involved commits in the commits= segment of every finding you report. Lanes " +
+      "reported as incomplete coverage stay incomplete: this pass does not review what they left " +
+      "unreviewed and must never be described as closing that gap."
 
   const val EVIDENCE_SURFACE_RULES: String =
     "Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. " +
@@ -42,7 +61,9 @@ object ReviewPacketConsumerContract {
       "Each normalized evidence target may be read once."
 
   const val REPORT_STRUCTURE: String =
-    "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
+    "- [F-001] <Severity> | <Confidence> | <file:line> | <description>\n" +
+      "Findings naming commits use: - [F-001] <Severity> | <Confidence> | commits=<sha>[,<sha>] | " +
+      "<file:line> | <description>"
 
   fun authoritativeSpecialistContract(source: String): String {
     val normalized = source.replace("\r\n", "\n")

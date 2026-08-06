@@ -1,3 +1,24 @@
+## [2026-08-06] SKILL-158 subtask 2 — Sparse commit-to-lane routing
+Areas: runtime-domain/review/plan, runtime-domain/review/context/model, runtime-application/review, runtime-ports/review, runtime-infra-fs, orchestration/contracts/review-context-schema.yaml, .feature-specs/SKILL-158
+- Specialist selection is now a final commit×lane matrix (`focused`|`skipped` + falsifiable reason/signals) decided once from each commit's own hunk paths/content — never the commit subject — before launch; workers do not re-decide relevance. reusable
+- Required baseline lanes stay focused for every unit; optional lanes receive only evidence-matched commits, and per-lane bundles keep packet commit order with only focused hunk bodies. reusable
+- Routing/assignment digests and merger provenance include the matrix; non-commit scopes keep single-synthetic-unit lane selection. Parent analysis is bounded by `max_routing_analysis_pairs`/`max_routing_analysis_bytes` and loud-fails on breach.
+- Pattern: decide relevance at the parent routing seam against rubric path/content signals, assemble lane bundles from focused commits only, and prove skip reasons with adversarial fixtures rather than a worker backstop. reusable
+- Limitations: single-pass bundled lane worker execution remains subtask 3; this unit only owns sparse routing and bundle preparation.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-06] SKILL-158 subtask 1 — Commit-aware review evidence model
+Areas: runtime-application/review, runtime-domain/review-context-model, runtime-ports/review-model, runtime-contracts/review, orchestration/contracts/review-context-schema.yaml, .feature-specs/SKILL-158
+- Review packets now carry the ordered commit sequence (sha, parent, subject, position) plus each commit's incremental hunk set, replacing the single accumulated base-to-head diff as the worker-facing evidence surface.
+- Commit identity/order and per-lane bundle composition participate in packet and assignment digests; validation rejects missing, duplicate, out-of-order, unowned, or out-of-packet commit/hunk references. reusable
+- Coverage is proven by an aggregate base-to-head equivalence fact (chain-and-ownership) so ordered commit units cannot silently omit or duplicate the authoritative delta. reusable
+- Non-commit scopes (staged, unstaged, combined working tree, supplied diff, locally-unavailable PR) collapse to exactly one synthetic review unit with explicit source metadata — no fabricated commit history. reusable
+- Pattern: Git discovery stays parent-owned; workers receive projected commit units with commit-attributed hunk bodies and never recompute scope, order, or broad diffs. Complete-diff artifacts are no longer part of the launch projection.
+- Limitations: commit-to-lane routing (subtask 2) and single-pass bundled lane execution (subtask 3) are out of scope; this unit only establishes the typed evidence and serialization contract.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-05] SKILL-160 subtask 1 — Scoped per-subtask replan
 Areas: runtime-application/{goalrunner,model}, runtime-cli/goal, runtime-infra-sqlite/workflow, runtime-ports/{goalrunner,persistence}, .feature-specs/SKILL-160
 - Added `goal replan <key> --subtask <id>`: delete-only `deleteSubtaskPlan` discards one `goal_subtask_plans` row, retargets current-subtask intent, and leaves sibling plans, shared preplan, runtime fields, and acceptances untouched.

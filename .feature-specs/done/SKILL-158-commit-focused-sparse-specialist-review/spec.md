@@ -10,26 +10,34 @@ Four dependency-ordered units:
    bounded evidence surface.
 2. Route changed commits sparsely to only the specialist lanes whose rubric is
    relevant to each commit.
-3. Review each lane's assigned commits sequentially in one continuing worker
-   context, carrying earlier commit understanding forward without re-reviewing
-   irrelevant commits.
+3. Review each lane's assigned bundle in one single-pass worker operation, with
+   commit identity and order carried as bundle metadata rather than as an
+   execution protocol.
 4. Add the final integration pass, lifecycle/projection contracts, governed
    guidance, native-agent parity, and end-to-end validation.
 
 ## Intended Outcome
 
 Delegated code review uses the repository's logical commit structure when the
-review scope has commits. Each specialist lane receives only the commits whose
-actual changed hunks may produce findings under that lane's rubric. The lane
-worker processes those commits oldest-first in one continuing context, decides
-whether each candidate commit is relevant, records focused or skipped
-dispositions with reasons, and carries prior understanding forward.
+review scope has commits. The parent owns all discovery and relevance analysis:
+it resolves the ordered commit sequence, attributes changed hunks to commits,
+decides which hunks may produce findings under each lane's rubric, and assembles
+one bundle per lane containing exactly those hunk bodies with their commit
+identity and order attached.
 
-The system does not launch one worker per commit, does not send the complete PR
-diff to every lane, and does not make every lane inspect every commit. A single
-bounded integration pass still checks cross-commit behavior after specialist
-review. Single-commit, staged, unstaged, working-tree, and file scopes retain a
-safe single-unit fallback when no commit sequence exists.
+Each specialist lane then performs one operation over its assembled bundle. It
+does not walk commits one at a time, does not re-decide relevance the parent
+already decided, and does not explore the repository to discover its own scope.
+Commit order is metadata the specialist reads, not a sequence it steps through,
+so a lane can still reason across its assigned commits — seeing that an earlier
+commit introduced a contract a later commit changed — in a single pass.
+
+Worker count equals selected lane count. The system does not launch one worker
+per commit, does not send the complete PR diff to every lane, and does not make
+every lane inspect every commit. A single bounded integration pass still checks
+cross-commit behavior after specialist review. Single-commit, staged, unstaged,
+working-tree, and file scopes retain a safe single-unit fallback when no commit
+sequence exists.
 
 ## Current Behavior
 
@@ -40,8 +48,8 @@ safe single-unit fallback when no commit sequence exists.
   of assigned hunks across the PR, even when individual commits are unrelated
   to that lane's rubric.
 - Specialist workers start in fresh conversations and receive bounded assigned
-  hunks, but they have no governed instruction or structured input for
-  oldest-first commit sequencing and cumulative context.
+  hunks, but those hunks carry no commit attribution, so a specialist cannot tell
+  which change introduced a contract another change later modified.
 - Lane inclusion is decided before launch at the specialist-lane level; there
   is no auditable commit-to-lane relevance matrix or per-commit skip reason.
 - The current design correctly prevents raw whole-PR diff rediscovery and
@@ -66,32 +74,34 @@ safe single-unit fallback when no commit sequence exists.
    hunks, changed paths, and the selected specialist rubric. Clear non-relevant
    commit/lane pairs are excluded before launch; a genuinely cross-cutting
    commit may be assigned to multiple lanes when each assignment has evidence.
-5. A delegated lane receives only its ordered assigned commit units, bounded
-   direct dependencies, applicable rubric, and named evidence targets. No lane
-   receives the raw complete PR diff or an irrelevant commit merely because the
-   commit belongs to the same PR.
-6. The lane worker reviews assigned commits oldest-first in one continuing
-   context. It carries earlier commit understanding into later commits, does
-   not restart from the final aggregate diff for every commit, and does not
-   re-review a previously covered commit unless a later change creates an
-   explicit reachable reason to revisit it.
-7. Each candidate commit receives an explicit `focused` or `skipped`
-   disposition from the responsible lane with a bounded reason. A skipped
-   commit cannot produce specialist findings, and an assigned commit cannot be
-   silently omitted. Cross-commit findings identify the involved commit or
-   commit range.
+5. A delegated lane receives one assembled bundle holding only its assigned hunk
+   bodies with commit identity and order attached, bounded direct dependencies,
+   applicable rubric, and named evidence targets. No lane receives the raw
+   complete PR diff or an irrelevant commit merely because the commit belongs to
+   the same PR.
+6. The lane worker reviews its bundle in one single-pass operation. It does not
+   step through commits one at a time, does not re-decide the relevance the
+   parent already decided, and does not restart from the final aggregate diff.
+   Commit order is readable metadata, so the worker can still relate an earlier
+   assigned commit to a later one within that single pass.
+7. Every commit/lane pair receives an explicit `focused` or `skipped` disposition
+   with a bounded reason, decided by the parent before launch and auditable
+   without worker output. A skipped commit is absent from the bundle and cannot
+   produce specialist findings; an assigned commit cannot be silently omitted.
+   Findings identify the involved commit or commit range.
 8. The implementation launches at most one normal worker per selected
-   specialist lane per review pass, not one worker for every commit/lane pair.
-   It does not make every specialist lane inspect every commit by default.
+   specialist lane per review pass. Worker count equals selected lane count and
+   is independent of commit count; it never scales with commit/lane pairs, and
+   it does not make every specialist lane inspect every commit by default.
 9. One parent-owned or dedicated integration pass evaluates the final feature
    behavior and interactions between assigned commits after specialist lanes
    finish. It does not repeat every specialist rubric over every commit and
    does not replace commit-focused specialist review.
 10. Lifecycle persistence, cancellation, timeout, retry, resume, accounting,
     finding attribution, and deduplication preserve commit order, lane
-    assignments, focus/skip dispositions, and cumulative worker progress. A
-    resume does not cause completed commit units to be reviewed again unless
-    the governing retry state explicitly requires it.
+    assignments, focus/skip dispositions, and per-lane completion state. A lane
+    is the unit of retry: a resume re-runs only lanes that did not complete and
+    never re-runs a lane whose single pass already produced a durable result.
 11. Existing bounded evidence-broker rules remain enforced: workers cannot
     rediscover scope, routing, guidance, or a broad diff; complete-file reads
     and dependency expansion remain authorized, bounded, and attributable.
@@ -100,7 +110,17 @@ safe single-unit fallback when no commit sequence exists.
 13. Governed review contracts, stack-specific specialist guidance, generated
     native-agent prompts, schemas, and parity tests describe the same
     commit-focused sparse-review behavior.
-14. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`,
+14. Parent-side commit and relevance analysis runs under an explicit bounded
+    budget. Because the parent now absorbs the per-commit rubric analysis that
+    workers no longer repeat, its own context growth is measured and capped, and
+    exceeding the cap fails loudly rather than silently degrading routing.
+15. A lane bundle that exceeds the worker context budget is split into the
+    fewest size-driven segments that fit, each still carrying commit identity and
+    order. The split is mechanical and size-driven, never a per-commit protocol,
+    and each segment is separately accounted. A lane that cannot be reviewed
+    within budget reports an explicit incomplete disposition naming the
+    unreviewed segments and is never aggregated as clean coverage.
+16. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`,
     `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
 
 ## Constraints
@@ -113,9 +133,15 @@ safe single-unit fallback when no commit sequence exists.
   focused assignment.
 - Keep the commit sequence as review context, not as a request to rewrite Git
   history, split PRs, or alter merge strategy.
-- A specialist lane may review multiple relevant commits, but it must process
-  them in order inside one continuing context and must not receive clear
-  irrelevant commit bodies.
+- A specialist lane may review multiple relevant commits, but it receives them
+  as one assembled bundle in a single pass and must not receive clear irrelevant
+  commit bodies.
+- Relevance is decided once, by the parent, from actual changed hunks. Workers
+  do not repeat that judgment. This concentrates rubric awareness in the parent,
+  so parent analysis quality is the coverage guarantee and must be tested
+  directly rather than backstopped by worker confirmation.
+- Commit order is bundle metadata the specialist reads, never an execution
+  sequence it steps through.
 - Cross-cutting changes must be allowed to reach multiple specialist lanes when
   the changed behavior crosses their boundaries. Sparse routing must not become
   silent coverage loss.
@@ -151,11 +177,14 @@ Use focused model and schema tests for ordered commits, incremental hunk
 ownership, synthetic non-commit units, and aggregate-diff equivalence. Add
 routing matrix fixtures covering pure UI, persistence, API/security, testing,
 and cross-cutting commits, including explicit skip reasons and no irrelevant
-lane evidence. Exercise one-worker-per-lane sequential execution, cumulative
-context, later-commit revisits only through authorized reachability, bounded
-integration review, and resume without duplicate completed commit work. Add
+lane evidence. Exercise single-pass bundled lane review, worker count equal to lane count and
+invariant under commit count, cross-commit reasoning inside one pass, bounded
+integration review, and lane-granular resume. Cover an oversized bundle that
+splits into size-driven segments, a lane that cannot complete within budget and
+reports an incomplete disposition rather than clean coverage, and a parent
+analysis budget breach that fails loudly. Add
 native-agent and governed-prose parity tests, then run the full repository
-validation commands from Acceptance Criterion 14.
+validation commands from Acceptance Criterion 16.
 
 ## Next Path
 

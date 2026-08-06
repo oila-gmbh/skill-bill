@@ -44,3 +44,6 @@ data class ReviewLaunchPlan(
     }
   }
 }
+
+/** A lane to route, paired with the key the packet and its assignment will carry it under. */
+data class ReviewRoutedLane(val laneKey: String, val descriptor: ReviewLaunchLane)

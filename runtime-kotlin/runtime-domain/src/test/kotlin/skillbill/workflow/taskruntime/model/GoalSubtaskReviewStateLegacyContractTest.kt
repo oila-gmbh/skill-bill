@@ -48,7 +48,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
   }
 
   @Test
-  fun `the durable contract version is the unbounded-remediation 0_4`() {
-    assertEquals("0.4", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
+  fun `the durable contract version is the commit-focused-accounting 0_5`() {
+    assertEquals("0.5", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
 }

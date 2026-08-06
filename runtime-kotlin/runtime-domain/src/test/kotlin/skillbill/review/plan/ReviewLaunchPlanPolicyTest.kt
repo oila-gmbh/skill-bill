@@ -143,6 +143,28 @@ class ReviewLaunchPlanPolicyTest {
     }
   }
 
+  @Test
+  fun `flattened lanes preserve path and content signals for sparse commit routing`() {
+    val kotlin = pack(
+      "kotlin",
+      listOf("security", "ui"),
+      laneConditions = mapOf(
+        "security" to ReviewLaneCondition(path = listOf("auth/"), content = listOf("authorize")),
+        "ui" to ReviewLaneCondition(path = listOf("ui/"), content = listOf("@Composable")),
+      ),
+    )
+
+    val plan = ReviewLaunchPlanPolicy.flatten("kotlin", listOf(kotlin), setOf("security", "ui"))
+
+    val security = plan.lanes.single { it.area == "security" }
+    val ui = plan.lanes.single { it.area == "ui" }
+    assertEquals(listOf("auth/"), security.pathSignals)
+    assertEquals(listOf("authorize"), security.contentSignals)
+    assertEquals(listOf("ui/"), ui.pathSignals)
+    assertEquals(listOf("@Composable"), ui.contentSignals)
+    assertEquals(listOf("security", "ui"), plan.lanes.map { it.area })
+  }
+
   private fun pack(
     slug: String,
     areas: List<String>,

@@ -1,11 +1,14 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.infrastructure.sqlite.review.ensureTerminalReviewState
+import skillbill.infrastructure.sqlite.review.fetchIntegrationPass
 import skillbill.infrastructure.sqlite.review.fetchReviewRunLanes
 import skillbill.infrastructure.sqlite.review.queryReviewLaneEffectiveness
 import skillbill.infrastructure.sqlite.review.recordFindingLaneAttribution
+import skillbill.infrastructure.sqlite.review.recordIntegrationPass
 import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
 import skillbill.ports.persistence.ReviewRunCompletenessRepository
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
 import java.sql.Connection
@@ -26,4 +29,10 @@ class SQLiteReviewRunCompletenessRepository(
 
   override fun ensureTerminalReviewState(runId: String, executionMode: String?) =
     ensureTerminalReviewState(connection, runId, executionMode)
+
+  override fun recordIntegrationPass(runId: String, record: ReviewIntegrationPassRecord) =
+    recordIntegrationPass(connection, runId, record)
+
+  override fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord? =
+    fetchIntegrationPass(connection, runId)
 }

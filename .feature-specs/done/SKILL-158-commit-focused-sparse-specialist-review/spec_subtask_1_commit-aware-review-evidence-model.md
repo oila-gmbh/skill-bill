@@ -1,6 +1,6 @@
 # SKILL-158 Subtask 1 - Commit-Aware Review Evidence Model
 
-Parent spec: [.feature-specs/SKILL-158-commit-focused-sparse-specialist-review/spec.md](./spec.md)
+Parent spec: [.feature-specs/SKILL-158-commit-focused-sparse-specialist-review/spec.md](spec.md)
 Issue key: SKILL-158
 
 ## Scope
@@ -18,6 +18,8 @@ In scope:
   preserve a final base-to-head equivalence fact for the review packet.
 - Extend review context, assignment, wire serialization, digest, and validation
   models with commit identity/order and per-commit hunk ownership.
+- Model a per-lane bundle as an ordered set of assigned hunk bodies carrying
+  commit identity, order, and per-hunk attribution as readable metadata.
 - Represent staged, unstaged, combined working-tree, and file scopes as one
   synthetic review unit without fabricating commit history.
 - Keep Git discovery parent-owned. Workers receive projected commit units and
@@ -45,12 +47,17 @@ In scope:
 7. Focused tests cover new files, renames, deletions, merge-base/parent
    handling, empty commits where the scope permits them, and malformed Git
    records.
+8. A per-lane bundle carries its assigned hunk bodies with commit identity and
+   order attached, so a consumer can attribute any hunk to its commit without
+   further Git access. Validation rejects a bundle referencing a hunk or commit
+   absent from the packet, and bundle composition contributes to the assignment
+   digest.
 
 ## Non-Goals
 
 - Commit-to-lane routing; Subtask 2 owns relevance and sparse assignment.
-- Worker prompt behavior or cumulative sequential execution; Subtask 3 owns
-  those concerns.
+- Worker prompt behavior and single-pass bundle execution; Subtask 3 owns those
+  concerns.
 - Changing Git history, merge strategy, or the existing diff source semantics.
 
 ## Dependency Notes

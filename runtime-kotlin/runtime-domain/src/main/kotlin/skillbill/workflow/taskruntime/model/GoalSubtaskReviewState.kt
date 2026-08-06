@@ -166,6 +166,8 @@ data class GoalSubtaskReviewPassResult(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val executedMode: CodeReviewExecutionMode? = null,
+  /** Present only for a delegated pass over a real commit sequence; never fabricated otherwise. */
+  val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 ) {
   init {
     require(passNumber >= 1) { "Goal review pass number must be a positive integer." }
@@ -176,6 +178,9 @@ data class GoalSubtaskReviewPassResult(
       "Goal review result artifact must identify its exact review pass."
     }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
+    require(commitFocusedAccounting == null || executedMode != CodeReviewExecutionMode.INLINE) {
+      "An inline review pass has no delegated commit sequence and must omit commit-focused accounting."
+    }
   }
 
   /**
@@ -192,7 +197,10 @@ data class GoalSubtaskReviewPassResult(
     "review_result_artifact" to reviewResultArtifact,
     "unresolved_finding_count" to unresolvedFindingCount,
     "findings" to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
-  ).apply { executedMode?.let { put("executed_mode", it.wireValue) } }
+  ).apply {
+    executedMode?.let { put("executed_mode", it.wireValue) }
+    commitFocusedAccounting?.let { put("commit_focused_accounting", it.toArtifactMap()) }
+  }
 
   companion object {
     @OpenBoundaryMap("Goal-review pass result decode from the durable workflow-artifact map")
@@ -205,6 +213,7 @@ data class GoalSubtaskReviewPassResult(
           "unresolved_finding_count",
           "findings",
           "executed_mode",
+          "commit_focused_accounting",
         ),
         path,
       )
@@ -221,6 +230,12 @@ data class GoalSubtaskReviewPassResult(
         unresolvedFindingCount = raw.requireReviewStateInt("unresolved_finding_count", path),
         findings = findings,
         executedMode = raw.optionalReviewStateString("executed_mode", path)?.let(CodeReviewExecutionMode::fromWire),
+        commitFocusedAccounting = raw["commit_focused_accounting"]?.let {
+          GoalSubtaskCommitFocusedAccounting.fromArtifactMap(
+            it.asReviewStateMap("$path.commit_focused_accounting"),
+            "$path.commit_focused_accounting",
+          )
+        },
       )
     }
   }
@@ -446,6 +461,8 @@ data class GoalSubtaskReviewState(
     unresolvedFindingCount: Int,
     findings: List<GoalSubtaskReviewCompactFinding>,
     blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+    /** Supplied only by a delegated pass over a real commit sequence; inline passes omit it. */
+    commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
   ): GoalSubtaskReviewState {
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
@@ -455,13 +472,18 @@ data class GoalSubtaskReviewState(
       "Each prior Blocker may carry exactly one disposition."
     }
     val disposedPass = blockerDispositions.isNotEmpty()
+    val executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber)
     val result = GoalSubtaskReviewPassResult(
       passNumber = passNumber,
       verdict = verdict,
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
-      executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber),
+      executedMode = executedMode,
+      // An inline pass carries no delegated commit sequence, so accounting a caller offers anyway is
+      // dropped rather than fabricated into durable state.
+      commitFocusedAccounting = commitFocusedAccounting
+        ?.takeIf { executedMode != CodeReviewExecutionMode.INLINE },
     )
     // A settled pass never carries a count-derived disposition: an unresolved Blocker reserves the
     // next remediation pass instead. The pause survives only as an operator-driven control, and a

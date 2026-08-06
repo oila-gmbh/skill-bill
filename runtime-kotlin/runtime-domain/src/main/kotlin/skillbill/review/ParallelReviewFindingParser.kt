@@ -12,6 +12,7 @@ object ParallelReviewFindingParser {
       "(?<severity>Blocker|Critical|Major|Minor|Nit)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
       "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
+      "(?:commits=(?<commits>[^|\\r\\n]+?)\\s+\\|\\s+)?" +
       "(?:path=(?<path>\"(?:\\\\.|[^\"\\\\])*\")\\s+\\|\\s+line=(?<line>\\d+)" +
       "|(?<legacyPath>[^|\\r\\n]+?):(?<legacyLine>\\d+))\\s+\\|\\s+" +
       "(?<description>.+)$",
@@ -35,8 +36,14 @@ object ParallelReviewFindingParser {
       specialistSkillName = match.groups["specialistSkillName"]?.value,
       repositoryPath = path,
       line = line,
+      commitShas = parseCommitShas(match.groups["commits"]?.value),
     )
   }.toList()
+
+  private fun parseCommitShas(raw: String?): List<String> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+  }
 
   private fun decodeStructuredString(encoded: String): String {
     require(encoded.length >= 2 && encoded.first() == '"' && encoded.last() == '"')

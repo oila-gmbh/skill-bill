@@ -78,6 +78,18 @@ The parent prepares one authoritative packet after repository, scope, stack, gui
 
 Each lane receives only its assignment, bounded rubric, immutable identifiers, and named evidence targets. Additional evidence goes through the broker in bounded batches. Authorized expansions are appended to the lane ledger without changing packet or assignment digests. Native-agent inventory and content digests are preflighted for the entire flattened set before the first worker launches; the reported repair command is the only recovery for missing, dangling, stale, unreadable, or undeclared workers.
 
+## Commit-focused sparse specialist sequencing
+
+The parent owns discovery and relevance. It resolves the commit sequence once, decides for every commit and lane pair whether that lane is focused on that commit or skips it, and records a falsifiable reason for each skip naming the commit's changed paths and the lane signals that failed to match them. Irrelevant commits are excluded before any worker launches. No worker re-decides relevance downstream, and there is no deferred candidate state: every pair carries one final disposition.
+
+Each selected specialist receives one assembled bundle of exactly its assigned hunks, carrying commit identity and order as readable metadata, and reviews that bundle in a single pass. Commit order lets a specialist relate earlier and later commits inside that one pass; it is not an iteration order. Specialists never step commit-by-commit, never re-run broad diff discovery, and never receive the aggregate or complete PR diff. Worker count equals selected lane count and does not grow with commit count.
+
+A lane that could not fit its whole assigned bundle within budget ends **incomplete**. That is non-clean coverage: the report names the units it left unreviewed and the budget dimension that stopped it, and no later pass converts it into clean coverage.
+
+After every selected lane reaches a terminal state, the parent runs exactly one bounded integration pass over the commit sequence. It receives final-state evidence and per-lane summaries — never a lane's raw bundle, a sibling lane's hunk bodies, or a parent transcript — and reports only cross-commit behavior with commit-range evidence. It re-runs no specialist rubric and its cost does not scale with commit count. Specialist completion and integration completion are distinct durable boundaries: a resume re-runs only lanes without a durable result, and re-runs the integration pass only when the integration pass itself did not complete. The integration pass never compensates for a lane that ended incomplete and must never be reported as closing that gap.
+
+A scope with no commit sequence — staged, unstaged, working tree, an exact supplied diff, or a single commit — has no cross-commit behavior to integrate. Report the integration pass as not applicable with its reason, using the existing `detected_scope` vocabulary, rather than inventing commit history for it.
+
 Accounting preserves direct and inclusive ownership. Direct usage belongs to one process. Inclusive provider usage already contains descendants and is never summed with them again. Parent and lane summaries carry byte counts, expansion/tool/turn counts, terminal outcomes, and input, cached-input, output, reasoning, total, and fresh-token-approximation values. The approximation is useful for regression detection, not billing reconciliation.
 - Review skills must choose an execution mode of `inline` or `delegated` before running routed review layers or specialist review passes
 - `auto` resolves through exactly one named rule, reported in review metadata alongside the resolved mode. `auto` never resolves silently.
@@ -132,6 +144,7 @@ Every finding in `### 2. Risk Register` must use this authoritative machine-read
 
 ```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
+Findings naming commits use: - [F-001] <Severity> | <Confidence> | commits=<sha>[,<sha>] | <file:line> | <description>
 ```
 
 Do NOT use markdown tables, numbered lists, or any other format for findings. The bullet format above is required for downstream tooling (triage, telemetry, stats) to parse findings correctly.

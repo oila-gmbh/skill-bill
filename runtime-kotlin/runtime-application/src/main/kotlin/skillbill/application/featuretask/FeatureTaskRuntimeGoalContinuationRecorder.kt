@@ -24,6 +24,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
@@ -198,6 +199,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       request.unresolvedFindingCount,
       request.findings,
       request.blockerDispositions,
+      request.commitFocusedAccounting,
     )
     val passNumber = completed.completedPassCount.toString()
     val continuation = continuationFromArtifacts(artifacts)
@@ -394,6 +396,8 @@ internal data class GoalReviewPassCompletionRequest(
   val rawReviewResult: String,
   val normalizedOutput: Map<String, Any?>,
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+  /** Present only when the pass ran delegated over a real commit sequence. */
+  val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 )
 
 private data class GoalReviewInputRecoveryRequest(
