@@ -7,6 +7,8 @@ internal object DatabaseSchema {
     setOf(
       "schema_migrations",
       "review_runs",
+      "review_run_lanes",
+      "review_run_finding_lanes",
       "findings",
       "feedback_events",
       "learnings",
@@ -29,6 +31,7 @@ internal object DatabaseSchema {
       "goal_runner_controls",
       "telemetry_reconciliation_state",
       "unaddressed_findings",
+      "review_finding_outcomes",
       "rejected_output_diagnostics",
       "producer_output_evidence",
     )
@@ -51,7 +54,12 @@ internal object DatabaseSchema {
       "idx_goal_subtask_plans_ordered",
       "idx_telemetry_reconciliation_completed",
       "idx_unaddressed_findings_issue",
+      "idx_unaddressed_findings_run",
+      "idx_review_finding_outcomes_run",
       "idx_rejected_output_diagnostics_selector",
+      "idx_review_run_lanes_pack_area",
+      "idx_review_runs_routed_skill_canonical",
+      "idx_findings_lane",
     )
 
   fun createBaseSchema(connection: Connection) {
@@ -116,6 +124,10 @@ internal object DatabaseSchema {
         detected_scope TEXT,
         detected_stack TEXT,
         execution_mode TEXT,
+        routed_skill_canonical TEXT NOT NULL DEFAULT 'unresolved',
+        detected_stack_canonical TEXT NOT NULL DEFAULT 'unresolved',
+        detected_scope_canonical TEXT NOT NULL DEFAULT 'unresolved',
+        detected_scope_detail TEXT,
         source_path TEXT,
         raw_text TEXT NOT NULL,
         review_finished_at TEXT,
@@ -157,6 +169,8 @@ internal object DatabaseSchema {
         location TEXT NOT NULL,
         summary TEXT NOT NULL,
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        review_run_id TEXT,
+        finding_id TEXT,
         PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
       """.trimIndent(),
@@ -207,7 +221,10 @@ internal object DatabaseSchema {
         payload_json TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         synced_at TEXT,
-        last_error TEXT NOT NULL DEFAULT ''
+        -- NULL means healthy: no delivery has failed. Non-null is a real delivery failure. The
+        -- legacy shape was NOT NULL DEFAULT '', which made "no error" and "error" indistinguishable
+        -- from the column type alone; relax-telemetry-outbox-last-error backfills '' to NULL.
+        last_error TEXT
       )
       """.trimIndent(),
       """
@@ -543,5 +560,6 @@ internal object DatabaseSchema {
       CREATE INDEX IF NOT EXISTS idx_feature_task_workflows_updated
         ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
-    )
+    ) + DatabaseReviewLedgerSchema.reviewRunLaneStatements +
+      DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements
 }

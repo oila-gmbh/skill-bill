@@ -2,6 +2,8 @@
 
 package skillbill.application
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
@@ -10,7 +12,6 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -31,6 +32,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -823,6 +826,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
+    assertContains(reviewPrompt, keys.REVIEW_RUN_ID, false, "review names the run-id key that keys loop findings")
     assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
     assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
@@ -847,12 +851,73 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ) { "the $phaseId example is not a JSON object" }
       // Throws InvalidFeatureTaskRuntimePlanningProjectionSchemaError if the embedded example is not
       // the flat, correctly-typed projection the seam parses (kind, contract_version, rollout object, etc.).
+      // The REAL validator, not the Noop: the canonical Draft 2020-12 schema is the layer that rejects a
+      // drifted example in production, so validating against the Noop here asserted nothing about the
+      // constraint that actually fires. Everything else in this file may keep the Noop — planning-projection
+      // enforcement really is incidental there — which is what the allow-list entry in
+      // PlanningProjectionNoopValidatorGuardTest describes.
       featureTaskRuntimePlanningProjectionFromEnvelope(
         envelope = mapOf("produced_outputs" to produced),
         producingPhaseId = phaseId,
         expectedKind = kind,
-        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+        schemaValidator = realPlanningProjectionValidator,
       )
+    }
+  }
+
+  @Test
+  fun `every collection field a variant declares is populated in its prompt example`() {
+    // Validity is not the property this guard needs; SUFFICIENCY is. An empty array satisfies both
+    // `array<string>` and `array<object>`, so an example that leaves a collection at [] pins no element
+    // type and the neighbouring populated field becomes the only shape signal the agent has. That is how
+    // an object-shaped `unresolved_items` was authored next to an object-shaped `deviations` and burned a
+    // whole fix loop. A field may be exempt only for a reason that makes an empty example CORRECT.
+    //
+    // Scope: TOP-LEVEL variant properties. A collection nested inside an object entry (executable_plan's
+    // tasks[].depends_on, say) is not walked, so its element type is still pinned only by a populated
+    // sibling. Extending the walk is the next step if a nested field ever drifts.
+    val exemptions = mapOf(
+      "implementation_receipt.tests_executed" to
+        "Must be [] in implement: the phase contract forbids running tests here and validate owns outcomes.",
+      "implementation_receipt.unresolved_items" to
+        "Must be [] on a 'completed' receipt: the completion gate refuses a receipt that claims completion " +
+        "while carrying open work, so a populated example would teach output the gate rejects.",
+      "preplanning_digest.patterns_and_decisions" to
+        "Optional narrative list with no element shape to pin: items are plain strings like the populated " +
+        "`risks` and `validation_strategy` siblings in the same example.",
+      "preplanning_digest.unresolved_questions" to
+        "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
+      "preplanning_digest.evidence_refs" to
+        "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
+      "implementation_receipt.deferred_repair_item_ids" to
+        "Deferring a carried repair item is the exception, so [] is the correct default to show; the id " +
+        "strings are pinned by the populated repair_item_results[].repair_item_id in the same example.",
+      "implementation_receipt.tests_added" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
+      "implementation_receipt.tests_updated" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
+    )
+
+    val schema = planningProjectionsSchema()
+    projectionExampleCases().forEach { (phaseId, kind, briefing) ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
+      val exampleJson = prompt.substringAfterLast("```json").substringBefore("```")
+      val example = requireNotNull(JsonSupport.parseObjectOrNull(exampleJson)) {
+        "no JSON example in the $phaseId prompt"
+      }.let { requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))) }
+
+      declaredCollectionProperties(schema, kind.wireValue).forEach { property ->
+        val key = "${kind.wireValue}.$property"
+        if (key in exemptions) return@forEach
+        // Absence is not the hazard a visible `[]` is: a field the example omits teaches nothing, while
+        // an empty one looks like guidance and pins no element type. Optional co-residents another
+        // contract owns (repair_item_results and friends) are correctly absent from the base example.
+        val value = example[property] ?: return@forEach
+        assertTrue(
+          value is List<*> && value.isNotEmpty(),
+          "$phaseId prompt example shows '$property' as an empty list, so it pins no element type for " +
+            "that field. Populate it with a representative entry, or add \"$key\" to exemptions with the " +
+            "reason an empty example is correct there.",
+        )
+      }
     }
   }
 
@@ -914,6 +979,39 @@ private fun projectionEnvelope(phaseId: String, producedOutputs: String): String
 // The last case is the audit_gap re-entry: it used to REPLACE implement's example with a repair-only
 // object under its own "Required produced_outputs shape" heading, so the phase emitted exactly that,
 // lost projection_kind, and burned its whole fix loop against the receipt gate.
+private fun planningProjectionsSchema(): JsonNode {
+  val relative = "orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"
+  var current: Path? = Path.of("").toAbsolutePath().normalize()
+  while (current != null) {
+    val candidate = current.resolve(relative)
+    if (Files.isRegularFile(candidate)) return YAMLMapper().readTree(candidate.toFile())
+    current = current.parent
+  }
+  error("Could not locate '$relative' from ${Path.of("").toAbsolutePath().normalize()}")
+}
+
+/**
+ * Top-level property names the named variant declares as arrays, following one level of `$ref` so a
+ * property written as `{ $ref: "#/$defs/strings" }` is recognised as the collection it resolves to.
+ */
+private fun declaredCollectionProperties(schema: JsonNode, variant: String): List<String> {
+  val defs = schema.path("\$defs")
+  val properties = defs.path(variant).path("properties")
+  check(!properties.isMissingNode) { "schema \$defs has no variant named '$variant'" }
+  return properties.properties()
+    .filter { (_, node) -> isArrayNode(defs, node) }
+    .map { (name, _) -> name }
+}
+
+private fun isArrayNode(defs: JsonNode, node: JsonNode): Boolean {
+  if (node.path("type").asText() == "array") return true
+  val ref = node.path("\$ref").asText().takeIf { it.startsWith("#/\$defs/") } ?: return false
+  val target = defs.path(ref.removePrefix("#/\$defs/"))
+  if (target.path("type").asText() == "array") return true
+  // `nonEmptyStrings` and friends compose through allOf rather than declaring `type` directly.
+  return target.path("allOf").any { isArrayNode(defs, it) }
+}
+
 private fun projectionExampleCases() = listOf(
   Triple(preplanPhase, FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST, briefingFor(preplanPhase)),
   Triple(planPhase, FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN, briefingFor(planPhase)),

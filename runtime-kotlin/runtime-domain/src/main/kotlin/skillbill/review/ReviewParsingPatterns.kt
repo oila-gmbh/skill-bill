@@ -39,6 +39,16 @@ val findingPattern =
       "(?<description>.+)$",
     RegexOption.MULTILINE,
   )
+
+/**
+ * Trailing provenance the runtime itself appends to a merged finding line
+ * ("… | specialists=a,b; origins=x->y"). It is runtime bookkeeping, not description text, so the
+ * parser lifts the lane out of it and keeps it out of the persisted description.
+ */
+val findingProvenancePattern =
+  Regex("\\s*\\|\\s*(?<provenance>(?:specialists|origins)=[^|]*)$")
+val findingSpecialistsProvenancePattern = Regex("specialists=(?<value>[^;]+)")
+
 val severityAliases: Map<String, String> =
   mapOf(
     "high" to "Major",

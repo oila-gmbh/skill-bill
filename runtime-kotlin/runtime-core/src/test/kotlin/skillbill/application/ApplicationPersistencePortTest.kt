@@ -29,6 +29,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
@@ -45,8 +46,10 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.ReviewRunCompletenessRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
+import skillbill.ports.persistence.UnavailableReviewRunCompletenessRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
@@ -59,6 +62,7 @@ import skillbill.ports.persistence.model.TelemetryReconciliationRequest
 import skillbill.ports.persistence.model.TelemetryReconciliationResult
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.review.EmptyReviewAttributionPort
+import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
@@ -82,6 +86,8 @@ import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewLaunchPlan
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
@@ -248,6 +254,124 @@ class ApplicationPersistencePortTest {
     assertEquals(listOf("transaction"), database.calls)
     assertEquals(listOf("F-001", "F-002"), reviewRepository.feedbackRequests.map { it.findingIds.single() })
     assertEquals(listOf("fix_applied", "fix_applied"), result.recorded.map { it.outcomeType })
+  }
+
+  // SKILL-136 subtask 5 AC-001/AC-002: lane identity comes from the composed launch plan. Narration
+  // that disagrees with the plan is retained as an unresolved lane, never used as identity. The
+  // routed pack slug resolves from the canonical skill name, so this holds in a consumer repository
+  // where no platform-packs directory exists and routedSkillPlatformSlugs() is empty.
+  @Test
+  fun `review import records lanes from the composed plan rather than the narration string`() {
+    val reviewRepository = FakeReviewRepository()
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
+
+    laneReviewService(database, reviewText(findings = true)).importReview(input = "-", dbOverride = null)
+
+    val lanes = reviewRepository.savedReviews.single().planLanes
+    assertEquals(
+      listOf("bill-kmp-code-review-architecture", "narrated-only"),
+      lanes.map { it.laneSkillName },
+    )
+    assertEquals("kmp", lanes.first().packSlug)
+    assertEquals("architecture", lanes.first().area)
+    assertEquals("resolved", lanes.first().resolutionState)
+    assertEquals("unresolved", lanes.last().resolutionState)
+  }
+
+  // AC-002/AC-005/AC-006: a run that produced no findings still records its lanes and its terminal
+  // facts, and does so even though telemetry is disabled for this session.
+  @Test
+  fun `a zero findings import still records lanes and terminal review state`() {
+    val reviewRepository = FakeReviewRepository()
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
+
+    laneReviewService(database, reviewText(findings = false)).importReview(input = "-", dbOverride = null)
+
+    val saved = reviewRepository.savedReviews.single()
+    assertEquals(emptyList(), saved.findings)
+    assertEquals(listOf("bill-kmp-code-review-architecture", "narrated-only"), saved.planLanes.map { it.laneSkillName })
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+  }
+
+  @Test
+  fun `a run whose routed pack cannot be resolved still imports with unresolved lanes`() {
+    val reviewRepository = FakeReviewRepository()
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
+    val service = ReviewService(
+      EnvironmentContext(
+        environment = emptyMap(),
+        userHome = Files.createTempDirectory("skillbill-app-lane-unrouted"),
+        stdinText = reviewText(findings = false),
+      ),
+      database,
+      FakeTelemetrySettingsProvider(enabled = false),
+      FakeReviewInputSource,
+      EmptyReviewAttributionPort,
+    )
+
+    service.importReview(input = "-", dbOverride = null)
+
+    val lanes = reviewRepository.savedReviews.single().planLanes
+    assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
+    assertTrue(lanes.all { it.resolutionState == "unresolved" })
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+  }
+
+  // A partially staged catalog — the routed pack composes a baseline layer that is not installed —
+  // makes composition throw. Attribution is best-effort: the import must still land the run.
+  @Test
+  fun `a composition failure degrades to unresolved lanes rather than failing the import`() {
+    val reviewRepository = FakeReviewRepository()
+    val database = FakeDatabaseSessionFactory(reviews = reviewRepository)
+    val service = ReviewService(
+      EnvironmentContext(
+        environment = emptyMap(),
+        userHome = Files.createTempDirectory("skillbill-app-lane-broken"),
+        stdinText = reviewText(findings = false),
+      ),
+      database,
+      FakeTelemetrySettingsProvider(enabled = false),
+      FakeReviewInputSource,
+      ThrowingPlanReviewAttributionPort,
+    )
+
+    service.importReview(input = "-", dbOverride = null)
+
+    val lanes = reviewRepository.savedReviews.single().planLanes
+    assertEquals(listOf("architecture", "narrated-only"), lanes.map { it.laneSkillName })
+    assertTrue(lanes.all { it.resolutionState == "unresolved" })
+    assertEquals(listOf<Pair<String, String?>>("rvw-lane-app-001" to "inline"), reviewRepository.terminalStateWrites)
+  }
+
+  private fun laneReviewService(database: FakeDatabaseSessionFactory, text: String): ReviewService = ReviewService(
+    EnvironmentContext(
+      environment = emptyMap(),
+      userHome = Files.createTempDirectory("skillbill-app-lane"),
+      stdinText = text,
+    ),
+    database,
+    FakeTelemetrySettingsProvider(enabled = false),
+    FakeReviewInputSource,
+    FakePlanReviewAttributionPort,
+  )
+
+  private fun reviewText(findings: Boolean): String {
+    val header = """
+      Routed to: bill-kmp-code-review
+      Review session ID: rvs-lane-app-001
+      Review run ID: rvw-lane-app-001
+      Detected review scope: unstaged changes
+      Detected stack: kmp
+      Execution mode: inline
+      Specialist reviews: architecture, narrated-only
+
+      ### 2. Risk Register
+    """.trimIndent()
+    return if (findings) {
+      "$header\n- [F-001] Major | High | Repo.kt:12 | Transaction is not rolled back.\n"
+    } else {
+      "$header\nNo findings.\n"
+    }
   }
 
   @Test
@@ -2077,7 +2201,7 @@ private class FakeGoalStatsRepository(
 
 private class FakeGoalStatsReviewRepository(
   private val stats: GoalWorkflowStats,
-) : ReviewRepository {
+) : ReviewRepository, ReviewRunCompletenessRepository by UnavailableReviewRunCompletenessRepository {
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) = error("Unexpected saveImportedReview")
 
   override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
@@ -2170,11 +2294,19 @@ private class FakeReviewRepository(
   private val numberedFindings: List<NumberedFinding> = emptyList(),
   private val sourceFindingExists: Boolean = false,
   private val rejectedLearningSourceOutcome: RejectedLearningSourceOutcome? = null,
-) : ReviewRepository {
+) : ReviewRepository, ReviewRunCompletenessRepository by UnavailableReviewRunCompletenessRepository {
   val feedbackRequests = mutableListOf<FeedbackRequest>()
   val learningSourceLookups = mutableListOf<String>()
+  val savedReviews = mutableListOf<ImportedReview>()
+  val terminalStateWrites = mutableListOf<Pair<String, String?>>()
 
-  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) = error("Unexpected saveImportedReview")
+  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
+    savedReviews += review
+  }
+
+  override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
+    terminalStateWrites += runId to executionMode
+  }
 
   override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
 
@@ -2213,6 +2345,36 @@ private class FakeReviewRepository(
   override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
 
   override fun goalStats(): GoalWorkflowStats = error("Unexpected goalStats")
+}
+
+private object FakePlanReviewAttributionPort : ReviewAttributionPort {
+  // Empty on purpose: this map is derived from an in-repo platform-packs directory that only exists
+  // in the skill-bill source tree, so lane composition must not depend on it.
+  override fun routedSkillPlatformSlugs(): Map<String, String> = emptyMap()
+
+  override fun composedLaunchPlan(routedPackSlug: String): ReviewLaunchPlan = ReviewLaunchPlan(
+    routedPackSlug = routedPackSlug,
+    lanes = listOf(
+      ReviewLaunchLane(
+        skillName = "bill-kmp-code-review-architecture",
+        packSlug = "kmp",
+        area = "architecture",
+        depth = 0,
+        originLayerChain = listOf("kmp"),
+        required = true,
+        addOns = emptyList(),
+        orderIndex = 0,
+        inclusionReason = "routed-pack override",
+      ),
+    ),
+  )
+}
+
+private object ThrowingPlanReviewAttributionPort : ReviewAttributionPort {
+  override fun routedSkillPlatformSlugs(): Map<String, String> = emptyMap()
+
+  override fun composedLaunchPlan(routedPackSlug: String): ReviewLaunchPlan =
+    throw MissingCompositionLayerError("Baseline layer 'kotlin' is not installed.")
 }
 
 private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {

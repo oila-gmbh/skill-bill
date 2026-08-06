@@ -18,6 +18,23 @@ object SQLiteLearningStore {
   private const val PARAM_SIX: Int = 6
   private const val PARAM_SEVEN: Int = 7
 
+  /**
+   * The promotion seam from a review finding to a durable learning, and the only writer of
+   * `learnings.source_review_run_id` / `source_finding_id`.
+   *
+   * SKILL-136 subtask 6 (AC-002) asked whether `learnings` is dead schema or has a broken promotion
+   * path from `session_learnings`. The evidence says neither. `learnings` is live schema: written
+   * here, surfaced by the `skill-bill learnings` list/add/edit/disable/enable/delete commands, and
+   * read by review preparation through `ReviewLearningsPort`. `session_learnings` is not an upstream
+   * source that could promote into it — it is a downstream per-review-session cache of learnings
+   * `LearningService.resolve` has *already* resolved out of this table, so promotion in that
+   * direction would be backwards.
+   *
+   * Promotion is explicit, never an automatic side effect of accepting a finding: `learnings add`
+   * requires `--from-run` and `--from-finding`, and [LearningsRuntime.validateLearningSource] fails
+   * loudly when the pair does not resolve to a real finding or when that finding has no rejected
+   * outcome. Auto-promoting every accepted finding would flood the resolve path with noise.
+   */
   fun addLearning(
     connection: Connection,
     request: CreateLearningRequest,

@@ -1,6 +1,8 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
+import skillbill.goalrunner.model.ReviewFindingOutcome
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import java.nio.file.Files
 import kotlin.test.Test
@@ -111,6 +113,169 @@ class UnaddressedFindingsRuntimeTest {
       repository.clearWorkflowLedger("workflow-1")
 
       assertEquals(listOf(sibling), repository.fetchLedger("SKILL-135"))
+    }
+  }
+
+  // SKILL-136 subtask 6 AC-003: the shared key survives the round trip, and an unimported pass keeps
+  // both key columns NULL instead of being attributed to a guessed review run.
+  @Test
+  fun `the shared review run key round-trips and stays null when no review run was imported`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-key").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      val keyed = finding(1, "blocker", "src/First.kt:7").copy(reviewRunId = "rvw-1", findingId = "F-001")
+      val unkeyed = finding(2, "minor", "src/Second.kt:9")
+
+      repository.replaceLedgerForPass("workflow-1", 1, listOf(keyed, unkeyed))
+
+      val ledger = repository.fetchLedger("SKILL-135")
+      assertEquals(listOf(keyed, unkeyed), ledger, "Both the keyed and the unkeyed row must survive verbatim.")
+      assertEquals(null, ledger[1].reviewRunId, "An unimported pass must not be bucketed to a guessed run.")
+      assertEquals(null, ledger[1].findingId)
+    }
+  }
+
+  // AC-004: outcomes outlive the ledger rows they came from, which is the whole reason they live in
+  // their own table — clearWorkflowLedger and replaceLedgerForPass both DELETE.
+  @Test
+  fun `recorded outcomes survive ledger retraction and clearing`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-outcomes").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      val outcomes = listOf(
+        ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.ADDRESSED, "rvw-1", "F-001"),
+        ReviewFindingOutcomeRecord("workflow-1", 1, 2, ReviewFindingOutcome.CARRIED),
+      )
+      repository.replaceLedgerForPass("workflow-1", 1, listOf(finding(1, "blocker", "src/First.kt:7")))
+      repository.recordOutcomes(outcomes)
+
+      repository.clearWorkflowLedger("workflow-1")
+
+      assertEquals(emptyList(), repository.fetchLedger("SKILL-135"))
+      assertEquals(outcomes, repository.fetchOutcomes("workflow-1"), "Outcomes must outlive the ledger.")
+    }
+  }
+
+  @Test
+  fun `re-recording an outcome for the same finding upserts rather than duplicating`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-outcome-upsert").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED)))
+
+      repository.recordOutcomes(listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.ADDRESSED)))
+
+      assertEquals(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.ADDRESSED)),
+        repository.fetchOutcomes("workflow-1"),
+        "A later pass must correct the earlier outcome in place, not append a second row.",
+      )
+    }
+  }
+
+  // AC-004: the ledger only ever holds the preceding pass, so a finding retired in pass 3 must still
+  // correct its pass-1 outcome — otherwise pass 1 under-reports acceptance forever. Each pass is its
+  // own review run and renumbers from F-001, so the match is on the content-derived finding key.
+  @Test
+  fun `a terminal outcome reconciles every earlier carried pass for the same finding`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass").resolve("runtime.db")
+    val key = "src/outbox.kt:12|ambiguous outbox error signal"
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-003", key)),
+      )
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.CARRIED, "rvw-2", "F-002", key)),
+      )
+
+      repository.recordOutcomes(
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 3, 1, ReviewFindingOutcome.ADDRESSED, "rvw-3", "F-001", key)),
+      )
+
+      assertEquals(
+        listOf(ReviewFindingOutcome.ADDRESSED, ReviewFindingOutcome.ADDRESSED, ReviewFindingOutcome.ADDRESSED),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::outcome),
+      )
+      assertEquals(
+        listOf("rvw-1", "rvw-2", "rvw-3"),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::reviewRunId),
+        "Each pass keeps its own review run; only the outcome is reconciled.",
+      )
+    }
+  }
+
+  // Every row here reports finding id F-001, because each pass renumbers from F-001. Reconciliation
+  // must key on the content-derived finding key, or it corrects unrelated findings that share an id.
+  @Test
+  fun `reconciliation does not touch another workflow or another finding sharing a finding id`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass-scope").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(
+        listOf(
+          ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001", "other"),
+          ReviewFindingOutcomeRecord("workflow-2", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001", "fixed"),
+        ),
+      )
+
+      repository.recordOutcomes(
+        listOf(
+          ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.ADDRESSED, "rvw-2", "F-001", "fixed"),
+        ),
+      )
+
+      assertEquals(
+        listOf(ReviewFindingOutcome.CARRIED, ReviewFindingOutcome.ADDRESSED),
+        repository.fetchOutcomes("workflow-1").map(ReviewFindingOutcomeRecord::outcome),
+      )
+      assertEquals(
+        listOf(ReviewFindingOutcome.CARRIED),
+        repository.fetchOutcomes("workflow-2").map(ReviewFindingOutcomeRecord::outcome),
+      )
+    }
+  }
+
+  // AC-003: a workflow-loop finding that does carry a key resolves through review_finding_outcomes
+  // to its review_runs row, and therefore to the routed pack.
+  @Test
+  fun `a keyed outcome joins to its review run`() {
+    val dbPath = Files.createTempDirectory("unaddressed-findings-join").resolve("runtime.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.prepareStatement(
+        "INSERT INTO review_runs (review_run_id, routed_skill, raw_text) VALUES (?, ?, ?)",
+      ).use { statement ->
+        statement.setString(1, "rvw-1")
+        statement.setString(2, "bill-kotlin-code-review")
+        statement.setString(3, "")
+        statement.executeUpdate()
+      }
+      val repository = SQLiteUnaddressedFindingsRepository(connection)
+      repository.recordOutcomes(
+        listOf(
+          ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.ADDRESSED, "rvw-1", "F-001"),
+          ReviewFindingOutcomeRecord("workflow-1", 1, 2, ReviewFindingOutcome.CARRIED),
+        ),
+      )
+
+      val routed = connection.createStatement().use { statement ->
+        statement.executeQuery(
+          """
+          SELECT o.finding_ordinal, r.routed_skill
+          FROM review_finding_outcomes o
+          JOIN review_runs r ON r.review_run_id = o.review_run_id
+          ORDER BY o.finding_ordinal
+          """.trimIndent(),
+        ).use { rows ->
+          buildList { while (rows.next()) add(rows.getInt(1) to rows.getString(2)) }
+        }
+      }
+
+      assertEquals(
+        listOf(1 to "bill-kotlin-code-review"),
+        routed,
+        "The keyed outcome must resolve to its routed pack; the unresolved one must not join at all.",
+      )
     }
   }
 

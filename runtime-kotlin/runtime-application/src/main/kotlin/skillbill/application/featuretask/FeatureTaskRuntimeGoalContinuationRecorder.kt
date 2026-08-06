@@ -209,7 +209,15 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       workflowId = request.workflowId,
       reviewPassNumber = passNumber.toInt(),
     )
+    val supersededFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
     unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber.toInt(), ledgerFindings)
+    unitOfWork.unaddressedFindings.recordOutcomes(
+      GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+        supersededFindings = supersededFindings,
+        currentFindings = ledgerFindings,
+        blockerDispositions = request.blockerDispositions,
+      ),
+    )
     savePatch(
       record,
       unitOfWork.workflowStates,

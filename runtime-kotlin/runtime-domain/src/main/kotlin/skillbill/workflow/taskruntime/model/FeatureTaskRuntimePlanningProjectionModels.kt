@@ -437,6 +437,36 @@ data class FeatureTaskRuntimeImplementationReceipt(
   }
 }
 
+/**
+ * Renders one open-work entry to the bounded line every consumer of `unresolved_items` reads.
+ *
+ * A bare string passes through; the `{ ref, note }` pair renders to the same "ref: note" line the
+ * deviations projection emits, so the two shapes an agent may author converge on one representation
+ * before anything downstream sees them. Returns null only for a value that carries no readable text.
+ *
+ * This is the ONE rendering rule: the receipt's `fromMap` and the terminal path's claim parser both
+ * call it, so a shape legal on one path can never be fatal on the other — the asymmetry that made an
+ * object-valued entry pass the blocked path and exhaust the fix loop on the completed one.
+ */
+fun featureTaskRuntimeRenderOpenWorkItem(value: Any?): String? = when (value) {
+  null -> null
+  is String -> value.trim().takeIf(String::isNotBlank)
+  is Map<*, *> -> {
+    val ref = (value["ref"] as? String)?.trim().orEmpty()
+    val note = (value["note"] as? String)?.trim().orEmpty()
+    when {
+      ref.isNotBlank() && note.isNotBlank() -> "$ref: $note"
+      ref.isNotBlank() -> ref
+      note.isNotBlank() -> note
+      // Never null for a populated object: an entry the schema would refuse is still an open-work
+      // signal on the terminal path, and dropping it there would hand a 'completed' status the escape
+      // the completion gate exists to close. The schema refuses it on the completed path instead.
+      else -> value.toString().trim().takeIf(String::isNotBlank)
+    }
+  }
+  else -> value.toString().trim().takeIf(String::isNotBlank)
+}
+
 data class FeatureTaskRuntimeTestExecution(
   val name: String,
   val outcome: FeatureTaskRuntimeTestOutcome,
@@ -790,7 +820,7 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
     testsUpdated = map.optionalStringList("tests_updated"),
     testsExecuted = executed,
     deviations = deviations,
-    unresolvedItems = map.optionalStringList("unresolved_items"),
+    unresolvedItems = map.openWorkItemList("unresolved_items"),
     reconciliationEvidence = FeatureTaskRuntimeReconciliationEvidence(
       reconciled = (reconciliationMap["reconciled"] as? Boolean)
         ?: throw malformed("reconciliation_evidence.reconciled", "must be a boolean"),
@@ -823,5 +853,14 @@ private fun Map<String, Any?>.optionalStringList(key: String): List<String> {
   return list.map { value ->
     value?.toString()?.trim()?.takeIf(String::isNotBlank)
       ?: throw malformed(key, "entries must be non-blank strings")
+  }
+}
+
+private fun Map<String, Any?>.openWorkItemList(key: String): List<String> {
+  val raw = this[key] ?: return emptyList()
+  val list = raw as? List<*> ?: throw malformed(key, "must be a list")
+  return list.mapIndexed { index, value ->
+    featureTaskRuntimeRenderOpenWorkItem(value)
+      ?: throw malformed("$key[$index]", "must be a non-blank string or a { ref, note } object")
   }
 }

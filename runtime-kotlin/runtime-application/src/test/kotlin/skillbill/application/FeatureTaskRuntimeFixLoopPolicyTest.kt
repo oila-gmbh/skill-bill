@@ -29,6 +29,31 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
   }
 
   @Test
+  fun `a phase that keeps dying before its output gate blocks on its own budget, not the repair one`() {
+    val below = FeatureTaskRuntimeFixLoopPolicy.processFailureBlockReason(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      processFailureCount = FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS - 1,
+      lastFailureReason = "agent exited with non-zero status 1",
+    )
+    assertEquals(null, below)
+
+    val blocked = requireNotNull(
+      FeatureTaskRuntimeFixLoopPolicy.processFailureBlockReason(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        processFailureCount = FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS,
+        lastFailureReason = "agent exited with non-zero status 1",
+      ),
+    )
+    assertContains(blocked, "failed to execute")
+    assertContains(blocked, "No repair attempt was consumed.")
+    assertContains(blocked, "agent exited with non-zero status 1")
+    // The defect this replaced: a process that never produced output was reported as having produced
+    // invalid output, which sent every reader looking for a validator finding that did not exist.
+    assertTrue(!blocked.contains("invalid output"), blocked)
+    assertTrue(!blocked.contains("fix loop"), blocked)
+  }
+
+  @Test
   fun `the mutating implement phase is a bounded fix-loop under the idempotency contract`() {
     // SKILL-85 Subtask 3 (AC2): implement now participates in the bounded fix loop because the
     // mutating-phase idempotency contract makes re-entry safe (reconcile-to-target, no double-apply).

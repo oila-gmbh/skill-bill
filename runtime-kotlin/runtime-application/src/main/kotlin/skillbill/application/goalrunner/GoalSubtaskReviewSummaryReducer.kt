@@ -1,9 +1,13 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.ReviewFindingOutcome
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
+import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -82,24 +86,96 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
+  /**
+   * The Review run ID the pass's `bill-code-review` invocation reported, read from the review phase's
+   * declared `produced_outputs.review_run_id`. This is the shared key half that resolves a
+   * workflow-loop finding to the findings and review_runs rows produced by the very review that
+   * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
+   * null so the pair reads as unresolved rather than being bucketed to a guessed run.
+   */
+  private val Map<String, Any?>.reviewRunId: String?
+    get() = (
+      this["produced_outputs"]
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
+      )?.trim()?.takeIf(String::isNotBlank)
+
   fun unaddressedFindings(
     output: Map<String, Any?>,
     issueKey: String,
     subtaskId: Int,
     workflowId: String,
     reviewPassNumber: Int,
-  ): List<UnaddressedFinding> = structuredFindings(output).mapIndexed { index, finding ->
-    UnaddressedFinding(
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      workflowId = workflowId,
-      reviewPassNumber = reviewPassNumber,
-      findingOrdinal = index + 1,
-      severity = normalizedUnaddressedFindingSeverity(finding.severity),
-      issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
-      location = finding.location,
-      summary = finding.message,
-    )
+  ): List<UnaddressedFinding> {
+    val reviewRunId = output.reviewRunId
+    return structuredFindings(output).mapIndexed { index, finding ->
+      UnaddressedFinding(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        workflowId = workflowId,
+        reviewPassNumber = reviewPassNumber,
+        findingOrdinal = index + 1,
+        severity = normalizedUnaddressedFindingSeverity(finding.severity),
+        issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
+        location = finding.location,
+        summary = finding.message,
+        reviewRunId = reviewRunId,
+        findingId = finding.findingId,
+      )
+    }
+  }
+
+  /**
+   * Derives one accepted/rejected/carried outcome per finding the run produced, entirely from loop
+   * state — never inferred from agent prose. Every pass re-reviews the same delta, so a finding an
+   * earlier pass reported and this pass no longer reports was addressed by the fix loop; a finding
+   * this pass still reports is carried until a later pass retires it, and the final pass's survivors
+   * stay carried into the terminal state. A Blocker the reserved remediation pass explicitly
+   * dispositioned overrides that inference with the verdict the loop actually recorded.
+   *
+   * Cross-pass matching keys on [UnaddressedFinding.findingKey], never on the reported finding id:
+   * each pass is its own review run and renumbers from `F-001`, so id matching would compare
+   * positions and invert exactly the outcomes this derivation exists to record.
+   *
+   * This is what closes the coverage gap that left only 13% of runs with `feedback_events`: coverage
+   * is now driven by the loop rather than by optional manual triage. The records outlive the ledger
+   * rows they were derived from, which is why they are written to their own table.
+   */
+  fun reviewFindingOutcomes(
+    supersededFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+    blockerDispositions: List<GoalSubtaskBlockerDisposition>,
+  ): List<ReviewFindingOutcomeRecord> {
+    val dispositionsByFindingId = blockerDispositions.associateBy(GoalSubtaskBlockerDisposition::findingId)
+    val stillReported = currentFindings.mapTo(mutableSetOf(), UnaddressedFinding::findingKey)
+    // Dispositions name the finding ids the *prior* pass emitted, and this pass renumbers from F-001.
+    // Resolving them against the prior pass's findings first turns them into cross-pass identity keys,
+    // so a disposition can never land on whichever current finding happens to share an ordinal.
+    val dispositionVerdictsByKey = supersededFindings.mapNotNull { finding ->
+      dispositionsByFindingId[finding.findingId]?.let { finding.findingKey to it.verdict }
+    }.toMap()
+    fun supersededOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
+      when (dispositionVerdictsByKey[finding.findingKey]) {
+        GoalSubtaskBlockerDispositionVerdict.RESOLVED -> ReviewFindingOutcome.ADDRESSED
+        GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> ReviewFindingOutcome.REJECTED
+        GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> ReviewFindingOutcome.CARRIED
+        null -> ReviewFindingOutcome.ADDRESSED
+      }
+
+    // A finding this pass still reports was not addressed, whatever the disposition claimed. Only an
+    // explicit supersede — the loop declining the finding — is a terminal outcome for a survivor.
+    fun currentOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
+      if (dispositionVerdictsByKey[finding.findingKey] == GoalSubtaskBlockerDispositionVerdict.SUPERSEDED) {
+        ReviewFindingOutcome.REJECTED
+      } else {
+        ReviewFindingOutcome.CARRIED
+      }
+    val supersededOutcomes = supersededFindings
+      .filter { finding -> finding.findingKey !in stillReported }
+      .map { finding -> finding.toOutcomeRecord(supersededOutcome(finding)) }
+    val currentOutcomes = currentFindings
+      .map { finding -> finding.toOutcomeRecord(currentOutcome(finding)) }
+    return supersededOutcomes + currentOutcomes
   }
 
   /**
@@ -168,19 +244,18 @@ internal object GoalSubtaskReviewSummaryReducer {
   }
 
   private fun labelFor(finding: Map<String, Any?>, message: String): String {
-    explicitLabel(finding)?.let { return it }
+    val explicit = sequenceOf(
+      finding["class_or_symbol"],
+      finding["symbol"],
+      finding["class"],
+    ).filterIsInstance<String>()
+      .map(String::trim)
+      .filter(classOrSymbol::matches)
+      .firstOrNull(String::isNotBlank)
+    explicit?.let { return it }
     return fileStem.find(message)?.groupValues?.get(1)?.substringBeforeLast('.')?.takeIf(String::isNotBlank)
       ?: "Review"
   }
-
-  private fun explicitLabel(finding: Map<String, Any?>): String? = sequenceOf(
-    finding["class_or_symbol"],
-    finding["symbol"],
-    finding["class"],
-  ).filterIsInstance<String>()
-    .map(String::trim)
-    .filter(classOrSymbol::matches)
-    .firstOrNull(String::isNotBlank)
 
   private fun sanitize(message: String): String {
     val compact = message

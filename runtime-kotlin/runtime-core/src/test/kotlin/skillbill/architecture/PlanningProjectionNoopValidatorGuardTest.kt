@@ -31,8 +31,6 @@ class PlanningProjectionNoopValidatorGuardTest {
     "FeatureTaskRuntimeRunnerTest.kt" to
       "Shared run-loop harness default; runner-behavior tests do not assert schema-projection " +
       "enforcement (covered by the RealValidator* integration suites).",
-    "FeatureTaskRuntimePhasePromptComposerTest.kt" to
-      "Prompt composition; planning-projection enforcement is incidental to the prompt under test.",
     "GoalPlanningSweepTest.kt" to
       "Goal-planning sweep behavior; planning-projection enforcement is incidental to the sweep.",
     "FeatureTaskRuntimePlanningProjectionEdgeTest.kt" to

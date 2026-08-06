@@ -36,6 +36,7 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
@@ -54,6 +55,7 @@ import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewRawFinding
+import skillbill.review.model.ReviewRunLane
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -92,6 +94,7 @@ class ParallelCodeReviewRunner(
     val initial = prepareInitialRun(originalRequest)
     val outcomes = runLanes(initial)
     val result = parallelResult(initial.agent1Id, initial.agent2Id, outcomes)
+    recordMergedFindingLanes(initial.request.reviewRunId, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -190,6 +193,7 @@ class ParallelCodeReviewRunner(
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<ReviewSpecialistLaunchRequest> {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
+    recordPlannedLanes(request.reviewRunId, plannedRubrics)
     val (baseRevision, headRevision) = resolveReviewRevisions(request)
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
@@ -210,6 +214,41 @@ class ParallelCodeReviewRunner(
       envelopeValidator = reviewContextEnvelopeValidator,
       specialistContract = reviewSpecialistContractProvider.authoritativeContract(),
     )
+  }
+
+  /**
+   * Records the launch plan for a runtime-launched review at the moment it is resolved, so the run's
+   * lane attribution comes from the plan itself rather than round-tripping through review text.
+   */
+  private fun recordPlannedLanes(reviewRunId: String?, plannedRubrics: List<PlannedReviewRubric>) {
+    if (reviewRunId == null || plannedRubrics.isEmpty()) return
+    val lanes = plannedRubrics.map { planned ->
+      ReviewRunLane(
+        laneSkillName = planned.descriptor.skillName,
+        packSlug = planned.descriptor.packSlug,
+        area = planned.descriptor.area,
+        depth = planned.descriptor.depth,
+        required = planned.descriptor.required,
+        orderIndex = planned.descriptor.orderIndex,
+        originLayerChain = planned.descriptor.originLayerChain,
+        resolutionState = ReviewRunLaneResolver.RESOLVED,
+      )
+    }
+    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, lanes) }
+  }
+
+  /**
+   * Records which lane produced each merged finding straight from the merge result, where the
+   * producing specialist is already known. Ingestion reads this rather than re-deriving the lane
+   * from the formatted review text, which no agent is obliged to reproduce faithfully.
+   */
+  private fun recordMergedFindingLanes(reviewRunId: String?, result: ParallelCodeReviewResult) {
+    if (reviewRunId == null) return
+    val attribution = result.mergeResult.findings.mapNotNull { finding ->
+      finding.specialistSkillNames.firstOrNull()?.let { finding.fNumber to it }
+    }.toMap()
+    if (attribution.isEmpty()) return
+    database.transaction { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
   }
 
   private fun resolveReviewRevisions(request: ParallelCodeReviewRequest): Pair<String, String> {

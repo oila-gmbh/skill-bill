@@ -108,6 +108,21 @@ $defs:
     allOf:
       - { $ref: "#/$defs/strings" }
       - { minItems: 1 }
+  # An open-work entry may arrive as a bare line or as the same {ref, note} pair `deviations` carries,
+  # because both name work that is not closed and an agent authoring one receipt cannot know which seam
+  # will read it. Accepting both is what stops the two readers of this field from disagreeing: the
+  # terminal path's claim parser deliberately RENDERS a non-string open-work entry rather than dropping
+  # it (dropping one would delete the signal that holds an unfinished receipt back), so a schema that
+  # rejected the same entry on the completed path made one shape legal on one path and fatal on the
+  # other. The receipt model renders an object entry to the same "ref: note" line the deviations
+  # projection uses, so every downstream consumer still sees a bounded string list.
+  openWorkItems:
+    type: array
+    maxItems: 128
+    items:
+      oneOf:
+        - { $ref: "#/$defs/nonBlank" }
+        - { $ref: "#/$defs/deviation" }
   # Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors
   # review-context-schema.yaml's `path` $def so changed-path normalization is identical everywhere.
   repoPath:
@@ -286,7 +301,7 @@ $defs:
         type: array
         maxItems: 128
         items: { $ref: "#/$defs/deviation" }
-      unresolved_items: { $ref: "#/$defs/strings" }
+      unresolved_items: { $ref: "#/$defs/openWorkItems" }
       reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
       repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
       # Governed co-residents of a mutating phase's produced_outputs, owned by the phase-output and

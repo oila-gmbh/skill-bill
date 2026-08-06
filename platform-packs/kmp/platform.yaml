@@ -1,6 +1,6 @@
 platform: kmp
 contract_version: "1.2"
-display_name: KMP
+display_name: "Android & Kotlin Multiplatform"
 
 routing_signals:
   strong:
@@ -18,13 +18,28 @@ routing_signals:
     - "actual"
   tie_breakers:
     - "If KMP or Android markers dominate, prefer this pack over generic Kotlin."
-    - "Do not prefer this pack when adjacent Kotlin or Android signals dominate without multiplatform source sets."
+    - "Do not prefer this pack when an adjacent backend Kotlin/JVM service surface (Spring, Exposed, Hibernate, server Ktor) dominates the changed product surface and Android modules are incidental."
     - "Exclude generated and vendored files when deciding routing dominance."
   path: [".kt", "*.kt", ".kts", "*.kts", "AndroidManifest.xml", "androidMain", "iosMain", "commonMain"]
-  content: ['kotlin("multiplatform")', "org.jetbrains.kotlin.multiplatform", "expect", "actual"]
+  # Android markers stay content-only: routing_signals.path must not gain src/main, which scores as a
+  # unique 10-point path signal on every backend Kotlin file and would break backend-dominant routing.
+  content:
+    - 'kotlin("multiplatform")'
+    - "org.jetbrains.kotlin.multiplatform"
+    - "expect"
+    - "actual"
+    - "androidx.compose"
+    - "androidx.navigation"
+    - "androidx.lifecycle"
+    - "androidx.room"
+    - "androidx.datastore"
+    - "@Composable"
+    - "dagger.hilt"
 
 declared_code_review_areas:
   - platform-correctness
+  - persistence
+  - reliability
   - ui
   - ux-accessibility
 
@@ -32,6 +47,8 @@ declared_files:
   baseline: code-review/bill-kmp-code-review/content.md
   areas:
     platform-correctness: code-review/bill-kmp-code-review-platform-correctness/content.md
+    persistence: code-review/bill-kmp-code-review-persistence/content.md
+    reliability: code-review/bill-kmp-code-review-reliability/content.md
     ui: code-review/bill-kmp-code-review-ui/content.md
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
@@ -40,6 +57,10 @@ declared_quality_check_file: quality-check/bill-kmp-code-check/content.md
 area_metadata:
   platform-correctness:
     focus: "KMP expect/actual, source-set, target-runtime, and native-boundary correctness"
+  persistence:
+    focus: "Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness"
+  reliability:
+    focus: "WorkManager and CoroutineWorker retry, process-death recovery, and collector supervision"
   ui:
     focus: "KMP Compose UI correctness and framework usage"
   ux-accessibility:
@@ -48,8 +69,12 @@ area_metadata:
 lane_conditions:
   platform-correctness:
     required: true
+  persistence:
+    content: ["room", "sqldelight", "datastore", "migration", "dao"]
+  reliability:
+    content: ["workmanager", "coroutineworker", "foregroundservice", "backoffpolicy", "retry"]
   ui:
-    path: ["androidMain", "iosMain"]
+    path: ["androidMain", "iosMain", "/src/main/"]
     content: ["compose", "@Composable", "navigation"]
   ux-accessibility:
     content: ["semantics", "contentDescription", "accessibility", "focusRequester"]
@@ -214,6 +239,12 @@ pointers:
     - name: android-navigation-review.md
       target: platform-packs/kmp/addons/android-navigation-review.md
   code-review/bill-kmp-code-review-platform-correctness:
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+  code-review/bill-kmp-code-review-persistence:
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
+  code-review/bill-kmp-code-review-reliability:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-kmp-code-review-ux-accessibility:

@@ -12,18 +12,9 @@ object ReviewRuntime {
   fun parseReview(text: String): ImportedReview = ReviewParser.parseReview(text)
 
   fun saveImportedReview(connection: Connection, review: ImportedReview, sourcePath: String?) {
-    val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
-    val existingFindings = fetchImportedFindings(connection, review.reviewRunId)
-    val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
     connection.autoCommit = false
     try {
-      upsertReviewRun(connection, review, sourcePath)
-      if (summarySnapshotChanged) {
-        ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
-      }
-      if (existingFindings != review.findings) {
-        replaceFindings(connection, review)
-      }
+      persistImportedReview(connection, review, sourcePath)
       connection.commit()
     } catch (error: java.sql.SQLException) {
       connection.rollback()
@@ -83,11 +74,17 @@ object ReviewRuntime {
     }
   }
 
-  fun reviewExists(connection: Connection, reviewRunId: String): Boolean =
-    connection.prepareStatement("SELECT 1 FROM review_runs WHERE review_run_id = ?").use { statement ->
-      statement.setString(PARAM_ONE, reviewRunId)
-      statement.executeQuery().use { resultSet -> resultSet.next() }
-    }
+  /**
+   * A run exists once its review text has been imported. The lane recorders reserve the parent row
+   * before the text lands (`raw_text = ''`) to keep their foreign key honest, and a run that never
+   * completed its import must not read as a reviewable run to triage or stats.
+   */
+  fun reviewExists(connection: Connection, reviewRunId: String): Boolean = connection.prepareStatement(
+    "SELECT 1 FROM review_runs WHERE review_run_id = ? AND raw_text != ''",
+  ).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet -> resultSet.next() }
+  }
 
   fun findingExists(connection: Connection, reviewRunId: String, findingId: String): Boolean =
     connection.prepareStatement("SELECT 1 FROM findings WHERE review_run_id = ? AND finding_id = ?").use { statement ->

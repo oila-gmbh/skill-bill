@@ -34,6 +34,48 @@ class RuntimeArchitectureTest {
     )
 
   @Test
+  fun `DatabaseRuntime is the only main-source jdbc sqlite connection site`() {
+    assertEquals(
+      emptyList(),
+      jdbcSqliteConnectionSitesOutsideDatabaseRuntime(sourceRoots),
+      "Every database creation site must route through DatabaseRuntime, which applies the base " +
+        "schema and migrations. A direct jdbc:sqlite connection can leave a schema-less file behind.",
+    )
+  }
+
+  /**
+   * SKILL-136 subtask 6 AC-007: existing snapshots are never deleted automatically. The opt-in
+   * prune gateway is the sole main-source site that may name a review-metrics snapshot for deletion,
+   * so no startup, install, or maintenance path can quietly remove an operator's 2.9 GB of history.
+   */
+  @Test
+  fun `only the prune gateway may delete review-metrics snapshots`() {
+    val deletionSites = sourceRoots
+      .filter { root -> Files.isDirectory(root) }
+      .flatMap { root ->
+        Files.walk(root).use { paths ->
+          paths.filter { path -> Files.isRegularFile(path) && path.toString().endsWith(".kt") }
+            .toList()
+        }
+      }
+      .filter { path -> path.fileName.toString() != "FileSystemReviewSnapshotGateway.kt" }
+      .filter { path ->
+        val text = Files.readString(path)
+        // A file that both names the store and performs a filesystem delete is the only shape that
+        // could remove a snapshot. Delegating to the gateway (ReviewSnapshotPruneService) is not.
+        "review-metrics" in text && Regex("""Files\.delete\w*\(|toFile\(\)\.delete\w*\(""").containsMatchIn(text)
+      }
+      .map { path -> runtimeRoot.relativize(path).toString() }
+      .sorted()
+
+    assertEquals(
+      emptyList(),
+      deletionSites,
+      "Snapshots may only be deleted through the opt-in prune gateway, never automatically.",
+    )
+  }
+
+  @Test
   fun `runtime cli check task depends on validate agent configs`() {
     val buildFile = Files.readString(runtimeRoot.resolve("runtime-cli/build.gradle.kts"))
     assertContains(buildFile, "val validateAgentConfigs by tasks.registering(JavaExec::class)")

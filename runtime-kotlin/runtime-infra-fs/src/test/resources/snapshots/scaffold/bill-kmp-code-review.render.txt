@@ -8,8 +8,8 @@ description: Use when conducting a thorough Android/KMP PR code review. Preserve
 
 Governed skill: `bill-kmp-code-review`
 Family: `code-review`
-Platform pack: `kmp` (KMP)
-Description: Use when reviewing KMP changes across code-review specialists.
+Platform pack: `kmp` (Android & Kotlin Multiplatform)
+Description: Use when reviewing Android & Kotlin Multiplatform changes across code-review specialists.
 
 ## Review Composition
 
@@ -52,6 +52,8 @@ Treat the generated flattened Review Composition plan as authoritative. Launch i
 
 - `expect`/`actual`, `commonMain`, `androidMain`, `iosMain`, source-set dependencies, or target-boundary declarations -> `platform-correctness` specialist.
 - `kotlinx.serialization`, polymorphic registration, `kotlinx-datetime`, timezone behavior, `Dispatchers.Main`, iOS dispatchers, ObjC exports, Skie `Flow`, or suspend cancellation -> `platform-correctness` specialist.
+- Room entities, DAOs, `@Transaction`, `.sq` files, SQLDelight drivers, `DataStore` edits, schema migrations, or offline sync cursors and idempotency keys -> `persistence` specialist.
+- `WorkManager` enqueue, `CoroutineWorker`, backoff policy, work constraints, foreground services, process-death recovery, or long-lived collector supervision -> `reliability` specialist.
 - `@Composable`, UI state, `Modifier`, `remember`, `LaunchedEffect`, navigation, previews, or loading/content/error/empty states -> `ui` specialist.
 - Compose semantics, labels, focus, TalkBack, keyboard behavior, localization, or touch targets -> `ux-accessibility` specialist.
 - `proguard-rules.pro`, `consumer-rules.pro`, `isMinifyEnabled`, `minifyEnabled`, or R8 configuration -> `platform-correctness` specialist; include the baseline `android-r8` add-on.
@@ -78,7 +80,7 @@ Specialist spawn instructions in this orchestrator are runtime-neutral. Each phr
 
 **On Codex.** The spawn is a natural-language directive in the orchestrator's turn. Codex resolves the subagent by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. Because Codex runs subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished and its `RESULT:` JSON is available in the conversation.
 
-**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-platform-correctness`, `@bill-kmp-code-review-ui`, `@bill-kmp-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
+**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-platform-correctness`, `@bill-kmp-code-review-persistence`, `@bill-kmp-code-review-reliability`, `@bill-kmp-code-review-ui`, `@bill-kmp-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
 
 OpenCode does not document a different native concurrency cap; keep the conservative limit of 6 or fewer specialists per wave.
 

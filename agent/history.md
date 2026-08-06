@@ -1,3 +1,13 @@
+## [2026-08-06] SKILL-136 subtask 7 documentation and full maintainer gate
+Areas: docs, AGENTS.md, README.md, .feature-specs/SKILL-136-android-native-review-specialists
+- Refreshed the public docs surface for Android/KMP review specialists: README's KMP catalog now names Android+KMP and lists the persistence/reliability lanes, and stale composition-only claims were purged repo-wide (the single remaining hit is an immutable dated SKILL-114 history entry — leave it).
+- `docs/review-telemetry.md` now documents the routing fields (`routed_skill`, `detected_stack`, `detected_scope` plus the unresolved-value convention), per-lane `specialist_reviews` with `findings.lane_skill_name` attribution, and the shared `(review_run_id, finding_id)` key that joins both stores. reusable
+- Documented snapshot retention plus the opt-in prune command; prune flags and JSON payload were verified against `PruneReviewSnapshotsCommand`/`toCliMap` rather than transcribed from the spec. reusable
+- Declared-area counts in docs are cross-checked against `platform.yaml` `declared_files` entries — do that instead of hand-counting when the catalog changes. reusable
+- Known limit: AC-011 (installer-invocation acceptance) is a maintainer gate, deferred out of this subtask; a branch-diff guard confirms no installer invocation and no generated SKILL.md wrappers or provider-specific native-agent output were committed.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented (AC-011 maintainer-gated)
+
 ## [2026-07-14] SKILL-122 subtask 4 execution-budget agent add-on
 Areas: agent-addons/execution-budget, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-desktop, runtime-kotlin/runtime-cli, docs
 - Added the Codex-only `execution-budget` agent add-on for `bill-feature`, with concise authored guidance that preserves user stopping boundaries, scoped hand-offs, and the existing explicit-delegation rule.

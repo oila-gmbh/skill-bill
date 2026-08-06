@@ -146,7 +146,7 @@ The shipped skills and platform packs are reference assets. They are production-
 
 Start from reference packs when they fit:
 
-Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP composes seven Kotlin baseline areas with three KMP delta lanes. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
+Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP covers Android and Kotlin Multiplatform with five declared areas — `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` — composing the remaining five from the Kotlin baseline. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
 
 The shipped `generic` pack is the manifest-declared review fallback for unsupported,
 documentation-only, and unresolved paths. It is not appended after a concrete or
@@ -161,7 +161,7 @@ recorded in durable managed inventory, so review preflight and launch do not ins
 reviewed repository or require the original Skill Bill checkout to remain available.
 
 - `kotlin`: Kotlin baseline review and quality-check behavior
-- `kmp`: Kotlin review baseline plus KMP platform, UI, and accessibility depth, governed add-ons, and direct multiplatform quality-check behavior
+- `kmp`: Android and Kotlin Multiplatform review declaring `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` on the Kotlin baseline, governed Android add-ons, and direct multiplatform quality-check behavior
 - `ios`: native iOS review and direct Xcode/SPM-aware quality-check behavior
 - `go`: Go services, libraries, CLIs, modules, APIs, persistence, concurrency, security, testing, Go-rendered UI, UX/accessibility, and quality-check behavior
 - `php`: PHP applications, services, Composer projects, APIs, persistence, security, testing, server-rendered UI, UX/accessibility, and quality-check behavior

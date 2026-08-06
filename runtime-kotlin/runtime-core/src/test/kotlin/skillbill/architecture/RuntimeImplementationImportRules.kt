@@ -47,6 +47,28 @@ internal fun isSchemaOrCoherenceValidatorImport(importedName: String): Boolean {
   return simpleName.endsWith("SchemaValidator") || simpleName.endsWith("CoherenceValidator")
 }
 
+/**
+ * SKILL-136 subtask 6 (AC-005): `DatabaseRuntime` is the only main-source site that may construct a
+ * `jdbc:sqlite` connection, because it is the seam that applies `createBaseSchema`,
+ * `DatabaseMigrations`, and `DatabaseColumnMigrations`. Any other creation site can materialise a
+ * database file that carries no schema — which is exactly how a zero-byte `review-metrics.db`
+ * appeared under a working directory and made a later reading conclude the store was empty.
+ * Returns the offending repo-relative source paths, so the caller asserts against an empty list.
+ */
+internal fun jdbcSqliteConnectionSitesOutsideDatabaseRuntime(sourceRoots: List<Path>): List<String> =
+  sourceRoots.flatMap { root ->
+    if (!root.toFile().isDirectory) {
+      emptyList()
+    } else {
+      root.toFile().walkTopDown()
+        .filter { file -> file.isFile && file.extension == "kt" }
+        .filter { file -> file.name != "DatabaseRuntime.kt" }
+        .filter { file -> "jdbc:sqlite" in file.readText() }
+        .map { file -> file.toPath().toString() }
+        .toList()
+    }
+  }.sorted()
+
 internal fun assertRuntimeCorePublicProjectEdges(runtimeRoot: Path, runtimeCoreBuild: String) {
   val runtimeCoreApiDependencies = Regex("""api\(project\("(:runtime-[^"]+)"\)\)""")
     .findAll(runtimeCoreBuild)

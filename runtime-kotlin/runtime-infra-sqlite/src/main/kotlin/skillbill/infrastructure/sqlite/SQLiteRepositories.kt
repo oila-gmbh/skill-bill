@@ -5,17 +5,15 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.infrastructure.sqlite.goal.UnaddressedFindingsRuntime
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
-import skillbill.infrastructure.sqlite.review.existingReviewSummary
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
-import skillbill.infrastructure.sqlite.review.replaceFindings
-import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
+import skillbill.infrastructure.sqlite.review.persistImportedReview
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
-import skillbill.infrastructure.sqlite.review.upsertReviewRun
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
@@ -27,6 +25,7 @@ import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
 import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.ReviewRunCompletenessRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnaddressedFindingsRepository
@@ -85,7 +84,14 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
 
   override fun clearWorkflowLedger(workflowId: String) = runtime.clearWorkflowLedger(workflowId)
 
+  override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) = runtime.recordOutcomes(outcomes)
+
+  override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = runtime.fetchOutcomes(workflowId)
+
   override fun fetchLedger(issueKey: String): List<UnaddressedFinding> = runtime.fetchLedger(issueKey)
+
+  override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
+    runtime.fetchWorkflowLedger(workflowId)
 
   override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)
 }
@@ -116,7 +122,8 @@ class SQLiteWorkflowStatsRepository(
 class SQLiteReviewRepository(
   private val connection: Connection,
 ) : ReviewRepository,
-  WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection) {
+  WorkflowStatsRepository by SQLiteWorkflowStatsRepository(connection),
+  ReviewRunCompletenessRepository by SQLiteReviewRunCompletenessRepository(connection) {
   private companion object {
     const val REJECTED_OUTCOME_FIRST_PARAM_INDEX: Int = 3
   }
@@ -125,18 +132,8 @@ class SQLiteReviewRepository(
 
   override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = loadReviewAccounting(connection, reviewId)
 
-  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) {
-    val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
-    val existingFindings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
-    val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
-    upsertReviewRun(connection, review, sourcePath)
-    if (summarySnapshotChanged) {
-      ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
-    }
-    if (existingFindings != review.findings) {
-      replaceFindings(connection, review)
-    }
-  }
+  override fun saveImportedReview(review: ImportedReview, sourcePath: String?) =
+    persistImportedReview(connection, review, sourcePath)
 
   override fun markOrchestrated(runId: String) {
     connection.prepareStatement(

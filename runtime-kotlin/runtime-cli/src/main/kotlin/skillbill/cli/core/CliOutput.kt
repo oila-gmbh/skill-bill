@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.model.CliFormat
 import skillbill.contracts.JsonSupport
 
@@ -42,6 +43,33 @@ internal object CliOutput {
         append(" | note: ${decision.note}")
       }
       appendLine()
+    }
+  }
+
+  fun reviewSnapshotPrune(result: ReviewSnapshotPruneResult): String = buildString {
+    appendLine("live_db_path: ${result.liveDbPath} (never a prune candidate)")
+    if (result.candidates.isEmpty()) {
+      appendLine("No review-metrics snapshots found.")
+      return@buildString
+    }
+    result.candidates.forEach { snapshot ->
+      val disposition = when (snapshot) {
+        in result.deleted -> "deleted"
+        in result.failed -> "failed"
+        else -> "kept"
+      }
+      appendLine("${snapshot.label} | ${snapshot.sizeBytes} bytes | ${snapshot.lastModified} | $disposition")
+    }
+    if (result.confirmed) {
+      appendLine("Deleted ${result.deleted.size} snapshot(s), reclaiming ${result.reclaimedBytes} bytes.")
+      if (result.failed.isNotEmpty()) {
+        appendLine("Failed to delete ${result.failed.size} snapshot(s): ${result.failed.joinToString { it.label }}.")
+      }
+    } else {
+      appendLine(
+        "Dry run: ${result.candidates.size} snapshot(s) totalling ${result.candidateBytes} bytes. " +
+          "Nothing was deleted. Re-run with --confirm to delete them.",
+      )
     }
   }
 

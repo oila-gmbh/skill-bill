@@ -28,6 +28,7 @@ import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
+import skillbill.application.review.ReviewSnapshotPruneService
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
@@ -87,6 +88,7 @@ import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
+import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGateway
 import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
@@ -165,6 +167,7 @@ import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
@@ -517,6 +520,10 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
+  internal fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway): ReviewSnapshotGateway = gateway
+
+  @Provides
+  @JvmSynthetic
   internal fun reviewInputSource(source: FileSystemReviewInputSource): ReviewInputSource = source
 
   @Provides
@@ -729,6 +736,7 @@ abstract class RuntimeComponent(
   abstract val repoValidationService: RepoValidationService
   abstract val repoSourceDiscoveryService: RepoSourceDiscoveryService
   abstract val reviewService: ReviewService
+  abstract val reviewSnapshotPruneService: ReviewSnapshotPruneService
   abstract val scaffoldCatalogService: ScaffoldCatalogService
   abstract val scaffoldService: ScaffoldService
   abstract val skillRemoveService: SkillRemoveService

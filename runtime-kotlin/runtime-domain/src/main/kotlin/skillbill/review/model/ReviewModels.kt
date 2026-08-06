@@ -8,6 +8,32 @@ data class ImportedFinding(
   val description: String,
   val findingText: String,
   val issueCategory: String = ReviewIssueCategory.OTHER.wireValue,
+  val laneSkillName: String? = null,
+)
+
+/**
+ * One review lane a run actually launched, with its identity taken from the composed launch plan.
+ * [resolutionState] is `unresolved` only for a lane a run reported that the plan does not contain;
+ * its [laneSkillName] then holds the reported text verbatim.
+ */
+data class ReviewRunLane(
+  val laneSkillName: String,
+  val packSlug: String,
+  val area: String,
+  val depth: Int,
+  val required: Boolean,
+  val orderIndex: Int,
+  val originLayerChain: List<String>,
+  val resolutionState: String,
+)
+
+data class ReviewLaneEffectivenessRow(
+  val routedSkillCanonical: String,
+  val packSlug: String,
+  val area: String,
+  val totalFindings: Int,
+  val acceptedFindings: Int,
+  val rejectedFindings: Int,
 )
 
 data class ImportedReview(
@@ -20,6 +46,12 @@ data class ImportedReview(
   val executionMode: String?,
   val specialistReviews: List<String>,
   val findings: List<ImportedFinding>,
+  val routedSkillCanonical: String = "unresolved",
+  val detectedStackCanonical: String = "unresolved",
+  val detectedScopeCanonical: String = "unresolved",
+  val detectedScopeDetail: String? = null,
+  /** Plan-sourced lane attribution for this run; empty only when no launch plan could be composed. */
+  val planLanes: List<ReviewRunLane> = emptyList(),
 )
 
 data class ReviewSummary(
@@ -33,6 +65,10 @@ data class ReviewSummary(
   val reviewFinishedAt: String?,
   val reviewFinishedEventEmittedAt: String?,
   val orchestratedRun: Boolean,
+  val routedSkillCanonical: String = "unresolved",
+  val detectedStackCanonical: String = "unresolved",
+  val detectedScopeCanonical: String = "unresolved",
+  val detectedScopeDetail: String? = null,
 )
 
 data class NormalizedStackLabel(

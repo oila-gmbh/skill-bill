@@ -1,5 +1,6 @@
 package skillbill.db
 
+import org.junit.jupiter.api.Assumptions
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
@@ -8,8 +9,10 @@ import skillbill.db.core.DatabaseSchema
 import skillbill.db.core.inImmediateTransaction
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
+import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
@@ -80,6 +83,10 @@ class DatabaseMigrationsTest {
         21 to "add-delegated-review-lifecycle-projection",
         22 to "drop-delegated-review-lifecycle-tables",
         23 to "add-feature-task-runtime-audit-generations",
+        24 to "backfill-review-attribution-canonicals",
+        25 to "add-review-run-lane-attribution",
+        26 to "relax-telemetry-outbox-last-error",
+        27 to "add-review-finding-outcome-key",
       ),
       migrationDefinitions,
     )
@@ -968,6 +975,215 @@ class DatabaseMigrationsTest {
     }
   }
 
+  // SKILL-136 subtask 5 AC-007: lane attribution is additive. A store that predates it gains the
+  // table and the finding columns without losing a single recorded review row.
+  @Test
+  fun `ensureDatabase adds review run lane attribution to a legacy store without losing rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("legacy-review-lanes.db")
+    createLegacyFeedbackEventsDatabase(dbPath)
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      Triple(rowCount(connection, "review_runs"), rowCount(connection, "findings"), findingRows(connection))
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_run_lanes" in tableNames(connection))
+      assertTrue("review_run_finding_lanes" in tableNames(connection))
+      assertTrue(
+        tableColumns(connection, "findings").containsAll(setOf("lane_skill_name", "lane_area", "lane_pack_slug")),
+      )
+      assertEquals(before.first, rowCount(connection, "review_runs"))
+      assertEquals(before.second, rowCount(connection, "findings"))
+      assertEquals(before.third, findingRows(connection), "Existing finding rows must survive unchanged.")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(before.first, rowCount(connection, "review_runs"), "Re-applying migrations must be a no-op.")
+      assertEquals(before.second, rowCount(connection, "findings"))
+      assertEquals(before.third, findingRows(connection))
+      assertEquals(DatabaseMigrations.migrations.size, migrationRows(connection).size)
+    }
+  }
+
+  // SKILL-136 subtask 6 AC-001/AC-008: the outbox rebuild backfills '' to NULL, preserves genuine
+  // error text verbatim, and never drops a row.
+  @Test
+  fun `relaxing telemetry outbox last_error backfills empty strings and preserves error text`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-migration").resolve("legacy-outbox.db")
+    createLegacyTelemetryOutboxDatabase(dbPath)
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      rowCount(connection, "telemetry_outbox")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(before, rowCount(connection, "telemetry_outbox"), "The rebuild must not drop a row.")
+      assertEquals(
+        0,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error = ''"),
+        "Every legacy empty-string last_error must be backfilled to NULL.",
+      )
+      assertEquals(
+        2,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error IS NULL"),
+        "Both healthy rows must read as NULL.",
+      )
+      assertEquals(
+        "boom",
+        scalarString(connection, "SELECT last_error FROM telemetry_outbox WHERE id = 2"),
+        "A genuine delivery failure must survive verbatim.",
+      )
+      assertFalse(
+        tableInfo(connection, "telemetry_outbox").single { it.name == "last_error" }.notNull,
+        "last_error must be nullable after the rebuild.",
+      )
+      assertTrue("idx_telemetry_outbox_pending" in tableIndexNames(connection))
+    }
+  }
+
+  @Test
+  fun `re-applying the telemetry outbox relaxation is a no-op with a single ledger entry`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-idempotent").resolve("legacy-outbox.db")
+    createLegacyTelemetryOutboxDatabase(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+    val afterFirst = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      telemetryOutboxRows(connection)
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(afterFirst, telemetryOutboxRows(connection), "Re-application must not alter a single row.")
+      assertEquals(
+        1,
+        migrationRows(connection).count { it.name == "relax-telemetry-outbox-last-error" },
+        "The ledger must record the relaxation exactly once.",
+      )
+    }
+  }
+
+  // AC-003/AC-008: the key columns arrive through ensureColumn, so pre-existing ledger rows survive
+  // and are marked unresolved rather than being defaulted to a guessed review run.
+  @Test
+  fun `adding the review finding outcome key preserves existing ledger rows as unresolved`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-migration").resolve("legacy-ledger.db")
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE unaddressed_findings (
+            issue_key TEXT NOT NULL, workflow_id TEXT NOT NULL, subtask_id INTEGER NOT NULL,
+            review_pass_number INTEGER NOT NULL, finding_ordinal INTEGER NOT NULL,
+            severity TEXT NOT NULL, issue_category TEXT NOT NULL DEFAULT 'other',
+            location TEXT NOT NULL, summary TEXT NOT NULL,
+            recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO unaddressed_findings
+            (issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
+             severity, location, summary)
+          VALUES ('SKILL-1', 'wf-legacy', 1, 1, 1, 'blocker', 'a.kt:1', 'pre-existing')
+          """.trimIndent(),
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(1, rowCount(connection, "unaddressed_findings"), "The pre-existing row must survive.")
+      assertTrue(tableColumns(connection, "unaddressed_findings").containsAll(setOf("review_run_id", "finding_id")))
+      assertEquals(
+        1,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM unaddressed_findings WHERE review_run_id IS NULL AND finding_id IS NULL",
+        ),
+        "A row that predates the key must stay unresolved, never bucketed to a guessed review run.",
+      )
+      assertTrue("review_finding_outcomes" in tableNames(connection))
+    }
+  }
+
+  /**
+   * AC-007's real-store check. It needs a real ~91.5 MB review-metrics store, which is far too large
+   * to commit, so it is env-gated on SKILL_BILL_REAL_STORE_DB and reports as skipped when unset. The
+   * store is copied first: migrations never run against the operator's live database.
+   */
+  @Test
+  fun `migrating a copy of a real review metrics store preserves every table row count`() {
+    val realStore = requireRealStore()
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store").resolve("metrics.db")
+    Files.copy(realStore, copy)
+
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
+    DatabaseRuntime.ensureDatabase(copy).close()
+    val after = DriverManager.getConnection("jdbc:sqlite:$copy").use(::allTableRowCounts)
+
+    // schema_migrations is the ledger of what has been applied, so it gains one row for every
+    // migration the store was behind on. Every table that carries data must survive untouched.
+    before.filterKeys { it != SCHEMA_MIGRATIONS_TABLE }.forEach { (table, count) ->
+      assertEquals(count, after[table], "Migration must preserve every row of '$table'.")
+    }
+    assertTrue(
+      (after[SCHEMA_MIGRATIONS_TABLE] ?: 0) >= (before[SCHEMA_MIGRATIONS_TABLE] ?: 0),
+      "Migration must never drop an applied-migration record.",
+    )
+  }
+
+  /**
+   * SKILL-136 subtask 6 AC-008/AC-009. The row-count harness above proves nothing is lost; this one
+   * proves the migrated data is *correct* at real volume — the outbox backfill actually landed, no
+   * finding was orphaned, and the outbox still drains. Same env gate and same copy-first discipline:
+   * the operator's live store is never migrated, mutated, or deleted.
+   */
+  @Test
+  fun `migrating a copy of a real review metrics store leaves referential integrity sound`() {
+    val realStore = requireRealStore()
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store-integrity").resolve("metrics.db")
+    Files.copy(realStore, copy)
+
+    val trackedTables = listOf(
+      "telemetry_outbox",
+      "review_runs",
+      "findings",
+      "feedback_events",
+      "learnings",
+      "session_learnings",
+      "unaddressed_findings",
+    )
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use { connection ->
+      val present = tableNames(connection)
+      trackedTables.filter(present::contains).associateWith { table -> rowCount(connection, table) }
+    }
+
+    DatabaseRuntime.ensureDatabase(copy).use { connection ->
+      before.forEach { (table, count) ->
+        assertEquals(count, rowCount(connection, table), "Migration must preserve every row of '$table'.")
+      }
+      assertEquals(
+        0,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE last_error = ''"),
+        "AC-001: no empty-string last_error may survive the backfill.",
+      )
+      assertEquals(
+        0,
+        scalarInt(
+          connection,
+          "SELECT COUNT(*) FROM findings f " +
+            "WHERE NOT EXISTS (SELECT 1 FROM review_runs r WHERE r.review_run_id = f.review_run_id)",
+        ),
+        "AC-009: no finding may be left without its review_runs parent.",
+      )
+
+      // AC-009: the outbox still drains fully with the nullable column in place.
+      val store = TelemetryOutboxStore(connection)
+      val pendingIds = store.listPending(null).map(TelemetryOutboxRecord::id)
+      store.markSynced(pendingIds)
+      assertTrue(store.listPending(null).isEmpty(), "The outbox must drain fully after marking every row synced.")
+      assertEquals(null, store.latestError(), "A fully drained outbox must report no delivery error.")
+    }
+  }
+
   @Test
   fun `ensureDatabase creates feature implement telemetry health columns with defaults`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-db-migrations").resolve("feature-task-health.db")
@@ -1499,6 +1715,242 @@ class DatabaseMigrationsTest {
       }
     }
 
+  // SKILL-136 subtask 4 AC-004/AC-006: a legacy review_runs table gains the canonical columns on
+  // open, existing raw values are preserved untouched, and the unambiguous-only backfill collapses
+  // the observed prose variants to one row per pack and one row per stack.
+  @Test
+  fun `legacy review runs gain canonical attribution columns and an unambiguous backfill`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-backfill").resolve("metrics.db")
+    val expectedRowCount = seedLegacyReviewRunAttributionVariants(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue(
+        columnNames(connection, "review_runs").containsAll(
+          setOf(
+            "routed_skill_canonical",
+            "detected_stack_canonical",
+            "detected_scope_canonical",
+            "detected_scope_detail",
+          ),
+        ),
+      )
+      assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
+
+      // The 6 routed-skill and 5 stack prose variants collapse; only the deliberately ambiguous row
+      // stays behind, and it stays as the explicit unresolved marker rather than being bucketed.
+      assertEquals(
+        mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
+        groupCount(connection, "routed_skill_canonical"),
+      )
+      assertEquals(mapOf("kotlin" to 11, "unresolved" to 1), groupCount(connection, "detected_stack_canonical"))
+      assertEquals(
+        mapOf("commit_range" to 6, "pull_request" to 5, "unresolved" to 1),
+        groupCount(connection, "detected_scope_canonical"),
+      )
+      assertEquals("main..HEAD", reviewRunColumn(connection, "rvw-skill-0", "detected_scope_detail"))
+
+      // Raw text is never rewritten by the backfill.
+      LEGACY_ROUTED_SKILL_VARIANTS.forEachIndexed { index, routedSkill ->
+        assertEquals(routedSkill, reviewRunColumn(connection, "rvw-skill-$index", "routed_skill"))
+      }
+      assertEquals(AMBIGUOUS_ROUTED_SKILL, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+      assertEquals("unresolved", reviewRunColumn(connection, "rvw-ambiguous", "execution_mode"))
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-004: re-opening the store re-runs nothing — the collapsed cardinality and
+  // the retained raw text stay exactly as the first open left them.
+  @Test
+  fun `the review attribution backfill is idempotent across repeated opens`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-reopen").resolve("metrics.db")
+    val expectedRowCount = seedLegacyReviewRunAttributionVariants(dbPath)
+
+    DatabaseRuntime.ensureDatabase(dbPath).close()
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals(expectedRowCount, rowCount(connection, "review_runs"))
+      assertEquals(
+        mapOf("bill-kmp-code-review" to 11, "unresolved" to 1),
+        groupCount(connection, "routed_skill_canonical"),
+      )
+      assertEquals(mapOf("kotlin" to 11, "unresolved" to 1), groupCount(connection, "detected_stack_canonical"))
+      assertEquals(AMBIGUOUS_ROUTED_SKILL, reviewRunColumn(connection, "rvw-ambiguous", "routed_skill"))
+    }
+  }
+
+  // Seeds a legacy review_runs table carrying the observed prose variants and returns the row count.
+  private fun seedLegacyReviewRunAttributionVariants(dbPath: Path): Int {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_runs (
+            review_run_id TEXT PRIMARY KEY,
+            routed_skill TEXT,
+            detected_scope TEXT,
+            detected_stack TEXT,
+            execution_mode TEXT,
+            raw_text TEXT NOT NULL
+          )
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
+          "VALUES (?, ?, ?, ?, 'raw')",
+      ).use { statement ->
+        LEGACY_ROUTED_SKILL_VARIANTS.forEachIndexed { index, routedSkill ->
+          statement.setString(1, "rvw-skill-$index")
+          statement.setString(2, routedSkill)
+          statement.setString(3, "commit range (main..HEAD)")
+          statement.setString(4, "kotlin")
+          statement.addBatch()
+        }
+        LEGACY_STACK_VARIANTS.forEachIndexed { index, stack ->
+          statement.setString(1, "rvw-stack-$index")
+          statement.setString(2, "bill-kmp-code-review")
+          statement.setString(3, "pull request (#204)")
+          statement.setString(4, stack)
+          statement.addBatch()
+        }
+        statement.setString(1, "rvw-ambiguous")
+        statement.setString(2, AMBIGUOUS_ROUTED_SKILL)
+        statement.setString(3, "whatever the agent felt like")
+        statement.setString(4, "kotlin, ios")
+        statement.addBatch()
+        statement.executeBatch()
+      }
+    }
+    return LEGACY_ROUTED_SKILL_VARIANTS.size + LEGACY_STACK_VARIANTS.size + 1
+  }
+
+  // SKILL-136 subtask 4 AC-002/AC-006: the backfill is a one-shot ledger migration that never
+  // overwrites an ingestion-computed canonical and converges instead of rewriting rows on every open.
+  @Test
+  fun `review attribution backfill runs once and never overwrites ingestion canonicals`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-converge").resolve("metrics.db")
+
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE review_runs (
+            review_run_id TEXT PRIMARY KEY,
+            routed_skill TEXT,
+            detected_scope TEXT,
+            detected_stack TEXT,
+            execution_mode TEXT,
+            raw_text TEXT NOT NULL
+          )
+          """.trimIndent(),
+        )
+        statement.execute(
+          "INSERT INTO review_runs (review_run_id, routed_skill, detected_scope, detected_stack, raw_text) " +
+            "VALUES ('rvw-unresolvable', 'bill-kmp-code-review, bill-ios-code-review', " +
+            "'whatever the agent felt like', 'kotlin, ios', 'raw')",
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals("unresolved", reviewRunColumn(connection, "rvw-unresolvable", "routed_skill_canonical"))
+      // Stand in for a value ingestion resolved against the discovered pack catalog: the backfill's own
+      // vocabulary would not produce it, so re-running must leave it alone.
+      connection.createStatement().use { statement ->
+        statement.execute(
+          "UPDATE review_runs SET routed_skill_canonical = 'bill-acme-code-review' " +
+            "WHERE review_run_id = 'rvw-unresolvable'",
+        )
+      }
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertEquals("bill-acme-code-review", reviewRunColumn(connection, "rvw-unresolvable", "routed_skill_canonical"))
+      assertEquals(
+        1,
+        connection.createStatement().use { statement ->
+          statement.executeQuery(
+            "SELECT COUNT(*) FROM schema_migrations WHERE name = 'backfill-review-attribution-canonicals'",
+          ).use { resultSet ->
+            resultSet.next()
+            resultSet.getInt(1)
+          }
+        },
+        "The canonical backfill must be recorded once as a one-shot ledger migration.",
+      )
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-006: run against a COPY of a real review-metrics store by exporting
+  // SKILL_BILL_MIGRATION_FIXTURE_DB. Unset (the CI default) the test skips so the suite stays hermetic.
+  @Test
+  fun `migrating a copy of a real review metrics store preserves every row`() {
+    val source = requireGatedStore(MIGRATION_FIXTURE_ENV)
+    val copy = Files.createTempDirectory("runtime-kotlin-real-store-migration").resolve("metrics.db")
+    Files.copy(source, copy)
+
+    val before = DriverManager.getConnection("jdbc:sqlite:$copy").use { connection ->
+      rowCount(connection, "review_runs") to rowCount(connection, "findings")
+    }
+
+    DatabaseRuntime.ensureDatabase(copy).use { connection ->
+      assertEquals(before.first, rowCount(connection, "review_runs"), "review_runs lost rows during migration.")
+      assertEquals(before.second, rowCount(connection, "findings"), "findings lost rows during migration.")
+
+      val routedSkills = groupCount(connection, "routed_skill_canonical")
+      val stacks = groupCount(connection, "detected_stack_canonical")
+      assertTrue(routedSkills.size < before.first, "Canonical routed skills must collapse the raw variants.")
+      assertTrue(stacks.size < before.first, "Canonical stacks must collapse the raw variants.")
+      assertEquals(0, executionModeGaps(connection), "Every run must carry an execution_mode after migration.")
+    }
+  }
+
+  /**
+   * Resolves an opt-in real-store gate. An unset gate aborts the test as *skipped* rather than
+   * returning green: a harness that never ran must never look like one that passed. A set gate that
+   * does not resolve to a file is a hard failure, so a typo cannot silently disable the harness.
+   */
+  private fun requireGatedStore(gate: String): Path {
+    val configured = System.getenv(gate)?.takeIf { it.isNotBlank() }
+    Assumptions.assumeTrue(
+      configured != null,
+      "$gate is unset; point it at a review-metrics.db copy to run this harness.",
+    )
+    val source = Path.of(configured)
+    assertTrue(Files.isRegularFile(source), "$gate must point at an existing database file, but was '$configured'.")
+    return source
+  }
+
+  private fun requireRealStore(): Path = requireGatedStore(REAL_STORE_ENV)
+
+  private fun groupCount(connection: Connection, column: String): Map<String, Int> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT $column, COUNT(*) FROM review_runs GROUP BY $column").use { resultSet ->
+        buildMap {
+          while (resultSet.next()) {
+            put(resultSet.getString(1), resultSet.getInt(2))
+          }
+        }
+      }
+    }
+
+  private fun reviewRunColumn(connection: Connection, reviewRunId: String, column: String): String? =
+    connection.prepareStatement("SELECT $column FROM review_runs WHERE review_run_id = ?").use { statement ->
+      statement.setString(1, reviewRunId)
+      statement.executeQuery().use { resultSet ->
+        check(resultSet.next())
+        resultSet.getString(1)
+      }
+    }
+
+  private fun executionModeGaps(connection: Connection): Int = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT COUNT(*) FROM review_runs WHERE execution_mode IS NULL OR execution_mode = ''")
+      .use { resultSet ->
+        check(resultSet.next())
+        resultSet.getInt(1)
+      }
+  }
+
   private fun featureImplementColumnValue(connection: java.sql.Connection, columnName: String): Any =
     connection.prepareStatement(
       """
@@ -1706,12 +2158,122 @@ class DatabaseMigrationsTest {
       }
     }
 
+  private fun tableNames(connection: Connection): Set<String> = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT name FROM sqlite_master WHERE type = 'table'").use { resultSet ->
+      buildSet {
+        while (resultSet.next()) {
+          add(resultSet.getString("name"))
+        }
+      }
+    }
+  }
+
+  private fun allTableRowCounts(connection: Connection): Map<String, Int> = tableNames(connection)
+    .filterNot { it.startsWith("sqlite_") }
+    .associateWith { table -> rowCount(connection, table) }
+
+  private fun findingRows(connection: Connection): List<List<Any?>> = connection.createStatement().use { statement ->
+    statement.executeQuery(
+      """
+      SELECT review_run_id, finding_id, severity, confidence, location, description, finding_text
+      FROM findings
+      ORDER BY review_run_id, finding_id
+      """.trimIndent(),
+    ).use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add((1..resultSet.metaData.columnCount).map(resultSet::getObject))
+        }
+      }
+    }
+  }
+
   private fun rowCount(connection: Connection, tableName: String): Int = connection.createStatement().use { statement ->
     statement.executeQuery("SELECT COUNT(*) FROM $tableName").use { resultSet ->
       check(resultSet.next())
       resultSet.getInt(1)
     }
   }
+
+  private fun scalarInt(connection: Connection, sql: String): Int = connection.createStatement().use { statement ->
+    statement.executeQuery(sql).use { resultSet ->
+      check(resultSet.next())
+      resultSet.getInt(1)
+    }
+  }
+
+  private fun scalarString(connection: Connection, sql: String): String? =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(sql).use { resultSet ->
+        if (resultSet.next()) resultSet.getString(1) else null
+      }
+    }
+
+  private fun tableIndexNames(connection: Connection): Set<String> = connection.createStatement().use { statement ->
+    statement.executeQuery("SELECT name FROM sqlite_master WHERE type = 'index'").use { resultSet ->
+      buildSet {
+        while (resultSet.next()) {
+          add(resultSet.getString("name"))
+        }
+      }
+    }
+  }
+
+  private fun tableInfo(connection: Connection, tableName: String): List<TableColumnInfo> =
+    connection.prepareStatement("PRAGMA table_info($tableName)").use { statement ->
+      statement.executeQuery().use { resultSet ->
+        buildList {
+          while (resultSet.next()) {
+            add(
+              TableColumnInfo(
+                name = resultSet.getString("name"),
+                notNull = resultSet.getInt("notnull") == 1,
+              ),
+            )
+          }
+        }
+      }
+    }
+
+  private fun telemetryOutboxRows(connection: Connection): List<List<Any?>> = connection.createStatement().use {
+    it.executeQuery("SELECT id, event_name, synced_at, last_error FROM telemetry_outbox ORDER BY id").use { rows ->
+      buildList {
+        while (rows.next()) {
+          add((1..rows.metaData.columnCount).map(rows::getObject))
+        }
+      }
+    }
+  }
+
+  /** A pre-migration outbox: two healthy rows carrying '' and one real delivery failure. */
+  private fun createLegacyTelemetryOutboxDatabase(dbPath: Path) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { statement ->
+        statement.execute(
+          """
+          CREATE TABLE telemetry_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_name TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            synced_at TEXT,
+            last_error TEXT NOT NULL DEFAULT ''
+          )
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          INSERT INTO telemetry_outbox (id, event_name, payload_json, synced_at, last_error) VALUES
+            (1, 'review_finished', '{}', '2026-01-01T00:00:00Z', ''),
+            (2, 'review_finished', '{}', NULL, 'boom'),
+            (3, 'goal_finished', '{}', NULL, '')
+          """.trimIndent(),
+        )
+      }
+    }
+  }
+
+  private data class TableColumnInfo(val name: String, val notNull: Boolean)
 
   private data class MigrationRow(
     val version: Int,
@@ -1728,6 +2290,23 @@ class DatabaseMigrationsTest {
   )
 
   private companion object {
+    const val SCHEMA_MIGRATIONS_TABLE: String = "schema_migrations"
+    const val REAL_STORE_ENV: String = "SKILL_BILL_REAL_STORE_DB"
+    const val MIGRATION_FIXTURE_ENV: String = "SKILL_BILL_MIGRATION_FIXTURE_DB"
+
+    // The routed_skill and detected_stack prose variants actually observed in the real store.
+    val LEGACY_ROUTED_SKILL_VARIANTS: List<String> = listOf(
+      "bill-kmp-code-review",
+      "bill-kmp-code-review (parallel)",
+      "bill-kmp-code-review-persistence",
+      "skillbill:bill-kmp-code-review",
+      "`bill-kmp-code-review`",
+      "Routed to bill-kmp-code-review for the KMP pack",
+    )
+    val LEGACY_STACK_VARIANTS: List<String> =
+      listOf("kotlin", "Kotlin", "Kotlin/JVM", "kotlin (jvm backend)", "  KOTLIN  ")
+    const val AMBIGUOUS_ROUTED_SKILL: String = "bill-kmp-code-review, bill-ios-code-review"
+
     const val VERSION_KEYED_SCHEMA_MIGRATIONS_SQL: String =
       """
       CREATE TABLE schema_migrations (

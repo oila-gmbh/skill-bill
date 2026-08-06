@@ -6,8 +6,8 @@ import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
-private val acceptedFindingOutcomeTypes = setOf("finding_accepted", "fix_applied", "finding_edited")
-private val rejectedFindingOutcomeTypes = setOf("fix_rejected", "false_positive")
+internal val acceptedFindingOutcomeTypes = setOf("finding_accepted", "fix_applied", "finding_edited")
+internal val rejectedFindingOutcomeTypes = setOf("fix_rejected", "false_positive")
 private val findingOutcomeTypes =
   listOf(
     "finding_accepted",
@@ -163,11 +163,27 @@ private fun buildFindingOutcomeFilters(reviewRunId: String?): FindingQueryFilter
   )
 }
 
+/**
+ * Manual triage stays authoritative where it exists, but a finding the workflow fix loop resolved
+ * without any manual triage now falls back to its loop-recorded outcome instead of counting as
+ * unresolved. That fallback is what closes the coverage gap where only 13% of runs had any
+ * accepted/rejected signal: coverage is driven by the loop, not by an operator remembering to triage.
+ * Only a resolved key can contribute — an outcome with a NULL review_run_id belongs to a pass whose
+ * findings were never imported and has nothing to attach to here. Resolved rows come from the review
+ * phase reporting its `produced_outputs.review_run_id`, which the goal review reducer threads onto
+ * every ledger row and derived outcome; a pass that reports no run id stays unresolved by design.
+ */
 private fun latestFindingOutcomesSql(filter: FindingQueryFilter): String = """
   WITH latest_feedback AS (
     SELECT review_run_id, finding_id, MAX(id) AS latest_id
     FROM feedback_events
     ${filter.latestFeedbackFilter}
+    GROUP BY review_run_id, finding_id
+  ),
+  latest_loop_outcome AS (
+    SELECT review_run_id, finding_id, MAX(rowid) AS latest_rowid
+    FROM review_finding_outcomes
+    WHERE key_state = 'resolved'
     GROUP BY review_run_id, finding_id
   )
   SELECT
@@ -178,13 +194,25 @@ private fun latestFindingOutcomesSql(filter: FindingQueryFilter): String = """
     f.issue_category,
     f.location,
     f.description,
-    COALESCE(fe.event_type, '') AS outcome_type,
+    COALESCE(
+      fe.event_type,
+      CASE rfo.outcome
+        WHEN 'addressed' THEN 'fix_applied'
+        WHEN 'rejected' THEN 'fix_rejected'
+        ELSE ''
+      END,
+      ''
+    ) AS outcome_type,
     COALESCE(fe.note, '') AS note
   FROM findings f
   LEFT JOIN latest_feedback lf
     ON lf.review_run_id = f.review_run_id AND lf.finding_id = f.finding_id
   LEFT JOIN feedback_events fe
     ON fe.id = lf.latest_id
+  LEFT JOIN latest_loop_outcome llo
+    ON llo.review_run_id = f.review_run_id AND llo.finding_id = f.finding_id
+  LEFT JOIN review_finding_outcomes rfo
+    ON rfo.rowid = llo.latest_rowid
   ${filter.findingsFilter}
   ORDER BY f.review_run_id, f.finding_id
 """.trimIndent()

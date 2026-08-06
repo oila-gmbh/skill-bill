@@ -2,9 +2,9 @@ package skillbill.db.core
 
 import skillbill.db.telemetry.FeedbackEventMigration
 import skillbill.db.telemetry.GoalTelemetryMigration
+import skillbill.db.telemetry.TelemetryOutboxLastErrorMigration
 import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
 import java.sql.Connection
-import java.sql.SQLException
 
 internal object DatabaseMigrations {
   val migrations: List<DatabaseMigration> =
@@ -431,6 +431,26 @@ internal object DatabaseMigrations {
         name = "add-feature-task-runtime-audit-generations",
         operation = FeatureTaskRuntimeAuditGenerationMigration::apply,
       ),
+      DatabaseMigration(
+        version = 24,
+        name = "backfill-review-attribution-canonicals",
+        operation = ReviewAttributionBackfillMigration::apply,
+      ),
+      DatabaseMigration(
+        version = 25,
+        name = "add-review-run-lane-attribution",
+        operation = ::addReviewRunLaneAttribution,
+      ),
+      DatabaseMigration(
+        version = 26,
+        name = "relax-telemetry-outbox-last-error",
+        operation = TelemetryOutboxLastErrorMigration::apply,
+      ),
+      DatabaseMigration(
+        version = 27,
+        name = "add-review-finding-outcome-key",
+        operation = ::addReviewFindingOutcomeKey,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -535,6 +555,24 @@ private fun addDelegatedReviewLifecycleProjection(connection: Connection) {
   }
 }
 
+private fun addReviewRunLaneAttribution(connection: Connection) {
+  DatabaseReviewLedgerSchema.reviewRunLaneStatements.forEach { sql ->
+    connection.createStatement().use { statement -> statement.execute(sql) }
+  }
+  DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
+}
+
+// The unaddressed_findings key columns go through ensureColumn (which also runs unconditionally on
+// every startup) rather than being appended to an already-applied CREATE body, which would be a
+// silent no-op for every existing store.
+private fun addReviewFindingOutcomeKey(connection: Connection) {
+  DatabaseColumnMigrations.ensureReviewFindingOutcomeKeyColumns(connection)
+  DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements.forEach { sql ->
+    connection.createStatement().use { statement -> statement.execute(sql) }
+  }
+  DatabaseColumnMigrations.ensureReviewFindingOutcomeColumns(connection)
+}
+
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.execute("DROP INDEX IF EXISTS idx_review_delegated_lifecycle_review")
@@ -552,52 +590,4 @@ internal class DatabaseMigration(
   fun apply(connection: Connection) {
     operation(connection)
   }
-}
-
-internal inline fun <T> Connection.inTransaction(block: Connection.() -> T): T {
-  val previousAutoCommit = autoCommit
-  autoCommit = false
-  return try {
-    val result = block()
-    commit()
-    result
-  } catch (error: SQLException) {
-    rollback()
-    throw error
-  } catch (error: IllegalArgumentException) {
-    rollback()
-    throw error
-  } finally {
-    autoCommit = previousAutoCommit
-  }
-}
-
-@Suppress("TooGenericExceptionCaught")
-internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -> T): T {
-  createStatement().use { it.execute("BEGIN IMMEDIATE") }
-  return try {
-    val result = block()
-    createStatement().use { it.execute("COMMIT") }
-    result
-  } catch (error: Exception) {
-    rollbackImmediateTransaction()
-    throw error
-  }
-}
-
-@Suppress("TooGenericExceptionCaught")
-internal inline fun <T> Connection.inReadTransaction(block: Connection.() -> T): T {
-  createStatement().use { it.execute("BEGIN") }
-  return try {
-    val result = block()
-    createStatement().use { it.execute("COMMIT") }
-    result
-  } catch (error: Throwable) {
-    rollbackImmediateTransaction()
-    throw error
-  }
-}
-
-private fun Connection.rollbackImmediateTransaction() {
-  runCatching { createStatement().use { it.execute("ROLLBACK") } }
 }

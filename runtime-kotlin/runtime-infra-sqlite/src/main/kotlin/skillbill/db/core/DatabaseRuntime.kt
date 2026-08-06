@@ -42,8 +42,11 @@ object DatabaseRuntime {
   ): OpenDatabase {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
     // Deliberate exception: an absent database is bootstrapped here because callers of the read seam
-    // rely on first-use creation. Every existing database is opened without write capability below.
-    if (!Files.exists(dbPath)) {
+    // rely on first-use creation. A file that exists but carries no schema — a zero-byte file left by
+    // an interrupted create, or a store whose base schema never ran — is the same state wearing a
+    // different mask: opening it read-only reports an empty store instead of building one. Both
+    // escalate to the migrating open; a schema-complete database is still opened read-only below.
+    if (!Files.exists(dbPath) || isSchemaless(dbPath)) {
       return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
     }
 
@@ -75,6 +78,22 @@ object DatabaseRuntime {
         DatabaseColumnMigrations.healWorkListMetadata(connection)
       }
       connection
+    }
+  }
+
+  // A zero-byte file is a valid empty SQLite database with no tables, so emptiness of sqlite_master
+  // is the check rather than file size: it also catches a store whose creation was interrupted after
+  // the file appeared but before createBaseSchema committed.
+  private fun isSchemaless(dbPath: Path): Boolean = asTypedFailure(dbPath, DatabaseAccessOperation.READ) {
+    DriverManager.getConnection(
+      "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",
+      SQLiteConfig().apply { setReadOnly(true) }.toProperties(),
+    ).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeQuery("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").use { resultSet ->
+          resultSet.next() && resultSet.getInt(1) == 0
+        }
+      }
     }
   }
 

@@ -24,6 +24,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -31,6 +32,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
@@ -483,6 +485,52 @@ internal fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): St
   }
   else -> null
 }
+
+/**
+ * The provider-limit refusal hiding inside a non-zero exit, or null when the exit was an ordinary
+ * failure. A spawn failure, a timeout and an interruption are excluded on purpose: none of them
+ * carries a provider verdict, so a limit phrase in their output is the transcript's, not the
+ * provider's.
+ */
+internal fun providerLimitSignal(facts: AgentRunLaunchFacts): FeatureTaskRuntimeProviderLimitSignal? {
+  val carriesProviderVerdict = !facts.spawnFailed && !facts.timedOut && !facts.interrupted
+  val failedExit = facts.exitStatus != null && facts.exitStatus != 0
+  if (!carriesProviderVerdict || !failedExit) return null
+  return FeatureTaskRuntimeProviderLimitDetector.detect(facts.stderr, facts.stdout)
+}
+
+/**
+ * States what actually happened, in the provider's own words. Deliberately says the phase produced
+ * no output and consumed no repair attempt: the reason a limit pause replaced a fix-loop block is
+ * that the previous text claimed invalid output for a phase that never emitted any.
+ */
+internal fun providerLimitPauseReason(phaseId: String, signal: FeatureTaskRuntimeProviderLimitSignal): String {
+  val reset = signal.resetHint?.let { " Access resets $it." }.orEmpty()
+  return "Feature-task-runtime phase '$phaseId' stopped because the agent provider refused the request at a " +
+    "usage limit.$reset The phase produced no output and consumed no repair attempt; the run is paused and " +
+    "resumes at '$phaseId'. Provider said: ${signal.evidence}"
+}
+
+/**
+ * Recognizes a durable block this runtime wrote for a launch that never reached the schema gate.
+ * Such an attempt failed the process, not the output, so [FeatureTaskRuntimeFixLoopPolicy] must not
+ * charge it to the semantic repair budget. Kept beside [infraFailureReason] so the text it matches
+ * and the text that produces it cannot drift apart unnoticed.
+ *
+ * A provider-limit refusal is deliberately absent: it settles as a pause, never as a block, so it
+ * reaches neither this predicate nor any attempt budget.
+ */
+internal fun isProcessFailureBlockReason(phaseId: String, reason: String): Boolean =
+  reason.startsWith("Feature-task-runtime phase '$phaseId' ") &&
+    PROCESS_FAILURE_REASON_MARKERS.any(reason::contains)
+
+private val PROCESS_FAILURE_REASON_MARKERS: List<String> = listOf(
+  "agent exited with non-zero status",
+  "failed to launch:",
+  "launch timed out",
+  "launch was interrupted",
+  "could not launch an agent",
+)
 
 // Drops a legacy PLAN completion that predates the now-required PREPLAN phase so the loop re-runs
 // PLAN rather than honouring a pre-PREPLAN completion.

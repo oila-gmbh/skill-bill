@@ -5,8 +5,12 @@ import skillbill.db.core.DatabaseSchema
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DatabaseSchemaTest {
@@ -50,6 +54,81 @@ class DatabaseSchemaTest {
     }
   }
 
+  // SKILL-136 subtask 6 AC-001: a fresh database must agree with the migrated shape, or every new
+  // store would keep writing '' and re-open the healthy-vs-failed ambiguity the migration closed.
+  @Test
+  fun `a freshly created telemetry outbox declares last_error nullable`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val lastError = tableInfo(connection, "telemetry_outbox").single { it.name == "last_error" }
+      assertFalse(lastError.notNull, "last_error must be nullable so NULL can mean 'no delivery failure'.")
+      assertEquals(null, lastError.defaultValue, "last_error must not default to '' on a fresh database.")
+    }
+  }
+
+  // SKILL-136 subtask 6 AC-003: the shared key joining the workflow review loop to review-run import.
+  @Test
+  fun `ensureDatabase creates the review finding outcome key on a fresh database`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_finding_outcomes" in DatabaseSchema.tableNames)
+      assertTrue("review_finding_outcomes" in sqliteObjects(connection, "table"))
+      assertTrue("idx_review_finding_outcomes_run" in DatabaseSchema.indexNames)
+      assertTrue("idx_review_finding_outcomes_run" in sqliteObjects(connection, "index"))
+      assertTrue("idx_unaddressed_findings_run" in DatabaseSchema.indexNames)
+      assertTrue("idx_unaddressed_findings_run" in sqliteObjects(connection, "index"))
+
+      val ledgerColumns = tableInfo(connection, "unaddressed_findings").associateBy { it.name }
+      setOf("review_run_id", "finding_id").forEach { column ->
+        val info = assertNotNull(ledgerColumns[column], "unaddressed_findings must carry '$column'.")
+        assertFalse(info.notNull, "$column must be nullable: an unimported pass has no key to record.")
+      }
+    }
+  }
+
+  // AC-003: an unresolvable key is retained as NULL, never bucketed to a guessed review run. The
+  // paired-null CHECK is what makes "half a key" unrepresentable.
+  @Test
+  fun `review finding outcomes reject a half-populated key`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outcome-check").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          INSERT INTO review_finding_outcomes
+            (workflow_id, review_pass_number, finding_ordinal, key_state, outcome)
+          VALUES ('wf-1', 1, 1, 'unresolved', 'carried')
+          """.trimIndent(),
+        )
+      }
+      assertFailsWith<SQLException>("A resolved key state without both key columns must be rejected.") {
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            """
+            INSERT INTO review_finding_outcomes
+              (workflow_id, review_pass_number, finding_ordinal, review_run_id, key_state, outcome)
+            VALUES ('wf-1', 1, 2, 'rvw-1', 'resolved', 'carried')
+            """.trimIndent(),
+          )
+        }
+      }
+      assertFailsWith<SQLException>("An unknown outcome must be rejected rather than silently stored.") {
+        connection.createStatement().use { statement ->
+          statement.executeUpdate(
+            """
+            INSERT INTO review_finding_outcomes
+              (workflow_id, review_pass_number, finding_ordinal, key_state, outcome)
+            VALUES ('wf-1', 1, 3, 'unresolved', 'invented')
+            """.trimIndent(),
+          )
+        }
+      }
+    }
+  }
+
   @Test
   fun `ensureDatabase heals a partially created unaddressed findings ledger`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-partial-ledger").resolve("metrics.db")
@@ -74,6 +153,76 @@ class DatabaseSchemaTest {
         ),
       )
       assertTrue("idx_unaddressed_findings_issue" in sqliteObjects(connection, "index"))
+      // The run/finding key index must be created only after its columns are healed onto the legacy
+      // table; creating it from the shared schema list raised 'no such column: review_run_id' and
+      // left every pre-existing store unopenable.
+      assertTrue(columnNames.containsAll(setOf("review_run_id", "finding_id")))
+      assertTrue("idx_unaddressed_findings_run" in sqliteObjects(connection, "index"))
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-001/AC-006: a fresh database carries the canonical attribution columns
+  // with the documented types and explicit 'unresolved' default.
+  @Test
+  fun `ensureDatabase creates review run canonical attribution columns`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-canonical-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val columns = tableInfo(connection, "review_runs").associateBy { it.name }
+
+      setOf("routed_skill_canonical", "detected_stack_canonical", "detected_scope_canonical").forEach { name ->
+        val column = requireNotNull(columns[name]) { "review_runs is missing '$name'." }
+        assertEquals("TEXT", column.type.uppercase())
+        assertTrue(column.notNull, "'$name' must be NOT NULL.")
+        assertEquals("'unresolved'", column.defaultValue)
+      }
+
+      val detail = requireNotNull(columns["detected_scope_detail"]) { "review_runs is missing scope detail." }
+      assertEquals("TEXT", detail.type.uppercase())
+      assertFalse(detail.notNull, "detected_scope_detail holds free-form text and stays nullable.")
+    }
+  }
+
+  // SKILL-136 subtask 5 AC-002/AC-003: a fresh database carries per-lane attribution as its own
+  // table and per-finding lane columns, so specialist reviews are never a comma-joined string.
+  @Test
+  fun `ensureDatabase creates the review run lanes table and finding lane columns`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-review-lane-schema").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue("review_run_lanes" in DatabaseSchema.tableNames)
+      assertTrue("review_run_lanes" in sqliteObjects(connection, "table"))
+      assertTrue("idx_review_run_lanes_pack_area" in sqliteObjects(connection, "index"))
+      assertTrue("idx_findings_lane" in sqliteObjects(connection, "index"))
+      assertTrue("idx_review_runs_routed_skill_canonical" in sqliteObjects(connection, "index"))
+
+      assertTrue("review_run_finding_lanes" in DatabaseSchema.tableNames)
+      assertEquals(
+        setOf("review_run_id", "finding_id", "lane_skill_name", "recorded_at"),
+        tableInfo(connection, "review_run_finding_lanes").map { it.name }.toSet(),
+      )
+
+      val laneColumns = tableInfo(connection, "review_run_lanes").associateBy { it.name }
+      assertEquals(
+        setOf(
+          "review_run_id",
+          "lane_skill_name",
+          "pack_slug",
+          "area",
+          "depth",
+          "required",
+          "order_index",
+          "origin_layer_chain",
+          "resolution_state",
+          "recorded_at",
+        ),
+        laneColumns.keys,
+      )
+      assertEquals(1, laneColumns.getValue("review_run_id").primaryKeyPosition)
+      assertEquals(2, laneColumns.getValue("lane_skill_name").primaryKeyPosition)
+
+      val findingColumns = tableInfo(connection, "findings").map { it.name }.toSet()
+      assertTrue(findingColumns.containsAll(setOf("lane_skill_name", "lane_area", "lane_pack_slug")))
     }
   }
 
@@ -179,6 +328,9 @@ class DatabaseSchemaTest {
               TableColumn(
                 name = resultSet.getString("name"),
                 primaryKeyPosition = resultSet.getInt("pk"),
+                type = resultSet.getString("type"),
+                notNull = resultSet.getInt("notnull") == 1,
+                defaultValue = resultSet.getString("dflt_value"),
               ),
             )
           }
@@ -189,5 +341,8 @@ class DatabaseSchemaTest {
   private data class TableColumn(
     val name: String,
     val primaryKeyPosition: Int,
+    val type: String = "",
+    val notNull: Boolean = false,
+    val defaultValue: String? = null,
   )
 }

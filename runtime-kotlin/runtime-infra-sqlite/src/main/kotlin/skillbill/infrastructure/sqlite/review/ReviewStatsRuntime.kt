@@ -21,6 +21,7 @@ object ReviewStatsRuntime {
       reviewRunId = reviewRunId,
       stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)),
       health = buildReviewHealthStats(connection, reviewRunId),
+      laneEffectiveness = queryReviewLaneEffectiveness(connection, reviewRunId),
     )
   }
 

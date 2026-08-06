@@ -9,6 +9,8 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.ReviewService
+import skillbill.application.review.ReviewSnapshotPruneService
+import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -41,6 +43,7 @@ class ReviewTopLevelCommands(
   val recordFeedbackCommand: RecordFeedbackCommand,
   val triageCommand: TriageCommand,
   val statsCommand: ReviewStatsCommand,
+  val pruneSnapshotsCommand: PruneReviewSnapshotsCommand,
   val featureStatsCommands: FeatureStatsCommands,
 ) {
   val commands =
@@ -49,6 +52,7 @@ class ReviewTopLevelCommands(
       recordFeedbackCommand,
       triageCommand,
       statsCommand,
+      pruneSnapshotsCommand,
     ) + featureStatsCommands.commands
 }
 
@@ -128,6 +132,36 @@ class ReviewStatsCommand(
 }
 
 @Inject
+class PruneReviewSnapshotsCommand(
+  private val service: ReviewSnapshotPruneService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "prune-snapshots",
+  "List and optionally delete ~/.skill-bill/review-metrics.<label>.db snapshots. " +
+    "Retention policy: snapshots are operator artifacts with no expiry. Nothing creates, rotates, " +
+    "or deletes them automatically, so they accumulate until you prune them here. This command is " +
+    "the only code path that removes one. It defaults to a dry run that lists candidates and " +
+    "deletes nothing; pass --confirm to actually delete. The live review-metrics.db is never a " +
+    "candidate.",
+) {
+  private val confirm by option(
+    "--confirm",
+    help = "Actually delete the listed snapshots. Without this flag nothing is deleted.",
+  ).flag(default = false)
+  private val format by formatOption()
+
+  override fun run() {
+    val result = service.prune(confirm, state.dbOverride)
+    val payload = result.toCliMap()
+    if (format == CliFormat.JSON) {
+      state.complete(payload, format)
+    } else {
+      state.completeText(CliOutput.reviewSnapshotPrune(result), payload)
+    }
+  }
+}
+
+@Inject
 class FeatureImplementStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
@@ -195,3 +229,21 @@ class GoalStatsCommand(
     state.complete(service.goalStats(state.dbOverride).toCliMap(), format)
   }
 }
+
+internal fun ReviewSnapshotPruneResult.toCliMap(): Map<String, Any?> = linkedMapOf(
+  "live_db_path" to liveDbPath,
+  "confirmed" to confirmed,
+  "candidate_count" to candidates.size,
+  "candidate_bytes" to candidateBytes,
+  "deleted_count" to deleted.size,
+  "reclaimed_bytes" to reclaimedBytes,
+  "candidates" to candidates.map { snapshot ->
+    linkedMapOf<String, Any?>(
+      "path" to snapshot.path.toString(),
+      "label" to snapshot.label,
+      "size_bytes" to snapshot.sizeBytes,
+      "last_modified" to snapshot.lastModified,
+      "deleted" to (snapshot in deleted),
+    )
+  },
+)

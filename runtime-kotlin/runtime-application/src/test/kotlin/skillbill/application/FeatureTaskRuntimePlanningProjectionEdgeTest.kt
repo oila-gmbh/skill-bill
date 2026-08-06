@@ -536,6 +536,37 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
+  fun `an object-shaped open-work entry is accepted by the producer gate and rendered for the consumer`() {
+    // SKILL-136 regression. `unresolved_items` had two readers with opposite policies: the terminal
+    // path's claim parser deliberately RENDERS a non-string entry rather than dropping an open-work
+    // signal, while this gate's schema typed the field as bare strings and rejected the same entry.
+    // An agent authors ONE receipt without knowing which seam will read it, so the {ref, note} pair it
+    // naturally copies from the adjacent `deviations` field was legal on one path and fatal on the
+    // other — it exhausted the implement fix loop on three consecutive attempts. Both seams now accept
+    // both shapes and render them through featureTaskRuntimeRenderOpenWorkItem.
+    val objectShaped = implementationReceiptPayload().replace(
+      """"repository_checkpoint":{"fingerprint":"abc123"}""",
+      """"repository_checkpoint":{"fingerprint":"abc123"},""" +
+        """"unresolved_items":[{"ref":"task-01","note":"migration harness still owed"}]""",
+    )
+
+    assertNull(
+      producerProjectionGateReason(phaseImplement, producerEnvelope(objectShaped), realPlanningProjectionValidator),
+      "the producer gate must accept the {ref, note} open-work shape the terminal path already renders",
+    )
+
+    val briefing = assemble(
+      consumer = phaseAudit,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
+      recordedOutputs = listOf(phaseOutput(phaseImplement, objectShaped)),
+      runInvariants = runInvariants(),
+      planningProjectionValidator = realPlanningProjectionValidator,
+    )
+
+    assertContains(briefing.briefingText, "task-01: migration harness still owed")
+  }
+
+  @Test
   fun `a rejecting validator port rejects on every goal-side producer path as well as the launch seam`() {
     // AC-002 extended to the goal producers. The sweep gate, the goal planning preparation write
     // validator, and the child hydrator all reach their decision through requireValidPlanningProjection,

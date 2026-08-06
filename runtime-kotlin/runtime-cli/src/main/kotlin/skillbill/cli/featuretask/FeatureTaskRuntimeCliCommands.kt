@@ -928,6 +928,8 @@ private fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (thi
     "feature-task-runtime $workflowId: phase $phaseId completed agent=$resolvedAgentId attempt=$attemptCount\n"
   is FeatureTaskRuntimeRunEvent.PhaseBlocked ->
     "feature-task-runtime $workflowId: phase $phaseId blocked attempt=$attemptCount: $blockedReason\n"
+  is FeatureTaskRuntimeRunEvent.PhasePaused ->
+    "feature-task-runtime $workflowId: phase $phaseId paused attempt=$attemptCount: $pauseReason\n"
   is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning ->
     "feature-task-runtime $workflowId: decomposed at planning into $subtaskCount subtasks: $reason. " +
       "Work the first subtask first.\n"

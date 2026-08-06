@@ -17,16 +17,33 @@ fun parseBulletFindings(text: String): List<ImportedFinding> {
     require(seenIds.add(findingId)) {
       "Review output contains duplicate finding id '$findingId'."
     }
+    val rawDescription = match.groups["description"]?.value.orEmpty().trim()
+    val provenance = findingProvenancePattern.find(rawDescription)
     ImportedFinding(
       findingId = findingId,
       severity = match.groups["severity"]?.value.orEmpty(),
       confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
       location = match.groups["location"]?.value.orEmpty().trim(),
-      description = match.groups["description"]?.value.orEmpty().trim(),
+      description = provenance?.let { rawDescription.removeRange(it.range).trim() } ?: rawDescription,
       findingText = match.value.trim(),
+      laneSkillName = provenance?.let(::parseProvenanceLane),
     )
   }.toList()
 }
+
+// The merged provenance segment can carry several attributions ("specialists=a,b") when two lanes
+// coalesced onto one finding. The first is the lane that reported it first, which is the lane the
+// finding is attributed to; a segment carrying only origins leaves the lane unattributed.
+private fun parseProvenanceLane(provenance: MatchResult): String? = provenance
+  .groups["provenance"]
+  ?.value
+  ?.let(findingSpecialistsProvenancePattern::find)
+  ?.groups
+  ?.get("value")
+  ?.value
+  ?.split(",")
+  ?.map(String::trim)
+  ?.firstOrNull(String::isNotEmpty)
 
 fun parseTableFindings(text: String): List<ImportedFinding> {
   val lines = text.lines()

@@ -3,10 +3,13 @@ package skillbill.review
 import skillbill.SAMPLE_REVIEW
 import skillbill.TABLE_REVIEW
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
+import skillbill.infrastructure.sqlite.review.reviewSummaryChanged
 import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ReviewRuntimeTest {
   @Test
@@ -44,6 +47,31 @@ class ReviewRuntimeTest {
       assertEquals("Minor", numberedFindings[1].severity)
       assertEquals("ux_accessibility", review.findings[1].issueCategory)
       assertNull(summary.reviewFinishedAt)
+    }
+  }
+
+  // SKILL-136 subtask 4 AC-001/AC-002: canonical attribution round trips through the store, and a
+  // re-import that only changes a canonical value is still detected as changed.
+  @Test
+  fun `canonical attribution round trips and participates in change detection`() {
+    val (_, connection) = tempDbConnection("review-canonical")
+    connection.use {
+      val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent()).withCanonicalAttribution(
+        knownPackSkillNames = setOf("bill-kotlin-code-review"),
+        knownPlatformSlugs = canonicalPlatformSlugs,
+      )
+
+      ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
+      val summary = ReviewRuntime.fetchReviewSummary(connection, review.reviewRunId)
+
+      assertEquals("bill-kotlin-code-review", summary.routedSkillCanonical)
+      assertEquals("kotlin", summary.detectedStackCanonical)
+      assertEquals(review.routedSkill, summary.routedSkill)
+
+      val findings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
+      assertFalse(reviewSummaryChanged(summary, review, findings))
+      assertTrue(reviewSummaryChanged(summary, review.copy(routedSkillCanonical = "unresolved"), findings))
+      assertTrue(reviewSummaryChanged(summary, review.copy(detectedScopeDetail = "main..HEAD"), findings))
     }
   }
 

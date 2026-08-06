@@ -4,7 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
-import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
@@ -67,6 +67,10 @@ fun reviewSummaryChanged(
   existingReviewSummary.detectedScope != review.detectedScope ||
   existingReviewSummary.detectedStack != review.detectedStack ||
   existingReviewSummary.executionMode != review.executionMode ||
+  existingReviewSummary.routedSkillCanonical != review.routedSkillCanonical ||
+  existingReviewSummary.detectedStackCanonical != review.detectedStackCanonical ||
+  existingReviewSummary.detectedScopeCanonical != review.detectedScopeCanonical ||
+  existingReviewSummary.detectedScopeDetail != review.detectedScopeDetail ||
   existingReviewSummary.specialistReviewsRaw != review.specialistReviews.joinToString(",") ||
   existingFindings != review.findings
 
@@ -80,16 +84,24 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
       detected_scope,
       detected_stack,
       execution_mode,
+      routed_skill_canonical,
+      detected_stack_canonical,
+      detected_scope_canonical,
+      detected_scope_detail,
       specialist_reviews,
       source_path,
       raw_text
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(review_run_id) DO UPDATE SET
       review_session_id = excluded.review_session_id,
       routed_skill = excluded.routed_skill,
       detected_scope = excluded.detected_scope,
       detected_stack = excluded.detected_stack,
       execution_mode = excluded.execution_mode,
+      routed_skill_canonical = excluded.routed_skill_canonical,
+      detected_stack_canonical = excluded.detected_stack_canonical,
+      detected_scope_canonical = excluded.detected_scope_canonical,
+      detected_scope_detail = excluded.detected_scope_detail,
       specialist_reviews = excluded.specialist_reviews,
       source_path = excluded.source_path,
       raw_text = excluded.raw_text
@@ -101,19 +113,65 @@ fun upsertReviewRun(connection: Connection, review: ImportedReview, sourcePath: 
     statement.setString(PARAM_FOUR, review.detectedScope)
     statement.setString(PARAM_FIVE, review.detectedStack)
     statement.setString(PARAM_SIX, review.executionMode)
-    statement.setString(PARAM_SEVEN, review.specialistReviews.joinToString(","))
-    statement.setString(PARAM_EIGHT, sourcePath)
-    statement.setString(PARAM_NINE, review.rawText)
+    statement.setString(PARAM_SEVEN, review.routedSkillCanonical)
+    statement.setString(PARAM_EIGHT, review.detectedStackCanonical)
+    statement.setString(PARAM_NINE, review.detectedScopeCanonical)
+    statement.setString(PARAM_TEN, review.detectedScopeDetail)
+    statement.setString(PARAM_ELEVEN, review.specialistReviews.joinToString(","))
+    statement.setString(PARAM_TWELVE, sourcePath)
+    statement.setString(PARAM_THIRTEEN, review.rawText)
     statement.executeUpdate()
   }
 }
 
-fun replaceFindings(connection: Connection, review: ImportedReview) {
+/**
+ * Persists an imported review. Shared by the transactional runtime entry point and the unit-of-work
+ * repository so both converge on one ordering and one set of write triggers.
+ *
+ * Lanes already recorded for the run are the authoritative launch plan — the runtime writes them
+ * when it launches the lanes — so composed lanes are only written for a run that has none.
+ */
+fun persistImportedReview(connection: Connection, review: ImportedReview, sourcePath: String?) {
+  val existingReviewSummary = existingReviewSummary(connection, review.reviewRunId)
+  val existingFindings = ReviewRuntime.fetchImportedFindings(connection, review.reviewRunId)
+  val summarySnapshotChanged = reviewSummaryChanged(existingReviewSummary, review, existingFindings)
+  val existingLanes = fetchReviewRunLanes(connection, review.reviewRunId)
+  val lanes = existingLanes.ifEmpty { review.planLanes }
+  upsertReviewRun(connection, review, sourcePath)
+  if (existingLanes.isEmpty()) {
+    replaceReviewRunLanes(connection, review.reviewRunId, review.planLanes)
+  }
+  if (summarySnapshotChanged) {
+    ReviewStatsRuntime.clearReviewFinishedTelemetryState(connection, review.reviewRunId)
+  }
+  val recordedLanes = fetchFindingLaneAttribution(connection, review.reviewRunId)
+  // Lane attribution alone never triggers the delete-and-reinsert path: deleting a finding row
+  // cascades away its recorded dispositions, so a lane correction is applied in place instead.
+  if (existingFindings.withoutLanes() != review.findings.withoutLanes()) {
+    replaceFindings(connection, review, lanes, recordedLanes)
+  } else {
+    updateFindingLaneAttribution(connection, review, lanes, recordedLanes)
+  }
+}
+
+private fun List<ImportedFinding>.withoutLanes(): List<ImportedFinding> = map { it.copy(laneSkillName = null) }
+
+fun replaceFindings(
+  connection: Connection,
+  review: ImportedReview,
+  lanes: List<ReviewRunLane>,
+  recordedLanes: Map<String, String> = emptyMap(),
+) {
+  // The run's persisted lanes are the only source of a finding's pack and area: a finding reports
+  // which lane produced it, never what that lane covers.
+  val lanesByName = lanes.associateBy { it.laneSkillName }
   connection.prepareStatement("DELETE FROM findings WHERE review_run_id = ?").use { statement ->
     statement.setString(PARAM_ONE, review.reviewRunId)
     statement.executeUpdate()
   }
   review.findings.forEach { finding ->
+    val laneName = finding.effectiveLaneName(recordedLanes)
+    val lane = laneName?.let(lanesByName::get)
     connection.prepareStatement(
       """
       INSERT INTO findings (
@@ -124,8 +182,11 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
         issue_category,
         location,
         description,
-        finding_text
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        finding_text,
+        lane_skill_name,
+        lane_area,
+        lane_pack_slug
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(PARAM_ONE, review.reviewRunId)
@@ -136,39 +197,10 @@ fun replaceFindings(connection: Connection, review: ImportedReview) {
       statement.setString(PARAM_SIX, finding.location)
       statement.setString(PARAM_SEVEN, finding.description)
       statement.setString(PARAM_EIGHT, finding.findingText)
+      statement.setString(PARAM_NINE, laneName)
+      statement.setString(PARAM_TEN, lane?.area)
+      statement.setString(PARAM_ELEVEN, lane?.packSlug)
       statement.executeUpdate()
     }
   }
 }
-
-fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
-  findingId = getString("finding_id"),
-  severity = getString("severity"),
-  confidence = getString("confidence"),
-  issueCategory = getString("issue_category"),
-  location = getString("location"),
-  description = getString("description"),
-  findingText = getString("finding_text"),
-)
-
-fun java.sql.ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
-  reviewRunId = getString("review_run_id"),
-  reviewSessionId = getString("review_session_id"),
-  routedSkill = getString("routed_skill"),
-  detectedScope = getString("detected_scope"),
-  detectedStack = getString("detected_stack"),
-  executionMode = getString("execution_mode"),
-  specialistReviewsRaw = getString("specialist_reviews"),
-  reviewFinishedAt = getString("review_finished_at"),
-  reviewFinishedEventEmittedAt = getString("review_finished_event_emitted_at"),
-  orchestratedRun = getBoolean("orchestrated_run"),
-)
-
-fun java.sql.ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
-  number = number,
-  findingId = getString("finding_id"),
-  severity = getString("severity"),
-  confidence = getString("confidence"),
-  location = getString("location"),
-  description = getString("description"),
-)
