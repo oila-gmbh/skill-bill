@@ -33,13 +33,12 @@ internal data class ReviewDiffEvidence(
      * empty commit yields a zero-hunk unit rather than vanishing from the sequence.
      */
     fun parseCommitUnits(commits: List<RawCommitDiff>): List<ReviewCommitUnit> = commits.mapIndexed { index, commit ->
-      ReviewCommitUnit(
+      ReviewCommitUnit.ofCommit(
         commitSha = commit.commitSha,
         parentSha = commit.parentSha,
         subject = commit.subject,
         orderIndex = index,
         hunks = if (commit.diff.isBlank()) emptyList() else parse(commit.diff).hunks,
-        source = ReviewCommitSource.COMMIT_RANGE,
       )
     }
 

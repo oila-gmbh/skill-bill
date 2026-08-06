@@ -73,6 +73,22 @@ class ReviewCommitEvidenceTest {
     assertNotEquals(base.commitUnitId, base.copy(hunks = listOf(hunkB)).commitUnitId)
   }
 
+  // AC-001, AC-002: hunk identity is commit-owned, so identical content in two commits stays distinct.
+  @Test fun `ofCommit scopes hunk identity to its owning commit`() {
+    val first = ReviewCommitUnit.ofCommit("c1", "base", "first", 0, listOf(hunkA))
+    val second = ReviewCommitUnit.ofCommit("head", "c1", "second", 1, listOf(hunkA))
+    assertNotEquals(first.hunkIds.single(), second.hunkIds.single())
+    assertEquals(
+      first.hunkIds,
+      ReviewCommitUnit.ofCommit("c1", "base", "first", 0, listOf(hunkA)).hunkIds,
+    )
+    assertEquals(ReviewCommitUnit.commitScopeKey("c1", 0), first.hunks.single().commitScope)
+    // A hunk repeated inside one commit still collides, so a commit cannot own it twice.
+    assertFailsWith<IllegalArgumentException> {
+      ReviewCommitUnit.ofCommit("c1", "base", "first", 0, listOf(hunkA, hunkA))
+    }
+  }
+
   // AC-005
   @Test fun `synthetic units declare their source and never fabricate a commit sha`() {
     val synthetic = ReviewCommitUnit.synthetic(ReviewCommitSource.SYNTHETIC_SUPPLIED_DIFF, listOf(hunkA))

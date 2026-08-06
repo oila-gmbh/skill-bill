@@ -422,6 +422,10 @@ data class ReviewCommitUnit(
     require(hunks.map { it.hunkId }.distinct().size == hunks.size) {
       "Review commit unit '$commitSha' repeats a hunk id; a commit owns each hunk exactly once."
     }
+    val ownScope = commitScopeKey(commitSha, orderIndex)
+    require(hunks.all { it.commitScope == null || (!source.isSynthetic && it.commitScope == ownScope) }) {
+      "Review commit unit '$commitSha' owns a hunk scoped to a different commit."
+    }
     require(
       hunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == hunks.size,
     ) { "Review commit unit '$commitSha' carries two hunks at the same position in one file." }
@@ -454,6 +458,27 @@ data class ReviewCommitUnit(
   )
 
   companion object {
+    fun commitScopeKey(commitSha: String, orderIndex: Int): String = "$commitSha@$orderIndex"
+
+    /** Builds a COMMIT_RANGE unit, scoping every hunk to this commit so its identity is commit-owned. */
+    fun ofCommit(
+      commitSha: String,
+      parentSha: String,
+      subject: String,
+      orderIndex: Int,
+      hunks: List<ReviewChangedHunk>,
+    ): ReviewCommitUnit {
+      val scope = commitScopeKey(commitSha, orderIndex)
+      return ReviewCommitUnit(
+        commitSha = commitSha,
+        parentSha = parentSha,
+        subject = subject,
+        orderIndex = orderIndex,
+        hunks = hunks.map { if (it.commitScope == scope) it else it.copy(commitScope = scope) },
+        source = ReviewCommitSource.COMMIT_RANGE,
+      )
+    }
+
     fun synthetic(source: ReviewCommitSource, hunks: List<ReviewChangedHunk>): ReviewCommitUnit {
       require(source.isSynthetic) { "A synthetic review unit cannot declare the COMMIT_RANGE source." }
       return ReviewCommitUnit(
@@ -543,10 +568,17 @@ data class ReviewChangedHunk(
   val newStart: Int,
   val newCount: Int,
   val content: String,
+  /**
+   * The owning commit's identity, folded into hunk identity so byte-identical hunks in two
+   * different commits stay distinct while a hunk repeated inside one commit still collides.
+   * Null for the single synthetic unit a non-commit scope owns.
+   */
+  val commitScope: String? = null,
 ) {
   init {
     requireRepositoryRelativePath(path)
     require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
+    require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
   }
 
   val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
@@ -558,6 +590,7 @@ data class ReviewChangedHunk(
     newStart,
     newCount,
     content.replace("\r\n", "\n"),
+    commitScope.orEmpty(),
   )
 }
 

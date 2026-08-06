@@ -113,7 +113,8 @@ class ParallelCodeReviewRunner(
         "agent1 and agent2 must be different agents; both resolved to '${agent1.id}'.",
       )
     }
-    val diffText = resolveDiff(originalRequest)
+    val revisions = resolveReviewRevisions(originalRequest)
+    val diffText = resolveDiff(originalRequest, revisions)
     val evidence = ReviewDiffEvidence.parse(diffText)
     val detection = detectStack(evidence, originalRequest.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(originalRequest.repoRoot))
@@ -131,6 +132,7 @@ class ParallelCodeReviewRunner(
       agent2Id = agent2.id,
       preparedLaunchRequests = prepare(
         request,
+        revisions,
         diffText,
         evidence,
         detection.routed,
@@ -184,6 +186,7 @@ class ParallelCodeReviewRunner(
 
   private fun prepare(
     request: ParallelCodeReviewRequest,
+    revisions: Pair<String, String>,
     diffText: String,
     evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
@@ -194,7 +197,7 @@ class ParallelCodeReviewRunner(
   ): List<ReviewSpecialistLaunchRequest> {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     recordPlannedLanes(request.reviewRunId, plannedRubrics)
-    val (baseRevision, headRevision) = resolveReviewRevisions(request)
+    val (baseRevision, headRevision) = revisions
     val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
       scope = request.scope,
       repoRoot = request.repoRoot,
@@ -260,16 +263,43 @@ class ParallelCodeReviewRunner(
     database.transaction { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
   }
 
+  /**
+   * Both revisions are canonicalized to immutable commit SHAs before anything compares them, so a
+   * symbolic base or head cannot make a correct commit sequence fail the base-to-head equivalence
+   * fact, and the aggregate delta and the sequence are guaranteed to span the same range.
+   */
   private fun resolveReviewRevisions(request: ParallelCodeReviewRequest): Pair<String, String> {
-    val head = request.headRevision ?: runDiff(listOf("git", "rev-parse", "HEAD"), request.repoRoot).trim()
-    val base = request.baseRevision ?: when (request.scope) {
+    val head = canonicalRevision(request.headRevision ?: "HEAD", request.repoRoot)
+    val base = request.baseRevision?.let { canonicalRevision(it, request.repoRoot) } ?: when (request.scope) {
       ParallelReviewScope.BRANCH -> detectBranchBase(request.repoRoot)
+      ParallelReviewScope.PR -> detectPrBase(request.repoRoot)
       else -> head
     }
     if (base.isBlank() || head.isBlank()) {
       throw DiffResolutionException("Review base and head revisions must resolve to non-blank immutable identities.")
     }
     return base to head
+  }
+
+  private fun canonicalRevision(revision: String, repoRoot: Path): String =
+    diffResolver.runProcess(listOf("git", "rev-parse", "--verify", "$revision^{commit}"), repoRoot)
+      ?.trim()
+      ?.takeIf { it.isNotBlank() }
+      ?: throw DiffResolutionException("Review revision '$revision' does not resolve to a commit here.")
+
+  /**
+   * A PR spans its own base branch, not HEAD..HEAD; aliasing base to head would collapse every PR
+   * review to a single synthetic unit. The merge base against the PR's base commit is the real one.
+   */
+  private fun detectPrBase(repoRoot: Path): String {
+    val baseRefOid = diffResolver
+      .runProcess(listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid"), repoRoot)
+      ?.trim()
+      ?.takeIf { it.isNotBlank() }
+    val merged = baseRefOid?.let {
+      diffResolver.runProcess(listOf("git", "merge-base", "HEAD", it), repoRoot)?.trim()
+    }
+    return merged?.takeIf { it.isNotBlank() } ?: detectBranchBase(repoRoot)
   }
 
   private fun horizontalPlannedRubrics(evidence: ReviewDiffEvidence): List<PlannedReviewRubric> {
@@ -392,7 +422,8 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun resolveDiff(request: ParallelCodeReviewRequest): String {
+  private fun resolveDiff(request: ParallelCodeReviewRequest, revisions: Pair<String, String>): String {
+    val (base, head) = revisions
     val diffText = request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
       diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES)
         ?: throw DiffResolutionException(
@@ -401,11 +432,13 @@ class ParallelCodeReviewRunner(
     } ?: when (request.scope) {
       ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
       ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
-      ParallelReviewScope.BRANCH -> {
-        val base = detectBranchBase(request.repoRoot)
-        runDiff(listOf("git", "diff", "$base...HEAD"), request.repoRoot)
-      }
-      ParallelReviewScope.PR -> runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
+      // The aggregate delta spans the same canonical range the commit sequence does, so the
+      // base-to-head equivalence fact compares two views of one range rather than two ranges.
+      ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
+      // Falls back to the PR's own diff when its commits are not in the local object store, which
+      // is the case the SYNTHETIC_AGGREGATE_PR_DIFF unit exists for.
+      ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
+        ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
     }
     if (diffText.isBlank()) {
       throw DiffResolutionException("Diff is empty for scope '${request.scope.name.lowercase()}'.")

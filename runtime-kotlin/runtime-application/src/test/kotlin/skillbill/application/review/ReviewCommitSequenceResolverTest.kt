@@ -122,14 +122,38 @@ class ReviewCommitSequenceResolverTest {
 
   // AC-004
   @Test fun `a duplicated commit fails loudly`() {
-    val shas = listOf("c1", "head")
+    val diff = diffFor("src/A.kt", "alpha")
+    val responses = mutableMapOf<String, String?>(
+      "git rev-list --first-parent --reverse base..head" to "head\nhead",
+      "git show -s --format=%P%n%s head" to "base\nsubject head",
+      "git diff base head" to diff,
+    )
+    val failure = assertFailsWith<DiffResolutionException> {
+      resolve(FakeGit(responses), ParallelReviewScope.BRANCH, diff)
+    }
+    assertTrue("more than once" in failure.message.orEmpty())
+  }
+
+  // AC-001: byte-identical hunks in two different commits are distinct, commit-owned evidence.
+  @Test fun `identical hunks in two commits keep distinct commit-scoped identities`() {
     val duplicate = diffFor("src/A.kt", "alpha")
     val git = branchRepo(
-      shas,
+      listOf("c1", "head"),
       mapOf("c1" to duplicate, "head" to duplicate),
       mapOf("c1" to "base", "head" to "c1"),
     )
-    assertFailsWith<DiffResolutionException> { resolve(git, ParallelReviewScope.BRANCH, duplicate) }
+    val resolved = resolve(git, ParallelReviewScope.BRANCH, duplicate)
+    val ids = resolved.units.flatMap { it.hunkIds }
+    assertEquals(2, ids.size)
+    assertEquals(2, ids.distinct().size)
+  }
+
+  // AC-001: a failed git invocation is not an absent-commit degradation.
+  @Test fun `a failed rev-list fails loudly instead of degrading to a synthetic unit`() {
+    val failure = assertFailsWith<DiffResolutionException> {
+      resolve(FakeGit(emptyMap()), ParallelReviewScope.BRANCH, diffFor("src/A.kt", "alpha"))
+    }
+    assertTrue("enumerate the commit sequence" in failure.message.orEmpty())
   }
 
   // AC-004

@@ -43,7 +43,7 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
         aggregate,
         baseRevision,
         headRevision,
-        "commit sequence for $baseRevision..$headRevision is not present in the local repository",
+        "git enumerated no commits for $baseRevision..$headRevision in the local object store",
       )
     }
     val units = ReviewDiffEvidence.parseCommitUnits(shas.map { readCommit(repoRoot, it, baseRevision) })
@@ -78,14 +78,18 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
     ),
   )
 
-  private fun revList(repoRoot: Path, baseRevision: String, headRevision: String): List<String> =
-    diffResolver
+  /**
+   * A null result is a failed git invocation, never an absent-commit degradation: reporting it as
+   * the latter would attach a false degraded_reason to a packet whose sequence was simply unread.
+   */
+  private fun revList(repoRoot: Path, baseRevision: String, headRevision: String): List<String> {
+    val output = diffResolver
       .runProcess(listOf("git", "rev-list", "--first-parent", "--reverse", "$baseRevision..$headRevision"), repoRoot)
-      ?.lineSequence()
-      ?.map { it.trim() }
-      ?.filter { it.isNotEmpty() }
-      ?.toList()
-      .orEmpty()
+      ?: throw DiffResolutionException(
+        "Could not enumerate the commit sequence for $baseRevision..$headRevision.",
+      )
+    return output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+  }
 
   private fun readCommit(repoRoot: Path, sha: String, baseRevision: String): RawCommitDiff {
     val metadata = diffResolver.runProcess(listOf("git", "show", "-s", "--format=%P%n%s", sha), repoRoot)
@@ -113,6 +117,10 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
       throw DiffResolutionException(
         "Resolved commit sequence does not span $baseRevision..$headRevision; the review delta would be incomplete.",
       )
+    }
+    val shas = units.map { it.commitSha }
+    if (shas.distinct().size != shas.size) {
+      throw DiffResolutionException("Resolved commit sequence lists the same commit more than once.")
     }
     units.zipWithNext().forEach { (previous, next) ->
       if (next.parentSha != previous.commitSha) {

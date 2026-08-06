@@ -215,19 +215,26 @@ class ParallelCodeReviewRunnerTest {
 
   @Test
   fun `STAGED scope maps diff command to git diff --cached`() {
-    val resolver = RecordingDiffResolver(default = diffFor("A.kt"))
+    val resolver = RecordingDiffResolver(
+      responses = mapOf(listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n"),
+      default = diffFor("A.kt"),
+    )
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
 
     runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
 
-    assertEquals(listOf(listOf("git", "diff", "--cached")), resolver.calls)
+    assertContains(resolver.calls, listOf("git", "diff", "--cached"))
   }
 
   @Test
-  fun `BRANCH scope resolves merge-base then diffs base against HEAD`() {
+  fun `BRANCH scope resolves merge-base then diffs the canonical base against the canonical head`() {
     val resolver = RecordingDiffResolver(
-      responses = mapOf(listOf("git", "merge-base", "HEAD", "main") to "base-sha\n"),
+      responses = mapOf(
+        listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n",
+        listOf("git", "merge-base", "HEAD", "main") to "base-sha\n",
+        listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha") to "",
+      ),
       default = diffFor("A.kt"),
     )
     val launcher = ParallelSubtaskLauncher()
@@ -236,7 +243,30 @@ class ParallelCodeReviewRunnerTest {
     runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.BRANCH))
 
     assertContains(resolver.calls, listOf("git", "merge-base", "HEAD", "main"))
-    assertContains(resolver.calls, listOf("git", "diff", "base-sha...HEAD"))
+    assertContains(resolver.calls, listOf("git", "diff", "base-sha", "head-sha"))
+  }
+
+  // AC-001: a PR review spans its own base branch instead of collapsing to HEAD..HEAD.
+  @Test
+  fun `PR scope resolves the pull request base and enumerates its commit range`() {
+    val resolver = RecordingDiffResolver(
+      responses = mapOf(
+        listOf("git", "rev-parse", "--verify", "HEAD^{commit}") to "head-sha\n",
+        listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid") to "pr-base-oid\n",
+        listOf("git", "merge-base", "HEAD", "pr-base-oid") to "base-sha\n",
+        listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha") to "",
+      ),
+      default = diffFor("A.kt"),
+    )
+    val runner = runner(ParallelSubtaskLauncher(), diffResolver = resolver)
+
+    runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.PR))
+
+    assertContains(resolver.calls, listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid"))
+    assertContains(
+      resolver.calls,
+      listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha"),
+    )
   }
 
   @Test
