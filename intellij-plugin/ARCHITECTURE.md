@@ -78,7 +78,7 @@ tool window should:
 - Products: IntelliJ IDEA Community and Ultimate only.
 - Range: IDEA **2025.2** (build `252`) through **2026.1** (build `261.*`) inclusive.
 - JVM toolchain: **JDK 21** for compile and `runIde`.
-- Plugin id: `dev.skillbill.intellij`.
+- Plugin id: `dev.skillbill.status` (Marketplace forbids the template word `intellij` in plugin IDs).
 
 ## Deferred
 

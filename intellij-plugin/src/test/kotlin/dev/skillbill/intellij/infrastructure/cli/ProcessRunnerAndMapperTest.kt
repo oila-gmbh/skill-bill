@@ -9,9 +9,11 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -46,7 +48,8 @@ class ProcessRunnerTest {
                 SlowProcess(hangMs = 10_000, onStart = { started.countDown() })
             },
         )
-        val job = async {
+        // Dispatch off the runBlocking event loop so CountDownLatch.await cannot starve start.
+        val job = async(Dispatchers.IO) {
             runner.runCoalesced(
                 ProcessSpec(
                     command = listOf("skill-bill"),
@@ -56,10 +59,10 @@ class ProcessRunnerTest {
                 ),
             )
         }
-        assertTrue(started.await(1, TimeUnit.SECONDS))
+        assertTrue(withContext(Dispatchers.IO) { started.await(2, TimeUnit.SECONDS) })
         runner.cancelAll()
         val result = job.await()
-        assertTrue(result.cancelled || result.timedOut)
+        assertTrue(result.cancelled)
     }
 
     @Test
@@ -176,6 +179,8 @@ private class SlowProcess(
     private val onStart: () -> Unit = {},
 ) : ProcessHandle {
     @Volatile private var alive = true
+    private val destroyed = CountDownLatch(1)
+    private val hangDeadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(hangMs)
 
     init {
         onStart()
@@ -184,12 +189,14 @@ private class SlowProcess(
     override val inputStream: InputStream = ByteArrayInputStream(ByteArray(0))
     override val errorStream: InputStream = ByteArrayInputStream(stderr.toByteArray())
     override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
-        val ms = unit.toMillis(timeout).coerceAtMost(hangMs)
-        Thread.sleep(ms)
-        return ms >= hangMs
+        val ms = unit.toMillis(timeout).coerceAtLeast(0L)
+        if (!alive) return true
+        destroyed.await(ms, TimeUnit.MILLISECONDS)
+        return !alive || System.nanoTime() >= hangDeadlineNs
     }
     override fun destroyForcibly() {
         alive = false
+        destroyed.countDown()
     }
     override fun exitValue(): Int = 0
     override fun isAlive(): Boolean = alive

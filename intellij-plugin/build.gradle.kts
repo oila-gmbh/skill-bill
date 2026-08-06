@@ -3,8 +3,9 @@ import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.1.20"
-    id("org.jetbrains.intellij.platform") version "2.16.0"
+    alias(libs.plugins.kotlin.jvm)
+    // Version comes from settings pluginManagement / platform.settings; do not restate it.
+    id("org.jetbrains.intellij.platform")
 }
 
 group = providers.gradleProperty("group").get()
@@ -53,9 +54,9 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Declared range ends: IDEA 2025.2 and 2026.1.
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2025.2.5")
-            ide(IntelliJPlatformType.IntellijIdeaCommunity, "2026.1")
+            // Declared range ends: IDEA 2025.2 (IC still published) and 2026.1 (unified IDEA).
+            create(IntelliJPlatformType.IntellijIdeaCommunity, "2025.2.5")
+            create(IntelliJPlatformType.IntellijIdea, "2026.1")
         }
         failureLevel.set(
             listOf(

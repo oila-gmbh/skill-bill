@@ -44,14 +44,16 @@ class PreferenceSanitizerAndCacheTest {
                 ),
             ),
         )
-        assertNull(
-            PreferenceSanitizer.sanitizeCache(
-                LastKnownDisplayCache(
-                    display = CachedDisplaySnapshot(summary = "phase artifact\n".repeat(40)),
-                    observedAt = Instant.parse("2026-08-06T09:00:00Z"),
-                ),
+        // Unbounded / phase-artifact blobs are rejected at the raw preference-state seam;
+        // CachedDisplaySnapshot already forbids oversize summaries in-domain.
+        val cleared = PreferenceSanitizer.sanitizeCacheState(
+            SkillBillProjectDisplayCache.State(
+                summary = "phase artifact\n".repeat(40),
+                observedAt = "2026-08-06T09:00:00Z",
             ),
         )
+        assertNull(cleared.summary)
+        assertNull(cleared.observedAt)
     }
 
     @Test

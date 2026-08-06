@@ -47,7 +47,7 @@ outcomes — never stack traces in the UI.
 
 | Item | Value |
 | --- | --- |
-| Plugin id | `dev.skillbill.intellij` |
+| Plugin id | `dev.skillbill.status` |
 | Products | IntelliJ IDEA Community, Ultimate |
 | Builds | `252`–`261.*` (IDEA 2025.2 through 2026.1) |
 | Platform Gradle Plugin | 2.x |

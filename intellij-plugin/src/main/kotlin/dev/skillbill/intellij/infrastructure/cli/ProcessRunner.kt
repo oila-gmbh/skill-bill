@@ -151,7 +151,35 @@ class ProcessRunner(
                 it.start()
             }
 
-            val finished = process.waitFor(spec.timeoutMs, TimeUnit.MILLISECONDS)
+            // Poll so cancelAll can wake without waiting out the full timeout when
+            // destroyForcibly does not unblock the platform wait immediately.
+            val deadlineNs = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(spec.timeoutMs)
+            var finished = false
+            while (true) {
+                if (cancelled.get()) {
+                    process.destroyForcibly()
+                    stdoutReader.join(500)
+                    stderrReader.join(500)
+                    return BoundedProcessResult(
+                        exitCode = null,
+                        stdout = "",
+                        stderrTruncated = stderrTruncated,
+                        stdoutTruncated = stdoutTruncated,
+                        timedOut = false,
+                        cancelled = true,
+                    )
+                }
+                val remainingMs =
+                    TimeUnit.NANOSECONDS.toMillis(deadlineNs - System.nanoTime()).coerceAtLeast(0L)
+                if (remainingMs == 0L) {
+                    break
+                }
+                val slice = remainingMs.coerceAtMost(100L)
+                finished = process.waitFor(slice, TimeUnit.MILLISECONDS)
+                if (finished) {
+                    break
+                }
+            }
             if (!finished) {
                 process.destroyForcibly()
                 stdoutReader.join(500)
@@ -166,7 +194,7 @@ class ProcessRunner(
                 )
             }
             stdoutReader.join(1_000)
-            stderrReader.join(1_000)
+            stderrReader.join(500)
             if (cancelled.get()) {
                 return BoundedProcessResult(
                     exitCode = null,
