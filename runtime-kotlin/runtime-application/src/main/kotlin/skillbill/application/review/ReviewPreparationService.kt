@@ -353,17 +353,17 @@ class ReviewPreparationService(
       reject(label, "Assignment evidence targets differ from the packet targets for '${assignment.lane}'.")
     }
   }
-
-  private fun evidenceTargetsFor(hunks: List<ReviewChangedHunk>) = hunks
-    .groupBy { it.path }
-    .toSortedMap()
-    .map { (path, grouped) -> ReviewEvidenceTarget(path, path, grouped.map { it.hunkId }.sorted()) }
-
-  private fun parentLabel(packet: ReviewContextPacket) = "review-packet:${packet.reviewId}"
-
-  private fun assignmentLabel(assignment: ReviewAssignment) =
-    "review-assignment:${assignment.reviewId}:${assignment.lane}"
 }
+
+private fun evidenceTargetsFor(hunks: List<ReviewChangedHunk>) = hunks
+  .groupBy { it.path }
+  .toSortedMap()
+  .map { (path, grouped) -> ReviewEvidenceTarget(path, path, grouped.map { it.hunkId }.sorted()) }
+
+private fun parentLabel(packet: ReviewContextPacket) = "review-packet:${packet.reviewId}"
+
+private fun assignmentLabel(assignment: ReviewAssignment) =
+  "review-assignment:${assignment.reviewId}:${assignment.lane}"
 
 private fun rejectUnknownAssignmentDigests(
   label: String,

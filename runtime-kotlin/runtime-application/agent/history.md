@@ -1,3 +1,13 @@
+## [2026-08-06] SKILL-158 subtask 2 — Sparse commit-to-lane routing
+Areas: runtime-domain/review/plan, runtime-domain/review/context/model, runtime-application/review, runtime-ports/review, runtime-infra-fs, orchestration/contracts/review-context-schema.yaml, .feature-specs/SKILL-158
+- Specialist selection is now a final commit×lane matrix (`focused`|`skipped` + falsifiable reason/signals) decided once from each commit's own hunk paths/content — never the commit subject — before launch; workers do not re-decide relevance. reusable
+- Required baseline lanes stay focused for every unit; optional lanes receive only evidence-matched commits, and per-lane bundles keep packet commit order with only focused hunk bodies. reusable
+- Routing/assignment digests and merger provenance include the matrix; non-commit scopes keep single-synthetic-unit lane selection. Parent analysis is bounded by `max_routing_analysis_pairs`/`max_routing_analysis_bytes` and loud-fails on breach.
+- Pattern: decide relevance at the parent routing seam against rubric path/content signals, assemble lane bundles from focused commits only, and prove skip reasons with adversarial fixtures rather than a worker backstop. reusable
+- Limitations: single-pass bundled lane worker execution remains subtask 3; this unit only owns sparse routing and bundle preparation.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-06] SKILL-158 subtask 1 — Commit-aware review evidence model
 Areas: runtime-application/review, runtime-domain/review-context-model, runtime-ports/review-model, runtime-contracts/review, orchestration/contracts/review-context-schema.yaml, .feature-specs/SKILL-158
 - Review packets now carry the ordered commit sequence (sha, parent, subject, position) plus each commit's incremental hunk set, replacing the single accumulated base-to-head diff as the worker-facing evidence surface.

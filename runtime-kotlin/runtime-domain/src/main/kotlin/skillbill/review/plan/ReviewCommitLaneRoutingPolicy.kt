@@ -11,12 +11,9 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-
-/** A lane to route, paired with the key the packet and its assignment will carry it under. */
-data class ReviewRoutedLane(val laneKey: String, val descriptor: ReviewLaunchLane)
 
 /**
  * Decides, once and finally, which commits each specialist lane sees. Relevance is never deferred:
@@ -27,6 +24,7 @@ object ReviewCommitLaneRoutingPolicy {
   const val REQUIRED_BASELINE_SIGNAL: String = "required-baseline"
 
   private const val MAX_LISTED = 6
+  private const val SHORT_COMMIT_SHA_CHARS = 12
 
   fun route(
     units: List<ReviewCommitUnit>,
@@ -117,23 +115,18 @@ object ReviewCommitLaneRoutingPolicy {
     }
   }
 
-  private fun breach(
-    kind: String,
-    limit: Long,
-    observed: Long,
-    routingId: String,
-    lane: String,
-  ) = ReviewContextBudgetExceededException(
-    ReviewContextBudgetExceeded(
-      lane = lane,
-      budgetKind = kind,
-      configuredLimit = limit,
-      observedValue = observed,
-      packetDigest = routingId,
-      assignmentDigest = routingId,
-      enforceable = true,
-    ),
-  )
+  private fun breach(kind: String, limit: Long, observed: Long, routingId: String, lane: String) =
+    ReviewContextBudgetExceededException(
+      ReviewContextBudgetExceeded(
+        lane = lane,
+        budgetKind = kind,
+        configuredLimit = limit,
+        observedValue = observed,
+        packetDigest = routingId,
+        assignmentDigest = routingId,
+        enforceable = true,
+      ),
+    )
 
   /** Identity of the analysis itself: no packet exists yet when routing runs. */
   private fun analysisDigest(units: List<ReviewCommitUnit>, lanes: List<ReviewRoutedLane>): String {
@@ -143,7 +136,7 @@ object ReviewCommitLaneRoutingPolicy {
       .joinToString("") { "%02x".format(it) }
   }
 
-  private fun short(commitSha: String) = commitSha.take(12)
+  private fun short(commitSha: String) = commitSha.take(SHORT_COMMIT_SHA_CHARS)
 
   private fun list(values: List<String>): String {
     if (values.isEmpty()) return "[none declared]"

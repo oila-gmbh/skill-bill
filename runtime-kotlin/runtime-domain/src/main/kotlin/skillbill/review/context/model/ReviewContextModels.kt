@@ -457,11 +457,12 @@ data class ReviewAssignment(
     }
     // A focused commit contributes no bundle entry when it owns no hunk under the lane's paths, so
     // the bundle is a subset here; exact equality is asserted where the packet's hunks are in hand.
-    val focusedCommits = laneRouting.filter { it.focused }.map { it.commitSha }.toSet()
-    val skipped = assignedBundle.entries.map { it.commitSha }
-      .filterNot { laneRouting.isEmpty() || it in focusedCommits }
-    require(skipped.isEmpty()) {
-      "Assignment '$lane' claims hunks from commits routing skipped for the lane: ${skipped.sorted()}."
+    // Only the routing column's explicit skips are rejected here; commits absent from the column
+    // (outside the packet) are owned by packet validation so the reason stays specific.
+    val explicitlySkipped = laneRouting.filterNot { it.focused }.map { it.commitSha }.toSet()
+    val fromSkipped = assignedBundle.entries.map { it.commitSha }.filter { it in explicitlySkipped }
+    require(fromSkipped.isEmpty()) {
+      "Assignment '$lane' claims hunks from commits routing skipped for the lane: ${fromSkipped.sorted()}."
     }
     require(laneDecision.lane == lane) { "Lane decision '${laneDecision.lane}' does not describe lane '$lane'." }
     require(laneDecision.included) { "Assignments exist only for included lanes; '$lane' is excluded." }

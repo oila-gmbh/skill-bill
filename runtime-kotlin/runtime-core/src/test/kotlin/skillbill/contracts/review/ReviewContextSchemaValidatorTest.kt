@@ -10,11 +10,11 @@ import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
-import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.ports.review.model.ReviewFactPorts
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.model.GovernedReviewLaunch

@@ -301,9 +301,10 @@ class ReviewPreparationCommitBundleTest {
         )
       }
     }
-    assertFailsWith<InvalidReviewContextSchemaError> {
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(multiCommitScope, prepared.packet.laneDecisions).validateAgainstPacket(prepared.packet, forged)
     }
+    assertTrue("packet does not own" in failure.message.orEmpty(), failure.message.orEmpty())
   }
 
   // AC-005

@@ -91,7 +91,13 @@ class ReviewPreparationServiceTest {
     override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = record("facts", facts)
     override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record(
       "lanes",
-      ReviewLaneSelection(decisions, focusedMatrix(scope, decisions.filter { it.included }.map { it.lane })),
+      run {
+        val included = decisions.filter { it.included }.map { it.lane }
+        // When every lane is excluded, still analyze the decided lanes so prepare can surface the
+        // typed "no included lane" rejection instead of failing matrix construction first.
+        val analyzed = included.ifEmpty { decisions.map { it.lane } }
+        ReviewLaneSelection(decisions, focusedMatrix(scope, analyzed))
+      },
     )
   }
 

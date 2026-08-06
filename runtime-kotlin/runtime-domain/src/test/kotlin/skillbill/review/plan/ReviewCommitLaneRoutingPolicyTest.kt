@@ -12,6 +12,7 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRoutedLane
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
