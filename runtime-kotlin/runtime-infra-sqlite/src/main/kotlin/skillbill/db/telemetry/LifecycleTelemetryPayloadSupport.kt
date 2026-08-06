@@ -56,11 +56,11 @@ fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<
   }
 }
 
-fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
+fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
     "session_id" to row.stringOrEmpty("session_id"),
     "feature_size" to row.stringOrEmpty("feature_size"),
-    "issue_key" to row.stringOrEmpty("issue_key"),
+    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
   ).apply {
     if (level == "full") {
       put("feature_name", row.stringOrEmpty("feature_name"))

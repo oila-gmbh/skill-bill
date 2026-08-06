@@ -8,25 +8,28 @@ fun emitGoalStarted(connection: Connection, workflowId: String, level: String) {
   if (row.stringOrEmpty("started_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_started", goalStartedPayload(row, level))
+  val payload = goalStartedPayload(row, level, telemetryRedactionSalt(connection))
+  enqueueTelemetry(connection, "skillbill_goal_started", payload)
   markGoalRunSessionEmitted(connection, "started_event_emitted_at", workflowId)
 }
 
-fun emitGoalFinished(connection: Connection, workflowId: String) {
+fun emitGoalFinished(connection: Connection, workflowId: String, level: String) {
   val row = goalRunSessionRow(connection, workflowId) ?: return
   if (row.stringOrEmpty("finished_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_finished", goalFinishedPayload(row))
+  val payload = goalFinishedPayload(row, level, telemetryRedactionSalt(connection))
+  enqueueTelemetry(connection, "skillbill_goal_finished", payload)
   markGoalRunSessionEmitted(connection, "finished_event_emitted_at", workflowId)
 }
 
-fun emitGoalIssueFinished(connection: Connection, parentWorkflowId: String, issueKey: String) {
+fun emitGoalIssueFinished(connection: Connection, parentWorkflowId: String, issueKey: String, level: String) {
   val row = goalIssueProgressRow(connection, parentWorkflowId, issueKey) ?: return
   if (row.stringOrEmpty("finished_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_issue_finished", goalIssueFinishedPayload(row))
+  val payload = goalIssueFinishedPayload(row, level, telemetryRedactionSalt(connection))
+  enqueueTelemetry(connection, "skillbill_goal_issue_finished", payload)
   markGoalIssueProgressEmitted(connection, parentWorkflowId, issueKey)
 }
 
@@ -35,7 +38,8 @@ fun emitGoalSubtaskFinished(connection: Connection, record: GoalSubtaskFinishedR
   if (row.stringOrEmpty("subtask_event_emitted_at").isNotBlank()) {
     return
   }
-  enqueueTelemetry(connection, "skillbill_goal_subtask_finished", goalSubtaskFinishedPayload(row, level))
+  val payload = goalSubtaskFinishedPayload(row, level, telemetryRedactionSalt(connection))
+  enqueueTelemetry(connection, "skillbill_goal_subtask_finished", payload)
   markGoalSubtaskEventEmitted(connection, record.issueKey, record.subtaskId, record.workflowId)
 }
 

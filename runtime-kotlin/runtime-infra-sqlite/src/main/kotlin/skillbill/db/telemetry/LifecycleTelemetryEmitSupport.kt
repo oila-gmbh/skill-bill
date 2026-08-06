@@ -24,7 +24,7 @@ fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, lev
   emitOnce(
     LifecycleEmitRequest(connection, row, "feature_task_runtime_sessions", "started_event_emitted_at"),
     "skillbill_feature_task_runtime_started",
-  ) { featureTaskRuntimeStartedPayload(row, level) }
+  ) { featureTaskRuntimeStartedPayload(row, level, telemetryRedactionSalt(connection)) }
 }
 
 fun emitFeatureTaskRuntimeFinished(connection: Connection, sessionId: String, level: String) {

@@ -98,8 +98,9 @@ class TelemetryService(
 
   fun captureException(workflowPhase: String, error: Exception, dbOverride: String? = null) {
     if (!database.databaseExists(dbOverride)) return
+    val level = runCatching { telemetrySettingsOrNull(settingsProvider)?.level }.getOrNull().orEmpty()
     runCatching {
-      enqueueRuntimeException(sessionTelemetryOutboxRepository(database, dbOverride), workflowPhase, error)
+      enqueueRuntimeException(sessionTelemetryOutboxRepository(database, dbOverride), workflowPhase, error, level)
     }
   }
 
