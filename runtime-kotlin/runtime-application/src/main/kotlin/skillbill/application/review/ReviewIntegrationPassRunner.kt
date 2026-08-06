@@ -118,17 +118,32 @@ class ReviewIntegrationPassRunner(
    * The integration pass exists to report interactions between commits, so a finding it returns
    * must name the commits it relates, and those commits must belong to the reviewed sequence. A
    * finding naming no commit is a single-commit observation the finishing lane already owned.
+   *
+   * A worker citing an abbreviated or hallucinated SHA is unusable output, not a contract breach:
+   * abbreviations resolve against the owned set by unique prefix and anything still foreign drops
+   * the finding, so the remaining cross-commit findings survive instead of the whole run throwing
+   * away every specialist lane's already-finished work.
    */
   private fun crossCommitFindings(
     stdout: String,
     integration: GovernedReviewIntegrationLaunch,
-  ): List<ParallelReviewRawFinding> = ParallelReviewFindingParser.parse(stdout).map { finding ->
-    val foreign = finding.commitShas.filterNot { it in integration.packet.ownedCommitIds }
-    require(foreign.isEmpty()) {
-      "Integration finding names commits outside the reviewed sequence: ${foreign.sorted()}."
-    }
-    finding.copy(specialistSkillName = INTEGRATION_LANE)
-  }.filter { it.commitShas.size > 1 }
+  ): List<ParallelReviewRawFinding> {
+    val owned = integration.packet.ownedCommitIds
+    return ParallelReviewFindingParser.parse(stdout).mapNotNull { finding ->
+      val resolved = finding.commitShas.map { sha -> resolveCommitSha(sha, owned) }
+      if (resolved.any { it == null }) return@mapNotNull null
+      finding.copy(
+        specialistSkillName = INTEGRATION_LANE,
+        commitShas = resolved.filterNotNull().distinct(),
+      )
+    }.filter { it.commitShas.size > 1 }
+  }
+
+  /** Exact match, else the single owned commit this abbreviation prefixes; ambiguous stays foreign. */
+  private fun resolveCommitSha(sha: String, owned: Set<String>): String? = when {
+    sha in owned -> sha
+    else -> owned.filter { it.startsWith(sha) }.singleOrNull()
+  }
 
   private fun summaryOf(input: ReviewLaneIntegrationInput): ReviewSpecialistSummary {
     val decision = input.launch.assignment.laneDecision

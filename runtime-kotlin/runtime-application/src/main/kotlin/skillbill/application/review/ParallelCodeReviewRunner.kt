@@ -65,6 +65,7 @@ import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
 import skillbill.review.context.model.TokenOwnership
+import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
@@ -365,7 +366,7 @@ class ParallelCodeReviewRunner(
     val lanes = initial.compiledLaunchRequests.map { launch ->
       ReviewLaneIntegrationInput(
         launch = launch,
-        completion = governedLaunchFor(launch).completionState,
+        completion = effectiveCompletionState(launch, outcomes),
         findingCount = findingsByLane[launch.assignment.laneDecision.specialistSkillName] ?: 0,
       )
     }
@@ -424,7 +425,7 @@ class ParallelCodeReviewRunner(
   ): ReviewCoverageReport? {
     val packet = initial.compiledLaunchRequests.firstOrNull()?.packet ?: return null
     val ranThisPass = initial.preparedLaunchRequests.map { launch ->
-      val completion = governedLaunchFor(launch).completionState
+      val completion = effectiveCompletionState(launch, outcomes)
       ReviewLaneAggregationInput(
         lane = launch.assignment.lane,
         commitSequenceDigest = packet.commitSequenceDigest,
@@ -481,15 +482,11 @@ class ParallelCodeReviewRunner(
     if (existing.isEmpty()) return
     val completionBySkill = initial.preparedLaunchRequests.associate { launch ->
       requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
-        governedLaunchFor(launch).completionState
+        effectiveCompletionState(launch, outcomes)
     }
-    // Both parallel agents review the same specialist skills; a skill is durably complete only when
-    // its bundle was reviewable and both parent agents finished successfully.
-    val bothAgentsSucceeded = outcomes.lane1.success && outcomes.lane2.success
     val updated = existing.map { lane ->
       val completion = completionBySkill[lane.laneSkillName] ?: return@map lane
-      val durableComplete = completion.disposition == ReviewLaneReviewDisposition.COMPLETE &&
-        bothAgentsSucceeded
+      val durableComplete = completion.disposition == ReviewLaneReviewDisposition.COMPLETE
       lane.copy(
         reviewDisposition = if (durableComplete) {
           ReviewRunLaneResolver.COMPLETE_DISPOSITION
@@ -966,6 +963,23 @@ class ParallelCodeReviewRunner(
     brokerId = request.brokerId,
     budget = request.budget,
   )
+
+  /**
+   * The lane's coverage as it actually ended. Bundle segmentation only says whether the assembled
+   * bundle fit the budget; both parallel agents review every selected skill, so a lane whose parent
+   * agent run did not succeed reviewed nothing durable and is incomplete regardless of bundle fit.
+   * Durable rows, the coverage report, and the integration pass's lane summaries all read this.
+   */
+  private fun effectiveCompletionState(
+    launch: ReviewSpecialistLaunchRequest,
+    outcomes: ParallelReviewLaneRunResult,
+  ): ReviewLaneCompletionState {
+    val completion = governedLaunchFor(launch).completionState
+    if (outcomes.lane1.success && outcomes.lane2.success) return completion
+    return completion.asFailedLaneRun(
+      launch.assignment.assignedBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
+    )
+  }
 
   private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
     if (states.isEmpty()) {

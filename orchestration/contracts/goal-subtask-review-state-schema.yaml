@@ -124,7 +124,7 @@ properties:
         commit_focused_accounting:
           description: >
             What a delegated commit-focused pass actually did: which commit sequence it covered, how
-            sparsely it routed, which lanes ended incomplete from budget exhaustion, what the
+            sparsely it routed, which lanes ended incomplete (budget exhaustion or a failed lane run), what the
             parent's own relevance analysis consumed, and how the single integration pass ended.
             Absent for an inline or non-commit pass, which has no commit sequence to describe.
             Identities, counts, and lane names only — never a commit subject, path, or diff text.

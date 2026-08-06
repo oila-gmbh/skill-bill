@@ -278,6 +278,28 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(emptyList(), complete.unreviewedUnits)
   }
 
+  // AC-009: a bundle that fit the budget still is not clean coverage when the lane's run failed.
+  @Test fun `a failed lane run downgrades a complete state to incomplete naming its whole bundle`() {
+    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))
+    val assembled = ReviewLaneAssembledBundle.assemble(
+      assignment(built, ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId))))),
+      built,
+    )
+    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+
+    val failed = complete.asFailedLaneRun(listOf("c1@${hunkA.path}"))
+
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, failed.disposition)
+    assertEquals(listOf("c1@${hunkA.path}"), failed.unreviewedUnits)
+    assertEquals(LANE_RUN_OUTCOME_DIMENSION, failed.budgetDimension)
+    assertNotEquals(complete, failed)
+
+    val budgetIncomplete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 5) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+    assertEquals(budgetIncomplete, budgetIncomplete.asFailedLaneRun(listOf("c1@${hunkA.path}")))
+  }
+
   @Test fun `a completion state cannot claim a disposition its unreviewed units contradict`() {
     assertFailsWith<IllegalArgumentException> {
       ReviewLaneCompletionState(

@@ -96,6 +96,36 @@ class ParallelCodeReviewIntegrationPassTest {
     assertTrue(result.mergeResult.formattedOutput.contains("contract drift across commits"))
   }
 
+  // AC-001: an unusable cited commit costs its own finding, never the whole finished review.
+  @Test fun `a finding naming an unknown commit is dropped instead of failing the finished review`() {
+    val recorder = ReviewRecorder()
+
+    val result = reviewHarness(
+      delegatedConfig(sixCommitPaths) { request ->
+        if (request.skillRunRequest.issueKey == INTEGRATION_ISSUE_KEY) {
+          RecordedWorkerResponse(
+            stdout = "- [F-001] Major | High | commits=c4,deadbeefdeadbeef | " +
+              "path=\"src/contract/ApiV2.kt\" | line=1 | cites a commit that does not exist\n" +
+              "- [F-002] Major | High | commits=c4,head-revision | " +
+              "path=\"src/contract/Api.kt\" | line=1 | contract drift across commits",
+          )
+        } else {
+          RecordedWorkerResponse()
+        }
+      },
+      recorder,
+    ).run(delegatedRequest())
+
+    val integration = assertNotNull(result.integration)
+    assertEquals(ReviewIntegrationTerminalOutcome.COMPLETED, integration.terminalOutcome)
+    assertEquals(
+      listOf(listOf("c4", "head-revision")),
+      integration.findings.map { it.commitShas },
+      "The hallucinated-commit finding drops; the usable cross-commit finding survives.",
+    )
+    assertTrue(result.mergeResult.formattedOutput.contains("contract drift across commits"))
+  }
+
   @Test fun `a single-commit sequence skips the integration pass with a stated reason`() {
     val recorder = ReviewRecorder()
 

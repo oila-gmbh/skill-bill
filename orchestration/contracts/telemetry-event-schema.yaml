@@ -502,7 +502,8 @@ $defs:
           minimum: 0
       incomplete_lanes:
         description: >
-          Lanes that ended incomplete from budget exhaustion. These are non-clean coverage; the
+          Lanes that ended incomplete — budget exhaustion, or a lane run that did not succeed.
+          These are non-clean coverage; the
           integration pass never compensates for them.
         type: array
         items:

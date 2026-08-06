@@ -178,6 +178,9 @@ data class GoalSubtaskReviewPassResult(
       "Goal review result artifact must identify its exact review pass."
     }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
+    require(commitFocusedAccounting == null || executedMode != CodeReviewExecutionMode.INLINE) {
+      "An inline review pass has no delegated commit sequence and must omit commit-focused accounting."
+    }
   }
 
   /**
@@ -458,6 +461,8 @@ data class GoalSubtaskReviewState(
     unresolvedFindingCount: Int,
     findings: List<GoalSubtaskReviewCompactFinding>,
     blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+    /** Supplied only by a delegated pass over a real commit sequence; inline passes omit it. */
+    commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
   ): GoalSubtaskReviewState {
     val passNumber = reservedPassNumber
       ?: reviewStateError("reserved_pass_number", "must be present before completing a review pass.")
@@ -467,13 +472,18 @@ data class GoalSubtaskReviewState(
       "Each prior Blocker may carry exactly one disposition."
     }
     val disposedPass = blockerDispositions.isNotEmpty()
+    val executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber)
     val result = GoalSubtaskReviewPassResult(
       passNumber = passNumber,
       verdict = verdict,
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
-      executedMode = FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, passNumber),
+      executedMode = executedMode,
+      // An inline pass carries no delegated commit sequence, so accounting a caller offers anyway is
+      // dropped rather than fabricated into durable state.
+      commitFocusedAccounting = commitFocusedAccounting
+        ?.takeIf { executedMode != CodeReviewExecutionMode.INLINE },
     )
     // A settled pass never carries a count-derived disposition: an unresolved Blocker reserves the
     // next remediation pass instead. The pause survives only as an operator-driven control, and a

@@ -4,9 +4,9 @@ import skillbill.boundary.OpenBoundaryMap
 
 /**
  * What one delegated commit-focused review pass actually did, as durable lifecycle state: the
- * commit sequence it covered, how sparsely it routed, which lanes ended incomplete from budget
- * exhaustion, what the parent's relevance analysis consumed, and how the single integration pass
- * ended.
+ * commit sequence it covered, how sparsely it routed, which lanes ended incomplete (budget
+ * exhaustion or a lane run that did not succeed), what the parent's relevance analysis consumed,
+ * and how the single integration pass ended.
  *
  * Identities, counts, and lane names only. A commit subject, a path, or diff text here would put
  * code content into durable lifecycle state, which this record exists to stay clear of.

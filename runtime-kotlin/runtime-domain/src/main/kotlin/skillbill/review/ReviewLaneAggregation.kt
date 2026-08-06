@@ -12,7 +12,8 @@ data class ReviewLaneAggregationInput(
 )
 
 /**
- * Coverage honesty for one review. A lane that ended incomplete from budget exhaustion is not clean
+ * Coverage honesty for one review. A lane that ended incomplete — budget exhaustion, or a parent
+ * agent run that did not succeed — is not clean
  * coverage, and the integration pass never offsets it: the integration pass reviews cross-commit
  * behavior over what the lanes *did* review, so it has nothing to say about what they did not.
  */
@@ -44,7 +45,7 @@ data class ReviewCoverageReport(
       return@buildString
     }
     appendLine(
-      "Coverage: NOT clean — ${incompleteLanes.size} lane(s) ended incomplete from budget exhaustion.",
+      "Coverage: NOT clean — ${incompleteLanes.size} lane(s) ended with incomplete coverage.",
     )
     incompleteLanes.sortedBy { it.lane }.forEach { lane ->
       appendLine("- ${lane.lane} left unreviewed: ${lane.unreviewedUnits.sorted().joinToString(", ")}")

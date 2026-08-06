@@ -299,6 +299,30 @@ fun ReviewLaneBundleSegment.toAccounting(): ReviewLaneSegmentAccounting = Review
   compositionDigest = compositionDigest,
 )
 
+/** The dimension named when a lane is incomplete because its parent agent run did not succeed. */
+const val LANE_RUN_OUTCOME_DIMENSION: String = "lane_run_outcome"
+
+/**
+ * Downgrades a lane whose parent agent run did not succeed to incomplete coverage. Bundle
+ * segmentation only describes whether the assembled bundle fit the budget, so a lane whose agent
+ * crashed still looks complete by that measure; here its whole assigned bundle counts as
+ * unreviewed, which is what both the coverage report and the integration pass must be told.
+ */
+fun ReviewLaneCompletionState.asFailedLaneRun(assignedUnits: List<String>): ReviewLaneCompletionState =
+  if (disposition == ReviewLaneReviewDisposition.INCOMPLETE) {
+    this
+  } else {
+    copy(
+      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      unreviewedSegmentIds = segments.map { it.segmentId }.ifEmpty { listOf(FAILED_RUN_SEGMENT_ID) },
+      budgetDimension = LANE_RUN_OUTCOME_DIMENSION,
+      unreviewedUnits = assignedUnits.distinct().ifEmpty { listOf(FAILED_RUN_UNIT) },
+    )
+  }
+
+private const val FAILED_RUN_SEGMENT_ID = "seg-lane-run-failed"
+private const val FAILED_RUN_UNIT = "entire assigned bundle"
+
 private val SHA256_HEX_PATTERN = Regex("[a-f0-9]{64}")
 
 private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")

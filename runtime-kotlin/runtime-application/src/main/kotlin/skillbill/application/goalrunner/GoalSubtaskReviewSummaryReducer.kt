@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.reviewStateError
 
@@ -61,6 +62,19 @@ internal object GoalSubtaskReviewSummaryReducer {
           ?: error("A grouped compact review summary must contain at least one finding.")
       }
   }
+
+  /**
+   * The delegated review pass's own commit-focused accounting, as it reported it. Absent for an
+   * inline or non-commit pass, which is exactly the shape durable lifecycle state expects: a
+   * missing record rather than a fabricated commit sequence identity. A malformed record fails
+   * loudly through [GoalSubtaskCommitFocusedAccounting] rather than persisting half a sequence.
+   */
+  fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
+    output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("commit_focused_accounting")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
   fun structuredFindings(output: Map<String, Any?>): List<StructuredGoalReviewFinding> {
     val findings = output["produced_outputs"]
