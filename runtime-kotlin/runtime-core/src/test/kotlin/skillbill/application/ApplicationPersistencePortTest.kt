@@ -2476,8 +2476,6 @@ private object FakeTelemetryConfigStore : TelemetryConfigStore {
   override fun ensure(): TelemetryConfigDocument = TelemetryConfigDocument(emptyMap())
 
   override fun write(document: TelemetryConfigDocument) = Unit
-
-  override fun delete(): Boolean = true
 }
 
 private class FakeTelemetryClient : TelemetryClient {

@@ -18,8 +18,12 @@ import skillbill.install.model.WindowsSymlinkFallbackState
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
+import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.ports.telemetry.model.TelemetryLevelMutationResult
+import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.nio.file.LinkOption
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -145,14 +149,16 @@ class InstallApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
-  fun `apply disables existing telemetry config as a structured success outcome`() {
+  fun `apply disables existing telemetry config in place and preserves install_id`() {
     val fixture = setupApplyFixture()
     val configPath = fixture.home.resolve(".skill-bill/config.json")
     Files.createDirectories(configPath.parent)
     Files.writeString(
       configPath,
       """
-      |{"install_id":"existing","telemetry":{"level":"anonymous","proxy_url":"https://example.invalid","batch_size":10}}
+      |{"install_id":"existing","external_addon_sources":["/tmp/addons"],
+      |"execution_matrix":{"default":"claude"},
+      |"telemetry":{"level":"anonymous","proxy_url":"https://example.invalid","batch_size":10}}
       |
       """.trimMargin(),
     )
@@ -169,13 +175,18 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
     assertEquals(InstallTelemetryLevel.OFF, result.telemetryOutcome.level)
     assertEquals("Telemetry level set to 'off'.", result.telemetryOutcome.message)
-    assertFalse(Files.exists(configPath), "off should remove existing telemetry config")
+    assertTrue(Files.exists(configPath), "off must keep the existing telemetry config on disk")
+    val persisted = Files.readString(configPath)
+    assertContains(persisted, "\"level\":\"off\"")
+    assertContains(persisted, "\"install_id\":\"existing\"")
+    assertContains(persisted, "/tmp/addons")
+    assertContains(persisted, "\"default\":\"claude\"")
   }
 
   @Test
   fun `apply skips telemetry off when there is no existing telemetry state`() {
     val fixture = setupApplyFixture()
-    val configPath = fixture.home.resolve(".skill-bill/config.json")
+    val configPath = fixture.home.resolve(".config/skill-bill/config.json")
     val plan = InstallOperations.planInstall(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
@@ -188,7 +199,31 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SKIPPED, result.telemetryOutcome.status)
     assertEquals("Telemetry was already off.", result.telemetryOutcome.message)
-    assertFalse(Files.exists(configPath), "off should not materialize telemetry config")
+    assertTrue(Files.exists(configPath), "off writes level off rather than deleting the config")
+    assertContains(Files.readString(configPath), "\"level\":\"off\"")
+  }
+
+  @Test
+  fun `apply routes telemetry off through the injected mutator instead of touching the config file`() {
+    val fixture = setupApplyFixture()
+    val configPath = fixture.home.resolve(".skill-bill/config.json")
+    Files.createDirectories(configPath.parent)
+    val seeded = """{"install_id":"existing","telemetry":{"level":"anonymous","proxy_url":"","batch_size":10}}"""
+    Files.writeString(configPath, seeded)
+    val mutator = RecordingTelemetryLevelMutator(clearedEvents = 3)
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        agents = setOf(InstallAgent.CODEX),
+        telemetryLevel = InstallTelemetryLevel.OFF,
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan, mutator)
+
+    assertEquals(listOf("off"), mutator.levels)
+    assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
+    assertEquals(3, result.telemetryOutcome.clearedEvents)
+    assertEquals(seeded, Files.readString(configPath), "the mutator owns the write; apply must not rewrite the file")
   }
 
   @Test
@@ -680,6 +715,28 @@ class InstallApplyTest : InstallApplyTestSupport() {
           warning.message == "Windows symlink support was not confirmed." &&
           warning.guidance.orEmpty().contains("Developer Mode")
       },
+    )
+  }
+}
+
+private class RecordingTelemetryLevelMutator(
+  private val clearedEvents: Int,
+) : TelemetryLevelMutator {
+  val levels = mutableListOf<String>()
+
+  override fun setLevel(level: String, dbOverride: String?): TelemetryLevelMutationResult {
+    levels += level
+    return TelemetryLevelMutationResult(
+      settings = TelemetrySettings(
+        configPath = Path.of("/fake/config.json"),
+        level = level,
+        enabled = level != "off",
+        installId = "existing",
+        proxyUrl = "",
+        customProxyUrl = null,
+        batchSize = 10,
+      ),
+      clearedEvents = clearedEvents,
     )
   }
 }

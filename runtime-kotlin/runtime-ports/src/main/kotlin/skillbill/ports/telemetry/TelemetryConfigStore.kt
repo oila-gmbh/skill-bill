@@ -13,6 +13,4 @@ interface TelemetryConfigStore {
   fun ensure(): TelemetryConfigDocument
 
   fun write(document: TelemetryConfigDocument)
-
-  fun delete(): Boolean
 }

@@ -3,9 +3,9 @@ package skillbill.telemetry.config
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.telemetryLevels
+import skillbill.telemetry.withTelemetryLevel
 
 object TelemetryConfigMutations {
   fun setTelemetryLevel(
@@ -42,33 +42,30 @@ private fun enableTelemetry(
   settingsProvider: TelemetrySettingsProvider,
   level: String,
 ): Pair<TelemetrySettings, Int> {
-  val payload = configStore.ensure().payload.toMutableMap()
-  val telemetry =
-    (
-      (payload["telemetry"] as? Map<*, *>)
-        ?.entries
-        ?.filter { it.key is String }
-        ?.associate { it.key as String to it.value }
-        ?.toMutableMap()
-      )
-      ?: throw IllegalArgumentException(
-        "Telemetry config at '${configStore.configPath()}' must contain a 'telemetry' object.",
-      )
-  telemetry["level"] = level
-  telemetry.remove("enabled")
-  payload["telemetry"] = telemetry
-  configStore.write(TelemetryConfigDocument(payload))
+  writeTelemetryLevel(configStore, level)
   return settingsProvider.load(materialize = true) to 0
 }
 
+/**
+ * Disable is an in-place level write, never a delete: `install_id` and every other config key must
+ * survive so re-enabling reuses the same install identity instead of minting a fresh UUID.
+ * [TelemetrySettingsProvider.load] stays non-materializing so it cannot re-default the file just
+ * written.
+ */
 private fun disableTelemetry(
   configStore: TelemetryConfigStore,
   settingsProvider: TelemetrySettingsProvider,
   outbox: TelemetryOutboxRepository?,
 ): Pair<TelemetrySettings, Int> {
-  configStore.delete()
+  writeTelemetryLevel(configStore, "off")
   val clearedEvents = outbox?.clear().orEmpty()
   return settingsProvider.load(materialize = false) to clearedEvents
+}
+
+private fun writeTelemetryLevel(configStore: TelemetryConfigStore, level: String) {
+  configStore.write(
+    configStore.ensure().withTelemetryLevel(level, configStore.configPath().toString()),
+  )
 }
 
 private fun Int?.orEmpty(): Int = this ?: 0
