@@ -1,3 +1,14 @@
+## [2026-08-06] SKILL-163 telemetry release attribution: retain install_id across disable (subtask 2)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-cli}, .feature-specs/SKILL-163-telemetry-release-attribution
+- Disabling telemetry no longer deletes `~/.config/skill-bill/config.json`; it rewrites the file in place with level `off`, so `install_id` survives and a later re-enable reuses it instead of minting a fresh UUID.
+- `delete()` is gone from the `TelemetryConfigStore` port and `FileTelemetryConfigStore` — the destructive capability is unavailable to future callers, and a leftover caller is a compile error rather than a silent identity reset. reusable
+- Rule to carry forward: `config.json` is shared state (`install_id`, `external_addon_sources`, `execution_matrix`); a telemetry-level mutation must never remove keys it does not own. `withTelemetryLevel` in `TelemetryConfigRules` is the single domain rule enforcing key preservation (and dropping the legacy `enabled` flag). reusable
+- The install-apply `off` path (`InstallApplySideEffects`) and the CLI disable path (`TelemetryConfigMutations`) now share one implementation instead of duplicating the delete; both branches (mutator present and null-mutator) preserve an existing config file.
+- Disable still clears collection state and drains `telemetry_outbox`, returning the cleared count — stopping collection and destroying identity are now separate concerns.
+- Known limitation (deliberate, per spec non-goals): deleting `config.json` by hand is the only remaining way to reset the installation identity; no "forget me" command exists.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-06] SKILL-136 review-run completeness: per-lane attribution (subtask 5)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-infra-sqlite}, .feature-specs/SKILL-136-android-native-review-specialists
 - `specialist_reviews` is now sourced from the composed launch plan (not agent narration) and stored one row per lane in a new `review_run_lanes` table, replacing the comma-joined string. reusable

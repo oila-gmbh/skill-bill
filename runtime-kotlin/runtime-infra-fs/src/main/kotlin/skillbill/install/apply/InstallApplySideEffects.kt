@@ -14,8 +14,8 @@ import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.ports.telemetry.writeTelemetryLevel
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
-import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.parsePositiveTelemetryInt
 import skillbill.telemetry.parseTelemetryLevelValue
 import skillbill.telemetry.telemetryLevels
@@ -75,29 +75,10 @@ private fun applyInstallTelemetryLevel(
     "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."
   }
   val configStore = FileTelemetryConfigStore(context)
-  return if (level == "off") {
-    configStore.delete()
-    0
-  } else {
-    val payload = configStore.ensure().payload.toMutableMap()
-    val telemetry =
-      (
-        (payload["telemetry"] as? Map<*, *>)
-          ?.entries
-          ?.filter { it.key is String }
-          ?.associate { it.key as String to it.value }
-          ?.toMutableMap()
-        )
-        ?: throw IllegalArgumentException(
-          "Telemetry config at '${configStore.configPath()}' must contain a 'telemetry' object.",
-        )
-    telemetry["level"] = level
-    telemetry.remove("enabled")
-    payload["telemetry"] = telemetry
-    configStore.write(TelemetryConfigDocument(payload))
+  if (configStore.writeTelemetryLevel(level)) {
     validateInstallTelemetryConfig(configStore)
-    0
   }
+  return 0
 }
 
 private fun validateInstallTelemetryConfig(configStore: FileTelemetryConfigStore) {

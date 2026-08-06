@@ -57,7 +57,7 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 - a governed contract that fails loudly when skills drift instead of silently going stale
 - durable, resumable workflow state so long-running multi-phase skills survive crashes and context compaction — and resume is agent-independent: a run paused under Claude Code continues under Codex with the same command
 - automatic decomposition of oversized work into resumable subtasks the runtime tracks for you — each subtask runs in a fresh context briefed from curated durable artifacts, so long goals don't degrade no matter how many hours they run
-- structured telemetry through a pluggable proxy you can self-host
+- structured telemetry through a pluggable proxy you can self-host — see [Telemetry Privacy](docs/telemetry-privacy.md) for exactly what each level collects
 - per-project overrides so the same skill behaves differently per repo without forking
 - per-module memory so institutional knowledge lives next to the code
 
@@ -141,6 +141,7 @@ Omit `mode:` to use delegated review, the default specialist subagent fan-out; `
 - [Skill Source And Generation Model](docs/skill-source-generation.md): `content.md` vs generated `SKILL.md`, support pointers, install staging, and native-agent generation
 - [External Addon Sources](docs/external-addons.md): overlay private or team-specific review add-ons onto an installed pack, kept out of the shared repo
 - [Review Telemetry](docs/review-telemetry.md): telemetry contract, learnings, local DB usage, and remote proxy stats
+- [Telemetry Privacy](docs/telemetry-privacy.md): per-level field collection, default destination and self-hosting, opt-out mechanisms, correlation identifier, and retention
 
 ## License
 

@@ -109,12 +109,12 @@ class LifecycleTelemetryStore(
         recordGoalIssueBlockedSegment(connection, parentWorkflowId, record.issueKey, record.workflowId)
       }
     }
-    emitGoalFinished(connection, record.workflowId)
+    emitGoalFinished(connection, record.workflowId, level)
   }
 
   override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) {
     if (saveGoalIssueFinished(connection, record).persisted) {
-      emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey)
+      emitGoalIssueFinished(connection, record.parentWorkflowId, record.issueKey, level)
     }
   }
 }

@@ -30,6 +30,7 @@ internal object DatabaseSchema {
       "goal_subtask_plans",
       "goal_runner_controls",
       "telemetry_reconciliation_state",
+      "telemetry_local_secrets",
       "unaddressed_findings",
       "review_finding_outcomes",
       "rejected_output_diagnostics",
@@ -224,7 +225,10 @@ internal object DatabaseSchema {
         -- NULL means healthy: no delivery has failed. Non-null is a real delivery failure. The
         -- legacy shape was NOT NULL DEFAULT '', which made "no error" and "error" indistinguishable
         -- from the column type alone; relax-telemetry-outbox-last-error backfills '' to NULL.
-        last_error TEXT
+        last_error TEXT,
+        -- Nullable with no default: a row enqueued before release attribution existed has no
+        -- version to report, and NULL keeps it distinguishable from a genuine recorded version.
+        skill_bill_version TEXT
       )
       """.trimIndent(),
       """
@@ -549,6 +553,13 @@ internal object DatabaseSchema {
       """
       CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered
         ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS telemetry_local_secrets (
+        secret_key TEXT PRIMARY KEY,
+        secret_value TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
       """.trimIndent(),
       """
       CREATE TABLE IF NOT EXISTS telemetry_reconciliation_state (

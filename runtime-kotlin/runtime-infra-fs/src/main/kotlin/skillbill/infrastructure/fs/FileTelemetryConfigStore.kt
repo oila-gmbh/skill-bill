@@ -29,8 +29,6 @@ class FileTelemetryConfigStore(
   override fun ensure(): TelemetryConfigDocument = ensureTelemetryConfigFile(configPath(), resolvedContext.environment)
 
   override fun write(document: TelemetryConfigDocument) = writeTelemetryConfigFile(configPath(), document)
-
-  override fun delete(): Boolean = Files.deleteIfExists(configPath())
 }
 
 internal fun resolveTelemetryStateDir(

@@ -27,40 +27,45 @@ private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> 
   }
 }
 
-fun goalStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "workflow_id" to row.stringOrEmpty("workflow_id"),
-  "issue_key" to row.stringOrEmpty("issue_key"),
-  "subtask_total" to row.intOrZero("subtask_total"),
-  "resumed" to row.booleanFromInt("resumed"),
-  "started_at" to row.stringOrEmpty("started_at"),
-  "status" to "running",
-  "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
-).apply {
-  if (level == "full") {
-    put("feature_name", row.stringOrEmpty("feature_name"))
+private fun Map<String, Any?>.redactedWorkflowId(column: String, level: String, salt: String): String =
+  redactIssueKeyReferences(stringOrEmpty(column), stringOrEmpty("issue_key"), level, salt)
+
+fun goalStartedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
+  linkedMapOf<String, Any?>(
+    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
+    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    "subtask_total" to row.intOrZero("subtask_total"),
+    "resumed" to row.booleanFromInt("resumed"),
+    "started_at" to row.stringOrEmpty("started_at"),
+    "status" to "running",
+    "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
+  ).apply {
+    if (level == "full") {
+      put("feature_name", row.stringOrEmpty("feature_name"))
+    }
   }
-}
 
-fun goalFinishedPayload(row: Map<String, Any?>): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "workflow_id" to row.stringOrEmpty("workflow_id"),
-  "issue_key" to row.stringOrEmpty("issue_key"),
-  "status" to row.stringOrEmpty("status"),
-  "started_at" to row.stringOrEmpty("started_at"),
-  "finished_at" to row.stringOrEmpty("finished_at"),
-  "duration_seconds" to secondsFromMillis(row.longOrZero("finished_duration_ms")),
-  "subtasks_complete" to row.intOrZero("subtasks_complete"),
-  "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
-  "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
-  "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
-  "stop_reason" to row["stop_reason"]?.toString(),
-)
+fun goalFinishedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
+  linkedMapOf<String, Any?>(
+    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
+    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    "status" to row.stringOrEmpty("status"),
+    "started_at" to row.stringOrEmpty("started_at"),
+    "finished_at" to row.stringOrEmpty("finished_at"),
+    "duration_seconds" to secondsFromMillis(row.longOrZero("finished_duration_ms")),
+    "subtasks_complete" to row.intOrZero("subtasks_complete"),
+    "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
+    "subtasks_skipped" to row.intOrZero("subtasks_skipped"),
+    "mode" to row.stringOrEmpty("mode").ifBlank { "runtime" },
+    "stop_reason" to row["stop_reason"]?.toString(),
+  )
 
-fun goalIssueFinishedPayload(row: Map<String, Any?>): Map<String, Any?> {
+fun goalIssueFinishedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> {
   val firstStartedAt = row.stringOrEmpty("first_started_at")
   val finishedAt = row.stringOrEmpty("finished_at")
   return linkedMapOf<String, Any?>(
-    "parent_workflow_id" to row.stringOrEmpty("parent_workflow_id"),
-    "issue_key" to row.stringOrEmpty("issue_key"),
+    "parent_workflow_id" to row.redactedWorkflowId("parent_workflow_id", level, salt),
+    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
     "status" to row.stringOrEmpty("status"),
     "subtasks_complete" to row.intOrZero("subtasks_complete"),
     "subtasks_blocked" to row.intOrZero("subtasks_blocked"),
@@ -75,28 +80,29 @@ fun goalIssueFinishedPayload(row: Map<String, Any?>): Map<String, Any?> {
   )
 }
 
-fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "workflow_id" to row.stringOrEmpty("workflow_id"),
-  "issue_key" to row.stringOrEmpty("issue_key"),
-  "subtask_id" to row.intOrZero("subtask_id"),
-  "status" to row.stringOrEmpty("status"),
-  "started_at" to row.stringOrEmpty("started_at"),
-  "finished_at" to row.stringOrEmpty("finished_at"),
-  "duration_seconds" to secondsFromMillis(row.longOrZero("duration_ms")),
-  "attempt_count" to row.intOrZero("attempt_count"),
-  "blocked_reason" to row["blocked_reason"]?.toString(),
-).apply {
-  if (level == "full") {
-    put("subtask_name", row.stringOrEmpty("subtask_name"))
-    put("finalizing_agent_id", row["finalizing_agent_id"]?.toString()?.takeIf(String::isNotBlank))
-    put(
-      "participating_agent_ids",
-      parseAgentIdArray(row.stringOrEmpty("participating_agent_ids"), row.stringOrEmpty("workflow_id")),
-    )
-    put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
-    put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
+fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
+  linkedMapOf<String, Any?>(
+    "workflow_id" to row.redactedWorkflowId("workflow_id", level, salt),
+    "issue_key" to redactIssueKey(row.stringOrEmpty("issue_key"), level, salt),
+    "subtask_id" to row.intOrZero("subtask_id"),
+    "status" to row.stringOrEmpty("status"),
+    "started_at" to row.stringOrEmpty("started_at"),
+    "finished_at" to row.stringOrEmpty("finished_at"),
+    "duration_seconds" to secondsFromMillis(row.longOrZero("duration_ms")),
+    "attempt_count" to row.intOrZero("attempt_count"),
+    "blocked_reason" to row["blocked_reason"]?.toString(),
+  ).apply {
+    if (level == "full") {
+      put("subtask_name", row.stringOrEmpty("subtask_name"))
+      put("finalizing_agent_id", row["finalizing_agent_id"]?.toString()?.takeIf(String::isNotBlank))
+      put(
+        "participating_agent_ids",
+        parseAgentIdArray(row.stringOrEmpty("participating_agent_ids"), row.stringOrEmpty("workflow_id")),
+      )
+      put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
+      put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
+    }
   }
-}
 
 private fun secondsFromMillis(durationMs: Long): Long = durationMs.coerceAtLeast(0) / MILLIS_PER_SECOND
 

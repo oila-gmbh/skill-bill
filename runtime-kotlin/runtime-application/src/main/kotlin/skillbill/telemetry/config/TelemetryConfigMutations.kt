@@ -3,7 +3,7 @@ package skillbill.telemetry.config
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.telemetry.model.TelemetryConfigDocument
+import skillbill.ports.telemetry.writeTelemetryLevel
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.telemetryLevels
 
@@ -17,10 +17,16 @@ object TelemetryConfigMutations {
     require(level in telemetryLevels) {
       "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."
     }
+    val currentLevel = settingsProvider.load(materialize = false).level
     return if (level == "off") {
       disableTelemetry(configStore, settingsProvider, outbox)
     } else {
-      enableTelemetry(configStore, settingsProvider, level)
+      enableTelemetry(
+        configStore = configStore,
+        settingsProvider = settingsProvider,
+        level = level,
+        outbox = outbox.takeIf { clearsPendingOutbox(currentLevel, level) },
+      )
     }
   }
 
@@ -37,36 +43,41 @@ object TelemetryConfigMutations {
   )
 }
 
+/**
+ * A downgrade narrows what may leave the machine, but payloads already sitting in the outbox were
+ * built under the looser level and would still upload raw values on the next sync. Treat an
+ * unrecognized current level as the loosest one so an unresolvable state fails closed and clears.
+ */
+fun clearsPendingOutbox(currentLevel: String, newLevel: String): Boolean {
+  if (newLevel == "off") return true
+  val current = telemetryLevels.indexOf(currentLevel).takeIf { it >= 0 } ?: telemetryLevels.lastIndex
+  return telemetryLevels.indexOf(newLevel) < current
+}
+
 private fun enableTelemetry(
   configStore: TelemetryConfigStore,
   settingsProvider: TelemetrySettingsProvider,
   level: String,
+  outbox: TelemetryOutboxRepository?,
 ): Pair<TelemetrySettings, Int> {
-  val payload = configStore.ensure().payload.toMutableMap()
-  val telemetry =
-    (
-      (payload["telemetry"] as? Map<*, *>)
-        ?.entries
-        ?.filter { it.key is String }
-        ?.associate { it.key as String to it.value }
-        ?.toMutableMap()
-      )
-      ?: throw IllegalArgumentException(
-        "Telemetry config at '${configStore.configPath()}' must contain a 'telemetry' object.",
-      )
-  telemetry["level"] = level
-  telemetry.remove("enabled")
-  payload["telemetry"] = telemetry
-  configStore.write(TelemetryConfigDocument(payload))
-  return settingsProvider.load(materialize = true) to 0
+  configStore.writeTelemetryLevel(level)
+  val clearedEvents = outbox?.clear().orEmpty()
+  return settingsProvider.load(materialize = true) to clearedEvents
 }
 
+/**
+ * Disable is an in-place level write on an existing config, never a delete and never a create:
+ * `install_id` and every other config key must survive so re-enabling reuses the same install
+ * identity instead of minting a fresh UUID, and a machine with no config keeps having none.
+ * [TelemetrySettingsProvider.load] stays non-materializing so it cannot re-default the file just
+ * written.
+ */
 private fun disableTelemetry(
   configStore: TelemetryConfigStore,
   settingsProvider: TelemetrySettingsProvider,
   outbox: TelemetryOutboxRepository?,
 ): Pair<TelemetrySettings, Int> {
-  configStore.delete()
+  configStore.writeTelemetryLevel("off")
   val clearedEvents = outbox?.clear().orEmpty()
   return settingsProvider.load(materialize = false) to clearedEvents
 }

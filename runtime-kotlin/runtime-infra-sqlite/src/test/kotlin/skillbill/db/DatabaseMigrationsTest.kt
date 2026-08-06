@@ -1039,6 +1039,30 @@ class DatabaseMigrationsTest {
     }
   }
 
+  // SKILL-163 AC-002/AC-005: an existing store gains skill_bill_version on startup, and every row
+  // that predates it survives with a NULL version rather than being dropped or backfilled.
+  @Test
+  fun `opening a legacy telemetry outbox adds skill_bill_version and preserves version-less rows`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-version").resolve("legacy-outbox.db")
+    createLegacyTelemetryOutboxDatabase(dbPath)
+    val before = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      rowCount(connection, "telemetry_outbox")
+    }
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertTrue(
+        "skill_bill_version" in tableColumns(connection, "telemetry_outbox"),
+        "An existing store must gain the column, not only a freshly created one.",
+      )
+      assertEquals(before, rowCount(connection, "telemetry_outbox"), "No pre-migration row may be dropped.")
+      assertEquals(
+        before,
+        scalarInt(connection, "SELECT COUNT(*) FROM telemetry_outbox WHERE skill_bill_version IS NULL"),
+        "Pre-migration rows must stay version-absent rather than being given a fabricated version.",
+      )
+    }
+  }
+
   @Test
   fun `re-applying the telemetry outbox relaxation is a no-op with a single ledger entry`() {
     val dbPath = Files.createTempDirectory("runtime-kotlin-outbox-idempotent").resolve("legacy-outbox.db")

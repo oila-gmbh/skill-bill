@@ -95,6 +95,7 @@ fun reconcileStaleTelemetrySessions(
         connection,
         goal.parentWorkflowId,
         goal.issueKey,
+        request.level,
       ).let { true }
     } else {
       val target = requireNotNull(lifecycleTargets.firstOrNull { it.family == candidate.family })

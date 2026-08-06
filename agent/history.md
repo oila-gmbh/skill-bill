@@ -1,3 +1,13 @@
+## [2026-08-06] SKILL-163 subtask 4 telemetry privacy documentation
+Areas: docs, README.md, .feature-specs/SKILL-163-telemetry-release-attribution
+- Added `docs/telemetry-privacy.md`: a per-event, per-level (`off`/`anonymous`/`full`) field table covering the envelope, every `skillbill_*` event, destination and self-hosting, opt-out mechanisms, the correlating identifier, and retention. reusable
+- Every documented field is traced to a shipped source symbol (`telemetryProperties`, `clearsPendingOutbox`, the `telemetry_outbox.skill_bill_version` column) rather than transcribed from spec prose — do this when documenting payloads, since spec prose drifts from the emitter. reusable
+- `docs/review-telemetry.md`'s level table was expanded to match the privacy doc field-for-field and verdict-for-verdict; the two tables are now a paired invariant, so changing one requires changing the other.
+- Corrected two stale claims: config lives at `~/.config/skill-bill/config.json` (not the legacy `~/.skill-bill/` path), and `telemetry disable` is an in-place level write that retains `install_id` rather than deleting config.
+- Known limit: `off` still queues `skillbill_runtime_exception` and projection-measurement rows locally, and enabling later can upload them — documented, not changed here.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-06] SKILL-136 subtask 7 documentation and full maintainer gate
 Areas: docs, AGENTS.md, README.md, .feature-specs/SKILL-136-android-native-review-specialists
 - Refreshed the public docs surface for Android/KMP review specialists: README's KMP catalog now names Android+KMP and lists the persistence/reliability lanes, and stale composition-only claims were purged repo-wide (the single remaining hit is an immutable dated SKILL-114 history entry — leave it).

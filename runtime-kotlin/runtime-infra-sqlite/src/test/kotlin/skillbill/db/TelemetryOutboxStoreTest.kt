@@ -1,5 +1,6 @@
 package skillbill.db
 
+import skillbill.SkillBillVersion
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import java.nio.file.Files
@@ -101,6 +102,43 @@ class TelemetryOutboxStoreTest {
       assertTrue(store.listPending().isEmpty(), "Every synced row must leave the pending set.")
       assertEquals(0, store.pendingCount())
       assertEquals(null, store.latestError(), "A fully drained outbox reports no error.")
+    }
+  }
+
+  // SKILL-163 AC-001/AC-003: the version is recorded at insert time from the store's own value, so
+  // no payload-builder call site has to pass it.
+  @Test
+  fun `enqueue records the running skill-bill version without the caller supplying it`() {
+    withOutbox { connection, store ->
+      val id = store.enqueue(eventName = "skillbill_goal_finished", payloadJson = "{}")
+
+      assertEquals(
+        SkillBillVersion.VALUE,
+        scalarString(connection, "SELECT skill_bill_version FROM telemetry_outbox WHERE id = $id"),
+      )
+    }
+  }
+
+  @Test
+  fun `enqueue records the store's injected version and listPending surfaces it`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-outbox-version").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = TelemetryOutboxStore(connection, version = "9.9.9-injected")
+
+      val id = store.enqueue(eventName = "skillbill_goal_finished", payloadJson = "{}")
+
+      assertEquals(
+        "9.9.9-injected",
+        scalarString(connection, "SELECT skill_bill_version FROM telemetry_outbox WHERE id = $id"),
+      )
+      assertEquals("9.9.9-injected", store.listPending().single { it.id == id }.skillBillVersion)
+    }
+  }
+
+  private fun scalarString(connection: Connection, sql: String): String? = connection.createStatement().use { st ->
+    st.executeQuery(sql).use { rows ->
+      check(rows.next())
+      rows.getString(1)
     }
   }
 

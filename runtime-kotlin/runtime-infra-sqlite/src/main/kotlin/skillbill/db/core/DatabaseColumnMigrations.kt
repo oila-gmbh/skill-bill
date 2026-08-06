@@ -19,6 +19,9 @@ internal object DatabaseColumnMigrations {
     ensureQualityCheckSessionColumns(connection)
     ensureFeatureTaskRuntimeSessionColumns(connection)
     ensureColumn(connection, "feature_task_workflows", "interruption_reason", "TEXT")
+    // Must stay in this pass, which runs after DatabaseMigrations.apply: TelemetryOutboxLastErrorMigration
+    // rebuilds telemetry_outbox from an explicit column list and would silently drop the column.
+    ensureColumn(connection, "telemetry_outbox", "skill_bill_version", "TEXT")
     // apply() is wired both as gated migration version 1 (which runs before version 3 creates
     // goal_subtask_events) and unconditionally on every startup. Skip the agent-attribution column
     // heal until the table exists so the early migration-1 pass is a no-op; the unconditional startup
