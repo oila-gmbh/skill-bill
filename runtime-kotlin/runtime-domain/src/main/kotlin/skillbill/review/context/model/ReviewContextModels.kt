@@ -865,6 +865,15 @@ data class ReviewContextPacket(
     commitUnits.map { it.commitSha }.toSet()
   }
 
+  /**
+   * Stable identity of the reviewed commit sequence, over the ordered commit unit ids alone. It is
+   * deliberately narrower than [digest]: lane selection or a rule excerpt changing must not change
+   * which sequence a lane or integration result claims to cover, but reordering commits must.
+   */
+  val commitSequenceDigest: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    sha256(canonicalFields(*commitUnits.sortedBy { it.orderIndex }.map { it.commitUnitId }.toTypedArray()))
+  }
+
   val ownedPaths: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
     changedHunks.map { it.path }.toSet()
   }

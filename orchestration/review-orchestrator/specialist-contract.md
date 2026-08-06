@@ -61,6 +61,18 @@ Consumers must not rediscover any of the following:
 - `worker_relevance_redecision` — routing and focus/skip dispositions are fixed at launch; do not re-decide relevance
 - `aggregate_diff_restart` — never restart review from the aggregate PR diff or a complete-diff artifact
 
+### Integration pass
+
+The integration pass is not a specialist. Exactly one runs per review, after every selected lane has
+reached a terminal state, and it re-launches no specialist rubric. It receives commit identity
+metadata, final-state evidence targets, and bounded per-lane summaries — never a lane's raw bundle,
+a sibling lane's hunk bodies, an aggregate diff, or a parent transcript. Its cost is one pass and
+does not scale with commit count.
+
+```integration-contract
+You are the single final integration pass over a commit sequence every specialist lane has already reviewed. Report only cross-commit behavior: an interaction, ordering dependency, or contract drift that no single commit shows on its own. Do not re-run any specialist rubric, do not re-review a single commit in isolation, and do not restate a lane's finding. Cite the involved commits in the commits= segment of every finding you report. Lanes reported as incomplete coverage stay incomplete: this pass does not review what they left unreviewed and must never be described as closing that gap.
+```
+
 ```evidence-surface-rules
 Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once.
 ```

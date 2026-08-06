@@ -106,6 +106,8 @@ data class ReviewLaneAccounting(
   val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
+  /** `commit@path` labels budget exhaustion left unreviewed; reporting names these, not segment ids. */
+  val unreviewedUnits: List<String> = emptyList(),
 ) {
   init {
     require(lane.isNotBlank() && reviewId.isNotBlank() && packetDigest.isNotBlank() && assignmentDigest.isNotBlank())

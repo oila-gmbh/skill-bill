@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.ports.persistence.ReviewIntegrationPassRecord
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
@@ -108,6 +109,41 @@ fun fetchReviewRunLanes(connection: Connection, reviewRunId: String): List<Revie
           )
         }
       }
+    }
+  }
+
+/**
+ * Settles the integration pass's own durable boundary, independent of every lane row. Writing it
+ * separately is what lets a resume tell "all lanes done, integration never ran" apart from
+ * "everything done" instead of inferring one from the other.
+ */
+fun recordIntegrationPass(connection: Connection, reviewRunId: String, record: ReviewIntegrationPassRecord) {
+  reserveReviewRun(connection, reviewRunId)
+  connection.prepareStatement(
+    """
+    UPDATE review_runs
+    SET integration_terminal_outcome = ?, integration_commit_sequence_digest = ?
+    WHERE review_run_id = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(PARAM_ONE, record.terminalOutcome)
+    statement.setString(PARAM_TWO, record.commitSequenceDigest)
+    statement.setString(PARAM_THREE, reviewRunId)
+    statement.executeUpdate()
+  }
+}
+
+fun fetchIntegrationPass(connection: Connection, reviewRunId: String): ReviewIntegrationPassRecord? =
+  connection.prepareStatement(
+    "SELECT integration_terminal_outcome, integration_commit_sequence_digest " +
+      "FROM review_runs WHERE review_run_id = ?",
+  ).use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      if (!resultSet.next()) return null
+      val outcome = resultSet.getString("integration_terminal_outcome") ?: return null
+      val digest = resultSet.getString("integration_commit_sequence_digest") ?: return null
+      ReviewIntegrationPassRecord(commitSequenceDigest = digest, terminalOutcome = outcome)
     }
   }
 

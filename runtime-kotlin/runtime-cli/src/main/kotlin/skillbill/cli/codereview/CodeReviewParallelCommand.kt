@@ -149,6 +149,12 @@ class CodeReviewParallelCommand(
     val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
     val output = buildString {
       append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+      // Coverage honesty is part of the report, not an internal field: a reader has to be told when
+      // a lane left units unreviewed, and when commit-focused sequencing did not apply at all.
+      result.coverage?.let { coverage ->
+        appendLine()
+        append(coverage.render())
+      }
       result.accountingSummary?.let { summary ->
         appendLine()
         append("# Review accounting — ")

@@ -6,6 +6,7 @@ oneOf:
   - $ref: "#/$defs/parent_packet"
   - $ref: "#/$defs/assignment"
   - $ref: "#/$defs/launch"
+  - $ref: "#/$defs/integration_launch"
   - $ref: "#/$defs/budget_outcome"
   - $ref: "#/$defs/accounting_summary"
 $defs:
@@ -160,6 +161,10 @@ $defs:
     type: array
     minItems: 1
     items: { $ref: "#/$defs/commit_unit" }
+  # Stable identity of the reviewed commit sequence: SHA-256 over the ordered commit_unit_ids. It
+  # names which sequence a lane result or integration result belongs to, so aggregation can reject
+  # a result minted against a different sequence instead of merging it.
+  commit_sequence_digest: { $ref: "#/$defs/digest" }
   coverage_fact:
     type: object
     additionalProperties: false
@@ -288,7 +293,7 @@ $defs:
   parent_packet:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, commit_units, coverage_fact, routing_matrix, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
+    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, commit_units, commit_sequence_digest, coverage_fact, routing_matrix, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
     properties:
       contract_version: { const: "0.9" }
       kind: { const: parent_packet }
@@ -310,6 +315,7 @@ $defs:
         items: { $ref: "#/$defs/lane_decision" }
       changed_hunks: { type: array, items: { $ref: "#/$defs/hunk" } }
       commit_units: { $ref: "#/$defs/commit_sequence" }
+      commit_sequence_digest: { $ref: "#/$defs/commit_sequence_digest" }
       coverage_fact: { $ref: "#/$defs/coverage_fact" }
       routing_matrix: { $ref: "#/$defs/routing_matrix" }
       matched_rules: { $ref: "#/$defs/rule_references" }
@@ -393,6 +399,63 @@ $defs:
       broker_id: { $ref: "#/$defs/identifier" }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
+  # What one specialist lane reports upward to the integration pass: its identity, its coverage
+  # disposition, and a bounded prose summary. Deliberately carries no hunk bodies, no rubric, and
+  # no transcript, so a sibling lane's raw evidence cannot reach the integration worker through it.
+  specialist_summary:
+    type: object
+    additionalProperties: false
+    required: [lane, assignment_digest, lane_disposition, assigned_paths, commit_shas, finding_count, unreviewed_segment_ids, summary]
+    properties:
+      lane: { $ref: "#/$defs/identifier" }
+      assignment_digest: { $ref: "#/$defs/digest" }
+      lane_disposition: { enum: [complete, incomplete] }
+      assigned_paths:
+        type: array
+        uniqueItems: true
+        items: { $ref: "#/$defs/path" }
+      commit_shas: { $ref: "#/$defs/strings" }
+      finding_count: { type: integer, minimum: 0 }
+      unreviewed_segment_ids:
+        type: array
+        items: { $ref: "#/$defs/identifier" }
+      summary: { type: string, maxLength: 2000 }
+  # The single bounded pass that runs once after every specialist lane reaches a terminal state.
+  # It receives final-state evidence targets plus per-lane summaries — never a lane's raw bundle,
+  # never a sibling lane's hunk bodies, and never a parent transcript. `additionalProperties: false`
+  # is the enforcement seam: a payload carrying `bundle`, `brokered_evidence`, `assigned_hunks`, or
+  # any transcript field is rejected rather than quietly delivered.
+  integration_launch:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, review_id, packet_digest, review_revision, commit_sequence_digest, base_revision, head_revision, integration_contract, consumer_contract, commit_units, specialist_summaries, coverage_fact, final_state_evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
+    properties:
+      contract_version: { const: "0.9" }
+      kind: { const: integration_launch }
+      review_id: { $ref: "#/$defs/identifier" }
+      packet_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      commit_sequence_digest: { $ref: "#/$defs/commit_sequence_digest" }
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
+      integration_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
+      consumer_contract: { type: string, minLength: 1, pattern: '.*\S.*' }
+      commit_units:
+        type: array
+        minItems: 1
+        items: { $ref: "#/$defs/assigned_commit_unit" }
+      specialist_summaries:
+        type: array
+        items: { $ref: "#/$defs/specialist_summary" }
+      coverage_fact: { $ref: "#/$defs/coverage_fact" }
+      final_state_evidence_targets: { $ref: "#/$defs/evidence_targets" }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
+      evidence_surface_rules: { type: string, minLength: 1, pattern: '.*\S.*' }
+      report_structure: { type: string, minLength: 1, pattern: '.*\S.*' }
+      broker_id: { $ref: "#/$defs/identifier" }
+      isolation: { const: fresh }
+      budget: { $ref: "#/$defs/budget" }
   budget:
     type: object
     additionalProperties: false
@@ -450,7 +513,7 @@ $defs:
   accounting_summary:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
+    required: [contract_version, kind, review_id, packet_digest, parent, lanes, commit_routing_accounting, parent_analysis_consumption, integration, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
       contract_version: { const: "0.9" }
       kind: { const: accounting_summary }
@@ -462,10 +525,70 @@ $defs:
         type: array
         items:
           $ref: "#/$defs/accounting_node"
+      commit_routing_accounting: { $ref: "#/$defs/commit_routing_accounting" }
+      parent_analysis_consumption: { $ref: "#/$defs/parent_analysis_consumption" }
+      # Null when no commit sequence existed to integrate over; the terminal state then names why.
+      integration:
+        oneOf:
+          - { type: "null" }
+          - { $ref: "#/$defs/integration_accounting" }
       aggregate_counters: { $ref: "#/$defs/accounting_counters" }
       aggregate_direct_usage: { $ref: "#/$defs/usage" }
       aggregate_inclusive_usage: { $ref: "#/$defs/usage" }
       budget_regression: { type: boolean }
+  # Commit-sequence identity plus the routing shape the parent decided before any worker launched.
+  commit_routing_accounting:
+    type: object
+    additionalProperties: false
+    required: [commit_sequence_digest, routing_digest, commit_count, lane_count, focused_commit_count, skipped_commit_count, focused_pair_count, skipped_pair_count, incomplete_lanes]
+    properties:
+      commit_sequence_digest: { $ref: "#/$defs/commit_sequence_digest" }
+      routing_digest: { $ref: "#/$defs/digest" }
+      commit_count: { type: integer, minimum: 1 }
+      lane_count: { type: integer, minimum: 0 }
+      # A commit is focused when at least one lane focused it, and skipped only when every lane
+      # skipped it; the pair counts keep the per-lane assignment shape separately visible.
+      focused_commit_count: { type: integer, minimum: 0 }
+      skipped_commit_count: { type: integer, minimum: 0 }
+      focused_pair_count: { type: integer, minimum: 0 }
+      skipped_pair_count: { type: integer, minimum: 0 }
+      incomplete_lanes:
+        type: array
+        items: { $ref: "#/$defs/identifier" }
+  # What the parent's own relevance analysis actually consumed against its configured ceilings, so
+  # a routing pass that nearly exhausted its budget is visible before it starts failing loudly.
+  parent_analysis_consumption:
+    type: object
+    additionalProperties: false
+    required: [analyzed_pairs, analyzed_bytes, max_analysis_pairs, max_analysis_bytes]
+    properties:
+      analyzed_pairs: { type: integer, minimum: 0 }
+      analyzed_bytes: { type: integer, minimum: 0 }
+      max_analysis_pairs: { type: integer, minimum: 1 }
+      max_analysis_bytes: { type: integer, minimum: 1 }
+  # Terminal state of the single integration pass, attributed to the commit sequence it covered.
+  integration_accounting:
+    type: object
+    additionalProperties: false
+    required: [commit_sequence_digest, terminal_outcome, summarized_lane_count, finding_count, counters, usage]
+    properties:
+      commit_sequence_digest: { $ref: "#/$defs/commit_sequence_digest" }
+      terminal_outcome:
+        enum: [completed, skipped_not_applicable, review_context_budget_exceeded, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, no_op_resume]
+      skip_reason: { type: [string, "null"] }
+      summarized_lane_count: { type: integer, minimum: 0 }
+      finding_count: { type: integer, minimum: 0 }
+      counters: { $ref: "#/$defs/accounting_counters" }
+      usage: { $ref: "#/$defs/usage" }
+    allOf:
+      - if:
+          properties:
+            terminal_outcome: { const: skipped_not_applicable }
+          required: [terminal_outcome]
+        then:
+          required: [skip_reason]
+          properties:
+            skip_reason: { type: string, minLength: 1, pattern: '.*\S.*' }
   accounting_counters:
     type: object
     additionalProperties: false
@@ -550,3 +673,9 @@ x-coherence-checks:
   - An assignment's assigned_hunks are exactly the hunks its focused commits changed under its owned paths; a hunk belonging to a commit skipped for that lane is never assigned.
   - The routing matrix contributes to packet_digest, and a lane's routing column contributes to its assignment_digest, so flipping a disposition or a skip reason is digest-visible.
   - Parent-side routing analysis is bounded by max_routing_analysis_pairs and max_routing_analysis_bytes and fails loudly on breach rather than degrading into over-broad or under-broad assignments.
+  - The commit_sequence_digest is SHA-256 over the packet's ordered commit_unit_ids, so it names the reviewed sequence independently of routing, and a lane or integration result minted against a different sequence is rejected rather than merged.
+  - Exactly one integration pass runs per review, after every selected lane reaches a terminal state, and it never re-launches a specialist rubric; its cost does not scale with commit count.
+  - An integration launch carries final-state evidence targets, commit identity metadata, and bounded per-lane summaries only; a raw lane bundle, a sibling lane's hunk bodies, a complete PR diff, or a parent transcript in that payload is a contract breach, not a degraded delivery.
+  - A review with no commit sequence to integrate over records the integration pass as skipped_not_applicable with a non-blank reason, never as completed.
+  - An incomplete lane is non-clean coverage that names its unreviewed segments; a completed integration pass never compensates for, closes, or offsets that gap in aggregation or reporting.
+  - Specialist completion and integration completion are distinct durable boundaries: a resume re-runs only lanes without a durable result, and re-runs the integration pass only when the integration pass itself did not complete.

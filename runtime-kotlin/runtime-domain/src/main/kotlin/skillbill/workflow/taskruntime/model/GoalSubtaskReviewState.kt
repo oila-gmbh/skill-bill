@@ -166,6 +166,8 @@ data class GoalSubtaskReviewPassResult(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val executedMode: CodeReviewExecutionMode? = null,
+  /** Present only for a delegated pass over a real commit sequence; never fabricated otherwise. */
+  val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 ) {
   init {
     require(passNumber >= 1) { "Goal review pass number must be a positive integer." }
@@ -192,7 +194,10 @@ data class GoalSubtaskReviewPassResult(
     "review_result_artifact" to reviewResultArtifact,
     "unresolved_finding_count" to unresolvedFindingCount,
     "findings" to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
-  ).apply { executedMode?.let { put("executed_mode", it.wireValue) } }
+  ).apply {
+    executedMode?.let { put("executed_mode", it.wireValue) }
+    commitFocusedAccounting?.let { put("commit_focused_accounting", it.toArtifactMap()) }
+  }
 
   companion object {
     @OpenBoundaryMap("Goal-review pass result decode from the durable workflow-artifact map")
@@ -205,6 +210,7 @@ data class GoalSubtaskReviewPassResult(
           "unresolved_finding_count",
           "findings",
           "executed_mode",
+          "commit_focused_accounting",
         ),
         path,
       )
@@ -221,6 +227,12 @@ data class GoalSubtaskReviewPassResult(
         unresolvedFindingCount = raw.requireReviewStateInt("unresolved_finding_count", path),
         findings = findings,
         executedMode = raw.optionalReviewStateString("executed_mode", path)?.let(CodeReviewExecutionMode::fromWire),
+        commitFocusedAccounting = raw["commit_focused_accounting"]?.let {
+          GoalSubtaskCommitFocusedAccounting.fromArtifactMap(
+            it.asReviewStateMap("$path.commit_focused_accounting"),
+            "$path.commit_focused_accounting",
+          )
+        },
       )
     }
   }

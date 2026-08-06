@@ -19,6 +19,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewIntegrationPassRecord
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
@@ -33,6 +34,7 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -62,6 +64,15 @@ class ReviewRecorder {
   val savedAccounting: MutableList<ReviewAccountingRecord> =
     Collections.synchronizedList(mutableListOf())
 
+  /**
+   * Durable review state the harness carries across runs, so a second run against the same recorder
+   * is a real resume: lane rows and the integration boundary are stored and read back separately,
+   * exactly as the two distinct durable boundaries they are.
+   */
+  val durableLanes: MutableList<ReviewRunLane> = Collections.synchronizedList(mutableListOf())
+
+  @Volatile var durableIntegrationPass: ReviewIntegrationPassRecord? = null
+
   /** The prompts the inline parent lanes were actually launched with. */
   val parentPrompts: List<String>
     get() = parentLaunches.mapNotNull { it.skillRunRequest.promptOverride }
@@ -81,12 +92,20 @@ data class RecordedWorkerResponse(
   val liveness: AgentRunLivenessSnapshot? = null,
 )
 
+/** One commit of a harness commit-range fixture, in sequence order. */
+data class RecordedCommit(val sha: String, val subject: String, val diff: String)
+
 data class ReviewHarnessConfig(
   val manifests: List<PlatformManifest>,
   val diff: String,
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
   val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse(stdout = "") },
+  /**
+   * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
+   * entry's sha must be the request's head revision, exactly as a real range resolves.
+   */
+  val commits: List<RecordedCommit> = emptyList(),
 )
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
@@ -123,11 +142,19 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       override fun runProcess(args: List<String>, workDir: Path): String? {
         recorder.diffCommands += args
         return when (args.getOrNull(1)) {
-          // Declared revisions canonicalize to themselves and the range enumerates no local commits,
-          // so the harness reviews one synthetic unit over config.diff, never a fabricated chain.
+          // Declared revisions canonicalize to themselves. With no commit fixture the range
+          // enumerates nothing, so the harness reviews one synthetic unit over config.diff rather
+          // than a fabricated chain; with one it replays exactly that chain.
           "rev-parse" -> args.last().removeSuffix("^{commit}")
-          "rev-list" -> ""
-          else -> config.diff
+          "rev-list" -> config.commits.joinToString("\n") { it.sha }
+          "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
+            "${parentOf(config.commits, commit)}\n${commit.subject}"
+          }
+          // A per-commit read names (parent, sha); the aggregate read names (base, head). Matching
+          // both ends keeps the two apart when head is also the last commit of the range.
+          else -> config.commits.firstOrNull {
+            it.sha == args.getOrNull(3) && parentOf(config.commits, it) == args.getOrNull(2)
+          }?.diff ?: config.diff
         }
       }
     },
@@ -143,6 +170,15 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
     database = recordingDatabase(recorder),
   )
+
+/** The base revision every harness request declares; the root commit of a fixture range parents onto it. */
+const val HARNESS_BASE_REVISION: String = "base-revision"
+
+/** The head revision every harness request declares; a fixture range must end on it. */
+const val HARNESS_HEAD_REVISION: String = "head-revision"
+
+private fun parentOf(commits: List<RecordedCommit>, commit: RecordedCommit): String =
+  commits.getOrNull(commits.indexOf(commit) - 1)?.sha ?: HARNESS_BASE_REVISION
 
 /** Runs both lanes to completion in a fixed order so recorded evidence stays deterministic. */
 private class SequentialLaneRunner : ParallelReviewLaneRunner {
@@ -191,10 +227,20 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
-      // Lane attribution carries no measured content, so this harness only has to tolerate it;
+      // Finding attribution carries no measured content, so this harness only has to tolerate it;
       // what the runner actually writes is asserted in ParallelCodeReviewRunnerTest.
-      "replaceReviewRunLanes", "recordFindingLaneAttribution" -> Unit
-      "fetchReviewRunLanes" -> emptyList<skillbill.review.model.ReviewRunLane>()
+      "recordFindingLaneAttribution" -> Unit
+      "replaceReviewRunLanes" -> {
+        @Suppress("UNCHECKED_CAST")
+        val lanes = args[1] as List<ReviewRunLane>
+        recorder.durableLanes.clear()
+        recorder.durableLanes.addAll(lanes)
+      }
+      "fetchReviewRunLanes" -> recorder.durableLanes.toList()
+      "recordIntegrationPass" -> {
+        recorder.durableIntegrationPass = args[1] as ReviewIntegrationPassRecord
+      }
+      "fetchIntegrationPass" -> recorder.durableIntegrationPass
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository
@@ -238,16 +284,18 @@ fun harnessRequest(
   timeout: Duration? = null,
   reviewRunId: String? = null,
   prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
+  codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.INLINE,
+  scope: ParallelReviewScope = ParallelReviewScope.BRANCH,
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
   agent2Id = agent2Id,
-  scope = ParallelReviewScope.BRANCH,
+  scope = scope,
   repoRoot = repoRoot,
   timeout = timeout,
-  codeReviewMode = CodeReviewExecutionMode.INLINE,
+  codeReviewMode = codeReviewMode,
   reviewRunId = reviewRunId,
-  baseRevision = "base-revision",
-  headRevision = "head-revision",
+  baseRevision = HARNESS_BASE_REVISION,
+  headRevision = HARNESS_HEAD_REVISION,
   prelaunchExpansions = prelaunchExpansions,
 )
 

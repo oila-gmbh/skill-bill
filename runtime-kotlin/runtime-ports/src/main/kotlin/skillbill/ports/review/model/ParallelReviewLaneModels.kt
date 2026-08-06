@@ -33,4 +33,5 @@ data class ParallelReviewLaneOutcome(
   val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
+  val unreviewedUnits: List<String> = emptyList(),
 )

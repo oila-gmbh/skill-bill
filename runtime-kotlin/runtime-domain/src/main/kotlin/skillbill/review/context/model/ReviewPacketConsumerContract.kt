@@ -41,6 +41,20 @@ object ReviewPacketConsumerContract {
       "that pass. Do not step commit-by-commit, re-decide relevance, or restart from an aggregate diff."
   const val CONSUMER_CONTRACT: String = AUTHORITATIVE_LAUNCH_CONTRACT
 
+  /**
+   * The integration pass runs once, after every specialist lane has finished. It looks only for
+   * behavior that emerges from how the commits combine — no lane rubric is re-run here, and a
+   * defect wholly inside one commit is already the finishing lane's to report.
+   */
+  const val INTEGRATION_CONTRACT: String =
+    "You are the single final integration pass over a commit sequence every specialist lane has " +
+      "already reviewed. Report only cross-commit behavior: an interaction, ordering dependency, " +
+      "or contract drift that no single commit shows on its own. Do not re-run any specialist " +
+      "rubric, do not re-review a single commit in isolation, and do not restate a lane's finding. " +
+      "Cite the involved commits in the commits= segment of every finding you report. Lanes " +
+      "reported as incomplete coverage stay incomplete: this pass does not review what they left " +
+      "unreviewed and must never be described as closing that gap."
+
   const val EVIDENCE_SURFACE_RULES: String =
     "Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. " +
       "A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. " +

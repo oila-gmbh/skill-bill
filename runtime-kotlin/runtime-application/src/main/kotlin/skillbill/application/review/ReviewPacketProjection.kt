@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewContextEnvelope
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -9,6 +10,7 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
+import skillbill.review.context.model.ReviewSpecialistSummary
 
 fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
@@ -33,6 +35,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .map { it.toEnvelope() },
     "commit_units" to commitUnits.sortedBy { it.orderIndex }.map { it.toEnvelope() },
+    "commit_sequence_digest" to commitSequenceDigest,
     "coverage_fact" to coverageFact.toEnvelope(),
     "routing_matrix" to routingMatrix.toEnvelope(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
@@ -106,6 +109,50 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "isolation" to isolation.name.lowercase(),
     "budget" to budget.toEnvelope(),
   ),
+)
+
+/**
+ * The bounded integration-pass input. Every entry here is either commit identity metadata, a
+ * final-state evidence target, or a bounded per-lane summary. There is deliberately no `bundle`,
+ * no `brokered_evidence`, no `assigned_hunks`, and no transcript key: the schema's
+ * `additionalProperties: false` turns any attempt to add one into a validation failure rather than
+ * a quiet delivery of raw lane evidence to the integration worker.
+ */
+fun GovernedReviewIntegrationLaunch.toIntegrationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
+  linkedMapOf(
+    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    "kind" to "integration_launch",
+    "review_id" to packet.reviewId,
+    "packet_digest" to packet.digest,
+    "review_revision" to packet.reviewRevision.toEnvelope(),
+    "commit_sequence_digest" to commitSequenceDigest,
+    "base_revision" to packet.baseRevision,
+    "head_revision" to packet.headRevision,
+    "integration_contract" to integrationContract,
+    "consumer_contract" to ReviewPacketConsumerContract.CONSUMER_CONTRACT,
+    "commit_units" to packet.commitUnits.sortedBy { it.orderIndex }.map { it.toAssignedEnvelope() },
+    "specialist_summaries" to specialistSummaries.sortedBy { it.lane }.map { it.toEnvelope() },
+    "coverage_fact" to packet.coverageFact.toEnvelope(),
+    "final_state_evidence_targets" to finalStateEvidenceTargets.map { it.toEnvelope() },
+    "dependency_allowlist" to packet.dependencyAllowlist.normalized.sorted(),
+    "forbidden_rediscovery" to ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
+    "evidence_surface_rules" to ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES,
+    "report_structure" to ReviewPacketConsumerContract.REPORT_STRUCTURE,
+    "broker_id" to brokerId,
+    "isolation" to isolation.name.lowercase(),
+    "budget" to budget.toEnvelope(),
+  ),
+)
+
+private fun ReviewSpecialistSummary.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "lane" to lane,
+  "assignment_digest" to assignmentDigest,
+  "lane_disposition" to disposition.wireValue,
+  "assigned_paths" to assignedPaths.sorted(),
+  "commit_shas" to commitShas,
+  "finding_count" to findingCount,
+  "unreviewed_segment_ids" to unreviewedSegmentIds,
+  "summary" to summary.normalizeLineEndings(),
 )
 
 /** The lane's assigned commit units in packet order (identity metadata only). */

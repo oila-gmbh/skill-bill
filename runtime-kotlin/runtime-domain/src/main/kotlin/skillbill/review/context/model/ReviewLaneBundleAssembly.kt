@@ -176,6 +176,12 @@ data class ReviewLaneCompletionState(
   val segments: List<ReviewLaneSegmentAccounting>,
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
+  /**
+   * The concrete review units budget exhaustion left unreviewed, as `commit@path` labels. Reporting
+   * has to name what was not covered; a segment id alone tells a reader nothing about which code
+   * went unreviewed.
+   */
+  val unreviewedUnits: List<String> = emptyList(),
 ) {
   init {
     require(bundleCompositionDigest.matches(SHA256_HEX_PATTERN)) {
@@ -186,6 +192,7 @@ data class ReviewLaneCompletionState(
       ReviewLaneReviewDisposition.COMPLETE -> {
         require(unreviewedSegmentIds.isEmpty()) { "A complete lane cannot name unreviewed segments." }
         require(budgetDimension == null) { "A complete lane cannot name a stopping budget dimension." }
+        require(unreviewedUnits.isEmpty()) { "A complete lane cannot name unreviewed units." }
       }
       ReviewLaneReviewDisposition.INCOMPLETE -> {
         require(unreviewedSegmentIds.isNotEmpty()) {
@@ -193,6 +200,9 @@ data class ReviewLaneCompletionState(
         }
         require(!budgetDimension.isNullOrBlank()) {
           "An incomplete lane must name the budget dimension that stopped it."
+        }
+        require(unreviewedUnits.isNotEmpty()) {
+          "An incomplete lane must name the units it left unreviewed."
         }
       }
     }
@@ -272,6 +282,7 @@ fun ReviewLaneBundleSegmentation.toCompletionState(bundleCompositionDigest: Stri
         ),
       unreviewedSegmentIds = listOf(ReviewLaneBundleSegmentation.UNREVIEWABLE_SEGMENT_ID),
       budgetDimension = "lane_launch_bytes",
+      unreviewedUnits = unreviewableEntries.map { "${it.commitSha}@${it.hunk.path}" }.distinct(),
     )
   } else {
     ReviewLaneCompletionState(

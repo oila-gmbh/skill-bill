@@ -197,6 +197,20 @@ x-coherence-checks:
       `<name>.md` (matches the entry's `name`). Enforced by
       `parseNativeAgentSource` in `NativeAgentSource.kt`; not expressible
       in JSON Schema because the filename is not part of the document.
+  governed-content-carries-commit-focused-rules:
+    description: >
+      A `compose: governed-content` review-worker entry renders its body
+      from the governed source, so the rendered prompt states the same
+      commit-focused rules the governed prose does: the parent owns
+      discovery and relevance, the worker receives one assembled bundle
+      of assigned hunks with commit metadata and reviews it in a single
+      pass, and one final integration pass covers cross-commit behavior.
+      A rendered worker prompt must never instruct broad diff discovery,
+      relevance re-decision, per-commit stepping, or reviewing every
+      commit by default. Not expressible in JSON Schema because it is a
+      property of the rendered body; pinned by
+      `ComposedReviewLaunchPlanTest` and
+      `ReviewSkillStructureConformanceTest`.
   contract-version-optional-at-top:
     description: >
       Some legacy native-agent sources may carry no top-level

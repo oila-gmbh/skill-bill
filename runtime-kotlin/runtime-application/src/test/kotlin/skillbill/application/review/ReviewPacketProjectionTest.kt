@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.REVIEW_RULE_EXCERPT_MAX_CHARS
 import skillbill.review.context.model.ReviewAssignment
@@ -20,10 +21,12 @@ import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
+import skillbill.review.context.model.ReviewSpecialistSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -286,4 +289,58 @@ class ReviewPacketProjectionTest {
     assertEquals(envelopeEntries.map { it["hunk_id"] }.toSet(), payloadHunkIds)
     assertEquals(launch.assembledBundle.compositionDigest, (envelope["bundle"] as Map<*, *>)["composition_digest"])
   }
+
+  @Test fun `parent packet envelope carries the commit sequence digest`() {
+    val base = packet()
+    val envelope = base.toParentPacketEnvelope().asWireMap()
+
+    assertEquals(base.commitSequenceDigest, envelope["commit_sequence_digest"])
+    assertTrue(base.commitSequenceDigest.matches(Regex("[a-f0-9]{64}")))
+  }
+
+  @Test fun `integration launch envelope excludes lane bundles evidence and parent transcripts`() {
+    val base = packet()
+    val envelope = integrationLaunch(base).toIntegrationLaunchEnvelope().asWireMap()
+
+    assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, envelope["contract_version"])
+    assertEquals("integration_launch", envelope["kind"])
+    assertEquals(base.commitSequenceDigest, envelope["commit_sequence_digest"])
+    assertEquals(ReviewPacketConsumerContract.INTEGRATION_CONTRACT, envelope["integration_contract"])
+    listOf("bundle", "brokered_evidence", "assigned_hunks", "parent_transcript", "complete_diff", "rubric")
+      .forEach { excluded ->
+        assertEquals(false, envelope.containsKey(excluded), "Integration launch must not carry '$excluded'.")
+      }
+
+    @Suppress("UNCHECKED_CAST")
+    val summaries = envelope["specialist_summaries"] as List<Map<String, Any?>>
+    assertEquals(listOf("security"), summaries.map { it["lane"] })
+    assertEquals(false, summaries.single().containsKey("content"))
+  }
+
+  @Test fun `integration launch rejects summaries outside the packet selection`() {
+    val base = packet()
+
+    assertFailsWith<IllegalArgumentException> {
+      integrationLaunch(base, lane = "performance")
+    }
+  }
+
+  private fun integrationLaunch(base: ReviewContextPacket, lane: String = "security") =
+    GovernedReviewIntegrationLaunch(
+      packet = base,
+      specialistSummaries = listOf(
+        ReviewSpecialistSummary(
+          lane = lane,
+          assignmentDigest = "a".repeat(64),
+          disposition = ReviewLaneReviewDisposition.COMPLETE,
+          assignedPaths = listOf("src/A.kt"),
+          commitShas = listOf("head"),
+          findingCount = 1,
+          summary = "Reviewed one bundle in one pass.",
+        ),
+      ),
+      integrationContract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
+      brokerId = "broker",
+      budget = ReviewContextBudgetPolicy.DEFAULT,
+    )
 }

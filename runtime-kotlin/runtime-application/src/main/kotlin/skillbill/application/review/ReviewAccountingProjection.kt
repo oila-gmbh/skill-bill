@@ -6,7 +6,10 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingNode
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewCommitRoutingAccounting
+import skillbill.review.context.model.ReviewIntegrationAccounting
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
+import skillbill.review.context.model.ReviewParentAnalysisConsumption
 
 /** The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally absent. */
 @OpenBoundaryMap("Schema-bounded review-accounting wire projection")
@@ -17,6 +20,9 @@ fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "packet_digest" to packetDigest,
   "parent" to parent.toPayload(),
   "lanes" to lanes.map(ReviewAccountingNode::toPayload),
+  "commit_routing_accounting" to commitRouting?.toPayload(),
+  "parent_analysis_consumption" to parentAnalysis?.toPayload(),
+  "integration" to integration?.toPayload(),
   "aggregate_counters" to aggregateCounters.toPayload(),
   "aggregate_direct_usage" to aggregateDirectUsage.toPayload(),
   "aggregate_inclusive_usage" to aggregateInclusiveUsage.toPayload(),
@@ -42,6 +48,36 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
     mapOf("segment_accounting" to segments.map { it.toPayload() })
   }.orEmpty() +
   unreviewedSegmentIds.takeIf { it.isNotEmpty() }?.let { mapOf("unreviewed_segment_ids" to it) }.orEmpty()
+
+// Identity, counts, and lane names only. No commit subject, no path, no diff text: a routing shape
+// is safe to persist, the code it routed is not.
+private fun ReviewCommitRoutingAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
+  "commit_sequence_digest" to commitSequenceDigest,
+  "routing_digest" to routingDigest,
+  "commit_count" to commitCount,
+  "lane_count" to laneCount,
+  "focused_commit_count" to focusedCommitCount,
+  "skipped_commit_count" to skippedCommitCount,
+  "focused_pair_count" to focusedPairCount,
+  "skipped_pair_count" to skippedPairCount,
+  "incomplete_lanes" to incompleteLanes,
+)
+
+private fun ReviewParentAnalysisConsumption.toPayload(): Map<String, Any?> = linkedMapOf(
+  "analyzed_pairs" to analyzedPairs,
+  "analyzed_bytes" to analyzedBytes,
+  "max_analysis_pairs" to maxAnalysisPairs,
+  "max_analysis_bytes" to maxAnalysisBytes,
+)
+
+private fun ReviewIntegrationAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
+  "commit_sequence_digest" to commitSequenceDigest,
+  "terminal_outcome" to terminalOutcome,
+  "summarized_lane_count" to summarizedLaneCount,
+  "finding_count" to findingCount,
+  "counters" to counters.toPayload(),
+  "usage" to usage.toPayload(),
+) + skipReason?.let { mapOf("skip_reason" to it) }.orEmpty()
 
 private fun ReviewLaneSegmentAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
   "segment_id" to segmentId,

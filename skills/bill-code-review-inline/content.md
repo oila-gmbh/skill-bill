@@ -30,6 +30,18 @@ Areas are a coverage-accounting dimension in the *output*, not an iteration orde
 
 Verification is the purpose: confirm the change does what it claims and catch the defects a careful reader finds on one attentive pass. This is not an audit of every area in depth. Signals focus the inspection within an area; they never remove a declared area from the checklist. Do not build a case for a marginal finding to justify having looked.
 
+## Commit-Focused Sequencing Does Not Apply Here
+
+Inline is one whole review in one context. It has no specialist lanes and no
+integration pass, so commit-focused delegated sequencing is not applicable to it.
+Report that explicitly alongside the resolved scope, using the existing
+`detected_scope` vocabulary rather than a new label.
+
+Your delta is the parent-materialized scope, whatever commits it happens to span.
+Do not step through commits as separate review steps, do not re-decide which
+commits are relevant, and do not synthesize commit history the scope does not
+have. Inline semantics are unchanged by commit-focused delegated review.
+
 ## No Builds Or Test Execution
 
 Review is read-only. Do not build, compile, or run tests — no Gradle, Maven, npm, cargo, or `go` build/test invocation, and never the repository's validation command. Establish every finding by reading code. When a finding's severity depends on runtime behavior that reading cannot confirm, report it at the severity the code supports and state what would settle it.

@@ -85,6 +85,20 @@ class InvalidReviewContextSchemaError(
 )
 
 /**
+ * Surfaced when delegated-review aggregation is handed a lane set it cannot merge honestly: a
+ * selected lane with no result, two results for one lane, or a result minted against a different
+ * commit sequence. Merging any of these would silently under-report coverage, so aggregation fails
+ * loudly with the offending lanes named instead.
+ */
+class ReviewAggregationIntegrityError(
+  val reason: String,
+  val lanes: List<String> = emptyList(),
+) : ShellContentContractException(
+  "Delegated review aggregation rejected the lane results: $reason" +
+    lanes.takeIf { it.isNotEmpty() }?.let { " (${it.sorted().joinToString(", ")})" }.orEmpty(),
+)
+
+/**
  * SKILL-48 Subtask 2a: surfaced when a `WorkflowStateSnapshot` fails the
  * canonical `orchestration/contracts/workflow-state-schema.yaml` Draft
  * 2020-12 schema. The message carries the dotted field path of the first

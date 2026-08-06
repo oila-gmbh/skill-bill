@@ -181,6 +181,42 @@ class GeneratedArtifactGuardTest {
     )
   }
 
+  @Test
+  fun `the repository tree commits no generated review skill output`() {
+    val report = validateGeneratedArtifactGuard(repositoryRoot())
+
+    assertTrue(report.passed, report.issues.joinToString("\n"))
+  }
+
+  @Test
+  fun `gitignore covers generated governed skill wrappers pointers and provider agent output`() {
+    val ignored = Files.readString(repositoryRoot().resolve(".gitignore")).lines().toSet()
+
+    listOf(
+      "skills/*/SKILL.md",
+      "platform-packs/*/code-review/*/SKILL.md",
+      "skills/*/specialist-contract.md",
+      "skills/*/review-orchestrator.md",
+      "platform-packs/*/code-review/*/specialist-contract.md",
+      "platform-packs/*/code-review/*/review-orchestrator.md",
+      "skills/*/claude-agents/",
+      "platform-packs/*/code-review/*/claude-agents/",
+    ).forEach { pattern ->
+      assertTrue(pattern in ignored, "'.gitignore' must ignore generated output pattern '$pattern'.")
+    }
+  }
+
+  private fun repositoryRoot(): Path {
+    var current: Path? = Path.of("").toAbsolutePath().normalize()
+    while (current != null) {
+      if (Files.isRegularFile(current.resolve(".gitignore")) && Files.isDirectory(current.resolve("skills"))) {
+        return current
+      }
+      current = current.parent
+    }
+    error("Repository root with a .gitignore and a skills/ directory not found.")
+  }
+
   private fun writeGovernedSkillOutput(repoRoot: Path, relativeDir: String) {
     val skillDir = repoRoot.resolve(relativeDir)
     val skillName = skillDir.fileName.toString()

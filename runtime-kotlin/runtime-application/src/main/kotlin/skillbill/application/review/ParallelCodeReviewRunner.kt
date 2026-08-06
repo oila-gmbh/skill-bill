@@ -24,6 +24,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.ReviewIntegrationPassRecord
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
@@ -32,10 +33,14 @@ import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
+import skillbill.review.ReviewCoverageReport
+import skillbill.review.ReviewLaneAggregation
+import skillbill.review.ReviewLaneAggregationInput
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
@@ -48,12 +53,17 @@ import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
+import skillbill.review.context.model.ReviewCommitRoutingAccounting
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewIntegrationAccounting
+import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.context.model.ReviewParentAnalysisConsumption
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
@@ -92,14 +102,39 @@ class ParallelCodeReviewRunner(
     val agent1Id: String,
     val agent2Id: String,
     val preparedLaunchRequests: List<ReviewSpecialistLaunchRequest>,
+    /**
+     * Every lane the packet compiled, including lanes this resume did not re-launch because they
+     * already hold a durable result. The integration pass reads this rather than the run set: a
+     * resume that crashed between specialist completion and integration must still find the packet
+     * and every lane summary, instead of reporting that there was nothing to integrate.
+     */
+    val compiledLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     val budget: ReviewContextBudgetPolicy,
+  )
+
+  /** The compiled lane set and the subset this attempt actually launches. */
+  private data class CompiledLaunches(
+    val all: List<ReviewSpecialistLaunchRequest>,
+    val toRun: List<ReviewSpecialistLaunchRequest>,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val initial = prepareInitialRun(originalRequest)
     val outcomes = runLanes(initial)
     recordLaneDispositions(initial, outcomes)
-    val result = parallelResult(initial.agent1Id, initial.agent2Id, outcomes)
+    // Specialist completion is settled above; the integration pass is a separate boundary that runs
+    // exactly once afterwards and settles its own durable state below.
+    val integration = runIntegrationPass(initial, outcomes)
+    val coverage = coverageReport(initial, outcomes, integration)
+    val result = parallelResult(
+      initial.agent1Id,
+      initial.agent2Id,
+      outcomes,
+      integration,
+      coverage,
+      initial.compiledLaunchRequests.firstOrNull()?.packet,
+      initial.budget,
+    )
     recordMergedFindingLanes(initial.request.reviewRunId, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
@@ -130,23 +165,25 @@ class ParallelCodeReviewRunner(
     // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
     val request = originalRequest.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
     val resolvedMode = ReviewExecutionModePolicy.resolve(request.lane2Tier)
+    val compiled = prepare(
+      request,
+      revisions,
+      diffText,
+      evidence,
+      detection.routed,
+      detection.manifests,
+      detection.ownedPathsBySlug,
+      listOf(agent1.id, agent2.id),
+      budget,
+    )
     return InitialRun(
       request = request,
       detection = detection,
       resolvedMode = resolvedMode,
       agent1Id = agent1.id,
       agent2Id = agent2.id,
-      preparedLaunchRequests = prepare(
-        request,
-        revisions,
-        diffText,
-        evidence,
-        detection.routed,
-        detection.manifests,
-        detection.ownedPathsBySlug,
-        listOf(agent1.id, agent2.id),
-        budget,
-      ),
+      preparedLaunchRequests = compiled.toRun,
+      compiledLaunchRequests = compiled.all,
       budget = budget,
     )
   }
@@ -200,7 +237,7 @@ class ParallelCodeReviewRunner(
     ownedPathsBySlug: Map<String, Set<String>>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
-  ): List<ReviewSpecialistLaunchRequest> {
+  ): CompiledLaunches {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     val (baseRevision, headRevision) = revisions
     val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
@@ -232,7 +269,7 @@ class ParallelCodeReviewRunner(
     )
     val selected = selectLaunchesForResume(request.reviewRunId, compiled)
     recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)
-    return selected
+    return CompiledLaunches(all = compiled, toRun = selected)
   }
 
   /**
@@ -297,6 +334,144 @@ class ParallelCodeReviewRunner(
       }
     val merged = preservedComplete.filter { it.laneSkillName !in relaunchNames } + pending
     database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, merged) }
+  }
+
+  /**
+   * Runs the one bounded integration pass, after every specialist lane has reached a terminal
+   * state. Exactly one pass runs no matter how many commits the sequence carries, and it launches
+   * no specialist rubric. A resume that already holds a durable integration result does not re-run
+   * it; a resume that holds durable lane results but no integration result runs only this pass.
+   */
+  private fun runIntegrationPass(
+    initial: InitialRun,
+    outcomes: ParallelReviewLaneRunResult,
+  ): ReviewIntegrationPassOutcome {
+    val packet = initial.compiledLaunchRequests.firstOrNull()?.packet
+      ?: return ReviewIntegrationPassOutcome.skipped(
+        NO_SEQUENCE_DIGEST,
+        "the review compiled no specialist lane, so there is no commit sequence to integrate over",
+      )
+    // Inline reviews are done by the parent itself, so there is no delegated commit-focused
+    // sequencing to integrate over. Reported, not silently omitted.
+    if (initial.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+      return ReviewIntegrationPassOutcome.skipped(
+        packet.commitSequenceDigest,
+        "this review ran inline, so commit-focused delegated sequencing does not apply",
+      )
+    }
+    durableIntegrationOutcome(initial.request.reviewRunId, packet.commitSequenceDigest)?.let { return it }
+    val findingsByLane = (outcomes.lane1.findings + outcomes.lane2.findings)
+      .groupingBy { it.specialistSkillName.orEmpty() }.eachCount()
+    val lanes = initial.compiledLaunchRequests.map { launch ->
+      ReviewLaneIntegrationInput(
+        launch = launch,
+        completion = governedLaunchFor(launch).completionState,
+        findingCount = findingsByLane[launch.assignment.laneDecision.specialistSkillName] ?: 0,
+      )
+    }
+    val outcome = ReviewIntegrationPassRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+      packet = packet,
+      lanes = lanes,
+      budget = initial.budget,
+      brokerId = initial.agent1Id,
+      repoRoot = initial.request.repoRoot,
+      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+    )
+    recordIntegrationBoundary(initial.request.reviewRunId, outcome)
+    return outcome
+  }
+
+  /**
+   * A durable integration result is reusable only for the sequence it was minted against; a resume
+   * whose sequence moved re-runs the pass rather than reporting a state that describes other code.
+   */
+  private fun durableIntegrationOutcome(
+    reviewRunId: String?,
+    commitSequenceDigest: String,
+  ): ReviewIntegrationPassOutcome? {
+    if (reviewRunId == null) return null
+    val record = database.transaction { unitOfWork -> unitOfWork.reviews.fetchIntegrationPass(reviewRunId) }
+      ?: return null
+    if (record.commitSequenceDigest != commitSequenceDigest) return null
+    val terminal = ReviewIntegrationTerminalOutcome.entries
+      .firstOrNull { it.wireValue == record.terminalOutcome } ?: return null
+    if (!terminal.isDurablyComplete) return null
+    return ReviewIntegrationPassOutcome(
+      commitSequenceDigest = commitSequenceDigest,
+      terminalOutcome = ReviewIntegrationTerminalOutcome.NO_OP_RESUME,
+      summarizedLaneCount = 0,
+    )
+  }
+
+  private fun recordIntegrationBoundary(reviewRunId: String?, outcome: ReviewIntegrationPassOutcome) {
+    if (reviewRunId == null) return
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordIntegrationPass(
+        reviewRunId,
+        ReviewIntegrationPassRecord(outcome.commitSequenceDigest, outcome.terminalOutcome.wireValue),
+      )
+    }
+  }
+
+  /**
+   * Aggregation gate plus coverage honesty: a missing, duplicated, or sequence-mismatched lane
+   * result fails loudly here rather than merging into a register that looks complete.
+   */
+  private fun coverageReport(
+    initial: InitialRun,
+    outcomes: ParallelReviewLaneRunResult,
+    integration: ReviewIntegrationPassOutcome,
+  ): ReviewCoverageReport? {
+    val packet = initial.compiledLaunchRequests.firstOrNull()?.packet ?: return null
+    val ranThisPass = initial.preparedLaunchRequests.map { launch ->
+      val completion = governedLaunchFor(launch).completionState
+      ReviewLaneAggregationInput(
+        lane = launch.assignment.lane,
+        commitSequenceDigest = packet.commitSequenceDigest,
+        disposition = completion.disposition,
+        unreviewedUnits = completion.unreviewedUnits,
+      )
+    }
+    // A resume launches only non-complete lanes, so the lanes it skipped are accounted for by their
+    // durable results. Expected stays the packet's full selection either way: that is what makes a
+    // lane silently vanishing between attempts a loud aggregation failure rather than clean coverage.
+    val results = ranThisPass + durablyCompleteLanes(initial, packet, ranThisPass)
+    val bothAgentsSucceeded = outcomes.lane1.success && outcomes.lane2.success
+    return ReviewLaneAggregation.requireCompleteLaneResults(
+      expectedLanes = packet.selectedLanes,
+      results = results,
+      commitSequenceDigest = packet.commitSequenceDigest,
+    ).copy(
+      integrationCompleted = integration.completed && bothAgentsSucceeded,
+      integrationNotApplicableReason = integration.skipReason,
+    )
+  }
+
+  /**
+   * A packet lane is `agentId:specialistSkillName`, while durable rows are keyed by skill name
+   * alone because both parallel agents review the same skill. A selected lane this pass did not run
+   * counts as covered exactly when its skill holds a durable complete result.
+   */
+  private fun durablyCompleteLanes(
+    initial: InitialRun,
+    packet: ReviewContextPacket,
+    ranThisPass: List<ReviewLaneAggregationInput>,
+  ): List<ReviewLaneAggregationInput> {
+    val reviewRunId = initial.request.reviewRunId ?: return emptyList()
+    val alreadyRan = ranThisPass.map { it.lane }.toSet()
+    val notRun = packet.selectedLanes.filterNot { it in alreadyRan }
+    if (notRun.isEmpty()) return emptyList()
+    val completeSkills = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+      .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
+      .map { it.laneSkillName }
+      .toSet()
+    return notRun.filter { it.substringAfter(':') in completeSkills }.map { lane ->
+      ReviewLaneAggregationInput(
+        lane = lane,
+        commitSequenceDigest = packet.commitSequenceDigest,
+        disposition = ReviewLaneReviewDisposition.COMPLETE,
+      )
+    }
   }
 
   /** Writes final per-lane disposition after the parallel pass so resume stays lane-granular. */
@@ -809,6 +984,7 @@ class ParallelCodeReviewRunner(
       bundleCompositionDigest = incomplete.first().bundleCompositionDigest,
       segments = incomplete.flatMap { it.segments }.distinctBy { it.segmentId },
       unreviewedSegmentIds = incomplete.flatMap { it.unreviewedSegmentIds }.distinct(),
+      unreviewedUnits = incomplete.flatMap { it.unreviewedUnits }.distinct(),
       budgetDimension = incomplete.first().budgetDimension,
     )
   }
@@ -886,6 +1062,10 @@ class ParallelCodeReviewRunner(
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     const val FIRST_SOURCE_LINE = 1
     const val HEAD_REVISION = "HEAD"
+
+    // Stands in for a sequence identity on a resume that compiled no packet, so the skipped
+    // integration outcome still names something rather than carrying a blank digest.
+    const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
   }
 
   private data class StackDetection(
@@ -899,6 +1079,10 @@ private fun parallelResult(
   agent1Id: String,
   agent2Id: String,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+  integration: ReviewIntegrationPassOutcome,
+  coverage: ReviewCoverageReport?,
+  packet: ReviewContextPacket?,
+  budget: ReviewContextBudgetPolicy,
 ): ParallelCodeReviewResult {
   // A lane's own `findings` already carries the right value, so the `success` check guards only the
   // raw-output fallback: re-parsing a failed run's output would surface truncated or error text as
@@ -915,11 +1099,17 @@ private fun parallelResult(
       if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
     },
   )
+  val integrationResult = integration.findings
+    .takeIf { it.isNotEmpty() }
+    ?.let { ParallelReviewLaneResult(ReviewIntegrationPassRunner.INTEGRATION_LANE, it) }
   return ParallelCodeReviewResult(
-    mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result),
+    mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result, integrationResult),
     lane1 = outcomes.lane1.toStatus(agent1Id),
     lane2 = outcomes.lane2.toStatus(agent2Id),
-    accountingSummary = parallelAccountingSummary(outcomes),
+    accountingSummary = parallelAccountingSummary(outcomes)
+      ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
+    integration = integration,
+    coverage = coverage,
   )
 }
 
@@ -970,6 +1160,54 @@ private fun parallelAccountingSummary(
     reviewId = specialists.first().reviewId,
     packetDigest = specialists.first().packetDigest,
     root = ReviewAccountingInput("parallel-review", sha256HexUtf8("parallel-review"), children = roots),
+  )
+}
+
+/**
+ * Attaches the commit-focused accounting the routing decision and the integration pass produced.
+ * Every value here is identity, a count, or a lane name — never a commit subject, a path, or diff
+ * text — so the durable accounting record stays free of code content.
+ */
+private fun ReviewAccountingSummary.withCommitFocusedAccounting(
+  packet: ReviewContextPacket?,
+  budget: ReviewContextBudgetPolicy,
+  integration: ReviewIntegrationPassOutcome,
+  coverage: ReviewCoverageReport?,
+): ReviewAccountingSummary {
+  if (packet == null) return this
+  val matrix = packet.routingMatrix
+  val focusedCommits = matrix.decisions.filter { it.focused }.map { it.commitSha }.distinct()
+  return copy(
+    commitRouting = ReviewCommitRoutingAccounting(
+      commitSequenceDigest = packet.commitSequenceDigest,
+      routingDigest = matrix.routingDigest,
+      commitCount = matrix.commitShas.size,
+      laneCount = matrix.lanes.size,
+      focusedCommitCount = focusedCommits.size,
+      skippedCommitCount = matrix.commitShas.size - focusedCommits.size,
+      focusedPairCount = matrix.focusedPairCount,
+      skippedPairCount = matrix.analyzedPairCount - matrix.focusedPairCount,
+      incompleteLanes = coverage?.incompleteLanes?.map { it.lane }?.sorted().orEmpty(),
+    ),
+    parentAnalysis = ReviewParentAnalysisConsumption(
+      analyzedPairs = matrix.analyzedPairCount,
+      analyzedBytes = matrix.canonical.toByteArray(Charsets.UTF_8).size.toLong(),
+      maxAnalysisPairs = budget.maxRoutingAnalysisPairs,
+      maxAnalysisBytes = budget.maxRoutingAnalysisBytes,
+    ),
+    integration = ReviewIntegrationAccounting(
+      commitSequenceDigest = integration.commitSequenceDigest,
+      terminalOutcome = integration.terminalOutcome.wireValue,
+      summarizedLaneCount = integration.summarizedLaneCount,
+      findingCount = integration.findings.size,
+      counters = ReviewAccountingCounters(
+        launchBytes = integration.launchBytes,
+        resultBytes = integration.resultBytes,
+        modelTurns = integration.modelTurns,
+      ),
+      usage = integration.providerUsage ?: ProviderTokenUsage(),
+      skipReason = integration.skipReason,
+    ),
   )
 }
 

@@ -3,6 +3,7 @@ package skillbill.contracts.review
 import skillbill.application.review.ReviewPreparationService
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.toAssignmentEnvelope
+import skillbill.application.review.toIntegrationLaunchEnvelope
 import skillbill.application.review.toLaunchEnvelope
 import skillbill.application.review.toParentPacketEnvelope
 import skillbill.error.InvalidReviewContextSchemaError
@@ -17,6 +18,7 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
+import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
@@ -34,10 +36,12 @@ import skillbill.review.context.model.ReviewEvidenceTarget
 import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
+import skillbill.review.context.model.ReviewSpecialistSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -151,6 +155,53 @@ class ReviewContextSchemaValidatorTest {
       launch.toLaunchEnvelope().asWireMap()["forbidden_rediscovery"],
     )
   }
+
+  @Test fun `integration launch envelope satisfies the canonical schema`() {
+    val envelope = integrationLaunch().toIntegrationLaunchEnvelope().asWireMap()
+
+    ReviewContextSchemaValidator.validateIntegrationLaunch(envelope, "integration")
+    assertEquals(packet.commitSequenceDigest, envelope["commit_sequence_digest"])
+  }
+
+  @Test fun `integration launch envelope carrying raw lane evidence is rejected`() {
+    val smuggled = integrationLaunch().toIntegrationLaunchEnvelope().asWireMap() +
+      ("bundle" to mapOf("entries" to listOf(mapOf("content" to hunkA.content))))
+
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateIntegrationLaunch(smuggled, "integration")
+    }
+
+    assertTrue("bundle" in failure.message.orEmpty())
+  }
+
+  @Test fun `a lane launch is not accepted as an integration launch`() {
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateIntegrationLaunch(
+        packet.toParentPacketEnvelope().asWireMap(),
+        "packet",
+      )
+    }
+
+    assertTrue("kind='parent_packet'" in failure.message.orEmpty())
+  }
+
+  private fun integrationLaunch() = GovernedReviewIntegrationLaunch(
+    packet = packet,
+    specialistSummaries = listOf(
+      ReviewSpecialistSummary(
+        lane = "security",
+        assignmentDigest = "a".repeat(64),
+        disposition = ReviewLaneReviewDisposition.COMPLETE,
+        assignedPaths = listOf("src/A.kt"),
+        commitShas = listOf("head"),
+        findingCount = 2,
+        summary = "Reviewed the assigned bundle in one pass.",
+      ),
+    ),
+    integrationContract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
+    brokerId = "broker",
+    budget = ReviewContextBudgetPolicy.DEFAULT,
+  )
 
   @Test fun `wrong kind discriminator fails loudly`() {
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {

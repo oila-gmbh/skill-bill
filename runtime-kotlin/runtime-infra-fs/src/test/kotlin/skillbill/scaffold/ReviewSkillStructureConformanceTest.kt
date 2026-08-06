@@ -20,6 +20,27 @@ class ReviewSkillStructureConformanceTest {
   }
 
   @Test
+  fun `no pack content instructs broad discovery relevance redecision or per-commit stepping`() {
+    val forbidden = listOf(
+      "whole PR diff",
+      "entire PR diff",
+      "aggregate diff",
+      "complete diff",
+      "commit-by-commit",
+      "commit by commit",
+      "each commit in turn",
+      "decide which commits",
+      "decide whether a commit",
+    )
+    val violations = allContentFiles(repoRootFromTest().resolve("platform-packs")).flatMap { file ->
+      val content = Files.readString(file)
+      forbidden.filter { it in content }.map { "$file instructs '$it'" }
+    }
+
+    assertEquals(emptyList(), violations, violations.joinToString("\n"))
+  }
+
+  @Test
   fun `specialist inheriting shared calibrated rubric with canonical closer validates with zero violations`() {
     val root = Files.createTempDirectory("review-inheriting-")
     val pack = root.resolve("platform-packs/fixture")

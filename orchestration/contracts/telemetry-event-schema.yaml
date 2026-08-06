@@ -462,6 +462,76 @@ $defs:
         const: review_stats
       contract_version:
         const: "1.7.0"
+      # Commit-focused sparse specialist accounting. Every field is an identity, a count, or a lane
+      # name: no commit subject, path, diff text, or company identifier reaches telemetry.
+      commit_sequence_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      routing_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      commit_count:
+        type: integer
+        minimum: 0
+      lane_count:
+        type: integer
+        minimum: 0
+      focused_commit_count:
+        type: integer
+        minimum: 0
+      skipped_commit_count:
+        type: integer
+        minimum: 0
+      focused_pair_count:
+        type: integer
+        minimum: 0
+      skipped_pair_count:
+        type: integer
+        minimum: 0
+      lane_bundle_sizes:
+        description: Per-lane assembled bundle size in bytes, keyed by lane skill name.
+        type: object
+        additionalProperties:
+          type: integer
+          minimum: 0
+      lane_segment_counts:
+        description: Per-lane bundle segment count, keyed by lane skill name.
+        type: object
+        additionalProperties:
+          type: integer
+          minimum: 0
+      incomplete_lanes:
+        description: >
+          Lanes that ended incomplete from budget exhaustion. These are non-clean coverage; the
+          integration pass never compensates for them.
+        type: array
+        items:
+          type: string
+      parent_analysis_pairs:
+        type: integer
+        minimum: 0
+      parent_analysis_bytes:
+        type: integer
+        minimum: 0
+      integration_terminal_outcome:
+        type: string
+        enum:
+          - completed
+          - skipped_not_applicable
+          - review_context_budget_exceeded
+          - failed
+          - timeout
+          - interrupted
+          - spawn_failure
+          - process_failure
+          - unsupported_provider
+          - no_op_resume
+      integration_commit_sequence_digest:
+        type: string
+        pattern: "^[a-f0-9]{64}$"
+      integration_finding_count:
+        type: integer
+        minimum: 0
 
   telemetryProxyCapabilitiesEvent:
     type: object

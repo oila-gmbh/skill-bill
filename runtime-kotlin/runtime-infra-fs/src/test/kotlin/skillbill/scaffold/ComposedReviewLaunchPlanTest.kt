@@ -1,9 +1,12 @@
 package skillbill.scaffold
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -39,6 +42,32 @@ class ComposedReviewLaunchPlanTest {
       plan.lanes.associate { it.area to it.skillName },
     )
     assertTrue(plan.lanes.none { it.skillName.startsWith("bill-kmp-") || it.packSlug == "kmp" })
+  }
+
+  @Test
+  fun `every composed review worker renders its body from the governed commit-focused source`() {
+    val repoRoot = repoRootFromTest()
+    val contract = Files.readString(repoRoot.resolve(ReviewPacketConsumerContract.SOURCE_PATH))
+    listOf(
+      ReviewPacketConsumerContract.AUTHORITATIVE_LAUNCH_CONTRACT,
+      ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
+    ).forEach { block ->
+      assertTrue(block in contract, "The governed source must carry the authoritative block verbatim.")
+    }
+
+    val handAuthored = Files.walk(repoRoot.resolve("platform-packs")).use { paths ->
+      paths.filter { it.fileName.toString() == "agents.yaml" && "code-review" in it.toString() }.toList()
+    }.flatMap { source ->
+      val bundle = YAMLMapper().readTree(source.toFile())
+      bundle.path("agents").mapNotNull { entry ->
+        val name = entry.path("name").asText()
+        // A hand-written body cannot be pinned to the governed prose, so it is the one way a
+        // rendered worker prompt could still instruct broad discovery or per-commit stepping.
+        "$source/$name".takeIf { entry.path("compose").asText() != "governed-content" }
+      }
+    }
+
+    assertEquals(emptyList(), handAuthored, handAuthored.joinToString("\n"))
   }
 
   private fun manifests(vararg slugs: String) =

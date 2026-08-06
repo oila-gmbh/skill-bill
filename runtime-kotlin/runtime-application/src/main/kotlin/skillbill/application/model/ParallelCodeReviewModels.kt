@@ -1,6 +1,8 @@
 package skillbill.application.model
 
+import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.review.ReviewCoverageReport
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
@@ -90,6 +92,13 @@ data class ParallelCodeReviewResult(
   val lane1: ParallelReviewLaneStatus,
   val lane2: ParallelReviewLaneStatus,
   val accountingSummary: ReviewAccountingSummary? = null,
+  /** Terminal state of the single integration pass; null only for a non-delegated run. */
+  val integration: ReviewIntegrationPassOutcome? = null,
+  /**
+   * Coverage as it actually stands. Reported alongside [integration] precisely so a completed
+   * integration pass is never read as compensating for a lane that ended incomplete.
+   */
+  val coverage: ReviewCoverageReport? = null,
 )
 
 data class ParallelReviewLaneStatus(

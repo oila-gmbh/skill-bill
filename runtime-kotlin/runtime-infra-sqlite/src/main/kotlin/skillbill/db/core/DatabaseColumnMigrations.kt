@@ -398,6 +398,12 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "review_runs", "detected_stack_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_canonical", "TEXT NOT NULL DEFAULT 'unresolved'")
     ensureColumn(connection, "review_runs", "detected_scope_detail", "TEXT")
+    // Specialist completion and integration completion are distinct durable boundaries, so the
+    // integration pass records its own terminal state rather than being inferred from lane rows.
+    // The sequence digest pins which commit sequence that state belongs to: a resume against a
+    // different sequence must re-run the pass instead of trusting a stale terminal state.
+    ensureColumn(connection, "review_runs", "integration_terminal_outcome", "TEXT")
+    ensureColumn(connection, "review_runs", "integration_commit_sequence_digest", "TEXT")
     // Created here rather than in the base schema: a legacy store still lacks routed_skill_canonical
     // when createBaseSchema runs, so the index can only be declared once the column is healed.
     connection.createStatement().use { statement ->

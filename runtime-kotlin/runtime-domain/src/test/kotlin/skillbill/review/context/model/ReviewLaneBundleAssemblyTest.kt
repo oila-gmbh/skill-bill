@@ -258,6 +258,45 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(listOf(UNREVIEWABLE_SEGMENT_ID), segmentation.unreviewedSegmentIds)
   }
 
+  @Test fun `an incomplete completion state names the concrete units it left unreviewed`() {
+    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))
+    val assembled = ReviewLaneAssembledBundle.assemble(
+      assignment(built, ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId))))),
+      built,
+    )
+
+    val incomplete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 5) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, incomplete.disposition)
+    assertEquals(listOf("c1@${hunkA.path}"), incomplete.unreviewedUnits)
+
+    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, complete.disposition)
+    assertEquals(emptyList(), complete.unreviewedUnits)
+  }
+
+  @Test fun `a completion state cannot claim a disposition its unreviewed units contradict`() {
+    assertFailsWith<IllegalArgumentException> {
+      ReviewLaneCompletionState(
+        disposition = ReviewLaneReviewDisposition.COMPLETE,
+        bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
+        segments = emptyList(),
+        unreviewedUnits = listOf("c1@src/A.kt"),
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewLaneCompletionState(
+        disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+        bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
+        segments = emptyList(),
+        unreviewedSegmentIds = listOf(UNREVIEWABLE_SEGMENT_ID),
+      )
+    }
+  }
+
   @Test fun `forbidden rediscovery includes bundled-lane anti-patterns`() {
     val payload = launch(packet(twoCommits), fullBundle).canonicalPayload
     listOf("per_commit_stepping", "worker_relevance_redecision", "aggregate_diff_restart").forEach { forbidden ->

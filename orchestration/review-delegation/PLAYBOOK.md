@@ -48,6 +48,18 @@ neither an omitted selection nor `auto` resolves to delegated. Harness-specific 
 per-harness sections below; a mitigation for one harness must not change another
 harness's launch behavior.
 
+## Commit-focused sparse routing
+
+- The parent owns discovery and relevance. It resolves the commit sequence, decides every commit/lane pair as focused or skipped before launch, and records a falsifiable reason for each skip. Workers never re-decide relevance.
+- Commits irrelevant to every lane are excluded before launch with their reasons recorded; they are not handed to a worker to filter out.
+- Each selected specialist receives one assembled bundle of its assigned hunks with commit identity and order as metadata, and reviews it in a single pass. Never instruct a worker to step through commits one at a time, to review every commit by default, or to restart from an aggregate diff.
+- Specialist worker count equals selected lane count and never scales with commit count.
+- A lane that could not fit its assigned bundle within budget ends incomplete. Report it as non-clean coverage naming the unreviewed units and the stopping budget dimension.
+- After every selected lane reaches a terminal state, run exactly one bounded integration pass over the commit sequence. It receives final-state evidence and per-lane summaries only — no raw lane bundle, no sibling-lane hunk bodies, no parent transcript — and reports cross-commit behavior with commit-range evidence without re-running any specialist rubric.
+- Specialist completion and integration completion are distinct durable boundaries. Retry is lane-granular: a resume re-runs only lanes without a durable result, and re-runs the integration pass only when it did not itself complete.
+- The integration pass never compensates for an incomplete lane and must never be reported as closing that coverage gap.
+- A scope with no commit sequence reports the integration pass as not applicable with its reason, using the existing `detected_scope` vocabulary.
+
 ## Shared Delegation Rules
 
 - Every delegated specialist starts in a fresh conversation. Native Codex launches MUST set `fork_turns: "none"`. Other harnesses retain their existing launch behavior, and no harness may hand a specialist the parent conversation.

@@ -478,4 +478,55 @@ class ParallelReviewMergerTest {
     assertEquals(1, result.findings.size)
     assertEquals(listOf("claude", "codex"), result.findings[0].agentIds)
   }
+
+  @Test
+  fun `integration findings merge alongside specialist findings without displacing them`() {
+    val specialist = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Auth.kt:10",
+      "Token is logged in the new branch",
+      repositoryPath = "Auth.kt",
+      line = 10,
+    )
+    val crossCommit = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Session.kt:4",
+      "Commit two reverts the guard commit one added",
+      repositoryPath = "Session.kt",
+      line = 4,
+    )
+
+    val merged = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(specialist)),
+      ParallelReviewLaneResult("codex", emptyList()),
+      ParallelReviewLaneResult("review-integration", listOf(crossCommit)),
+    )
+
+    assertEquals(2, merged.findings.size)
+    assertEquals("Auth.kt", merged.findings[0].repositoryPath)
+    assertContains(merged.findings[1].agentIds, "review-integration")
+  }
+
+  @Test
+  fun `a specialist lane stays the representative when integration reports the same root cause`() {
+    val specialist = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Auth.kt:10",
+      "Token is logged in the new branch",
+      repositoryPath = "Auth.kt",
+      line = 10,
+    )
+
+    val merged = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(specialist)),
+      ParallelReviewLaneResult("codex", emptyList()),
+      ParallelReviewLaneResult("review-integration", listOf(specialist.copy(confidence = "Medium"))),
+    ).findings.single()
+
+    assertEquals(listOf("claude", "review-integration"), merged.agentIds)
+    assertEquals("High", merged.confidence)
+  }
 }

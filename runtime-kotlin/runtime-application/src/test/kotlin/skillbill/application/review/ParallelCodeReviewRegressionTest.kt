@@ -1,7 +1,9 @@
 package skillbill.application.review
 
+import skillbill.application.model.ParallelReviewScope
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,6 +99,38 @@ class ParallelCodeReviewRegressionTest {
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0)
       assertEquals("completed", lane.terminalOutcome)
+    }
+  }
+
+  @Test fun `non-commit scopes keep their output and report commit-focused sequencing as not applicable`() {
+    val branchResult = reviewHarness(config(), ReviewRecorder()).run(harnessRequest())
+
+    listOf(
+      ParallelReviewScope.STAGED,
+      ParallelReviewScope.UNSTAGED,
+      ParallelReviewScope.BRANCH,
+    ).forEach { scope ->
+      val recorder = ReviewRecorder()
+
+      val result = reviewHarness(config(), recorder).run(
+        harnessRequest(scope = scope, codeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      )
+
+      assertEquals(
+        branchResult.mergeResult.formattedOutput,
+        result.mergeResult.formattedOutput,
+        "Scope $scope must keep its existing merged output.",
+      )
+      val coverage = assertNotNull(result.coverage)
+      assertNotNull(
+        coverage.integrationNotApplicableReason,
+        "Scope $scope has no commit sequence, so it must say so rather than stay silent.",
+      )
+      assertTrue(coverage.render().contains("not applicable"))
+      assertTrue(
+        recorder.parentLaunches.none { it.skillRunRequest.issueKey == "code-review-integration" },
+        "A scope with no commit sequence launches no integration pass.",
+      )
     }
   }
 
