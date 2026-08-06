@@ -11,22 +11,47 @@ import skillbill.review.model.ReviewRunLane
  */
 interface ReviewRunCompletenessRepository {
   /** Converges a run's per-lane attribution on the given plan-sourced set; safe to re-apply. */
-  fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) = Unit
+  fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>)
 
-  fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> = emptyList()
+  fun fetchReviewRunLanes(runId: String): List<ReviewRunLane>
 
   /**
    * Records finding-to-lane attribution from the runtime's own merge result, keyed by finding id.
    * Ingestion prefers it over provenance parsed out of review text.
    */
-  fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) = Unit
+  fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>)
 
   /** Pack-and-area effectiveness, grouped by canonical routed skill plus lane pack slug and area. */
-  fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> = emptyList()
+  fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow>
 
   /**
    * Records the durable terminal state of a run — its finish timestamp and execution mode — for
    * every run, including one that produced no findings and one imported with telemetry disabled.
    */
-  fun ensureTerminalReviewState(runId: String, executionMode: String?) = Unit
+  fun ensureTerminalReviewState(runId: String, executionMode: String?)
+}
+
+/**
+ * Every member is written on a run's terminal path, so a no-op implementation discards terminal
+ * state and lane attribution with nothing to show for it. An unavailable completeness surface
+ * fails loudly instead, the way [UnavailableUnaddressedFindingsRepository] does.
+ */
+object UnavailableReviewRunCompletenessRepository : ReviewRunCompletenessRepository {
+  override fun replaceReviewRunLanes(runId: String, lanes: List<ReviewRunLane>) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchReviewRunLanes(runId: String): List<ReviewRunLane> =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun recordFindingLaneAttribution(runId: String, attribution: Map<String, String>) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun reviewLaneEffectiveness(runId: String?): List<ReviewLaneEffectivenessRow> =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun ensureTerminalReviewState(runId: String, executionMode: String?) {
+    error("Review run completeness persistence is unavailable.")
+  }
 }

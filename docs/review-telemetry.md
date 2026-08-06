@@ -179,9 +179,13 @@ raw text does not resolve at `unresolved`.
 
 ## Per-lane review attribution
 
-`specialist_reviews` is recorded from the composed launch plan at run time — the lanes the
-runtime actually planned and launched — not from agent narration in the review text. It is
-stored per lane in `review_run_lanes`, one row per lane, rather than as one comma-joined string:
+The `review_runs.specialist_reviews` column stays exactly as reported: it is parsed out of the
+review text's `Specialist reviews:` / `Baseline review:` lines and persisted as one comma-joined
+string. The plan-sourced attribution lives alongside it in `review_run_lanes`, one row per lane.
+For runtime-launched reviews those rows come straight from the composed launch plan — the lanes
+the runtime actually planned and launched. For imported reviews the lanes are resolved by
+matching the parsed `specialist_reviews` narration against the composed plan, so a lane that
+cannot be matched is recorded as `unresolved`:
 
 | `review_run_lanes` column | Meaning |
 |---|---|

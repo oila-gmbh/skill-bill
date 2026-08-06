@@ -174,21 +174,23 @@ class UnaddressedFindingsRuntimeTest {
   }
 
   // AC-004: the ledger only ever holds the preceding pass, so a finding retired in pass 3 must still
-  // correct its pass-1 outcome — otherwise pass 1 under-reports acceptance forever.
+  // correct its pass-1 outcome — otherwise pass 1 under-reports acceptance forever. Each pass is its
+  // own review run and renumbers from F-001, so the match is on the content-derived finding key.
   @Test
   fun `a terminal outcome reconciles every earlier carried pass for the same finding`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass").resolve("runtime.db")
+    val key = "src/outbox.kt:12|ambiguous outbox error signal"
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
       repository.recordOutcomes(
-        listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001")),
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-003", key)),
       )
       repository.recordOutcomes(
-        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.CARRIED, "rvw-2", "F-001")),
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.CARRIED, "rvw-2", "F-002", key)),
       )
 
       repository.recordOutcomes(
-        listOf(ReviewFindingOutcomeRecord("workflow-1", 3, 1, ReviewFindingOutcome.ADDRESSED, "rvw-3", "F-001")),
+        listOf(ReviewFindingOutcomeRecord("workflow-1", 3, 1, ReviewFindingOutcome.ADDRESSED, "rvw-3", "F-001", key)),
       )
 
       assertEquals(
@@ -203,20 +205,24 @@ class UnaddressedFindingsRuntimeTest {
     }
   }
 
+  // Every row here reports finding id F-001, because each pass renumbers from F-001. Reconciliation
+  // must key on the content-derived finding key, or it corrects unrelated findings that share an id.
   @Test
-  fun `reconciliation does not touch another workflow or another finding`() {
+  fun `reconciliation does not touch another workflow or another finding sharing a finding id`() {
     val dbPath = Files.createTempDirectory("unaddressed-findings-cross-pass-scope").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
       repository.recordOutcomes(
         listOf(
-          ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-002"),
-          ReviewFindingOutcomeRecord("workflow-2", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001"),
+          ReviewFindingOutcomeRecord("workflow-1", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001", "other"),
+          ReviewFindingOutcomeRecord("workflow-2", 1, 1, ReviewFindingOutcome.CARRIED, "rvw-1", "F-001", "fixed"),
         ),
       )
 
       repository.recordOutcomes(
-        listOf(ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.ADDRESSED, "rvw-2", "F-001")),
+        listOf(
+          ReviewFindingOutcomeRecord("workflow-1", 2, 1, ReviewFindingOutcome.ADDRESSED, "rvw-2", "F-001", "fixed"),
+        ),
       )
 
       assertEquals(

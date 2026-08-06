@@ -570,6 +570,7 @@ private fun addReviewFindingOutcomeKey(connection: Connection) {
   DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
+  DatabaseColumnMigrations.ensureReviewFindingOutcomeColumns(connection)
 }
 
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {

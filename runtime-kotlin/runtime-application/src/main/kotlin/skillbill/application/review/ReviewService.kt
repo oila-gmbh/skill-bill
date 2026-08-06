@@ -13,7 +13,10 @@ import skillbill.application.model.TriageResult
 import skillbill.application.model.TriageResultKind
 import skillbill.application.telemetry.feedbackTelemetryOptions
 import skillbill.application.telemetry.telemetrySettingsOrNull
+import skillbill.error.ShellContentContractException
 import skillbill.model.EnvironmentContext
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
@@ -47,6 +50,7 @@ class ReviewService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,
   private val reviewAttributionPort: ReviewAttributionPort,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun previewImport(input: String): ReviewPreviewResult {
     val (text) = reviewInputSource.readInput(input, context.stdinText)
@@ -93,15 +97,31 @@ class ReviewService(
     // map is derived from an in-repo platform-packs directory that only exists in the skill-bill
     // source tree, so depending on it would source lanes from narration in every consumer repository.
     val routedPackSlug = packSlugFromCanonicalPackSkillName(review.routedSkillCanonical)
+    if (routedPackSlug == null) {
+      diagnostics.warning(
+        "review lane composition: routed skill '${review.routedSkillCanonical}' names no platform pack; " +
+          "run ${review.reviewRunId} imports with unresolved lanes.",
+      )
+      return ReviewRunLaneResolver.resolve(
+        ReviewLaunchPlan(review.routedSkillCanonical, emptyList()),
+        review.specialistReviews,
+      )
+    }
     // Composition reads the installed pack catalog, which can be partially staged or missing a
     // composed baseline layer. That is an attribution gap, not an import failure: degrade to an
-    // empty plan so the lanes resolve as unresolved and the review still lands.
-    val plan = routedPackSlug
-      ?.let { slug ->
-        runCatching { reviewAttributionPort.composedLaunchPlan(slug) }
-          .getOrElse { ReviewLaunchPlan(slug, emptyList()) }
-      }
-      ?: ReviewLaunchPlan(review.routedSkillCanonical, emptyList())
+    // empty plan so the lanes resolve as unresolved and the review still lands. Only a contract
+    // failure degrades — anything else propagates, so a bug here cannot masquerade as a routing gap.
+    val plan = try {
+      reviewAttributionPort.composedLaunchPlan(routedPackSlug)
+    } catch (error: ShellContentContractException) {
+      diagnostics.warning(
+        "review lane composition: pack '$routedPackSlug' failed to compose " +
+          "(${error::class.simpleName}); run ${review.reviewRunId} imports with unresolved lanes " +
+          "instead of the composed launch plan.",
+        error,
+      )
+      ReviewLaunchPlan(routedPackSlug, emptyList())
+    }
     return ReviewRunLaneResolver.resolve(plan, review.specialistReviews)
   }
 

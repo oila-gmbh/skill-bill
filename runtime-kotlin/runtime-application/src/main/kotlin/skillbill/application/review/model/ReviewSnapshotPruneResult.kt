@@ -7,6 +7,8 @@ data class ReviewSnapshotPruneResult(
   val confirmed: Boolean,
   val candidates: List<ReviewSnapshot>,
   val deleted: List<ReviewSnapshot>,
+  /** Candidates a confirmed prune tried and failed to delete; reported so the sweep stays auditable. */
+  val failed: List<ReviewSnapshot> = emptyList(),
 ) {
   val reclaimedBytes: Long = deleted.sumOf(ReviewSnapshot::sizeBytes)
   val candidateBytes: Long = candidates.sumOf(ReviewSnapshot::sizeBytes)

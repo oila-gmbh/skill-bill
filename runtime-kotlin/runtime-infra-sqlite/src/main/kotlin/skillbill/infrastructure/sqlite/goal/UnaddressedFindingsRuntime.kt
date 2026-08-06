@@ -44,11 +44,13 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     connection.prepareStatement(
       """
       INSERT INTO review_finding_outcomes (
-        workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, key_state, outcome
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, finding_key,
+        key_state, outcome
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(workflow_id, review_pass_number, finding_ordinal) DO UPDATE SET
         review_run_id = excluded.review_run_id,
         finding_id = excluded.finding_id,
+        finding_key = excluded.finding_key,
         key_state = excluded.key_state,
         outcome = excluded.outcome,
         recorded_at = CURRENT_TIMESTAMP
@@ -61,6 +63,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         statement.setInt(parameterIndex++, outcome.findingOrdinal)
         statement.setString(parameterIndex++, outcome.reviewRunId)
         statement.setString(parameterIndex++, outcome.findingId)
+        statement.setString(parameterIndex++, outcome.findingKey)
         statement.setString(parameterIndex++, outcome.keyState)
         statement.setString(parameterIndex, outcome.outcome.wireValue)
         statement.addBatch()
@@ -74,23 +77,27 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
    * The ledger only ever holds the immediately preceding pass, so a finding first reported in pass 1
    * and retired in pass 3 would leave pass 1's row CARRIED forever and under-report acceptance. The
    * durable outcome table does keep every pass, so a terminal outcome is propagated back to every
-   * earlier still-carried row of the same workflow sharing the finding id.
+   * earlier still-carried row of the same workflow sharing the finding key.
+   *
+   * The match is on `finding_key`, never on `finding_id`: each pass is its own review run and
+   * renumbers from `F-001`, so an id match would back-propagate a terminal outcome onto whichever
+   * unrelated earlier finding happened to share an ordinal.
    */
   private fun reconcileEarlierPasses(outcomes: List<ReviewFindingOutcomeRecord>) {
-    val terminal = outcomes.filter { it.outcome != ReviewFindingOutcome.CARRIED && it.findingId != null }
+    val terminal = outcomes.filter { it.outcome != ReviewFindingOutcome.CARRIED && it.findingKey != null }
     if (terminal.isEmpty()) return
     connection.prepareStatement(
       """
       UPDATE review_finding_outcomes
       SET outcome = ?, recorded_at = CURRENT_TIMESTAMP
-      WHERE workflow_id = ? AND finding_id = ? AND review_pass_number < ? AND outcome = 'carried'
+      WHERE workflow_id = ? AND finding_key = ? AND review_pass_number < ? AND outcome = 'carried'
       """.trimIndent(),
     ).use { statement ->
       terminal.forEach { outcome ->
         var parameterIndex = 1
         statement.setString(parameterIndex++, outcome.outcome.wireValue)
         statement.setString(parameterIndex++, outcome.workflowId)
-        statement.setString(parameterIndex++, outcome.findingId)
+        statement.setString(parameterIndex++, outcome.findingKey)
         statement.setInt(parameterIndex, outcome.reviewPassNumber)
         statement.addBatch()
       }
@@ -100,7 +107,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
 
   fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> = connection.prepareStatement(
     """
-    SELECT workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, outcome
+    SELECT workflow_id, review_pass_number, finding_ordinal, review_run_id, finding_id, finding_key, outcome
     FROM review_finding_outcomes
     WHERE workflow_id = ?
     ORDER BY review_pass_number, finding_ordinal
@@ -118,6 +125,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
               outcome = ReviewFindingOutcome.fromWireValue(rows.getString("outcome")),
               reviewRunId = rows.getString("review_run_id"),
               findingId = rows.getString("finding_id"),
+              findingKey = rows.getString("finding_key"),
             ),
           )
         }

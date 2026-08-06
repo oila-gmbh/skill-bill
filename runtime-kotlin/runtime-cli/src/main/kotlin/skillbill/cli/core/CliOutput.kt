@@ -53,11 +53,18 @@ internal object CliOutput {
       return@buildString
     }
     result.candidates.forEach { snapshot ->
-      val disposition = if (snapshot in result.deleted) "deleted" else "kept"
+      val disposition = when (snapshot) {
+        in result.deleted -> "deleted"
+        in result.failed -> "failed"
+        else -> "kept"
+      }
       appendLine("${snapshot.label} | ${snapshot.sizeBytes} bytes | ${snapshot.lastModified} | $disposition")
     }
     if (result.confirmed) {
       appendLine("Deleted ${result.deleted.size} snapshot(s), reclaiming ${result.reclaimedBytes} bytes.")
+      if (result.failed.isNotEmpty()) {
+        appendLine("Failed to delete ${result.failed.size} snapshot(s): ${result.failed.joinToString { it.label }}.")
+      }
     } else {
       appendLine(
         "Dry run: ${result.candidates.size} snapshot(s) totalling ${result.candidateBytes} bytes. " +

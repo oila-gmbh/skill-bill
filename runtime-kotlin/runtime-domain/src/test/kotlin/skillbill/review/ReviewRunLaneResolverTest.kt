@@ -76,7 +76,7 @@ class ReviewRunLaneResolverTest {
   }
 
   @Test
-  fun `a plan lane the run never reported is still recorded`() {
+  fun `a plan lane the run never reported is recorded but not claimed as launched`() {
     val plan = ReviewLaunchPlan(
       routedPackSlug = "kmp",
       lanes = listOf(lane(skillName = "bill-kmp-code-review-architecture", packSlug = "kmp", area = "architecture")),
@@ -85,7 +85,12 @@ class ReviewRunLaneResolverTest {
     val resolved = ReviewRunLaneResolver.resolve(plan, reportedLaneNames = emptyList())
 
     assertEquals(listOf("bill-kmp-code-review-architecture"), resolved.map { it.laneSkillName })
-    assertEquals(listOf("resolved"), resolved.map { it.resolutionState })
+    assertEquals(
+      listOf("unresolved"),
+      resolved.map { it.resolutionState },
+      "A plan is what composition would launch; an inline run reports no specialist, so the lane " +
+        "row must not claim coverage that never ran.",
+    )
   }
 
   private fun lane(skillName: String, packSlug: String, area: String) = ReviewLaunchLane(

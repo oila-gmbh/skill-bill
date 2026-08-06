@@ -41,6 +41,19 @@ enum class ReviewFindingOutcome(val wireValue: String) {
   }
 }
 
+private val identityWhitespace = Regex("\\s+")
+
+/**
+ * Stable cross-pass identity for one finding. A review pass is its own review run and renumbers its
+ * findings from `F-001`, so a reported finding id identifies a finding only inside the run that
+ * emitted it; matching on it across passes compares ordinal positions rather than findings. Location
+ * and summary are what the reviewer actually observed, so they survive renumbering.
+ */
+fun reviewFindingIdentityKey(location: String, summary: String): String =
+  "${normalizedIdentityPart(location)}|${normalizedIdentityPart(summary)}"
+
+private fun normalizedIdentityPart(value: String): String = value.trim().lowercase().replace(identityWhitespace, " ")
+
 data class UnaddressedFinding(
   val issueKey: String,
   val subtaskId: Int,
@@ -58,7 +71,9 @@ data class UnaddressedFinding(
    */
   val reviewRunId: String? = null,
   val findingId: String? = null,
-)
+) {
+  val findingKey: String get() = reviewFindingIdentityKey(location, summary)
+}
 
 /** One finding's terminal outcome, keyed identically to the ledger row it came from. */
 data class ReviewFindingOutcomeRecord(
@@ -68,6 +83,12 @@ data class ReviewFindingOutcomeRecord(
   val outcome: ReviewFindingOutcome,
   val reviewRunId: String? = null,
   val findingId: String? = null,
+  /**
+   * Null only on a row written before cross-pass identity existed. Such a row cannot be matched to a
+   * later pass and is left at the outcome its own pass recorded rather than being reconciled on the
+   * renumbered finding id.
+   */
+  val findingKey: String? = null,
 ) {
   val keyState: String = if (reviewRunId != null && findingId != null) "resolved" else "unresolved"
 }
@@ -80,6 +101,7 @@ fun UnaddressedFinding.toOutcomeRecord(outcome: ReviewFindingOutcome): ReviewFin
     outcome = outcome,
     reviewRunId = reviewRunId,
     findingId = findingId,
+    findingKey = findingKey,
   )
 
 data class UnaddressedFindingsLedger(

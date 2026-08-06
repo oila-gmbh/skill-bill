@@ -62,6 +62,9 @@ internal object DatabaseReviewLedgerSchema {
         finding_ordinal INTEGER NOT NULL,
         review_run_id TEXT,
         finding_id TEXT,
+        -- Content-derived cross-pass identity. The finding id above is per-run positional, so it
+        -- cannot match a finding to the same finding in a later pass; this column can.
+        finding_key TEXT,
         key_state TEXT NOT NULL DEFAULT 'unresolved'
           CHECK (key_state IN ('resolved', 'unresolved')),
         outcome TEXT NOT NULL CHECK (outcome IN ('addressed', 'carried', 'rejected')),

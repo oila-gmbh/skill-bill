@@ -133,6 +133,10 @@ internal object GoalSubtaskReviewSummaryReducer {
    * stay carried into the terminal state. A Blocker the reserved remediation pass explicitly
    * dispositioned overrides that inference with the verdict the loop actually recorded.
    *
+   * Cross-pass matching keys on [UnaddressedFinding.findingKey], never on the reported finding id:
+   * each pass is its own review run and renumbers from `F-001`, so id matching would compare
+   * positions and invert exactly the outcomes this derivation exists to record.
+   *
    * This is what closes the coverage gap that left only 13% of runs with `feedback_events`: coverage
    * is now driven by the loop rather than by optional manual triage. The records outlive the ledger
    * rows they were derived from, which is why they are written to their own table.
@@ -143,21 +147,34 @@ internal object GoalSubtaskReviewSummaryReducer {
     blockerDispositions: List<GoalSubtaskBlockerDisposition>,
   ): List<ReviewFindingOutcomeRecord> {
     val dispositionsByFindingId = blockerDispositions.associateBy(GoalSubtaskBlockerDisposition::findingId)
-    val stillReported = currentFindings.mapNotNullTo(mutableSetOf(), UnaddressedFinding::findingId)
-    fun outcomeFor(finding: UnaddressedFinding, carriedByDefault: Boolean): ReviewFindingOutcome =
-      when (dispositionsByFindingId[finding.findingId]?.verdict) {
+    val stillReported = currentFindings.mapTo(mutableSetOf(), UnaddressedFinding::findingKey)
+    // Dispositions name the finding ids the *prior* pass emitted, and this pass renumbers from F-001.
+    // Resolving them against the prior pass's findings first turns them into cross-pass identity keys,
+    // so a disposition can never land on whichever current finding happens to share an ordinal.
+    val dispositionVerdictsByKey = supersededFindings.mapNotNull { finding ->
+      dispositionsByFindingId[finding.findingId]?.let { finding.findingKey to it.verdict }
+    }.toMap()
+    fun supersededOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
+      when (dispositionVerdictsByKey[finding.findingKey]) {
         GoalSubtaskBlockerDispositionVerdict.RESOLVED -> ReviewFindingOutcome.ADDRESSED
         GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> ReviewFindingOutcome.REJECTED
         GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> ReviewFindingOutcome.CARRIED
-        null -> if (carriedByDefault) ReviewFindingOutcome.CARRIED else ReviewFindingOutcome.ADDRESSED
+        null -> ReviewFindingOutcome.ADDRESSED
+      }
+
+    // A finding this pass still reports was not addressed, whatever the disposition claimed. Only an
+    // explicit supersede — the loop declining the finding — is a terminal outcome for a survivor.
+    fun currentOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
+      if (dispositionVerdictsByKey[finding.findingKey] == GoalSubtaskBlockerDispositionVerdict.SUPERSEDED) {
+        ReviewFindingOutcome.REJECTED
+      } else {
+        ReviewFindingOutcome.CARRIED
       }
     val supersededOutcomes = supersededFindings
-      // A finding carrying no id cannot be matched across passes, so it keeps its own pass's carried
-      // outcome rather than being declared addressed on no evidence.
-      .filter { finding -> finding.findingId != null && finding.findingId !in stillReported }
-      .map { finding -> finding.toOutcomeRecord(outcomeFor(finding, carriedByDefault = false)) }
+      .filter { finding -> finding.findingKey !in stillReported }
+      .map { finding -> finding.toOutcomeRecord(supersededOutcome(finding)) }
     val currentOutcomes = currentFindings
-      .map { finding -> finding.toOutcomeRecord(outcomeFor(finding, carriedByDefault = true)) }
+      .map { finding -> finding.toOutcomeRecord(currentOutcome(finding)) }
     return supersededOutcomes + currentOutcomes
   }
 

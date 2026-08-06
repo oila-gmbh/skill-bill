@@ -46,8 +46,10 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
+import skillbill.ports.persistence.ReviewRunCompletenessRepository
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
+import skillbill.ports.persistence.UnavailableReviewRunCompletenessRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStatsRepository
@@ -2199,7 +2201,7 @@ private class FakeGoalStatsRepository(
 
 private class FakeGoalStatsReviewRepository(
   private val stats: GoalWorkflowStats,
-) : ReviewRepository {
+) : ReviewRepository, ReviewRunCompletenessRepository by UnavailableReviewRunCompletenessRepository {
   override fun saveImportedReview(review: ImportedReview, sourcePath: String?) = error("Unexpected saveImportedReview")
 
   override fun markOrchestrated(runId: String) = error("Unexpected markOrchestrated")
@@ -2292,7 +2294,7 @@ private class FakeReviewRepository(
   private val numberedFindings: List<NumberedFinding> = emptyList(),
   private val sourceFindingExists: Boolean = false,
   private val rejectedLearningSourceOutcome: RejectedLearningSourceOutcome? = null,
-) : ReviewRepository {
+) : ReviewRepository, ReviewRunCompletenessRepository by UnavailableReviewRunCompletenessRepository {
   val feedbackRequests = mutableListOf<FeedbackRequest>()
   val learningSourceLookups = mutableListOf<String>()
   val savedReviews = mutableListOf<ImportedReview>()

@@ -2,8 +2,12 @@ package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.ReviewSnapshotPruneResult
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.review.ReviewSnapshotGateway
+import skillbill.ports.review.model.ReviewSnapshot
+import java.io.IOException
 
 /**
  * Retention policy for `~/.skill-bill/review-metrics.<label>.db` snapshots.
@@ -22,16 +26,32 @@ import skillbill.ports.review.ReviewSnapshotGateway
 class ReviewSnapshotPruneService(
   private val database: DatabaseSessionFactory,
   private val gateway: ReviewSnapshotGateway,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun prune(confirmed: Boolean, dbOverride: String? = null): ReviewSnapshotPruneResult {
     val liveDbPath = database.resolveDbPath(dbOverride)
     val candidates = gateway.listSnapshots(liveDbPath)
-    val deleted = if (confirmed) candidates.filter(gateway::delete) else emptyList()
+    val deleted = mutableListOf<ReviewSnapshot>()
+    val failed = mutableListOf<ReviewSnapshot>()
+    if (confirmed) {
+      candidates.forEach { snapshot ->
+        // One unreadable or locked snapshot must not abort the sweep: without this the operator gets
+        // a stack trace and no result, leaving the already-deleted snapshots unreported.
+        val removed = try {
+          gateway.delete(snapshot)
+        } catch (error: IOException) {
+          diagnostics.warning("review snapshot prune: '${snapshot.path}' could not be deleted.", error)
+          false
+        }
+        if (removed) deleted += snapshot else failed += snapshot
+      }
+    }
     return ReviewSnapshotPruneResult(
       liveDbPath = liveDbPath.toString(),
       confirmed = confirmed,
       candidates = candidates,
       deleted = deleted,
+      failed = failed,
     )
   }
 }

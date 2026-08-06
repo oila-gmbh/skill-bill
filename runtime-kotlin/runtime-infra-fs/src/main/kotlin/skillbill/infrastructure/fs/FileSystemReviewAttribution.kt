@@ -23,7 +23,10 @@ class FileSystemReviewAttribution(
   override fun composedLaunchPlan(routedPackSlug: String): ReviewLaunchPlan {
     val manifests = installedCatalog.manifests().ifEmpty { discoverManifests() }
     if (manifests.none { it.slug == routedPackSlug }) return ReviewLaunchPlan(routedPackSlug, emptyList())
-    val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
+    // The routed pack's own composition, never the union across every installed manifest: that union
+    // put areas this pack never declares into its plan, and the completeness ledger reads a plan lane
+    // as a lane the run launched.
+    val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(routedPackSlug, manifests)
     return ReviewLaunchPlanPolicy.flatten(routedPackSlug, manifests, selectedAreas)
   }
 

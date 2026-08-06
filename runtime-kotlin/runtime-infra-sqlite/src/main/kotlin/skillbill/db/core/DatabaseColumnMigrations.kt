@@ -11,6 +11,7 @@ internal object DatabaseColumnMigrations {
     ensureReviewRunColumns(connection)
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
+    ensureReviewFindingOutcomeColumns(connection)
     backfillReviewSessionIds(connection)
     ReviewAttributionBackfillMigration.backfillExecutionModes(connection)
     ensureFeatureImplementSessionColumns(connection)
@@ -84,6 +85,25 @@ internal object DatabaseColumnMigrations {
       statement.execute(
         "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run " +
           "ON unaddressed_findings(review_run_id, finding_id)",
+      )
+    }
+  }
+
+  /**
+   * Content-derived cross-pass identity on the durable outcome table. Nullable with no backfill: a
+   * row written before this column existed has no location or summary left to derive a key from —
+   * `unaddressed_findings` is retracted on every pass — so it stays NULL and is excluded from
+   * cross-pass reconciliation rather than being matched on its per-run positional finding id.
+   */
+  fun ensureReviewFindingOutcomeColumns(connection: Connection) {
+    if (!tableExists(connection, "review_finding_outcomes")) return
+    ensureColumn(connection, "review_finding_outcomes", "finding_key", "TEXT")
+    // Declared here rather than in the shared schema list: on an existing store the CREATE TABLE is a
+    // no-op and the index would be created before the column exists.
+    connection.createStatement().use { statement ->
+      statement.execute(
+        "CREATE INDEX IF NOT EXISTS idx_review_finding_outcomes_key " +
+          "ON review_finding_outcomes(workflow_id, finding_key)",
       )
     }
   }

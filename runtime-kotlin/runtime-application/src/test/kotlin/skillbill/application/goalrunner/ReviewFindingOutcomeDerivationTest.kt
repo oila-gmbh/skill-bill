@@ -47,22 +47,50 @@ class ReviewFindingOutcomeDerivationTest {
   fun `a finding an earlier pass reported and this pass does not is recorded as addressed`() {
     val addressed = finding(ordinal = 1, findingId = "F-001")
     val stillOpen = finding(ordinal = 2, findingId = "F-002")
+    // Pass 2 is its own review run, so it renumbers its surviving finding from F-001 exactly as the
+    // production id generator does. Matching on the reported id here would compare ordinals and
+    // invert both outcomes.
+    val renumbered = stillOpen.copy(reviewPassNumber = 2, findingOrdinal = 1, findingId = "F-001")
 
     val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
       supersededFindings = listOf(addressed, stillOpen),
-      currentFindings = listOf(stillOpen.copy(reviewPassNumber = 2, findingOrdinal = 1)),
+      currentFindings = listOf(renumbered),
       blockerDispositions = emptyList(),
     )
 
     assertEquals(
       ReviewFindingOutcome.ADDRESSED,
-      outcomes.single { it.findingId == "F-001" }.outcome,
-      "The fix loop retired F-001, so it was addressed.",
+      outcomes.single { it.findingKey == addressed.findingKey }.outcome,
+      "The fix loop retired the first finding, so it was addressed.",
     )
     assertEquals(
       listOf(ReviewFindingOutcome.CARRIED),
-      outcomes.filter { it.findingId == "F-002" }.map { it.outcome },
-      "F-002 survives into this pass, so it stays carried and is not double-recorded.",
+      outcomes.filter { it.findingKey == stillOpen.findingKey }.map { it.outcome },
+      "The survivor stays carried and is not double-recorded, despite being renumbered to F-001.",
+    )
+  }
+
+  @Test
+  fun `renumbering across passes never inverts an outcome`() {
+    val fixed = finding(ordinal = 1, findingId = "F-001")
+    val survivor = finding(ordinal = 2, findingId = "F-002")
+
+    val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+      supersededFindings = listOf(fixed, survivor),
+      // The survivor now occupies the id the fixed finding held in pass 1.
+      currentFindings = listOf(survivor.copy(reviewPassNumber = 2, findingOrdinal = 1, findingId = "F-001")),
+      blockerDispositions = emptyList(),
+    )
+
+    assertEquals(
+      emptyList(),
+      outcomes.filter { it.findingKey == survivor.findingKey && it.outcome == ReviewFindingOutcome.ADDRESSED },
+      "A finding this pass still reports must never be recorded as addressed.",
+    )
+    assertEquals(
+      emptyList(),
+      outcomes.filter { it.findingKey == fixed.findingKey && it.outcome == ReviewFindingOutcome.CARRIED },
+      "A finding the loop fixed must never be left carried because a survivor took over its id.",
     )
   }
 
@@ -90,19 +118,29 @@ class ReviewFindingOutcomeDerivationTest {
   }
 
   @Test
-  fun `a finding without an id is never declared addressed on no evidence`() {
+  fun `a finding without a reported id is still matched across passes by its content`() {
     val anonymous = finding(ordinal = 1, findingId = null)
 
-    val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+    val addressed = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
       supersededFindings = listOf(anonymous),
       currentFindings = emptyList(),
       blockerDispositions = emptyList(),
     )
+    val carried = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
+      supersededFindings = listOf(anonymous),
+      currentFindings = listOf(anonymous.copy(reviewPassNumber = 2)),
+      blockerDispositions = emptyList(),
+    )
 
     assertEquals(
-      emptyList(),
-      outcomes,
-      "An unmatched anonymous finding keeps the carried outcome its own pass already recorded.",
+      ReviewFindingOutcome.ADDRESSED,
+      addressed.single().outcome,
+      "Identity is content-derived, so a finding with no reported id is still matched across passes.",
+    )
+    assertEquals(
+      listOf(ReviewFindingOutcome.CARRIED),
+      carried.map { it.outcome },
+      "The same anonymous finding reported again is carried, not double-recorded.",
     )
   }
 

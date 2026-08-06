@@ -9,6 +9,27 @@ import skillbill.review.plan.model.ReviewLaunchPlan
 import skillbill.scaffold.model.PlatformManifest
 
 object ReviewLaunchPlanPolicy {
+  /**
+   * Every review area the routed pack and its composed baseline layers declare — the widest area set
+   * that can legitimately appear in this pack's plan. A caller must not substitute the union across
+   * all installed manifests: that puts areas the composition never declares into the plan, and a
+   * plan lane is read downstream as a lane the run launched.
+   */
+  fun composedAreas(routedSlug: String, manifests: Collection<PlatformManifest>): Set<String> {
+    val bySlug = manifests.associateBy { it.slug }
+    val areas = linkedSetOf<String>()
+    val visited = mutableSetOf<String>()
+    fun visit(pack: PlatformManifest) {
+      if (!visited.add(pack.slug)) return
+      areas += pack.declaredCodeReviewAreas
+      pack.codeReviewComposition?.baselineLayers.orEmpty().forEach { layer ->
+        bySlug[layer.platform]?.let(::visit)
+      }
+    }
+    bySlug[routedSlug]?.let(::visit)
+    return areas
+  }
+
   @Suppress("CyclomaticComplexMethod")
   fun flatten(
     routedSlug: String,
