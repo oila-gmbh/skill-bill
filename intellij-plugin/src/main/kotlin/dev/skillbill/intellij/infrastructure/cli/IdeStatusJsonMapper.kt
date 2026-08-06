@@ -8,6 +8,7 @@ import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
+import dev.skillbill.intellij.infrastructure.AbsolutePathGuard
 import java.time.Instant
 
 /**
@@ -214,8 +215,7 @@ object IdeStatusJsonMapper {
         val value = raw?.trim().orEmpty()
         if (value.isEmpty()) return fallback
         // Drop absolute Unix/Windows path segments from any surfaced text.
-        val redacted = ABSOLUTE_PATH_PATTERN.replace(value, "[path]")
-        return redacted.take(512)
+        return AbsolutePathGuard.redact(value).take(512)
     }
 
     private fun JsonObject.getAsString(key: String): String? =
@@ -236,7 +236,4 @@ object IdeStatusJsonMapper {
 
     private fun JsonElement.asStringOrNull(): String? =
         runCatching { asString }.getOrNull()
-
-    private val ABSOLUTE_PATH_PATTERN =
-        Regex("""(?:[A-Za-z]:\\(?:[^\s"]+)|/(?:home|Users|var|tmp|private|opt)/[^\s"]+)""")
 }

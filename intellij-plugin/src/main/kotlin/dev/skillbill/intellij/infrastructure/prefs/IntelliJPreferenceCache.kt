@@ -9,6 +9,7 @@ import dev.skillbill.intellij.application.PreferenceCachePort
 import dev.skillbill.intellij.domain.CachedDisplaySnapshot
 import dev.skillbill.intellij.domain.DEFAULT_REFRESH_INTERVAL_SECONDS
 import dev.skillbill.intellij.domain.LastKnownDisplayCache
+import dev.skillbill.intellij.infrastructure.AbsolutePathGuard
 import java.time.Instant
 
 /**
@@ -190,7 +191,7 @@ object PreferenceSanitizer {
         return cache.copy(
             display = cache.display.copy(
                 summary = summary.take(CachedDisplaySnapshot.MAX_SUMMARY_CHARS),
-                repositoryIdentity = cache.display.repositoryIdentity?.take(256),
+                repositoryIdentity = sanitizeRepositoryIdentity(cache.display.repositoryIdentity),
                 issueKey = cache.display.issueKey?.take(64),
                 currentStepId = cache.display.currentStepId?.take(64),
                 currentStepLabel = cache.display.currentStepLabel?.take(128),
@@ -208,7 +209,19 @@ object PreferenceSanitizer {
         }
         return state.copy(
             summary = state.summary?.take(CachedDisplaySnapshot.MAX_SUMMARY_CHARS),
+            repositoryIdentity = sanitizeRepositoryIdentity(state.repositoryIdentity),
         )
+    }
+
+    /**
+     * Omits identities that embed absolute filesystem paths (e.g. repo-root-realpath-v1:/…).
+     * CLI executable override stays on [sanitizeExecutablePath] (AC-008 settings exception).
+     */
+    fun sanitizeRepositoryIdentity(raw: String?): String? {
+        val value = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (AbsolutePathGuard.containsAbsolutePath(value)) return null
+        if (looksLikeSecret(value)) return null
+        return value.take(256)
     }
 
     fun looksLikeSecret(value: String): Boolean {

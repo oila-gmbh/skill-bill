@@ -5,7 +5,8 @@ import dev.skillbill.intellij.domain.LastKnownDisplayCache
 import dev.skillbill.intellij.domain.toStaleOutcome
 import dev.skillbill.intellij.fakes.FakePreferenceCache
 import java.time.Instant
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -51,6 +52,63 @@ class PreferenceSanitizerAndCacheTest {
                 ),
             ),
         )
+    }
+
+    @Test
+    fun `sanitizeCache omits repositoryIdentity that embeds absolute paths`() {
+        val withHomePath = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "repo-root-realpath-v1:/home/user/StudioProjects/skill-bill",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertNotNull(withHomePath)
+        assertNull(withHomePath!!.display.repositoryIdentity)
+
+        val withFixturePath = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "repo-root-realpath-v1:/repo",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertNotNull(withFixturePath)
+        assertNull(withFixturePath!!.display.repositoryIdentity)
+
+        val opaque = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "opaque-repo-id",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertEquals("opaque-repo-id", opaque!!.display.repositoryIdentity)
+    }
+
+    @Test
+    fun `sanitizeCacheState omits absolute-path repositoryIdentity on load`() {
+        val state = PreferenceSanitizer.sanitizeCacheState(
+            SkillBillProjectDisplayCache.State(
+                summary = "cached implement",
+                repositoryIdentity = "repo-root-realpath-v1:/Users/me/proj",
+                observedAt = "2026-08-06T09:00:00Z",
+            ),
+        )
+        assertEquals("cached implement", state.summary)
+        assertNull(state.repositoryIdentity)
+    }
+
+    @Test
+    fun `CLI executable absolute path remains allowed as settings exception`() {
+        val path = "/home/user/bin/skill-bill"
+        assertEquals(path, PreferenceSanitizer.sanitizeExecutablePath(path))
     }
 
     @Test
