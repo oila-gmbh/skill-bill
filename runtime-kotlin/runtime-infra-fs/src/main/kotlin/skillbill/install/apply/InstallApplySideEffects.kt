@@ -14,11 +14,11 @@ import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.model.EnvironmentContext
 import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.ports.telemetry.writeTelemetryLevel
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
 import skillbill.telemetry.parsePositiveTelemetryInt
 import skillbill.telemetry.parseTelemetryLevelValue
 import skillbill.telemetry.telemetryLevels
-import skillbill.telemetry.withTelemetryLevel
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -75,8 +75,9 @@ private fun applyInstallTelemetryLevel(
     "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."
   }
   val configStore = FileTelemetryConfigStore(context)
-  configStore.write(configStore.ensure().withTelemetryLevel(level, configStore.configPath().toString()))
-  validateInstallTelemetryConfig(configStore)
+  if (configStore.writeTelemetryLevel(level)) {
+    validateInstallTelemetryConfig(configStore)
+  }
   return 0
 }
 

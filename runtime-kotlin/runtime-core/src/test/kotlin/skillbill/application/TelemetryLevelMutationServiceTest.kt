@@ -1,5 +1,7 @@
 package skillbill.application
 
+import skillbill.application.model.FeatureTaskRuntimeStartedRequest
+import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.model.EnvironmentContext
@@ -152,7 +154,7 @@ class TelemetryLevelMutationServiceTest {
     val fixture = telemetryStoreFixture(
       seed = """{"install_id":"seeded-id","telemetry":{"level":"anonymous","proxy_url":"","batch_size":50}}""",
     )
-    val outbox = MutationTelemetryOutboxRepository(mutableListOf(outboxRecord(1)))
+    val outbox = MutationTelemetryOutboxRepository(mutableListOf())
     TelemetryConfigMutations.setTelemetryLevel(
       level = "off",
       configStore = fixture.configStore,
@@ -160,12 +162,19 @@ class TelemetryLevelMutationServiceTest {
       outbox = outbox,
     )
 
-    val settings = fixture.settingsProvider.load(materialize = false)
-    if (settings.enabled) {
-      outbox.enqueue("skillbill_feature_implement_started", """{"name":"ok"}""")
-    }
+    // The production emit gate is LifecycleTelemetryService: driving a real lifecycle emit after
+    // the disable is what proves nothing is queued. The fake unit of work errors on any
+    // lifecycleTelemetry access, so removing that gate fails this test instead of leaving it green.
+    val service = LifecycleTelemetryService(
+      database = FakeTelemetryDatabaseSessionFactory(outbox),
+      settingsProvider = fixture.settingsProvider,
+    )
 
-    assertFalse(settings.enabled, "level off must report telemetry disabled")
+    val result = service.featureTaskRuntimeStarted(
+      FeatureTaskRuntimeStartedRequest(featureSize = "MEDIUM", issueKey = "SKILL-163", featureName = "telemetry"),
+    )
+
+    assertEquals("skipped", result["status"], "level off must skip lifecycle emission")
     assertEquals(0, outbox.pendingCount(), "nothing may be queued while telemetry is off")
   }
 }
@@ -246,7 +255,19 @@ private class FakeTelemetryDatabaseSessionFactory(
 private class MutationTelemetryOutboxRepository(
   private val rows: MutableList<TelemetryOutboxRecord>,
 ) : TelemetryOutboxRepository {
-  override fun enqueue(eventName: String, payloadJson: String): Long = error("Unexpected enqueue")
+  override fun enqueue(eventName: String, payloadJson: String): Long {
+    val id = (rows.maxOfOrNull(TelemetryOutboxRecord::id) ?: 0L) + 1
+    rows +=
+      TelemetryOutboxRecord(
+        id = id,
+        eventName = eventName,
+        payloadJson = payloadJson,
+        createdAt = "2026-04-24 00:00:00",
+        syncedAt = null,
+        lastError = "",
+      )
+    return id
+  }
 
   override fun listPending(limit: Int?): List<TelemetryOutboxRecord> = rows
 

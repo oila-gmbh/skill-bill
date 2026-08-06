@@ -199,8 +199,7 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SKIPPED, result.telemetryOutcome.status)
     assertEquals("Telemetry was already off.", result.telemetryOutcome.message)
-    assertTrue(Files.exists(configPath), "off writes level off rather than deleting the config")
-    assertContains(Files.readString(configPath), "\"level\":\"off\"")
+    assertFalse(Files.exists(configPath), "opting out must not create a config file or mint an install_id")
   }
 
   @Test
