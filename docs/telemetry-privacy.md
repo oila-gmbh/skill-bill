@@ -86,9 +86,16 @@ enabling.
 
 | Field | off | anonymous | full | Source |
 |-------|-----|-----------|------|--------|
+| `contract_version`, `consumer_phase_id` | queued only | ✓ | ✓ | `FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap` |
+| `workflow_id` | queued only | ✓ raw, not hashed | ✓ | `FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap` |
 | `projection_contract_id`, `producer_iteration`, `repository_checkpoint_fingerprint`, `projected_utf8_bytes`, `projected_collection_items`, `estimated_tokens`, `private_evidence_utf8_bytes`, `delivered_projection_utf8_bytes`, `failure_classification` | queued only | ✓ | ✓ | `FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap` |
 
 This event is enqueued regardless of level. At `off` the row is written locally and not sent.
+
+Unlike the goal events above, this event's `workflow_id` is **not** redacted at `anonymous`:
+`LifecycleTelemetryStore.featureTaskRuntimeProjectionMeasurement` takes no level parameter and
+enqueues `toTelemetryMap` verbatim, so an issue key embedded in the workflow id (for example
+`SKILL-163:...`) is uploaded as-is once telemetry is at `anonymous` or `full`.
 
 ### `skillbill_quality_check_started` / `skillbill_quality_check_finished`
 
