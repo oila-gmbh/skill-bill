@@ -43,7 +43,7 @@ class IdeStatusProjector(
   ): IdeStatusSnapshot {
     return when (candidate.workflowFamily) {
       IdeStatusWorkflowFamily.FEATURE_GOAL ->
-        projectGoal(candidate, repositoryIdentity, observedAt, dbOverride, repoRoot)
+        projectGoal(candidate, unitOfWork, repositoryIdentity, observedAt, dbOverride, repoRoot)
       IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME ->
         projectRuntime(candidate, unitOfWork, repositoryIdentity, observedAt, dbOverride)
       IdeStatusWorkflowFamily.FEATURE_TASK_PROSE ->
@@ -67,6 +67,7 @@ class IdeStatusProjector(
 
   private fun projectGoal(
     candidate: IdeStatusCandidate,
+    unitOfWork: UnitOfWork,
     repositoryIdentity: String,
     observedAt: Instant,
     dbOverride: String?,
@@ -98,8 +99,8 @@ class IdeStatusProjector(
     val currentSubtask = projection?.currentSubtaskId?.takeIf { it > 0 }?.let { subtaskId ->
       IdeStatusCurrentSubtask(
         id = subtaskId.toString(),
-        // Subtask start comes only from durable child/work state when available; never from updated_at.
-        startedAt = null,
+        // Durable child WorkItem/workflow started_at only; never synthesize from updated_at.
+        startedAt = resolveLaunchedChildStartedAt(unitOfWork, projection.currentChildWorkflowId),
       )
     }
     val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, observedAt)
@@ -117,6 +118,23 @@ class IdeStatusProjector(
       freshness = freshness,
       summary = goalSummary(issueKey, lifecycle, stepLabel, projection?.blockedCount ?: 0),
     )
+  }
+
+  /**
+   * Resolve current-subtask started_at from the launched child's durable WorkItem or workflow
+   * snapshot. Omit when no child scope exists or legacy state lacks started_at.
+   */
+  private fun resolveLaunchedChildStartedAt(
+    unitOfWork: UnitOfWork,
+    childWorkflowId: String?,
+  ): Instant? {
+    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
+    val workStarted = unitOfWork.workList.list(limit = null)
+      .firstOrNull { it.workflowId == workflowId }
+      ?.startedAt
+    if (workStarted != null) return workStarted
+    val snapshot = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
+    return parseInstantOrNull(snapshot?.startedAt)
   }
 
   private fun projectRuntime(

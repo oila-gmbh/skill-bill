@@ -37,6 +37,19 @@ class IdeStatusTimestampTest {
   }
 
   @Test
+  fun `durable current_subtask started_at is preserved on the wire model`() {
+    val subtaskStarted = Instant.parse("2026-08-06T09:15:00Z")
+    val wire = snapshot(
+      startedAt = Instant.parse("2026-08-06T08:00:00Z"),
+      currentSubtask = IdeStatusCurrentSubtask(id = "2", startedAt = subtaskStarted),
+    ).toWireMap()
+    @Suppress("UNCHECKED_CAST")
+    val subtask = wire["current_subtask"] as Map<String, Any?>
+    assertEquals("2", subtask["id"])
+    assertEquals("2026-08-06T09:15:00Z", subtask["started_at"])
+  }
+
+  @Test
   fun `updated_at is never copied into started_at`() {
     val updated = Instant.parse("2026-08-06T12:00:00Z")
     val wire = snapshot(startedAt = null, updatedAt = updated).toWireMap()

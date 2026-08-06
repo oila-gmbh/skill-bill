@@ -49,6 +49,9 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.IdeStatusValidator
 import skillbill.workflow.NoopIdeStatusValidator
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -218,7 +221,143 @@ class IdeStatusServiceTest {
     assertEquals(Instant.parse("2026-08-06T08:00:00Z"), first.snapshot.startedAt)
   }
 
-  private fun service(database: TrackingDatabase): IdeStatusService {
+  @Test
+  fun `unbound verify work is excluded without same-repo issue correlation`() {
+    val fixture = gitRepoFixture("ide-status-verify-unbound")
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureVerifyWorkflow(verifyRecord("w-verify", "2026-08-06T11:00:00Z"))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-verify", WorkItemKind.FEATURE_VERIFY, "running", "2026-08-06T11:00:00Z")),
+      workflows = workflows,
+    )
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
+    assertNull(result.snapshot.workflowId)
+  }
+
+  @Test
+  fun `verify work for another repo issue correlation is not selected`() {
+    val fixture = gitRepoFixture("ide-status-verify-other")
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureVerifyWorkflow(verifyRecord("w-verify", "2026-08-06T11:00:00Z"))
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-foreign", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(
+      identityFor("w-foreign", "repo-root-realpath-v1:/other-repo"),
+    )
+    val database = TrackingDatabase(
+      work = listOf(
+        workItem("w-verify", WorkItemKind.FEATURE_VERIFY, "running", "2026-08-06T11:00:00Z"),
+        workItem("w-foreign", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z"),
+      ),
+      workflows = workflows,
+    )
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
+    assertNull(result.snapshot.workflowId)
+  }
+
+  @Test
+  fun `verify work is included when issue correlates to same-repo feature-task identity`() {
+    val fixture = gitRepoFixture("ide-status-verify-correlated")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureVerifyWorkflow(verifyRecord("w-verify", "2026-08-06T11:00:00Z"))
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-prose", "2026-08-06T09:00:00Z", currentStep = "finish"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-prose", identity))
+    val database = TrackingDatabase(
+      work = listOf(
+        workItem("w-verify", WorkItemKind.FEATURE_VERIFY, "running", "2026-08-06T11:00:00Z"),
+        workItem("w-prose", WorkItemKind.FEATURE_TASK_PROSE, "completed", "2026-08-06T09:00:00Z"),
+      ),
+      workflows = workflows,
+    )
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(0, result.exitCode)
+    assertNull(result.snapshot.problem)
+    assertEquals("w-verify", result.snapshot.workflowId)
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_VERIFY, result.snapshot.workflowFamily)
+  }
+
+  @Test
+  fun `goal current_subtask started_at comes from durable launched child WorkItem`() {
+    val fixture = gitRepoFixture("ide-status-goal-subtask-start")
+    val identity = goalRepositoryIdentity(fixture)
+    val childStarted = Instant.parse("2026-08-06T09:15:00Z")
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      proseRecord("w-child", "2026-08-06T11:00:00Z").copy(startedAt = childStarted.toString()),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(
+      identityFor("w-child", identity).copy(routeScope = FeatureTaskRouteScope.GOAL_CHILD),
+    )
+    val controls = object : GoalRunnerControlRepository by EmptyGoalRunnerControlRepository {
+      override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+        GoalRunnerControlState(repositoryIdentity = identity)
+    }
+    val manifestState = GoalRunnerManifestState(
+      parentWorkflowId = "goal-1",
+      dbPath = "/fake/ide-status.db",
+      manifest = DecompositionManifest(
+        issueKey = "SKILL-148",
+        featureName = "ide-status",
+        parentSpecPath = ".feature-specs/SKILL-148/spec.md",
+        baseBranch = "main",
+        featureBranch = "feat/SKILL-148",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+        subtasks = listOf(
+          DecompositionSubtask(
+            id = 1,
+            name = "One",
+            specPath = "spec_1.md",
+            status = "complete",
+            workflowId = "w-done",
+          ),
+          DecompositionSubtask(
+            id = 2,
+            name = "Two",
+            specPath = "spec_2.md",
+            status = "in_progress",
+            workflowId = "w-child",
+            lastResumableStep = "implement",
+          ),
+        ),
+      ),
+      controlState = GoalRunnerControlState(repositoryIdentity = identity),
+      repoRoot = fixture,
+    )
+    val database = TrackingDatabase(
+      work = listOf(
+        workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z"),
+        workItem("w-child", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T11:00:00Z")
+          .copy(startedAt = childStarted),
+      ),
+      workflows = workflows,
+      controls = controls,
+    )
+    val service = service(database, manifestStore = StubGoalManifestStore(manifestState))
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("goal-1", result.snapshot.workflowId)
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
+    assertEquals("2", result.snapshot.currentSubtask?.id)
+    assertEquals(childStarted, result.snapshot.currentSubtask?.startedAt)
+    assertEquals(Instant.parse("2026-08-06T08:00:00Z"), result.snapshot.startedAt)
+  }
+
+  private fun service(
+    database: TrackingDatabase,
+    manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
+  ): IdeStatusService {
     val snapshotValidator = object : WorkflowSnapshotValidator {
       override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
     }
@@ -231,7 +370,7 @@ class IdeStatusServiceTest {
     val projector = IdeStatusProjector(
       workflowSnapshotValidator = snapshotValidator,
       goalRunnerStatusService = GoalRunnerStatusService(
-        manifestStore = EmptyManifestStore,
+        manifestStore = manifestStore,
         outcomeStore = EmptyOutcomeStore,
         phaseRecorder = phaseRecorder,
       ),
@@ -311,6 +450,24 @@ private fun proseRecord(
   mode = FeatureTaskWorkflowMode.PROSE,
 )
 
+private fun verifyRecord(
+  workflowId: String,
+  updatedAt: String,
+): WorkflowStateRecord = WorkflowStateRecord(
+  workflowId = workflowId,
+  sessionId = "session-$workflowId",
+  workflowName = "bill-feature-verify",
+  contractVersion = "0.1",
+  workflowStatus = "running",
+  currentStepId = "verify",
+  stepsJson = """[{"step_id":"verify","status":"running"}]""",
+  artifactsJson = "{}",
+  startedAt = "2026-08-06T08:00:00Z",
+  updatedAt = updatedAt,
+  finishedAt = null,
+  issueKey = "SKILL-148",
+)
+
 private class TrackingDatabase(
   private val work: List<WorkItem>,
   private val workflows: WorkflowStateRepository,
@@ -364,6 +521,7 @@ private class TrackingDatabase(
 
 private class IdeStatusWorkflowStates : WorkflowStateRepository {
   private val implement = mutableMapOf<String, WorkflowStateRecord>()
+  private val verify = mutableMapOf<String, WorkflowStateRecord>()
   private val identities = mutableMapOf<String, FeatureTaskExecutionIdentity>()
 
   override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
@@ -401,13 +559,16 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
 
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
 
-  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) {
+    verify[row.workflowId] = row
+  }
 
-  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = verify[workflowId]
 
-  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> =
+    verify.values.toList().take(limit)
 
-  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
 
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
 
@@ -418,6 +579,39 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
 
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
+}
+
+private class StubGoalManifestStore(
+  private val state: GoalRunnerManifestState,
+) : GoalRunnerManifestStore {
+  override fun loadByIssueKey(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path?,
+  ): GoalRunnerManifestState? =
+    state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = false
 }
 
 private object EmptyManifestStore : GoalRunnerManifestStore {

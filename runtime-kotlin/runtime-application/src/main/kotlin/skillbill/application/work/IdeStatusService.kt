@@ -175,10 +175,68 @@ class IdeStatusService(
       }
     }
     IdeStatusWorkflowFamily.FEATURE_VERIFY -> {
-      // Verify workflows have no durable repository_identity column. Include them for the
-      // queried root so AC-006 projection remains available; repository isolation for verify
-      // is not enforceable until verify gains an execution-identity binding.
-      true
+      // Verify workflows have no durable repository_identity. Exclude unbound rows (same as a
+      // missing feature-task identity). Include only when issue_key correlates to same-repo
+      // feature-task or goal identity; never default-include every verify row.
+      val issueKey = item.issueKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+      when (verifyIssueRepositoryCorrelation(unitOfWork, issueKey, repositoryIdentity)) {
+        VerifyRepoCorrelation.SAME_REPO -> true
+        VerifyRepoCorrelation.OTHER_REPO -> false
+        VerifyRepoCorrelation.UNKNOWN -> null
+      }
+    }
+  }
+
+  /**
+   * Correlate a verify row to a repository via same-issue feature-task/goal durable identity.
+   * Positive same-repo evidence includes the verify; other-repo-only evidence excludes it as
+   * belonging elsewhere; no correlating work leaves identity unresolved.
+   */
+  private fun verifyIssueRepositoryCorrelation(
+    unitOfWork: UnitOfWork,
+    issueKey: String,
+    repositoryIdentity: String,
+  ): VerifyRepoCorrelation {
+    val normalized = issueKey.trim().uppercase()
+    var sawSameRepo = false
+    var sawOtherRepo = false
+    for (other in unitOfWork.workList.list(limit = null)) {
+      if (other.issueKey?.trim()?.uppercase() != normalized) continue
+      when (other.workflowKind) {
+        WorkItemKind.FEATURE_TASK_PROSE,
+        WorkItemKind.FEATURE_TASK_RUNTIME,
+        -> {
+          val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(other.workflowId)
+          when {
+            identity == null -> Unit
+            identity.repositoryIdentity == repositoryIdentity -> sawSameRepo = true
+            else -> sawOtherRepo = true
+          }
+        }
+        WorkItemKind.FEATURE_GOAL -> {
+          val bound = unitOfWork.goalRunnerControls.controlState(other.workflowId).repositoryIdentity
+          when {
+            bound == repositoryIdentity -> sawSameRepo = true
+            bound == null -> {
+              val childrenHere = unitOfWork.workflowStates
+                .findGoalChildFeatureTaskCandidates(normalized, repositoryIdentity)
+              val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(normalized)
+              when {
+                childrenHere.isNotEmpty() -> sawSameRepo = true
+                childCountAnywhere > 0 -> sawOtherRepo = true
+                // Unlaunched goal with no children is not positive same-repo evidence for verify.
+              }
+            }
+            else -> sawOtherRepo = true
+          }
+        }
+        WorkItemKind.FEATURE_VERIFY -> Unit
+      }
+    }
+    return when {
+      sawSameRepo -> VerifyRepoCorrelation.SAME_REPO
+      sawOtherRepo -> VerifyRepoCorrelation.OTHER_REPO
+      else -> VerifyRepoCorrelation.UNKNOWN
     }
   }
 
@@ -245,4 +303,10 @@ private fun resolveRepositoryIdentity(repoRootArg: String): IdentityResolution {
     return IdentityResolution.Missing("Could not form canonical repository identity for: $repoRootArg")
   }
   return IdentityResolution.Ok(identity = identity, repoRoot = gitRoot)
+}
+
+private enum class VerifyRepoCorrelation {
+  SAME_REPO,
+  OTHER_REPO,
+  UNKNOWN,
 }
