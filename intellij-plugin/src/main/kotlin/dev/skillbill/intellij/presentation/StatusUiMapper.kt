@@ -15,6 +15,7 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Idle(
                     headline = "Skill Bill: idle",
                     detail = outcome.summary,
+                    lastUpdated = outcome.observedAt,
                 )
 
             is SkillBillStatusOutcome.Active ->
@@ -26,7 +27,11 @@ object StatusUiMapper {
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
+                    workflowId = outcome.workflowId,
                     stepLabel = outcome.currentStepLabel,
+                    startedAt = outcome.startedAt,
+                    subtaskStartedAt = outcome.subtaskStartedAt,
+                    lastUpdated = outcome.updatedAt,
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -37,6 +42,13 @@ object StatusUiMapper {
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
+                    issueKey = outcome.issueKey,
+                    workflowId = null,
+                    stepLabel = outcome.currentStepLabel,
+                    startedAt = outcome.startedAt,
+                    subtaskStartedAt = outcome.subtaskStartedAt,
+                    lastUpdated = outcome.updatedAt ?: outcome.observedAt,
+                    problemSummary = if (outcome.fromCache) "Cached status is stale" else "Status is stale",
                 )
 
             is SkillBillStatusOutcome.Blocked ->
@@ -45,6 +57,13 @@ object StatusUiMapper {
                     detail = outcome.summary,
                     goalElapsed = elapsed(outcome.startedAt, now),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    issueKey = outcome.issueKey,
+                    workflowId = null,
+                    stepLabel = outcome.currentStepLabel,
+                    startedAt = outcome.startedAt,
+                    subtaskStartedAt = outcome.subtaskStartedAt,
+                    lastUpdated = outcome.updatedAt ?: outcome.observedAt,
+                    problemSummary = outcome.summary,
                 )
 
             is SkillBillStatusOutcome.Failed ->
@@ -53,6 +72,13 @@ object StatusUiMapper {
                     detail = outcome.summary,
                     goalElapsed = elapsed(outcome.startedAt, now),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    issueKey = outcome.issueKey,
+                    workflowId = null,
+                    stepLabel = outcome.currentStepLabel,
+                    startedAt = outcome.startedAt,
+                    subtaskStartedAt = outcome.subtaskStartedAt,
+                    lastUpdated = outcome.updatedAt ?: outcome.observedAt,
+                    problemSummary = outcome.summary,
                 )
 
             is SkillBillStatusOutcome.Unavailable ->
@@ -60,6 +86,8 @@ object StatusUiMapper {
                     headline = "Skill Bill: unavailable",
                     detail = outcome.summary,
                     reasonCode = outcome.reasonCode.name,
+                    lastUpdated = outcome.observedAt,
+                    problemSummary = "${outcome.reasonCode.name}: ${outcome.summary}",
                 )
 
             is SkillBillStatusOutcome.Incompatible ->
@@ -67,6 +95,12 @@ object StatusUiMapper {
                     headline = "Skill Bill: incompatible",
                     detail = outcome.summary,
                     foundContractVersion = outcome.foundContractVersion,
+                    lastUpdated = outcome.observedAt,
+                    problemSummary = buildString {
+                        append("Contract mismatch")
+                        outcome.foundContractVersion?.let { append(" (found ").append(it).append(')') }
+                        append(": ").append(outcome.summary)
+                    },
                 )
         }
 
@@ -78,6 +112,19 @@ object StatusUiMapper {
         if (startedAt == null) return null
         val millis = now.toEpochMilli() - startedAt.toEpochMilli()
         return if (millis <= 0L) Duration.ZERO else Duration.ofMillis(millis)
+    }
+
+    /** Re-anchors elapsed clocks from retained start timestamps without a new poll. */
+    fun withElapsed(state: SkillBillStatusUiState, now: Instant): SkillBillStatusUiState {
+        val goal = elapsed(state.startedAt, now)
+        val subtask = elapsed(state.subtaskStartedAt, now)
+        return when (state) {
+            is SkillBillStatusUiState.Active -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
+            is SkillBillStatusUiState.Stale -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
+            is SkillBillStatusUiState.Blocked -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
+            is SkillBillStatusUiState.Failed -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
+            else -> state
+        }
     }
 
     private fun activeHeadline(outcome: SkillBillStatusOutcome.Active): String {

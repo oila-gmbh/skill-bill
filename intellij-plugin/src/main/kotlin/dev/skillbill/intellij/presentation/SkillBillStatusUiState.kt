@@ -1,10 +1,15 @@
 package dev.skillbill.intellij.presentation
 
 import java.time.Duration
+import java.time.Instant
 
 /**
  * Immutable presentation state for Skill Bill status surfaces.
  * No process, JSON, filesystem, or status-bar rendering code here.
+ *
+ * Authoritative start timestamps ([startedAt] / [subtaskStartedAt]) are retained so
+ * UI tickers can recompute elapsed without synthesizing from updated_at. Absent
+ * timestamps stay absent; never treat missing as zero.
  */
 sealed class SkillBillStatusUiState {
     abstract val headline: String
@@ -14,6 +19,13 @@ sealed class SkillBillStatusUiState {
     abstract val progressCompleted: Int?
     abstract val progressTotal: Int?
     abstract val accessibilityText: String
+    open val issueKey: String? get() = null
+    open val workflowId: String? get() = null
+    open val stepLabel: String? get() = null
+    open val startedAt: Instant? get() = null
+    open val subtaskStartedAt: Instant? get() = null
+    open val lastUpdated: Instant? get() = null
+    open val problemSummary: String? get() = null
 
     data class Idle(
         override val headline: String = "Skill Bill: idle",
@@ -22,6 +34,7 @@ sealed class SkillBillStatusUiState {
         override val subtaskElapsed: Duration? = null,
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
+        override val lastUpdated: Instant? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = headline
     }
@@ -33,8 +46,12 @@ sealed class SkillBillStatusUiState {
         override val subtaskElapsed: Duration?,
         override val progressCompleted: Int?,
         override val progressTotal: Int?,
-        val issueKey: String?,
-        val stepLabel: String,
+        override val issueKey: String?,
+        override val workflowId: String?,
+        override val stepLabel: String,
+        override val startedAt: Instant?,
+        override val subtaskStartedAt: Instant?,
+        override val lastUpdated: Instant?,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {
@@ -51,6 +68,13 @@ sealed class SkillBillStatusUiState {
         override val subtaskElapsed: Duration?,
         override val progressCompleted: Int?,
         override val progressTotal: Int?,
+        override val issueKey: String? = null,
+        override val workflowId: String? = null,
+        override val stepLabel: String? = null,
+        override val startedAt: Instant? = null,
+        override val subtaskStartedAt: Instant? = null,
+        override val lastUpdated: Instant? = null,
+        override val problemSummary: String? = "Cached status is stale",
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (stale)"
     }
@@ -62,6 +86,13 @@ sealed class SkillBillStatusUiState {
         override val subtaskElapsed: Duration?,
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
+        override val issueKey: String? = null,
+        override val workflowId: String? = null,
+        override val stepLabel: String? = null,
+        override val startedAt: Instant? = null,
+        override val subtaskStartedAt: Instant? = null,
+        override val lastUpdated: Instant? = null,
+        override val problemSummary: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (blocked)"
     }
@@ -73,6 +104,13 @@ sealed class SkillBillStatusUiState {
         override val subtaskElapsed: Duration?,
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
+        override val issueKey: String? = null,
+        override val workflowId: String? = null,
+        override val stepLabel: String? = null,
+        override val startedAt: Instant? = null,
+        override val subtaskStartedAt: Instant? = null,
+        override val lastUpdated: Instant? = null,
+        override val problemSummary: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (failed)"
     }
@@ -85,6 +123,8 @@ sealed class SkillBillStatusUiState {
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
         val reasonCode: String,
+        override val lastUpdated: Instant? = null,
+        override val problemSummary: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (unavailable)"
     }
@@ -97,6 +137,8 @@ sealed class SkillBillStatusUiState {
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
         val foundContractVersion: String?,
+        override val lastUpdated: Instant? = null,
+        override val problemSummary: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (incompatible)"
     }

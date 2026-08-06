@@ -11,9 +11,9 @@ Borrowed from the KMP Compose starter's *useful* boundaries — not its stack:
 
 | Starter idea | IntelliJ adaptation |
 | --- | --- |
-| Inward dependency direction | `presentation` → `application`/`domain` ← `infrastructure`; only `composition` wires concrete adapters |
+| Inward dependency direction | `presentation` → `application`/`domain` ← `infrastructure`; only `composition` wires concrete adapters; `ui` consumes presentation + composition |
 | Feature-owned presentation | Project-scoped `SkillBillStatusViewModel` owns `StateFlow<SkillBillStatusUiState>` |
-| Thin UI entry points | Status-bar widget (subtask 3) and future tool window only render/emit intents |
+| Thin UI entry points | Status-bar widget renders/emits intents; future tool window should do the same |
 | Explicit lifetimes | IntelliJ `Project` + `Disposable` replace custom App/User/Screen scopes |
 | Repository-backed source of truth | `StatusRepository` port; CLI adapter is the sole live transport |
 | Persistence behind a port | `PreferenceCachePort` for settings + optional last-known display cache |
@@ -28,12 +28,14 @@ dev.skillbill.intellij
 ├── domain/           Status outcomes, value types, clock, display-cache model
 ├── application/      StatusRepository, PreferenceCachePort, StatusRefreshCoordinator
 ├── infrastructure/   CLI process adapter, IntelliJ PersistentStateComponent prefs
-├── presentation/     ViewModel, UI state, exhaustive StatusUiMapper
+├── presentation/     ViewModel, UI state, StatusUiMapper, StatusBarPresentation
+├── ui/               StatusBarWidgetFactory + SkillBillStatusBarWidget (IntelliJ APIs)
 └── composition/      SkillBillStatusCompositionRoot, SkillBillProjectStatusService
 ```
 
 Architecture tests under `src/test/.../architecture` reject presentation→infrastructure
 shortcuts and forbidden runtime/JDBC/SQLite imports as pure JVM source scans.
+`presentation` must not import `StatusBarWidget` APIs; those live under `ui/`.
 
 ## Source of truth
 
@@ -42,9 +44,36 @@ shortcuts and forbidden runtime/JDBC/SQLite imports as pure JVM source scans.
    default 15s). Never workflow state.
 3. **Last-known display cache** — optional, observation-time-marked. May produce
    only a **stale** UI state, never an authoritative active state.
-4. **Elapsed time** — derived in the ViewModel from authoritative `started_at` /
-   `subtask_started_at` via an injected clock. Absent timestamps stay absent;
-   never synthesized from `updated_at`.
+4. **Elapsed time** — derived from authoritative `started_at` / `subtask_started_at`
+   via an injected clock. Absent timestamps stay absent (shown as unavailable);
+   never synthesized from `updated_at`. Clock-skew negatives clamp to zero.
+
+## Status-bar expected states
+
+Documented presentations (no screenshot asset required for this release):
+
+| UI state | Status-bar text (concise) | Animation | Notes |
+| --- | --- | --- | --- |
+| Active | `Skill Bill · <step> · <goal> · <subtask> [· c/t]` | Yes | Progress `c/t` only when bounds are valid |
+| Idle | `Skill Bill · idle` | No | No matching work / idle contract |
+| Stale | `Skill Bill · stale · …` | No | Cached/observation-marked; tooltip says stale |
+| Blocked | `Skill Bill · blocked` | No | Distinct from failed |
+| Failed | `Skill Bill · failed` | No | Distinct from blocked |
+| Unavailable | `Skill Bill · unavailable` | No | Missing CLI, timeout, malformed, etc. |
+| Incompatible | `Skill Bill · incompatible` | No | Contract-version mismatch |
+
+Long or unsafe labels are normalized/truncated on the bar; full safe context stays
+in the tooltip and accessibility description. Click → coalesced refresh + details
+popup (read-only).
+
+### Troubleshooting unavailable / incompatible
+
+- **Unavailable / missing executable**: ensure `skill-bill` is on `PATH`, or set the
+  CLI path preference override to an absolute executable.
+- **Unavailable / misconfigured / process failure / timeout**: verify the CLI runs
+  `skill-bill work status --format json` for the open project root outside the IDE.
+- **Incompatible**: upgrade Skill Bill CLI or the plugin so IDE status
+  `contract_version` matches (`0.1` for this release).
 
 ## Persistence policy
 
@@ -59,14 +88,14 @@ shortcuts and forbidden runtime/JDBC/SQLite imports as pure JVM source scans.
 
 `SkillBillProjectStatusService` is the project-scoped composition root entry.
 It constructs adapters, coordinator, and ViewModel with explicit constructors.
-Polling starts only while a consumer (future widget) is active, coalesces
+Polling starts only while a consumer (status-bar widget) is active, coalesces
 overlapping polls, and cancels the loop plus child processes when the project
 is disposed. There is no application-global mutable status cache.
 
 ## Future tool-window extension point
 
-Subtask 3 registers the status-bar widget against `viewModel.uiState`. A later
-tool window should:
+The status-bar widget collects `viewModel.uiState`. A later **full tool window
+remains deferred** and should:
 
 1. Obtain `SkillBillProjectStatusService` for the open project.
 2. Collect the same `StateFlow<SkillBillStatusUiState>`.
@@ -79,8 +108,10 @@ tool window should:
 - Range: IDEA **2025.2** (build `252`) through **2026.1** (build `261.*`) inclusive.
 - JVM toolchain: **JDK 21** for compile and `runIde`.
 - Plugin id: `dev.skillbill.status` (Marketplace forbids the template word `intellij` in plugin IDs).
+- Status-bar extension / factory / widget id: `SkillBillStatusBarWidget`.
 
 ## Deferred
 
 Marketplace publishing, plugin signing, Remote Development / Split Mode support,
-and any workflow mutation commands remain out of scope for this foundation.
+the full Skill Bill tool window, and any workflow mutation commands remain out of
+scope for this status-bar release.

@@ -112,6 +112,18 @@ class StatusUiMapperTest {
         assertNull(ui.subtaskElapsed)
     }
 
+    @Test
+    fun `withElapsed re-anchors from startedAt and leaves absent subtask absent`() {
+        val start = Instant.parse("2026-08-06T10:00:00Z")
+        val t1 = Instant.parse("2026-08-06T10:01:00Z")
+        val active = StatusUiMapper.map(active(startedAt = start, subtaskStartedAt = null), start)
+            as SkillBillStatusUiState.Active
+        val reanchored = StatusUiMapper.withElapsed(active, t1) as SkillBillStatusUiState.Active
+        assertEquals(Duration.ofSeconds(60), reanchored.goalElapsed)
+        assertNull(reanchored.subtaskElapsed)
+        assertEquals(start, reanchored.startedAt)
+    }
+
     private fun active(
         startedAt: Instant? = started,
         subtaskStartedAt: Instant? = subtaskStarted,

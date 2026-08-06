@@ -73,7 +73,8 @@ tasks {
     }
 
     withType<Test> {
-        // Pure JVM unit/architecture tests; do not launch an IDE fixture here.
+        // Pure JVM unit/presentation/architecture tests plus IntelliJ Platform
+        // fixture tests (BasePlatformTestCase) from testFramework(Platform).
         useJUnit()
     }
 }

@@ -27,7 +27,9 @@
             serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillProjectDisplayCache"/>
         <applicationService
             serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillApplicationSettings"/>
+        <statusBarWidgetFactory
+            id="SkillBillStatusBarWidget"
+            implementation="dev.skillbill.intellij.ui.SkillBillStatusBarWidgetFactory"
+            order="after Position"/>
     </extensions>
-
-    <!-- Status-bar widget registration is intentionally deferred to subtask 3. -->
 </idea-plugin>

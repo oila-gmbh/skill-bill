@@ -9,9 +9,9 @@ import dev.skillbill.intellij.presentation.SkillBillStatusViewModel
 import java.nio.file.Path
 
 /**
- * Project service exposing presentation-facing handles for subtask 3 consumers.
- * Owns the composed graph lifetime; disposal cancels polling and child processes.
- * Does not register a StatusBarWidgetFactory (deferred to subtask 3).
+ * Project service exposing presentation-facing handles for status-bar (and future
+ * tool-window) consumers. Owns the composed graph lifetime; disposal cancels
+ * polling and child processes.
  */
 class SkillBillProjectStatusService(
     private val project: Project,
