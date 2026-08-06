@@ -224,7 +224,10 @@ internal object DatabaseSchema {
         -- NULL means healthy: no delivery has failed. Non-null is a real delivery failure. The
         -- legacy shape was NOT NULL DEFAULT '', which made "no error" and "error" indistinguishable
         -- from the column type alone; relax-telemetry-outbox-last-error backfills '' to NULL.
-        last_error TEXT
+        last_error TEXT,
+        -- Nullable with no default: a row enqueued before release attribution existed has no
+        -- version to report, and NULL keeps it distinguishable from a genuine recorded version.
+        skill_bill_version TEXT
       )
       """.trimIndent(),
       """

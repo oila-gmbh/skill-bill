@@ -1,5 +1,6 @@
 package skillbill.db.telemetry
 
+import skillbill.SkillBillVersion
 import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import java.sql.Connection
@@ -8,16 +9,18 @@ typealias TelemetryOutboxRow = TelemetryOutboxRecord
 
 class TelemetryOutboxStore(
   private val connection: Connection,
+  private val version: String = SkillBillVersion.VALUE,
 ) : TelemetryOutboxRepository {
   override fun enqueue(eventName: String, payloadJson: String): Long {
     connection.prepareStatement(
       """
-      INSERT INTO telemetry_outbox (event_name, payload_json)
-      VALUES (?, ?)
+      INSERT INTO telemetry_outbox (event_name, payload_json, skill_bill_version)
+      VALUES (?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, eventName)
       statement.setString(2, payloadJson)
+      statement.setString(3, version)
       statement.executeUpdate()
     }
     return connection.createStatement().use { statement ->
@@ -31,7 +34,7 @@ class TelemetryOutboxStore(
   override fun listPending(limit: Int?): List<TelemetryOutboxRecord> {
     val sql =
       buildString {
-        appendLine("SELECT id, event_name, payload_json, created_at, synced_at, last_error")
+        appendLine("SELECT id, event_name, payload_json, created_at, synced_at, last_error, skill_bill_version")
         appendLine("FROM telemetry_outbox")
         appendLine("WHERE synced_at IS NULL")
         appendLine("ORDER BY id")
@@ -54,6 +57,7 @@ class TelemetryOutboxStore(
                 createdAt = resultSet.getString("created_at"),
                 syncedAt = resultSet.getString("synced_at"),
                 lastError = resultSet.getString("last_error").orEmpty(),
+                skillBillVersion = resultSet.getString("skill_bill_version"),
               ),
             )
           }

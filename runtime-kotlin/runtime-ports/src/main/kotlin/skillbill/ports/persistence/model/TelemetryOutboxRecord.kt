@@ -7,4 +7,5 @@ data class TelemetryOutboxRecord(
   val createdAt: String,
   val syncedAt: String?,
   val lastError: String,
+  val skillBillVersion: String? = null,
 )
