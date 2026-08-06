@@ -1,6 +1,9 @@
 package skillbill.application.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import java.nio.file.Path
 import java.time.Instant
 
 enum class IdeStatusWorkflowFamily(val wireValue: String) {
@@ -67,11 +70,35 @@ data class IdeStatusCurrentSubtask(
 data class IdeStatusProblem(
   val code: IdeStatusProblemCode,
   val message: String,
+  @OpenBoundaryMap("Optional typed problem details bag on the IDE status wire problem object")
   val details: Map<String, Any?>? = null,
 ) {
   init {
     require(message.isNotBlank()) { "problem.message must not be blank." }
   }
+}
+
+/**
+ * In-process selection candidate for IDE status precedence. Not a wire DTO.
+ */
+data class IdeStatusCandidate(
+  val workflowId: String,
+  val workflowFamily: IdeStatusWorkflowFamily,
+  val issueKey: String?,
+  val currentState: String,
+  val lifecycleState: IdeStatusLifecycleState,
+  val selectionTier: IdeStatusSelectionTier,
+  val updatedAt: Instant,
+  val startedAt: Instant?,
+  val routeScope: FeatureTaskRouteScope? = null,
+  val isGoalAuthoritative: Boolean = workflowFamily == IdeStatusWorkflowFamily.FEATURE_GOAL,
+)
+
+/** Result of resolving `--repo-root` into a canonical repository identity. */
+sealed class IdeStatusRepositoryResolution {
+  data class Ok(val identity: String, val repoRoot: Path) : IdeStatusRepositoryResolution()
+  data class Invalid(val message: String) : IdeStatusRepositoryResolution()
+  data class Missing(val message: String) : IdeStatusRepositoryResolution()
 }
 
 /**
@@ -101,6 +128,7 @@ data class IdeStatusSnapshot(
     }
   }
 
+  @OpenBoundaryMap("IDE status snapshot wire map at the schema-validation emit seam")
   fun toWireMap(): Map<String, Any?> = buildMap {
     put("contract_version", contractVersion)
     put("repository_identity", repositoryIdentity)

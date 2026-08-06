@@ -5,6 +5,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusCurrentSubtask
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProgress

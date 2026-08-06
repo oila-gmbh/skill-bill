@@ -1,5 +1,6 @@
 package skillbill.application.work
 
+import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusSelectionTier
 import skillbill.application.model.IdeStatusWorkflowFamily

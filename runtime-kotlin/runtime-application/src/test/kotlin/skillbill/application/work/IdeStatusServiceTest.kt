@@ -16,7 +16,7 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
@@ -49,9 +49,11 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.IdeStatusValidator
 import skillbill.workflow.NoopIdeStatusValidator
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -438,14 +440,13 @@ private fun proseRecord(
   sessionId = "session-$workflowId",
   workflowName = "bill-feature-task",
   contractVersion = "0.1",
-  workflowStatus = "running",
+  workflowStatus = if (currentStep == "finish") "completed" else "running",
   currentStepId = currentStep,
-  stepsJson =
-    """[{"step_id":"preplan","status":"completed"},{"step_id":"$currentStep","status":"running"}]""",
+  stepsJson = pipelineStepsJson(FeatureImplementWorkflowDefinition.definition.stepIds, currentStep),
   artifactsJson = "{}",
   startedAt = "2026-08-06T08:00:00Z",
   updatedAt = updatedAt,
-  finishedAt = null,
+  finishedAt = if (currentStep == "finish") updatedAt else null,
   issueKey = "SKILL-148",
   mode = FeatureTaskWorkflowMode.PROSE,
 )
@@ -453,20 +454,35 @@ private fun proseRecord(
 private fun verifyRecord(
   workflowId: String,
   updatedAt: String,
+  currentStep: String = "code_review",
 ): WorkflowStateRecord = WorkflowStateRecord(
   workflowId = workflowId,
   sessionId = "session-$workflowId",
   workflowName = "bill-feature-verify",
   contractVersion = "0.1",
   workflowStatus = "running",
-  currentStepId = "verify",
-  stepsJson = """[{"step_id":"verify","status":"running"}]""",
+  currentStepId = currentStep,
+  stepsJson = pipelineStepsJson(FeatureVerifyWorkflowDefinition.definition.stepIds, currentStep),
   artifactsJson = "{}",
   startedAt = "2026-08-06T08:00:00Z",
   updatedAt = updatedAt,
   finishedAt = null,
   issueKey = "SKILL-148",
 )
+
+private fun pipelineStepsJson(stepIds: List<String>, currentStep: String): String {
+  val currentIndex = stepIds.indexOf(currentStep).takeIf { it >= 0 }
+    ?: error("Unknown step id '$currentStep' for fixture pipeline.")
+  return stepIds.mapIndexed { index, stepId ->
+    val status = when {
+      index < currentIndex -> "completed"
+      index == currentIndex && currentStep == "finish" -> "completed"
+      index == currentIndex -> "running"
+      else -> "pending"
+    }
+    """{"step_id":"$stepId","status":"$status","attempt_count":1}"""
+  }.joinToString(prefix = "[", postfix = "]")
+}
 
 private class TrackingDatabase(
   private val work: List<WorkItem>,

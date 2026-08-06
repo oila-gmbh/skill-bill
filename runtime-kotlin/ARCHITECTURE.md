@@ -374,6 +374,9 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+    - `skillbill.workflow.IdeStatusValidator.validate`
+    - `skillbill.application.model.IdeStatusSnapshot.toWireMap`
+    - `skillbill.application.model.IdeStatusProblem.details`
     - `skillbill.install.model.InstallPlanWireValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
@@ -1131,6 +1134,9 @@ Categories:
 - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
 - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+- `skillbill.workflow.IdeStatusValidator.validate`
+- `skillbill.application.model.IdeStatusSnapshot.toWireMap`
+- `skillbill.application.model.IdeStatusProblem.details`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`

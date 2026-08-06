@@ -1,10 +1,8 @@
 package skillbill.application.work
 
+import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusSelectionTier
-import skillbill.application.model.IdeStatusWorkflowFamily
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import java.time.Instant
 
 /**
  * SKILL-148 Subtask 1: deterministic multi-work precedence for IDE status.
@@ -49,16 +47,3 @@ object IdeStatusSelectionPolicy {
     else -> null
   }
 }
-
-data class IdeStatusCandidate(
-  val workflowId: String,
-  val workflowFamily: IdeStatusWorkflowFamily,
-  val issueKey: String?,
-  val currentState: String,
-  val lifecycleState: IdeStatusLifecycleState,
-  val selectionTier: IdeStatusSelectionTier,
-  val updatedAt: Instant,
-  val startedAt: Instant?,
-  val routeScope: FeatureTaskRouteScope? = null,
-  val isGoalAuthoritative: Boolean = workflowFamily == IdeStatusWorkflowFamily.FEATURE_GOAL,
-)

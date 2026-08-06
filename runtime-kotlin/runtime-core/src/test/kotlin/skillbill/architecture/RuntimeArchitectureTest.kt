@@ -1914,6 +1914,13 @@ class RuntimeArchitectureTest {
       // port stays raw-map at the validation seam because the schema itself
       // validates against the canonical map envelope.
       "skillbill.workflow.WorkflowSnapshotValidator.validate",
+      // SKILL-148 subtask 1: IDE status wire map at the schema-validation seam.
+      // The domain validator port and the application emit/problem details bag
+      // stay raw-map because the Draft 2020-12 schema validates the canonical
+      // map envelope before CLI JSON emission.
+      "skillbill.workflow.IdeStatusValidator.validate",
+      "skillbill.application.model.IdeStatusSnapshot.toWireMap",
+      "skillbill.application.model.IdeStatusProblem.details",
       // SKILL-52.3 subtask 1: domain-owned install-plan + decomposition
       // validator ports. Each stays raw-map at the validation seam because
       // the canonical schema validates against the wire-map envelope, the

@@ -2,6 +2,8 @@ package skillbill.application.work
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.model.IdeStatusCandidate
+import skillbill.application.model.IdeStatusRepositoryResolution
 import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.IdeStatusResult
 import skillbill.application.model.IdeStatusSnapshot
@@ -15,7 +17,6 @@ import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.workflow.IdeStatusValidator
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -37,13 +38,13 @@ class IdeStatusService(
   fun status(request: IdeStatusRequest): IdeStatusResult {
     val observedAt = request.observedAt ?: Instant.now(clock)
     val identityResult = resolveRepositoryIdentity(request.repoRoot)
-    if (identityResult is IdentityResolution.Invalid) {
+    if (identityResult is IdeStatusRepositoryResolution.Invalid) {
       return emit(IdeStatusProblemSnapshots.invalidRepositoryInput(observedAt, identityResult.message))
     }
-    if (identityResult is IdentityResolution.Missing) {
+    if (identityResult is IdeStatusRepositoryResolution.Missing) {
       return emit(IdeStatusProblemSnapshots.missingRepositoryIdentity(observedAt, identityResult.message))
     }
-    val repositoryIdentity = (identityResult as IdentityResolution.Ok).identity
+    val repositoryIdentity = (identityResult as IdeStatusRepositoryResolution.Ok).identity
     val repoRoot = identityResult.repoRoot
 
     if (!database.databaseExists(request.dbOverride)) {
@@ -122,7 +123,6 @@ class IdeStatusService(
 
     val updatedAt = authoritativeUpdatedAt(unitOfWork, item, family) ?: item.stateEnteredAt
     val startedAt = item.startedAt
-
 
     return IdeStatusCandidate(
       workflowId = item.workflowId,
@@ -264,45 +264,39 @@ class IdeStatusService(
   }
 }
 
-private sealed class IdentityResolution {
-  data class Ok(val identity: String, val repoRoot: Path) : IdentityResolution()
-  data class Invalid(val message: String) : IdentityResolution()
-  data class Missing(val message: String) : IdentityResolution()
-}
-
-private fun resolveRepositoryIdentity(repoRootArg: String): IdentityResolution {
-  val raw = Path.of(repoRootArg)
-  if (!Files.exists(raw)) {
-    return IdentityResolution.Invalid("Repository root does not exist: $repoRootArg")
-  }
-  if (!Files.isDirectory(raw)) {
-    return IdentityResolution.Invalid("Repository root is not a directory: $repoRootArg")
-  }
-  val resolvedStart = runCatching { raw.toAbsolutePath().normalize().toRealPath() }
+/**
+ * Resolve canonical repository identity without direct file-IO helpers: existence and the
+ * `.git` walk use `Path.toRealPath()`, matching `goalRepositoryIdentity`.
+ */
+internal fun resolveRepositoryIdentity(repoRootArg: String): IdeStatusRepositoryResolution {
+  val resolvedStart = runCatching { Path.of(repoRootArg).toAbsolutePath().normalize().toRealPath() }
     .getOrElse {
-      return IdentityResolution.Invalid("Repository root cannot be resolved: $repoRootArg")
+      return IdeStatusRepositoryResolution.Invalid("Repository root cannot be resolved: $repoRootArg")
     }
   var candidate = resolvedStart
-  var foundGit = false
+  var gitRoot: Path? = null
   while (true) {
-    if (Files.exists(candidate.resolve(".git"))) {
-      foundGit = true
+    val gitMarker = runCatching { candidate.resolve(".git").toRealPath() }.getOrNull()
+    if (gitMarker != null) {
+      gitRoot = candidate
       break
     }
     candidate = candidate.parent ?: break
   }
-  if (!foundGit) {
-    return IdentityResolution.Invalid("Path is not inside a Git repository: $repoRootArg")
+  if (gitRoot == null) {
+    return IdeStatusRepositoryResolution.Invalid("Path is not inside a Git repository: $repoRootArg")
   }
-  val gitRoot = runCatching { candidate.toRealPath() }
+  val canonicalGitRoot = runCatching { gitRoot.toRealPath() }
     .getOrElse {
-      return IdentityResolution.Invalid("Git repository root cannot be resolved: $repoRootArg")
+      return IdeStatusRepositoryResolution.Invalid("Git repository root cannot be resolved: $repoRootArg")
     }
-  val identity = goalRepositoryIdentity(gitRoot)
+  val identity = goalRepositoryIdentity(canonicalGitRoot)
   if (identity.isBlank() || !identity.startsWith("repo-root-realpath-v1:")) {
-    return IdentityResolution.Missing("Could not form canonical repository identity for: $repoRootArg")
+    return IdeStatusRepositoryResolution.Missing(
+      "Could not form canonical repository identity for: $repoRootArg",
+    )
   }
-  return IdentityResolution.Ok(identity = identity, repoRoot = gitRoot)
+  return IdeStatusRepositoryResolution.Ok(identity = identity, repoRoot = canonicalGitRoot)
 }
 
 private enum class VerifyRepoCorrelation {
