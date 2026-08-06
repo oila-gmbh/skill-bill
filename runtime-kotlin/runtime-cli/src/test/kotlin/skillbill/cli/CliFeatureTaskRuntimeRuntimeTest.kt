@@ -1337,6 +1337,51 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
+  fun `feature-task runtime applies cursor execution matrix model directives`() {
+    val fixture = runtimeFixture()
+    val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
+    Files.createDirectories(config.parent)
+    Files.writeString(
+      config,
+      """
+      {
+        "execution_matrix": {
+          "phase_tiers": {
+            "preplan": "reasoning",
+            "plan": "reasoning"
+          },
+          "agents": {
+            "cursor": {
+              "reasoning": {
+                "model": "cursor-grok-4.5-high"
+              },
+              "implementation": {
+                "model": "cursor-grok-4.5-medium"
+              }
+            }
+          }
+        }
+      }
+      """.trimIndent(),
+    )
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "cursor")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val preplan = launcher.requests[ALL_PHASES.indexOf("preplan")].skillRunRequest
+    val plan = launcher.requests[ALL_PHASES.indexOf("plan")].skillRunRequest
+    val implement = launcher.requests[ALL_PHASES.indexOf("implement")].skillRunRequest
+    assertEquals("cursor-grok-4.5-high", preplan.modelOverride)
+    assertNull(preplan.effortOverride)
+    assertEquals("cursor-grok-4.5-high", plan.modelOverride)
+    assertEquals("cursor-grok-4.5-medium", implement.modelOverride)
+  }
+
+  @Test
   fun `feature-task runtime rejects a malformed machine execution matrix`() {
     val fixture = runtimeFixture()
     val config = fixture.tempDir.resolve(".config/skill-bill/config.json")
@@ -1552,6 +1597,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "phase 'plan'")
     assertContains(run.stdout, "agent 'junie'")
+    assertContains(run.stdout, "Capable agents: claude, codex, cursor.")
     assertEquals(emptyList(), runLauncher.requests)
     assertFalse(run.stdout.contains("workflow_id:"), run.stdout)
 
@@ -1580,6 +1626,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
 
     assertEquals(1, resume.exitCode, resume.stdout)
     assertContains(resume.stdout, "agent 'junie'")
+    assertContains(resume.stdout, "Capable agents: claude, codex, cursor.")
     assertEquals(emptyList(), resumeLauncher.requests)
   }
 }

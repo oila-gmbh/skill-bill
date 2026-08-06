@@ -40,10 +40,29 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
 
     fun testWidgetActivateStartsTickerAndDisposeStopsItWithoutCliPerTick() {
         val clock = ControllableClock(Instant.parse("2026-08-07T12:00:00Z"))
+        val started = Instant.parse("2026-08-07T11:59:00Z")
+        val subtaskStarted = Instant.parse("2026-08-07T11:59:50Z")
         val refreshCount = AtomicInteger(0)
+        // Active from the repository: ViewModel republishes cannot clobber the
+        // widget with Idle while we assert local ticker re-anchoring.
         val repo = FakeStatusRepository {
             refreshCount.incrementAndGet()
-            SkillBillStatusOutcome.Idle(clock.now(), "idle")
+            SkillBillStatusOutcome.Active(
+                observedAt = clock.now(),
+                summary = "working",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-148",
+                workflowId = "w1",
+                workflowFamily = "feature-task-runtime",
+                currentStepId = "implement",
+                currentStepLabel = "Implement",
+                progressCompleted = 1,
+                progressTotal = 3,
+                startedAt = started,
+                currentSubtaskId = "1",
+                subtaskStartedAt = subtaskStarted,
+                updatedAt = clock.now(),
+            )
         }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
@@ -53,7 +72,18 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         widget.activate()
         assertTrue(widget.isTickerRunning())
 
-        val started = Instant.parse("2026-08-07T11:59:00Z")
+        // Wait off the EDT so ViewModel → widget invokeLater updates can flush.
+        runBlocking(Dispatchers.Default) {
+            val deadline = System.currentTimeMillis() + 2_000
+            while (refreshCount.get() < 1 && System.currentTimeMillis() < deadline) {
+                delay(20)
+            }
+            // Allow collectLatest to assign latestState after the outcome emit.
+            delay(50)
+        }
+        assertTrue("activate must poll once", refreshCount.get() >= 1)
+
+        // Synchronous re-anchor of authoritative starts for the local UI ticker.
         widget.replaceLatestStateForTest(
             SkillBillStatusUiState.Active(
                 headline = "Skill Bill: SKILL-148 · Implement",
@@ -66,24 +96,28 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
                 workflowId = "w1",
                 stepLabel = "Implement",
                 startedAt = started,
-                subtaskStartedAt = Instant.parse("2026-08-07T11:59:50Z"),
+                subtaskStartedAt = subtaskStarted,
                 lastUpdated = clock.now(),
             ),
         )
+
         val callsAfterActivate = refreshCount.get()
         clock.advanceSeconds(30)
-        widget.tickOnceForTest()
+        val afterTick = widget.tickOnceForTest()
         assertEquals(
             "local tick must not launch an extra CLI poll",
             callsAfterActivate,
             refreshCount.get(),
         )
-        assertTrue(widget.currentPresentation().details.goalElapsedText.contains("1m 30s"))
+        assertTrue(
+            "goal elapsed after local tick: ${afterTick.details.goalElapsedText}",
+            afterTick.details.goalElapsedText.contains("1m 30s"),
+        )
 
         val beforeClick = refreshCount.get()
         widget.clickForTest()
         assertEquals(SkillBillStatusBarWidget.ClickKind.REFRESH_AND_DETAILS, widget.lastClickKind())
-        runBlocking { delay(100) }
+        runBlocking(Dispatchers.Default) { delay(100) }
         assertTrue(refreshCount.get() >= beforeClick)
 
         widget.dispose()

@@ -115,6 +115,8 @@ class SkillBillStatusBarPresentationTest {
                 detail = "cached",
                 goalElapsed = Duration.ofMinutes(5),
                 subtaskElapsed = null,
+                progressCompleted = null,
+                progressTotal = null,
                 stepLabel = "Implement",
             ) to "Skill Bill · stale",
         )
@@ -134,6 +136,8 @@ class SkillBillStatusBarPresentationTest {
                 detail = "cached",
                 goalElapsed = Duration.ofMinutes(1),
                 subtaskElapsed = Duration.ofSeconds(30),
+                progressCompleted = null,
+                progressTotal = null,
                 stepLabel = "Implement",
             ),
             now,

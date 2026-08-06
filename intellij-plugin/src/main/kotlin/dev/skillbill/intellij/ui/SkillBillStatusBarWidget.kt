@@ -128,9 +128,10 @@ class SkillBillStatusBarWidget(
 
     internal fun lastClickKind(): ClickKind? = lastClickKind
 
-    internal fun tickOnceForTest() {
+    internal fun tickOnceForTest(): SkillBillStatusBarPresentation.MappedPresentation {
         val mapped = SkillBillStatusBarPresentation.map(latestState, clock.now())
         applyPresentation(mapped)
+        return mapped
     }
 
     internal fun clickForTest() {
